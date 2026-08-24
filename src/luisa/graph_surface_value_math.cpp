@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "surface_mix.h"
 
 #include <luisa/dsl/sugar.h>
 
@@ -914,164 +915,29 @@ public:
                 case compiler::ValueOperation::mix: {
                     auto t = scalar(
                         instruction.operand(operand::mix::factor), result);
-                    if ((instruction.static_u1 & 1u) != 0u) {
-                        t = clamp(t, 0.0f, 1.0f);
-                    }
                     auto a = vector(
                         instruction.operand(operand::mix::a), result);
                     auto b = vector(
                         instruction.operand(operand::mix::b), result);
-                    Float3 mixed = a;
-                    switch (static_cast<compiler::BlendOperation>(
-                        instruction.static_u0)) {
-                        case compiler::BlendOperation::mix:
-                            mixed = lerp(a, b, t);
-                            break;
-                        case compiler::BlendOperation::darken:
-                            mixed = lerp(a, min(a, b), t);
-                            break;
-                        case compiler::BlendOperation::multiply:
-                            mixed = lerp(a, a * b, t);
-                            break;
-                        case compiler::BlendOperation::burn: {
-                            auto denominator =
-                                1.0f - t + t * b;
-                            auto burned = clamp(
-                                1.0f -
-                                    (make_float3(1.0f) - a) /
-                                        denominator,
-                                0.0f,
-                                1.0f);
-                            mixed = select(
-                                burned,
-                                make_float3(0.0f),
-                                denominator <= 0.0f);
-                            break;
-                        }
-                        case compiler::BlendOperation::lighten:
-                            mixed = lerp(a, max(a, b), t);
-                            break;
-                        case compiler::BlendOperation::screen:
-                            mixed =
-                                1.0f -
-                                (1.0f - t +
-                                 t * (make_float3(1.0f) - b)) *
-                                    (make_float3(1.0f) - a);
-                            break;
-                        case compiler::BlendOperation::dodge: {
-                            auto denominator = 1.0f - t * b;
-                            auto dodged = min(
-                                a / denominator,
-                                make_float3(1.0f));
-                            dodged = select(
-                                dodged,
-                                make_float3(1.0f),
-                                denominator <= 0.0f);
-                            mixed = select(
-                                a, dodged, a != 0.0f);
-                            break;
-                        }
-                        case compiler::BlendOperation::add:
-                            mixed = lerp(a, a + b, t);
-                            break;
-                        case compiler::BlendOperation::overlay: {
-                            auto low =
-                                a * (1.0f - t + 2.0f * t * b);
-                            auto high =
-                                1.0f -
-                                (1.0f - t +
-                                 2.0f * t *
-                                     (make_float3(1.0f) - b)) *
-                                    (make_float3(1.0f) - a);
-                            mixed = select(
-                                high, low, a < 0.5f);
-                            break;
-                        }
-                        case compiler::BlendOperation::soft_light: {
-                            auto screen =
-                                1.0f -
-                                (make_float3(1.0f) - b) *
-                                    (make_float3(1.0f) - a);
-                            mixed =
-                                (1.0f - t) * a +
-                                t * ((make_float3(1.0f) - a) *
-                                         b * a +
-                                     a * screen);
-                            break;
-                        }
-                        case compiler::BlendOperation::linear_light:
-                            mixed =
-                                a + t * (2.0f * b - 1.0f);
-                            break;
-                        case compiler::BlendOperation::difference:
-                            mixed = lerp(a, abs(a - b), t);
-                            break;
-                        case compiler::BlendOperation::exclusion:
-                            mixed = max(
-                                lerp(
-                                    a,
-                                    a + b - 2.0f * a * b,
-                                    t),
-                                make_float3(0.0f));
-                            break;
-                        case compiler::BlendOperation::subtract:
-                            mixed = lerp(a, a - b, t);
-                            break;
-                        case compiler::BlendOperation::divide: {
-                            auto divided =
-                                (1.0f - t) * a + t * a / b;
-                            mixed = select(
-                                a, divided, b != 0.0f);
-                            break;
-                        }
-                        case compiler::BlendOperation::hue: {
-                            auto hsv_b = rgb_to_hsv(services, b);
-                            auto hsv = rgb_to_hsv(services, a);
-                            hsv.x = hsv_b.x;
-                            auto recolored = hsv_to_rgb(services, hsv);
-                            mixed = select(
-                                a,
-                                lerp(a, recolored, t),
-                                hsv_b.y != 0.0f);
-                            break;
-                        }
-                        case compiler::BlendOperation::saturation: {
-                            auto hsv = rgb_to_hsv(services, a);
-                            auto hsv_b = rgb_to_hsv(services, b);
-                            auto has_saturation = hsv.y != 0.0f;
-                            hsv.y = lerp(hsv.y, hsv_b.y, t);
-                            mixed = select(
-                                a,
-                                hsv_to_rgb(services, hsv),
-                                has_saturation);
-                            break;
-                        }
-                        case compiler::BlendOperation::color: {
-                            auto hsv_b = rgb_to_hsv(services, b);
-                            auto hsv = rgb_to_hsv(services, a);
-                            hsv.x = hsv_b.x;
-                            hsv.y = hsv_b.y;
-                            auto recolored = hsv_to_rgb(services, hsv);
-                            mixed = select(
-                                a,
-                                lerp(a, recolored, t),
-                                hsv_b.y != 0.0f);
-                            break;
-                        }
-                        case compiler::BlendOperation::value: {
-                            auto hsv = rgb_to_hsv(services, a);
-                            auto hsv_b = rgb_to_hsv(services, b);
-                            hsv.z = lerp(hsv.z, hsv_b.z, t);
-                            mixed = hsv_to_rgb(services, hsv);
-                            break;
-                        }
-                    }
-                    if ((instruction.static_u1 & 2u) != 0u) {
-                        mixed = clamp(mixed, 0.0f, 1.0f);
-                    }
-                    value = make_float4(
-                        mixed,
-                        1.0f);
+                    const auto mixed =
+                        context.svm_immediate_override != nullptr
+                            ? evaluate_surface_mix_svm(
+                                  services,
+                                  *context.svm_immediate_override,
+                                  context.svm_immediate_domain,
+                                  t,
+                                  a,
+                                  b)
+                            : evaluate_surface_mix(
+                                  services,
+                                  static_cast<compiler::BlendOperation>(
+                                      instruction.static_u0),
+                                  (instruction.static_u1 & 1u) != 0u,
+                                  (instruction.static_u1 & 2u) != 0u,
+                                  t,
+                                  a,
+                                  b);
+                    value = make_float4(mixed, 1.0f);
                     break;
                 }
             default:

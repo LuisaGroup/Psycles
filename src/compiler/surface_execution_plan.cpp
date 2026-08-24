@@ -161,11 +161,6 @@ namespace {
       return "an instruction has an invalid control word";
     }
     const auto operation = surface_value_operation(instruction);
-    if (surface_value_noise_normalize(instruction) &&
-        !surface_value_operation_uses_noise_normalize(operation)) {
-      return "an instruction assigns Noise Normalize data to a non-Noise "
-             "opcode";
-    }
     if (surface_value_operand_count(instruction) !=
         value_operation_operand_count(
             surface_value_operation(instruction))) {
@@ -199,13 +194,29 @@ namespace {
         instruction.metadata_index >= program.metadata.size()) {
       return "an instruction metadata index exceeds the side table";
     }
-    if (surface_value_operation_uses_noise_normalize(operation)) {
-      const auto metadata_normalize =
-          instruction.metadata_index != SurfaceValueAddress::invalid_value &&
-          (program.metadata[instruction.metadata_index].static_u1 & 1u) != 0u;
-      if (surface_value_noise_normalize(instruction) != metadata_normalize) {
-        return "a Noise Normalize control bit disagrees with immutable "
-               "metadata";
+    const auto actual_immediate = surface_value_svm_immediate(instruction);
+    if (!surface_value_operation_uses_svm_immediate(operation)) {
+      if (actual_immediate != 0u) {
+        return "an instruction assigns immediate data to an opcode without "
+               "an immediate contract";
+      }
+    } else {
+      auto static_u0 = std::uint64_t{};
+      auto static_u1 = std::uint64_t{};
+      if (instruction.metadata_index != SurfaceValueAddress::invalid_value) {
+        const auto &metadata = program.metadata[instruction.metadata_index];
+        static_u0 = metadata.static_u0;
+        static_u1 = metadata.static_u1;
+      }
+      if (!surface_value_svm_static_fields_valid(
+              operation, static_u0, static_u1)) {
+        return "an instruction has immutable fields outside its immediate "
+               "contract";
+      }
+      const auto expected_immediate = make_surface_value_svm_immediate(
+          operation, static_u0, static_u1);
+      if (actual_immediate != expected_immediate) {
+        return "an instruction immediate disagrees with immutable metadata";
       }
     }
     operand_cursor += operand_count;
@@ -240,15 +251,14 @@ namespace {
   key.reserve(9u + instruction.operands.size());
   key.emplace_back(static_cast<std::uint64_t>(instruction.operation));
   key.emplace_back(static_cast<std::uint64_t>(instruction.result_type));
-  key.emplace_back(instruction.static_u0);
-  // Noise Normalize selects only a terminal range mapping and is encoded in
-  // each bytecode instruction. Removing exactly that owned bit from the
-  // semantic AST key preserves all remaining static dimensions, fractal type,
-  // output, and operand-type information.
+  // Only fields represented exactly by the opcode-owned device immediate are
+  // removed from the host/JIT semantic key. Every other bit remains exact.
   key.emplace_back(
-      surface_value_operation_uses_noise_normalize(instruction.operation)
-          ? instruction.static_u1 & ~std::uint64_t{1u}
-          : instruction.static_u1);
+      instruction.static_u0 &
+      ~surface_value_svm_static_u0_mask(instruction.operation));
+  key.emplace_back(
+      instruction.static_u1 &
+      ~surface_value_svm_static_u1_mask(instruction.operation));
   key.emplace_back(std::bit_cast<std::uint32_t>(instruction.static_f0));
   key.emplace_back(std::bit_cast<std::uint32_t>(instruction.static_f1));
   // Shader-table ParameterId is a late-bound address already preserved in
@@ -792,6 +802,13 @@ SurfaceValueProgramImage lower_surface_value_program(
         std::numeric_limits<std::uint8_t>::max()) {
       return reject_image("an instruction exceeds the encoded operand count");
     }
+    if (!surface_value_svm_static_fields_valid(
+            instruction.operation,
+            instruction.static_u0,
+            instruction.static_u1)) {
+      return reject_image(
+          "an instruction has immutable fields outside its immediate contract");
+    }
     if (result.operands.size() >
             std::numeric_limits<std::uint32_t>::max() ||
         instruction.operands.size() >
@@ -860,9 +877,10 @@ SurfaceValueProgramImage lower_surface_value_program(
             instruction.operation,
             static_cast<std::uint8_t>(instruction.operands.size()),
             result_address.bank(),
-            surface_value_operation_uses_noise_normalize(
-                instruction.operation) &&
-                (instruction.static_u1 & 1u) != 0u),
+            make_surface_value_svm_immediate(
+                instruction.operation,
+                instruction.static_u0,
+                instruction.static_u1)),
         .result = result_address.encoded(),
         .operand_begin = operand_begin,
         .metadata_index = metadata_index});
@@ -1013,10 +1031,10 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
             normalized.operation == ValueOperation::rgb_curve) {
           normalized.parameter = {};
         }
-        if (surface_value_operation_uses_noise_normalize(
-                normalized.operation)) {
-          normalized.static_u1 &= ~std::uint64_t{1u};
-        }
+        normalized.static_u0 &=
+            ~surface_value_svm_static_u0_mask(normalized.operation);
+        normalized.static_u1 &=
+            ~surface_value_svm_static_u1_mask(normalized.operation);
         // Preserve the statically proven shape but erase authored payloads
         // from the host AST representative. Compact execution must obtain
         // every entry from the instruction metadata/static-data streams;
@@ -1036,10 +1054,29 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
         normalized.source_node = {};
         result.variants.emplace_back(SurfaceValueStaticVariant{
             .instruction = std::move(normalized),
-            .operand_types = std::move(operand_types)});
+            .operand_types = std::move(operand_types),
+            .svm_immediates = {static_cast<std::uint16_t>(
+                make_surface_value_svm_immediate(
+                    instruction.operation,
+                    instruction.static_u0,
+                    instruction.static_u1))}});
+      } else {
+        auto &immediates = result.variants[iter->second].svm_immediates;
+        const auto immediate = static_cast<std::uint16_t>(
+            make_surface_value_svm_immediate(
+                instruction.operation,
+                instruction.static_u0,
+                instruction.static_u1));
+        if (std::find(immediates.begin(), immediates.end(), immediate) ==
+            immediates.end()) {
+          immediates.emplace_back(immediate);
+        }
       }
       result.instruction_variants.emplace_back(iter->second);
     }
+  }
+  for (auto &variant : result.variants) {
+    std::sort(variant.svm_immediates.begin(), variant.svm_immediates.end());
   }
   result.values = build_surface_execution_scene_image(
       program_images, closure_images);

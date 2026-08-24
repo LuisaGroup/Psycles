@@ -344,8 +344,12 @@ struct SurfaceClosureProgramImage {
 // The hot stream is deliberately 16 bytes. Operand arity is an opcode
 // invariant, and uncommon immutable fields live in a side table so ordinary
 // arithmetic does not fetch two uint64 values and a static-table descriptor.
+// The high 14 bits form an opcode-owned immediate, analogous to the packed
+// fields of one Cycles SVM node. An operation may erase a static field from
+// its host evaluator key only after this immediate represents that field
+// exactly and the serialized-image validator proves the two copies agree.
 struct SurfaceValueBytecodeInstruction {
-  // Packed as [reserved:13 | noise normalize:1 | result bank:2 |
+  // Packed as [opcode-owned immediate:14 | result bank:2 |
   // operand count:8 | opcode:8].
   // ValueOperation is a closed uint8_t enum and every operation has a fixed
   // arity. Keeping those facts in the stream makes a serialized image
@@ -363,13 +367,29 @@ inline constexpr std::uint32_t surface_value_operand_count_mask =
 inline constexpr std::uint32_t surface_value_result_bank_shift = 16u;
 inline constexpr std::uint32_t surface_value_result_bank_mask =
     0x3u << surface_value_result_bank_shift;
-// Normalize changes only the terminal fBm range mapping. Keeping it as
-// bytecode data lets otherwise identical Noise nodes share one semantic
-// evaluator and one runtime loop body.
-inline constexpr std::uint32_t surface_value_noise_normalize_bit = 1u << 18u;
+inline constexpr std::uint32_t surface_value_svm_immediate_shift = 18u;
+inline constexpr std::uint32_t surface_value_svm_immediate_value_mask =
+    (1u << 14u) - 1u;
+inline constexpr std::uint32_t surface_value_svm_immediate_mask =
+    surface_value_svm_immediate_value_mask
+    << surface_value_svm_immediate_shift;
+
+// Operation-local layouts inside the unshifted 14-bit immediate.
+inline constexpr std::uint32_t
+    surface_value_noise_normalize_immediate_bit = 1u << 0u;
+inline constexpr std::uint32_t surface_value_mix_operation_mask = 0x1fu;
+inline constexpr std::uint32_t surface_value_mix_factor_clamp_bit = 1u << 5u;
+inline constexpr std::uint32_t surface_value_mix_result_clamp_bit = 1u << 6u;
 inline constexpr std::uint32_t surface_value_control_mask =
     surface_value_opcode_mask | surface_value_operand_count_mask |
-    surface_value_result_bank_mask | surface_value_noise_normalize_bit;
+    surface_value_result_bank_mask | surface_value_svm_immediate_mask;
+
+[[nodiscard]] constexpr bool surface_value_operation_uses_svm_immediate(
+    ValueOperation operation) noexcept {
+  return operation == ValueOperation::noise_factor ||
+         operation == ValueOperation::noise_color ||
+         operation == ValueOperation::mix;
+}
 
 [[nodiscard]] constexpr bool surface_value_operation_uses_noise_normalize(
     ValueOperation operation) noexcept {
@@ -377,15 +397,60 @@ inline constexpr std::uint32_t surface_value_control_mask =
          operation == ValueOperation::noise_color;
 }
 
+[[nodiscard]] constexpr std::uint64_t
+surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
+  return operation == ValueOperation::mix ? ~std::uint64_t{0u} : 0u;
+}
+
+[[nodiscard]] constexpr std::uint64_t
+surface_value_svm_static_u1_mask(ValueOperation operation) noexcept {
+  if (surface_value_operation_uses_noise_normalize(operation)) {
+    return 1u;
+  }
+  return operation == ValueOperation::mix ? ~std::uint64_t{0u} : 0u;
+}
+
+[[nodiscard]] constexpr bool surface_value_svm_static_fields_valid(
+    ValueOperation operation, std::uint64_t static_u0,
+    std::uint64_t static_u1) noexcept {
+  if (operation == ValueOperation::mix) {
+    return static_u0 <=
+               static_cast<std::uint64_t>(BlendOperation::value) &&
+           static_u1 <= 0x3u;
+  }
+  return true;
+}
+
+[[nodiscard]] constexpr std::uint32_t make_surface_value_svm_immediate(
+    ValueOperation operation, std::uint64_t static_u0,
+    std::uint64_t static_u1) noexcept {
+  if (surface_value_operation_uses_noise_normalize(operation)) {
+    return (static_u1 & 1u) != 0u
+               ? surface_value_noise_normalize_immediate_bit
+               : 0u;
+  }
+  if (operation == ValueOperation::mix) {
+    return static_cast<std::uint32_t>(static_u0) |
+           ((static_u1 & 1u) != 0u
+                ? surface_value_mix_factor_clamp_bit
+                : 0u) |
+           ((static_u1 & 2u) != 0u
+                ? surface_value_mix_result_clamp_bit
+                : 0u);
+  }
+  return 0u;
+}
+
 [[nodiscard]] constexpr std::uint32_t make_surface_value_control(
     ValueOperation operation, std::uint8_t operand_count,
-    SurfaceValueBank result_bank, bool noise_normalize) noexcept {
+    SurfaceValueBank result_bank, std::uint32_t svm_immediate) noexcept {
   return static_cast<std::uint32_t>(operation) |
          (static_cast<std::uint32_t>(operand_count)
           << surface_value_operand_count_shift) |
          (static_cast<std::uint32_t>(result_bank)
           << surface_value_result_bank_shift) |
-         (noise_normalize ? surface_value_noise_normalize_bit : 0u);
+         ((svm_immediate & surface_value_svm_immediate_value_mask)
+          << surface_value_svm_immediate_shift);
 }
 
 [[nodiscard]] constexpr ValueOperation surface_value_operation(
@@ -409,7 +474,16 @@ inline constexpr std::uint32_t surface_value_control_mask =
 
 [[nodiscard]] constexpr bool surface_value_noise_normalize(
     const SurfaceValueBytecodeInstruction &instruction) noexcept {
-  return (instruction.control & surface_value_noise_normalize_bit) != 0u;
+  return (instruction.control &
+          (surface_value_noise_normalize_immediate_bit
+           << surface_value_svm_immediate_shift)) != 0u;
+}
+
+[[nodiscard]] constexpr std::uint16_t surface_value_svm_immediate(
+    const SurfaceValueBytecodeInstruction &instruction) noexcept {
+  return static_cast<std::uint16_t>(
+      (instruction.control & surface_value_svm_immediate_mask) >>
+      surface_value_svm_immediate_shift);
 }
 
 // Ordered largest-to-smallest alignment. A metadata record exists only when
@@ -485,6 +559,10 @@ struct SurfaceValueSceneImage {
 struct SurfaceValueStaticVariant {
   ValueInstruction instruction;
   std::vector<contract::SocketType> operand_types;
+  // Sorted exact device-immediate image of this host evaluator equivalence
+  // class. Dynamic handler switches are generated from this minimal domain,
+  // not from every mode known to the frontend.
+  std::vector<std::uint16_t> svm_immediates;
 };
 
 struct SurfaceValueExecutionInput {
