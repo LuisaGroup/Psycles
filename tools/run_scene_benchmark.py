@@ -96,6 +96,12 @@ def _nonnegative_integer(value: str) -> int:
     return result
 
 
+def _wavefront_tail_threshold(value: str) -> int | str:
+    if value == "auto":
+        return value
+    return _nonnegative_integer(value)
+
+
 def _backend_list(value: str) -> tuple[str, ...]:
     result = tuple(
         backend.strip().lower()
@@ -306,9 +312,12 @@ def _arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--wavefront-tail-megakernel-threshold",
-        type=_nonnegative_integer,
-        default=4096,
-        help="graph tail-megakernel threshold (default: 4096)",
+        type=_wavefront_tail_threshold,
+        default="auto",
+        help=(
+            "graph tail-megakernel threshold, or auto to derive it from "
+            "active frame capacity (default: auto)"
+        ),
     )
     parser.add_argument(
         "--wavefront-graph-worker-count",
@@ -462,7 +471,7 @@ def _psycles_command(
     staged_direct_light_queue: bool = False,
     wavefront_counter_readback_batch_size: int = 4,
     wavefront_counter_readback_pipeline_depth: int = 2,
-    wavefront_tail_megakernel_threshold: int = 4096,
+    wavefront_tail_megakernel_threshold: int | str = "auto",
     wavefront_graph_worker_count: int = 0,
     wavefront_graph_selective: bool = False,
     wavefront_graph_refill_threshold: int = 0,
