@@ -75,4 +75,7 @@ bed, geometry, and lighting structure. Diffuse and glossy color passes agree
 closely (`0.058%` and `0.084%` relative RMSE respectively), while the noisy
 direct and indirect lighting passes dominate the Combined difference.
 
-The remaining formal row is Barbershop Interior.
+The remaining formal row is Barbershop Interior. A bounded 1-spp staged
+wavefront diagnosis, including the Metal radix visibility fix and sub-kernel
+ranking, is recorded in
+`docs/validation/2026-08-24/metal-wavefront-barbershop-profile/README.md`.
