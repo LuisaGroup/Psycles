@@ -948,6 +948,117 @@ void test_surface_value_storage_plan() {
                 surface_value_operand_count(image.instructions[1u]) == 1u,
             "compact value program changed topological instruction order");
 
+    // Deliberately place a shallow independent branch before a two-value
+    // branch. Source order needs three scalar slots: the shallow result stays
+    // live while both deep operands are formed. Cycles-style Sethi-Ullman
+    // scheduling evaluates the high-pressure branch first and needs two.
+    std::vector<ValueInstruction> pressure_values;
+    pressure_values.emplace_back(make_parameter_value(0u));
+    pressure_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::absolute,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::unary>({
+            {value_operand::unary::input, ValueExpressionId{0u}}})});
+    pressure_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::clamp01,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::unary>({
+            {value_operand::unary::input, ValueExpressionId{0u}}})});
+    pressure_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::add,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::binary>({
+            {value_operand::binary::a, ValueExpressionId{0u}},
+            {value_operand::binary::b, ValueExpressionId{0u}}})});
+    pressure_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::add,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::binary>({
+            {value_operand::binary::a, ValueExpressionId{2u}},
+            {value_operand::binary::b, ValueExpressionId{3u}}})});
+    pressure_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::add,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::binary>({
+            {value_operand::binary::a, ValueExpressionId{4u}},
+            {value_operand::binary::b, ValueExpressionId{1u}}})});
+    const SurfaceProgram pressure_program{
+        2u, {make_parameter(0u)}, std::move(pressure_values), {}, {}};
+    const auto pressure_active =
+        std::vector<bool>(pressure_program.value_instructions().size(), true);
+    auto pressure_outputs =
+        std::vector<bool>(pressure_program.value_instructions().size(), false);
+    pressure_outputs[5u] = true;
+    const auto pressure_plan = plan_surface_value_storage(
+        pressure_program, pressure_active, pressure_outputs);
+    require(pressure_plan.compatible(pressure_program),
+            "Sethi-Ullman value plan failed: " + pressure_plan.diagnostic);
+    require(pressure_plan.instructions ==
+                std::vector<ValueExpressionId>{ValueExpressionId{2u},
+                                               ValueExpressionId{3u},
+                                               ValueExpressionId{4u},
+                                               ValueExpressionId{1u},
+                                               ValueExpressionId{5u}},
+            "value scheduler did not prioritize the high-pressure branch");
+    require(pressure_plan.scalar_slots == 2u,
+            "Sethi-Ullman scheduling did not remove the avoidable live slot");
+    const auto pressure_image =
+        lower_surface_value_program(pressure_program, pressure_plan);
+    require(pressure_image.valid &&
+                pressure_image.instructions.size() == 5u &&
+                surface_value_operation(pressure_image.instructions[0u]) ==
+                    ValueOperation::clamp01 &&
+                surface_value_operation(pressure_image.instructions[3u]) ==
+                    ValueOperation::absolute,
+            "compact bytecode did not preserve the scheduled dependency order");
+
+    // Cycles has one scalar stack, whereas the Psycles interpreter has typed
+    // banks. This DAG is the minimal counterexample where scalar-stack
+    // Sethi-Ullman order would keep two vectors live (28 B total) while the
+    // authored topological order needs one vector and one scalar (16 B).
+    // The planner must retain the lower-pressure legal order.
+    const SurfaceProgram typed_pressure_program{
+        3u,
+        {},
+        {ValueInstruction{.operation = ValueOperation::surface_position,
+                          .result_type = SocketType::point},
+         ValueInstruction{
+             .operation = ValueOperation::vector_to_scalar,
+             .result_type = SocketType::floating,
+             .operands = make_value_operands<value_operand::unary>({
+                 {value_operand::unary::input, ValueExpressionId{0u}}})},
+         ValueInstruction{
+             .operation = ValueOperation::passthrough,
+             .result_type = SocketType::vector,
+             .operands = make_value_operands<value_operand::unary>({
+                 {value_operand::unary::input, ValueExpressionId{0u}}})},
+         ValueInstruction{
+             .operation = ValueOperation::absolute,
+             .result_type = SocketType::floating,
+             .operands = make_value_operands<value_operand::unary>({
+                 {value_operand::unary::input, ValueExpressionId{1u}}})}},
+        {},
+        {}};
+    const auto typed_pressure_active = std::vector<bool>(4u, true);
+    const auto typed_pressure_outputs =
+        std::vector<bool>{false, false, true, true};
+    const auto typed_pressure_plan = plan_surface_value_storage(
+        typed_pressure_program,
+        typed_pressure_active,
+        typed_pressure_outputs);
+    require(typed_pressure_plan.compatible(typed_pressure_program),
+            "typed-bank pressure plan failed: " +
+                typed_pressure_plan.diagnostic);
+    require(typed_pressure_plan.instructions ==
+                std::vector<ValueExpressionId>{ValueExpressionId{0u},
+                                               ValueExpressionId{1u},
+                                               ValueExpressionId{2u},
+                                               ValueExpressionId{3u}} &&
+                typed_pressure_plan.scalar_slots == 1u &&
+                typed_pressure_plan.vector_slots == 1u &&
+                typed_pressure_plan.payload_bytes() == 16u,
+            "typed-bank no-regression selection retained a worse schedule");
+
     std::vector<float> transform(16u, 0.0f);
     for (auto diagonal = std::size_t{0u}; diagonal < 4u; ++diagonal) {
         transform[diagonal * 5u] = 1.0f;
