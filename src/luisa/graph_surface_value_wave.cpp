@@ -1,8 +1,12 @@
 #include "graph_surface_internal.h"
 
+#include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/luisa/cycles_wave.h>
 
 #include <luisa/dsl/sugar.h>
+
+#include <algorithm>
+#include <vector>
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -44,6 +48,22 @@ struct WaveConfiguration {
             (encoded >> 16u) & 0xffu),
         .profile = static_cast<WaveProfile>(
             (encoded >> 24u) & 0xffu)};
+}
+
+[[nodiscard]] WaveConfiguration decode_svm_configuration(
+    std::uint32_t encoded) noexcept {
+    return {
+        .type = static_cast<WaveType>(
+            encoded & compiler::surface_value_wave_type_mask),
+        .bands_direction = static_cast<WaveDirection>(
+            (encoded & compiler::surface_value_wave_bands_direction_mask) >>
+            compiler::surface_value_wave_bands_direction_shift),
+        .rings_direction = static_cast<WaveDirection>(
+            (encoded & compiler::surface_value_wave_rings_direction_mask) >>
+            compiler::surface_value_wave_rings_direction_shift),
+        .profile = static_cast<WaveProfile>(
+            (encoded & compiler::surface_value_wave_profile_mask) >>
+            compiler::surface_value_wave_profile_shift)};
 }
 
 [[nodiscard]] Float wave_coordinate(
@@ -91,6 +111,75 @@ struct WaveConfiguration {
     return abs(coordinate - floor(coordinate + 0.5f)) * 2.0f;
 }
 
+[[nodiscard]] Float wave_coordinate_svm(
+    UInt immediate,
+    std::span<const std::uint16_t> immediate_domain,
+    Float3 point) noexcept {
+    constexpr auto coordinate_mask =
+        compiler::surface_value_wave_type_mask |
+        compiler::surface_value_wave_bands_direction_mask |
+        compiler::surface_value_wave_rings_direction_mask;
+    std::vector<std::uint16_t> active_shapes;
+    active_shapes.reserve(immediate_domain.size());
+    for (const auto encoded : immediate_domain) {
+        const auto shape = static_cast<std::uint16_t>(
+            encoded & coordinate_mask);
+        if (std::find(active_shapes.begin(), active_shapes.end(), shape) ==
+            active_shapes.end()) {
+            active_shapes.emplace_back(shape);
+        }
+    }
+    Float coordinate = 0.0f;
+    luisa::compute::detail::SwitchStmtBuilder{
+        immediate & coordinate_mask} % [&] {
+        for (const auto shape : active_shapes) {
+            luisa::compute::detail::SwitchCaseStmtBuilder{shape} %
+                [&, shape] {
+                    coordinate = wave_coordinate(
+                        point, decode_svm_configuration(shape));
+                };
+        }
+        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+            luisa::compute::dsl::unreachable(
+                "invalid compact surface Wave coordinate shape");
+        };
+    };
+    return coordinate;
+}
+
+[[nodiscard]] Float wave_profile_svm(
+    UInt immediate,
+    std::span<const std::uint16_t> immediate_domain,
+    Float coordinate) noexcept {
+    std::vector<std::uint16_t> active_profiles;
+    active_profiles.reserve(immediate_domain.size());
+    for (const auto encoded : immediate_domain) {
+        const auto profile = static_cast<std::uint16_t>(
+            encoded & compiler::surface_value_wave_profile_mask);
+        if (std::find(active_profiles.begin(), active_profiles.end(),
+                      profile) == active_profiles.end()) {
+            active_profiles.emplace_back(profile);
+        }
+    }
+    Float factor = 0.0f;
+    luisa::compute::detail::SwitchStmtBuilder{
+        immediate & compiler::surface_value_wave_profile_mask} % [&] {
+        for (const auto profile : active_profiles) {
+            luisa::compute::detail::SwitchCaseStmtBuilder{profile} %
+                [&, profile] {
+                    factor = wave_profile(
+                        coordinate,
+                        decode_svm_configuration(profile).profile);
+                };
+        }
+        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+            luisa::compute::dsl::unreachable(
+                "invalid compact surface Wave profile");
+        };
+    };
+    return factor;
+}
+
 class WaveValueNode final : public ValueNode {
 
 public:
@@ -99,8 +188,6 @@ public:
     [[nodiscard]] SurfaceValueExpression evaluate(
         ValueEvaluationContext &context) const noexcept override {
         const auto &instruction = this->instruction();
-        const auto configuration =
-            decode_configuration(instruction.static_u0);
         auto point =
             vector(
                 instruction.operand(operand::wave::vector),
@@ -112,10 +199,17 @@ public:
         // intentionally preserved because unit-coordinate boundaries are
         // visible in the saw and triangle profiles.
         point = (point + 0.000001f) * 0.999999f;
-        auto coordinate = wave_coordinate(point, configuration) +
-                          scalar(
-                              instruction.operand(operand::wave::phase),
-                              context.result);
+        auto coordinate =
+            context.svm_immediate_override != nullptr
+                ? wave_coordinate_svm(
+                      *context.svm_immediate_override,
+                      context.svm_immediate_domain,
+                      point)
+                : wave_coordinate(
+                      point,
+                      decode_configuration(instruction.static_u0));
+        coordinate += scalar(
+            instruction.operand(operand::wave::phase), context.result);
         auto distortion = scalar(
             instruction.operand(operand::wave::distortion),
             context.result);
@@ -137,9 +231,15 @@ public:
                      2.0f -
                  1.0f);
         };
-        const auto factor = wave_profile(
-            coordinate,
-            configuration.profile);
+        const auto factor =
+            context.svm_immediate_override != nullptr
+                ? wave_profile_svm(
+                      *context.svm_immediate_override,
+                      context.svm_immediate_domain,
+                      coordinate)
+                : wave_profile(
+                      coordinate,
+                      decode_configuration(instruction.static_u0).profile);
         const auto value =
             instruction.operation == compiler::ValueOperation::wave_color
                 ? make_float4(make_float3(factor), 1.0f)

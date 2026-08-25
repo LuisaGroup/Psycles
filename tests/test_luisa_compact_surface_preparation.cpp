@@ -6,6 +6,7 @@
 #include <psycles/luisa/surface_closure_operations.h>
 #include <psycles/luisa/surface_closure_population.h>
 
+#include "compact_surface_program_test_support.h"
 #include "luisa_surface_test_support.h"
 #include "path_tracer_attribute_lookup.h"
 #include "path_tracer_bsdf_tables.h"
@@ -1147,132 +1148,69 @@ int main(int argc, char **argv) {
                   << backend << ": " << diagnostic << '\n';
         return EXIT_FAILURE;
     }
-  const auto domain_matches = [](
-      const SurfaceValueProgramDomainView &view,
-      const std::vector<std::uint32_t> &values,
-      const std::vector<std::uint32_t> &normals,
-      const std::vector<std::uint32_t> &heights,
-      std::uint32_t offset,
-      bool conditional_normal) noexcept {
-    return std::equal(view.value_variants.begin(),
-                      view.value_variants.end(), values.begin(), values.end()) &&
-           std::equal(view.normal_variants.begin(),
-                      view.normal_variants.end(), normals.begin(), normals.end()) &&
-           std::equal(view.height_variants.begin(),
-                      view.height_variants.end(), heights.begin(), heights.end()) &&
-           view.program_offset == offset &&
-           view.automatic_normal_is_conditional == conditional_normal;
-  };
-  const auto preparation_domain = surface_value_program_domain(
-      *scene->surface_values, SurfaceValueProgramDomain::preparation);
-  const auto emission_domain = surface_value_program_domain(
-      *scene->surface_values, SurfaceValueProgramDomain::emission);
-  const auto bssrdf_domain = surface_value_program_domain(
-      *scene->surface_values, SurfaceValueProgramDomain::bssrdf);
-  if (!domain_matches(
-          preparation_domain,
-          scene->surface_values->preparation_value_static_variants,
-          scene->surface_values->normal_value_static_variants,
-          scene->surface_values->height_value_static_variants,
-          SurfaceValueRuntime::preparation_program_offset, false) ||
-      !domain_matches(
-          emission_domain,
-          scene->surface_values->emission_value_static_variants,
-          scene->surface_values->emission_normal_value_static_variants,
-          scene->surface_values->emission_height_value_static_variants,
-          SurfaceValueRuntime::emission_program_offset, true) ||
-      !domain_matches(
-          bssrdf_domain,
-          scene->surface_values->bssrdf_value_static_variants,
-          scene->surface_values->bssrdf_normal_value_static_variants,
-          scene->surface_values->bssrdf_height_value_static_variants,
-          SurfaceValueRuntime::preparation_program_offset, false)) {
-    std::cerr << "compact surface program domain lost its exact root/normal/"
-                 "height relation on "
-              << backend << '\n';
-    return EXIT_FAILURE;
-  }
-  const auto find_bump_variant = [&](std::uint32_t static_control) noexcept {
-    const auto &variants =
-        scene->surface_values->executable.executable.variants;
-    for (auto index = std::size_t{0u}; index < variants.size(); ++index) {
-      const auto &instruction = variants[index].instruction;
-      if (instruction.operation == ValueOperation::bump &&
-          instruction.static_u0 == static_control) {
-        return static_cast<std::uint32_t>(index);
-      }
+    const auto program_evidence =
+        psycles::test_support::inspect_compact_surface_program(
+            *scene->surface_values);
+    if (!program_evidence.domains_match) {
+        std::cerr << "compact surface program domain lost its exact root/normal/"
+                     "height relation on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
     }
-    return SurfaceValueAddress::invalid_value;
-  };
-  const auto root_bump_variant = find_bump_variant(1u);
-  const auto height_bump_variant = find_bump_variant(0u);
-  const auto contains_variant = [](const auto &domain,
-                                   std::uint32_t variant) noexcept {
-    return std::find(domain.begin(), domain.end(), variant) != domain.end();
-  };
-  // This controlled graph proves the program-role partition rather than
-  // merely comparing its final pixels. The root evaluates both Bumps to
-  // obtain the centre height, while the offset-height subprogram reaches
-  // only the inner Bump. Thus the height domain is a strict subset of the
-  // direct preparation domain; replacing it by the scene-wide/root union
-  // must fail this assertion.
-  if (scene->surface_values->executable.maximum_bump_depth != 2u ||
-      root_bump_variant == SurfaceValueAddress::invalid_value ||
-      height_bump_variant == SurfaceValueAddress::invalid_value ||
-      !contains_variant(
-          scene->surface_values->preparation_value_static_variants,
-          root_bump_variant) ||
-      contains_variant(scene->surface_values->height_value_static_variants,
-                       root_bump_variant) ||
-      !contains_variant(
-          scene->surface_values->preparation_value_static_variants,
-          height_bump_variant) ||
-      !contains_variant(scene->surface_values->height_value_static_variants,
-                        height_bump_variant)) {
-    std::cerr << "compact runtime did not preserve the exact root/height "
-                 "call-graph partition on "
-              << backend << '\n';
-    return EXIT_FAILURE;
-  }
-  const auto closure_domain_has = [](const auto &domain,
-                                     ClosureOperation operation) noexcept {
-    return std::any_of(
-        domain.begin(), domain.end(), [operation](std::uint32_t variant) {
-          return static_cast<ClosureOperation>(
-                     variant & surface_closure_opcode_mask) == operation;
-        });
-  };
-  // The BSSRDF callable is induced only by its two capability-tagged
-  // topologies. The controlled non-BSSRDF nested Bumps and Glass closure must
-  // therefore be absent. Diffuse must remain beside Subsurface: even though it
-  // does not contribute to the exit normal, it consumes Cycles closure
-  // capacity before later BSSRDF leaves and cannot be erased independently.
-  if (scene->surface_bssrdf_bump_tags.size() != 2u ||
-      scene->surface_values->bssrdf_value_static_variants.empty() ||
-      scene->surface_values->bssrdf_normal_value_static_variants.empty() ||
-      !scene->surface_values->bssrdf_height_value_static_variants.empty() ||
-      scene->surface_values->bssrdf_value_static_variants.size() >=
-          scene->surface_values->preparation_value_static_variants.size() ||
-      scene->surface_values->bssrdf_closure_static_variants.size() >=
-          scene->surface_values->closure_static_variants.size() ||
-      contains_variant(scene->surface_values->bssrdf_value_static_variants,
-                       root_bump_variant) ||
-      contains_variant(scene->surface_values->bssrdf_value_static_variants,
-                       height_bump_variant) ||
-      !closure_domain_has(
-          scene->surface_values->bssrdf_closure_static_variants,
-          ClosureOperation::subsurface) ||
-      !closure_domain_has(
-          scene->surface_values->bssrdf_closure_static_variants,
-          ClosureOperation::diffuse) ||
-      closure_domain_has(
-          scene->surface_values->bssrdf_closure_static_variants,
-          ClosureOperation::glass)) {
-    std::cerr << "compact runtime did not preserve the exact BSSRDF "
-                 "topology domain on "
-              << backend << '\n';
-    return EXIT_FAILURE;
-  }
+    const auto bump_variant = program_evidence.bump_variant;
+    const auto contains_variant = [](const auto &domain,
+                                     std::uint32_t variant) noexcept {
+        return std::find(domain.begin(), domain.end(), variant) != domain.end();
+    };
+    // This controlled graph proves the program-role partition at instruction
+    // granularity. Cycles-style typed records deliberately merge the outer and
+    // inner Bump configurations into one handler, so handler-set membership can
+    // no longer distinguish their call-graph roles. The root evaluates both
+    // records; offset-height programs reach only the inner record, and every
+    // Bump edge targets a generated height program.
+    if (!program_evidence.bump_partition_exact) {
+        std::cerr << "compact runtime did not preserve the exact root/height "
+                     "call-graph partition on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    const auto closure_domain_has = [](const auto &domain,
+                                       ClosureOperation operation) noexcept {
+        return std::any_of(
+            domain.begin(), domain.end(), [operation](std::uint32_t variant) {
+                return static_cast<ClosureOperation>(
+                           variant & surface_closure_opcode_mask) == operation;
+            });
+    };
+    // The BSSRDF callable is induced only by its two capability-tagged
+    // topologies. The controlled non-BSSRDF nested Bumps and Glass closure must
+    // therefore be absent. Diffuse must remain beside Subsurface: even though it
+    // does not contribute to the exit normal, it consumes Cycles closure
+    // capacity before later BSSRDF leaves and cannot be erased independently.
+    if (scene->surface_bssrdf_bump_tags.size() != 2u ||
+        scene->surface_values->bssrdf_value_static_variants.empty() ||
+        scene->surface_values->bssrdf_normal_value_static_variants.empty() ||
+        !scene->surface_values->bssrdf_height_value_static_variants.empty() ||
+        scene->surface_values->bssrdf_value_static_variants.size() >=
+            scene->surface_values->preparation_value_static_variants.size() ||
+        scene->surface_values->bssrdf_closure_static_variants.size() >=
+            scene->surface_values->closure_static_variants.size() ||
+        contains_variant(scene->surface_values->bssrdf_value_static_variants,
+                         bump_variant) ||
+        !closure_domain_has(
+            scene->surface_values->bssrdf_closure_static_variants,
+            ClosureOperation::subsurface) ||
+        !closure_domain_has(
+            scene->surface_values->bssrdf_closure_static_variants,
+            ClosureOperation::diffuse) ||
+        closure_domain_has(
+            scene->surface_values->bssrdf_closure_static_variants,
+            ClosureOperation::glass)) {
+        std::cerr << "compact runtime did not preserve the exact BSSRDF "
+                     "topology domain on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
     const auto transform_variant_count = std::count_if(
         scene->surface_values->executable.executable.variants.begin(),
         scene->surface_values->executable.executable.variants.end(),
