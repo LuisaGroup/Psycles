@@ -380,15 +380,49 @@ inline constexpr std::uint32_t
 inline constexpr std::uint32_t surface_value_mix_operation_mask = 0x1fu;
 inline constexpr std::uint32_t surface_value_mix_factor_clamp_bit = 1u << 5u;
 inline constexpr std::uint32_t surface_value_mix_result_clamp_bit = 1u << 6u;
+inline constexpr std::uint32_t surface_value_mapping_type_mask = 0x3u;
+inline constexpr std::uint32_t surface_value_mapping_axes_shift = 2u;
+inline constexpr std::uint32_t surface_value_mapping_axes_mask =
+    0x3fu << surface_value_mapping_axes_shift;
+inline constexpr std::uint32_t surface_value_image_extension_mask = 0xffu;
+inline constexpr std::uint32_t surface_value_image_srgb_bit = 1u << 8u;
+inline constexpr std::uint32_t surface_value_image_unassociate_alpha_bit =
+    1u << 9u;
+inline constexpr std::uint32_t surface_value_image_interpolation_shift = 10u;
+inline constexpr std::uint32_t surface_value_image_interpolation_mask =
+    0x3u << surface_value_image_interpolation_shift;
+inline constexpr std::uint32_t surface_value_image_projection_shift = 12u;
+inline constexpr std::uint32_t surface_value_image_projection_mask =
+    0x3u << surface_value_image_projection_shift;
+inline constexpr std::uint32_t surface_value_image_configuration_mask =
+    surface_value_image_extension_mask | surface_value_image_srgb_bit |
+    surface_value_image_unassociate_alpha_bit |
+    surface_value_image_interpolation_mask |
+    surface_value_image_projection_mask;
 inline constexpr std::uint32_t surface_value_control_mask =
     surface_value_opcode_mask | surface_value_operand_count_mask |
     surface_value_result_bank_mask | surface_value_svm_immediate_mask;
 
-[[nodiscard]] constexpr bool surface_value_operation_uses_svm_immediate(
+[[nodiscard]] constexpr bool surface_value_operation_uses_mapping_immediate(
     ValueOperation operation) noexcept {
+  return operation == ValueOperation::mapping;
+}
+
+[[nodiscard]] constexpr bool surface_value_operation_uses_image_immediate(
+    ValueOperation operation) noexcept {
+  return operation == ValueOperation::image_color ||
+         operation == ValueOperation::image_alpha ||
+         operation == ValueOperation::environment_color ||
+         operation == ValueOperation::environment_alpha;
+}
+
+[[nodiscard]] constexpr bool
+surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
   return operation == ValueOperation::noise_factor ||
          operation == ValueOperation::noise_color ||
-         operation == ValueOperation::mix;
+         operation == ValueOperation::mix ||
+         surface_value_operation_uses_mapping_immediate(operation) ||
+         surface_value_operation_uses_image_immediate(operation);
 }
 
 [[nodiscard]] constexpr bool surface_value_operation_uses_noise_normalize(
@@ -399,7 +433,10 @@ inline constexpr std::uint32_t surface_value_control_mask =
 
 [[nodiscard]] constexpr std::uint64_t
 surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
-  return operation == ValueOperation::mix ? ~std::uint64_t{0u} : 0u;
+  return operation == ValueOperation::mix ||
+                 surface_value_operation_uses_mapping_immediate(operation)
+             ? ~std::uint64_t{0u}
+             : 0u;
 }
 
 [[nodiscard]] constexpr std::uint64_t
@@ -407,7 +444,39 @@ surface_value_svm_static_u1_mask(ValueOperation operation) noexcept {
   if (surface_value_operation_uses_noise_normalize(operation)) {
     return 1u;
   }
-  return operation == ValueOperation::mix ? ~std::uint64_t{0u} : 0u;
+  return operation == ValueOperation::mix ||
+                 surface_value_operation_uses_mapping_immediate(operation) ||
+                 surface_value_operation_uses_image_immediate(operation)
+             ? ~std::uint64_t{0u}
+             : 0u;
+}
+
+// The device immediate is the complete immutable semantic record, while the
+// host evaluator key retains only distinctions that change the recorded AST
+// shape. Image BOX projection is a separate family: like Cycles'
+// NODE_TEX_IMAGE_BOX, it evaluates object-space normal weights and may issue
+// three texture samples, whereas FLAT/SPHERE/TUBE share the single-sample
+// image handler. This is an exact quotient by execution shape, not a scene or
+// material specialization; projection itself remains in the immediate.
+[[nodiscard]] constexpr std::uint64_t
+surface_value_svm_evaluator_static_u0(ValueOperation operation,
+                                      std::uint64_t static_u0) noexcept {
+  return static_u0 & ~surface_value_svm_static_u0_mask(operation);
+}
+
+[[nodiscard]] constexpr std::uint64_t
+surface_value_svm_evaluator_static_u1(ValueOperation operation,
+                                      std::uint64_t static_u1) noexcept {
+  const auto image = operation == ValueOperation::image_color ||
+                     operation == ValueOperation::image_alpha;
+  if (image) {
+    const auto projection = (static_u1 & surface_value_image_projection_mask) >>
+                            surface_value_image_projection_shift;
+    return projection == 1u
+               ? std::uint64_t{1u} << surface_value_image_projection_shift
+               : 0u;
+  }
+  return static_u1 & ~surface_value_svm_static_u1_mask(operation);
 }
 
 [[nodiscard]] constexpr bool surface_value_svm_static_fields_valid(
@@ -417,6 +486,25 @@ surface_value_svm_static_u1_mask(ValueOperation operation) noexcept {
     return static_u0 <=
                static_cast<std::uint64_t>(BlendOperation::value) &&
            static_u1 <= 0x3u;
+  }
+  if (surface_value_operation_uses_mapping_immediate(operation)) {
+    return static_u0 <= static_cast<std::uint64_t>(MappingVectorType::normal) &&
+           static_u1 <= 0x3fu;
+  }
+  if (surface_value_operation_uses_image_immediate(operation)) {
+    if (static_u0 != 0u ||
+        (static_u1 & ~static_cast<std::uint64_t>(
+                         surface_value_image_configuration_mask)) != 0u ||
+        (static_u1 & surface_value_image_extension_mask) > 3u) {
+      return false;
+    }
+    const auto projection = (static_u1 & surface_value_image_projection_mask) >>
+                            surface_value_image_projection_shift;
+    const auto environment = operation == ValueOperation::environment_color ||
+                             operation == ValueOperation::environment_alpha;
+    return !environment ||
+           ((static_u1 & surface_value_image_extension_mask) == 0u &&
+            projection <= 1u);
   }
   return true;
 }
@@ -437,6 +525,14 @@ surface_value_svm_static_u1_mask(ValueOperation operation) noexcept {
            ((static_u1 & 2u) != 0u
                 ? surface_value_mix_result_clamp_bit
                 : 0u);
+  }
+  if (surface_value_operation_uses_mapping_immediate(operation)) {
+    return static_cast<std::uint32_t>(static_u0) |
+           (static_cast<std::uint32_t>(static_u1)
+            << surface_value_mapping_axes_shift);
+  }
+  if (surface_value_operation_uses_image_immediate(operation)) {
+    return static_cast<std::uint32_t>(static_u1);
   }
   return 0u;
 }

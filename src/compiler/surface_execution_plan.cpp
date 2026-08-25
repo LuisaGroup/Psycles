@@ -252,13 +252,13 @@ namespace {
   key.emplace_back(static_cast<std::uint64_t>(instruction.operation));
   key.emplace_back(static_cast<std::uint64_t>(instruction.result_type));
   // Only fields represented exactly by the opcode-owned device immediate are
-  // removed from the host/JIT semantic key. Every other bit remains exact.
-  key.emplace_back(
-      instruction.static_u0 &
-      ~surface_value_svm_static_u0_mask(instruction.operation));
-  key.emplace_back(
-      instruction.static_u1 &
-      ~surface_value_svm_static_u1_mask(instruction.operation));
+  // removed from the host/JIT semantic key. Image BOX retains its derived
+  // execution-shape family even though the full projection remains device
+  // data. Every other unrepresented bit remains exact.
+  key.emplace_back(surface_value_svm_evaluator_static_u0(
+      instruction.operation, instruction.static_u0));
+  key.emplace_back(surface_value_svm_evaluator_static_u1(
+      instruction.operation, instruction.static_u1));
   key.emplace_back(std::bit_cast<std::uint32_t>(instruction.static_f0));
   key.emplace_back(std::bit_cast<std::uint32_t>(instruction.static_f1));
   // Shader-table ParameterId is a late-bound address already preserved in
@@ -1031,10 +1031,10 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
             normalized.operation == ValueOperation::rgb_curve) {
           normalized.parameter = {};
         }
-        normalized.static_u0 &=
-            ~surface_value_svm_static_u0_mask(normalized.operation);
-        normalized.static_u1 &=
-            ~surface_value_svm_static_u1_mask(normalized.operation);
+        normalized.static_u0 = surface_value_svm_evaluator_static_u0(
+            normalized.operation, normalized.static_u0);
+        normalized.static_u1 = surface_value_svm_evaluator_static_u1(
+            normalized.operation, normalized.static_u1);
         // Preserve the statically proven shape but erase authored payloads
         // from the host AST representative. Compact execution must obtain
         // every entry from the instruction metadata/static-data streams;

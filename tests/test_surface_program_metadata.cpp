@@ -1489,44 +1489,328 @@ void test_surface_value_storage_plan() {
                 std::string::npos,
         "Mix lowering truncated an unrepresentable operation");
 
-    const auto make_table_program = [&](std::uint32_t table_parameter) {
-        std::vector<ValueInstruction> table_values;
-        table_values.emplace_back(make_parameter_value(0u));
-        table_values.emplace_back(ValueInstruction{
-            .operation = ValueOperation::color_ramp,
-            .result_type = SocketType::color,
-            .parameter = ParameterId{table_parameter},
-            .operands = make_value_operands<value_operand::color_ramp>({
-                {value_operand::color_ramp::factor,
-                 ValueExpressionId{0u}}})});
+  const auto make_mapping_program =
+      [](std::uint32_t tag, MappingVectorType type, std::uint64_t axes) {
+        std::vector<ParameterDesc> parameters;
+        std::vector<ValueInstruction> mapping_values;
+        parameters.reserve(value_operand::mapping::count);
+        mapping_values.reserve(value_operand::mapping::count + 1u);
+        for (auto index = std::uint32_t{0u};
+             index < value_operand::mapping::count; ++index) {
+          parameters.emplace_back(ParameterDesc{
+              .id = ParameterId{index},
+              .node = NodeId{index + 1u},
+              .socket = "Vector" + std::to_string(index),
+              .type = SocketType::vector,
+              .default_value =
+                  SocketValue::vector(index == value_operand::mapping::scale
+                                          ? psycles::Vec3f{1.0f, 1.0f, 1.0f}
+                                          : psycles::Vec3f{}),
+              .source = ParameterSource::input});
+          mapping_values.emplace_back(
+              ValueInstruction{.operation = ValueOperation::parameter,
+                               .result_type = SocketType::vector,
+                               .parameter = ParameterId{index}});
+        }
+        mapping_values.emplace_back(ValueInstruction{
+            .operation = ValueOperation::mapping,
+            .result_type = SocketType::vector,
+            .operands = make_value_operands<value_operand::mapping>(
+                {{value_operand::mapping::vector, ValueExpressionId{0u}},
+                 {value_operand::mapping::location, ValueExpressionId{1u}},
+                 {value_operand::mapping::rotation, ValueExpressionId{2u}},
+                 {value_operand::mapping::scale, ValueExpressionId{3u}}}),
+            .static_u0 = static_cast<std::uint64_t>(type),
+            .static_u1 = axes});
         return SurfaceProgram{
-            10u + table_parameter,
-            {make_parameter(0u)},
-            std::move(table_values),
-            {},
-            {}};
-    };
-    const auto table_program_a = make_table_program(3u);
-    const auto table_program_b = make_table_program(7u);
-    const auto table_plan_a = plan_surface_value_storage(
-        table_program_a, std::vector<bool>(2u, true),
-        std::vector<bool>{false, true});
-    const auto table_plan_b = plan_surface_value_storage(
-        table_program_b, std::vector<bool>(2u, true),
-        std::vector<bool>{false, true});
-    const std::vector table_inputs{
-        SurfaceValueExecutionInput{.program = &table_program_a,
-                                   .storage = &table_plan_a},
-        SurfaceValueExecutionInput{.program = &table_program_b,
-                                   .storage = &table_plan_b}};
-    const auto table_scene =
-        build_surface_value_executable_scene(table_inputs);
-    require(table_scene.valid && table_scene.variants.size() == 1u &&
-                table_scene.values.metadata.size() == 2u &&
-                table_scene.values.metadata[0u].parameter == 3u &&
-                table_scene.values.metadata[1u].parameter == 7u,
-            "late-bound shader-table addresses changed the evaluator body "
-            "or were lost from bytecode metadata");
+            tag, std::move(parameters), std::move(mapping_values), {}, {}};
+      };
+  const auto make_mapping_plan = [](const SurfaceProgram &mapping_program) {
+    const auto count = mapping_program.value_instructions().size();
+    auto outputs = std::vector<bool>(count, false);
+    outputs.back() = true;
+    return plan_surface_value_storage(mapping_program,
+                                      std::vector<bool>(count, true), outputs);
+  };
+  constexpr auto remap_yzx = std::uint64_t{0x39u};
+  constexpr auto remap_zxy = std::uint64_t{0x1eu};
+  const auto point_mapping =
+      make_mapping_program(40u, MappingVectorType::point, 0u);
+  const auto texture_mapping =
+      make_mapping_program(41u, MappingVectorType::texture, remap_yzx);
+  const auto normal_mapping =
+      make_mapping_program(42u, MappingVectorType::normal, remap_zxy);
+  const auto point_mapping_plan = make_mapping_plan(point_mapping);
+  const auto texture_mapping_plan = make_mapping_plan(texture_mapping);
+  const auto normal_mapping_plan = make_mapping_plan(normal_mapping);
+  const auto point_mapping_image =
+      lower_surface_value_program(point_mapping, point_mapping_plan);
+  const auto texture_mapping_image =
+      lower_surface_value_program(texture_mapping, texture_mapping_plan);
+  const auto normal_mapping_image =
+      lower_surface_value_program(normal_mapping, normal_mapping_plan);
+  const auto texture_mapping_immediate = static_cast<std::uint16_t>(
+      static_cast<std::uint32_t>(MappingVectorType::texture) |
+      (remap_yzx << surface_value_mapping_axes_shift));
+  const auto normal_mapping_immediate = static_cast<std::uint16_t>(
+      static_cast<std::uint32_t>(MappingVectorType::normal) |
+      (remap_zxy << surface_value_mapping_axes_shift));
+  require(point_mapping_image.valid && texture_mapping_image.valid &&
+              normal_mapping_image.valid &&
+              surface_value_svm_immediate(
+                  point_mapping_image.instructions.front()) == 0u &&
+              surface_value_svm_immediate(
+                  texture_mapping_image.instructions.front()) ==
+                  texture_mapping_immediate &&
+              surface_value_svm_immediate(
+                  normal_mapping_image.instructions.front()) ==
+                  normal_mapping_immediate,
+          "Mapping type/axis semantics were not preserved by bytecode");
+  const std::vector mapping_inputs{
+      SurfaceValueExecutionInput{.program = &point_mapping,
+                                 .storage = &point_mapping_plan},
+      SurfaceValueExecutionInput{.program = &texture_mapping,
+                                 .storage = &texture_mapping_plan},
+      SurfaceValueExecutionInput{.program = &normal_mapping,
+                                 .storage = &normal_mapping_plan}};
+  const auto mapping_scene =
+      build_surface_value_executable_scene(mapping_inputs);
+  require(mapping_scene.valid && mapping_scene.variants.size() == 1u &&
+              mapping_scene.instruction_variants ==
+                  std::vector<std::uint32_t>{0u, 0u, 0u} &&
+              mapping_scene.variants.front().instruction.static_u0 == 0u &&
+              mapping_scene.variants.front().instruction.static_u1 == 0u &&
+              mapping_scene.variants.front().svm_immediates ==
+                  std::vector<std::uint16_t>{0u, normal_mapping_immediate,
+                                             texture_mapping_immediate},
+          "Mapping SVM interning did not form the exact immediate quotient");
+
+  auto mismatched_mapping_image = point_mapping_image;
+  mismatched_mapping_image.instructions.front().control |=
+      1u << surface_value_svm_immediate_shift;
+  const auto mismatched_mapping_scene =
+      build_surface_value_scene_image(std::vector{mismatched_mapping_image});
+  require(!mismatched_mapping_scene.valid &&
+              mismatched_mapping_scene.diagnostic.find(
+                  "immediate disagrees with immutable metadata") !=
+                  std::string::npos,
+          "serialized Mapping accepted an immediate/metadata disagreement");
+  const auto invalid_mapping_type =
+      make_mapping_program(43u, static_cast<MappingVectorType>(4u), 0u);
+  const auto invalid_mapping_axes =
+      make_mapping_program(44u, MappingVectorType::point, 0x40u);
+  require(
+      !lower_surface_value_program(invalid_mapping_type,
+                                   make_mapping_plan(invalid_mapping_type))
+              .valid &&
+          !lower_surface_value_program(invalid_mapping_axes,
+                                       make_mapping_plan(invalid_mapping_axes))
+               .valid,
+      "Mapping lowering truncated an unrepresentable immediate");
+
+  const auto make_image_program = [](std::uint32_t tag,
+                                     ValueOperation operation,
+                                     std::uint64_t configuration) {
+    const auto environment = operation == ValueOperation::environment_color ||
+                             operation == ValueOperation::environment_alpha;
+    const auto color = operation == ValueOperation::image_color ||
+                       operation == ValueOperation::environment_color;
+    std::vector<ParameterDesc> parameters{
+        ParameterDesc{.id = ParameterId{0u},
+                      .node = NodeId{1u},
+                      .socket = "Vector",
+                      .type = SocketType::vector,
+                      .default_value = SocketValue::vector({0.0f, 0.0f, 0.0f}),
+                      .source = ParameterSource::input},
+        ParameterDesc{.id = ParameterId{1u},
+                      .node = NodeId{2u},
+                      .socket = "Image",
+                      .type = SocketType::unsigned_integer,
+                      .default_value = SocketValue::unsigned_integer(0u),
+                      .source = ParameterSource::input}};
+    std::vector<ValueInstruction> image_values{
+        ValueInstruction{.operation = ValueOperation::parameter,
+                         .result_type = SocketType::vector,
+                         .parameter = ParameterId{0u}},
+        ValueInstruction{.operation = ValueOperation::parameter,
+                         .result_type = SocketType::unsigned_integer,
+                         .parameter = ParameterId{1u}}};
+    std::vector<ValueExpressionId> operands;
+    if (environment) {
+      operands = make_value_operands<value_operand::environment_texture>(
+          {{value_operand::environment_texture::vector, ValueExpressionId{0u}},
+           {value_operand::environment_texture::image, ValueExpressionId{1u}}});
+    } else {
+      parameters.emplace_back(
+          ParameterDesc{.id = ParameterId{2u},
+                        .node = NodeId{3u},
+                        .socket = "ProjectionBlend",
+                        .type = SocketType::floating,
+                        .default_value = SocketValue::floating(0.0f),
+                        .source = ParameterSource::input});
+      image_values.emplace_back(
+          ValueInstruction{.operation = ValueOperation::parameter,
+                           .result_type = SocketType::floating,
+                           .parameter = ParameterId{2u}});
+      operands = make_value_operands<value_operand::image_texture>(
+          {{value_operand::image_texture::vector, ValueExpressionId{0u}},
+           {value_operand::image_texture::image, ValueExpressionId{1u}},
+           {value_operand::image_texture::projection_blend,
+            ValueExpressionId{2u}}});
+    }
+    image_values.emplace_back(ValueInstruction{
+        .operation = operation,
+        .result_type = color ? SocketType::color : SocketType::floating,
+        .operands = std::move(operands),
+        .static_u1 = configuration});
+    return SurfaceProgram{
+        tag, std::move(parameters), std::move(image_values), {}, {}};
+  };
+  const auto make_image_plan = [](const SurfaceProgram &image_program) {
+    const auto count = image_program.value_instructions().size();
+    auto outputs = std::vector<bool>(count, false);
+    outputs.back() = true;
+    return plan_surface_value_storage(image_program,
+                                      std::vector<bool>(count, true), outputs);
+  };
+  constexpr auto linear_srgb = surface_value_image_srgb_bit |
+                               (1u << surface_value_image_interpolation_shift);
+  constexpr auto cubic_box_extend =
+      2u | surface_value_image_unassociate_alpha_bit |
+      (2u << surface_value_image_interpolation_shift) |
+      (1u << surface_value_image_projection_shift);
+  constexpr auto nearest_sphere_clip =
+      1u | (2u << surface_value_image_projection_shift);
+  constexpr auto linear_mirrorball =
+      (1u << surface_value_image_interpolation_shift) |
+      (1u << surface_value_image_projection_shift);
+  const auto image_flat =
+      make_image_program(50u, ValueOperation::image_color, linear_srgb);
+  const auto image_box =
+      make_image_program(51u, ValueOperation::image_color, cubic_box_extend);
+  const auto image_sphere =
+      make_image_program(52u, ValueOperation::image_color, nearest_sphere_clip);
+  const auto alpha_flat =
+      make_image_program(53u, ValueOperation::image_alpha, linear_srgb);
+  const auto alpha_box =
+      make_image_program(54u, ValueOperation::image_alpha, cubic_box_extend);
+  const auto environment_mirrorball = make_image_program(
+      55u, ValueOperation::environment_color, linear_mirrorball);
+  const auto image_flat_plan = make_image_plan(image_flat);
+  const auto image_box_plan = make_image_plan(image_box);
+  const auto image_sphere_plan = make_image_plan(image_sphere);
+  const auto alpha_flat_plan = make_image_plan(alpha_flat);
+  const auto alpha_box_plan = make_image_plan(alpha_box);
+  const auto environment_mirrorball_plan =
+      make_image_plan(environment_mirrorball);
+  const std::vector image_inputs{
+      SurfaceValueExecutionInput{.program = &image_flat,
+                                 .storage = &image_flat_plan},
+      SurfaceValueExecutionInput{.program = &image_box,
+                                 .storage = &image_box_plan},
+      SurfaceValueExecutionInput{.program = &image_sphere,
+                                 .storage = &image_sphere_plan},
+      SurfaceValueExecutionInput{.program = &alpha_flat,
+                                 .storage = &alpha_flat_plan},
+      SurfaceValueExecutionInput{.program = &alpha_box,
+                                 .storage = &alpha_box_plan},
+      SurfaceValueExecutionInput{.program = &environment_mirrorball,
+                                 .storage = &environment_mirrorball_plan}};
+  const auto image_scene = build_surface_value_executable_scene(image_inputs);
+  require(image_scene.valid && image_scene.variants.size() == 5u &&
+              image_scene.instruction_variants ==
+                  std::vector<std::uint32_t>{0u, 1u, 0u, 2u, 3u, 4u} &&
+              image_scene.variants[0u].instruction.static_u1 == 0u &&
+              image_scene.variants[0u].svm_immediates ==
+                  std::vector<std::uint16_t>{
+                      static_cast<std::uint16_t>(linear_srgb),
+                      static_cast<std::uint16_t>(nearest_sphere_clip)} &&
+              image_scene.variants[1u].instruction.static_u1 ==
+                  (1u << surface_value_image_projection_shift) &&
+              image_scene.variants[1u].svm_immediates ==
+                  std::vector<std::uint16_t>{
+                      static_cast<std::uint16_t>(cubic_box_extend)} &&
+              image_scene.variants[2u].svm_immediates ==
+                  std::vector<std::uint16_t>{
+                      static_cast<std::uint16_t>(linear_srgb)} &&
+              image_scene.variants[3u].instruction.static_u1 ==
+                  (1u << surface_value_image_projection_shift) &&
+              image_scene.variants[3u].svm_immediates ==
+                  std::vector<std::uint16_t>{
+                      static_cast<std::uint16_t>(cubic_box_extend)} &&
+              image_scene.variants[4u].svm_immediates ==
+                  std::vector<std::uint16_t>{
+                      static_cast<std::uint16_t>(linear_mirrorball)},
+          "Image SVM interning merged outside the exact evaluator quotient");
+
+  auto mismatched_image =
+      lower_surface_value_program(image_flat, image_flat_plan);
+  require(mismatched_image.valid,
+          "valid Image configuration failed bytecode lowering");
+  mismatched_image.instructions.front().control ^=
+      1u << surface_value_svm_immediate_shift;
+  const auto mismatched_image_scene =
+      build_surface_value_scene_image(std::vector{mismatched_image});
+  require(!mismatched_image_scene.valid &&
+              mismatched_image_scene.diagnostic.find(
+                  "immediate disagrees with immutable metadata") !=
+                  std::string::npos,
+          "serialized Image accepted an immediate/metadata disagreement");
+  const auto invalid_image_extension =
+      make_image_program(56u, ValueOperation::image_color, 4u);
+  const auto invalid_image_reserved =
+      make_image_program(57u, ValueOperation::image_color, 1u << 14u);
+  const auto invalid_environment_projection =
+      make_image_program(58u, ValueOperation::environment_color,
+                         2u << surface_value_image_projection_shift);
+  require(
+      !lower_surface_value_program(invalid_image_extension,
+                                   make_image_plan(invalid_image_extension))
+              .valid &&
+          !lower_surface_value_program(invalid_image_reserved,
+                                       make_image_plan(invalid_image_reserved))
+               .valid &&
+          !lower_surface_value_program(
+               invalid_environment_projection,
+               make_image_plan(invalid_environment_projection))
+               .valid,
+      "Image lowering accepted a configuration outside its exact ABI");
+
+  const auto make_table_program = [&](std::uint32_t table_parameter) {
+    std::vector<ValueInstruction> table_values;
+    table_values.emplace_back(make_parameter_value(0u));
+    table_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::color_ramp,
+        .result_type = SocketType::color,
+        .parameter = ParameterId{table_parameter},
+        .operands = make_value_operands<value_operand::color_ramp>(
+            {{value_operand::color_ramp::factor, ValueExpressionId{0u}}})});
+    return SurfaceProgram{10u + table_parameter,
+                          {make_parameter(0u)},
+                          std::move(table_values),
+                          {},
+                          {}};
+  };
+  const auto table_program_a = make_table_program(3u);
+  const auto table_program_b = make_table_program(7u);
+  const auto table_plan_a =
+      plan_surface_value_storage(table_program_a, std::vector<bool>(2u, true),
+                                 std::vector<bool>{false, true});
+  const auto table_plan_b =
+      plan_surface_value_storage(table_program_b, std::vector<bool>(2u, true),
+                                 std::vector<bool>{false, true});
+  const std::vector table_inputs{
+      SurfaceValueExecutionInput{.program = &table_program_a,
+                                 .storage = &table_plan_a},
+      SurfaceValueExecutionInput{.program = &table_program_b,
+                                 .storage = &table_plan_b}};
+  const auto table_scene = build_surface_value_executable_scene(table_inputs);
+  require(table_scene.valid && table_scene.variants.size() == 1u &&
+              table_scene.values.metadata.size() == 2u &&
+              table_scene.values.metadata[0u].parameter == 3u &&
+              table_scene.values.metadata[1u].parameter == 7u,
+          "late-bound shader-table addresses changed the evaluator body "
+          "or were lost from bytecode metadata");
 
     std::vector<ParameterDesc> bump_parameters;
     for (auto index = 0u; index < 4u; ++index) {
