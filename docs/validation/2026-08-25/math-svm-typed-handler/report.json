@@ -1,0 +1,113 @@
+{
+  "schema": "psycles.math-svm-validation.v1",
+  "date": "2026-08-25",
+  "cycles_source": {
+    "repository": "/home/mike/Projects/blender-cycles",
+    "branch": "blender-v5.2-release",
+    "commit": "fbe6228777e7"
+  },
+  "psycles": {
+    "exact_baseline_commit": "c5c8fa49fd89236fed9ef37978b2b9eb6bddabeb",
+    "implementation_base_commit": "284da12",
+    "device": "AMD Radeon RX 9070 XT gfx1201",
+    "scene": "official Blender 5.2 Barbershop export"
+  },
+  "scene_census": {
+    "barbershop": {
+      "baseline_value_variants": 72,
+      "current_value_variants": 67,
+      "baseline_math_variants": 6,
+      "current_math_variants": 1,
+      "bytecode_bytes": 222320
+    },
+    "classroom": {
+      "baseline_value_variants": 39,
+      "current_value_variants": 35,
+      "baseline_math_variants": 5,
+      "current_math_variants": 1,
+      "bytecode_bytes": 21896
+    },
+    "monster_under_the_bed": {
+      "baseline_value_variants": 34,
+      "current_value_variants": 31,
+      "baseline_math_variants": 4,
+      "current_math_variants": 1,
+      "bytecode_bytes": 8412
+    },
+    "lone_monk": {
+      "baseline_value_variants": 42,
+      "current_value_variants": 41,
+      "baseline_math_variants": 2,
+      "current_math_variants": 1,
+      "bytecode_bytes": 16108
+    }
+  },
+  "hip_ab": {
+    "resolution": [640, 480],
+    "spp": 64,
+    "scheduler": "wavefront-staged",
+    "baseline": {
+      "semantic_surface_variants": 79,
+      "amdgpu_blob_bytes": 551580,
+      "code_object_bytes": 514712,
+      "llvm_before_opt_bytes": 15382756,
+      "llvm_after_opt_bytes": 4601596,
+      "llvm_final_bytes": 4602013,
+      "llvm_codegen_ms": 1381.226779,
+      "comgr_ms": 3858.395668,
+      "private_segment_bytes": 5600,
+      "sgpr_spills": 42,
+      "vgpr_spills": 412,
+      "render_seconds": [3.46847]
+    },
+    "typed_math_svm": {
+      "semantic_surface_variants": 73,
+      "amdgpu_blob_bytes": 534168,
+      "code_object_bytes": 500688,
+      "llvm_before_opt_bytes": 15312964,
+      "llvm_after_opt_bytes": 4475401,
+      "llvm_final_bytes": 4475785,
+      "llvm_codegen_ms": 1410.830872,
+      "comgr_ms": 3603.519770,
+      "private_segment_bytes": 5440,
+      "sgpr_spills": 44,
+      "vgpr_spills": 422,
+      "render_seconds": [3.47540, 3.47461, 3.47766, 3.48097, 3.47517],
+      "render_median_seconds": 3.47540,
+      "render_mean_seconds": 3.476762
+    }
+  },
+  "correctness": {
+    "resolution": [64, 64],
+    "spp": 1,
+    "compared_channels": 46,
+    "passes": {
+      "Combined": {"rmse": 3.263621906057779e-8, "relative_rmse": 1.4163192031255035e-7, "max_abs": 2.4810433387756348e-6, "luminance_ratio": 1.0},
+      "DiffCol": {"rmse": 1.344248323764674e-10, "relative_rmse": 4.868153734086068e-10, "max_abs": 7.450580596923828e-9, "luminance_ratio": 1.0},
+      "DiffDir": {"rmse": 5.405901060129281e-9, "relative_rmse": 6.63061531045803e-9, "max_abs": 3.5762786865234375e-7, "luminance_ratio": 1.0},
+      "DiffInd": {"rmse": 1.854720750316119e-7, "relative_rmse": 4.896128072906291e-7, "max_abs": 1.2964010238647461e-5, "luminance_ratio": 1.0000001551017623},
+      "Emit": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 1.0},
+      "Env": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 1.0},
+      "GlossCol": {"rmse": 2.734105719603974e-10, "relative_rmse": 1.5465286721251644e-9, "max_abs": 1.30385160446167e-8, "luminance_ratio": 1.0},
+      "GlossDir": {"rmse": 3.413994065226689e-8, "relative_rmse": 1.720486118229196e-8, "max_abs": 3.337860107421875e-6, "luminance_ratio": 1.0},
+      "GlossInd": {"rmse": 4.855853603658034e-7, "relative_rmse": 1.8113161641043365e-7, "max_abs": 4.208087921142578e-5, "luminance_ratio": 1.00000010160458},
+      "Normal": {"rmse": 7.701521198555383e-9, "relative_rmse": 1.3377037010165605e-8, "max_abs": 2.8312206268310547e-7, "luminance_ratio": 1.0},
+      "TransCol": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 1.0},
+      "TransDir": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 0.0},
+      "TransInd": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 0.0},
+      "VolumeDirect": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 0.0},
+      "VolumeIndirect": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 0.0}
+    },
+    "visual_inspection": {
+      "triptychs": ["combined.png", "normal.png", "glossind.png"],
+      "result": "No coherent material, UV, geometry, normal, lighting, or orientation difference; only sparse floating-point residuals in amplified panels."
+    }
+  },
+  "tests": {
+    "focused_matrix_passed": 11,
+    "focused_matrix_total": 11,
+    "backends": ["fallback", "hip", "vk-native-xir-spirv"],
+    "vulkan_dxc_disabled": true,
+    "math_operations_covered": 41
+  }
+}

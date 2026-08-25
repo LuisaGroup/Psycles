@@ -693,6 +693,9 @@ enum class MathOperation : std::uint8_t {
   degrees
 };
 
+inline constexpr std::uint32_t math_operation_count =
+    static_cast<std::uint32_t>(MathOperation::degrees) + 1u;
+
 enum class VectorMathOperation : std::uint8_t {
   add,
   subtract,

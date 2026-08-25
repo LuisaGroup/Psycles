@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "surface_math.h"
 #include "surface_mix.h"
 
 #include <luisa/dsl/sugar.h>
@@ -195,213 +196,20 @@ public:
                     auto c = scalar(
                         instruction.operand(operand::ternary::c), result);
                     Float evaluated = 0.0f;
-                    switch (static_cast<compiler::MathOperation>(
-                        instruction.static_u0)) {
-                        case compiler::MathOperation::add:
-                            evaluated = a + b;
-                            break;
-                        case compiler::MathOperation::subtract:
-                            evaluated = a - b;
-                            break;
-                        case compiler::MathOperation::multiply:
-                            evaluated = a * b;
-                            break;
-                        case compiler::MathOperation::divide:
-                            evaluated = select(
-                                0.0f, a / b, b != 0.0f);
-                            break;
-                        case compiler::MathOperation::multiply_add:
-                            evaluated = a * b + c;
-                            break;
-                        case compiler::MathOperation::power: {
-                            auto integer_exponent = b == trunc(b);
-                            auto powered = pow(abs(a), b);
-                            auto odd_exponent =
-                                fmod(abs(b), 2.0f) != 0.0f;
-                            powered = select(
-                                powered,
-                                -powered,
-                                (a < 0.0f) & odd_exponent);
-                            evaluated = select(
-                                0.0f,
-                                powered,
-                                (a >= 0.0f) | integer_exponent);
-                            break;
-                        }
-                        case compiler::MathOperation::logarithm: {
-                            auto denominator = log(b);
-                            evaluated = select(
-                                0.0f,
-                                log(a) / denominator,
-                                (a > 0.0f) &
-                                    (b > 0.0f) &
-                                    (denominator != 0.0f));
-                            break;
-                        }
-                        case compiler::MathOperation::square_root:
-                            evaluated = sqrt(max(a, 0.0f));
-                            break;
-                        case compiler::MathOperation::
-                            inverse_square_root:
-                            evaluated = select(
-                                0.0f,
-                                1.0f / sqrt(a),
-                                a > 0.0f);
-                            break;
-                        case compiler::MathOperation::absolute:
-                            evaluated = abs(a);
-                            break;
-                        case compiler::MathOperation::exponent:
-                            evaluated = exp(a);
-                            break;
-                        case compiler::MathOperation::minimum:
-                            evaluated = min(a, b);
-                            break;
-                        case compiler::MathOperation::maximum:
-                            evaluated = max(a, b);
-                            break;
-                        case compiler::MathOperation::less_than:
-                            evaluated = select(
-                                0.0f, 1.0f, a < b);
-                            break;
-                        case compiler::MathOperation::greater_than:
-                            evaluated = select(
-                                0.0f, 1.0f, a > b);
-                            break;
-                        case compiler::MathOperation::sign:
-                            evaluated = select(
-                                select(1.0f, -1.0f, a < 0.0f),
-                                0.0f,
-                                a == 0.0f);
-                            break;
-                        case compiler::MathOperation::compare:
-                            evaluated = select(
-                                0.0f,
-                                1.0f,
-                                (a == b) |
-                                    (abs(a - b) <=
-                                     max(
-                                         c,
-                                         1.1920928955078125e-7f)));
-                            break;
-                        case compiler::MathOperation::smooth_minimum: {
-                            auto nonzero = c != 0.0f;
-                            auto h =
-                                max(c - abs(a - b), 0.0f) / c;
-                            auto smooth =
-                                min(a, b) -
-                                h * h * h * c *
-                                    (1.0f / 6.0f);
-                            evaluated = select(
-                                min(a, b), smooth, nonzero);
-                            break;
-                        }
-                        case compiler::MathOperation::smooth_maximum: {
-                            auto nonzero = c != 0.0f;
-                            auto h =
-                                max(c - abs(a - b), 0.0f) / c;
-                            auto smooth =
-                                max(a, b) +
-                                h * h * h * c *
-                                    (1.0f / 6.0f);
-                            evaluated = select(
-                                max(a, b), smooth, nonzero);
-                            break;
-                        }
-                        case compiler::MathOperation::round:
-                            evaluated = floor(a + 0.5f);
-                            break;
-                        case compiler::MathOperation::floor:
-                            evaluated = floor(a);
-                            break;
-                        case compiler::MathOperation::ceil:
-                            evaluated = ceil(a);
-                            break;
-                        case compiler::MathOperation::trunc:
-                            evaluated = trunc(a);
-                            break;
-                        case compiler::MathOperation::fraction:
-                            evaluated = a - floor(a);
-                            break;
-                        case compiler::MathOperation::modulo:
-                            evaluated = select(
-                                0.0f, fmod(a, b), b != 0.0f);
-                            break;
-                        case compiler::MathOperation::floored_modulo:
-                            evaluated = select(
-                                0.0f,
-                                a - floor(a / b) * b,
-                                b != 0.0f);
-                            break;
-                        case compiler::MathOperation::wrap: {
-                            auto range = b - c;
-                            evaluated = select(
-                                c,
-                                a - range *
-                                        floor((a - c) / range),
-                                range != 0.0f);
-                            break;
-                        }
-                        case compiler::MathOperation::snap:
-                            evaluated = floor(select(
-                                            0.0f,
-                                            a / b,
-                                            b != 0.0f)) *
-                                        b;
-                            break;
-                        case compiler::MathOperation::ping_pong:
-                            evaluated = select(
-                                0.0f,
-                                abs(
-                                    fract(
-                                        (a - b) /
-                                        (b * 2.0f)) *
-                                        b * 2.0f -
-                                    b),
-                                b != 0.0f);
-                            break;
-                        case compiler::MathOperation::sine:
-                            evaluated = sin(a);
-                            break;
-                        case compiler::MathOperation::cosine:
-                            evaluated = cos(a);
-                            break;
-                        case compiler::MathOperation::tangent:
-                            evaluated = tan(a);
-                            break;
-                        case compiler::MathOperation::arcsine:
-                            evaluated = asin(clamp(a, -1.0f, 1.0f));
-                            break;
-                        case compiler::MathOperation::arccosine:
-                            evaluated = acos(clamp(a, -1.0f, 1.0f));
-                            break;
-                        case compiler::MathOperation::arctangent:
-                            evaluated = atan(a);
-                            break;
-                        case compiler::MathOperation::arctangent2:
-                            evaluated = select(
-                                atan2(a, b),
-                                0.0f,
-                                (a == 0.0f) & (b == 0.0f));
-                            break;
-                        case compiler::MathOperation::
-                            hyperbolic_sine:
-                            evaluated = sinh(a);
-                            break;
-                        case compiler::MathOperation::
-                            hyperbolic_cosine:
-                            evaluated = cosh(a);
-                            break;
-                        case compiler::MathOperation::
-                            hyperbolic_tangent:
-                            evaluated = tanh(a);
-                            break;
-                        case compiler::MathOperation::radians:
-                            evaluated = a * (pi / 180.0f);
-                            break;
-                        case compiler::MathOperation::degrees:
-                            evaluated = a * (180.0f / pi);
-                            break;
+                    if (context.svm_immediate_override != nullptr) {
+                        evaluated = evaluate_surface_math_svm(
+                            *context.svm_immediate_override,
+                            context.svm_immediate_domain,
+                            a,
+                            b,
+                            c);
+                    } else {
+                        evaluated = evaluate_surface_math_operation(
+                            static_cast<compiler::MathOperation>(
+                                instruction.static_u0),
+                            a,
+                            b,
+                            c);
                     }
                     value = make_float4(evaluated);
                     break;
