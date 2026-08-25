@@ -275,15 +275,19 @@ void write_dynamic_value(
     Expr<Buffer<float>> cycles_bsdf_tables,
     Expr<BindlessArray> textures,
     Expr<BindlessArray> geometry_heap) noexcept {
-    const auto configuration =
-        decode_surface_bump_configuration(
-            variant.instruction.static_u0);
-    const auto normal = configuration.normal_linked
-                            ? vector(
-                                  variant.instruction.operand(
-                                      value_operand::bump::normal),
-                                  operands)
-                            : operands.shading_normal;
+    const UInt encoded_configuration =
+        (instruction.x & compiler::surface_value_svm_immediate_mask) >>
+        compiler::surface_value_svm_immediate_shift;
+    const auto configuration = SurfaceBumpSvmConfiguration{
+        .invert = (encoded_configuration & 1u) != 0u,
+        .normal_linked = (encoded_configuration & 2u) != 0u,
+        .object_space = (encoded_configuration & 4u) != 0u};
+    const auto normal = select(
+        operands.shading_normal,
+        vector(
+            variant.instruction.operand(value_operand::bump::normal),
+            operands),
+        configuration.normal_linked);
     const auto domain = make_surface_bump_evaluation_domain(
         point,
         scalar(

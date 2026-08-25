@@ -2,6 +2,8 @@
 
 #include "surface_math.h"
 
+#include <luisa/dsl/sugar.h>
+
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
@@ -112,6 +114,51 @@ Float3 evaluate_surface_bump(
     return configuration.object_space
                ? bump_object(services, input)
                : bump_world(services, input);
+}
+
+Float3 evaluate_surface_bump(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceBumpSvmConfiguration &configuration,
+    Float3 normal,
+    const SurfaceBumpEvaluationDomain &domain,
+    Float height_center,
+    Float height_x,
+    Float height_y,
+    Float distance_expression,
+    Float strength_expression) noexcept {
+    const auto distance = select(
+        distance_expression,
+        -distance_expression,
+        configuration.invert);
+    const auto strength = max(strength_expression, 0.0f);
+    const auto input = SurfaceBumpInput{
+        .normal = std::move(normal),
+        .filter_width = domain.filter_width,
+        .dPdx = select(point.dPdx,
+                       point.object_dPdx,
+                       configuration.object_space),
+        .dPdy = select(point.dPdy,
+                       point.object_dPdy,
+                       configuration.object_space),
+        .height_center = std::move(height_center),
+        .height_x = std::move(height_x),
+        .height_y = std::move(height_y),
+        .distance = distance,
+        .strength = strength,
+        .normal_to_world_x = point.normal_to_world_x,
+        .normal_to_world_y = point.normal_to_world_y,
+        .normal_to_world_z = point.normal_to_world_z,
+        .object_shading_normal = point.object_shading_normal,
+        .shading_normal = point.shading_normal};
+    Float3 result = point.shading_normal;
+    $if(configuration.object_space) {
+        result = bump_object(services, input);
+    }
+    $else {
+        result = bump_world(services, input);
+    };
+    return result;
 }
 
 Float3 bump_world_inline(

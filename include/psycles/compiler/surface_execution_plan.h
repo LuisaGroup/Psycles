@@ -428,6 +428,22 @@ inline constexpr std::uint32_t surface_value_svm_immediate_mask =
 // Operation-local layouts inside the unshifted 14-bit immediate.
 inline constexpr std::uint32_t
     surface_value_noise_normalize_immediate_bit = 1u << 0u;
+inline constexpr std::uint32_t surface_value_noise_dimensions_shift = 1u;
+inline constexpr std::uint32_t surface_value_noise_dimensions_mask =
+    0x7u << surface_value_noise_dimensions_shift;
+inline constexpr std::uint32_t surface_value_noise_type_shift = 4u;
+inline constexpr std::uint32_t surface_value_noise_type_mask =
+    0x7u << surface_value_noise_type_shift;
+inline constexpr std::uint32_t surface_value_wave_type_mask = 0x1u;
+inline constexpr std::uint32_t surface_value_wave_bands_direction_shift = 1u;
+inline constexpr std::uint32_t surface_value_wave_bands_direction_mask =
+    0x3u << surface_value_wave_bands_direction_shift;
+inline constexpr std::uint32_t surface_value_wave_rings_direction_shift = 3u;
+inline constexpr std::uint32_t surface_value_wave_rings_direction_mask =
+    0x3u << surface_value_wave_rings_direction_shift;
+inline constexpr std::uint32_t surface_value_wave_profile_shift = 5u;
+inline constexpr std::uint32_t surface_value_wave_profile_mask =
+    0x3u << surface_value_wave_profile_shift;
 inline constexpr std::uint32_t surface_value_mix_operation_mask = 0x1fu;
 inline constexpr std::uint32_t surface_value_mix_factor_clamp_bit = 1u << 5u;
 inline constexpr std::uint32_t surface_value_mix_result_clamp_bit = 1u << 6u;
@@ -478,6 +494,10 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
          operation == ValueOperation::fresnel ||
          operation == ValueOperation::layer_weight_fresnel ||
          operation == ValueOperation::layer_weight_facing ||
+         operation == ValueOperation::normal_map ||
+         operation == ValueOperation::bump ||
+         operation == ValueOperation::wave_color ||
+         operation == ValueOperation::wave_factor ||
          operation == ValueOperation::gradient ||
          operation == ValueOperation::color_ramp ||
          surface_value_operation_uses_mapping_immediate(operation) ||
@@ -499,6 +519,12 @@ surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
              operation == ValueOperation::fresnel ||
              operation == ValueOperation::layer_weight_fresnel ||
              operation == ValueOperation::layer_weight_facing ||
+             operation == ValueOperation::normal_map ||
+             operation == ValueOperation::bump ||
+             operation == ValueOperation::noise_factor ||
+             operation == ValueOperation::noise_color ||
+             operation == ValueOperation::wave_color ||
+             operation == ValueOperation::wave_factor ||
              operation == ValueOperation::gradient ||
              operation == ValueOperation::color_ramp ||
              surface_value_operation_uses_mapping_immediate(operation)
@@ -509,7 +535,7 @@ surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
 [[nodiscard]] constexpr std::uint64_t
 surface_value_svm_static_u1_mask(ValueOperation operation) noexcept {
   if (surface_value_operation_uses_noise_normalize(operation)) {
-    return 1u;
+    return ~std::uint64_t{0u};
   }
   return operation == ValueOperation::mix ||
                  surface_value_operation_uses_mapping_immediate(operation) ||
@@ -566,6 +592,31 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
       operation == ValueOperation::layer_weight_facing) {
     return static_u0 <= 1u && static_u1 == 0u;
   }
+  if (operation == ValueOperation::normal_map) {
+    return (static_u0 & ~(normal_map_space_mask | normal_map_named_tangent |
+                         normal_map_displaced_base | normal_map_direct_x)) ==
+               0u &&
+           decode_normal_map_space(static_u0) <= NormalMapSpace::blender_world &&
+           static_u1 == 0u;
+  }
+  if (operation == ValueOperation::bump) {
+    return static_u0 <= 0x7u && static_u1 == 0u;
+  }
+  if (surface_value_operation_uses_noise_normalize(operation)) {
+    const auto type = (static_u1 >> 8u) & 0xffu;
+    return static_u0 >= 1u && static_u0 <= 4u && type <= 4u &&
+           (static_u1 & ~std::uint64_t{0x701u}) == 0u;
+  }
+  if (operation == ValueOperation::wave_color ||
+      operation == ValueOperation::wave_factor) {
+    const auto type = static_u0 & 0xffu;
+    const auto bands_direction = (static_u0 >> 8u) & 0xffu;
+    const auto rings_direction = (static_u0 >> 16u) & 0xffu;
+    const auto profile = (static_u0 >> 24u) & 0xffu;
+    return type <= 1u && bands_direction <= 3u &&
+           rings_direction <= 3u && profile <= 2u &&
+           (static_u0 >> 32u) == 0u && static_u1 == 0u;
+  }
   if (operation == ValueOperation::gradient) {
     return static_u0 <= 6u && static_u1 == 0u;
   }
@@ -598,9 +649,13 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
     ValueOperation operation, std::uint64_t static_u0,
     std::uint64_t static_u1) noexcept {
   if (surface_value_operation_uses_noise_normalize(operation)) {
-    return (static_u1 & 1u) != 0u
-               ? surface_value_noise_normalize_immediate_bit
-               : 0u;
+    return ((static_u1 & 1u) != 0u
+                ? surface_value_noise_normalize_immediate_bit
+                : 0u) |
+           (static_cast<std::uint32_t>(static_u0)
+            << surface_value_noise_dimensions_shift) |
+           (static_cast<std::uint32_t>((static_u1 >> 8u) & 0xffu)
+            << surface_value_noise_type_shift);
   }
   if (operation == ValueOperation::mix) {
     return static_cast<std::uint32_t>(static_u0) |
@@ -621,9 +676,23 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
   if (operation == ValueOperation::fresnel ||
       operation == ValueOperation::layer_weight_fresnel ||
       operation == ValueOperation::layer_weight_facing ||
+      operation == ValueOperation::normal_map ||
+      operation == ValueOperation::bump ||
       operation == ValueOperation::gradient ||
       operation == ValueOperation::color_ramp) {
     return static_cast<std::uint32_t>(static_u0);
+  }
+  if (operation == ValueOperation::wave_color ||
+      operation == ValueOperation::wave_factor) {
+    const auto type = static_cast<std::uint32_t>(static_u0 & 0xffu);
+    const auto direction = static_cast<std::uint32_t>(
+        (static_u0 >> (type == 0u ? 8u : 16u)) & 0xffu);
+    return type |
+           (direction <<
+            (type == 0u ? surface_value_wave_bands_direction_shift
+                        : surface_value_wave_rings_direction_shift)) |
+           (static_cast<std::uint32_t>((static_u0 >> 24u) & 0xffu)
+            << surface_value_wave_profile_shift);
   }
   if (surface_value_operation_uses_mapping_immediate(operation)) {
     return static_cast<std::uint32_t>(static_u0) |
@@ -745,12 +814,14 @@ struct SurfaceValueSceneImage {
   PrincipledClosureFeatureMask used_principled_closure_features{};
 };
 
-// One AST body per exact semantic instruction configuration. Operands are
-// renumbered to [0, arity), and nominal socket types are quotiented to their
+// One AST body per exact execution-equivalence class. Operands are renumbered
+// to [0, arity), and nominal socket types are quotiented to their
 // scalar/float3/uint64 execution banks, exactly matching the runtime load and
-// projection semantics. Source-node identity and static-table payloads are
-// deliberately absent: they are provenance/runtime data, not executable
-// semantics. Static-table shape remains part of the variant contract.
+// projection semantics. Finite semantic fields covered by an opcode's SVM
+// immediate are data in the instruction stream, not host/JIT identity.
+// Source-node identity and static-table payloads are likewise absent: they are
+// provenance/runtime data, not executable semantics. Static-table shape and
+// every unrepresented semantic field remain part of the variant contract.
 struct SurfaceValueStaticVariant {
   ValueInstruction instruction;
   std::vector<contract::SocketType> operand_types;
@@ -771,11 +842,12 @@ struct SurfaceValueExecutionInput {
   SurfaceClosureEndpointMask closure_endpoints{all_surface_closure_endpoints};
 };
 
-// `instruction_variants` is parallel to `values.instructions`. Semantic
-// interning is exact and bit-preserving for every control field (including
-// NaN payloads and signed zero); it never relies on a collision-prone hash
-// equivalence. Authored static-table payloads remain in `values.static_data`
-// and are addressed by the per-instruction metadata stream.
+// `instruction_variants` is parallel to `values.instructions`. Execution
+// interning compares the complete projected key, never a hash alone. The
+// projection is exact and bit-preserving for every field not represented by
+// typed instruction data (including NaN payloads and signed zero). Authored
+// modes, flags, and static-table payloads remain in the bytecode image and are
+// addressed by each instruction's immediate and metadata record.
 struct SurfaceValueExecutableScene {
   bool valid{};
   std::string diagnostic;

@@ -5,9 +5,11 @@
 #include <psycles/luisa/cycles_noise.h>
 #include <luisa/dsl/sugar.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <utility>
+#include <vector>
 
 using namespace luisa::compute;
 
@@ -195,17 +197,15 @@ public:
                     const auto color_needed =
                         instruction.operation ==
                         compiler::ValueOperation::noise_color;
-                    const auto noise_type =
-                        static_cast<cycles_noise::Type>(
-                            (instruction.static_u1 >> 8u) &
-                            0xffu);
                     auto scale = scalar(
                         instruction.operand(operand::noise::scale), result);
-                    const auto evaluate = [&](auto &&normalize) noexcept {
+                    const auto evaluate = [&, color_needed](
+                                              std::uint32_t dimensions,
+                                              cycles_noise::Type noise_type,
+                                              auto &&normalize) noexcept {
                         return cycles_noise::
                             evaluate_texture_shared(
-                            static_cast<std::uint32_t>(
-                                instruction.static_u0),
+                            dimensions,
                             noise_type,
                             std::forward<decltype(normalize)>(normalize),
                             color_needed,
@@ -234,14 +234,67 @@ public:
                                 instruction.operand(operand::noise::distortion),
                                 result));
                     };
-                    value = context.svm_immediate_override != nullptr
-                                ? evaluate(
-                                      (*context.svm_immediate_override &
-                                       compiler::
-                                           surface_value_noise_normalize_immediate_bit) !=
-                                      0u)
-                                : evaluate(
-                                      (instruction.static_u1 & 1u) != 0u);
+                    if (context.svm_immediate_override != nullptr) {
+                        constexpr auto shape_mask =
+                            compiler::surface_value_noise_dimensions_mask |
+                            compiler::surface_value_noise_type_mask;
+                        std::vector<std::uint16_t> active_shapes;
+                        active_shapes.reserve(
+                            context.svm_immediate_domain.size());
+                        for (const auto encoded :
+                             context.svm_immediate_domain) {
+                            const auto shape = static_cast<std::uint16_t>(
+                                encoded & shape_mask);
+                            if (std::find(active_shapes.begin(),
+                                          active_shapes.end(),
+                                          shape) == active_shapes.end()) {
+                                active_shapes.emplace_back(shape);
+                            }
+                        }
+                        const auto immediate =
+                            *context.svm_immediate_override;
+                        const auto shape = immediate & shape_mask;
+                        const auto normalize =
+                            (immediate & compiler::
+                                              surface_value_noise_normalize_immediate_bit) !=
+                            0u;
+                        luisa::compute::detail::SwitchStmtBuilder{shape} % [&] {
+                            for (const auto active_shape : active_shapes) {
+                                luisa::compute::detail::SwitchCaseStmtBuilder{
+                                    active_shape} %
+                                    [&, active_shape] {
+                                        const auto dimensions =
+                                            (active_shape &
+                                             compiler::
+                                                 surface_value_noise_dimensions_mask) >>
+                                            compiler::
+                                                surface_value_noise_dimensions_shift;
+                                        const auto type =
+                                            (active_shape &
+                                             compiler::
+                                                 surface_value_noise_type_mask) >>
+                                            compiler::
+                                                surface_value_noise_type_shift;
+                                        value = evaluate(
+                                            dimensions,
+                                            static_cast<cycles_noise::Type>(
+                                                type),
+                                            normalize);
+                                    };
+                            }
+                            luisa::compute::detail::SwitchDefaultStmtBuilder{} %
+                                [] {
+                                    luisa::compute::dsl::unreachable(
+                                        "invalid compact surface Noise shape");
+                                };
+                        };
+                    } else {
+                        value = evaluate(
+                            static_cast<std::uint32_t>(instruction.static_u0),
+                            static_cast<cycles_noise::Type>(
+                                (instruction.static_u1 >> 8u) & 0xffu),
+                            (instruction.static_u1 & 1u) != 0u);
+                    }
                     break;
                 }
                 case compiler::ValueOperation::white_noise_value:

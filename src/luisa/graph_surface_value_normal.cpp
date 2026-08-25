@@ -11,6 +11,103 @@ namespace {
 
 namespace operand = compiler::value_operand;
 
+[[nodiscard]] Float3 evaluate_normal_map_svm(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const TracedValues &result,
+    const compiler::ValueInstruction &instruction,
+    UInt configuration) noexcept {
+    Float3 mapped =
+        vector(instruction.operand(operand::normal_map::color), result) *
+            2.0f -
+        1.0f;
+    const auto strength = scalar(
+        instruction.operand(operand::normal_map::strength), result);
+    const UInt space =
+        configuration &
+        static_cast<std::uint32_t>(compiler::normal_map_space_mask);
+    const Bool named =
+        (configuration & static_cast<std::uint32_t>(
+                             compiler::normal_map_named_tangent)) != 0u;
+    const Bool displaced_base =
+        (configuration & static_cast<std::uint32_t>(
+                             compiler::normal_map_displaced_base)) != 0u;
+    const Bool invert_green =
+        (configuration & static_cast<std::uint32_t>(
+                             compiler::normal_map_direct_x)) != 0u;
+    mapped.y = select(mapped.y, -mapped.y, invert_green);
+
+    Float3 object_tangent = select(
+        point.undisplaced_object_tangent,
+        point.object_tangent,
+        displaced_base);
+    Float tangent_sign = select(
+        point.undisplaced_tangent_sign,
+        point.tangent_sign,
+        displaced_base);
+    Bool tangent_attribute_found = true;
+    $if(named) {
+        const auto named_tangent = services.attribute(
+            unsigned_integer(
+                instruction.operand(operand::normal_map::uv_map), result),
+            point);
+        object_tangent = named_tangent.value.xyz();
+        tangent_sign = named_tangent.value.w;
+        tangent_attribute_found = named_tangent.found;
+    };
+
+    SurfaceNormalMapInput input{
+        .mapped = mapped,
+        .strength = strength,
+        .object_tangent = object_tangent,
+        .tangent_sign = tangent_sign,
+        .tangent_attribute_found = tangent_attribute_found,
+        .object_shading_normal = point.object_shading_normal,
+        .undisplaced_object_shading_normal =
+            point.undisplaced_object_shading_normal,
+        .triangle_smooth = point.triangle_smooth,
+        .normal_to_world_x = point.normal_to_world_x,
+        .normal_to_world_y = point.normal_to_world_y,
+        .normal_to_world_z = point.normal_to_world_z,
+        .shading_normal = point.shading_normal,
+        .back_facing = point.back_facing,
+        .geometry_index = point.geometry_index,
+        .is_curve = point.is_curve};
+    Float3 world = point.shading_normal;
+    $if(space == static_cast<std::uint32_t>(
+                     compiler::NormalMapSpace::tangent)) {
+        $if(displaced_base) {
+            world = normal_map_tangent_displaced(services, input);
+        }
+        $else {
+            world = normal_map_tangent_original(services, input);
+        };
+    }
+    $else {
+        const Bool blender_space =
+            (space == static_cast<std::uint32_t>(
+                          compiler::NormalMapSpace::blender_object)) |
+            (space == static_cast<std::uint32_t>(
+                          compiler::NormalMapSpace::blender_world));
+        input.mapped.y = select(input.mapped.y, -input.mapped.y,
+                                blender_space);
+        input.mapped.z = select(input.mapped.z, -input.mapped.z,
+                                blender_space);
+        const Bool object_space =
+            (space == static_cast<std::uint32_t>(
+                          compiler::NormalMapSpace::object)) |
+            (space == static_cast<std::uint32_t>(
+                          compiler::NormalMapSpace::blender_object));
+        $if(object_space) {
+            world = normal_map_object(services, input);
+        }
+        $else {
+            world = normal_map_world(services, input);
+        };
+    };
+    return world;
+}
+
 class NormalMapValueNode final : public ValueNode {
 
 public:
@@ -22,6 +119,17 @@ public:
         const auto &point = context.point;
         const auto &result = context.result;
         const auto &instruction = this->instruction();
+
+        if (context.svm_immediate_override != nullptr) {
+            const auto world = evaluate_normal_map_svm(
+                services,
+                point,
+                result,
+                instruction,
+                *context.svm_immediate_override);
+            return SurfaceValueExpression::from_vector(
+                Expr<luisa::float3>{world.expression()});
+        }
 
         auto mapped =
             vector(

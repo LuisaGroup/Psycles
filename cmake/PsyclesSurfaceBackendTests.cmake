@@ -80,6 +80,9 @@ psycles_add_luisa_backend_test(
     SOURCE tests/test_luisa_compact_surface_preparation.cpp
     TEST_STEM luisa_compact_surface_preparation
     LIBRARIES Psycles::luisa_runtime)
+target_sources(
+    psycles_luisa_compact_surface_preparation_tests
+    PRIVATE tests/compact_surface_program_test_support.cpp)
 target_include_directories(
     psycles_luisa_compact_surface_preparation_tests
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")

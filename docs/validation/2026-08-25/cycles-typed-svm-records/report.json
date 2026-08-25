@@ -1,0 +1,77 @@
+{
+  "schema": "psycles.cycles-typed-svm-records-validation.v1",
+  "date": "2026-08-25",
+  "cycles_source": {
+    "repository": "/home/mike/Projects/blender-cycles",
+    "branch": "blender-v5.2-release",
+    "commit": "fbe6228777e7",
+    "files_read": [
+      "intern/cycles/kernel/svm/svm.h",
+      "intern/cycles/kernel/svm/util.h",
+      "intern/cycles/kernel/svm/node_types.h",
+      "intern/cycles/kernel/svm/noisetex.h",
+      "intern/cycles/kernel/svm/wave.h",
+      "intern/cycles/scene/shader_nodes.cpp",
+      "intern/cycles/scene/svm.cpp"
+    ]
+  },
+  "psycles": {
+    "baseline_commit": "ce54a691ff4c",
+    "device": "AMD Radeon RX 9070 XT gfx1201"
+  },
+  "scene_handler_census": {
+    "barbershop": {"baseline": 56, "typed_records": 54},
+    "classroom": {"baseline": 33, "typed_records": 32},
+    "monster_under_the_bed": {"baseline": 30, "typed_records": 29},
+    "lone_monk": {"baseline": 37, "typed_records": 36},
+    "benchmark_bundle": {"baseline": 47, "typed_records": 43},
+    "flat_archiviz": {"baseline": 40, "typed_records": 39}
+  },
+  "hip_compile_ab": {
+    "classroom": {
+      "baseline": {"total_semantic_variants": 37, "code_object_bytes": 529016, "llvm_codegen_ms": 2909.028984, "comgr_ms": 5740.233065},
+      "typed_records": {"total_semantic_variants": 35, "code_object_bytes": 472512, "llvm_codegen_ms": 2293.501026, "comgr_ms": 4325.327746},
+      "change_percent": {"code_object": -10.6809623906, "llvm_codegen": -21.1592239674, "comgr": -24.6489176132}
+    },
+    "barbershop": {
+      "baseline": {"total_semantic_variants": 61, "code_object_bytes": 500080, "llvm_codegen_ms": 1565.358263, "comgr_ms": 3817.15409},
+      "typed_records": {"total_semantic_variants": 58, "code_object_bytes": 507912, "llvm_codegen_ms": 1384.329663, "comgr_ms": 4070.967583},
+      "change_percent": {"code_object": 1.5661494161, "llvm_codegen": -11.5646752746, "comgr": 6.6492860130},
+      "render_status": "pre-existing GPU memory fault reproduced on typed records, exact baseline, and baseline megakernel"
+    }
+  },
+  "correctness": {
+    "scene": "Classroom",
+    "backend": "HIP",
+    "resolution": [320, 180],
+    "spp": 4,
+    "passes_compared": 15,
+    "passes": {
+      "Combined": {"rmse": 1.5620105386915384e-6, "relative_rmse": 3.295489615736585e-6, "maximum_absolute_error": 2.6494264602661133e-4, "luminance_mean_ratio": 1.0000000700211071},
+      "DiffCol": {"rmse": 0.0, "relative_rmse": 0.0, "maximum_absolute_error": 0.0},
+      "DiffDir": {"rmse": 9.150507196409308e-8, "relative_rmse": 5.32795460882589e-8, "maximum_absolute_error": 7.62939453125e-6},
+      "DiffInd": {"rmse": 7.107091732905246e-6, "relative_rmse": 1.7482428002209198e-5, "maximum_absolute_error": 1.9168779253959656e-3},
+      "Emit": {"rmse": 0.0, "relative_rmse": 0.0, "maximum_absolute_error": 0.0},
+      "Env": {"rmse": 0.0, "relative_rmse": 0.0, "maximum_absolute_error": 0.0},
+      "GlossCol": {"rmse": 1.394826337763888e-10, "relative_rmse": 5.419083490900518e-9, "maximum_absolute_error": 7.450580596923828e-9},
+      "GlossDir": {"rmse": 1.4990479257903644e-6, "relative_rmse": 2.0813224118570796e-6, "maximum_absolute_error": 3.7109851837158203e-4},
+      "GlossInd": {"rmse": 6.7653372752829455e-6, "relative_rmse": 2.050321358117308e-5, "maximum_absolute_error": 2.09808349609375e-3},
+      "Normal": {"rmse": 7.663663481594085e-9, "relative_rmse": 1.382729308218992e-8, "maximum_absolute_error": 3.2782554626464844e-7},
+      "TransCol": {"rmse": 7.578827010412681e-10, "relative_rmse": 1.3608662317657649e-8, "maximum_absolute_error": 1.1920928955078125e-7},
+      "TransDir": {"rmse": 9.714175991382135e-11, "relative_rmse": 0.3900830443479042, "maximum_absolute_error": 3.17319290843443e-8},
+      "TransInd": {"rmse": 1.8720869832122844e-7, "relative_rmse": 8.437382727559744e-6, "maximum_absolute_error": 4.379451274871826e-5},
+      "VolumeDirect": {"rmse": 0.0, "relative_rmse": 0.0, "maximum_absolute_error": 0.0},
+      "VolumeIndirect": {"rmse": 0.0, "relative_rmse": 0.0, "maximum_absolute_error": 0.0}
+    },
+    "visual_inspection": {
+      "triptychs": ["combined.png", "normal.png", "glossdir.png"],
+      "result": "No coherent material, UV, normal, geometry, lighting, or orientation difference; only sparse floating-point and concurrent film-reduction residuals."
+    }
+  },
+  "tests": {
+    "focused_matrix_passed": 29,
+    "focused_matrix_total": 29,
+    "backends": ["fallback", "hip", "vk-native-xir-spirv"],
+    "vulkan_dxc_disabled": true
+  }
+}

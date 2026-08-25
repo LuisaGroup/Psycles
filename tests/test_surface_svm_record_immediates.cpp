@@ -1,0 +1,422 @@
+#include <psycles/compiler/surface_execution_plan.h>
+#include <psycles/compiler/surface_program.h>
+
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace {
+
+using namespace psycles::compiler;
+using namespace psycles::contract;
+
+struct RecordConfiguration {
+    std::uint64_t u0{};
+    std::uint64_t u1{};
+};
+
+void require(bool condition, const char *message) {
+    if (!condition) {
+        throw std::runtime_error{message};
+    }
+}
+
+[[nodiscard]] SocketValue default_value(SocketType type) {
+    switch (type) {
+        case SocketType::floating:
+            return SocketValue::floating(0.5f);
+        case SocketType::color:
+            return SocketValue::color({0.25f, 0.5f, 0.75f});
+        case SocketType::point:
+            return SocketValue::point({0.25f, 0.5f, 0.75f});
+        case SocketType::vector:
+            return SocketValue::vector({0.25f, 0.5f, 0.75f});
+        case SocketType::normal:
+            return SocketValue::normal({0.0f, 0.0f, 1.0f});
+        case SocketType::unsigned_integer:
+            return SocketValue::unsigned_integer(7u);
+        default:
+            throw std::runtime_error{"unsupported test socket type"};
+    }
+}
+
+[[nodiscard]] SurfaceProgram make_program(
+    std::uint32_t tag,
+    ValueOperation operation,
+    SocketType result_type,
+    std::span<const SocketType> operand_types,
+    RecordConfiguration configuration) {
+    std::vector<ParameterDesc> parameters;
+    std::vector<ValueInstruction> values;
+    std::vector<ValueExpressionId> operands;
+    parameters.reserve(operand_types.size());
+    values.reserve(operand_types.size() + 1u);
+    operands.reserve(operand_types.size());
+    for (auto index = std::size_t{0u}; index < operand_types.size(); ++index) {
+        const auto parameter = static_cast<std::uint32_t>(index);
+        parameters.emplace_back(ParameterDesc{
+            .id = ParameterId{parameter},
+            .node = NodeId{parameter + 1u},
+            .socket = "Input" + std::to_string(index),
+            .type = operand_types[index],
+            .default_value = default_value(operand_types[index]),
+            .source = ParameterSource::input});
+        values.emplace_back(ValueInstruction{
+            .operation = ValueOperation::parameter,
+            .result_type = operand_types[index],
+            .parameter = ParameterId{parameter}});
+        operands.emplace_back(ValueExpressionId{parameter});
+    }
+    values.emplace_back(ValueInstruction{
+        .operation = operation,
+        .result_type = result_type,
+        .operands = std::move(operands),
+        .static_u0 = configuration.u0,
+        .static_u1 = configuration.u1});
+    return SurfaceProgram{
+        tag, std::move(parameters), std::move(values), {}, {}};
+}
+
+[[nodiscard]] SurfaceValueStoragePlan make_plan(
+    const SurfaceProgram &program) {
+    const auto count = program.value_instructions().size();
+    auto outputs = std::vector<bool>(count, false);
+    outputs.back() = true;
+    return plan_surface_value_storage(
+        program, std::vector<bool>(count, true), outputs);
+}
+
+void require_single_handler(
+    ValueOperation operation,
+    SocketType result_type,
+    std::span<const SocketType> operand_types,
+    std::span<const RecordConfiguration> configurations,
+    const char *message) {
+    std::vector<SurfaceProgram> programs;
+    std::vector<SurfaceValueStoragePlan> plans;
+    programs.reserve(configurations.size());
+    plans.reserve(configurations.size());
+    for (auto index = std::size_t{0u}; index < configurations.size(); ++index) {
+        programs.emplace_back(make_program(
+            static_cast<std::uint32_t>(100u + index),
+            operation,
+            result_type,
+            operand_types,
+            configurations[index]));
+        plans.emplace_back(make_plan(programs.back()));
+    }
+    std::vector<SurfaceValueExecutionInput> inputs;
+    inputs.reserve(programs.size());
+    for (auto index = std::size_t{0u}; index < programs.size(); ++index) {
+        inputs.emplace_back(SurfaceValueExecutionInput{
+            .program = &programs[index], .storage = &plans[index]});
+    }
+    auto expected_immediates = std::vector<std::uint16_t>{};
+    expected_immediates.reserve(configurations.size());
+    for (const auto configuration : configurations) {
+        expected_immediates.emplace_back(static_cast<std::uint16_t>(
+            make_surface_value_svm_immediate(
+                operation, configuration.u0, configuration.u1)));
+    }
+    std::sort(expected_immediates.begin(), expected_immediates.end());
+    expected_immediates.erase(
+        std::unique(expected_immediates.begin(), expected_immediates.end()),
+        expected_immediates.end());
+
+    const auto scene = build_surface_value_executable_scene(inputs);
+    require(scene.valid && scene.variants.size() == 1u &&
+                scene.instruction_variants ==
+                    std::vector<std::uint32_t>(configurations.size(), 0u) &&
+                scene.variants.front().instruction.static_u0 == 0u &&
+                scene.variants.front().instruction.static_u1 == 0u &&
+                scene.variants.front().svm_immediates == expected_immediates,
+            message);
+}
+
+void require_rejected(
+    ValueOperation operation,
+    SocketType result_type,
+    std::span<const SocketType> operand_types,
+    RecordConfiguration configuration,
+    const char *message) {
+    const auto program = make_program(
+        999u, operation, result_type, operand_types, configuration);
+    require(!lower_surface_value_program(program, make_plan(program)).valid,
+            message);
+}
+
+void test_typed_record_quotients() {
+    constexpr SocketType optional_normal_operands[]{
+        SocketType::floating, SocketType::normal};
+    constexpr RecordConfiguration optional_normal_configs[]{{0u, 0u},
+                                                              {1u, 0u}};
+    require_single_handler(
+        ValueOperation::fresnel,
+        SocketType::floating,
+        optional_normal_operands,
+        optional_normal_configs,
+        "Fresnel linked-normal data split its SVM handler");
+    require_single_handler(
+        ValueOperation::layer_weight_facing,
+        SocketType::floating,
+        optional_normal_operands,
+        optional_normal_configs,
+        "Layer Weight linked-normal data split its SVM handler");
+    require_single_handler(
+        ValueOperation::layer_weight_fresnel,
+        SocketType::floating,
+        optional_normal_operands,
+        optional_normal_configs,
+        "Layer Weight Fresnel linked-normal data split its SVM handler");
+
+    constexpr SocketType gradient_operands[]{SocketType::vector};
+    constexpr RecordConfiguration gradient_configs[]{{0u, 0u},
+                                                       {4u, 0u},
+                                                       {6u, 0u}};
+    require_single_handler(
+        ValueOperation::gradient,
+        SocketType::floating,
+        gradient_operands,
+        gradient_configs,
+        "Gradient modes split its SVM handler");
+
+    constexpr SocketType noise_operands[]{
+        SocketType::vector,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating};
+    constexpr RecordConfiguration noise_configs[]{{3u, 0x101u},
+                                                    {3u, 0x100u},
+                                                    {2u, 0x100u},
+                                                    {3u, 0u}};
+    require_single_handler(
+        ValueOperation::noise_factor,
+        SocketType::floating,
+        noise_operands,
+        noise_configs,
+        "Noise record data split its SVM handler");
+
+    constexpr SocketType wave_operands[]{
+        SocketType::vector,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating};
+    constexpr RecordConfiguration wave_configs[]{{0x01030300u, 0u},
+                                                   {0x00030300u, 0u},
+                                                   {0x02020101u, 0u}};
+    require_single_handler(
+        ValueOperation::wave_factor,
+        SocketType::floating,
+        wave_operands,
+        wave_configs,
+        "Wave record data split its SVM handler");
+
+    constexpr SocketType normal_map_operands[]{
+        SocketType::color,
+        SocketType::floating,
+        SocketType::unsigned_integer};
+    constexpr RecordConfiguration normal_map_configs[]{
+        {encode_normal_map_configuration(
+             NormalMapSpace::tangent,
+             false,
+             NormalMapBase::displaced,
+             NormalMapConvention::open_gl),
+         0u},
+        {encode_normal_map_configuration(
+             NormalMapSpace::object,
+             false,
+             NormalMapBase::displaced,
+             NormalMapConvention::open_gl),
+         0u},
+        {encode_normal_map_configuration(
+             NormalMapSpace::tangent,
+             true,
+             NormalMapBase::displaced,
+             NormalMapConvention::direct_x),
+         0u}};
+    require_single_handler(
+        ValueOperation::normal_map,
+        SocketType::normal,
+        normal_map_operands,
+        normal_map_configs,
+        "Normal Map record data split its SVM handler");
+
+    constexpr SocketType bump_operands[]{
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::normal};
+    constexpr RecordConfiguration bump_configs[]{{0u, 0u},
+                                                   {1u, 0u},
+                                                   {2u, 0u},
+                                                   {7u, 0u}};
+    require_single_handler(
+        ValueOperation::bump,
+        SocketType::normal,
+        bump_operands,
+        bump_configs,
+        "Bump record data split its SVM handler");
+}
+
+void test_invalid_records_are_rejected() {
+    constexpr SocketType optional_normal_operands[]{
+        SocketType::floating, SocketType::normal};
+    require_rejected(
+        ValueOperation::fresnel,
+        SocketType::floating,
+        optional_normal_operands,
+        {2u, 0u},
+        "Fresnel accepted an invalid linked-normal flag");
+
+    constexpr SocketType gradient_operands[]{SocketType::vector};
+    require_rejected(
+        ValueOperation::gradient,
+        SocketType::floating,
+        gradient_operands,
+        {7u, 0u},
+        "Gradient accepted an invalid mode");
+
+    constexpr SocketType noise_operands[]{
+        SocketType::vector,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating};
+    require_rejected(
+        ValueOperation::noise_factor,
+        SocketType::floating,
+        noise_operands,
+        {0u, 0x100u},
+        "Noise accepted an invalid dimension");
+    require_rejected(
+        ValueOperation::noise_factor,
+        SocketType::floating,
+        noise_operands,
+        {3u, 0x500u},
+        "Noise accepted an invalid type");
+
+    constexpr SocketType wave_operands[]{
+        SocketType::vector,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating};
+    require_rejected(
+        ValueOperation::wave_factor,
+        SocketType::floating,
+        wave_operands,
+        {2u, 0u},
+        "Wave accepted an invalid type");
+
+    constexpr SocketType normal_map_operands[]{
+        SocketType::color,
+        SocketType::floating,
+        SocketType::unsigned_integer};
+    require_rejected(
+        ValueOperation::normal_map,
+        SocketType::normal,
+        normal_map_operands,
+        {5u, 0u},
+        "Normal Map accepted an invalid space");
+
+    constexpr SocketType bump_operands[]{
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::normal};
+    require_rejected(
+        ValueOperation::bump,
+        SocketType::normal,
+        bump_operands,
+        {8u, 0u},
+        "Bump accepted an invalid flag");
+}
+
+void test_serialized_record_coherence() {
+    constexpr SocketType noise_operands[]{
+        SocketType::vector,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating};
+    const auto noise = make_program(
+        1000u,
+        ValueOperation::noise_factor,
+        SocketType::floating,
+        noise_operands,
+        {3u, 0x100u});
+    auto noise_image = lower_surface_value_program(noise, make_plan(noise));
+    require(noise_image.valid && noise_image.instructions.size() == 1u,
+            "valid Noise record did not lower to one instruction");
+    noise_image.instructions.front().control |=
+        surface_value_noise_normalize_immediate_bit
+        << surface_value_svm_immediate_shift;
+    const auto mismatched =
+        build_surface_value_scene_image(std::vector{noise_image});
+    require(!mismatched.valid &&
+                mismatched.diagnostic.find(
+                    "immediate disagrees with immutable metadata") !=
+                    std::string::npos,
+            "serialized Noise accepted an immediate/metadata mismatch");
+
+    constexpr SocketType passthrough_operands[]{SocketType::floating};
+    const auto passthrough = make_program(
+        1001u,
+        ValueOperation::passthrough,
+        SocketType::floating,
+        passthrough_operands,
+        {});
+    auto foreign =
+        lower_surface_value_program(passthrough, make_plan(passthrough));
+    require(foreign.valid && foreign.instructions.size() == 1u,
+            "valid Passthrough record failed lowering");
+    foreign.instructions.front().control |=
+        1u << surface_value_svm_immediate_shift;
+    const auto foreign_scene =
+        build_surface_value_scene_image(std::vector{foreign});
+    require(!foreign_scene.valid &&
+                foreign_scene.diagnostic.find(
+                    "without an immediate contract") != std::string::npos,
+            "an opcode without a record immediate accepted control data");
+}
+
+} // namespace
+
+int main() {
+    try {
+        test_typed_record_quotients();
+        test_invalid_records_are_rejected();
+        test_serialized_record_coherence();
+        return EXIT_SUCCESS;
+    } catch (const std::exception &error) {
+        std::cerr << "Surface SVM record test failure: " << error.what()
+                  << '\n';
+        return EXIT_FAILURE;
+    }
+}
