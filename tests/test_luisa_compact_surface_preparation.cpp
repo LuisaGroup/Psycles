@@ -11,6 +11,7 @@
 #include "path_tracer_bsdf_tables.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surface_closure_setup.h"
+#include "path_tracer_surface_execution_domain.h"
 #include "path_tracer_surface_values.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_texture_sampling.h"
@@ -1146,6 +1147,51 @@ int main(int argc, char **argv) {
                   << backend << ": " << diagnostic << '\n';
         return EXIT_FAILURE;
     }
+  const auto domain_matches = [](
+      const SurfaceValueProgramDomainView &view,
+      const std::vector<std::uint32_t> &values,
+      const std::vector<std::uint32_t> &normals,
+      const std::vector<std::uint32_t> &heights,
+      std::uint32_t offset,
+      bool conditional_normal) noexcept {
+    return std::equal(view.value_variants.begin(),
+                      view.value_variants.end(), values.begin(), values.end()) &&
+           std::equal(view.normal_variants.begin(),
+                      view.normal_variants.end(), normals.begin(), normals.end()) &&
+           std::equal(view.height_variants.begin(),
+                      view.height_variants.end(), heights.begin(), heights.end()) &&
+           view.program_offset == offset &&
+           view.automatic_normal_is_conditional == conditional_normal;
+  };
+  const auto preparation_domain = surface_value_program_domain(
+      *scene->surface_values, SurfaceValueProgramDomain::preparation);
+  const auto emission_domain = surface_value_program_domain(
+      *scene->surface_values, SurfaceValueProgramDomain::emission);
+  const auto bssrdf_domain = surface_value_program_domain(
+      *scene->surface_values, SurfaceValueProgramDomain::bssrdf);
+  if (!domain_matches(
+          preparation_domain,
+          scene->surface_values->preparation_value_static_variants,
+          scene->surface_values->normal_value_static_variants,
+          scene->surface_values->height_value_static_variants,
+          SurfaceValueRuntime::preparation_program_offset, false) ||
+      !domain_matches(
+          emission_domain,
+          scene->surface_values->emission_value_static_variants,
+          scene->surface_values->emission_normal_value_static_variants,
+          scene->surface_values->emission_height_value_static_variants,
+          SurfaceValueRuntime::emission_program_offset, true) ||
+      !domain_matches(
+          bssrdf_domain,
+          scene->surface_values->bssrdf_value_static_variants,
+          scene->surface_values->bssrdf_normal_value_static_variants,
+          scene->surface_values->bssrdf_height_value_static_variants,
+          SurfaceValueRuntime::preparation_program_offset, false)) {
+    std::cerr << "compact surface program domain lost its exact root/normal/"
+                 "height relation on "
+              << backend << '\n';
+    return EXIT_FAILURE;
+  }
   const auto find_bump_variant = [&](std::uint32_t static_control) noexcept {
     const auto &variants =
         scene->surface_values->executable.executable.variants;
