@@ -6,6 +6,7 @@
 #include "path_tracer_surface_execution_domain.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
@@ -139,7 +140,7 @@ ShaderGraph make_sampled_color_ramp_graph(
     return graph;
 }
 
-ShaderGraph make_ambiguous_clamp_graph() {
+ShaderGraph make_typed_clamp_graph() {
     ShaderGraph graph;
     const auto geometry = graph.add_node(
         node_type::geometry,
@@ -152,7 +153,7 @@ ShaderGraph make_ambiguous_clamp_graph() {
         "RANGE clamp");
     const auto principled = graph.add_node(
         node_type::principled_bsdf,
-        "Ambiguous-clamp Principled");
+        "Typed-clamp Principled");
     const auto configured =
         graph.set_property(
             minmax, "Mode", SocketValue::string("MINMAX")) &&
@@ -193,7 +194,7 @@ ShaderGraph make_ambiguous_clamp_graph() {
             principled, "Metallic");
     if (!configured) {
         throw std::runtime_error{
-            "failed to configure ambiguous Clamp graph"};
+            "failed to configure typed Clamp graph"};
     }
     graph.set_root(
         ShaderDomain::surface,
@@ -201,9 +202,138 @@ ShaderGraph make_ambiguous_clamp_graph() {
     return graph;
 }
 
-bool has_ambiguous_clamp_handler_fiber(
+namespace {
+
+[[nodiscard]] ShaderGraph make_typed_map_range_graph(
+    bool vector_mode,
+    std::string interpolation,
+    bool clamp_result) {
+    ShaderGraph graph;
+    const auto geometry = graph.add_node(
+        node_type::geometry,
+        vector_mode ? "Vector Map Range geometry"
+                    : "Scalar Map Range geometry");
+    const auto map_range = graph.add_node(
+        node_type::map_range,
+        vector_mode ? "Typed Vector Map Range"
+                    : "Typed Scalar Map Range");
+    const auto convert = graph.add_node(
+        vector_mode ? node_type::vector_to_color
+                    : node_type::scalar_to_color,
+        "Map Range result color");
+    const auto emission = graph.add_node(
+        node_type::emission,
+        "Map Range emission");
+    auto configured =
+        graph.set_property(
+            map_range,
+            "DataType",
+            SocketValue::string(vector_mode ? "FLOAT_VECTOR" : "FLOAT")) &&
+        graph.set_property(
+            map_range,
+            "Interpolation",
+            SocketValue::string(std::move(interpolation))) &&
+        graph.set_property(
+            map_range,
+            "Clamp",
+            SocketValue::boolean(clamp_result));
+    if (vector_mode) {
+        configured = configured &&
+                     graph.set_input(
+                         map_range,
+                         "FromMinVector",
+                         SocketValue::vector({-0.2f, 0.1f, 0.4f})) &&
+                     graph.set_input(
+                         map_range,
+                         "FromMaxVector",
+                         SocketValue::vector({0.6f, 0.9f, -0.4f})) &&
+                     graph.set_input(
+                         map_range,
+                         "ToMinVector",
+                         SocketValue::vector({0.15f, 0.7f, 0.2f})) &&
+                     graph.set_input(
+                         map_range,
+                         "ToMaxVector",
+                         SocketValue::vector({0.75f, 0.1f, 0.9f})) &&
+                     graph.set_input(
+                         map_range,
+                         "StepsVector",
+                         SocketValue::vector({2.0f, 3.0f, 4.0f})) &&
+                     graph.connect(
+                         {.node = geometry, .socket = "Incoming"},
+                         map_range,
+                         "Vector") &&
+                     graph.connect(
+                         {.node = map_range, .socket = "Vector"},
+                         convert,
+                         "Vector");
+    } else {
+        configured = configured &&
+                     graph.set_input(
+                         map_range,
+                         "FromMin",
+                         SocketValue::floating(0.25f)) &&
+                     graph.set_input(
+                         map_range,
+                         "FromMax",
+                         SocketValue::floating(0.75f)) &&
+                     graph.set_input(
+                         map_range,
+                         "ToMin",
+                         SocketValue::floating(0.2f)) &&
+                     graph.set_input(
+                         map_range,
+                         "ToMax",
+                         SocketValue::floating(0.8f)) &&
+                     graph.set_input(
+                         map_range,
+                         "Steps",
+                         SocketValue::floating(3.0f)) &&
+                     graph.connect(
+                         {.node = geometry, .socket = "Backfacing"},
+                         map_range,
+                         "Value") &&
+                     graph.connect(
+                         {.node = map_range, .socket = "Result"},
+                         convert,
+                         "Value");
+    }
+    configured = configured &&
+                 graph.connect(
+                     {.node = convert, .socket = "Color"},
+                     emission,
+                     "Color");
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure typed Map Range graph"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    return graph;
+}
+
+} // namespace
+
+std::vector<ShaderGraph> make_typed_map_range_graphs() {
+    constexpr std::array interpolations{
+        "LINEAR", "STEPPED", "SMOOTHSTEP", "SMOOTHERSTEP"};
+    std::vector<ShaderGraph> result;
+    result.reserve(interpolations.size() * 4u);
+    for (const auto *interpolation : interpolations) {
+        for (const auto clamp_result : {false, true}) {
+            result.emplace_back(make_typed_map_range_graph(
+                false, interpolation, clamp_result));
+            result.emplace_back(make_typed_map_range_graph(
+                true, interpolation, clamp_result));
+        }
+    }
+    return result;
+}
+
+bool has_typed_clamp_record_domain(
     const SurfaceValueRuntime &runtime) noexcept {
-    auto count = std::size_t{0u};
+    const SurfaceValueStaticVariant *clamp_variant = nullptr;
     constexpr auto expected_key = make_surface_value_handler_key(
         ValueOperation::clamp_range,
         SurfaceValueBank::scalar,
@@ -211,6 +341,9 @@ bool has_ambiguous_clamp_handler_fiber(
     for (const auto &variant : runtime.executable.executable.variants) {
         if (variant.instruction.operation != ValueOperation::clamp_range) {
             continue;
+        }
+        if (clamp_variant != nullptr) {
+            return false;
         }
         auto bank = SurfaceValueBank::scalar;
         if (!classify_surface_value_type(
@@ -222,9 +355,45 @@ bool has_ambiguous_clamp_handler_fiber(
                 variant.svm_immediates.front()) != expected_key) {
             return false;
         }
-        ++count;
+        clamp_variant = &variant;
     }
-    return count == 2u;
+    return clamp_variant != nullptr &&
+           clamp_variant->instruction.static_u0 == 0u &&
+           clamp_variant->instruction.static_u1 == 0u &&
+           clamp_variant->svm_immediates ==
+               std::vector<std::uint16_t>{0u, 1u};
+}
+
+bool has_typed_map_range_record_domains(
+    const SurfaceValueRuntime &runtime) noexcept {
+    constexpr std::array expected_immediates{
+        std::uint16_t{0u}, std::uint16_t{1u},
+        std::uint16_t{2u}, std::uint16_t{3u},
+        std::uint16_t{4u}, std::uint16_t{5u},
+        std::uint16_t{6u}, std::uint16_t{7u}};
+    auto scalar_count = std::size_t{0u};
+    auto vector_count = std::size_t{0u};
+    for (const auto &variant : runtime.executable.executable.variants) {
+        if (variant.instruction.operation != ValueOperation::map_range_float &&
+            variant.instruction.operation != ValueOperation::map_range_vector) {
+            continue;
+        }
+        if (variant.instruction.static_u0 != 0u ||
+            variant.instruction.static_u1 != 0u ||
+            !std::equal(
+                variant.svm_immediates.begin(),
+                variant.svm_immediates.end(),
+                expected_immediates.begin(),
+                expected_immediates.end())) {
+            return false;
+        }
+        if (variant.instruction.operation == ValueOperation::map_range_float) {
+            ++scalar_count;
+        } else {
+            ++vector_count;
+        }
+    }
+    return scalar_count == 1u && vector_count == 1u;
 }
 
 bool has_color_ramp_record_product(

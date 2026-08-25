@@ -154,8 +154,8 @@ namespace operand = value_operand;
                     .static_u0 =
                         property_string(
                             node, "Mode", "MINMAX") == "RANGE"
-                            ? 1u
-                            : 0u}));
+                            ? static_cast<std::uint64_t>(ClampMode::range)
+                            : static_cast<std::uint64_t>(ClampMode::minmax)}));
         }
         return true;
     }
@@ -196,7 +196,7 @@ namespace operand = value_operand;
                             {operand::map_range::to_min, *to_min},
                             {operand::map_range::to_max, *to_max},
                             {operand::map_range::steps, *steps}}),
-                        .static_u0 = interpolation,
+                        .static_u0 = static_cast<std::uint64_t>(interpolation),
                         .static_u1 = clamp}));
             }
         } else {
@@ -225,7 +225,7 @@ namespace operand = value_operand;
                             {operand::map_range::to_min, *to_min},
                             {operand::map_range::to_max, *to_max},
                             {operand::map_range::steps, *steps}}),
-                        .static_u0 = interpolation,
+                        .static_u0 = static_cast<std::uint64_t>(interpolation),
                         .static_u1 = clamp}));
             }
         }

@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "surface_map_range.h"
 #include "surface_math.h"
 #include "surface_mix.h"
 #include "surface_vector_math.h"
@@ -230,27 +231,29 @@ public:
                         1.0f));
                     break;
                 case compiler::ValueOperation::clamp_range: {
-                    auto input = scalar(
+                    const auto input = scalar(
                         instruction.operand(operand::clamp_range::value),
                         result);
-                    auto minimum = scalar(
+                    const auto minimum = scalar(
                         instruction.operand(operand::clamp_range::minimum),
                         result);
-                    auto maximum = scalar(
+                    const auto maximum = scalar(
                         instruction.operand(operand::clamp_range::maximum),
                         result);
-                    if (instruction.static_u0 == 1u) {
-                        auto reverse = minimum > maximum;
-                        auto original_minimum = minimum;
-                        minimum = select(
-                            minimum, maximum, reverse);
-                        maximum = select(
-                            maximum,
-                            original_minimum,
-                            reverse);
-                    }
                     value = make_float4(
-                        min(max(input, minimum), maximum));
+                        context.svm_immediate_override != nullptr
+                            ? evaluate_surface_clamp_svm(
+                                  *context.svm_immediate_override,
+                                  context.svm_immediate_domain,
+                                  input,
+                                  minimum,
+                                  maximum)
+                            : evaluate_surface_clamp(
+                                  static_cast<compiler::ClampMode>(
+                                      instruction.static_u0),
+                                  input,
+                                  minimum,
+                                  maximum));
                     break;
                 }
                 case compiler::ValueOperation::map_range_float: {
@@ -272,49 +275,28 @@ public:
                     auto steps = scalar(
                         instruction.operand(operand::map_range::steps),
                         result);
-                    auto denominator = from_max - from_min;
-                    auto has_range = denominator != 0.0f;
-                    auto factor =
-                        (input - from_min) /
-                        select(1.0f, denominator, has_range);
-                    if (instruction.static_u0 == 1u) {
-                        factor = select(
-                            0.0f,
-                            floor(
-                                factor * (steps + 1.0f)) /
-                                select(
-                                    1.0f,
-                                    steps,
-                                    steps > 0.0f),
-                            steps > 0.0f);
-                    } else if (
-                        instruction.static_u0 == 2u) {
-                        factor = clamp(
-                            factor, 0.0f, 1.0f);
-                        factor =
-                            (3.0f - 2.0f * factor) *
-                            (factor * factor);
-                    } else if (
-                        instruction.static_u0 == 3u) {
-                        factor = clamp(
-                            factor, 0.0f, 1.0f);
-                        factor =
-                            factor * factor * factor *
-                            (factor *
-                                     (factor * 6.0f - 15.0f) +
-                             10.0f);
-                    }
-                    auto mapped =
-                        to_min + factor * (to_max - to_min);
-                    mapped = select(
-                        0.0f, mapped, has_range);
-                    if (instruction.static_u1 != 0u) {
-                        auto minimum = min(to_min, to_max);
-                        auto maximum = max(to_min, to_max);
-                        mapped = min(
-                            max(mapped, minimum), maximum);
-                    }
-                    value = make_float4(mapped);
+                    value = make_float4(
+                        context.svm_immediate_override != nullptr
+                            ? evaluate_surface_map_range_float_svm(
+                                  *context.svm_immediate_override,
+                                  context.svm_immediate_domain,
+                                  input,
+                                  from_min,
+                                  from_max,
+                                  to_min,
+                                  to_max,
+                                  steps)
+                            : evaluate_surface_map_range_float(
+                                  static_cast<
+                                      compiler::MapRangeInterpolation>(
+                                      instruction.static_u0),
+                                  instruction.static_u1 != 0u,
+                                  input,
+                                  from_min,
+                                  from_max,
+                                  to_min,
+                                  to_max,
+                                  steps));
                     break;
                 }
                 case compiler::ValueOperation::map_range_vector: {
@@ -336,76 +318,28 @@ public:
                     auto steps = vector(
                         instruction.operand(operand::map_range::steps),
                         result);
-                    auto numerator = input - from_min;
-                    auto denominator = from_max - from_min;
-                    auto safe_divide = [](
-                                           Float numerator_component,
-                                           Float denominator_component) {
-                        auto nonzero =
-                            denominator_component != 0.0f;
-                        return select(
-                            0.0f,
-                            numerator_component /
-                                select(
-                                    1.0f,
-                                    denominator_component,
-                                    nonzero),
-                            nonzero);
-                    };
-                    auto factor = make_float3(
-                        safe_divide(
-                            numerator.x, denominator.x),
-                        safe_divide(
-                            numerator.y, denominator.y),
-                        safe_divide(
-                            numerator.z, denominator.z));
-                    if (instruction.static_u0 == 1u) {
-                        auto stepped = [](
-                                           Float factor_component,
-                                           Float steps_component) {
-                            auto valid =
-                                steps_component > 0.0f;
-                            return select(
-                                0.0f,
-                                floor(
-                                    factor_component *
-                                    (steps_component + 1.0f)) /
-                                    select(
-                                        1.0f,
-                                        steps_component,
-                                        valid),
-                                valid);
-                        };
-                        factor = make_float3(
-                            stepped(factor.x, steps.x),
-                            stepped(factor.y, steps.y),
-                            stepped(factor.z, steps.z));
-                    } else if (
-                        instruction.static_u0 == 2u) {
-                        factor = clamp(
-                            factor, 0.0f, 1.0f);
-                        factor =
-                            (make_float3(3.0f) -
-                             2.0f * factor) *
-                            (factor * factor);
-                    } else if (
-                        instruction.static_u0 == 3u) {
-                        factor = clamp(
-                            factor, 0.0f, 1.0f);
-                        factor =
-                            factor * factor * factor *
-                            (factor *
-                                     (factor * 6.0f - 15.0f) +
-                             10.0f);
-                    }
-                    auto mapped =
-                        to_min + factor * (to_max - to_min);
-                    if (instruction.static_u1 != 0u &&
-                        instruction.static_u0 < 2u) {
-                        mapped = min(
-                            max(mapped, min(to_min, to_max)),
-                            max(to_min, to_max));
-                    }
+                    const auto mapped =
+                        context.svm_immediate_override != nullptr
+                            ? evaluate_surface_map_range_vector_svm(
+                                  *context.svm_immediate_override,
+                                  context.svm_immediate_domain,
+                                  input,
+                                  from_min,
+                                  from_max,
+                                  to_min,
+                                  to_max,
+                                  steps)
+                            : evaluate_surface_map_range_vector(
+                                  static_cast<
+                                      compiler::MapRangeInterpolation>(
+                                      instruction.static_u0),
+                                  instruction.static_u1 != 0u,
+                                  input,
+                                  from_min,
+                                  from_max,
+                                  to_min,
+                                  to_max,
+                                  steps);
                     value = make_float4(mapped, 0.0f);
                     break;
                 }

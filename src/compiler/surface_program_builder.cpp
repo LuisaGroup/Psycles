@@ -223,13 +223,16 @@ find_property(const contract::ShaderNode &node,
   return MathOperation::add;
 }
 
-[[nodiscard]] std::uint64_t
+[[nodiscard]] MapRangeInterpolation
 map_range_interpolation(const contract::ShaderNode &node) {
   const auto interpolation = property_string(node, "Interpolation", "LINEAR");
-  return interpolation == "STEPPED"        ? 1u
-         : interpolation == "SMOOTHSTEP"   ? 2u
-         : interpolation == "SMOOTHERSTEP" ? 3u
-                                           : 0u;
+  return interpolation == "STEPPED"
+             ? MapRangeInterpolation::stepped
+         : interpolation == "SMOOTHSTEP"
+             ? MapRangeInterpolation::smoothstep
+         : interpolation == "SMOOTHERSTEP"
+             ? MapRangeInterpolation::smootherstep
+             : MapRangeInterpolation::linear;
 }
 
 [[nodiscard]] VectorMathOperation

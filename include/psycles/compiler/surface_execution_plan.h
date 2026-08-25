@@ -448,6 +448,114 @@ inline constexpr std::uint32_t surface_value_wave_profile_mask =
 inline constexpr std::uint32_t surface_value_mix_operation_mask = 0x1fu;
 inline constexpr std::uint32_t surface_value_mix_factor_clamp_bit = 1u << 5u;
 inline constexpr std::uint32_t surface_value_mix_result_clamp_bit = 1u << 6u;
+inline constexpr std::uint32_t surface_value_clamp_mode_mask = 0x1u;
+inline constexpr std::uint32_t surface_value_map_range_interpolation_mask =
+    0x3u;
+inline constexpr std::uint32_t surface_value_map_range_clamp_bit = 1u << 2u;
+inline constexpr std::uint32_t surface_value_map_range_configuration_mask =
+    surface_value_map_range_interpolation_mask |
+    surface_value_map_range_clamp_bit;
+static_assert(static_cast<std::uint32_t>(ClampMode::minmax) == 0u);
+static_assert(static_cast<std::uint32_t>(ClampMode::range) == 1u);
+static_assert(static_cast<std::uint32_t>(MapRangeInterpolation::linear) == 0u);
+static_assert(static_cast<std::uint32_t>(MapRangeInterpolation::stepped) == 1u);
+static_assert(static_cast<std::uint32_t>(MapRangeInterpolation::smoothstep) ==
+              2u);
+static_assert(static_cast<std::uint32_t>(MapRangeInterpolation::smootherstep) ==
+              3u);
+static_assert((surface_value_map_range_interpolation_mask &
+               surface_value_map_range_clamp_bit) == 0u);
+static_assert((surface_value_map_range_configuration_mask &
+               ~surface_value_svm_immediate_value_mask) == 0u);
+
+[[nodiscard]] constexpr std::uint32_t encode_surface_value_clamp_immediate(
+    ClampMode mode) noexcept {
+  return static_cast<std::uint32_t>(mode);
+}
+
+[[nodiscard]] constexpr ClampMode decode_surface_value_clamp_immediate(
+    std::uint32_t immediate) noexcept {
+  return static_cast<ClampMode>(immediate & surface_value_clamp_mode_mask);
+}
+
+[[nodiscard]] constexpr std::uint32_t encode_surface_value_map_range_immediate(
+    MapRangeInterpolation interpolation, bool clamp_result) noexcept {
+  return static_cast<std::uint32_t>(interpolation) |
+         (clamp_result ? surface_value_map_range_clamp_bit : 0u);
+}
+
+[[nodiscard]] constexpr MapRangeInterpolation
+decode_surface_value_map_range_interpolation(
+    std::uint32_t immediate) noexcept {
+  return static_cast<MapRangeInterpolation>(
+      immediate & surface_value_map_range_interpolation_mask);
+}
+
+[[nodiscard]] constexpr bool decode_surface_value_map_range_clamp(
+    std::uint32_t immediate) noexcept {
+  return (immediate & surface_value_map_range_clamp_bit) != 0u;
+}
+
+// Exhaust the finite semantic domains at compile time. This proves both
+// decode(encode(c)) == c and injectivity, which are the obligations required
+// before the corresponding host evaluator fields may be quotiented away.
+[[nodiscard]] constexpr bool surface_value_clamp_immediate_contract_holds()
+    noexcept {
+  constexpr auto mode_count = static_cast<std::uint32_t>(ClampMode::range) + 1u;
+  for (auto mode = 0u; mode < mode_count; ++mode) {
+    const auto semantic_mode = static_cast<ClampMode>(mode);
+    const auto encoded = encode_surface_value_clamp_immediate(semantic_mode);
+    if ((encoded & ~surface_value_clamp_mode_mask) != 0u ||
+        decode_surface_value_clamp_immediate(encoded) != semantic_mode) {
+      return false;
+    }
+    for (auto other = 0u; other < mode_count; ++other) {
+      if (mode != other &&
+          encoded == encode_surface_value_clamp_immediate(
+                         static_cast<ClampMode>(other))) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] constexpr bool surface_value_map_range_immediate_contract_holds()
+    noexcept {
+  for (auto interpolation = 0u;
+       interpolation < map_range_interpolation_count;
+       ++interpolation) {
+    for (auto clamp = 0u; clamp < 2u; ++clamp) {
+      const auto semantic_interpolation =
+          static_cast<MapRangeInterpolation>(interpolation);
+      const auto encoded = encode_surface_value_map_range_immediate(
+          semantic_interpolation, clamp != 0u);
+      if ((encoded & ~surface_value_map_range_configuration_mask) != 0u ||
+          decode_surface_value_map_range_interpolation(encoded) !=
+              semantic_interpolation ||
+          decode_surface_value_map_range_clamp(encoded) != (clamp != 0u)) {
+        return false;
+      }
+      for (auto other_interpolation = 0u;
+           other_interpolation < map_range_interpolation_count;
+           ++other_interpolation) {
+        for (auto other_clamp = 0u; other_clamp < 2u; ++other_clamp) {
+          if ((interpolation != other_interpolation || clamp != other_clamp) &&
+              encoded == encode_surface_value_map_range_immediate(
+                             static_cast<MapRangeInterpolation>(
+                                 other_interpolation),
+                             other_clamp != 0u)) {
+            return false;
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
+
+static_assert(surface_value_clamp_immediate_contract_holds());
+static_assert(surface_value_map_range_immediate_contract_holds());
 inline constexpr std::uint32_t surface_value_mapping_type_mask = 0x3u;
 inline constexpr std::uint32_t surface_value_mapping_axes_shift = 2u;
 inline constexpr std::uint32_t surface_value_mapping_axes_mask =
@@ -501,6 +609,9 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
          operation == ValueOperation::math ||
          operation == ValueOperation::vector_math_value ||
          operation == ValueOperation::vector_math_vector ||
+         operation == ValueOperation::clamp_range ||
+         operation == ValueOperation::map_range_float ||
+         operation == ValueOperation::map_range_vector ||
          operation == ValueOperation::mix ||
          operation == ValueOperation::fresnel ||
          operation == ValueOperation::layer_weight_fresnel ||
@@ -527,6 +638,9 @@ surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
   return operation == ValueOperation::math ||
              operation == ValueOperation::vector_math_value ||
              operation == ValueOperation::vector_math_vector ||
+             operation == ValueOperation::clamp_range ||
+             operation == ValueOperation::map_range_float ||
+             operation == ValueOperation::map_range_vector ||
              operation == ValueOperation::mix ||
              operation == ValueOperation::fresnel ||
              operation == ValueOperation::layer_weight_fresnel ||
@@ -551,6 +665,8 @@ surface_value_svm_static_u1_mask(ValueOperation operation) noexcept {
     return ~std::uint64_t{0u};
   }
   return operation == ValueOperation::mix ||
+                 operation == ValueOperation::map_range_float ||
+                 operation == ValueOperation::map_range_vector ||
                  surface_value_operation_uses_mapping_immediate(operation) ||
                  surface_value_operation_uses_image_immediate(operation)
              ? ~std::uint64_t{0u}
@@ -599,6 +715,14 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
   if (operation == ValueOperation::vector_math_value ||
       operation == ValueOperation::vector_math_vector) {
     return static_u0 < vector_math_operation_count && static_u1 == 0u;
+  }
+  if (operation == ValueOperation::clamp_range) {
+    return static_u0 <= static_cast<std::uint64_t>(ClampMode::range) &&
+           static_u1 == 0u;
+  }
+  if (operation == ValueOperation::map_range_float ||
+      operation == ValueOperation::map_range_vector) {
+    return static_u0 < map_range_interpolation_count && static_u1 <= 1u;
   }
   if (operation == ValueOperation::fresnel ||
       operation == ValueOperation::layer_weight_fresnel ||
@@ -688,6 +812,15 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
   if (operation == ValueOperation::vector_math_value ||
       operation == ValueOperation::vector_math_vector) {
     return static_cast<std::uint32_t>(static_u0);
+  }
+  if (operation == ValueOperation::clamp_range) {
+    return encode_surface_value_clamp_immediate(
+        static_cast<ClampMode>(static_u0));
+  }
+  if (operation == ValueOperation::map_range_float ||
+      operation == ValueOperation::map_range_vector) {
+    return encode_surface_value_map_range_immediate(
+        static_cast<MapRangeInterpolation>(static_u0), static_u1 != 0u);
   }
   if (operation == ValueOperation::fresnel ||
       operation == ValueOperation::layer_weight_fresnel ||

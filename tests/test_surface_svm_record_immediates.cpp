@@ -185,6 +185,56 @@ void test_typed_record_quotients() {
         optional_normal_configs,
         "Layer Weight Fresnel linked-normal data split its SVM handler");
 
+    constexpr SocketType clamp_operands[]{
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating};
+    constexpr RecordConfiguration clamp_configs[]{
+        {static_cast<std::uint64_t>(ClampMode::minmax), 0u},
+        {static_cast<std::uint64_t>(ClampMode::range), 0u}};
+    require_single_handler(
+        ValueOperation::clamp_range,
+        SocketType::floating,
+        clamp_operands,
+        clamp_configs,
+        "Clamp modes split their typed SVM handler");
+
+    constexpr SocketType map_range_scalar_operands[]{
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating};
+    constexpr SocketType map_range_vector_operands[]{
+        SocketType::vector,
+        SocketType::vector,
+        SocketType::vector,
+        SocketType::vector,
+        SocketType::vector,
+        SocketType::vector};
+    constexpr RecordConfiguration map_range_configs[]{
+        {static_cast<std::uint64_t>(MapRangeInterpolation::linear), 0u},
+        {static_cast<std::uint64_t>(MapRangeInterpolation::linear), 1u},
+        {static_cast<std::uint64_t>(MapRangeInterpolation::stepped), 0u},
+        {static_cast<std::uint64_t>(MapRangeInterpolation::stepped), 1u},
+        {static_cast<std::uint64_t>(MapRangeInterpolation::smoothstep), 0u},
+        {static_cast<std::uint64_t>(MapRangeInterpolation::smoothstep), 1u},
+        {static_cast<std::uint64_t>(MapRangeInterpolation::smootherstep), 0u},
+        {static_cast<std::uint64_t>(MapRangeInterpolation::smootherstep), 1u}};
+    require_single_handler(
+        ValueOperation::map_range_float,
+        SocketType::floating,
+        map_range_scalar_operands,
+        map_range_configs,
+        "scalar Map Range configurations split their typed SVM handler");
+    require_single_handler(
+        ValueOperation::map_range_vector,
+        SocketType::vector,
+        map_range_vector_operands,
+        map_range_configs,
+        "vector Map Range configurations split their typed SVM handler");
+
     constexpr SocketType gradient_operands[]{SocketType::vector};
     constexpr RecordConfiguration gradient_configs[]{{0u, 0u},
                                                        {4u, 0u},
@@ -300,6 +350,43 @@ void test_invalid_records_are_rejected() {
         optional_normal_operands,
         {2u, 0u},
         "Fresnel accepted an invalid linked-normal flag");
+
+    constexpr SocketType clamp_operands[]{
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating};
+    require_rejected(
+        ValueOperation::clamp_range,
+        SocketType::floating,
+        clamp_operands,
+        {2u, 0u},
+        "Clamp accepted an invalid mode");
+    require_rejected(
+        ValueOperation::clamp_range,
+        SocketType::floating,
+        clamp_operands,
+        {0u, 1u},
+        "Clamp accepted a foreign immutable field");
+
+    constexpr SocketType map_range_operands[]{
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating};
+    require_rejected(
+        ValueOperation::map_range_float,
+        SocketType::floating,
+        map_range_operands,
+        {map_range_interpolation_count, 0u},
+        "Map Range accepted an invalid interpolation");
+    require_rejected(
+        ValueOperation::map_range_float,
+        SocketType::floating,
+        map_range_operands,
+        {0u, 2u},
+        "Map Range accepted a non-Boolean clamp field");
 
     constexpr SocketType gradient_operands[]{SocketType::vector};
     require_rejected(
@@ -485,14 +572,18 @@ void test_primary_handler_projection() {
         SurfaceValueExecutionInput{.program = &clamp_range,
                                    .storage = &clamp_range_plan}};
     const auto clamp_scene = build_surface_value_executable_scene(clamp_inputs);
-    require(clamp_scene.valid && clamp_scene.variants.size() == 2u &&
+    require(clamp_scene.valid && clamp_scene.variants.size() == 1u &&
                 clamp_scene.instruction_variants ==
-                    std::vector<std::uint32_t>{0u, 1u} &&
+                    std::vector<std::uint32_t>{0u, 0u} &&
+                clamp_scene.variants.front().instruction.static_u0 == 0u &&
+                clamp_scene.variants.front().instruction.static_u1 == 0u &&
+                clamp_scene.variants.front().svm_immediates ==
+                    std::vector<std::uint16_t>{0u, 1u} &&
                 surface_value_handler_key(
                     clamp_scene.values.instructions[0u]) ==
                     surface_value_handler_key(
                         clamp_scene.values.instructions[1u]),
-            "primary dispatch projection erased an exact evaluator fibre");
+            "typed Clamp records did not form one exact handler quotient");
 
     const auto scalar_key = make_surface_value_handler_key(
         ValueOperation::passthrough, SurfaceValueBank::scalar, 0u);

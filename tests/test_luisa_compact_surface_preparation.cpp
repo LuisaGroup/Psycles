@@ -44,9 +44,11 @@ using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 using namespace psycles::luisa_backend::detail;
 using psycles::test_support::approximately_equal;
-using psycles::test_support::has_ambiguous_clamp_handler_fiber;
+using psycles::test_support::has_typed_clamp_record_domain;
+using psycles::test_support::has_typed_map_range_record_domains;
 using psycles::test_support::has_color_ramp_record_product;
-using psycles::test_support::make_ambiguous_clamp_graph;
+using psycles::test_support::make_typed_clamp_graph;
+using psycles::test_support::make_typed_map_range_graphs;
 using psycles::test_support::make_minimal_principled_graph;
 using psycles::test_support::make_sampled_color_ramp_graph;
 using psycles::test_support::make_surface_point;
@@ -1025,7 +1027,10 @@ int main(int argc, char **argv) {
         make_minimal_principled_graph()));
     fixtures.emplace_back(compile_fixture(
         compiler,
-        make_ambiguous_clamp_graph()));
+        make_typed_clamp_graph()));
+    for (const auto &graph : make_typed_map_range_graphs()) {
+        fixtures.emplace_back(compile_fixture(compiler, graph));
+    }
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_sampled_color_ramp_graph(
@@ -1145,13 +1150,18 @@ int main(int argc, char **argv) {
                   << backend << ": " << diagnostic << '\n';
         return EXIT_FAILURE;
     }
-    // The two exact Clamp evaluator bodies deliberately inhabit one primary
-    // opcode fiber. The compact-vs-expanded comparison below therefore tests
-    // the nested exact discriminator on every backend, rather than merely
-    // checking the host partition data structure.
-    if (!has_ambiguous_clamp_handler_fiber(*scene->surface_values)) {
-        std::cerr << "compact runtime did not preserve the ambiguous Clamp "
-                     "handler fiber on "
+    // The two exact Clamp modes now inhabit one typed record domain. The
+    // compact-vs-expanded comparison below proves that the shared device
+    // handler observes each instruction immediate on every backend.
+    if (!has_typed_clamp_record_domain(*scene->surface_values)) {
+        std::cerr << "compact runtime did not preserve the typed Clamp "
+                     "record domain on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    if (!has_typed_map_range_record_domains(*scene->surface_values)) {
+        std::cerr << "compact runtime did not preserve the complete typed Map "
+                     "Range record domains on "
                   << backend << '\n';
         return EXIT_FAILURE;
     }

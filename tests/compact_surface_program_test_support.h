@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace psycles::luisa_backend::detail {
 struct SurfaceValueRuntime;
@@ -24,12 +25,20 @@ struct CompactSurfaceProgramEvidence {
 [[nodiscard]] contract::ShaderGraph make_sampled_color_ramp_graph(
     std::string table, bool shifted_parameter);
 
-// A live graph containing two Clamp records with one primary opcode key but
-// different exact semantics. This exercises the interpreter's ambiguous-fiber
-// refinement rather than merely inspecting the compiler partition.
-[[nodiscard]] contract::ShaderGraph make_ambiguous_clamp_graph();
+// A live graph containing both Cycles Clamp modes. Compact execution must use
+// one shared typed handler whose record domain contains both immediates.
+[[nodiscard]] contract::ShaderGraph make_typed_clamp_graph();
 
-[[nodiscard]] bool has_ambiguous_clamp_handler_fiber(
+[[nodiscard]] bool has_typed_clamp_record_domain(
+    const luisa_backend::detail::SurfaceValueRuntime &runtime) noexcept;
+
+// One graph per configuration keeps each authored result directly observable
+// while the scene runtime must quotient all configurations to one scalar and
+// one vector handler.
+[[nodiscard]] std::vector<contract::ShaderGraph>
+make_typed_map_range_graphs();
+
+[[nodiscard]] bool has_typed_map_range_record_domains(
     const luisa_backend::detail::SurfaceValueRuntime &runtime) noexcept;
 
 // Proves the regression really exercises one shared SVM-mode handler carrying
