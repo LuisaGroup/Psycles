@@ -170,6 +170,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_surface_execution_domain.cpp
     src/luisa/path_tracer_surface_route_policy.cpp
     src/luisa/path_tracer_surface_value_runtime.cpp
+    src/luisa/path_tracer_surface_value_program.cpp
     src/luisa/path_tracer_surface_values.cpp
     src/luisa/path_tracer_surfaces.cpp
     src/luisa/path_tracer_texture_sampling.cpp

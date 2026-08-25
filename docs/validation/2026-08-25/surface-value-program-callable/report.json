@@ -1,0 +1,91 @@
+{
+  "date": "2026-08-25",
+  "device": "AMD Radeon RX 9070 XT",
+  "architecture": "gfx1201",
+  "scene": {
+    "name": "Barbershop Interior",
+    "source_sha256": "95972b56180462cac47ec82f3a755bd9111ec18ca37a6196a319c013db994130",
+    "blender": "5.2.0 LTS",
+    "resolution": [640, 480],
+    "spp": 64,
+    "samples_per_dispatch": 64,
+    "scheduler": "wavefront-staged"
+  },
+  "semantic_model": {
+    "domain_tuple": ["root_variants", "normal_variants", "transitive_height_variants", "program_offset", "conditional_normal"],
+    "typed_local_banks": {"float": 8, "float3": 12, "uint64": 1},
+    "banks_passed_by_reference": true,
+    "global_scratch": false,
+    "manual_inline_attribute": false,
+    "manual_noinline_attribute": false,
+    "raw_closures": true,
+    "material_baking": false
+  },
+  "cold_compile": {
+    "previous": {
+      "generated_amdgpu_bytes": 553080,
+      "hip_code_object_bytes": 520416,
+      "private_segment_bytes": 6016,
+      "llvm_ir_before_opt_bytes": 17268471,
+      "llvm_ir_after_opt_bytes": 4455102,
+      "llvm_ir_final_bytes": 4455486,
+      "llvm_codegen_mean_ms": 1021.1617165,
+      "comgr_link_mean_ms": 4324.1268985,
+      "all_shader_jit_mean_s": 18.0503
+    },
+    "shared_value_program": {
+      "generated_amdgpu_bytes": 566208,
+      "hip_code_object_bytes": 502296,
+      "hip_code_object_sha256": "2b5430179719a0fced2c8bb888b6f811a8cdd27d66422edd99ab65498b33dfb8",
+      "private_segment_bytes": 5888,
+      "llvm_ir_before_opt_bytes": 15872052,
+      "llvm_ir_after_opt_bytes": 4651126,
+      "llvm_ir_final_bytes": 4651510,
+      "llvm_codegen_ms": [1329.266871, 1339.841324, 1323.052959],
+      "llvm_codegen_mean_ms": 1330.7203846666666,
+      "comgr_link_ms": [3670.676304, 3705.408894, 3654.614222],
+      "comgr_link_mean_ms": 3676.899806666667,
+      "all_shader_jit_s": [16.1259, 16.2591, 16.1641],
+      "all_shader_jit_mean_s": 16.183033333333334
+    },
+    "change_percent": {
+      "generated_amdgpu_bytes": 2.373616836624004,
+      "hip_code_object_bytes": -3.481829920678836,
+      "private_segment_bytes": -2.127659574468088,
+      "llvm_ir_before_opt_bytes": -8.086523699753156,
+      "llvm_ir_after_opt_bytes": 4.399989046266506,
+      "llvm_codegen_mean_ms": 30.314362863863465,
+      "comgr_link_mean_ms": -14.967809849841595,
+      "llvm_plus_comgr_mean_ms": -6.317122385479756,
+      "all_shader_jit_mean_s": -10.34479574670042
+    }
+  },
+  "runtime": {
+    "previous_mean_s": 3.93596,
+    "shared_value_program_s": [3.55045, 3.54859, 3.54329],
+    "shared_value_program_median_s": 3.54859,
+    "shared_value_program_mean_s": 3.5474433333333333,
+    "mean_change_percent": -9.870950585541182,
+    "coroutine_frame_bytes": 848
+  },
+  "correctness": {
+    "bit_exact_resolution": [64, 64],
+    "bit_exact_spp": 1,
+    "bit_exact_passes": 15,
+    "bit_exact_maximum_absolute_error": 0.0,
+    "full_resolution": [640, 480],
+    "full_spp": 64,
+    "combined_relative_rmse": 0.000355144166,
+    "combined_luminance_mean_ratio": 0.999998477,
+    "normal_relative_rmse": 8.4557325e-7,
+    "visual_inspection": "pass: no structural material UV normal geometry light or volume difference; amplified panels contain sparse accumulation-order speckles"
+  },
+  "source_layout": {
+    "old_path_tracer_surface_values_lines": 2149,
+    "new_path_tracer_surface_values_lines": 1315,
+    "path_tracer_surface_value_program_cpp_lines": 766,
+    "path_tracer_surface_value_program_header_lines": 124
+  },
+  "focused_backends": ["fallback", "hip", "vk-native-xir-spirv"],
+  "vulkan_dxc_disabled": true
+}
