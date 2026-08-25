@@ -1,4 +1,6 @@
 #include "graph_surface_internal.h"
+#include "surface_image_box.h"
+#include "surface_image_sampling.h"
 
 #include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/luisa/spherical_geometry.h>
@@ -67,6 +69,79 @@ namespace operand = compiler::value_operand;
     return 0.5f * (direction.xz() + 1.0f);
 }
 
+template<typename Evaluate>
+[[nodiscard]] Float4 dispatch_image_sampling_mode(
+    UInt sampling_key,
+    std::span<const std::uint16_t> immediate_domain,
+    Evaluate &&evaluate) noexcept {
+    Float4 sampled = make_float4(0.0f);
+    luisa::compute::detail::SwitchStmtBuilder{sampling_key} % [&] {
+        std::array<
+            bool,
+            compiler::surface_value_image_sampling_key_count>
+            emitted{};
+        for (const auto encoded : immediate_domain) {
+            const auto raw_interpolation =
+                (static_cast<std::uint32_t>(encoded) &
+                 compiler::surface_value_image_interpolation_mask) >>
+                compiler::surface_value_image_interpolation_shift;
+            const auto interpolation =
+                compiler::canonical_surface_value_image_interpolation(
+                    raw_interpolation);
+            const auto extension =
+                static_cast<std::uint32_t>(encoded) &
+                compiler::surface_value_image_extension_mask;
+            const auto key =
+                compiler::make_surface_value_image_sampling_key(
+                    interpolation,
+                    extension);
+            if (emitted[key]) {
+                continue;
+            }
+            emitted[key] = true;
+            luisa::compute::detail::SwitchCaseStmtBuilder{key} %
+                [&, interpolation, extension] {
+                    sampled = evaluate(interpolation, extension);
+                };
+        }
+        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+            luisa::compute::dsl::unreachable(
+                "invalid Image Texture SVM sampling immediate");
+        };
+    };
+    return sampled;
+}
+
+class ShaderServicesImageBoxTextureSampler final
+    : public SurfaceImageBoxTextureSampler {
+
+private:
+    const ShaderServices &_services;
+    std::uint32_t _interpolation;
+    std::uint32_t _extension;
+
+public:
+    ShaderServicesImageBoxTextureSampler(
+        const ShaderServices &services,
+        std::uint32_t interpolation,
+        std::uint32_t extension) noexcept
+        : _services{services},
+          _interpolation{interpolation},
+          _extension{extension} {}
+
+    [[nodiscard]] Float4 sample(
+        Expr<std::uint32_t> texture_handle,
+        Float2 uv) const noexcept override {
+        return _services.texture_2d(
+            texture_handle,
+            uv,
+            make_float2(0.0f),
+            make_float2(0.0f),
+            _interpolation,
+            _extension);
+    }
+};
+
 class ImageValueNode final : public ValueNode {
 
 public:
@@ -123,70 +198,40 @@ public:
           0u;
       const auto encoded_as_srgb =
           (immediate & compiler::surface_value_image_srgb_bit) != 0u;
-      const auto decode_sample = [&](Float4 sampled) noexcept {
-        $if(unassociate_alpha) {
-          auto alpha = sampled.w;
-          auto should_unassociate = (alpha != 0.0f) & (alpha != 1.0f);
-          auto safe_alpha = select(1.0f, alpha, should_unassociate);
-          sampled =
-              make_float4(select(sampled.xyz(), sampled.xyz() / safe_alpha,
-                                 should_unassociate),
-                          alpha);
-        };
-        $if(encoded_as_srgb) {
-          // Match Cycles' svm_image_texture ordering:
-          // filter associated encoded texels, optionally
-          // unassociate, then decode sRGB.
-          sampled = make_float4(srgb_to_linear(sampled.xyz()), sampled.w);
-        };
-        return sampled;
-      };
+      const auto texture_handle =
+          cast<std::uint32_t>(unsigned_integer(
+              instruction.operand(image_operand), result));
+      const auto interpolation_family = select(
+          compiler::surface_value_image_interpolation_family_count - 1u,
+          interpolation,
+          interpolation <
+              compiler::surface_value_image_interpolation_family_count - 1u);
+      const auto sampling_key =
+          interpolation_family *
+              compiler::surface_value_image_extension_mode_count +
+          extension;
       const auto sample_uv = [&](Float2 uv) noexcept {
         // Blender UVs use a bottom-left origin while decoded
         // host images are uploaded in top-to-bottom row
         // order.
         uv.y = 1.0f - uv.y;
-        // The bindless texture ABI currently selects sampler
-        // modes while constructing the Luisa AST. Quotient the
-        // scene by the exact reachable mode pairs, then select
-        // only among those shared bodies at runtime.
-        const auto interpolation_family =
-            select(2u, interpolation, interpolation < 2u);
-        const auto sampling_key = interpolation_family * 4u + extension;
-        Float4 sampled = make_float4(0.0f);
-        luisa::compute::detail::SwitchStmtBuilder{sampling_key} % [&] {
-          std::array<bool, 12u> emitted{};
-          for (const auto encoded : immediate_domain) {
-            const auto raw_interpolation =
-                (static_cast<std::uint32_t>(encoded) &
-                 compiler::surface_value_image_interpolation_mask) >>
-                compiler::surface_value_image_interpolation_shift;
-            const auto static_interpolation =
-                raw_interpolation < 2u ? raw_interpolation : 2u;
-            const auto static_extension =
-                static_cast<std::uint32_t>(encoded) &
-                compiler::surface_value_image_extension_mask;
-            const auto static_key =
-                static_interpolation * 4u + static_extension;
-            if (emitted[static_key]) {
-              continue;
-            }
-            emitted[static_key] = true;
-            luisa::compute::detail::SwitchCaseStmtBuilder{static_key} %
-                [&, static_interpolation, static_extension] {
-                  sampled = services.texture_2d(
-                      cast<std::uint32_t>(unsigned_integer(
-                          instruction.operand(image_operand), result)),
-                      uv, make_float2(0.0f), make_float2(0.0f),
-                      static_interpolation, static_extension);
-                };
-          }
-          luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
-            luisa::compute::dsl::unreachable("invalid Image Texture SVM "
-                                             "sampling immediate");
-          };
-        };
-        return decode_sample(sampled);
+        auto sampled = dispatch_image_sampling_mode(
+            sampling_key,
+            immediate_domain,
+            [&](std::uint32_t static_interpolation,
+                std::uint32_t static_extension) noexcept {
+                return services.texture_2d(
+                    texture_handle,
+                    uv,
+                    make_float2(0.0f),
+                    make_float2(0.0f),
+                    static_interpolation,
+                    static_extension);
+            });
+        return decode_surface_image_sample(
+            sampled,
+            unassociate_alpha,
+            encoded_as_srgb);
       };
 
       auto coordinate = vector(instruction.operand(vector_operand), result);
@@ -214,67 +259,36 @@ public:
                         dot(point.shading_normal, cross(column_x, column_y))) /
                 safe_determinant,
             point.object_shading_normal);
-        auto normal = abs(signed_normal);
-        auto normal_sum = normal.x + normal.y + normal.z;
-        normal /= select(1.0f, normal_sum, normal_sum != 0.0f);
-        Float3 weight = make_float3(0.0f);
         const auto blend = scalar(
             instruction.operand(operand::image_texture::projection_blend),
             result);
-        const auto limit = 0.5f * (1.0f + blend);
-        $if((normal.x > limit * (normal.x + normal.y)) &
-            (normal.x > limit * (normal.x + normal.z))) {
-          weight.x = 1.0f;
-        }
-        $elif((normal.y > limit * (normal.x + normal.y)) &
-              (normal.y > limit * (normal.y + normal.z))) {
-          weight.y = 1.0f;
-        }
-        $elif((normal.z > limit * (normal.x + normal.z)) &
-              (normal.z > limit * (normal.y + normal.z))) {
-          weight.z = 1.0f;
-        }
-        $elif(blend > 0.0f) {
-          $if(normal.z < (1.0f - limit) * (normal.y + normal.x)) {
-            weight.x = normal.x / (normal.x + normal.y);
-            weight.x = luisa::compute::clamp(
-                (weight.x - 0.5f * (1.0f - blend)) / blend, 0.0f, 1.0f);
-            weight.y = 1.0f - weight.x;
-          }
-          $elif(normal.x < (1.0f - limit) * (normal.y + normal.z)) {
-            weight.y = normal.y / (normal.y + normal.z);
-            weight.y = luisa::compute::clamp(
-                (weight.y - 0.5f * (1.0f - blend)) / blend, 0.0f, 1.0f);
-            weight.z = 1.0f - weight.y;
-          }
-          $elif(normal.y < (1.0f - limit) * (normal.x + normal.z)) {
-            weight.x = normal.x / (normal.x + normal.z);
-            weight.x = luisa::compute::clamp(
-                (weight.x - 0.5f * (1.0f - blend)) / blend, 0.0f, 1.0f);
-            weight.z = 1.0f - weight.x;
-          }
-          $else {
-            weight.x = ((2.0f - limit) * normal.x + (limit - 1.0f)) /
-                       (2.0f * limit - 1.0f);
-            weight.y = ((2.0f - limit) * normal.y + (limit - 1.0f)) /
-                       (2.0f * limit - 1.0f);
-            weight.z = ((2.0f - limit) * normal.z + (limit - 1.0f)) /
-                       (2.0f * limit - 1.0f);
-          };
-        }
-        $else { weight.x = 1.0f; };
-
-        auto uv_x = make_float2(
-            select(coordinate.y, 1.0f - coordinate.y, signed_normal.x < 0.0f),
-            coordinate.z);
-        auto uv_y = make_float2(
-            select(coordinate.x, 1.0f - coordinate.x, signed_normal.y > 0.0f),
-            coordinate.z);
-        auto uv_z = make_float2(
-            select(coordinate.y, 1.0f - coordinate.y, signed_normal.z > 0.0f),
-            coordinate.x);
-        sampled = weight.x * sample_uv(uv_x) + weight.y * sample_uv(uv_y) +
-                  weight.z * sample_uv(uv_z);
+        const SurfaceImageBoxInput box_input{
+            .coordinate = coordinate,
+            .signed_normal = signed_normal,
+            .blend = blend,
+            .texture_handle = texture_handle,
+            .unassociate_alpha = unassociate_alpha,
+            .encoded_as_srgb = encoded_as_srgb};
+        sampled = dispatch_image_sampling_mode(
+            sampling_key,
+            immediate_domain,
+            [&](std::uint32_t static_interpolation,
+                std::uint32_t static_extension) noexcept {
+                if (const auto provider =
+                        services.surface_image_box_provider()) {
+                    return provider->evaluate(
+                        box_input,
+                        static_interpolation,
+                        static_extension);
+                }
+                const ShaderServicesImageBoxTextureSampler sampler{
+                    services,
+                    static_interpolation,
+                    static_extension};
+                return evaluate_surface_image_box(
+                    box_input,
+                    sampler);
+            });
       } else {
         Float2 uv = coordinate.xy();
         $if(projection == 2u) {

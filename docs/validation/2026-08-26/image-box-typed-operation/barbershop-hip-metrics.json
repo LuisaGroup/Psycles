@@ -1,0 +1,59 @@
+{
+  "schema": "psycles.image-box-typed-operation.barbershop-hip.v1",
+  "scene": {
+    "export": "/home/mike/Projects/psycles-benchmarks/barbershop-480p-64spp/export",
+    "width": 640,
+    "height": 480,
+    "samples": 64,
+    "scheduler": "wavefront-staged",
+    "root_programs": 567,
+    "total_programs": 671,
+    "instructions": 9233,
+    "semantic_variants": 57
+  },
+  "device": {
+    "backend": "hip",
+    "name": "AMD Radeon RX 9070 XT",
+    "architecture": "gfx1201",
+    "driver": "7.2.53211",
+    "runtime": "7.2.53211"
+  },
+  "baseline": {
+    "psycles_commit": "9c72f7a6cec8",
+    "main_final_llvm_bytes": 4413048,
+    "main_final_llvm_lines": 71188,
+    "main_code_object_bytes": 496392,
+    "main_llvm_codegen_ms": 1368.003431,
+    "main_comgr_link_ms": 3472.03705,
+    "render_only_seconds": [3.29809],
+    "llvm_texture_load_occurrences": 153,
+    "surface_population_callable_lines": 13545,
+    "surface_population_texture_load_occurrences": 16,
+    "bump_height_callable_lines": 10877,
+    "bump_height_texture_load_occurrences": 100
+  },
+  "typed_image_box": {
+    "main_final_llvm_bytes": 4443821,
+    "main_final_llvm_lines": 71806,
+    "main_code_object_bytes": 472912,
+    "main_llvm_codegen_ms": 1373.715712,
+    "main_comgr_link_ms": 3404.474738,
+    "render_only_seconds": [3.27005, 3.2671, 3.26612],
+    "llvm_texture_load_occurrences": 141,
+    "surface_population_callable_lines": 14402,
+    "surface_population_texture_load_occurrences": 24,
+    "bump_height_callable_lines": 6476,
+    "bump_height_texture_load_occurrences": 16
+  },
+  "relative_change_percent": {
+    "main_final_llvm_bytes": 0.697318,
+    "main_final_llvm_lines": 0.868124,
+    "main_code_object_bytes": -4.730133,
+    "main_llvm_codegen_ms": 0.417563,
+    "main_comgr_link_ms": -1.945898,
+    "median_render_only_seconds": -0.939635,
+    "llvm_texture_load_occurrences": -7.843137,
+    "surface_population_callable_lines": 6.327058,
+    "bump_height_callable_lines": -40.461524
+  }
+}

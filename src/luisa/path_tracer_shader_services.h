@@ -137,6 +137,11 @@ public:
         return &_vector_mapping_provider;
     }
 
+    [[nodiscard]] const SurfaceImageBoxProvider *
+    surface_image_box_provider() const noexcept override {
+        return _texture_sampling_provider;
+    }
+
     [[nodiscard]] const SurfaceNormalMapProvider *
     surface_normal_map_provider() const noexcept override {
         return &_normal_map_provider;
