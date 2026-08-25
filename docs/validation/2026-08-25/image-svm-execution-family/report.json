@@ -1,0 +1,208 @@
+{
+  "actual_label": "SVM family quotient",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896
+      ],
+      "cycles": "/var/tmp/psycles-svm-image-exact.qifEi2/baseline.exr",
+      "cycles_channel_mean": [
+        0.06096414104104042,
+        0.04571698233485222,
+        0.03733495995402336
+      ],
+      "cycles_luminance_mean": 0.04835333675146103,
+      "cycles_rms": 0.23042982816696167,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 1.2438744306564331e-05,
+      "mean_absolute_error": 1.7092259829709633e-09,
+      "orientation_rmse": {
+        "flip_x": 0.31177523732185364,
+        "flip_xy": 0.31321167945861816,
+        "flip_y": 0.3189554512500763,
+        "identity": 1.1913142827779666e-07
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-svm-image-exact.qifEi2/current.exr",
+      "psycles_channel_mean": [
+        0.06096414476633072,
+        0.04571698606014252,
+        0.03733496367931366
+      ],
+      "psycles_luminance_mean": 0.04835333675146103,
+      "psycles_rms": 0.23042983195275607,
+      "relative_rmse": 5.169965591063934e-07,
+      "rmse": 1.1913142827779666e-07,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 0.6033601492611148,
+        "mapping": "shared_linear_srgb",
+        "path": "/tmp/psycles-svm-bssrdf.jPeuwa/docs/validation/2026-08-25/image-svm-execution-family/triptychs/combined.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-svm-image-exact.qifEi2/baseline.exr",
+      "cycles_channel_mean": [
+        0.09769818186759949,
+        0.10699373483657837,
+        0.12070130556821823
+      ],
+      "cycles_luminance_mean": 0.1060071662068367,
+      "cycles_rms": 1.9843194484710693,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 2.86102294921875e-06,
+      "mean_absolute_error": 6.402842700481415e-10,
+      "orientation_rmse": {
+        "flip_x": 2.801095724105835,
+        "flip_xy": 2.805612325668335,
+        "flip_y": 2.806239604949951,
+        "identity": 3.2015130102536205e-08
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-svm-image-exact.qifEi2/current.exr",
+      "psycles_channel_mean": [
+        0.09769818186759949,
+        0.10699373483657837,
+        0.12070130556821823
+      ],
+      "psycles_luminance_mean": 0.1060071662068367,
+      "psycles_rms": 1.9843194307972019,
+      "relative_rmse": 1.613406053506358e-08,
+      "rmse": 3.2015130102536205e-08,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 0.38507346121532643,
+        "mapping": "shared_linear_srgb",
+        "path": "/tmp/psycles-svm-bssrdf.jPeuwa/docs/validation/2026-08-25/image-svm-execution-family/triptychs/glossdir.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-svm-image-exact.qifEi2/baseline.exr",
+      "cycles_channel_mean": [
+        0.08524499088525772,
+        0.2988850474357605,
+        -0.10706015676259995
+      ],
+      "cycles_luminance_mean": 0.2241554856300354,
+      "cycles_rms": 0.5757269859313965,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 2.5331974029541016e-07,
+      "mean_absolute_error": 7.948936509016846e-10,
+      "orientation_rmse": {
+        "flip_x": 0.6393623948097229,
+        "flip_xy": 0.9222766757011414,
+        "flip_y": 0.8516969084739685,
+        "identity": 7.961554970847828e-09
+      },
+      "p95_pixel_rmse": 7.604217255874346e-10,
+      "p99_pixel_rmse": 3.5803015663304905e-08,
+      "psycles": "/var/tmp/psycles-svm-image-exact.qifEi2/current.exr",
+      "psycles_channel_mean": [
+        0.08524499088525772,
+        0.2988850474357605,
+        -0.10706015676259995
+      ],
+      "psycles_luminance_mean": 0.2241554856300354,
+      "psycles_rms": 0.5757270000682261,
+      "relative_rmse": 1.3828698611318048e-08,
+      "rmse": 7.961554970847828e-09,
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/tmp/psycles-svm-bssrdf.jPeuwa/docs/validation/2026-08-25/image-svm-execution-family/triptychs/normal.png",
+        "pixel_scale": 8
+      },
+      "valid_pixels": 4096
+    }
+  },
+  "reference_label": "Static variant baseline",
+  "schema": "psycles.cycles-differential.v1"
+}

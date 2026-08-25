@@ -1,9 +1,12 @@
 #include "graph_surface_internal.h"
 
 #include <luisa/dsl/sugar.h>
+#include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/contract/scene.h>
 #include <psycles/luisa/cycles_color_nodes.h>
 #include <psycles/luisa/cycles_noise.h>
+
+#include <array>
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -369,52 +372,75 @@ public:
       break;
     }
     case compiler::ValueOperation::mapping: {
-      auto input = vector(
-          instruction.operand(operand::mapping::vector), result);
-      if (instruction.static_u1 != 0u) {
-        const auto component = [&input](std::uint64_t axis) noexcept -> Float {
-          switch (axis) {
-          case 1u:
-            return input.x;
-          case 2u:
-            return input.y;
-          case 3u:
-            return input.z;
-          default:
-            return 0.0f;
-          }
+      const auto static_immediate =
+          static_cast<std::uint16_t>(compiler::make_surface_value_svm_immediate(
+              instruction.operation, instruction.static_u0,
+              instruction.static_u1));
+      const std::array static_domain{static_immediate};
+      auto immediate_domain = std::span<const std::uint16_t>{static_domain};
+      UInt immediate = static_immediate;
+      if (context.svm_immediate_override != nullptr) {
+        immediate = *context.svm_immediate_override;
+        immediate_domain = context.svm_immediate_domain;
+      }
+      auto input =
+          vector(instruction.operand(operand::mapping::vector), result);
+      const auto axes =
+          (immediate & compiler::surface_value_mapping_axes_mask) >>
+          compiler::surface_value_mapping_axes_shift;
+      $if(axes != 0u) {
+        const auto component = [&input](UInt axis) noexcept -> Float {
+          Float selected = 0.0f;
+          selected = select(selected, input.x, axis == 1u);
+          selected = select(selected, input.y, axis == 2u);
+          selected = select(selected, input.z, axis == 3u);
+          return selected;
         };
-        input = make_float3(component(instruction.static_u1 & 0x3u),
-                            component((instruction.static_u1 >> 2u) & 0x3u),
-                            component((instruction.static_u1 >> 4u) & 0x3u));
-      }
-      auto location = vector(
-          instruction.operand(operand::mapping::location), result);
-      auto rotation = vector(
-          instruction.operand(operand::mapping::rotation), result);
-      auto scale = vector(
-          instruction.operand(operand::mapping::scale), result);
-      Float3 mapped;
-      switch (static_cast<compiler::MappingVectorType>(
-          instruction.static_u0)) {
-      case compiler::MappingVectorType::point:
-        mapped = map_vector_point(
-            services, input, location, rotation, scale);
-        break;
-      case compiler::MappingVectorType::texture:
-        mapped = map_vector_texture(
-            services, input, location, rotation, scale);
-        break;
-      case compiler::MappingVectorType::normal:
-        mapped = map_vector_normal(services, input, rotation, scale);
-        break;
-      case compiler::MappingVectorType::vector:
-      default:
-        // Preserve the previous conservative behavior for malformed or newer
-        // encodings: ignore translation and apply the linear transform.
-        mapped = map_vector_direction(services, input, rotation, scale);
-        break;
-      }
+        input =
+            make_float3(component(axes & 0x3u), component((axes >> 2u) & 0x3u),
+                        component((axes >> 4u) & 0x3u));
+      };
+      auto location =
+          vector(instruction.operand(operand::mapping::location), result);
+      auto rotation =
+          vector(instruction.operand(operand::mapping::rotation), result);
+      auto scale = vector(instruction.operand(operand::mapping::scale), result);
+      Float3 mapped = make_float3(0.0f);
+      const auto mode = immediate & compiler::surface_value_mapping_type_mask;
+      luisa::compute::detail::SwitchStmtBuilder{mode} % [&] {
+        std::array<bool, 4u> emitted{};
+        for (const auto encoded : immediate_domain) {
+          const auto static_mode = static_cast<std::uint32_t>(encoded) &
+                                   compiler::surface_value_mapping_type_mask;
+          if (emitted[static_mode]) {
+            continue;
+          }
+          emitted[static_mode] = true;
+          luisa::compute::detail::SwitchCaseStmtBuilder{static_mode} %
+              [&, static_mode] {
+                switch (static_cast<compiler::MappingVectorType>(static_mode)) {
+                case compiler::MappingVectorType::point:
+                  mapped = map_vector_point(services, input, location, rotation,
+                                            scale);
+                  break;
+                case compiler::MappingVectorType::texture:
+                  mapped = map_vector_texture(services, input, location,
+                                              rotation, scale);
+                  break;
+                case compiler::MappingVectorType::normal:
+                  mapped = map_vector_normal(services, input, rotation, scale);
+                  break;
+                case compiler::MappingVectorType::vector:
+                  mapped =
+                      map_vector_direction(services, input, rotation, scale);
+                  break;
+                }
+              };
+        }
+        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+          luisa::compute::dsl::unreachable("invalid Mapping SVM immediate");
+        };
+      };
       value = make_float4(mapped, 0.0f);
       break;
     }
