@@ -1,0 +1,44 @@
+{
+  "schema": "psycles.cycles-math-boundary-parity.v1",
+  "date": "2026-08-25",
+  "cycles_source": {"repository": "/home/mike/Projects/blender-cycles", "branch": "blender-v5.2-release", "commit": "fbe6228777e7"},
+  "psycles": {"exact_baseline_commit": "499efa1a2f7b518161cecedc047ee937a2c5993a", "device": "AMD Radeon RX 9070 XT gfx1201", "scene": "official Blender 5.2 Barbershop export"},
+  "semantic_contract": {
+    "vector_math_operation_count_before": 29,
+    "vector_math_operation_count_after": 30,
+    "added_operation": "ROUND",
+    "safe_power_cases": {"zero_negative": 0.0, "zero_zero": 1.0, "negative_odd_integer": -8.0, "negative_even_integer": 4.0, "negative_fractional": 0.0},
+    "round_case": {"input": [-1.5, 1.5, 2.49], "expected": [-1.0, 2.0, 2.0]}
+  },
+  "tests": {"focused_matrix_passed": 8, "focused_matrix_total": 8, "backends": ["fallback", "hip", "vk-native-xir-spirv"], "vulkan_dxc_disabled": true, "host_round_graph_lowering": true, "device_power_boundary_matrix": true},
+  "hip_structure": {
+    "resolution": [640, 480],
+    "spp": 64,
+    "scheduler": "wavefront-staged",
+    "before": {"amdgpu_blob_bytes": 530472, "code_object_bytes": 496320, "private_segment_bytes": 5440, "sgpr_spills": 42, "vgpr_spills": 422, "render_median_seconds": 3.48134},
+    "after": {"amdgpu_blob_bytes": 530632, "code_object_bytes": 496576, "private_segment_bytes": 5440, "sgpr_spills": 42, "vgpr_spills": 422, "render_seconds": 3.48319}
+  },
+  "correctness": {
+    "resolution": [640, 480],
+    "spp": 64,
+    "compared_channels": 45,
+    "passes": {
+      "Combined": {"rmse": 5.9205583966104314e-5, "relative_rmse": 3.651581266467051e-4, "p99_pixel_rmse": 8.603189272093914e-9, "max_abs": 0.03554418683052063, "luminance_ratio": 1.0000017408065287},
+      "DiffCol": {"rmse": 1.1786465620389208e-5, "relative_rmse": 4.5105610642150624e-5, "max_abs": 0.005006283521652222, "luminance_ratio": 1.0000001410163557},
+      "DiffDir": {"rmse": 3.9060825656633824e-5, "relative_rmse": 8.20404671759514e-5, "max_abs": 0.02175368368625641, "luminance_ratio": 1.0000004368392033},
+      "DiffInd": {"rmse": 8.699270438228268e-6, "relative_rmse": 7.672234443332901e-5, "max_abs": 0.006447754800319672, "luminance_ratio": 1.0000000621166973},
+      "Emit": {"rmse": 1.5956407306561005e-9, "relative_rmse": 2.5971299893401394e-8, "max_abs": 2.384185791015625e-7, "luminance_ratio": 1.0},
+      "Env": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 1.0},
+      "GlossCol": {"rmse": 1.531230786611104e-8, "relative_rmse": 8.448463385016681e-8, "max_abs": 1.023709774017334e-5, "luminance_ratio": 1.0},
+      "GlossDir": {"rmse": 6.943947519175708e-4, "relative_rmse": 4.358499024927037e-4, "max_abs": 0.41847971081733704, "luminance_ratio": 1.0000085137082357},
+      "GlossInd": {"rmse": 1.7879710867418908e-5, "relative_rmse": 5.723607892152393e-5, "max_abs": 0.013981830328702927, "luminance_ratio": 1.0000004556892346},
+      "Normal": {"rmse": 4.674459432862932e-7, "relative_rmse": 8.475241205852246e-7, "max_abs": 4.186986479908228e-4, "luminance_ratio": 1.0},
+      "TransCol": {"rmse": 1.6801132707300326e-9, "relative_rmse": 3.390051467371482e-8, "max_abs": 1.1920928955078125e-7, "luminance_ratio": 1.0},
+      "TransDir": {"rmse": 4.344021253821495e-10, "relative_rmse": 1.7836171614393304e-6, "max_abs": 3.672329853543488e-7, "luminance_ratio": 1.0},
+      "TransInd": {"rmse": 3.094610401266351e-10, "relative_rmse": 2.0831693600134714e-8, "max_abs": 1.1920928955078125e-7, "luminance_ratio": 1.0},
+      "VolumeDirect": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 0.0},
+      "VolumeIndirect": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 0.0}
+    },
+    "visual_inspection": {"triptychs": ["combined.png", "normal.png", "glossind.png"], "result": "No coherent material, UV, geometry, normal, lighting, or orientation difference; only sparse floating-point and concurrent film-reduction residuals."}
+  }
+}

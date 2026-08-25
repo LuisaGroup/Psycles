@@ -40,6 +40,33 @@ Float3 safe_normalize(
     return normalize(selected);
 }
 
+Float cycles_safe_power(
+    Float base,
+    Float exponent) noexcept {
+    const auto base_is_zero = base == 0.0f;
+    const auto exponent_is_zero = exponent == 0.0f;
+    const auto integer_exponent = exponent == trunc(exponent);
+
+    // Cycles returns before powf for a zero base. Selecting a benign operand
+    // models that total control-flow semantics without recording an invalid
+    // 0^negative operation into a branchless backend AST.
+    const auto magnitude = pow(select(abs(base), 1.0f, base_is_zero), exponent);
+    const auto odd_exponent = fmod(abs(exponent), 2.0f) != 0.0f;
+    const auto signed_magnitude = select(
+        magnitude,
+        -magnitude,
+        (base < 0.0f) & odd_exponent);
+    auto result = select(
+        0.0f,
+        signed_magnitude,
+        (base >= 0.0f) | integer_exponent);
+    result = select(
+        result,
+        0.0f,
+        base_is_zero & (exponent != 0.0f));
+    return select(result, 1.0f, exponent_is_zero);
+}
+
 Float evaluate_surface_math_operation(
     compiler::MathOperation operation,
     Float a,
@@ -56,13 +83,8 @@ Float evaluate_surface_math_operation(
             return select(0.0f, a / b, b != 0.0f);
         case compiler::MathOperation::multiply_add:
             return a * b + c;
-        case compiler::MathOperation::power: {
-            auto integer_exponent = b == trunc(b);
-            auto powered = pow(abs(a), b);
-            auto odd_exponent = fmod(abs(b), 2.0f) != 0.0f;
-            powered = select(powered, -powered, (a < 0.0f) & odd_exponent);
-            return select(0.0f, powered, (a >= 0.0f) | integer_exponent);
-        }
+        case compiler::MathOperation::power:
+            return cycles_safe_power(a, b);
         case compiler::MathOperation::logarithm: {
             auto denominator = log(b);
             return select(0.0f,

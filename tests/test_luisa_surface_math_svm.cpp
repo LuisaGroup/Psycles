@@ -32,6 +32,8 @@ using psycles::test_support::require_bounded_xir;
 inline constexpr auto immediate_domain = make_immediate_domain();
 inline constexpr std::array<std::uint16_t, 1u> add_only_domain{
     static_cast<std::uint16_t>(MathOperation::add)};
+inline constexpr std::array<std::uint16_t, 1u> power_only_domain{
+    static_cast<std::uint16_t>(MathOperation::power)};
 
 [[nodiscard]] Kernel1D<Buffer<float>> make_callable_reuse_shape(
     bool include_distinct_domain) {
@@ -94,6 +96,51 @@ inline constexpr std::array<std::uint16_t, 1u> add_only_domain{
     };
 }
 
+[[nodiscard]] Kernel1D<Buffer<float>> make_power_boundary_kernel() {
+    return [](BufferFloat output) noexcept {
+        output.write(
+            0u,
+            evaluate_surface_math_svm(
+                static_cast<std::uint32_t>(MathOperation::power),
+                power_only_domain,
+                0.0f,
+                -2.0f,
+                0.0f));
+        output.write(
+            1u,
+            evaluate_surface_math_svm(
+                static_cast<std::uint32_t>(MathOperation::power),
+                power_only_domain,
+                0.0f,
+                0.0f,
+                0.0f));
+        output.write(
+            2u,
+            evaluate_surface_math_svm(
+                static_cast<std::uint32_t>(MathOperation::power),
+                power_only_domain,
+                -2.0f,
+                3.0f,
+                0.0f));
+        output.write(
+            3u,
+            evaluate_surface_math_svm(
+                static_cast<std::uint32_t>(MathOperation::power),
+                power_only_domain,
+                -2.0f,
+                2.0f,
+                0.0f));
+        output.write(
+            4u,
+            evaluate_surface_math_svm(
+                static_cast<std::uint32_t>(MathOperation::power),
+                power_only_domain,
+                -2.0f,
+                0.5f,
+                0.0f));
+    };
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -126,14 +173,22 @@ int main(int argc, char **argv) {
     auto runtime_shader = device.compile(runtime_kernel, uncached);
     auto reference_shader =
         device.compile(make_static_reference_kernel(), uncached);
+    auto power_boundary_shader =
+        device.compile(make_power_boundary_kernel(), uncached);
     auto actual_buffer = device.create_buffer<float>(math_operation_count);
     auto expected_buffer = device.create_buffer<float>(math_operation_count);
     std::vector<float> actual(math_operation_count);
     std::vector<float> expected(math_operation_count);
+    std::array<float, 5u> power_boundary{};
+    auto power_boundary_buffer =
+        device.create_buffer<float>(power_boundary.size());
     stream << runtime_shader(actual_buffer).dispatch(math_operation_count)
            << reference_shader(expected_buffer).dispatch(math_operation_count)
+           << power_boundary_shader(power_boundary_buffer).dispatch(1u)
            << actual_buffer.copy_to(luisa::span{actual})
-           << expected_buffer.copy_to(luisa::span{expected}) << synchronize();
+           << expected_buffer.copy_to(luisa::span{expected})
+           << power_boundary_buffer.copy_to(luisa::span{power_boundary})
+           << synchronize();
 
     for (auto index = std::uint32_t{0u}; index < math_operation_count;
          ++index) {
@@ -144,6 +199,13 @@ int main(int argc, char **argv) {
                       << '\n';
             return EXIT_FAILURE;
         }
+    }
+    constexpr std::array expected_power_boundary{
+        0.0f, 1.0f, -8.0f, 4.0f, 0.0f};
+    if (power_boundary != expected_power_boundary) {
+        std::cerr << "Cycles safe_pow boundary mismatch on " << backend
+                  << '\n';
+        return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }

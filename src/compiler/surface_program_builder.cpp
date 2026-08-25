@@ -310,6 +310,9 @@ vector_math_operation(const contract::ShaderNode &node) {
   if (operation == "SNAP") {
     return VectorMathOperation::snap;
   }
+  if (operation == "ROUND") {
+    return VectorMathOperation::round;
+  }
   if (operation == "SINE") {
     return VectorMathOperation::sine;
   }

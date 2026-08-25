@@ -1,3 +1,5 @@
+#include <psycles/compiler/core_nodes.h>
+#include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/compiler/surface_program.h>
 
@@ -131,7 +133,8 @@ void test_vector_math_immediate_quotient() {
         {VectorMathOperation::add,
          VectorMathOperation::refract,
          VectorMathOperation::power,
-         VectorMathOperation::tangent});
+         VectorMathOperation::tangent,
+         VectorMathOperation::round});
     require_exact_quotient(
         ValueOperation::vector_math_value,
         {VectorMathOperation::dot_product,
@@ -186,11 +189,58 @@ void test_vector_math_immediate_quotient() {
             "Vector Math lowering accepted fields outside its immediate ABI");
 }
 
+void test_vector_math_round_graph_lowering() {
+    ShaderGraph graph;
+    const auto vector_math = graph.add_node(
+        node_type::vector_math, "Cycles Vector Math Round");
+    const auto diffuse = graph.add_node(
+        node_type::diffuse_bsdf, "Vector Math Round consumer");
+    require(
+        graph.set_property(
+            vector_math,
+            "Operation",
+            SocketValue::string("ROUND")) &&
+            graph.set_input(
+                vector_math,
+                "A",
+                SocketValue::vector({-1.5f, 1.5f, 2.49f})),
+        "failed to construct Vector Math Round graph");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = diffuse, .socket = "Closure"});
+    graph.set_root(
+        ShaderDomain::surface_normal,
+        OutputRef{.node = vector_math, .socket = "Vector"});
+
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto shader = compiler.compile(graph);
+    require(shader.ok(), "Vector Math Round graph failed to compile");
+    const auto lowered = compile_surface_program(*shader.program);
+    require(lowered.ok(), "Vector Math Round graph failed to lower");
+
+    const auto expected = static_cast<std::uint64_t>(
+        VectorMathOperation::round);
+    auto found = false;
+    for (const auto &instruction :
+         lowered.program->value_instructions()) {
+        if (instruction.operation !=
+            ValueOperation::vector_math_vector) {
+            continue;
+        }
+        found = true;
+        require(
+            instruction.static_u0 == expected,
+            "Vector Math Round silently lowered as another operation");
+    }
+    require(found, "Vector Math Round producer was not retained");
+}
+
 } // namespace
 
 int main() {
     try {
         test_vector_math_immediate_quotient();
+        test_vector_math_round_graph_lowering();
         return EXIT_SUCCESS;
     } catch (const std::exception &error) {
         std::cerr << "Surface Vector Math immediate test failure: "
