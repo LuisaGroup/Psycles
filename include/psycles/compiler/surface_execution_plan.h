@@ -475,6 +475,11 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
          operation == ValueOperation::vector_math_value ||
          operation == ValueOperation::vector_math_vector ||
          operation == ValueOperation::mix ||
+         operation == ValueOperation::fresnel ||
+         operation == ValueOperation::layer_weight_fresnel ||
+         operation == ValueOperation::layer_weight_facing ||
+         operation == ValueOperation::gradient ||
+         operation == ValueOperation::color_ramp ||
          surface_value_operation_uses_mapping_immediate(operation) ||
          surface_value_operation_uses_image_immediate(operation);
 }
@@ -491,6 +496,11 @@ surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
              operation == ValueOperation::vector_math_value ||
              operation == ValueOperation::vector_math_vector ||
              operation == ValueOperation::mix ||
+             operation == ValueOperation::fresnel ||
+             operation == ValueOperation::layer_weight_fresnel ||
+             operation == ValueOperation::layer_weight_facing ||
+             operation == ValueOperation::gradient ||
+             operation == ValueOperation::color_ramp ||
              surface_value_operation_uses_mapping_immediate(operation)
              ? ~std::uint64_t{0u}
              : 0u;
@@ -551,6 +561,17 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
       operation == ValueOperation::vector_math_vector) {
     return static_u0 < vector_math_operation_count && static_u1 == 0u;
   }
+  if (operation == ValueOperation::fresnel ||
+      operation == ValueOperation::layer_weight_fresnel ||
+      operation == ValueOperation::layer_weight_facing) {
+    return static_u0 <= 1u && static_u1 == 0u;
+  }
+  if (operation == ValueOperation::gradient) {
+    return static_u0 <= 6u && static_u1 == 0u;
+  }
+  if (operation == ValueOperation::color_ramp) {
+    return static_u0 <= 3u && static_u1 <= 1u;
+  }
   if (surface_value_operation_uses_mapping_immediate(operation)) {
     return static_u0 <= static_cast<std::uint64_t>(MappingVectorType::normal) &&
            static_u1 <= 0x3fu;
@@ -595,6 +616,13 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
   }
   if (operation == ValueOperation::vector_math_value ||
       operation == ValueOperation::vector_math_vector) {
+    return static_cast<std::uint32_t>(static_u0);
+  }
+  if (operation == ValueOperation::fresnel ||
+      operation == ValueOperation::layer_weight_fresnel ||
+      operation == ValueOperation::layer_weight_facing ||
+      operation == ValueOperation::gradient ||
+      operation == ValueOperation::color_ramp) {
     return static_cast<std::uint32_t>(static_u0);
   }
   if (surface_value_operation_uses_mapping_immediate(operation)) {

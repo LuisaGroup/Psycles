@@ -5,6 +5,8 @@
 #include <psycles/luisa/cycles_noise.h>
 #include <luisa/dsl/sugar.h>
 
+#include <array>
+#include <cstdlib>
 #include <utility>
 
 using namespace luisa::compute;
@@ -34,6 +36,119 @@ inline constexpr std::uint64_t rgb_curve_sampled_bit = 1u;
         .offset = descriptor.x,
         .count = descriptor.y,
         .width = descriptor.z};
+}
+
+[[nodiscard]] Float evaluate_gradient_mode(
+    Float3 point, std::uint32_t mode) noexcept {
+    switch (mode) {
+        case 1u: {
+            auto gradient = max(point.x, 0.0f);
+            return gradient * gradient;
+        }
+        case 2u: {
+            auto t = clamp(point.x, 0.0f, 1.0f);
+            return t * t * (3.0f - 2.0f * t);
+        }
+        case 3u:
+            return (point.x + point.y) * 0.5f;
+        case 4u:
+            return atan2(point.y, point.x) / two_pi + 0.5f;
+        case 5u:
+            return max(0.999999f - length(point), 0.0f);
+        case 6u: {
+            auto gradient = max(0.999999f - length(point), 0.0f);
+            return gradient * gradient;
+        }
+        case 0u:
+        default:
+            return point.x;
+    }
+}
+
+[[nodiscard]] Float evaluate_gradient_svm(
+    UInt mode,
+    std::span<const std::uint16_t> immediate_domain,
+    Float3 point) noexcept {
+    std::array<bool, 7u> active{};
+    for (const auto encoded : immediate_domain) {
+        if (encoded >= active.size()) {
+            std::abort();
+        }
+        active[encoded] = true;
+    }
+    Float gradient = 0.0f;
+    luisa::compute::detail::SwitchStmtBuilder{mode} % [&] {
+        for (auto index = std::size_t{0u}; index < active.size(); ++index) {
+            if (!active[index]) {
+                continue;
+            }
+            luisa::compute::detail::SwitchCaseStmtBuilder{
+                static_cast<luisa::uint>(index)} %
+                [&, index] {
+                    gradient = evaluate_gradient_mode(
+                        point, static_cast<std::uint32_t>(index));
+                };
+        }
+        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+            luisa::compute::dsl::unreachable(
+                "invalid compact surface Gradient mode");
+        };
+    };
+    return gradient;
+}
+
+[[nodiscard]] Float4 evaluate_color_ramp_mode(
+    const ShaderServices &services,
+    const SurfaceShaderTableView &table,
+    Float factor,
+    std::uint32_t mode) noexcept {
+    const auto sampled = (mode & color_ramp_sampled_bit) != 0u;
+    const auto constant = (mode & color_ramp_constant_bit) != 0u;
+    if (sampled && constant) {
+        return color_ramp_sampled_constant(services, table, factor);
+    }
+    if (sampled) {
+        return color_ramp_sampled_linear(services, table, factor);
+    }
+    if (constant) {
+        return color_ramp_control_constant(services, table, factor);
+    }
+    return color_ramp_control_linear(services, table, factor);
+}
+
+[[nodiscard]] Float4 evaluate_color_ramp_svm(
+    const ShaderServices &services,
+    UInt mode,
+    std::span<const std::uint16_t> immediate_domain,
+    const SurfaceShaderTableView &table,
+    Float factor) noexcept {
+    std::array<bool, 4u> active{};
+    for (const auto encoded : immediate_domain) {
+        if (encoded >= active.size()) {
+            std::abort();
+        }
+        active[encoded] = true;
+    }
+    Float4 ramp = make_float4(0.0f);
+    luisa::compute::detail::SwitchStmtBuilder{mode} % [&] {
+        for (auto index = std::size_t{0u}; index < active.size(); ++index) {
+            if (!active[index]) {
+                continue;
+            }
+            luisa::compute::detail::SwitchCaseStmtBuilder{
+                static_cast<luisa::uint>(index)} %
+                [&, index] {
+                    ramp = evaluate_color_ramp_mode(
+                        services, table, factor,
+                        static_cast<std::uint32_t>(index));
+                };
+        }
+        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+            luisa::compute::dsl::unreachable(
+                "invalid compact surface Color Ramp mode");
+        };
+    };
+    return ramp;
 }
 
 [[nodiscard]] bool supports_procedural_value(
@@ -357,28 +472,16 @@ public:
                     auto p = vector(
                         instruction.operand(operand::gradient::vector),
                         result);
-                    Float gradient = p.x;
-                    if (instruction.static_u0 == 1u) {
-                        gradient = max(p.x, 0.0f);
-                        gradient *= gradient;
-                    } else if (instruction.static_u0 == 2u) {
-                        auto t = clamp(p.x, 0.0f, 1.0f);
-                        gradient = t * t * (3.0f - 2.0f * t);
-                    } else if (instruction.static_u0 == 3u) {
-                        gradient = (p.x + p.y) * 0.5f;
-                    } else if (instruction.static_u0 == 4u) {
-                        gradient =
-                            atan2(p.y, p.x) / two_pi + 0.5f;
-                    } else if (instruction.static_u0 == 5u) {
-                        gradient = max(
-                            0.999999f - length(p),
-                            0.0f);
-                    } else if (instruction.static_u0 == 6u) {
-                        gradient = max(
-                            0.999999f - length(p),
-                            0.0f);
-                        gradient *= gradient;
-                    }
+                    auto gradient =
+                        context.svm_immediate_override != nullptr
+                            ? evaluate_gradient_svm(
+                                  *context.svm_immediate_override,
+                                  context.svm_immediate_domain,
+                                  p)
+                            : evaluate_gradient_mode(
+                                  p,
+                                  static_cast<std::uint32_t>(
+                                      instruction.static_u0));
                     gradient = clamp(
                         gradient, 0.0f, 1.0f);
                     value = make_float4(gradient);
@@ -395,26 +498,20 @@ public:
                                   instruction.parameter.value};
                     const auto table = shader_table_view(
                         services, point, parameter);
-                    const auto sampled =
-                        (instruction.static_u0 &
-                         color_ramp_sampled_bit) != 0u;
-                    const auto constant =
-                        (instruction.static_u0 &
-                         color_ramp_constant_bit) != 0u;
-                    Float4 ramp;
-                    if (sampled && constant) {
-                        ramp = color_ramp_sampled_constant(
-                            services, table, factor);
-                    } else if (sampled) {
-                        ramp = color_ramp_sampled_linear(
-                            services, table, factor);
-                    } else if (constant) {
-                        ramp = color_ramp_control_constant(
-                            services, table, factor);
-                    } else {
-                        ramp = color_ramp_control_linear(
-                            services, table, factor);
-                    }
+                    const auto ramp =
+                        context.svm_immediate_override != nullptr
+                            ? evaluate_color_ramp_svm(
+                                  services,
+                                  *context.svm_immediate_override,
+                                  context.svm_immediate_domain,
+                                  table,
+                                  factor)
+                            : evaluate_color_ramp_mode(
+                                  services,
+                                  table,
+                                  factor,
+                                  static_cast<std::uint32_t>(
+                                      instruction.static_u0));
                     value =
                         instruction.static_u1 != 0u
                             ? make_float4(ramp.w)
