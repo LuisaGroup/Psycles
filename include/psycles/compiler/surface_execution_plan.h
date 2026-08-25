@@ -420,6 +420,7 @@ inline constexpr std::uint32_t surface_value_control_mask =
 surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
   return operation == ValueOperation::noise_factor ||
          operation == ValueOperation::noise_color ||
+         operation == ValueOperation::math ||
          operation == ValueOperation::mix ||
          surface_value_operation_uses_mapping_immediate(operation) ||
          surface_value_operation_uses_image_immediate(operation);
@@ -433,8 +434,9 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
 
 [[nodiscard]] constexpr std::uint64_t
 surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
-  return operation == ValueOperation::mix ||
-                 surface_value_operation_uses_mapping_immediate(operation)
+  return operation == ValueOperation::math ||
+             operation == ValueOperation::mix ||
+             surface_value_operation_uses_mapping_immediate(operation)
              ? ~std::uint64_t{0u}
              : 0u;
 }
@@ -487,6 +489,9 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
                static_cast<std::uint64_t>(BlendOperation::value) &&
            static_u1 <= 0x3u;
   }
+  if (operation == ValueOperation::math) {
+    return static_u0 < math_operation_count && static_u1 == 0u;
+  }
   if (surface_value_operation_uses_mapping_immediate(operation)) {
     return static_u0 <= static_cast<std::uint64_t>(MappingVectorType::normal) &&
            static_u1 <= 0x3fu;
@@ -525,6 +530,9 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
            ((static_u1 & 2u) != 0u
                 ? surface_value_mix_result_clamp_bit
                 : 0u);
+  }
+  if (operation == ValueOperation::math) {
+    return static_cast<std::uint32_t>(static_u0);
   }
   if (surface_value_operation_uses_mapping_immediate(operation)) {
     return static_cast<std::uint32_t>(static_u0) |

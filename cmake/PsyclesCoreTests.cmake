@@ -31,6 +31,19 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_surface_program_metadata_tests)
 
     add_executable(
+        psycles_surface_svm_math_immediate_tests
+        tests/test_surface_svm_math_immediate.cpp)
+    target_link_libraries(
+        psycles_surface_svm_math_immediate_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_surface_svm_math_immediate_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.surface_svm_math_immediate
+        COMMAND psycles_surface_svm_math_immediate_tests)
+
+    add_executable(
         psycles_surface_closure_execution_plan_tests
         tests/test_surface_closure_execution_plan.cpp)
     target_link_libraries(
