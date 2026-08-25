@@ -728,6 +728,9 @@ enum class VectorMathOperation : std::uint8_t {
   tangent
 };
 
+inline constexpr std::uint32_t vector_math_operation_count =
+    static_cast<std::uint32_t>(VectorMathOperation::tangent) + 1u;
+
 enum class BlendOperation : std::uint8_t {
   mix,
   darken,

@@ -1,0 +1,54 @@
+{
+  "schema": "psycles.vector-math-svm-validation.v1",
+  "date": "2026-08-25",
+  "cycles_source": {
+    "repository": "/home/mike/Projects/blender-cycles",
+    "branch": "blender-v5.2-release",
+    "commit": "fbe6228777e7"
+  },
+  "psycles": {
+    "exact_baseline_commit": "092000e42f56472058d77b5d735a946c05372af9",
+    "implementation_base_commit": "06e06cdc97cd25be55d95760b22d2ba6f865d38c",
+    "device": "AMD Radeon RX 9070 XT gfx1201",
+    "scene": "official Blender 5.2 Barbershop export"
+  },
+  "scene_census": {
+    "barbershop": {"baseline_value_variants": 72, "current_value_variants": 64, "baseline_math_variants": 6, "current_math_variants": 1, "baseline_vector_value_variants": 0, "current_vector_value_variants": 0, "baseline_vector_result_variants": 4, "current_vector_result_variants": 1, "bytecode_bytes": 222320, "reachable_producers": 139, "reachable_outputs": 139, "reachable_dual_output_producers": 0, "preparation_producers": 14, "preparation_outputs": 14, "preparation_dual_output_producers": 0},
+    "classroom": {"baseline_value_variants": 39, "current_value_variants": 34, "baseline_math_variants": 5, "current_math_variants": 1, "baseline_vector_value_variants": 0, "current_vector_value_variants": 0, "baseline_vector_result_variants": 2, "current_vector_result_variants": 1, "bytecode_bytes": 21896, "reachable_producers": 16, "reachable_outputs": 16, "reachable_dual_output_producers": 0, "preparation_producers": 2, "preparation_outputs": 2, "preparation_dual_output_producers": 0},
+    "monster_under_the_bed": {"baseline_value_variants": 34, "current_value_variants": 31, "baseline_math_variants": 4, "current_math_variants": 1, "baseline_vector_value_variants": 0, "current_vector_value_variants": 0, "baseline_vector_result_variants": 0, "current_vector_result_variants": 0, "bytecode_bytes": 8412, "reachable_producers": 2, "reachable_outputs": 2, "reachable_dual_output_producers": 0, "preparation_producers": 0, "preparation_outputs": 0, "preparation_dual_output_producers": 0},
+    "lone_monk": {"baseline_value_variants": 42, "current_value_variants": 41, "baseline_math_variants": 2, "current_math_variants": 1, "baseline_vector_value_variants": 0, "current_vector_value_variants": 0, "baseline_vector_result_variants": 0, "current_vector_result_variants": 0, "bytecode_bytes": 16040, "reachable_producers": 0, "reachable_outputs": 0, "reachable_dual_output_producers": 0, "preparation_producers": 0, "preparation_outputs": 0, "preparation_dual_output_producers": 0},
+    "benchmark": {"baseline_value_variants": 57, "current_value_variants": 53, "baseline_math_variants": 3, "current_math_variants": 1, "baseline_vector_value_variants": 0, "current_vector_value_variants": 0, "baseline_vector_result_variants": 3, "current_vector_result_variants": 1, "bytecode_bytes": 56720, "reachable_producers": 33, "reachable_outputs": 33, "reachable_dual_output_producers": 0, "preparation_producers": 9, "preparation_outputs": 9, "preparation_dual_output_producers": 0},
+    "flat_archiviz": {"baseline_value_variants": 47, "current_value_variants": 42, "baseline_math_variants": 6, "current_math_variants": 1, "baseline_vector_value_variants": 1, "current_vector_value_variants": 1, "baseline_vector_result_variants": 0, "current_vector_result_variants": 0, "bytecode_bytes": 24240, "reachable_producers": 14, "reachable_outputs": 14, "reachable_dual_output_producers": 0, "preparation_producers": 1, "preparation_outputs": 1, "preparation_dual_output_producers": 0}
+  },
+  "hip_ab": {
+    "resolution": [640, 480],
+    "spp": 64,
+    "scheduler": "wavefront-staged",
+    "typed_math_baseline": {"semantic_surface_variants": 73, "amdgpu_blob_bytes": 534168, "code_object_bytes": 500688, "llvm_before_opt_bytes": 15312964, "llvm_after_opt_bytes": 4475401, "llvm_final_bytes": 4475785, "llvm_codegen_ms": 1410.830872, "comgr_ms": 3603.519770, "private_segment_bytes": 5440, "sgpr_spills": 44, "vgpr_spills": 422, "render_median_seconds": 3.47540, "render_mean_seconds": 3.476762},
+    "typed_vector_math": {"semantic_surface_variants": 69, "amdgpu_blob_bytes": 530472, "code_object_bytes": 496320, "llvm_before_opt_bytes": 15242417, "llvm_after_opt_bytes": 4450001, "llvm_final_bytes": 4450385, "llvm_codegen_ms": 1455.510584, "comgr_ms": 3428.867505, "private_segment_bytes": 5440, "sgpr_spills": 42, "vgpr_spills": 422, "render_seconds": [3.47861, 3.48134, 3.48184, 3.48123, 3.49007], "render_median_seconds": 3.48134, "render_mean_seconds": 3.482618}
+  },
+  "correctness": {
+    "resolution": [640, 480],
+    "spp": 64,
+    "compared_channels": 45,
+    "passes": {
+      "Combined": {"rmse": 5.9932492149528116e-5, "relative_rmse": 3.6964129136589667e-4, "p99_pixel_rmse": 8.603189272093914e-9, "max_abs": 0.035103023052215576, "luminance_ratio": 0.9999980415964905},
+      "DiffCol": {"rmse": 9.78792377281934e-6, "relative_rmse": 3.745738905613438e-5, "max_abs": 0.005006283521652222, "luminance_ratio": 0.9999999294918271},
+      "DiffDir": {"rmse": 3.950541213271208e-5, "relative_rmse": 8.29742385111115e-5, "max_abs": 0.02175368368625641, "luminance_ratio": 0.9999995631609875},
+      "DiffInd": {"rmse": 2.9444030587910675e-5, "relative_rmse": 2.5967862787974944e-4, "max_abs": 0.025386519730091095, "luminance_ratio": 0.9999995030666687},
+      "Emit": {"rmse": 1.570543695095239e-9, "relative_rmse": 2.5562810297677372e-8, "max_abs": 3.5762786865234375e-7, "luminance_ratio": 1.0},
+      "Env": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 1.0},
+      "GlossCol": {"rmse": 1.2132821858301668e-8, "relative_rmse": 6.694203259434932e-8, "max_abs": 7.808208465576172e-6, "luminance_ratio": 1.0},
+      "GlossDir": {"rmse": 6.94330723490566e-4, "relative_rmse": 4.358096812394339e-4, "max_abs": 0.41844430565834045, "luminance_ratio": 0.9999914863642467},
+      "GlossInd": {"rmse": 2.1528681060090094e-8, "relative_rmse": 6.891707015671196e-8, "max_abs": 1.7708287487039343e-5, "luminance_ratio": 1.0},
+      "Normal": {"rmse": 1.7024264664655675e-8, "relative_rmse": 3.086661708321963e-8, "max_abs": 8.448958396911621e-6, "luminance_ratio": 1.0},
+      "TransCol": {"rmse": 1.8138720525584517e-9, "relative_rmse": 3.6599434815058765e-8, "max_abs": 1.7881393432617188e-7, "luminance_ratio": 1.0},
+      "TransDir": {"rmse": 4.347064652687749e-10, "relative_rmse": 1.7848667544154652e-6, "max_abs": 3.672329853543488e-7, "luminance_ratio": 1.0},
+      "TransInd": {"rmse": 3.384765523417599e-10, "relative_rmse": 2.278490315397419e-8, "max_abs": 2.384185791015625e-7, "luminance_ratio": 1.0},
+      "VolumeDirect": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 0.0},
+      "VolumeIndirect": {"rmse": 0.0, "relative_rmse": 0.0, "max_abs": 0.0, "luminance_ratio": 0.0}
+    },
+    "visual_inspection": {"triptychs": ["combined.png", "normal.png", "glossind.png"], "result": "No coherent material, UV, geometry, normal, lighting, or orientation difference. Amplified panels contain only sparse floating-point and concurrent film-reduction residuals."}
+  },
+  "tests": {"focused_matrix_passed": 15, "focused_matrix_total": 15, "backends": ["fallback", "hip", "vk-native-xir-spirv"], "vulkan_dxc_disabled": true, "represented_vector_math_operations_covered": 29, "observed_xir_instructions": 3634, "xir_instruction_limit": 4096}
+}
