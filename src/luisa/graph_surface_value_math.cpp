@@ -1,6 +1,7 @@
 #include "graph_surface_internal.h"
 #include "surface_math.h"
 #include "surface_mix.h"
+#include "surface_vector_math.h"
 
 #include <luisa/dsl/sugar.h>
 
@@ -410,276 +411,51 @@ public:
                 }
                 case compiler::ValueOperation::vector_math_value:
                 case compiler::ValueOperation::vector_math_vector: {
-                    auto a = vector(
+                    const auto a = vector(
                         instruction.operand(operand::vector_math::a), result);
-                    auto b = vector(
+                    const auto b = vector(
                         instruction.operand(operand::vector_math::b), result);
-                    auto c = vector(
+                    const auto c = vector(
                         instruction.operand(operand::vector_math::c), result);
-                    auto scale = scalar(
+                    const auto scale = scalar(
                         instruction.operand(operand::vector_math::scale),
                         result);
-                    auto safe_divide = [](
-                                           Float numerator,
-                                           Float denominator) {
-                        auto valid = denominator != 0.0f;
-                        return select(
-                            0.0f,
-                            numerator /
-                                select(
-                                    1.0f,
-                                    denominator,
-                                    valid),
-                            valid);
-                    };
-                    auto safe_divide_vector =
-                        [&](Float3 numerator, Float3 denominator) {
-                            return make_float3(
-                                safe_divide(
-                                    numerator.x,
-                                    denominator.x),
-                                safe_divide(
-                                    numerator.y,
-                                    denominator.y),
-                                safe_divide(
-                                    numerator.z,
-                                    denominator.z));
-                        };
-                    auto safe_normalize_zero =
-                        [](Float3 input) {
-                            auto input_length =
-                                sqrt(dot(input, input));
-                            auto valid =
-                                input_length != 0.0f;
-                            return select(
-                                input,
-                                input /
-                                    select(
-                                        1.0f,
-                                        input_length,
-                                        valid),
-                                valid);
-                        };
-                    auto safe_power = [](Float base, Float exponent) {
-                        auto integer_exponent =
-                            exponent == trunc(exponent);
-                        auto powered =
-                            pow(abs(base), exponent);
-                        auto odd_exponent =
-                            fmod(abs(exponent), 2.0f) != 0.0f;
-                        powered = select(
-                            powered,
-                            -powered,
-                            (base < 0.0f) & odd_exponent);
-                        return select(
-                            0.0f,
-                            powered,
-                            (base >= 0.0f) |
-                                integer_exponent);
-                    };
-                    auto wrap_component = [](
-                                              Float input,
-                                              Float maximum,
-                                              Float minimum) {
-                        auto range = maximum - minimum;
-                        auto valid = range != 0.0f;
-                        return select(
-                            minimum,
-                            input -
-                                range *
-                                    floor(
-                                        (input - minimum) /
-                                        select(
-                                            1.0f,
-                                            range,
-                                            valid)),
-                            valid);
-                    };
-
-                    Float scalar_result = 0.0f;
-                    Float3 vector_result =
-                        make_float3(0.0f);
-                    switch (
-                        static_cast<compiler::VectorMathOperation>(
-                            instruction.static_u0)) {
-                        case compiler::VectorMathOperation::add:
-                            vector_result = a + b;
-                            break;
-                        case compiler::VectorMathOperation::subtract:
-                            vector_result = a - b;
-                            break;
-                        case compiler::VectorMathOperation::multiply:
-                            vector_result = a * b;
-                            break;
-                        case compiler::VectorMathOperation::divide:
-                            vector_result =
-                                safe_divide_vector(a, b);
-                            break;
-                        case compiler::VectorMathOperation::
-                            multiply_add:
-                            vector_result = a * b + c;
-                            break;
-                        case compiler::VectorMathOperation::
-                            cross_product:
-                            vector_result = cross(a, b);
-                            break;
-                        case compiler::VectorMathOperation::project: {
-                            auto length_squared = dot(b, b);
-                            auto valid =
-                                length_squared != 0.0f;
-                            vector_result = select(
-                                make_float3(0.0f),
-                                safe_divide(
-                                    dot(a, b),
-                                    length_squared) *
-                                    b,
-                                valid);
-                            break;
-                        }
-                        case compiler::VectorMathOperation::reflect: {
-                            auto normal =
-                                safe_normalize_zero(b);
-                            vector_result =
-                                a -
-                                2.0f * normal *
-                                    dot(a, normal);
-                            break;
-                        }
-                        case compiler::VectorMathOperation::refract: {
-                            auto normal =
-                                safe_normalize_zero(b);
-                            auto cosine = dot(normal, a);
-                            auto k =
-                                1.0f -
-                                scale * scale *
-                                    (1.0f -
-                                     cosine * cosine);
-                            vector_result = select(
-                                make_float3(0.0f),
-                                scale * a -
-                                    (scale * cosine +
-                                     sqrt(max(k, 0.0f))) *
-                                        normal,
-                                k >= 0.0f);
-                            break;
-                        }
-                        case compiler::VectorMathOperation::
-                            faceforward:
-                            vector_result = select(
-                                -a,
+                    if (context.svm_immediate_override != nullptr) {
+                        value = instruction.operation ==
+                                        compiler::ValueOperation::
+                                            vector_math_value
+                                    ? make_float4(
+                                          evaluate_surface_vector_math_value_svm(
+                                              *context.svm_immediate_override,
+                                              context.svm_immediate_domain,
+                                              a,
+                                              b,
+                                              c,
+                                              scale))
+                                    : make_float4(
+                                          evaluate_surface_vector_math_vector_svm(
+                                              *context.svm_immediate_override,
+                                              context.svm_immediate_domain,
+                                              a,
+                                              b,
+                                              c,
+                                              scale),
+                                          0.0f);
+                    } else {
+                        const auto evaluated =
+                            evaluate_surface_vector_math_operation(
+                                static_cast<compiler::VectorMathOperation>(
+                                    instruction.static_u0),
                                 a,
-                                dot(c, b) < 0.0f);
-                            break;
-                        case compiler::VectorMathOperation::
-                            dot_product:
-                            scalar_result = dot(a, b);
-                            break;
-                        case compiler::VectorMathOperation::distance: {
-                            auto delta = a - b;
-                            scalar_result =
-                                sqrt(dot(delta, delta));
-                            break;
-                        }
-                        case compiler::VectorMathOperation::length:
-                            scalar_result = sqrt(dot(a, a));
-                            break;
-                        case compiler::VectorMathOperation::scale:
-                            vector_result = a * scale;
-                            break;
-                        case compiler::VectorMathOperation::normalize:
-                            vector_result =
-                                safe_normalize_zero(a);
-                            break;
-                        case compiler::VectorMathOperation::absolute:
-                            vector_result = abs(a);
-                            break;
-                        case compiler::VectorMathOperation::power:
-                            vector_result = make_float3(
-                                safe_power(a.x, b.x),
-                                safe_power(a.y, b.y),
-                                safe_power(a.z, b.z));
-                            break;
-                        case compiler::VectorMathOperation::sign: {
-                            auto sign_component = [](Float input) {
-                                return select(
-                                    select(
-                                        1.0f,
-                                        -1.0f,
-                                        input < 0.0f),
-                                    0.0f,
-                                    input == 0.0f);
-                            };
-                            vector_result = make_float3(
-                                sign_component(a.x),
-                                sign_component(a.y),
-                                sign_component(a.z));
-                            break;
-                        }
-                        case compiler::VectorMathOperation::minimum:
-                            vector_result = min(a, b);
-                            break;
-                        case compiler::VectorMathOperation::maximum:
-                            vector_result = max(a, b);
-                            break;
-                        case compiler::VectorMathOperation::floor:
-                            vector_result = floor(a);
-                            break;
-                        case compiler::VectorMathOperation::ceil:
-                            vector_result = ceil(a);
-                            break;
-                        case compiler::VectorMathOperation::fraction:
-                            vector_result = a - floor(a);
-                            break;
-                        case compiler::VectorMathOperation::modulo:
-                            vector_result = make_float3(
-                                select(
-                                    0.0f,
-                                    fmod(a.x, b.x),
-                                    b.x != 0.0f),
-                                select(
-                                    0.0f,
-                                    fmod(a.y, b.y),
-                                    b.y != 0.0f),
-                                select(
-                                    0.0f,
-                                    fmod(a.z, b.z),
-                                    b.z != 0.0f));
-                            break;
-                        case compiler::VectorMathOperation::wrap:
-                            vector_result = make_float3(
-                                wrap_component(
-                                    a.x, b.x, c.x),
-                                wrap_component(
-                                    a.y, b.y, c.y),
-                                wrap_component(
-                                    a.z, b.z, c.z));
-                            break;
-                        case compiler::VectorMathOperation::snap:
-                            vector_result =
-                                floor(
-                                    safe_divide_vector(a, b)) *
-                                b;
-                            break;
-                        case compiler::VectorMathOperation::sine:
-                            vector_result = make_float3(
-                                sin(a.x), sin(a.y), sin(a.z));
-                            break;
-                        case compiler::VectorMathOperation::cosine:
-                            vector_result = make_float3(
-                                cos(a.x), cos(a.y), cos(a.z));
-                            break;
-                        case compiler::VectorMathOperation::tangent:
-                            vector_result = make_float3(
-                                tan(a.x), tan(a.y), tan(a.z));
-                            break;
+                                b,
+                                c,
+                                scale);
+                        value = instruction.operation ==
+                                        compiler::ValueOperation::
+                                            vector_math_value
+                                    ? make_float4(evaluated.value)
+                                    : make_float4(evaluated.vector, 0.0f);
                     }
-                    value =
-                        instruction.operation ==
-                                compiler::ValueOperation::
-                                    vector_math_value
-                            ? make_float4(scalar_result)
-                            : make_float4(
-                                  vector_result, 0.0f);
                     break;
                 }
                 case compiler::ValueOperation::mix_float: {
