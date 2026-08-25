@@ -5,13 +5,17 @@
 #include <psycles/contract/cycles_pointiness.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <set>
+#include <span>
 #include <stdexcept>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -70,6 +74,141 @@ void print_value(const psycles::contract::SocketValue &value) {
                    std::max(
                        std::abs(actual),
                        std::abs(expected)));
+}
+
+struct ImageProducerCensus {
+    std::size_t producers{};
+    std::size_t output_instructions{};
+    std::size_t dual_output_producers{};
+    std::size_t exact_fusable_pairs{};
+    std::size_t exact_fusable_box_pairs{};
+    std::size_t exact_fusable_environment_pairs{};
+
+    ImageProducerCensus &operator+=(
+        const ImageProducerCensus &other) noexcept {
+        producers += other.producers;
+        output_instructions += other.output_instructions;
+        dual_output_producers += other.dual_output_producers;
+        exact_fusable_pairs += other.exact_fusable_pairs;
+        exact_fusable_box_pairs += other.exact_fusable_box_pairs;
+        exact_fusable_environment_pairs +=
+            other.exact_fusable_environment_pairs;
+        return *this;
+    }
+};
+
+struct ImageProducerOutputs {
+    bool environment{};
+    std::optional<std::size_t> color;
+    std::optional<std::size_t> alpha;
+};
+
+[[nodiscard]] bool bitwise_equal(
+    std::span<const float> lhs,
+    std::span<const float> rhs) noexcept {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (auto index = std::size_t{}; index < lhs.size(); ++index) {
+        if (std::bit_cast<std::uint32_t>(lhs[index]) !=
+            std::bit_cast<std::uint32_t>(rhs[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool exact_image_producer_pair(
+    const psycles::compiler::ValueInstruction &color,
+    const psycles::compiler::ValueInstruction &alpha) noexcept {
+    return static_cast<bool>(color.source_node) &&
+           color.source_node == alpha.source_node &&
+           color.operands == alpha.operands &&
+           color.parameter == alpha.parameter &&
+           color.static_u0 == alpha.static_u0 &&
+           color.static_u1 == alpha.static_u1 &&
+           std::bit_cast<std::uint32_t>(color.static_f0) ==
+               std::bit_cast<std::uint32_t>(alpha.static_f0) &&
+           std::bit_cast<std::uint32_t>(color.static_f1) ==
+               std::bit_cast<std::uint32_t>(alpha.static_f1) &&
+           bitwise_equal(color.static_table, alpha.static_table);
+}
+
+[[nodiscard]] ImageProducerCensus census_image_producers(
+    const psycles::compiler::SurfaceProgram &program,
+    const std::vector<bool> *active = nullptr) {
+    using psycles::compiler::ValueOperation;
+    const auto &instructions = program.value_instructions();
+    if (active != nullptr && active->size() != instructions.size()) {
+        std::abort();
+    }
+    // A valid source node is the identity of one authored image producer.
+    // Synthetic instructions without that identity must remain distinct:
+    // grouping every invalid NodeId would manufacture a false dual-output
+    // producer and make the census claim an unsafe fusion opportunity.
+    std::map<std::tuple<std::uint32_t, bool, std::size_t>,
+             ImageProducerOutputs>
+        producers;
+    for (auto index = std::size_t{}; index < instructions.size(); ++index) {
+        if (active != nullptr && !(*active)[index]) {
+            continue;
+        }
+        const auto &instruction = instructions[index];
+        auto environment = false;
+        auto color = false;
+        switch (instruction.operation) {
+            case ValueOperation::image_color:
+                color = true;
+                break;
+            case ValueOperation::image_alpha:
+                break;
+            case ValueOperation::environment_color:
+                environment = true;
+                color = true;
+                break;
+            case ValueOperation::environment_alpha:
+                environment = true;
+                break;
+            default:
+                continue;
+        }
+        const auto key = std::tuple{
+            instruction.source_node.value,
+            environment,
+            instruction.source_node ? std::size_t{0u} : index + 1u};
+        auto [iter, inserted] = producers.try_emplace(
+            key, ImageProducerOutputs{.environment = environment});
+        static_cast<void>(inserted);
+        auto &output = color ? iter->second.color : iter->second.alpha;
+        if (output) {
+            std::abort();
+        }
+        output = index;
+    }
+
+    ImageProducerCensus result;
+    result.producers = producers.size();
+    for (const auto &[key, outputs] : producers) {
+        static_cast<void>(key);
+        result.output_instructions += outputs.color.has_value() ? 1u : 0u;
+        result.output_instructions += outputs.alpha.has_value() ? 1u : 0u;
+        if (!outputs.color || !outputs.alpha) {
+            continue;
+        }
+        ++result.dual_output_producers;
+        const auto &color = instructions[*outputs.color];
+        const auto &alpha = instructions[*outputs.alpha];
+        if (!exact_image_producer_pair(color, alpha)) {
+            continue;
+        }
+        ++result.exact_fusable_pairs;
+        if (outputs.environment) {
+            ++result.exact_fusable_environment_pairs;
+        } else if (((color.static_u1 >> 12u) & 0x3u) == 1u) {
+            ++result.exact_fusable_box_pairs;
+        }
+    }
+    return result;
 }
 
 }// namespace
@@ -336,6 +475,8 @@ int main(int argc, char **argv) {
         auto value_bytecode_operand_bytes = std::size_t{};
         auto value_bytecode_metadata_bytes = std::size_t{};
         auto value_bytecode_static_bytes = std::size_t{};
+        ImageProducerCensus reachable_image_producers;
+        ImageProducerCensus preparation_image_producers;
         std::vector<psycles::compiler::SurfaceValueStoragePlan>
             value_storage_plans;
         std::vector<psycles::compiler::SurfaceValueExecutionInput>
@@ -353,10 +494,13 @@ int main(int argc, char **argv) {
                  program->value_instructions()) {
                 value_operations[instruction.operation] += 1u;
             }
+            reachable_image_producers += census_image_producers(*program);
             const auto &plan = closure_plans.at(signature);
             const auto dependencies =
                 psycles::compiler::analyze_surface_value_dependencies(
                     *program, plan);
+            preparation_image_producers += census_image_producers(
+                *program, &dependencies.preparation);
             const auto storage =
                 psycles::compiler::plan_surface_value_storage(
                     *program,
@@ -510,6 +654,26 @@ int main(int argc, char **argv) {
             << value_bytecode_metadata_bytes
             << "\nvalue_bytecode_static_bytes "
             << value_bytecode_static_bytes
+            << "\nreachable_image_producers "
+            << reachable_image_producers.producers
+            << "\nreachable_image_output_instructions "
+            << reachable_image_producers.output_instructions
+            << "\nreachable_dual_image_producers "
+            << reachable_image_producers.dual_output_producers
+            << "\nreachable_exact_fusable_image_pairs "
+            << reachable_image_producers.exact_fusable_pairs
+            << "\npreparation_image_producers "
+            << preparation_image_producers.producers
+            << "\npreparation_image_output_instructions "
+            << preparation_image_producers.output_instructions
+            << "\npreparation_dual_image_producers "
+            << preparation_image_producers.dual_output_producers
+            << "\npreparation_exact_fusable_image_pairs "
+            << preparation_image_producers.exact_fusable_pairs
+            << "\npreparation_exact_fusable_box_pairs "
+            << preparation_image_producers.exact_fusable_box_pairs
+            << "\npreparation_exact_fusable_environment_pairs "
+            << preparation_image_producers.exact_fusable_environment_pairs
             << "\nvalue_scene_descriptor_bytes "
             << value_scene_descriptor_bytes
             << "\nvalue_scene_total_bytes "
