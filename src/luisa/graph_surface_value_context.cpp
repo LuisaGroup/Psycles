@@ -329,12 +329,16 @@ public:
       // Cycles' stack_load_float3_default substitutes sd->N only for an
       // unconnected socket. A connected vector is consumed verbatim: shader
       // vector sockets do not acquire an implicit normalization operation.
-      const auto normal = instruction.static_u0 != 0u
-                              ? vector(
-                                    instruction.operand(
-                                        operand::fresnel::normal),
-                                    result)
-                              : result.shading_normal;
+      auto normal = result.shading_normal;
+      if (context.svm_immediate_override != nullptr) {
+        normal = select(
+            result.shading_normal,
+            vector(instruction.operand(operand::fresnel::normal), result),
+            (*context.svm_immediate_override & 1u) != 0u);
+      } else if (instruction.static_u0 != 0u) {
+        normal = vector(
+            instruction.operand(operand::fresnel::normal), result);
+      }
       value =
           make_float4(fresnel_dielectric_cos(dot(point.incoming, normal), eta));
       break;
@@ -342,12 +346,17 @@ public:
     case compiler::ValueOperation::layer_weight_fresnel: {
       auto blend = scalar(
           instruction.operand(operand::layer_weight::blend), result);
-      auto normal =
-          instruction.static_u0 != 0u
-              ? vector(
-                    instruction.operand(operand::layer_weight::normal),
-                    result)
-              : result.shading_normal;
+      auto normal = result.shading_normal;
+      if (context.svm_immediate_override != nullptr) {
+        normal = select(
+            result.shading_normal,
+            vector(
+                instruction.operand(operand::layer_weight::normal), result),
+            (*context.svm_immediate_override & 1u) != 0u);
+      } else if (instruction.static_u0 != 0u) {
+        normal = vector(
+            instruction.operand(operand::layer_weight::normal), result);
+      }
       auto eta = max(1.0f - blend, 1.0e-5f);
       eta = select(1.0f / eta, eta, point.back_facing);
       value =
@@ -360,12 +369,17 @@ public:
               instruction.operand(operand::layer_weight::blend), result),
           0.0f,
           1.0f - 1.0e-5f);
-      auto normal =
-          instruction.static_u0 != 0u
-              ? vector(
-                    instruction.operand(operand::layer_weight::normal),
-                    result)
-              : result.shading_normal;
+      auto normal = result.shading_normal;
+      if (context.svm_immediate_override != nullptr) {
+        normal = select(
+            result.shading_normal,
+            vector(
+                instruction.operand(operand::layer_weight::normal), result),
+            (*context.svm_immediate_override & 1u) != 0u);
+      } else if (instruction.static_u0 != 0u) {
+        normal = vector(
+            instruction.operand(operand::layer_weight::normal), result);
+      }
       auto facing = abs(dot(point.incoming, normal));
       auto exponent = select(0.5f / (1.0f - blend), 2.0f * blend, blend < 0.5f);
       value = make_float4(1.0f - pow(facing, exponent));

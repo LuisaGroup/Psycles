@@ -1864,7 +1864,8 @@ void test_surface_value_storage_plan() {
                .valid,
       "Image lowering accepted a configuration outside its exact ABI");
 
-  const auto make_table_program = [&](std::uint32_t table_parameter) {
+  const auto make_table_program = [&](std::uint32_t table_parameter,
+                                      std::uint64_t interpolation = 0u) {
     std::vector<ValueInstruction> table_values;
     table_values.emplace_back(make_parameter_value(0u));
     table_values.emplace_back(ValueInstruction{
@@ -1872,7 +1873,8 @@ void test_surface_value_storage_plan() {
         .result_type = SocketType::color,
         .parameter = ParameterId{table_parameter},
         .operands = make_value_operands<value_operand::color_ramp>(
-            {{value_operand::color_ramp::factor, ValueExpressionId{0u}}})});
+            {{value_operand::color_ramp::factor, ValueExpressionId{0u}}}),
+        .static_u0 = interpolation});
     return SurfaceProgram{10u + table_parameter,
                           {make_parameter(0u)},
                           std::move(table_values),
@@ -1880,7 +1882,7 @@ void test_surface_value_storage_plan() {
                           {}};
   };
   const auto table_program_a = make_table_program(3u);
-  const auto table_program_b = make_table_program(7u);
+  const auto table_program_b = make_table_program(7u, 3u);
   const auto table_plan_a =
       plan_surface_value_storage(table_program_a, std::vector<bool>(2u, true),
                                  std::vector<bool>{false, true});
@@ -1894,11 +1896,142 @@ void test_surface_value_storage_plan() {
                                  .storage = &table_plan_b}};
   const auto table_scene = build_surface_value_executable_scene(table_inputs);
   require(table_scene.valid && table_scene.variants.size() == 1u &&
+              table_scene.instruction_variants ==
+                  std::vector<std::uint32_t>{0u, 0u} &&
+              table_scene.variants.front().instruction.static_u0 == 0u &&
+              table_scene.variants.front().svm_immediates ==
+                  std::vector<std::uint16_t>{0u, 3u} &&
               table_scene.values.metadata.size() == 2u &&
               table_scene.values.metadata[0u].parameter == 3u &&
               table_scene.values.metadata[1u].parameter == 7u,
-          "late-bound shader-table addresses changed the evaluator body "
-          "or were lost from bytecode metadata");
+          "Color Ramp record data changed the evaluator body or lost its "
+          "late-bound shader-table address");
+
+  const auto make_gradient_program = [](std::uint32_t tag,
+                                        std::uint64_t mode) {
+    return SurfaceProgram{
+        tag,
+        {ParameterDesc{
+            .id = ParameterId{0u},
+            .node = NodeId{tag + 1u},
+            .socket = "Vector",
+            .type = SocketType::vector,
+            .default_value = SocketValue::vector({0.0f, 0.0f, 0.0f}),
+            .source = ParameterSource::input}},
+        {ValueInstruction{.operation = ValueOperation::parameter,
+                          .result_type = SocketType::vector,
+                          .parameter = ParameterId{0u}},
+         ValueInstruction{
+             .operation = ValueOperation::gradient,
+             .result_type = SocketType::floating,
+             .operands = make_value_operands<value_operand::gradient>({
+                 {value_operand::gradient::vector,
+                  ValueExpressionId{0u}}}),
+             .static_u0 = mode}},
+        {},
+        {}};
+  };
+  const auto gradient_linear = make_gradient_program(70u, 0u);
+  const auto gradient_radial = make_gradient_program(71u, 4u);
+  const auto gradient_spherical = make_gradient_program(72u, 6u);
+  const auto make_gradient_plan = [](const SurfaceProgram &source) {
+    return plan_surface_value_storage(
+        source, std::vector<bool>{true, true},
+        std::vector<bool>{false, true});
+  };
+  const auto gradient_linear_plan = make_gradient_plan(gradient_linear);
+  const auto gradient_radial_plan = make_gradient_plan(gradient_radial);
+  const auto gradient_spherical_plan = make_gradient_plan(gradient_spherical);
+  const std::vector gradient_inputs{
+      SurfaceValueExecutionInput{.program = &gradient_linear,
+                                 .storage = &gradient_linear_plan},
+      SurfaceValueExecutionInput{.program = &gradient_radial,
+                                 .storage = &gradient_radial_plan},
+      SurfaceValueExecutionInput{.program = &gradient_spherical,
+                                 .storage = &gradient_spherical_plan}};
+  const auto gradient_scene =
+      build_surface_value_executable_scene(gradient_inputs);
+  require(gradient_scene.valid && gradient_scene.variants.size() == 1u &&
+              gradient_scene.instruction_variants ==
+                  std::vector<std::uint32_t>{0u, 0u, 0u} &&
+              gradient_scene.variants.front().instruction.static_u0 == 0u &&
+              gradient_scene.variants.front().svm_immediates ==
+                  std::vector<std::uint16_t>{0u, 4u, 6u},
+          "Gradient modes did not quotient to one typed SVM handler");
+  const auto invalid_gradient = make_gradient_program(73u, 7u);
+  require(!lower_surface_value_program(
+               invalid_gradient, make_gradient_plan(invalid_gradient))
+               .valid,
+          "Gradient lowering truncated an invalid record mode");
+
+  const auto make_optional_normal_program = [](
+                                                std::uint32_t tag,
+                                                ValueOperation operation,
+                                                std::uint64_t normal_linked) {
+    return SurfaceProgram{
+        tag,
+        {ParameterDesc{.id = ParameterId{0u},
+                       .node = NodeId{tag + 1u},
+                       .socket = "Value",
+                       .type = SocketType::floating,
+                       .default_value = SocketValue::floating(0.5f),
+                       .source = ParameterSource::input},
+         ParameterDesc{
+             .id = ParameterId{1u},
+             .node = NodeId{tag + 1u},
+             .socket = "Normal",
+             .type = SocketType::normal,
+             .default_value = SocketValue::normal({0.0f, 0.0f, 1.0f}),
+             .source = ParameterSource::input}},
+        {ValueInstruction{.operation = ValueOperation::parameter,
+                          .result_type = SocketType::floating,
+                          .parameter = ParameterId{0u}},
+         ValueInstruction{.operation = ValueOperation::parameter,
+                          .result_type = SocketType::normal,
+                          .parameter = ParameterId{1u}},
+         ValueInstruction{
+             .operation = operation,
+             .result_type = SocketType::floating,
+             .operands = std::vector<ValueExpressionId>{
+                 ValueExpressionId{0u}, ValueExpressionId{1u}},
+             .static_u0 = normal_linked}},
+        {},
+        {}};
+  };
+  const auto fresnel_default = make_optional_normal_program(
+      74u, ValueOperation::fresnel, 0u);
+  const auto fresnel_linked = make_optional_normal_program(
+      75u, ValueOperation::fresnel, 1u);
+  const auto make_optional_normal_plan = [](const SurfaceProgram &source) {
+    return plan_surface_value_storage(
+        source, std::vector<bool>{true, true, true},
+        std::vector<bool>{false, false, true});
+  };
+  const auto fresnel_default_plan =
+      make_optional_normal_plan(fresnel_default);
+  const auto fresnel_linked_plan =
+      make_optional_normal_plan(fresnel_linked);
+  const std::vector fresnel_inputs{
+      SurfaceValueExecutionInput{.program = &fresnel_default,
+                                 .storage = &fresnel_default_plan},
+      SurfaceValueExecutionInput{.program = &fresnel_linked,
+                                 .storage = &fresnel_linked_plan}};
+  const auto fresnel_scene =
+      build_surface_value_executable_scene(fresnel_inputs);
+  require(fresnel_scene.valid && fresnel_scene.variants.size() == 1u &&
+              fresnel_scene.instruction_variants ==
+                  std::vector<std::uint32_t>{0u, 0u} &&
+              fresnel_scene.variants.front().instruction.static_u0 == 0u &&
+              fresnel_scene.variants.front().svm_immediates ==
+                  std::vector<std::uint16_t>{0u, 1u},
+          "optional Fresnel normals did not remain typed SVM record data");
+  const auto invalid_fresnel = make_optional_normal_program(
+      76u, ValueOperation::fresnel, 2u);
+  require(!lower_surface_value_program(
+               invalid_fresnel,
+               make_optional_normal_plan(invalid_fresnel))
+               .valid,
+          "Fresnel lowering accepted an invalid linked-normal flag");
 
     std::vector<ParameterDesc> bump_parameters;
     for (auto index = 0u; index < 4u; ++index) {
