@@ -22,6 +22,57 @@ enum class SurfaceValueStorageClass : std::uint8_t {
 
 enum class SurfaceValueBank : std::uint8_t { scalar, vector, unsigned_integer };
 
+// Cycles' SVM stack is typed by physical load/store width rather than by the
+// nominal Blender socket spelling. Keep that quotient explicit here: Boolean,
+// Integer, and Float are one scalar execution type; Float2/Float3/Color/
+// Spectrum/Point/Vector/Normal are one float3 execution type; UInt64 is the
+// remaining integer-resource type. An evaluator may be shared exactly when
+// its result and every operand have the same bank and all non-type semantics
+// agree.
+[[nodiscard]] constexpr bool classify_surface_value_type(
+    contract::SocketType type, SurfaceValueBank &bank) noexcept {
+  using contract::SocketType;
+  switch (type) {
+  case SocketType::boolean:
+  case SocketType::integer:
+  case SocketType::floating:
+    bank = SurfaceValueBank::scalar;
+    return true;
+  case SocketType::float2:
+  case SocketType::float3:
+  case SocketType::color:
+  case SocketType::spectrum:
+  case SocketType::point:
+  case SocketType::vector:
+  case SocketType::normal:
+    bank = SurfaceValueBank::vector;
+    return true;
+  case SocketType::unsigned_integer:
+    bank = SurfaceValueBank::unsigned_integer;
+    return true;
+  case SocketType::transform:
+  case SocketType::string:
+  case SocketType::closure:
+  case SocketType::volume_closure:
+    return false;
+  }
+  return false;
+}
+
+[[nodiscard]] constexpr contract::SocketType
+canonical_surface_value_type(SurfaceValueBank bank) noexcept {
+  using contract::SocketType;
+  switch (bank) {
+  case SurfaceValueBank::scalar:
+    return SocketType::floating;
+  case SurfaceValueBank::vector:
+    return SocketType::vector;
+  case SurfaceValueBank::unsigned_integer:
+    return SocketType::unsigned_integer;
+  }
+  return SocketType::floating;
+}
+
 struct SurfaceValueLocation {
   SurfaceValueStorageClass storage{SurfaceValueStorageClass::inactive};
   SurfaceValueBank bank{SurfaceValueBank::scalar};
@@ -667,10 +718,10 @@ struct SurfaceValueSceneImage {
 };
 
 // One AST body per exact semantic instruction configuration. Operands are
-// renumbered to [0, arity), and their original socket types are retained so a
-// shared evaluator can load typed addresses before invoking the existing
-// Luisa node implementation. Source-node identity and static-table payloads
-// are deliberately absent: they are provenance/runtime data, not executable
+// renumbered to [0, arity), and nominal socket types are quotiented to their
+// scalar/float3/uint64 execution banks, exactly matching the runtime load and
+// projection semantics. Source-node identity and static-table payloads are
+// deliberately absent: they are provenance/runtime data, not executable
 // semantics. Static-table shape remains part of the variant contract.
 struct SurfaceValueStaticVariant {
   ValueInstruction instruction;
