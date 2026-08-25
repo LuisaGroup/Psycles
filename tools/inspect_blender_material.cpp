@@ -846,6 +846,37 @@ int main(int argc, char **argv) {
                       << static_cast<unsigned>(operation)
                       << ' ' << count << '\n';
         }
+        for (auto index = std::size_t{0u};
+             index < value_executable_scene.variants.size(); ++index) {
+            const auto &variant = value_executable_scene.variants[index];
+            std::cout << "value_variant_detail " << index << ' '
+                      << static_cast<unsigned>(
+                             variant.instruction.operation)
+                      << ' '
+                      << static_cast<unsigned>(
+                             variant.instruction.result_type)
+                      << ' ' << variant.instruction.static_u0 << ' '
+                      << variant.instruction.static_u1 << ' '
+                      << std::bit_cast<std::uint32_t>(
+                             variant.instruction.static_f0)
+                      << ' '
+                      << std::bit_cast<std::uint32_t>(
+                             variant.instruction.static_f1)
+                      << ' ' << variant.instruction.static_table.size()
+                      << ' ' << variant.svm_immediates.size();
+            for (const auto type : variant.operand_types) {
+                auto bank =
+                    psycles::compiler::SurfaceValueBank::scalar;
+                const auto valid =
+                    psycles::compiler::classify_surface_value_type(
+                        type, bank);
+                std::cout << ' '
+                          << (valid
+                                  ? static_cast<unsigned>(bank)
+                                  : 3u + static_cast<unsigned>(type));
+            }
+            std::cout << '\n';
+        }
         return EXIT_SUCCESS;
     }
     std::cerr << "material not found: " << requested << '\n';
