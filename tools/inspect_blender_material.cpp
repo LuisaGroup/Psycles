@@ -103,6 +103,27 @@ struct ImageProducerOutputs {
     std::optional<std::size_t> alpha;
 };
 
+struct VectorMathProducerCensus {
+    std::size_t producers{};
+    std::size_t output_instructions{};
+    std::size_t dual_output_producers{};
+    std::size_t exact_fusable_pairs{};
+
+    VectorMathProducerCensus &operator+=(
+        const VectorMathProducerCensus &other) noexcept {
+        producers += other.producers;
+        output_instructions += other.output_instructions;
+        dual_output_producers += other.dual_output_producers;
+        exact_fusable_pairs += other.exact_fusable_pairs;
+        return *this;
+    }
+};
+
+struct VectorMathProducerOutputs {
+    std::optional<std::size_t> value;
+    std::optional<std::size_t> vector;
+};
+
 [[nodiscard]] bool bitwise_equal(
     std::span<const float> lhs,
     std::span<const float> rhs) noexcept {
@@ -118,20 +139,18 @@ struct ImageProducerOutputs {
     return true;
 }
 
-[[nodiscard]] bool exact_image_producer_pair(
-    const psycles::compiler::ValueInstruction &color,
-    const psycles::compiler::ValueInstruction &alpha) noexcept {
-    return static_cast<bool>(color.source_node) &&
-           color.source_node == alpha.source_node &&
-           color.operands == alpha.operands &&
-           color.parameter == alpha.parameter &&
-           color.static_u0 == alpha.static_u0 &&
-           color.static_u1 == alpha.static_u1 &&
-           std::bit_cast<std::uint32_t>(color.static_f0) ==
-               std::bit_cast<std::uint32_t>(alpha.static_f0) &&
-           std::bit_cast<std::uint32_t>(color.static_f1) ==
-               std::bit_cast<std::uint32_t>(alpha.static_f1) &&
-           bitwise_equal(color.static_table, alpha.static_table);
+[[nodiscard]] bool exact_same_producer_configuration(
+    const psycles::compiler::ValueInstruction &lhs,
+    const psycles::compiler::ValueInstruction &rhs) noexcept {
+    return static_cast<bool>(lhs.source_node) &&
+           lhs.source_node == rhs.source_node && lhs.operands == rhs.operands &&
+           lhs.parameter == rhs.parameter && lhs.static_u0 == rhs.static_u0 &&
+           lhs.static_u1 == rhs.static_u1 &&
+           std::bit_cast<std::uint32_t>(lhs.static_f0) ==
+               std::bit_cast<std::uint32_t>(rhs.static_f0) &&
+           std::bit_cast<std::uint32_t>(lhs.static_f1) ==
+               std::bit_cast<std::uint32_t>(rhs.static_f1) &&
+           bitwise_equal(lhs.static_table, rhs.static_table);
 }
 
 [[nodiscard]] ImageProducerCensus census_image_producers(
@@ -198,7 +217,7 @@ struct ImageProducerOutputs {
         ++result.dual_output_producers;
         const auto &color = instructions[*outputs.color];
         const auto &alpha = instructions[*outputs.alpha];
-        if (!exact_image_producer_pair(color, alpha)) {
+        if (!exact_same_producer_configuration(color, alpha)) {
             continue;
         }
         ++result.exact_fusable_pairs;
@@ -206,6 +225,64 @@ struct ImageProducerOutputs {
             ++result.exact_fusable_environment_pairs;
         } else if (((color.static_u1 >> 12u) & 0x3u) == 1u) {
             ++result.exact_fusable_box_pairs;
+        }
+    }
+    return result;
+}
+
+[[nodiscard]] VectorMathProducerCensus census_vector_math_producers(
+    const psycles::compiler::SurfaceProgram &program,
+    const std::vector<bool> *active = nullptr) {
+    using psycles::compiler::ValueOperation;
+    const auto &instructions = program.value_instructions();
+    if (active != nullptr && active->size() != instructions.size()) {
+        std::abort();
+    }
+
+    // Source-node identity is the proof that two result instructions came from
+    // one authored Vector Math evaluation. Invalid identities remain distinct;
+    // equality of operands or metadata alone does not prove common provenance.
+    std::map<std::tuple<std::uint32_t, std::size_t>,
+             VectorMathProducerOutputs>
+        producers;
+    for (auto index = std::size_t{}; index < instructions.size(); ++index) {
+        if (active != nullptr && !(*active)[index]) {
+            continue;
+        }
+        const auto &instruction = instructions[index];
+        const auto is_value =
+            instruction.operation == ValueOperation::vector_math_value;
+        if (!is_value &&
+            instruction.operation != ValueOperation::vector_math_vector) {
+            continue;
+        }
+        const auto key = std::tuple{
+            instruction.source_node.value,
+            instruction.source_node ? std::size_t{0u} : index + 1u};
+        auto [iter, inserted] =
+            producers.try_emplace(key, VectorMathProducerOutputs{});
+        static_cast<void>(inserted);
+        auto &output =
+            is_value ? iter->second.value : iter->second.vector;
+        if (output) {
+            std::abort();
+        }
+        output = index;
+    }
+
+    VectorMathProducerCensus result;
+    result.producers = producers.size();
+    for (const auto &[key, outputs] : producers) {
+        static_cast<void>(key);
+        result.output_instructions += outputs.value.has_value() ? 1u : 0u;
+        result.output_instructions += outputs.vector.has_value() ? 1u : 0u;
+        if (!outputs.value || !outputs.vector) {
+            continue;
+        }
+        ++result.dual_output_producers;
+        if (exact_same_producer_configuration(
+                instructions[*outputs.value], instructions[*outputs.vector])) {
+            ++result.exact_fusable_pairs;
         }
     }
     return result;
@@ -477,6 +554,10 @@ int main(int argc, char **argv) {
         auto value_bytecode_static_bytes = std::size_t{};
         ImageProducerCensus reachable_image_producers;
         ImageProducerCensus preparation_image_producers;
+        VectorMathProducerCensus reachable_vector_math_producers;
+        VectorMathProducerCensus physical_vector_math_producers;
+        VectorMathProducerCensus emission_vector_math_producers;
+        VectorMathProducerCensus preparation_vector_math_producers;
         std::vector<psycles::compiler::SurfaceValueStoragePlan>
             value_storage_plans;
         std::vector<psycles::compiler::SurfaceValueExecutionInput>
@@ -495,11 +576,19 @@ int main(int argc, char **argv) {
                 value_operations[instruction.operation] += 1u;
             }
             reachable_image_producers += census_image_producers(*program);
+            reachable_vector_math_producers +=
+                census_vector_math_producers(*program);
             const auto &plan = closure_plans.at(signature);
             const auto dependencies =
                 psycles::compiler::analyze_surface_value_dependencies(
                     *program, plan);
             preparation_image_producers += census_image_producers(
+                *program, &dependencies.preparation);
+            physical_vector_math_producers += census_vector_math_producers(
+                *program, &dependencies.physical);
+            emission_vector_math_producers += census_vector_math_producers(
+                *program, &dependencies.emission);
+            preparation_vector_math_producers += census_vector_math_producers(
                 *program, &dependencies.preparation);
             const auto storage =
                 psycles::compiler::plan_surface_value_storage(
@@ -674,6 +763,38 @@ int main(int argc, char **argv) {
             << preparation_image_producers.exact_fusable_box_pairs
             << "\npreparation_exact_fusable_environment_pairs "
             << preparation_image_producers.exact_fusable_environment_pairs
+            << "\nreachable_vector_math_producers "
+            << reachable_vector_math_producers.producers
+            << "\nreachable_vector_math_output_instructions "
+            << reachable_vector_math_producers.output_instructions
+            << "\nreachable_dual_vector_math_producers "
+            << reachable_vector_math_producers.dual_output_producers
+            << "\nreachable_exact_fusable_vector_math_pairs "
+            << reachable_vector_math_producers.exact_fusable_pairs
+            << "\nphysical_vector_math_producers "
+            << physical_vector_math_producers.producers
+            << "\nphysical_vector_math_output_instructions "
+            << physical_vector_math_producers.output_instructions
+            << "\nphysical_dual_vector_math_producers "
+            << physical_vector_math_producers.dual_output_producers
+            << "\nphysical_exact_fusable_vector_math_pairs "
+            << physical_vector_math_producers.exact_fusable_pairs
+            << "\nemission_vector_math_producers "
+            << emission_vector_math_producers.producers
+            << "\nemission_vector_math_output_instructions "
+            << emission_vector_math_producers.output_instructions
+            << "\nemission_dual_vector_math_producers "
+            << emission_vector_math_producers.dual_output_producers
+            << "\nemission_exact_fusable_vector_math_pairs "
+            << emission_vector_math_producers.exact_fusable_pairs
+            << "\npreparation_vector_math_producers "
+            << preparation_vector_math_producers.producers
+            << "\npreparation_vector_math_output_instructions "
+            << preparation_vector_math_producers.output_instructions
+            << "\npreparation_dual_vector_math_producers "
+            << preparation_vector_math_producers.dual_output_producers
+            << "\npreparation_exact_fusable_vector_math_pairs "
+            << preparation_vector_math_producers.exact_fusable_pairs
             << "\nvalue_scene_descriptor_bytes "
             << value_scene_descriptor_bytes
             << "\nvalue_scene_total_bytes "
