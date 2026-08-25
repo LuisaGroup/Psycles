@@ -97,6 +97,88 @@ using SurfaceValueHeightCallable = Callable<float(
 using SurfaceValueNodes =
     std::vector<std::unique_ptr<ValueNode>>;
 
+struct SurfaceValueHandlerGroup {
+    std::uint32_t key{};
+    std::vector<std::uint32_t> variants;
+};
+
+[[nodiscard]] std::uint32_t handler_key(
+    const compiler::SurfaceValueStaticVariant &variant) noexcept {
+    compiler::SurfaceValueBank result_bank{};
+    if (!compiler::classify_surface_value_type(
+            variant.instruction.result_type, result_bank) ||
+        variant.svm_immediates.empty()) {
+        std::abort();
+    }
+    const auto key = compiler::make_surface_value_handler_key(
+        variant.instruction.operation,
+        result_bank,
+        variant.svm_immediates.front());
+    for (const auto immediate : variant.svm_immediates) {
+        if (compiler::make_surface_value_handler_key(
+                variant.instruction.operation,
+                result_bank,
+                immediate) != key) {
+            std::abort();
+        }
+    }
+    return key;
+}
+
+[[nodiscard]] std::vector<SurfaceValueHandlerGroup>
+make_handler_groups(
+    const SurfaceValueRuntime &runtime,
+    std::span<const std::uint32_t> active_variants) noexcept {
+    std::vector<SurfaceValueHandlerGroup> groups;
+    groups.reserve(active_variants.size());
+    for (const auto variant_index : active_variants) {
+        if (variant_index >=
+            runtime.executable.executable.variants.size()) {
+            std::abort();
+        }
+        const auto key = handler_key(
+            runtime.executable.executable.variants[variant_index]);
+        const auto group = std::find_if(
+            groups.begin(), groups.end(), [key](const auto &candidate) {
+                return candidate.key == key;
+            });
+        if (group == groups.end()) {
+            groups.emplace_back(SurfaceValueHandlerGroup{
+                .key = key, .variants = {variant_index}});
+        } else {
+            group->variants.emplace_back(variant_index);
+        }
+    }
+    std::sort(groups.begin(), groups.end(), [](const auto &lhs,
+                                                const auto &rhs) {
+        return lhs.key < rhs.key;
+    });
+    return groups;
+}
+
+[[nodiscard]] UInt device_handler_key(UInt control) noexcept {
+    const auto operation = control & compiler::surface_value_opcode_mask;
+    UInt key = control &
+               (compiler::surface_value_opcode_mask |
+                compiler::surface_value_result_bank_mask);
+    const auto image =
+        (operation == static_cast<std::uint32_t>(
+                          compiler::ValueOperation::image_color)) |
+        (operation == static_cast<std::uint32_t>(
+                          compiler::ValueOperation::image_alpha));
+    const auto immediate =
+        (control & compiler::surface_value_svm_immediate_mask) >>
+        compiler::surface_value_svm_immediate_shift;
+    const auto projection =
+        (immediate & compiler::surface_value_image_projection_mask) >>
+        compiler::surface_value_image_projection_shift;
+    key |= select(
+        0u,
+        compiler::surface_value_handler_image_box_bit,
+        image & (projection == 1u));
+    return key;
+}
+
 [[nodiscard]] ULong read_unsigned_integer_dynamic(
     const ShaderServices &services,
     const SurfacePoint &point,
@@ -353,6 +435,8 @@ void emit_surface_value_program(
     Expr<Buffer<float>> cycles_bsdf_tables,
     Expr<BindlessArray> textures,
     Expr<BindlessArray> geometry_heap) noexcept {
+    const auto handler_groups = make_handler_groups(
+        runtime, active_variants);
     auto range = surface_value_runtime_buffer<luisa::uint4>(
                      runtime,
                      SurfaceValueRuntimeBufferSlot::program)
@@ -365,75 +449,101 @@ void emit_surface_value_program(
                 runtime,
                 SurfaceValueRuntimeBufferSlot::instruction)
                 .read(instruction_index);
-        auto variant_index =
-            surface_value_runtime_buffer<luisa::uint>(
+        const auto emit_variant = [&](std::uint32_t index) noexcept {
+            if (index >= nodes.size() ||
+                index >= runtime.executable.executable.variants.size()) {
+                std::abort();
+            }
+            const auto &variant =
+                runtime.executable.executable.variants[index];
+            auto operands = load_variant_operands(
+                variant,
                 runtime,
-                SurfaceValueRuntimeBufferSlot::instruction_variant)
-                .read(instruction_index);
-        luisa::compute::detail::SwitchStmtBuilder{variant_index} % [&] {
-            for (const auto index : active_variants) {
-                if (index >= nodes.size() ||
-                    index >= runtime.executable.executable.variants.size()) {
-                    std::abort();
+                services,
+                point,
+                locals,
+                instruction);
+            if (variant.instruction.operation ==
+                compiler::ValueOperation::bump) {
+                if (height == nullptr) {
+                    luisa::compute::dsl::unreachable(
+                        "Bump reached the Bump-free height evaluator");
+                    return;
                 }
-                luisa::compute::detail::SwitchCaseStmtBuilder{
-                    static_cast<luisa::uint>(index)} %
-                    [&, index] {
-                        const auto &variant =
-                            runtime.executable.executable.variants[index];
-                        auto operands = load_variant_operands(
-                            variant,
-                            runtime,
-                            services,
-                            point,
-                            locals,
-                            instruction);
-                        if (variant.instruction.operation ==
-                            compiler::ValueOperation::bump) {
-                            if (height == nullptr) {
-                                luisa::compute::dsl::unreachable(
-                                    "Bump reached the Bump-free height evaluator");
-                                return;
-                            }
-                            auto value = evaluate_bump_variant(
-                                variant,
-                                runtime,
-                                services,
-                                point,
-                                operands,
-                                instruction,
-                                instruction_index,
-                                *height,
-                                scalar_parameters,
-                                vector_parameters,
-                                cycles_bsdf_tables,
-                                textures,
-                                geometry_heap);
-                            write_dynamic_value(
-                                variant.instruction.result_type,
-                                locals,
-                                instruction.y,
-                                value);
+                auto value = evaluate_bump_variant(
+                    variant,
+                    runtime,
+                    services,
+                    point,
+                    operands,
+                    instruction,
+                    instruction_index,
+                    *height,
+                    scalar_parameters,
+                    vector_parameters,
+                    cycles_bsdf_tables,
+                    textures,
+                    geometry_heap);
+                write_dynamic_value(
+                    variant.instruction.result_type,
+                    locals,
+                    instruction.y,
+                    value);
+                return;
+            }
+            auto value = evaluate_non_bump_variant(
+                variant,
+                *nodes[index],
+                runtime,
+                services,
+                point,
+                operands,
+                instruction);
+            write_dynamic_value(
+                variant.instruction.result_type,
+                locals,
+                instruction.y,
+                value);
+        };
+        const auto primary_key = device_handler_key(instruction.x);
+        luisa::compute::detail::SwitchStmtBuilder{primary_key} % [&] {
+            for (const auto &group : handler_groups) {
+                luisa::compute::detail::SwitchCaseStmtBuilder{group.key} %
+                    [&] {
+                        if (group.variants.size() == 1u) {
+                            emit_variant(group.variants.front());
                             return;
                         }
-                        auto value = evaluate_non_bump_variant(
-                            variant,
-                            *nodes[index],
-                            runtime,
-                            services,
-                            point,
-                            operands,
-                            instruction);
-                        write_dynamic_value(
-                            variant.instruction.result_type,
-                            locals,
-                            instruction.y,
-                            value);
+                        // The primary key is only an instruction-local
+                        // projection. If two exact evaluator families inhabit
+                        // one fiber, preserve the complete compiler
+                        // discriminator inside that one opcode branch. No
+                        // instruction outside an ambiguous fiber pays this
+                        // immutable-buffer read.
+                        const auto variant_index =
+                            surface_value_runtime_buffer<luisa::uint>(
+                                runtime,
+                                SurfaceValueRuntimeBufferSlot::
+                                    instruction_variant)
+                                .read(instruction_index);
+                        luisa::compute::detail::SwitchStmtBuilder{
+                            variant_index} % [&] {
+                            for (const auto index : group.variants) {
+                                luisa::compute::detail::SwitchCaseStmtBuilder{
+                                    index} %
+                                    [&, index] { emit_variant(index); };
+                            }
+                            luisa::compute::detail::
+                                SwitchDefaultStmtBuilder{} % [] {
+                                luisa::compute::dsl::unreachable(
+                                    "invalid compact surface evaluator fiber");
+                            };
+                        };
                     };
             }
             luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
                 luisa::compute::dsl::unreachable(
-                    "invalid compact surface value variant");
+                    "invalid compact surface value handler");
             };
         };
         instruction_index += 1u;

@@ -428,6 +428,7 @@ inline constexpr std::uint32_t surface_value_svm_immediate_mask =
 // Operation-local layouts inside the unshifted 14-bit immediate.
 inline constexpr std::uint32_t
     surface_value_noise_normalize_immediate_bit = 1u << 0u;
+inline constexpr std::uint32_t surface_value_uv_named_immediate_bit = 1u;
 inline constexpr std::uint32_t surface_value_noise_dimensions_shift = 1u;
 inline constexpr std::uint32_t surface_value_noise_dimensions_mask =
     0x7u << surface_value_noise_dimensions_shift;
@@ -470,6 +471,16 @@ inline constexpr std::uint32_t surface_value_control_mask =
     surface_value_opcode_mask | surface_value_operand_count_mask |
     surface_value_result_bank_mask | surface_value_svm_immediate_mask;
 
+// Primary interpreter dispatch is derived from the instruction itself. The
+// opcode and result bank select the typed handler. Image BOX is the sole
+// current sub-opcode execution family because it records a normal-weighted
+// multi-sample AST instead of the regular one-sample image AST. Bit 18 is in a
+// separate handler-key namespace; it does not consume another bytecode bit.
+inline constexpr std::uint32_t surface_value_handler_image_box_bit = 1u << 18u;
+static_assert(
+    (surface_value_handler_image_box_bit &
+     (surface_value_opcode_mask | surface_value_result_bank_mask)) == 0u);
+
 [[nodiscard]] constexpr bool surface_value_operation_uses_mapping_immediate(
     ValueOperation operation) noexcept {
   return operation == ValueOperation::mapping;
@@ -494,6 +505,7 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
          operation == ValueOperation::fresnel ||
          operation == ValueOperation::layer_weight_fresnel ||
          operation == ValueOperation::layer_weight_facing ||
+         operation == ValueOperation::uv ||
          operation == ValueOperation::normal_map ||
          operation == ValueOperation::bump ||
          operation == ValueOperation::wave_color ||
@@ -519,6 +531,7 @@ surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
              operation == ValueOperation::fresnel ||
              operation == ValueOperation::layer_weight_fresnel ||
              operation == ValueOperation::layer_weight_facing ||
+             operation == ValueOperation::uv ||
              operation == ValueOperation::normal_map ||
              operation == ValueOperation::bump ||
              operation == ValueOperation::noise_factor ||
@@ -599,6 +612,9 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
            decode_normal_map_space(static_u0) <= NormalMapSpace::blender_world &&
            static_u1 == 0u;
   }
+  if (operation == ValueOperation::uv) {
+    return static_u0 <= 1u && static_u1 == 0u;
+  }
   if (operation == ValueOperation::bump) {
     return static_u0 <= 0x7u && static_u1 == 0u;
   }
@@ -676,6 +692,7 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
   if (operation == ValueOperation::fresnel ||
       operation == ValueOperation::layer_weight_fresnel ||
       operation == ValueOperation::layer_weight_facing ||
+      operation == ValueOperation::uv ||
       operation == ValueOperation::normal_map ||
       operation == ValueOperation::bump ||
       operation == ValueOperation::gradient ||
@@ -703,6 +720,36 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
     return static_cast<std::uint32_t>(static_u1);
   }
   return 0u;
+}
+
+[[nodiscard]] constexpr bool surface_value_operation_uses_image_box_family(
+    ValueOperation operation) noexcept {
+  return operation == ValueOperation::image_color ||
+         operation == ValueOperation::image_alpha;
+}
+
+// This coarse instruction-local projection identifies the common Cycles-style
+// opcode/execution-family branch without consulting operands or metadata.
+// Distinct exact evaluator variants may intentionally map to the same primary
+// key; the interpreter refines such a fiber with the complete semantic
+// discriminator. Thus this projection only moves the first dispatch level and
+// never weakens exact evaluator interning.
+[[nodiscard]] constexpr std::uint32_t make_surface_value_handler_key(
+    ValueOperation operation,
+    SurfaceValueBank result_bank,
+    std::uint32_t svm_immediate) noexcept {
+  auto key = static_cast<std::uint32_t>(operation) |
+             (static_cast<std::uint32_t>(result_bank)
+              << surface_value_result_bank_shift);
+  if (surface_value_operation_uses_image_box_family(operation)) {
+    const auto projection =
+        (svm_immediate & surface_value_image_projection_mask) >>
+        surface_value_image_projection_shift;
+    if (projection == 1u) {
+      key |= surface_value_handler_image_box_bit;
+    }
+  }
+  return key;
 }
 
 [[nodiscard]] constexpr std::uint32_t make_surface_value_control(
@@ -748,6 +795,14 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
   return static_cast<std::uint16_t>(
       (instruction.control & surface_value_svm_immediate_mask) >>
       surface_value_svm_immediate_shift);
+}
+
+[[nodiscard]] constexpr std::uint32_t surface_value_handler_key(
+    const SurfaceValueBytecodeInstruction &instruction) noexcept {
+  return make_surface_value_handler_key(
+      surface_value_operation(instruction),
+      surface_value_result_bank(instruction),
+      surface_value_svm_immediate(instruction));
 }
 
 // Ordered largest-to-smallest alignment. A metadata record exists only when
