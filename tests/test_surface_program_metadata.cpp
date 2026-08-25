@@ -1138,6 +1138,94 @@ void test_surface_value_storage_plan() {
                                                    ValueExpressionId{1u}},
             "an immutable variant lost its typed normalized operands");
 
+    const auto make_passthrough_program =
+        [](std::uint32_t tag, SocketType type, SocketValue value) {
+        return SurfaceProgram{
+            tag,
+            {ParameterDesc{
+                .id = ParameterId{0u},
+                .node = NodeId{tag + 1u},
+                .socket = "Value",
+                .type = type,
+                .default_value = std::move(value),
+                .source = ParameterSource::input}},
+            {ValueInstruction{
+                 .operation = ValueOperation::parameter,
+                 .source_node = NodeId{tag + 1u},
+                 .result_type = type,
+                 .parameter = ParameterId{0u}},
+             ValueInstruction{
+                 .operation = ValueOperation::passthrough,
+                 .source_node = NodeId{tag + 1u},
+                 .result_type = type,
+                 .operands =
+                     make_value_operands<value_operand::unary>({
+                         {value_operand::unary::input,
+                          ValueExpressionId{0u}}})}},
+            {},
+            {}};
+    };
+    const auto float_passthrough = make_passthrough_program(
+        30u, SocketType::floating, SocketValue::floating(0.25f));
+    const auto boolean_passthrough = make_passthrough_program(
+        31u, SocketType::boolean, SocketValue::boolean(true));
+    const auto color_passthrough = make_passthrough_program(
+        32u, SocketType::color,
+        SocketValue::color({0.1f, 0.2f, 0.3f}));
+    const auto normal_passthrough = make_passthrough_program(
+        33u, SocketType::normal,
+        SocketValue::normal({0.0f, 0.0f, 1.0f}));
+    const auto uint_passthrough = make_passthrough_program(
+        34u, SocketType::unsigned_integer,
+        SocketValue::unsigned_integer(7u));
+    const auto make_passthrough_plan = [](const SurfaceProgram &source) {
+        return plan_surface_value_storage(
+            source, std::vector<bool>{true, true},
+            std::vector<bool>{false, true});
+    };
+    const auto float_passthrough_plan =
+        make_passthrough_plan(float_passthrough);
+    const auto boolean_passthrough_plan =
+        make_passthrough_plan(boolean_passthrough);
+    const auto color_passthrough_plan =
+        make_passthrough_plan(color_passthrough);
+    const auto normal_passthrough_plan =
+        make_passthrough_plan(normal_passthrough);
+    const auto uint_passthrough_plan =
+        make_passthrough_plan(uint_passthrough);
+    const std::vector passthrough_inputs{
+        SurfaceValueExecutionInput{.program = &float_passthrough,
+                                   .storage = &float_passthrough_plan},
+        SurfaceValueExecutionInput{.program = &boolean_passthrough,
+                                   .storage = &boolean_passthrough_plan},
+        SurfaceValueExecutionInput{.program = &color_passthrough,
+                                   .storage = &color_passthrough_plan},
+        SurfaceValueExecutionInput{.program = &normal_passthrough,
+                                   .storage = &normal_passthrough_plan},
+        SurfaceValueExecutionInput{.program = &uint_passthrough,
+                                   .storage = &uint_passthrough_plan}};
+    const auto passthrough_scene =
+        build_surface_value_executable_scene(passthrough_inputs);
+    require(
+        passthrough_scene.valid &&
+            passthrough_scene.variants.size() == 3u &&
+            passthrough_scene.instruction_variants ==
+                std::vector<std::uint32_t>{0u, 0u, 1u, 1u, 2u} &&
+            passthrough_scene.variants[0u].instruction.result_type ==
+                SocketType::floating &&
+            passthrough_scene.variants[0u].operand_types ==
+                std::vector<SocketType>{SocketType::floating} &&
+            passthrough_scene.variants[1u].instruction.result_type ==
+                SocketType::vector &&
+            passthrough_scene.variants[1u].operand_types ==
+                std::vector<SocketType>{SocketType::vector} &&
+            passthrough_scene.variants[2u].instruction.result_type ==
+                SocketType::unsigned_integer &&
+            passthrough_scene.variants[2u].operand_types ==
+                std::vector<SocketType>{SocketType::unsigned_integer},
+        "nominal socket spellings did not quotient to the three exact SVM "
+        "execution banks");
+
     auto positive_zero_values = metadata_program.value_instructions();
     positive_zero_values.front().static_f1 = 0.0f;
     const SurfaceProgram positive_zero_program{

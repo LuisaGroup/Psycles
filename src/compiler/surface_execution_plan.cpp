@@ -17,36 +17,6 @@
 namespace psycles::compiler {
 namespace {
 
-[[nodiscard]] bool classify_value(contract::SocketType type,
-                                  SurfaceValueBank &bank) noexcept {
-  using contract::SocketType;
-  switch (type) {
-  case SocketType::boolean:
-  case SocketType::integer:
-  case SocketType::floating:
-    bank = SurfaceValueBank::scalar;
-    return true;
-  case SocketType::float2:
-  case SocketType::float3:
-  case SocketType::color:
-  case SocketType::spectrum:
-  case SocketType::point:
-  case SocketType::vector:
-  case SocketType::normal:
-    bank = SurfaceValueBank::vector;
-    return true;
-  case SocketType::unsigned_integer:
-    bank = SurfaceValueBank::unsigned_integer;
-    return true;
-  case SocketType::transform:
-  case SocketType::string:
-  case SocketType::closure:
-  case SocketType::volume_closure:
-    return false;
-  }
-  return false;
-}
-
 [[nodiscard]] constexpr std::size_t bank_index(SurfaceValueBank bank) noexcept {
   switch (bank) {
   case SurfaceValueBank::scalar:
@@ -247,10 +217,16 @@ namespace {
 [[nodiscard]] std::vector<std::uint64_t> make_static_variant_key(
     const SurfaceProgram &program,
     const ValueInstruction &instruction) {
+  const auto type_key = [](contract::SocketType type) noexcept {
+    auto bank = SurfaceValueBank::scalar;
+    return classify_surface_value_type(type, bank)
+               ? static_cast<std::uint64_t>(bank)
+               : std::uint64_t{3u} + static_cast<std::uint64_t>(type);
+  };
   std::vector<std::uint64_t> key;
   key.reserve(9u + instruction.operands.size());
   key.emplace_back(static_cast<std::uint64_t>(instruction.operation));
-  key.emplace_back(static_cast<std::uint64_t>(instruction.result_type));
+  key.emplace_back(type_key(instruction.result_type));
   // Only fields represented exactly by the opcode-owned device immediate are
   // removed from the host/JIT semantic key. Image BOX retains its derived
   // execution-shape family even though the full projection remains device
@@ -273,7 +249,7 @@ namespace {
                        : ~std::uint64_t{0u});
   key.emplace_back(instruction.operands.size());
   for (const auto operand : instruction.operands) {
-    key.emplace_back(static_cast<std::uint64_t>(
+    key.emplace_back(type_key(
         program.value_instructions()[operand.value].result_type));
   }
   // Static-table values are bytecode data, just like a Cycles SVM node's
@@ -308,7 +284,7 @@ namespace {
 [[nodiscard]] std::uint32_t value_stack_words(
     const ValueInstruction &instruction) noexcept {
   SurfaceValueBank bank;
-  if (!classify_value(instruction.result_type, bank)) {
+  if (!classify_surface_value_type(instruction.result_type, bank)) {
     return 0u;
   }
   switch (bank) {
@@ -391,7 +367,8 @@ struct SurfaceValueSchedulePressure {
       if (remaining_uses[operand.value] == 0u &&
           values[operand.value].operation != ValueOperation::parameter) {
         SurfaceValueBank operand_bank;
-        if (!classify_value(values[operand.value].result_type, operand_bank)) {
+        if (!classify_surface_value_type(values[operand.value].result_type,
+                                         operand_bank)) {
           return {};
         }
         auto &bank_live = live[bank_index(operand_bank)];
@@ -405,7 +382,7 @@ struct SurfaceValueSchedulePressure {
       return {};
     }
     SurfaceValueBank result_bank;
-    if (!classify_value(instruction.result_type, result_bank)) {
+    if (!classify_surface_value_type(instruction.result_type, result_bank)) {
       return {};
     }
     const auto result_bank_index = bank_index(result_bank);
@@ -641,7 +618,7 @@ plan_surface_value_storage(const SurfaceProgram &program,
     ++result.active_values;
     const auto &instruction = values[index];
     SurfaceValueBank bank;
-    if (!classify_value(instruction.result_type, bank)) {
+    if (!classify_surface_value_type(instruction.result_type, bank)) {
       return reject("an active value has no supported typed storage bank");
     }
     if (instruction.operation == ValueOperation::parameter) {
@@ -714,7 +691,7 @@ plan_surface_value_storage(const SurfaceProgram &program,
     }
 
     auto result_bank = SurfaceValueBank::scalar;
-    if (!classify_value(instruction.result_type, result_bank)) {
+    if (!classify_surface_value_type(instruction.result_type, result_bank)) {
       return reject("an active value has no supported typed storage bank");
     }
     const auto typed_index = bank_index(result_bank);
@@ -1027,6 +1004,13 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
               "the scene has too many immutable value variants");
         }
         auto normalized = instruction;
+        auto result_bank = SurfaceValueBank::scalar;
+        if (!classify_surface_value_type(normalized.result_type,
+                                         result_bank)) {
+          return reject_executable_scene(
+              "a value evaluator has an unsupported result execution type");
+        }
+        normalized.result_type = canonical_surface_value_type(result_bank);
         if (normalized.operation == ValueOperation::color_ramp ||
             normalized.operation == ValueOperation::rgb_curve) {
           normalized.parameter = {};
@@ -1046,8 +1030,16 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
         for (auto operand_index = std::size_t{0u};
              operand_index < normalized.operands.size(); ++operand_index) {
           const auto source = normalized.operands[operand_index];
+          auto operand_bank = SurfaceValueBank::scalar;
+          if (!classify_surface_value_type(
+                  program->value_instructions()[source.value].result_type,
+                  operand_bank)) {
+            return reject_executable_scene(
+                "a value evaluator has an unsupported operand execution "
+                "type");
+          }
           operand_types.emplace_back(
-              program->value_instructions()[source.value].result_type);
+              canonical_surface_value_type(operand_bank));
           normalized.operands[operand_index] = ValueExpressionId{
               static_cast<std::uint32_t>(operand_index)};
         }
