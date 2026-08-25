@@ -284,20 +284,18 @@ void write_dynamic_value(
     const SurfacePoint &point,
     TracedValues &operands,
     Var<luisa::uint4> instruction) noexcept {
+    // Instruction-owned fields form a product, not an exclusive sum. In
+    // particular, Color Ramp owns both an SVM mode immediate and a late-bound
+    // ParameterId. Dropping either projection makes two otherwise shareable
+    // records observe the first host variant's stale field. Build one context
+    // from every independently present record component, then evaluate once.
+    std::optional<UInt> immediate;
     if (compiler::surface_value_operation_uses_svm_immediate(
             variant.instruction.operation)) {
-        const UInt immediate =
+        immediate.emplace(
             (instruction.x &
              compiler::surface_value_svm_immediate_mask) >>
-            compiler::surface_value_svm_immediate_shift;
-        ValueEvaluationContext context{
-            .services = services,
-            .point = point,
-            .result = operands,
-            .surface = nullptr,
-            .svm_immediate_override = &immediate,
-            .svm_immediate_domain = variant.svm_immediates};
-        return node.evaluate(context);
+            compiler::surface_value_svm_immediate_shift);
     }
     const auto table_parameter =
         variant.instruction.operation ==
@@ -305,41 +303,43 @@ void write_dynamic_value(
         variant.instruction.operation ==
             compiler::ValueOperation::rgb_curve;
     const auto static_table = !variant.instruction.static_table.empty();
-    if (table_parameter || static_table) {
+    std::optional<Expr<std::uint32_t>> parameter_expression;
+    if (table_parameter) {
         auto parameter = surface_value_runtime_buffer<luisa::uint>(
                              runtime,
                              SurfaceValueRuntimeBufferSlot::metadata_parameter)
                              .read(instruction.w);
+        parameter_expression.emplace(parameter.expression());
+    }
+    std::optional<ValueStaticTableView> static_table_view;
+    if (static_table) {
         auto static_range =
             surface_value_runtime_buffer<luisa::uint2>(
                 runtime,
                 SurfaceValueRuntimeBufferSlot::metadata_static_range)
                 .read(instruction.w);
-        const Expr<std::uint32_t> parameter_expression{
-            parameter.expression()};
-        const ValueStaticTableView static_table_view{
+        static_table_view.emplace(ValueStaticTableView{
             .resources = Expr<BindlessArray>{runtime.device_view},
             .buffer_slot = surface_value_runtime_buffer_slot(
                 SurfaceValueRuntimeBufferSlot::static_data),
-            .begin = Expr<std::uint32_t>{static_range.x.expression()}};
-        ValueEvaluationContext context{
-            .services = services,
-            .point = point,
-            .result = operands,
-            .surface = nullptr,
-            .parameter_override = table_parameter
-                                      ? &parameter_expression
-                                      : nullptr,
-            .static_table_override = static_table
-                                         ? &static_table_view
-                                         : nullptr};
-        return node.evaluate(context);
+            .begin = Expr<std::uint32_t>{static_range.x.expression()}});
     }
     ValueEvaluationContext context{
         .services = services,
         .point = point,
         .result = operands,
-        .surface = nullptr};
+        .surface = nullptr,
+        .parameter_override = parameter_expression
+                                  ? &*parameter_expression
+                                  : nullptr,
+        .static_table_override = static_table_view
+                                     ? &*static_table_view
+                                     : nullptr,
+        .svm_immediate_override = immediate ? &*immediate : nullptr,
+        .svm_immediate_domain = immediate
+                                    ? std::span<const std::uint16_t>{
+                                          variant.svm_immediates}
+                                    : std::span<const std::uint16_t>{}};
     return node.evaluate(context);
 }
 
