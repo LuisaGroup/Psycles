@@ -12,6 +12,13 @@ namespace psycles::luisa_backend::detail {
     Float3 value,
     Float3 fallback) noexcept;
 
+// Cycles' safe_powf is total at a zero base: exponent zero returns one and
+// every other exponent, including negative values, returns zero. Keeping this
+// shared prevents scalar Math and component-wise VectorMath from drifting.
+[[nodiscard]] Float cycles_safe_power(
+    Float base,
+    Float exponent) noexcept;
+
 // One statically selected Cycles Math operation. Both the topology-expanded
 // graph and compact SVM handler record their Luisa AST through this function.
 [[nodiscard]] Float evaluate_surface_math_operation(

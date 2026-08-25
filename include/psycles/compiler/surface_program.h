@@ -725,11 +725,12 @@ enum class VectorMathOperation : std::uint8_t {
   snap,
   sine,
   cosine,
-  tangent
+  tangent,
+  round
 };
 
 inline constexpr std::uint32_t vector_math_operation_count =
-    static_cast<std::uint32_t>(VectorMathOperation::tangent) + 1u;
+    static_cast<std::uint32_t>(VectorMathOperation::round) + 1u;
 
 enum class BlendOperation : std::uint8_t {
   mix,

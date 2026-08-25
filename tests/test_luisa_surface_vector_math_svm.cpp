@@ -33,6 +33,9 @@ using psycles::test_support::require_bounded_xir;
 inline constexpr auto immediate_domain = make_immediate_domain();
 inline constexpr std::array<std::uint16_t, 1u> add_only_domain{
     static_cast<std::uint16_t>(VectorMathOperation::add)};
+inline constexpr std::array<std::uint16_t, 2u> power_round_domain{
+    static_cast<std::uint16_t>(VectorMathOperation::power),
+    static_cast<std::uint16_t>(VectorMathOperation::round)};
 inline constexpr auto input_a = luisa::float3{0.75f, -0.4f, 1.2f};
 inline constexpr auto input_b = luisa::float3{0.5f, 1.25f, -0.8f};
 inline constexpr auto input_c = luisa::float3{-0.2f, 0.7f, 0.3f};
@@ -145,6 +148,30 @@ make_static_reference_kernel() {
     };
 }
 
+[[nodiscard]] Kernel1D<Buffer<luisa::float3>>
+make_cycles_boundary_kernel() {
+    return [](BufferFloat3 output) noexcept {
+        output.write(
+            0u,
+            evaluate_surface_vector_math_vector_svm(
+                static_cast<std::uint32_t>(VectorMathOperation::power),
+                power_round_domain,
+                make_float3(0.0f, -2.0f, -2.0f),
+                make_float3(-2.0f, 3.0f, 0.5f),
+                make_float3(0.0f),
+                1.0f));
+        output.write(
+            1u,
+            evaluate_surface_vector_math_vector_svm(
+                static_cast<std::uint32_t>(VectorMathOperation::round),
+                power_round_domain,
+                make_float3(-1.5f, 1.5f, 2.49f),
+                make_float3(0.0f),
+                make_float3(0.0f),
+                1.0f));
+    };
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -181,17 +208,25 @@ int main(int argc, char **argv) {
     auto runtime_shader = device.compile(runtime_kernel, uncached);
     auto reference_shader =
         device.compile(make_static_reference_kernel(), uncached);
+    auto cycles_boundary_shader =
+        device.compile(make_cycles_boundary_kernel(), uncached);
     auto actual_buffer =
         device.create_buffer<luisa::float4>(vector_math_operation_count);
     auto expected_buffer =
         device.create_buffer<luisa::float4>(vector_math_operation_count);
     std::vector<luisa::float4> actual(vector_math_operation_count);
     std::vector<luisa::float4> expected(vector_math_operation_count);
+    std::array<luisa::float3, 2u> cycles_boundary{};
+    auto cycles_boundary_buffer =
+        device.create_buffer<luisa::float3>(cycles_boundary.size());
     stream << runtime_shader(actual_buffer).dispatch(vector_math_operation_count)
            << reference_shader(expected_buffer)
                   .dispatch(vector_math_operation_count)
+           << cycles_boundary_shader(cycles_boundary_buffer).dispatch(1u)
            << actual_buffer.copy_to(luisa::span{actual})
-           << expected_buffer.copy_to(luisa::span{expected}) << synchronize();
+           << expected_buffer.copy_to(luisa::span{expected})
+           << cycles_boundary_buffer.copy_to(luisa::span{cycles_boundary})
+           << synchronize();
 
     for (auto index = std::uint32_t{0u};
          index < vector_math_operation_count;
@@ -199,6 +234,22 @@ int main(int argc, char **argv) {
         if (!approximately_equal(actual[index], expected[index], 1.0e-6f)) {
             std::cerr << "surface Vector Math SVM mismatch on " << backend
                       << ", operation=" << index << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+    constexpr std::array expected_cycles_boundary{
+        luisa::float3{0.0f, -8.0f, 0.0f},
+        luisa::float3{-1.0f, 2.0f, 2.0f}};
+    for (auto index = std::size_t{0u};
+         index < cycles_boundary.size();
+         ++index) {
+        const auto &actual_boundary = cycles_boundary[index];
+        const auto &expected_boundary = expected_cycles_boundary[index];
+        if (actual_boundary.x != expected_boundary.x ||
+            actual_boundary.y != expected_boundary.y ||
+            actual_boundary.z != expected_boundary.z) {
+            std::cerr << "Cycles Vector Math boundary mismatch on " << backend
+                      << ", case=" << index << '\n';
             return EXIT_FAILURE;
         }
     }

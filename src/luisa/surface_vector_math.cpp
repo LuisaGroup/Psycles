@@ -1,5 +1,7 @@
 #include "surface_vector_math.h"
 
+#include "surface_math.h"
+
 #include <array>
 #include <cstdlib>
 
@@ -76,17 +78,6 @@ SurfaceVectorMathResult evaluate_surface_vector_math_operation(
         return select(input,
                       input / select(1.0f, input_length, valid),
                       valid);
-    };
-    const auto safe_power = [](Float base, Float exponent) noexcept {
-        const auto integer_exponent = exponent == trunc(exponent);
-        auto powered = pow(abs(base), exponent);
-        const auto odd_exponent = fmod(abs(exponent), 2.0f) != 0.0f;
-        powered = select(powered,
-                         -powered,
-                         (base < 0.0f) & odd_exponent);
-        return select(0.0f,
-                      powered,
-                      (base >= 0.0f) | integer_exponent);
     };
     const auto wrap_component = [](Float input,
                                    Float maximum,
@@ -171,9 +162,9 @@ SurfaceVectorMathResult evaluate_surface_vector_math_operation(
             result.vector = abs(a);
             break;
         case compiler::VectorMathOperation::power:
-            result.vector = make_float3(safe_power(a.x, b.x),
-                                        safe_power(a.y, b.y),
-                                        safe_power(a.z, b.z));
+            result.vector = make_float3(cycles_safe_power(a.x, b.x),
+                                        cycles_safe_power(a.y, b.y),
+                                        cycles_safe_power(a.z, b.z));
             break;
         case compiler::VectorMathOperation::sign: {
             const auto sign_component = [](Float input) noexcept {
@@ -223,6 +214,9 @@ SurfaceVectorMathResult evaluate_surface_vector_math_operation(
             break;
         case compiler::VectorMathOperation::tangent:
             result.vector = make_float3(tan(a.x), tan(a.y), tan(a.z));
+            break;
+        case compiler::VectorMathOperation::round:
+            result.vector = floor(a + 0.5f);
             break;
         default:
             std::abort();
