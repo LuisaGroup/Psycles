@@ -1,5 +1,7 @@
 #pragma once
 
+#include "surface_color_encoding.h"
+
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -224,8 +226,6 @@ template <typename Id, typename Values>
 [[nodiscard]] Float3 bsdf_allocated_weight(Float3 value) noexcept;
 [[nodiscard]] Float pass_weight(Float3 value) noexcept;
 [[nodiscard]] Float max_component(Float3 value) noexcept;
-[[nodiscard]] Float srgb_to_linear(Float value) noexcept;
-[[nodiscard]] Float3 srgb_to_linear(Float3 value) noexcept;
 [[nodiscard]] Float cycles_table_1d(const ShaderServices &services,
     Float x,
     Expr<std::uint32_t> offset,

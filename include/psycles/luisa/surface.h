@@ -611,6 +611,36 @@ public:
         Float3 scale) const noexcept = 0;
 };
 
+// Complete typed input of one Cycles Image Texture BOX projection. The
+// interpolation and extension modes remain immutable host-stage metadata on
+// SurfaceImageBoxProvider::evaluate; all fields below are true device values.
+// In particular, no SVM stack, program counter, or weak float4 register bank
+// crosses this operation boundary.
+struct SurfaceImageBoxInput {
+    Float3 coordinate;
+    Float3 signed_normal;
+    Float blend;
+    UInt texture_handle;
+    Bool unassociate_alpha;
+    Bool encoded_as_srgb;
+};
+
+// Host-stage semantic boundary for the pure Image Texture BOX operation.
+// Implementations may share one typed callable per canonical sampling mode.
+// The operation consumes one node's inputs and returns its one RGBA result;
+// loading graph operands and storing the result remain in the owning graph
+// transaction.
+class SurfaceImageBoxProvider {
+
+public:
+    virtual ~SurfaceImageBoxProvider() noexcept = default;
+
+    [[nodiscard]] virtual Float4 evaluate(
+        const SurfaceImageBoxInput &input,
+        std::uint32_t interpolation,
+        std::uint32_t extension) const noexcept = 0;
+};
+
 // Host-stage expression view for the finite Normal Map evaluation family.
 // Immutable graph metadata selects one strongly typed endpoint before shader
 // recording. This record gives those values semantic names; production
@@ -1018,6 +1048,11 @@ public:
 
     [[nodiscard]] virtual const SurfaceVectorMappingProvider *
     surface_vector_mapping_provider() const noexcept {
+        return nullptr;
+    }
+
+    [[nodiscard]] virtual const SurfaceImageBoxProvider *
+    surface_image_box_provider() const noexcept {
         return nullptr;
     }
 

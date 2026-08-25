@@ -30,6 +30,8 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/graph_surface_state.cpp
     src/luisa/surface_bump.cpp
     src/luisa/surface_color_transforms.cpp
+    src/luisa/surface_image_box.cpp
+    src/luisa/surface_image_sampling.cpp
     src/luisa/surface_math.cpp
     src/luisa/surface_map_range.cpp
     src/luisa/surface_mix.cpp

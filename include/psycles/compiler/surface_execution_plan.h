@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
@@ -575,6 +576,82 @@ inline constexpr std::uint32_t surface_value_image_configuration_mask =
     surface_value_image_unassociate_alpha_bit |
     surface_value_image_interpolation_mask |
     surface_value_image_projection_mask;
+inline constexpr std::uint32_t surface_value_image_interpolation_mode_count = 4u;
+inline constexpr std::uint32_t
+    surface_value_image_interpolation_family_count = 3u;
+inline constexpr std::uint32_t surface_value_image_extension_mode_count = 4u;
+inline constexpr std::uint32_t surface_value_image_sampling_key_count =
+    surface_value_image_interpolation_family_count *
+    surface_value_image_extension_mode_count;
+
+// Cycles gives Cubic and Smart the same texture-filter implementation. This is
+// the sole quotient used by Image Texture sampling; extension modes remain
+// distinct. Keeping the quotient in the bytecode contract prevents graph
+// dispatch and callable specialization from independently reinterpreting the
+// same immediate bits.
+[[nodiscard]] constexpr std::uint32_t
+canonical_surface_value_image_interpolation(
+    std::uint32_t interpolation) noexcept {
+  return interpolation < 2u ? interpolation : 2u;
+}
+
+[[nodiscard]] constexpr std::uint32_t make_surface_value_image_sampling_key(
+    std::uint32_t interpolation, std::uint32_t extension) noexcept {
+  return canonical_surface_value_image_interpolation(interpolation) *
+             surface_value_image_extension_mode_count +
+         extension;
+}
+
+// Exhaust the complete authored domain. Boundedness makes the key a safe array
+// index, surjectivity proves that no callable slot is dead, and the final
+// biconditional proves that equality of keys loses exactly the Cubic/Smart
+// distinction and no other sampling semantics.
+[[nodiscard]] constexpr bool
+surface_value_image_sampling_quotient_contract_holds() noexcept {
+  std::array<bool, surface_value_image_sampling_key_count> reached{};
+  for (auto interpolation = 0u;
+       interpolation < surface_value_image_interpolation_mode_count;
+       ++interpolation) {
+    for (auto extension = 0u;
+         extension < surface_value_image_extension_mode_count;
+         ++extension) {
+      const auto key = make_surface_value_image_sampling_key(
+          interpolation, extension);
+      if (key >= surface_value_image_sampling_key_count) {
+        return false;
+      }
+      reached[key] = true;
+      for (auto other_interpolation = 0u;
+           other_interpolation < surface_value_image_interpolation_mode_count;
+           ++other_interpolation) {
+        for (auto other_extension = 0u;
+             other_extension < surface_value_image_extension_mode_count;
+             ++other_extension) {
+          const auto same_canonical_pair =
+              canonical_surface_value_image_interpolation(interpolation) ==
+                  canonical_surface_value_image_interpolation(
+                      other_interpolation) &&
+              extension == other_extension;
+          if ((key == make_surface_value_image_sampling_key(
+                          other_interpolation, other_extension)) !=
+              same_canonical_pair) {
+            return false;
+          }
+        }
+      }
+    }
+  }
+  for (const auto value : reached) {
+    if (!value) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static_assert((surface_value_image_configuration_mask &
+               ~surface_value_svm_immediate_value_mask) == 0u);
+static_assert(surface_value_image_sampling_quotient_contract_holds());
 inline constexpr std::uint32_t surface_value_control_mask =
     surface_value_opcode_mask | surface_value_operand_count_mask |
     surface_value_result_bank_mask | surface_value_svm_immediate_mask;

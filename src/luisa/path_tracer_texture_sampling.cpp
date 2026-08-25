@@ -1,6 +1,7 @@
 #include "path_tracer_texture_sampling.h"
 
 #include "cycles_texture_sampling.h"
+#include "surface_image_box.h"
 
 #include <utility>
 
@@ -10,8 +11,8 @@ namespace {
 [[nodiscard]] constexpr std::uint32_t
 canonical_interpolation_family(
     std::uint32_t interpolation) noexcept {
-    return interpolation == 0u ? 0u :
-           interpolation == 1u ? 1u : 2u;
+    return compiler::canonical_surface_value_image_interpolation(
+        interpolation);
 }
 
 [[nodiscard]] constexpr std::uint32_t
@@ -26,10 +27,9 @@ canonical_extension_mode(
     std::uint32_t interpolation,
     std::uint32_t extension) noexcept {
     return static_cast<std::size_t>(
-               canonical_interpolation_family(interpolation)) *
-               texture_extension_mode_count +
-           static_cast<std::size_t>(
-               canonical_extension_mode(extension));
+        compiler::make_surface_value_image_sampling_key(
+            interpolation,
+            canonical_extension_mode(extension)));
 }
 
 [[nodiscard]] const char *interpolation_name(
@@ -69,6 +69,64 @@ make_texture_2d_sampling_callable(
         };
     callable.set_name(luisa::format(
         "cycles_texture_{}_{}",
+        interpolation_name(interpolation),
+        extension_name(extension)));
+    return callable;
+}
+
+class CallableImageBoxTextureSampler final
+    : public SurfaceImageBoxTextureSampler {
+
+private:
+    Expr<BindlessArray> _textures;
+    const Texture2DSamplingCallable &_sampler;
+
+public:
+    CallableImageBoxTextureSampler(
+        Expr<BindlessArray> textures,
+        const Texture2DSamplingCallable &sampler) noexcept
+        : _textures{std::move(textures)},
+          _sampler{sampler} {}
+
+    [[nodiscard]] Float4 sample(
+        Expr<std::uint32_t> texture_handle,
+        Float2 uv) const noexcept override {
+        return _sampler(
+            _textures,
+            texture_handle,
+            uv);
+    }
+};
+
+[[nodiscard]] SurfaceImageBoxCallable
+make_surface_image_box_callable(
+    const Texture2DSamplingCallable &texture_sampler,
+    std::uint32_t interpolation,
+    std::uint32_t extension) noexcept {
+    SurfaceImageBoxCallable callable =
+        [texture_sampler](
+            BindlessVar textures,
+            Float3 coordinate,
+            Float3 signed_normal,
+            Float blend,
+            UInt texture_handle,
+            Bool unassociate_alpha,
+            Bool encoded_as_srgb) noexcept {
+            CallableImageBoxTextureSampler sampler{
+                textures,
+                texture_sampler};
+            return evaluate_surface_image_box(
+                SurfaceImageBoxInput{
+                    .coordinate = coordinate,
+                    .signed_normal = signed_normal,
+                    .blend = blend,
+                    .texture_handle = texture_handle,
+                    .unassociate_alpha = unassociate_alpha,
+                    .encoded_as_srgb = encoded_as_srgb},
+                sampler);
+        };
+    callable.set_name(luisa::format(
+        "cycles_image_box_{}_{}",
         interpolation_name(interpolation),
         extension_name(extension)));
     return callable;
@@ -119,6 +177,29 @@ Float4 CallableTexture2DSamplingProvider::sample(
             _textures,
             handle,
             uv);
+}
+
+Float4 CallableTexture2DSamplingProvider::evaluate(
+    const SurfaceImageBoxInput &input,
+    std::uint32_t interpolation,
+    std::uint32_t extension) const noexcept {
+    const auto index =
+        specialization_index(interpolation, extension);
+    auto &box_callable = _image_box_callables[index];
+    if (!box_callable) {
+        box_callable.emplace(make_surface_image_box_callable(
+            _callables.specializations[index],
+            interpolation,
+            extension));
+    }
+    return (*box_callable)(
+        _textures,
+        input.coordinate,
+        input.signed_normal,
+        input.blend,
+        input.texture_handle,
+        input.unassociate_alpha,
+        input.encoded_as_srgb);
 }
 
 }// namespace psycles::luisa_backend::detail
