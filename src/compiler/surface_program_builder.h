@@ -50,7 +50,7 @@ using LoweredOutput =
 
 [[nodiscard]] MathOperation math_operation(const contract::ShaderNode &node);
 
-[[nodiscard]] std::uint64_t
+[[nodiscard]] MapRangeInterpolation
 map_range_interpolation(const contract::ShaderNode &node);
 
 [[nodiscard]] VectorMathOperation

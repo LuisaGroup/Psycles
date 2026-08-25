@@ -696,6 +696,21 @@ enum class MathOperation : std::uint8_t {
 inline constexpr std::uint32_t math_operation_count =
     static_cast<std::uint32_t>(MathOperation::degrees) + 1u;
 
+// These values deliberately match Cycles 5.2's NodeClampType and
+// NodeMapRangeType. They are semantic instruction data, not host evaluator
+// identities: compact execution recovers them from the opcode-owned immediate.
+enum class ClampMode : std::uint8_t { minmax, range };
+
+enum class MapRangeInterpolation : std::uint8_t {
+  linear,
+  stepped,
+  smoothstep,
+  smootherstep
+};
+
+inline constexpr std::uint32_t map_range_interpolation_count =
+    static_cast<std::uint32_t>(MapRangeInterpolation::smootherstep) + 1u;
+
 enum class VectorMathOperation : std::uint8_t {
   add,
   subtract,

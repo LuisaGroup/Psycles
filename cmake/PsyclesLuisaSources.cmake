@@ -31,6 +31,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/surface_bump.cpp
     src/luisa/surface_color_transforms.cpp
     src/luisa/surface_math.cpp
+    src/luisa/surface_map_range.cpp
     src/luisa/surface_mix.cpp
     src/luisa/surface_vector_math.cpp
     src/luisa/surface_normal_map.cpp
