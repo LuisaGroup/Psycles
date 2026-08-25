@@ -16,6 +16,7 @@
 #include "path_tracer_surface_values.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_texture_sampling.h"
+#include "shader_table_data.h"
 
 #include <algorithm>
 #include <array>
@@ -44,7 +45,10 @@ using namespace psycles::luisa_backend;
 using namespace psycles::luisa_backend::detail;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::has_ambiguous_clamp_handler_fiber;
+using psycles::test_support::has_color_ramp_record_product;
 using psycles::test_support::make_ambiguous_clamp_graph;
+using psycles::test_support::make_minimal_principled_graph;
+using psycles::test_support::make_sampled_color_ramp_graph;
 using psycles::test_support::make_surface_point;
 
 constexpr auto scenario_count = 8u;
@@ -54,58 +58,6 @@ struct FixtureProgram {
     std::shared_ptr<const SurfaceProgram> program;
     SurfaceParameterBlock parameters;
 };
-
-[[nodiscard]] ShaderGraph make_minimal_principled_graph() {
-    ShaderGraph graph;
-    const auto principled = graph.add_node(
-        node_type::principled_bsdf,
-        "Minimal Principled");
-    const auto configured =
-        graph.set_input(
-            principled,
-            "BaseColor",
-            SocketValue::color({0.18f, 0.42f, 0.73f})) &&
-        graph.set_input(
-            principled,
-            "Roughness",
-            SocketValue::floating(0.31f)) &&
-        graph.set_input(
-            principled,
-            "Metallic",
-            SocketValue::floating(0.0f)) &&
-        graph.set_input(
-            principled,
-            "TransmissionWeight",
-            SocketValue::floating(0.0f)) &&
-        graph.set_input(
-            principled,
-            "SubsurfaceWeight",
-            SocketValue::floating(0.0f)) &&
-        graph.set_input(
-            principled,
-            "SheenWeight",
-            SocketValue::floating(0.0f)) &&
-        graph.set_input(
-            principled,
-            "CoatWeight",
-            SocketValue::floating(0.0f)) &&
-        graph.set_input(
-            principled,
-            "Alpha",
-            SocketValue::floating(1.0f)) &&
-        graph.set_input(
-            principled,
-            "EmissionStrength",
-            SocketValue::floating(0.0f));
-    if (!configured) {
-        throw std::runtime_error{
-            "failed to configure minimal Principled graph"};
-    }
-    graph.set_root(
-        ShaderDomain::surface,
-        OutputRef{.node = principled, .socket = "Closure"});
-    return graph;
-}
 
 [[nodiscard]] ShaderGraph make_layered_principled_graph() {
     ShaderGraph graph;
@@ -630,7 +582,8 @@ struct FixtureProgram {
 void append_parameters(
     const FixtureProgram &fixture,
     std::vector<float> &scalars,
-    std::vector<luisa::float3> &vectors) {
+    std::vector<luisa::float3> &vectors,
+    std::vector<PendingShaderTable> &shader_tables) {
     for (auto index = std::size_t{0u};
          index < fixture.program->parameters().size();
          ++index) {
@@ -660,8 +613,21 @@ void append_parameters(
             case SocketType::unsigned_integer:
                 vector = unsigned_parameter_value(*value);
                 break;
+            case SocketType::string: {
+                auto staged = stage_shader_table(
+                    *fixture.program,
+                    fixture.program->parameters()[index],
+                    *value,
+                    static_cast<std::uint32_t>(vectors.size()));
+                if (!staged.valid) {
+                    throw std::runtime_error{
+                        "failed to stage compact preparation shader table: " +
+                        staged.diagnostic};
+                }
+                shader_tables.emplace_back(std::move(staged.table));
+                break;
+            }
             case SocketType::transform:
-            case SocketType::string:
             case SocketType::closure:
             case SocketType::volume_closure:
                 throw std::runtime_error{
@@ -1062,6 +1028,16 @@ int main(int argc, char **argv) {
         make_ambiguous_clamp_graph()));
     fixtures.emplace_back(compile_fixture(
         compiler,
+        make_sampled_color_ramp_graph(
+            "0,0.1,0.2,0.3,0.4;0.5,0.5,0.6,0.7,0.8;1,0.9,1,0.1,0.2",
+            false)));
+    fixtures.emplace_back(compile_fixture(
+        compiler,
+        make_sampled_color_ramp_graph(
+            "0,0.9,0.1,0.2,0.3;0.4,0.2,0.8,0.3,0.7;1,0.1,0.4,1,0.6",
+            true)));
+    fixtures.emplace_back(compile_fixture(
+        compiler,
         make_layered_principled_graph()));
     fixtures.emplace_back(compile_fixture(
         compiler,
@@ -1102,6 +1078,7 @@ int main(int argc, char **argv) {
     std::vector<std::uint32_t> parameter_bases;
     std::vector<float> scalar_parameters;
     std::vector<luisa::float3> vector_parameters;
+    std::vector<PendingShaderTable> shader_tables;
     programs.reserve(fixtures.size());
     closure_plans.reserve(fixtures.size());
     parameter_bases.reserve(fixtures.size());
@@ -1113,7 +1090,8 @@ int main(int argc, char **argv) {
         append_parameters(
             fixture,
             scalar_parameters,
-            vector_parameters);
+            vector_parameters,
+            shader_tables);
         programs.emplace_back(fixture.program);
         closure_plans.emplace_back(analyze_surface_closure_plan(
             *fixture.program,
@@ -1129,6 +1107,16 @@ int main(int argc, char **argv) {
                                            DisplacementMethod::bump)) {
             scene->surface_bssrdf_bump_tags.emplace_back(tag);
         }
+    }
+    std::string shader_table_diagnostic;
+    if (!finalize_shader_tables(
+            shader_tables,
+            scalar_parameters,
+            vector_parameters,
+            shader_table_diagnostic)) {
+        throw std::runtime_error{
+            "failed to finalize compact preparation shader tables: " +
+            shader_table_diagnostic};
     }
 
     std::string diagnostic;
@@ -1164,6 +1152,12 @@ int main(int argc, char **argv) {
     if (!has_ambiguous_clamp_handler_fiber(*scene->surface_values)) {
         std::cerr << "compact runtime did not preserve the ambiguous Clamp "
                      "handler fiber on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    if (!has_color_ramp_record_product(*scene->surface_values)) {
+        std::cerr << "compact runtime did not compose the Color Ramp SVM "
+                     "mode with distinct late-bound table parameters on "
                   << backend << '\n';
         return EXIT_FAILURE;
     }

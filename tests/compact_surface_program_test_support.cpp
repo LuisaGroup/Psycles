@@ -55,6 +55,90 @@ using namespace luisa_backend::detail;
 
 } // namespace
 
+ShaderGraph make_minimal_principled_graph() {
+    ShaderGraph graph;
+    const auto principled = graph.add_node(
+        node_type::principled_bsdf,
+        "Minimal Principled");
+    const auto configured =
+        graph.set_input(
+            principled, "BaseColor",
+            SocketValue::color({0.18f, 0.42f, 0.73f})) &&
+        graph.set_input(
+            principled, "Roughness", SocketValue::floating(0.31f)) &&
+        graph.set_input(
+            principled, "Metallic", SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            principled, "TransmissionWeight", SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            principled, "SubsurfaceWeight", SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            principled, "SheenWeight", SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            principled, "CoatWeight", SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            principled, "Alpha", SocketValue::floating(1.0f)) &&
+        graph.set_input(
+            principled, "EmissionStrength", SocketValue::floating(0.0f));
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure minimal Principled graph"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
+}
+
+ShaderGraph make_sampled_color_ramp_graph(
+    std::string table, bool shifted_parameter) {
+    ShaderGraph graph;
+    NodeId factor_node{};
+    if (shifted_parameter) {
+        factor_node = graph.add_node(
+            node_type::add_float,
+            "Color Ramp parameter shift");
+    }
+    const auto ramp = graph.add_node(
+        node_type::color_ramp,
+        "Late-bound sampled Color Ramp");
+    const auto emission = graph.add_node(
+        node_type::emission,
+        "Color Ramp emission");
+    auto configured =
+        graph.set_property(
+            ramp, "Sampled", SocketValue::boolean(true)) &&
+        graph.set_property(
+            ramp, "Table", SocketValue::string(std::move(table))) &&
+        graph.set_input(
+            emission, "Strength", SocketValue::floating(1.0f)) &&
+        graph.connect(
+            {.node = ramp, .socket = "Color"}, emission, "Color");
+    if (shifted_parameter) {
+        configured = configured &&
+                     graph.set_input(
+                         factor_node, "A", SocketValue::floating(0.17f)) &&
+                     graph.set_input(
+                         factor_node, "B", SocketValue::floating(0.29f)) &&
+                     graph.connect(
+                         {.node = factor_node, .socket = "Value"},
+                         ramp,
+                         "Factor");
+    } else {
+        configured = configured &&
+                     graph.set_input(
+                         ramp, "Factor", SocketValue::floating(0.46f));
+    }
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure sampled Color Ramp graph"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    return graph;
+}
+
 ShaderGraph make_ambiguous_clamp_graph() {
     ShaderGraph graph;
     const auto geometry = graph.add_node(
@@ -141,6 +225,37 @@ bool has_ambiguous_clamp_handler_fiber(
         ++count;
     }
     return count == 2u;
+}
+
+bool has_color_ramp_record_product(
+    const SurfaceValueRuntime &runtime) noexcept {
+    const auto &executable = runtime.executable.executable;
+    const auto variant_count = std::count_if(
+        executable.variants.begin(), executable.variants.end(),
+        [](const auto &variant) noexcept {
+            return variant.instruction.operation == ValueOperation::color_ramp;
+        });
+    std::vector<std::uint32_t> parameters;
+    for (const auto &instruction : executable.values.instructions) {
+        if (surface_value_operation(instruction) !=
+            ValueOperation::color_ramp) {
+            continue;
+        }
+        if (instruction.metadata_index >=
+            executable.values.metadata.size()) {
+            return false;
+        }
+        const auto parameter =
+            executable.values.metadata[instruction.metadata_index].parameter;
+        if (parameter == ~std::uint32_t{0u}) {
+            return false;
+        }
+        if (std::find(parameters.begin(), parameters.end(), parameter) ==
+            parameters.end()) {
+            parameters.emplace_back(parameter);
+        }
+    }
+    return variant_count == 1u && parameters.size() >= 2u;
 }
 
 CompactSurfaceProgramEvidence inspect_compact_surface_program(

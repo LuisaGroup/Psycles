@@ -3,6 +3,7 @@
 #include <psycles/contract/shader_graph.h>
 
 #include <cstdint>
+#include <string>
 
 namespace psycles::luisa_backend::detail {
 struct SurfaceValueRuntime;
@@ -16,12 +17,24 @@ struct CompactSurfaceProgramEvidence {
     std::uint32_t bump_variant{~std::uint32_t{0u}};
 };
 
+[[nodiscard]] contract::ShaderGraph make_minimal_principled_graph();
+
+// The shifted form places a live Add node before the Color Ramp, giving the
+// runtime table a different ParameterId without changing the ramp evaluator.
+[[nodiscard]] contract::ShaderGraph make_sampled_color_ramp_graph(
+    std::string table, bool shifted_parameter);
+
 // A live graph containing two Clamp records with one primary opcode key but
 // different exact semantics. This exercises the interpreter's ambiguous-fiber
 // refinement rather than merely inspecting the compiler partition.
 [[nodiscard]] contract::ShaderGraph make_ambiguous_clamp_graph();
 
 [[nodiscard]] bool has_ambiguous_clamp_handler_fiber(
+    const luisa_backend::detail::SurfaceValueRuntime &runtime) noexcept;
+
+// Proves the regression really exercises one shared SVM-mode handler carrying
+// at least two distinct late-bound table ParameterIds.
+[[nodiscard]] bool has_color_ramp_record_product(
     const luisa_backend::detail::SurfaceValueRuntime &runtime) noexcept;
 
 // Inspect the host bytecode image rather than pixels. The controlled fixture
