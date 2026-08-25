@@ -197,13 +197,20 @@ public:
       value = make_float4(point.dpdu, 0.0f);
       break;
     case compiler::ValueOperation::uv:
-      if (instruction.static_u0 != 0u) {
+      value = make_float4(point.uv.x, point.uv.y, 0.0f, 0.0f);
+      if (context.svm_immediate_override != nullptr) {
+        $if((*context.svm_immediate_override &
+             compiler::surface_value_uv_named_immediate_bit) != 0u) {
+          value = services.attribute(
+              unsigned_integer(
+                  instruction.operand(operand::uv::map), result),
+              point).value;
+        };
+      } else if (instruction.static_u0 != 0u) {
         value = services.attribute(
             unsigned_integer(
                 instruction.operand(operand::uv::map), result),
             point).value;
-      } else {
-        value = make_float4(point.uv.x, point.uv.y, 0.0f, 0.0f);
       }
       break;
     case compiler::ValueOperation::generated:

@@ -1,0 +1,95 @@
+{
+  "schema": "psycles.cycles-primary-svm-dispatch.v1",
+  "date": "2026-08-25",
+  "cycles_source": {
+    "repository": "/home/mike/Projects/blender-cycles",
+    "branch": "blender-v5.2-release",
+    "commit": "fbe6228777e7d9afefcd61a413844e790ae75db7",
+    "files_read": [
+      "intern/cycles/scene/shader_graph.cpp",
+      "intern/cycles/scene/svm.cpp",
+      "intern/cycles/scene/shader_nodes.cpp",
+      "intern/cycles/kernel/svm/svm.h",
+      "intern/cycles/kernel/svm/node_types.h",
+      "intern/cycles/kernel/svm/util.h",
+      "intern/cycles/kernel/svm/clamp.h",
+      "intern/cycles/kernel/svm/map_range.h",
+      "intern/cycles/kernel/svm/mix.h",
+      "intern/cycles/kernel/svm/white_noise.h",
+      "intern/cycles/kernel/svm/magic.h",
+      "intern/cycles/kernel/svm/image.h"
+    ]
+  },
+  "baseline": {
+    "commit": "973199f",
+    "description": "Cycles-style typed SVM records"
+  },
+  "device": "AMD Radeon RX 9070 XT gfx1201",
+  "handler_census": {
+    "classroom": 32,
+    "monster_under_the_bed": 29,
+    "barbershop": 53,
+    "lone_monk": 35,
+    "benchmark_bundle": 42,
+    "flat_archiviz": 39
+  },
+  "hip_compile_ab": {
+    "main_surface_kernel": {
+      "baseline": {
+        "code_object_bytes": 472512,
+        "llvm_codegen_ms": 2293.501,
+        "comgr_link_ms": 4325.328
+      },
+      "primary_dispatch": {
+        "code_object_bytes": 367904,
+        "llvm_codegen_ms": 1101.045399,
+        "comgr_link_ms": 2395.284959
+      },
+      "change_percent": {
+        "code_object": -22.138697,
+        "llvm_codegen": -51.992809,
+        "comgr_link": -44.621889
+      }
+    },
+    "warm_render_seconds_320x180_4spp": 0.0419398
+  },
+  "correctness": {
+    "scene": "Classroom",
+    "backend": "HIP",
+    "resolution": [320, 180],
+    "spp": 4,
+    "passes_compared": 15,
+    "selected_passes": {
+      "Combined": {
+        "rmse": 0.00149361882,
+        "relative_rmse": 0.00315119854,
+        "maximum_absolute_error": 0.349505484,
+        "mean_absolute_error": 0.000017374141
+      },
+      "DiffCol": {
+        "rmse": 0.0000036721508,
+        "relative_rmse": 0.0000115668251,
+        "maximum_absolute_error": 0.00088056922
+      },
+      "GlossCol": {
+        "rmse": 0.0000000512100975,
+        "relative_rmse": 0.00000198957954,
+        "maximum_absolute_error": 0.000010818243
+      },
+      "Normal": {
+        "rmse": 0.0000235524822,
+        "relative_rmse": 0.0000424949601,
+        "maximum_absolute_error": 0.00550212525
+      }
+    },
+    "repeat_combined_rmse": 0.00000000663076571,
+    "visual_inspection": "No structural geometry, UV, material, normal, lighting, or orientation discrepancy."
+  },
+  "tests": {
+    "focused_matrix_passed": 29,
+    "focused_matrix_total": 29,
+    "backends": ["fallback", "hip", "vulkan-native-xir-spirv"],
+    "vulkan_dxc_disabled": true,
+    "ambiguous_exact_fiber_regression": "MINMAX and RANGE Clamp variants share one primary key and match expanded evaluation"
+  }
+}

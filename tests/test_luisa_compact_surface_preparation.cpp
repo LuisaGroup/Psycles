@@ -43,6 +43,8 @@ using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 using namespace psycles::luisa_backend::detail;
 using psycles::test_support::approximately_equal;
+using psycles::test_support::has_ambiguous_clamp_handler_fiber;
+using psycles::test_support::make_ambiguous_clamp_graph;
 using psycles::test_support::make_surface_point;
 
 constexpr auto scenario_count = 8u;
@@ -601,8 +603,12 @@ struct FixtureProgram {
     ShaderGraph graph) {
     auto shader = compiler.compile(std::move(graph));
     if (!shader.ok()) {
+        const auto detail =
+            shader.diagnostics.empty()
+                ? std::string{}
+                : ": " + shader.diagnostics.front().message;
         throw std::runtime_error{
-            "compact preparation fixture failed graph compilation"};
+            "compact preparation fixture failed graph compilation" + detail};
     }
     auto surface = compile_surface_program(*shader.program);
     if (!surface.ok()) {
@@ -1053,6 +1059,9 @@ int main(int argc, char **argv) {
         make_minimal_principled_graph()));
     fixtures.emplace_back(compile_fixture(
         compiler,
+        make_ambiguous_clamp_graph()));
+    fixtures.emplace_back(compile_fixture(
+        compiler,
         make_layered_principled_graph()));
     fixtures.emplace_back(compile_fixture(
         compiler,
@@ -1146,6 +1155,16 @@ int main(int argc, char **argv) {
     if (!scene->surface_values) {
         std::cerr << "failed to build compact surface runtime on "
                   << backend << ": " << diagnostic << '\n';
+        return EXIT_FAILURE;
+    }
+    // The two exact Clamp evaluator bodies deliberately inhabit one primary
+    // opcode fiber. The compact-vs-expanded comparison below therefore tests
+    // the nested exact discriminator on every backend, rather than merely
+    // checking the host partition data structure.
+    if (!has_ambiguous_clamp_handler_fiber(*scene->surface_values)) {
+        std::cerr << "compact runtime did not preserve the ambiguous Clamp "
+                     "handler fiber on "
+                  << backend << '\n';
         return EXIT_FAILURE;
     }
     const auto program_evidence =

@@ -1,16 +1,20 @@
 #include "compact_surface_program_test_support.h"
 
+#include <psycles/compiler/core_nodes.h>
+
 #include "path_tracer_internal.h"
 #include "path_tracer_surface_execution_domain.h"
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 
 namespace psycles::test_support {
 namespace {
 
 using namespace compiler;
+using namespace contract;
 using namespace luisa_backend::detail;
 
 [[nodiscard]] bool domain_matches(
@@ -50,6 +54,94 @@ using namespace luisa_backend::detail;
 }
 
 } // namespace
+
+ShaderGraph make_ambiguous_clamp_graph() {
+    ShaderGraph graph;
+    const auto geometry = graph.add_node(
+        node_type::geometry,
+        "Clamp source geometry");
+    const auto minmax = graph.add_node(
+        node_type::clamp_range,
+        "MINMAX clamp");
+    const auto range = graph.add_node(
+        node_type::clamp_range,
+        "RANGE clamp");
+    const auto principled = graph.add_node(
+        node_type::principled_bsdf,
+        "Ambiguous-clamp Principled");
+    const auto configured =
+        graph.set_property(
+            minmax, "Mode", SocketValue::string("MINMAX")) &&
+        graph.set_input(
+            minmax, "Min", SocketValue::floating(0.12f)) &&
+        graph.set_input(
+            minmax, "Max", SocketValue::floating(0.68f)) &&
+        graph.set_property(
+            range, "Mode", SocketValue::string("RANGE")) &&
+        graph.set_input(
+            range, "Min", SocketValue::floating(0.61f)) &&
+        graph.set_input(
+            range, "Max", SocketValue::floating(0.17f)) &&
+        graph.set_input(
+            principled, "BaseColor",
+            SocketValue::color({0.36f, 0.19f, 0.73f})) &&
+        graph.set_input(
+            principled, "TransmissionWeight", SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            principled, "SubsurfaceWeight", SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            principled, "SheenWeight", SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            principled, "CoatWeight", SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            principled, "Alpha", SocketValue::floating(1.0f)) &&
+        graph.set_input(
+            principled, "EmissionStrength", SocketValue::floating(0.0f)) &&
+        graph.connect(
+            {.node = geometry, .socket = "Backfacing"}, minmax, "Value") &&
+        graph.connect(
+            {.node = geometry, .socket = "Backfacing"}, range, "Value") &&
+        graph.connect(
+            {.node = minmax, .socket = "Result"},
+            principled, "Roughness") &&
+        graph.connect(
+            {.node = range, .socket = "Result"},
+            principled, "Metallic");
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure ambiguous Clamp graph"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
+}
+
+bool has_ambiguous_clamp_handler_fiber(
+    const SurfaceValueRuntime &runtime) noexcept {
+    auto count = std::size_t{0u};
+    constexpr auto expected_key = make_surface_value_handler_key(
+        ValueOperation::clamp_range,
+        SurfaceValueBank::scalar,
+        0u);
+    for (const auto &variant : runtime.executable.executable.variants) {
+        if (variant.instruction.operation != ValueOperation::clamp_range) {
+            continue;
+        }
+        auto bank = SurfaceValueBank::scalar;
+        if (!classify_surface_value_type(
+                variant.instruction.result_type, bank) ||
+            variant.svm_immediates.empty() ||
+            make_surface_value_handler_key(
+                variant.instruction.operation,
+                bank,
+                variant.svm_immediates.front()) != expected_key) {
+            return false;
+        }
+        ++count;
+    }
+    return count == 2u;
+}
 
 CompactSurfaceProgramEvidence inspect_compact_surface_program(
     const SurfaceValueRuntime &runtime) noexcept {

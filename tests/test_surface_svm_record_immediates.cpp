@@ -2,6 +2,7 @@
 #include <psycles/compiler/surface_program.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -152,6 +153,15 @@ void require_rejected(
 }
 
 void test_typed_record_quotients() {
+    constexpr SocketType uv_operands[]{SocketType::unsigned_integer};
+    constexpr RecordConfiguration uv_configs[]{{0u, 0u}, {1u, 0u}};
+    require_single_handler(
+        ValueOperation::uv,
+        SocketType::vector,
+        uv_operands,
+        uv_configs,
+        "default and named UV records split their SVM handler");
+
     constexpr SocketType optional_normal_operands[]{
         SocketType::floating, SocketType::normal};
     constexpr RecordConfiguration optional_normal_configs[]{{0u, 0u},
@@ -274,6 +284,14 @@ void test_typed_record_quotients() {
 }
 
 void test_invalid_records_are_rejected() {
+    constexpr SocketType uv_operands[]{SocketType::unsigned_integer};
+    require_rejected(
+        ValueOperation::uv,
+        SocketType::vector,
+        uv_operands,
+        {2u, 0u},
+        "UV accepted an invalid named-attribute flag");
+
     constexpr SocketType optional_normal_operands[]{
         SocketType::floating, SocketType::normal};
     require_rejected(
@@ -406,6 +424,84 @@ void test_serialized_record_coherence() {
             "an opcode without a record immediate accepted control data");
 }
 
+void test_primary_handler_projection() {
+    constexpr SocketType image_operands[]{
+        SocketType::vector,
+        SocketType::unsigned_integer,
+        SocketType::floating};
+    const auto flat = make_program(
+        1100u,
+        ValueOperation::image_color,
+        SocketType::color,
+        image_operands,
+        {0u, 0u});
+    const auto box = make_program(
+        1101u,
+        ValueOperation::image_color,
+        SocketType::color,
+        image_operands,
+        {0u, 1u << surface_value_image_projection_shift});
+    const auto sphere = make_program(
+        1102u,
+        ValueOperation::image_color,
+        SocketType::color,
+        image_operands,
+        {0u, 2u << surface_value_image_projection_shift});
+    const auto flat_image = lower_surface_value_program(flat, make_plan(flat));
+    const auto box_image = lower_surface_value_program(box, make_plan(box));
+    const auto sphere_image =
+        lower_surface_value_program(sphere, make_plan(sphere));
+    require(flat_image.valid && box_image.valid && sphere_image.valid &&
+                flat_image.instructions.size() == 1u &&
+                box_image.instructions.size() == 1u &&
+                sphere_image.instructions.size() == 1u &&
+                surface_value_handler_key(flat_image.instructions.front()) ==
+                    surface_value_handler_key(sphere_image.instructions.front()) &&
+                surface_value_handler_key(flat_image.instructions.front()) !=
+                    surface_value_handler_key(box_image.instructions.front()),
+            "primary handler projection did not isolate Image BOX exactly");
+
+    constexpr SocketType clamp_operands[]{
+        SocketType::floating,
+        SocketType::floating,
+        SocketType::floating};
+    const auto clamp_minmax = make_program(
+        1110u,
+        ValueOperation::clamp_range,
+        SocketType::floating,
+        clamp_operands,
+        {0u, 0u});
+    const auto clamp_range = make_program(
+        1111u,
+        ValueOperation::clamp_range,
+        SocketType::floating,
+        clamp_operands,
+        {1u, 0u});
+    const auto clamp_minmax_plan = make_plan(clamp_minmax);
+    const auto clamp_range_plan = make_plan(clamp_range);
+    const std::array clamp_inputs{
+        SurfaceValueExecutionInput{.program = &clamp_minmax,
+                                   .storage = &clamp_minmax_plan},
+        SurfaceValueExecutionInput{.program = &clamp_range,
+                                   .storage = &clamp_range_plan}};
+    const auto clamp_scene = build_surface_value_executable_scene(clamp_inputs);
+    require(clamp_scene.valid && clamp_scene.variants.size() == 2u &&
+                clamp_scene.instruction_variants ==
+                    std::vector<std::uint32_t>{0u, 1u} &&
+                surface_value_handler_key(
+                    clamp_scene.values.instructions[0u]) ==
+                    surface_value_handler_key(
+                        clamp_scene.values.instructions[1u]),
+            "primary dispatch projection erased an exact evaluator fibre");
+
+    const auto scalar_key = make_surface_value_handler_key(
+        ValueOperation::passthrough, SurfaceValueBank::scalar, 0u);
+    const auto vector_key = make_surface_value_handler_key(
+        ValueOperation::passthrough, SurfaceValueBank::vector, 0u);
+    require(scalar_key != vector_key,
+            "primary handler projection omitted the typed result bank");
+}
+
 } // namespace
 
 int main() {
@@ -413,6 +509,7 @@ int main() {
         test_typed_record_quotients();
         test_invalid_records_are_rejected();
         test_serialized_record_coherence();
+        test_primary_handler_projection();
         return EXIT_SUCCESS;
     } catch (const std::exception &error) {
         std::cerr << "Surface SVM record test failure: " << error.what()
