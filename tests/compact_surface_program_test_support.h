@@ -1,12 +1,18 @@
 #pragma once
 
 #include <psycles/contract/shader_graph.h>
+#include <psycles/luisa/surface.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace psycles::luisa_backend::detail {
+struct LuisaSceneData;
+struct SurfaceSampleTraceCall;
 struct SurfaceValueRuntime;
 }
 
@@ -20,6 +26,23 @@ struct CompactSurfaceProgramEvidence {
 };
 
 [[nodiscard]] contract::ShaderGraph make_minimal_principled_graph();
+
+// Differential fixture for the two-phase automatic-normal transaction. Every
+// undisplaced geometry member is distinct from its displaced counterpart.
+[[nodiscard]] luisa_backend::SurfacePoint
+make_surface_value_transaction_test_point() noexcept;
+
+// Returns an empty string when the compact value-program AST preserves its
+// narrow point-reference ABI and one semantic handler boundary per active
+// variant; otherwise returns a stable diagnostic for the caller.
+[[nodiscard]] std::string validate_compact_surface_value_program_abi(
+    const std::shared_ptr<luisa_backend::detail::LuisaSceneData> &scene);
+
+void print_compact_surface_sample_mismatch(
+    const luisa_backend::detail::SurfaceSampleTraceCall &actual,
+    const luisa_backend::detail::SurfaceSampleTraceCall &expected,
+    std::string_view backend, std::size_t topology,
+    std::size_t scenario);
 
 // The shifted form places a live Add node before the Color Ramp, giving the
 // runtime table a different ParameterId without changing the ramp evaluator.

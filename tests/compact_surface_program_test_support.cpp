@@ -2,14 +2,20 @@
 
 #include <psycles/compiler/core_nodes.h>
 
+#include "luisa_surface_test_support.h"
+#include "path_tracer_attribute_lookup.h"
 #include "path_tracer_internal.h"
 #include "path_tracer_surface_execution_domain.h"
+#include "path_tracer_surface_value_program.h"
+#include "path_tracer_texture_sampling.h"
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <stdexcept>
+#include <string_view>
 
 namespace psycles::test_support {
 namespace {
@@ -17,6 +23,26 @@ namespace {
 using namespace compiler;
 using namespace contract;
 using namespace luisa_backend::detail;
+
+[[nodiscard]] std::size_t count_named_custom_calls(
+    const Function &function, std::string_view prefix) noexcept {
+    auto count = std::size_t{0u};
+    traverse_expressions<true>(
+        function.body(),
+        [&](const Expression *expression) noexcept {
+            if (expression->tag() != Expression::Tag::CALL) {
+                return;
+            }
+            const auto *call = static_cast<const CallExpr *>(expression);
+            if (call->is_custom() &&
+                call->custom().name().starts_with(prefix)) {
+                count += 1u;
+            }
+        },
+        [](const Statement *) noexcept {},
+        [](const Statement *) noexcept {});
+    return count;
+}
 
 [[nodiscard]] bool domain_matches(const SurfaceValueProgramDomainView &view,
                                   const std::vector<std::uint32_t> &values,
@@ -49,6 +75,87 @@ count_bump_configuration(const SurfaceValueSceneImage &image,
 }
 
 } // namespace
+
+SurfacePoint make_surface_value_transaction_test_point() noexcept {
+    auto point = make_surface_point();
+    // Keep the displaced projection at the established fixture values. This
+    // isolates the phase transition: ordinary programs remain unchanged,
+    // while an automatic-normal prefix sees different undisplaced geometry.
+    point.undisplaced_position = make_float3(-0.61f, 0.37f, -0.29f);
+    point.undisplaced_object_position =
+        make_float3(0.43f, -0.17f, 0.59f);
+    point.undisplaced_shading_normal =
+        normalize(make_float3(-0.41f, 0.22f, 0.88f));
+    point.undisplaced_object_shading_normal =
+        normalize(make_float3(0.36f, 0.27f, 0.89f));
+    point.undisplaced_dPdx = make_float3(-0.12f, 0.06f, 0.08f);
+    point.undisplaced_dPdy = make_float3(0.03f, -0.15f, 0.11f);
+    point.undisplaced_object_dPdx =
+        make_float3(-0.07f, 0.04f, -0.13f);
+    point.undisplaced_object_dPdy =
+        make_float3(0.15f, -0.02f, 0.05f);
+    return point;
+}
+
+std::string validate_compact_surface_value_program_abi(
+    const std::shared_ptr<LuisaSceneData> &scene) {
+    const auto texture_sampling = make_texture_2d_sampling_callables();
+    const auto attribute_lookup =
+        make_surface_attribute_lookup_callable(0u, 1u);
+    const auto callable = make_surface_value_program_callable(
+        scene, texture_sampling, attribute_lookup,
+        SurfaceValueProgramDomain::preparation);
+    const auto &function = callable.function();
+    auto surface_point_arguments = std::size_t{0u};
+    auto surface_point_is_reference = false;
+    for (const auto &argument : function.arguments()) {
+        if (argument.type() == Type::of<SurfacePointCall>()) {
+            surface_point_arguments += 1u;
+            surface_point_is_reference = argument.is_reference();
+        }
+    }
+    // Only shading_normal is observable after the value transaction. The
+    // immutable base point must remain an on-demand reference so the device
+    // compiler can eliminate fields not observed by a selected handler.
+    if (function.return_type() != Type::of<luisa::float3>() ||
+        surface_point_arguments != 1u || !surface_point_is_reference) {
+        return "compact value program lost its narrow point ABI";
+    }
+    const auto handler_call_count =
+        count_named_custom_calls(function, "surface_value_handler_");
+    const auto expected =
+        scene->surface_values->preparation_value_static_variants.size();
+    if (handler_call_count != expected) {
+        return "compact value interpreter lost its per-variant callable "
+               "boundary (calls=" +
+               std::to_string(handler_call_count) + ", variants=" +
+               std::to_string(expected) + ")";
+    }
+    return {};
+}
+
+void print_compact_surface_sample_mismatch(
+    const SurfaceSampleTraceCall &actual,
+    const SurfaceSampleTraceCall &expected,
+    std::string_view backend, std::size_t topology,
+    std::size_t scenario) {
+    const auto print_vector = [](const luisa::float3 &value) {
+        std::cerr << '(' << value.x << ", " << value.y << ", " << value.z
+                  << ')';
+    };
+    std::cerr << "compact population sample mismatch on " << backend
+              << ", topology " << topology << ", scenario " << scenario
+              << "\n  compact closure=" << actual.closure_index << '/'
+              << actual.closure_type << ", expanded closure="
+              << expected.closure_index << '/' << expected.closure_type
+              << "\n  compact pdf=" << actual.pdf
+              << ", expanded pdf=" << expected.pdf
+              << "\n  compact wi=";
+    print_vector(actual.wi);
+    std::cerr << ", expanded wi=";
+    print_vector(expected.wi);
+    std::cerr << '\n';
+}
 
 ShaderGraph make_minimal_principled_graph() {
     ShaderGraph graph;
