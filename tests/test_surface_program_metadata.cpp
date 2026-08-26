@@ -28,6 +28,69 @@ void require(bool condition, const std::string &message) {
   }
 }
 
+[[nodiscard]] SurfaceValueOperandAddress compact_operand_address(
+    SurfaceValueAddress address) {
+  SurfaceValueOperandAddress result;
+  require(encode_surface_value_operand_address(address, result),
+          "a test fixture address exceeds the compact operand domain");
+  return result;
+}
+
+[[nodiscard]] SurfaceValueAddress instruction_operand(
+    const SurfaceValueBytecodeInstruction &instruction,
+    std::size_t lane) {
+  const auto operand =
+      surface_value_operand_from_word(instruction.operand_payload, lane);
+  require(operand.valid(), "an embedded operand lane is invalid");
+  return operand.expanded();
+}
+
+[[nodiscard]] std::uint32_t replace_operand_lane(
+    std::uint32_t word, SurfaceValueOperandAddress operand,
+    std::size_t lane) noexcept {
+  const auto shift = surface_value_operand_lane_bits * lane;
+  const auto mask = std::uint32_t{0xffffu} << shift;
+  return (word & ~mask) |
+         (static_cast<std::uint32_t>(operand.encoded()) << shift);
+}
+
+void test_surface_value_operand_address_encoding() {
+  for (const auto parameter : {false, true}) {
+    for (const auto bank : {SurfaceValueBank::scalar,
+                            SurfaceValueBank::vector,
+                            SurfaceValueBank::unsigned_integer}) {
+      for (const auto index : {
+               std::uint32_t{0u},
+               static_cast<std::uint32_t>(
+                   SurfaceValueOperandAddress::index_mask)}) {
+        const auto wide = SurfaceValueAddress{
+            (parameter ? SurfaceValueAddress::parameter_bit : 0u) |
+            (static_cast<std::uint32_t>(bank)
+             << SurfaceValueAddress::bank_shift) |
+            index};
+        SurfaceValueOperandAddress compact;
+        require(encode_surface_value_operand_address(wide, compact) &&
+                    compact.valid() && compact.parameter() == parameter &&
+                    compact.bank() == bank && compact.index() == index &&
+                    compact.expanded() == wide,
+                "compact operand encoding is not a typed-address bijection");
+      }
+    }
+  }
+  SurfaceValueOperandAddress compact;
+  require(!encode_surface_value_operand_address(SurfaceValueAddress{},
+                                                 compact) &&
+              !encode_surface_value_operand_address(
+                  SurfaceValueAddress{
+                      SurfaceValueOperandAddress::index_mask + 1u},
+                  compact),
+          "compact operand encoding accepted an invalid or oversized index");
+  require(!surface_value_operand_from_word(0u,
+                                           surface_value_operands_per_word)
+               .valid(),
+          "packed operand decoding accepted an out-of-range lane");
+}
+
 void test_surface_value_storage_plan() {
   const auto make_parameter = [](std::uint32_t index) {
     return ParameterDesc{.id = ParameterId{index},
@@ -92,7 +155,7 @@ void test_surface_value_storage_plan() {
   const auto image = lower_surface_value_program(program, plan);
   require(image.valid,
           "typed value program lowering failed: " + image.diagnostic);
-  require(image.instructions.size() == 3u && image.operands.size() == 5u &&
+  require(image.instructions.size() == 3u && image.operands.empty() &&
               image.metadata.empty() && image.static_data.empty() &&
               image.value_addresses.size() == 5u,
           "compact value program has an unexpected stream extent");
@@ -110,9 +173,20 @@ void test_surface_value_storage_plan() {
                 address.index() == 0u,
             "compact value program lost a reused local address");
   }
-  require(image.instructions[0u].operand_begin == 0u &&
-              image.instructions[1u].operand_begin == 2u &&
-              image.instructions[2u].operand_begin == 3u &&
+  const auto first_a = instruction_operand(image.instructions[0u], 0u);
+  const auto first_b = instruction_operand(image.instructions[0u], 1u);
+  const auto unary_input = instruction_operand(image.instructions[1u], 0u);
+  const auto final_a = instruction_operand(image.instructions[2u], 0u);
+  const auto final_b = instruction_operand(image.instructions[2u], 1u);
+  require(first_a.parameter() && first_a.index() == 0u &&
+              first_b.parameter() && first_b.index() == 1u &&
+              !unary_input.parameter() && unary_input.index() == 0u &&
+              !final_a.parameter() && final_a.index() == 0u &&
+              final_b.parameter() && final_b.index() == 1u &&
+              surface_value_operand_from_word(
+                  image.instructions[1u].operand_payload, 1u)
+                      .encoded() ==
+                  SurfaceValueOperandAddress::invalid_value &&
               surface_value_operation(image.instructions[0u]) ==
                   ValueOperation::add &&
               surface_value_operand_count(image.instructions[0u]) == 2u &&
@@ -121,7 +195,75 @@ void test_surface_value_storage_plan() {
               surface_value_operation(image.instructions[1u]) ==
                   ValueOperation::absolute &&
               surface_value_operand_count(image.instructions[1u]) == 1u,
-          "compact value program changed topological instruction order");
+          "compact value program changed its typed embedded operands or "
+          "topological order");
+
+  auto oversized_operand_plan = plan;
+  oversized_operand_plan.locations[0u].index =
+      SurfaceValueOperandAddress::index_mask + 1u;
+  const auto oversized_operand_image =
+      lower_surface_value_program(program, oversized_operand_plan);
+  require(!oversized_operand_image.valid &&
+              oversized_operand_image.instructions.empty() &&
+              oversized_operand_image.operands.empty() &&
+              oversized_operand_image.diagnostic.find("13-bit") !=
+                  std::string::npos,
+          "compact lowering partially committed an operand outside its "
+          "proved address domain");
+
+  const SurfaceProgram ternary_program{
+      24u,
+      {make_parameter(0u), make_parameter(1u), make_parameter(2u)},
+      {make_parameter_value(0u), make_parameter_value(1u),
+       make_parameter_value(2u),
+       ValueInstruction{
+           .operation = ValueOperation::math,
+           .result_type = SocketType::floating,
+           .operands = make_value_operands<value_operand::ternary>(
+               {{value_operand::ternary::a, ValueExpressionId{0u}},
+                {value_operand::ternary::b, ValueExpressionId{1u}},
+                {value_operand::ternary::c, ValueExpressionId{2u}}})}},
+      {},
+      {}};
+  const auto ternary_plan = plan_surface_value_storage(
+      ternary_program, std::vector<bool>(4u, true),
+      std::vector<bool>{false, false, false, true});
+  const auto ternary_image =
+      lower_surface_value_program(ternary_program, ternary_plan);
+  require(ternary_image.valid && ternary_image.instructions.size() == 1u &&
+              ternary_image.instructions.front().operand_payload == 0u &&
+              ternary_image.operands.size() == 2u &&
+              surface_value_operand_from_word(ternary_image.operands[0u], 0u)
+                      .expanded()
+                      .index() == 0u &&
+              surface_value_operand_from_word(ternary_image.operands[0u], 1u)
+                      .expanded()
+                      .index() == 1u &&
+              surface_value_operand_from_word(ternary_image.operands[1u], 0u)
+                      .expanded()
+                      .index() == 2u &&
+              surface_value_operand_from_word(ternary_image.operands[1u], 1u)
+                      .encoded() ==
+                  SurfaceValueOperandAddress::invalid_value,
+          "ternary value operands were not densely pair-packed");
+  const auto relocated_ternary = build_surface_value_scene_image(
+      std::vector{ternary_image, ternary_image});
+  require(relocated_ternary.valid &&
+              relocated_ternary.instructions.size() == 2u &&
+              relocated_ternary.operands.size() == 4u &&
+              relocated_ternary.instructions[0u].operand_payload == 0u &&
+              relocated_ternary.instructions[1u].operand_payload == 2u,
+          "scene aggregation did not relocate packed overflow operands");
+  auto noncanonical_ternary = ternary_image;
+  noncanonical_ternary.operands.back() = replace_operand_lane(
+      noncanonical_ternary.operands.back(),
+      compact_operand_address(SurfaceValueAddress{0u}), 1u);
+  const auto noncanonical_ternary_scene =
+      build_surface_value_scene_image(std::vector{noncanonical_ternary});
+  require(!noncanonical_ternary_scene.valid &&
+              noncanonical_ternary_scene.diagnostic.find("padding") !=
+                  std::string::npos,
+          "the verifier accepted non-canonical odd operand padding");
 
   // Deliberately place a shallow independent branch before a two-value
   // branch. Source order needs three scalar slots: the shallow result stays
@@ -264,7 +406,7 @@ void test_surface_value_storage_plan() {
   const auto scene_image = build_surface_value_scene_image(scene_programs);
   require(scene_image.valid && scene_image.programs.size() == 4u &&
               scene_image.instructions.size() == 8u &&
-              scene_image.operands.size() == 10u &&
+              scene_image.operands.empty() &&
               scene_image.metadata.size() == 2u &&
               scene_image.static_data.size() == 32u,
           "scene value-program aggregation changed a stream extent");
@@ -274,10 +416,12 @@ void test_surface_value_storage_plan() {
               scene_image.programs[2u].instruction_begin == 4u &&
               scene_image.programs[3u].instruction_begin == 7u,
           "scene value-program descriptors do not preserve tag order");
-  require(scene_image.instructions[4u].operand_begin == 5u &&
+  require(scene_image.instructions[4u].operand_payload ==
+                  image.instructions[0u].operand_payload &&
               scene_image.instructions[7u].metadata_index == 1u &&
               scene_image.metadata[1u].static_table_begin == 16u,
-          "scene value-program aggregation did not rebase a global stream");
+          "scene value-program aggregation changed embedded operands or did "
+          "not rebase metadata");
   require(scene_image.programs[0u].scalar_slots == 1u &&
               scene_image.programs[1u].vector_slots == 1u,
           "scene value-program descriptors lost typed slot bounds");
@@ -442,12 +586,13 @@ void test_surface_value_storage_plan() {
           transaction_scene.values.instructions.size() == 3u &&
           is_surface_value_surface_normal_transition(
               transaction_scene.values.instructions[1u]) &&
-          transaction_scene.values.instructions[1u].operand_begin == 1u &&
+          transaction_scene.values.instructions[1u].operand_payload ==
+              surface_value_invalid_operand_word &&
           transaction_scene.values.instructions[1u].result ==
               transaction_scene.values.instructions[0u].result &&
           transaction_scene.values.instructions[2u].result ==
               transaction_scene.values.instructions[0u].result &&
-          transaction_scene.values.operands.size() == 2u,
+          transaction_scene.values.operands.empty(),
       "automatic normal and endpoint root did not compose into one exact "
       "transaction stream with a consuming slot-overlap boundary");
 
@@ -491,17 +636,18 @@ void test_surface_value_storage_plan() {
   raw_transaction.instructions.emplace_back(SurfaceValueBytecodeInstruction{
       .control = surface_value_surface_normal_transition_control,
       .result = transaction_normal_image.instructions.front().result,
-      .operand_begin =
-          static_cast<std::uint32_t>(raw_transaction.operands.size()),
+      .operand_payload = surface_value_invalid_operand_word,
       .metadata_index = SurfaceValueAddress::invalid_value});
   require(build_surface_value_scene_image(std::vector{raw_transaction}).valid,
           "the bytecode verifier rejected a well-formed normal commit");
 
   auto uninitialized_instruction = transaction_normal_image;
-  require(!uninitialized_instruction.operands.empty(),
-          "the definite-initialization fixture has no operand");
-  uninitialized_instruction.operands.front() =
-      uninitialized_instruction.instructions.front().result;
+  const auto uninitialized_result = SurfaceValueAddress{
+      uninitialized_instruction.instructions.front().result};
+  uninitialized_instruction.instructions.front().operand_payload =
+      replace_operand_lane(
+          uninitialized_instruction.instructions.front().operand_payload,
+          compact_operand_address(uninitialized_result), 0u);
   const auto uninitialized_instruction_scene =
       build_surface_value_scene_image(std::vector{uninitialized_instruction});
   require(!uninitialized_instruction_scene.valid &&
@@ -532,7 +678,8 @@ void test_surface_value_storage_plan() {
   uninitialized_transition.instructions.erase(
       uninitialized_transition.instructions.begin());
   uninitialized_transition.operands.clear();
-  uninitialized_transition.instructions.front().operand_begin = 0u;
+  uninitialized_transition.instructions.front().operand_payload =
+      surface_value_invalid_operand_word;
   const auto uninitialized_transition_scene =
       build_surface_value_scene_image(std::vector{uninitialized_transition});
   require(!uninitialized_transition_scene.valid &&
@@ -1276,14 +1423,15 @@ void test_surface_value_storage_plan() {
                   "without an immediate contract") != std::string::npos,
           "scene aggregation accepted or partially committed a malformed "
           "instruction stream");
-  auto malformed_arity = image;
-  malformed_arity.instructions.front().control ^=
-      1u << surface_value_operand_count_shift;
-  const auto malformed_arity_scene =
-      build_surface_value_scene_image(std::vector{malformed_arity});
-  require(!malformed_arity_scene.valid && malformed_arity_scene.diagnostic.find(
-                                              "arity") != std::string::npos,
-          "scene aggregation accepted an opcode/arity disagreement");
+  auto malformed_reserved_control = image;
+  malformed_reserved_control.instructions.front().control ^= 1u << 8u;
+  const auto malformed_reserved_control_scene =
+      build_surface_value_scene_image(
+          std::vector{malformed_reserved_control});
+  require(!malformed_reserved_control_scene.valid &&
+              malformed_reserved_control_scene.diagnostic.find(
+                  "control word") != std::string::npos,
+          "scene aggregation accepted a nonzero reserved control bit");
 
   std::vector<ValueInstruction> invalid_values;
   invalid_values.emplace_back(ValueInstruction{
@@ -1312,6 +1460,7 @@ void test_surface_value_storage_plan() {
 int main() {
   try {
     psycles::test_support::test_surface_closure_metadata();
+    test_surface_value_operand_address_encoding();
     test_surface_value_storage_plan();
     return EXIT_SUCCESS;
   } catch (const std::exception &error) {

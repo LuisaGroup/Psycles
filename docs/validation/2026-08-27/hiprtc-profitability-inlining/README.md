@@ -90,29 +90,30 @@ objects report:
 | Scene / continuation | Object bytes, baseline -> candidate | Private bytes | SGPR spills | VGPR spills |
 |---|---:|---:|---:|---:|
 | Barbershop `shade_surface` | 362,912 -> 353,912 | 3,552 -> 3,072 | 10 -> 0 | 293 -> 351 |
-| Barbershop `intersect_subsurface` | 236,080 -> 58,416 | 688 -> 288 | 0 -> 0 | 0 -> 0 |
+| Barbershop `intersect_shadow` | 236,080 -> 58,416 | 688 -> 288 | 0 -> 0 | 0 -> 0 |
 | Classroom `shade_surface` | 250,672 -> 244,368 | 3,208 -> 2,696 | 16 -> 0 | 126 -> 165 |
 | Monster `shade_surface` | 256,272 -> 248,552 | 5,024 -> 4,336 | 18 -> 0 | 302 -> 307 |
 | Monster `intersect_subsurface` | 221,512 -> 97,736 | 704 -> 288 | 26 -> 0 | 5 -> 0 |
 
 The surface kernels still reach 256 VGPRs, and their reported VGPR spill
 instruction counts can increase even while private storage and runtime fall.
-The result is therefore not summarized by one metadata counter. The BSSRDF
-objects show the cleaner case: smaller objects and private segments, fewer
-registers, and no spills.
+The result is therefore not summarized by one metadata counter. The smaller
+shadow/BSSRDF objects show the cleaner case: smaller objects and private
+segments, fewer registers, and no spills.
 
 There is a compile-time tradeoff:
 
 | Scene / continuation | Baseline HIPRTC link | Candidate HIPRTC link |
 |---|---:|---:|
 | Barbershop surface | 2,256.5 ms | 3,098.2 ms |
-| Barbershop BSSRDF | 1,170.6 ms | 566.4 ms |
+| Barbershop shadow | 1,170.6 ms | 566.4 ms |
 | Classroom surface | 1,406.8 ms | 1,663.8 ms |
 | Monster surface | 1,599.4 ms | 1,785.0 ms |
 | Monster BSSRDF | 1,200.7 ms | 693.1 ms |
 
-Inlining makes the surface optimization problem larger, while deleting the
-large residual BSSRDF device function makes that link substantially cheaper.
+Inlining makes the surface optimization problem larger, while deleting large
+residual helper functions in the shadow/BSSRDF continuations makes those links
+substantially cheaper.
 This is why cold compile time and render time are reported separately.
 
 ## HIP performance methodology
@@ -170,7 +171,7 @@ Monster's three accepted render-only samples were
 | Scene / continuation | Calls | Baseline | Candidate | Change |
 |---|---:|---:|---:|---:|
 | Barbershop `shade_surface` | 293 | 1,544.786 ms | 1,485.932 ms | -3.81% |
-| Barbershop `intersect_subsurface` | 78 | 96.052 ms | 47.092 ms | -50.97% |
+| Barbershop `intersect_shadow` | 78 | 96.052 ms | 47.092 ms | -50.97% |
 | Classroom `shade_surface` | 88 | 853.889 ms | 803.582 ms | -5.89% |
 | Monster `shade_surface`, median | 127 | 788.048 ms | 711.020 ms | -9.77% |
 | Monster `intersect_subsurface`, median | 47 | 861.709 ms | 272.962 ms | -68.32% |

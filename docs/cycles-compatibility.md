@@ -1,5 +1,13 @@
 # Cycles compatibility status
 
+The [packed typed surface-operand checkpoint](validation/2026-08-27/surface-value-packed-operands/README.md)
+encodes two complete typed graph edges per 32-bit word and embeds operands for
+zero-, one-, and two-input nodes. It formally preserves the topological typed
+IR while reducing complex-scene operand traffic by 48.3%--54.7%. Paired HIP
+profiling reduces normalized Barbershop/Classroom surface cost by 6.87%/6.06%
+and render-only time by 2.88%/3.85%; Monster is explicitly neutral. Expanded
+versus compact evaluation passes on fallback, HIP, and native-XIR Vulkan.
+
 The [HIP BSSRDF local-intersection domain checkpoint](validation/2026-08-13/hip-bssrdf-local-domain/README.md)
 formally narrows spatial subsurface traversal from the whole scene to complete
 triangle objects that can originate BSSRDF transport. On Monster it reduces
@@ -67,8 +75,10 @@ five-way promotion runs.
 
 ## Shader graph path
 
-Psycles does not consume SVM bytecode and does not bake Blender materials.
-Shader data follows this path:
+Psycles does not consume Cycles' serialized SVM or bake Blender materials. It
+compiles the original graph to its own typed topological IR and can execute
+that IR either through the expanded Luisa AST builder or a compact scene-data
+SVM. Shader data follows this path:
 
 1. Blender exports the original node trees, links, socket defaults, static
    node properties, mute state, runtime internal links, image identities, and
@@ -86,11 +96,13 @@ Shader data follows this path:
    missing and recursive groups produce explicit diagnostics.
 5. Image pixels, mesh attributes, parameter blocks, and geometry are uploaded
    to Luisa resources. No host-side shader evaluator is used.
-6. `GraphSurface` traces the typed program while constructing Luisa DSL. Bump
-   evaluates its height dependency subgraph at the center and two ray
-   differential offsets.
-7. `Polymorphic<Surface>` performs device-side material dispatch. The same
-   generated program runs on Luisa `fallback` and GPU backends.
+6. Bump dependencies are expanded into the same topological stream with
+   explicit center and ray-differential contexts. The expanded route traces
+   that stream while constructing Luisa DSL; the compact route serializes the
+   same typed instructions and original closure tree as scene data.
+7. Host/JIT semantic handlers remain ordinary Luisa callables. Program tags
+   select scene data rather than duplicating a shader graph per material, and
+   the same generated evaluator runs on Luisa `fallback` and GPU backends.
 
 Muted-node normalization is relational rather than node-specific. A muted
 node's concrete implementation is absent, only the internal input reachable

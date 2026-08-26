@@ -615,6 +615,9 @@ int main(int argc, char **argv) {
         auto value_bytecode_operand_bytes = std::size_t{};
         auto value_bytecode_metadata_bytes = std::size_t{};
         auto value_bytecode_static_bytes = std::size_t{};
+        auto value_bytecode_inline_operand_instructions = std::size_t{};
+        auto value_bytecode_inline_operands = std::size_t{};
+        auto value_bytecode_packed_operand_loads = std::size_t{};
         ImageProducerCensus reachable_image_producers;
         ImageProducerCensus preparation_image_producers;
         VectorMathProducerCensus reachable_vector_math_producers;
@@ -723,6 +726,25 @@ int main(int argc, char **argv) {
                 sizeof(psycles::compiler::SurfaceValueBytecodeMetadata);
             value_bytecode_static_bytes +=
                 image.static_data.size() * sizeof(float);
+            for (const auto &instruction : image.instructions) {
+                // Two compact addresses occupy the instruction's operand
+                // payload word. Metadata remains independent in the fourth
+                // word; opcode-derived arity makes the layout canonical.
+                const auto operand_count =
+                    psycles::compiler::surface_value_operand_count(
+                        instruction);
+                if (operand_count <=
+                    psycles::compiler::surface_value_inline_operand_capacity) {
+                    ++value_bytecode_inline_operand_instructions;
+                    value_bytecode_inline_operands += operand_count;
+                }
+                if (operand_count >
+                    psycles::compiler::surface_value_inline_operand_capacity) {
+                    value_bytecode_packed_operand_loads +=
+                        psycles::compiler::surface_value_operand_word_count(
+                            operand_count);
+                }
+            }
             value_storage_plans.emplace_back(storage);
             value_execution_inputs.emplace_back(
                 psycles::compiler::SurfaceValueExecutionInput{
@@ -825,6 +847,12 @@ int main(int argc, char **argv) {
             << value_bytecode_metadata_bytes
             << "\nvalue_bytecode_static_bytes "
             << value_bytecode_static_bytes
+            << "\nvalue_bytecode_inline_operand_instructions "
+            << value_bytecode_inline_operand_instructions
+            << "\nvalue_bytecode_inline_operands "
+            << value_bytecode_inline_operands
+            << "\nvalue_bytecode_packed_operand_loads "
+            << value_bytecode_packed_operand_loads
             << "\nreachable_image_producers "
             << reachable_image_producers.producers
             << "\nreachable_image_output_instructions "

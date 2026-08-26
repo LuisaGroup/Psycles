@@ -1,0 +1,104 @@
+{
+  "schema": "psycles.surface-value-packed-operands.v1",
+  "date": "2026-08-27",
+  "base_commit": "78404c151dcac19c1ae97e3e4751d4701b09f847",
+  "device": "AMD Radeon RX 9070 XT gfx1201",
+  "configuration": {
+    "backend": "hip",
+    "resolution": [640, 480],
+    "samples": 64,
+    "scheduler": "wavefront-staged",
+    "execution_block_size": 32,
+    "compact_surface_values": true,
+    "populate_surface_once": true,
+    "adaptive_sampling": false
+  },
+  "representation": {
+    "instruction_bytes": 16,
+    "operand_address_bits": 16,
+    "index_bits": 13,
+    "operands_per_word": 2,
+    "inline_operand_capacity": 2,
+    "maximum_opcode_arity": 14,
+    "invalid_operand": 65535
+  },
+  "scenes": {
+    "barbershop": {
+      "unique_topologies": 189,
+      "preparation_instructions": 6272,
+      "operand_bytes": {"baseline": 50384, "packed": 22816},
+      "global_operand_loads": {"baseline": 12596, "packed": 5704},
+      "executable_image_bytes": {"baseline": 284248, "packed": 256680},
+      "render_seconds": {
+        "baseline": [2.68247, 2.70260],
+        "packed": [2.61991, 2.61020]
+      },
+      "profile": {
+        "surface_threads": {"baseline": 53816864, "packed": 53592288},
+        "surface_milliseconds": {"baseline": 1296.906650, "packed": 1202.783978},
+        "surface_nanoseconds_per_thread": {"baseline": 24.098518, "packed": 22.443229},
+        "surface_scratch_bytes": {"baseline": 3552, "packed": 3072},
+        "surface_code_object_bytes": {"baseline": 362912, "packed": 351608},
+        "all_renderer_kernel_milliseconds": {"baseline": 2337.879, "packed": 2253.043}
+      }
+    },
+    "classroom": {
+      "unique_topologies": 59,
+      "preparation_instructions": 829,
+      "operand_bytes": {"baseline": 9348, "packed": 4836},
+      "global_operand_loads": {"baseline": 2337, "packed": 1209},
+      "executable_image_bytes": {"baseline": 43308, "packed": 38796},
+      "render_seconds": {
+        "baseline": [1.34814, 1.34705],
+        "packed": [1.29389, 1.29745]
+      },
+      "profile": {
+        "surface_threads": {"baseline": 46574464, "packed": 46574240},
+        "surface_milliseconds": {"baseline": 846.890628, "packed": 795.585635},
+        "surface_nanoseconds_per_thread": {"baseline": 18.183583, "packed": 17.082096},
+        "surface_scratch_bytes": {"baseline": 3208, "packed": 2696},
+        "surface_code_object_bytes": {"baseline": 250672, "packed": 242448},
+        "all_renderer_kernel_milliseconds": {"baseline": 1214.178, "packed": 1166.084}
+      }
+    },
+    "monster": {
+      "unique_topologies": 18,
+      "preparation_instructions": 239,
+      "operand_bytes": {"baseline": 2492, "packed": 1200},
+      "global_operand_loads": {"baseline": 623, "packed": 300},
+      "executable_image_bytes": {"baseline": 11568, "packed": 10276},
+      "render_seconds": {
+        "baseline": [1.60709, 1.60746],
+        "packed": [1.60941, 1.61125]
+      },
+      "profile": {
+        "surface_threads": {"baseline": 40506464, "packed": 40507488},
+        "surface_milliseconds": {"baseline": 704.784050, "packed": 705.373198},
+        "surface_nanoseconds_per_thread": {"baseline": 17.399298, "packed": 17.413403},
+        "surface_scratch_bytes": {"baseline": 4336, "packed": 4336},
+        "surface_code_object_bytes": {"baseline": 248552, "packed": 247016},
+        "all_renderer_kernel_milliseconds": {"baseline": 1447.598, "packed": 1449.558}
+      }
+    }
+  },
+  "validation": {
+    "focused_surface_tests": {"passed": 44, "failed": 0},
+    "complete_strict_suite": {
+      "passed": 283,
+      "failed": 6,
+      "new_failures": 0,
+      "pre_existing_failures": [
+        "psycles.luisa_stacked_volume_fallback",
+        "psycles.luisa_homogeneous_volume_fallback",
+        "psycles.luisa_area_light_forward_vk",
+        "psycles.luisa_volume_path_fallback",
+        "psycles.luisa_volume_path_vk",
+        "psycles.luisa_volume_triangle_fallback"
+      ]
+    },
+    "compact_surface_backends": ["fallback", "hip", "vk-native-xir-spirv"],
+    "invalid_pixels_all_cross_build_barbershop_passes": 0,
+    "visual_triptychs_inspected": ["Combined", "Normal"],
+    "diff_check": "passed"
+  }
+}

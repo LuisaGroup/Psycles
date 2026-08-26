@@ -146,6 +146,126 @@ public:
   auto operator<=>(const SurfaceValueAddress &) const noexcept = default;
 };
 
+// Operand records preserve the complete storage class and typed bank, but the
+// compact SVM has deliberately small address domains: material ParameterId
+// and local-slot indices must fit 13 bits. Two such addresses occupy one
+// uint32 word. 0xffff is unambiguously invalid because bank value three is not
+// a SurfaceValueBank; it is also the canonical padding lane of an odd-arity
+// record. A scene outside this compact domain is rejected transactionally;
+// callers may then select the established expanded evaluator rather than
+// executing a partially encoded compact image.
+class SurfaceValueOperandAddress {
+
+private:
+  std::uint16_t _value{invalid_value};
+
+public:
+  static constexpr std::uint16_t invalid_value =
+      static_cast<std::uint16_t>(0xffffu);
+  static constexpr std::uint16_t parameter_bit = 1u << 15u;
+  static constexpr std::uint16_t bank_shift = 13u;
+  static constexpr std::uint16_t bank_mask = 0x3u << bank_shift;
+  static constexpr std::uint16_t index_mask = (1u << bank_shift) - 1u;
+
+  SurfaceValueOperandAddress() noexcept = default;
+  explicit constexpr SurfaceValueOperandAddress(std::uint16_t value) noexcept
+      : _value{value} {}
+
+  [[nodiscard]] constexpr bool valid() const noexcept {
+    return _value != invalid_value &&
+           static_cast<std::uint32_t>(bank()) <=
+               static_cast<std::uint32_t>(
+                   SurfaceValueBank::unsigned_integer);
+  }
+  [[nodiscard]] constexpr bool parameter() const noexcept {
+    return (_value & parameter_bit) != 0u;
+  }
+  [[nodiscard]] constexpr SurfaceValueBank bank() const noexcept {
+    return static_cast<SurfaceValueBank>((_value & bank_mask) >> bank_shift);
+  }
+  [[nodiscard]] constexpr std::uint32_t index() const noexcept {
+    return _value & index_mask;
+  }
+  [[nodiscard]] constexpr std::uint16_t encoded() const noexcept {
+    return _value;
+  }
+  [[nodiscard]] constexpr SurfaceValueAddress expanded() const noexcept {
+    return valid()
+               ? SurfaceValueAddress{
+                     (parameter() ? SurfaceValueAddress::parameter_bit : 0u) |
+                     (static_cast<std::uint32_t>(bank())
+                      << SurfaceValueAddress::bank_shift) |
+                     index()}
+               : SurfaceValueAddress{};
+  }
+
+  auto operator<=>(const SurfaceValueOperandAddress &) const noexcept =
+      default;
+};
+
+[[nodiscard]] constexpr bool encode_surface_value_operand_address(
+    SurfaceValueAddress address,
+    SurfaceValueOperandAddress &operand) noexcept {
+  if (!address.valid() ||
+      static_cast<std::uint32_t>(address.bank()) >
+          static_cast<std::uint32_t>(
+              SurfaceValueBank::unsigned_integer) ||
+      address.index() > SurfaceValueOperandAddress::index_mask) {
+    return false;
+  }
+  operand = SurfaceValueOperandAddress{static_cast<std::uint16_t>(
+      (address.parameter() ? SurfaceValueOperandAddress::parameter_bit : 0u) |
+      (static_cast<std::uint32_t>(address.bank())
+       << SurfaceValueOperandAddress::bank_shift) |
+      address.index())};
+  return operand.valid() && operand.expanded() == address;
+}
+
+inline constexpr std::uint32_t surface_value_operands_per_word = 2u;
+inline constexpr std::uint32_t surface_value_operand_lane_bits = 16u;
+inline constexpr std::uint32_t surface_value_inline_operand_capacity = 2u;
+inline constexpr std::uint32_t surface_value_invalid_operand_word =
+    static_cast<std::uint32_t>(SurfaceValueOperandAddress::invalid_value) |
+    (static_cast<std::uint32_t>(SurfaceValueOperandAddress::invalid_value)
+     << surface_value_operand_lane_bits);
+
+// ValueOperation is a dense closed enum. Computing the maximum from every
+// member makes the compact stream's arity bound follow the semantic contract
+// instead of relying on whichever node currently happens to have most inputs.
+[[nodiscard]] consteval std::size_t
+maximum_surface_value_operand_count() noexcept {
+  auto maximum = std::size_t{};
+  for (auto opcode = std::uint32_t{};
+       opcode <= static_cast<std::uint32_t>(ValueOperation::nishita_sky);
+       ++opcode) {
+    const auto count = value_operation_operand_count(
+        static_cast<ValueOperation>(opcode));
+    maximum = count > maximum ? count : maximum;
+  }
+  return maximum;
+}
+
+inline constexpr std::size_t surface_value_max_operand_count =
+    maximum_surface_value_operand_count();
+static_assert(surface_value_max_operand_count == value_operand::brick::count);
+
+[[nodiscard]] constexpr std::uint32_t surface_value_operand_word_count(
+    std::size_t operand_count) noexcept {
+  return static_cast<std::uint32_t>(
+      (operand_count + surface_value_operands_per_word - 1u) /
+      surface_value_operands_per_word);
+}
+
+[[nodiscard]] constexpr SurfaceValueOperandAddress
+surface_value_operand_from_word(std::uint32_t word,
+                                std::size_t lane) noexcept {
+  if (lane >= surface_value_operands_per_word) {
+    return {};
+  }
+  return SurfaceValueOperandAddress{static_cast<std::uint16_t>(
+      word >> (surface_value_operand_lane_bits * lane))};
+}
+
 // Closure-tree topology becomes immutable scene data after the typed value
 // stream has been scheduled. A leaf can feed physical population, emission,
 // or both; endpoint bits are kept in the instruction so one traversal
@@ -393,29 +513,27 @@ struct SurfaceClosureProgramImage {
   PrincipledClosureFeatureMask used_principled_features{};
 };
 
-// The hot stream is deliberately 16 bytes. Operand arity is an opcode
-// invariant, and uncommon immutable fields live in a side table so ordinary
-// arithmetic does not fetch two uint64 values and a static-table descriptor.
-// The high 14 bits form an opcode-owned immediate, analogous to the packed
-// fields of one Cycles SVM node. An operation may erase a static field from
-// its host evaluator key only after this immediate represents that field
-// exactly and the serialized-image validator proves the two copies agree.
+// The hot stream is deliberately 16 bytes. Operand arity is a total function
+// of the closed opcode enum and is therefore not redundantly serialized.
+// Arity-zero through arity-two instructions embed their one packed operand
+// word in `operand_payload`; larger instructions store a word offset into the
+// packed overflow stream. Uncommon immutable fields live in a side table so
+// ordinary arithmetic does not fetch two uint64 values and a static-table
+// descriptor. The high 14 bits form an opcode-owned immediate, analogous to
+// the packed fields of one Cycles SVM node. An operation may erase a static
+// field from its host evaluator key only after this immediate represents that
+// field exactly and the serialized-image validator proves the two copies
+// agree.
 struct SurfaceValueBytecodeInstruction {
   // Packed as [opcode-owned immediate:14 | result bank:2 |
-  // operand count:8 | opcode:8].
-  // ValueOperation is a closed uint8_t enum and every operation has a fixed
-  // arity. Keeping those facts in the stream makes a serialized image
-  // independently verifiable without enlarging the hot 16-byte record.
+  // reserved-zero:8 | opcode:8].
   std::uint32_t control{};
   std::uint32_t result{};
-  std::uint32_t operand_begin{};
+  std::uint32_t operand_payload{surface_value_invalid_operand_word};
   std::uint32_t metadata_index{~std::uint32_t{0u}};
 };
 
 inline constexpr std::uint32_t surface_value_opcode_mask = 0xffu;
-inline constexpr std::uint32_t surface_value_operand_count_shift = 8u;
-inline constexpr std::uint32_t surface_value_operand_count_mask =
-    0xffu << surface_value_operand_count_shift;
 inline constexpr std::uint32_t surface_value_result_bank_shift = 16u;
 inline constexpr std::uint32_t surface_value_result_bank_mask =
     0x3u << surface_value_result_bank_shift;
@@ -668,8 +786,8 @@ static_assert((surface_value_image_configuration_mask &
                ~surface_value_svm_immediate_value_mask) == 0u);
 static_assert(surface_value_image_sampling_quotient_contract_holds());
 inline constexpr std::uint32_t surface_value_control_mask =
-    surface_value_opcode_mask | surface_value_operand_count_mask |
-    surface_value_result_bank_mask | surface_value_svm_immediate_mask;
+    surface_value_opcode_mask | surface_value_result_bank_mask |
+    surface_value_svm_immediate_mask;
 
 // Primary interpreter dispatch is derived from the instruction itself. The
 // opcode and result bank select the typed handler. Image BOX is the sole
@@ -1017,11 +1135,9 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
 }
 
 [[nodiscard]] constexpr std::uint32_t make_surface_value_control(
-    ValueOperation operation, std::uint8_t operand_count,
-    SurfaceValueBank result_bank, std::uint32_t svm_immediate) noexcept {
+    ValueOperation operation, SurfaceValueBank result_bank,
+    std::uint32_t svm_immediate) noexcept {
   return static_cast<std::uint32_t>(operation) |
-         (static_cast<std::uint32_t>(operand_count)
-          << surface_value_operand_count_shift) |
          (static_cast<std::uint32_t>(result_bank)
           << surface_value_result_bank_shift) |
          ((svm_immediate & surface_value_svm_immediate_value_mask)
@@ -1036,8 +1152,10 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
 
 [[nodiscard]] constexpr std::uint32_t surface_value_operand_count(
     const SurfaceValueBytecodeInstruction &instruction) noexcept {
-  return (instruction.control & surface_value_operand_count_mask) >>
-         surface_value_operand_count_shift;
+  return is_surface_value_surface_normal_transition(instruction)
+             ? 0u
+             : static_cast<std::uint32_t>(value_operation_operand_count(
+                   surface_value_operation(instruction)));
 }
 
 [[nodiscard]] constexpr SurfaceValueBank surface_value_result_bank(

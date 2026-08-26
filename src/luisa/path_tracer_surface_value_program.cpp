@@ -267,19 +267,54 @@ void write_dynamic_value(
     TracedValues operands;
     operands.shading_normal = point.shading_normal;
     operands.values.reserve(variant.operand_types.size());
-    for (auto operand_index = std::size_t{0u};
-         operand_index < variant.operand_types.size(); ++operand_index) {
-        auto address = surface_value_runtime_buffer<luisa::uint>(
-                           runtime,
-                           SurfaceValueRuntimeBufferSlot::operand)
-                           .read(
-            instruction.z + static_cast<std::uint32_t>(operand_index));
-        operands.values.emplace_back(read_dynamic_value(
-            variant.operand_types[operand_index],
-            services,
-            point,
-            locals,
-            std::move(address)));
+    const auto inline_operands =
+        variant.operand_types.size() <=
+        compiler::surface_value_inline_operand_capacity;
+    for (auto word_index = std::size_t{0u};
+         word_index < compiler::surface_value_operand_word_count(
+                          variant.operand_types.size());
+         ++word_index) {
+        // Arity is an opcode/variant invariant, so this host branch does not
+        // enter the shader AST. Small nodes consume the instruction's third
+        // word directly; larger nodes perform one global read for each pair
+        // of addresses in the packed overflow stream.
+        auto word = inline_operands
+                        ? UInt{instruction.z.expression()}
+                        : surface_value_runtime_buffer<luisa::uint>(
+                              runtime,
+                              SurfaceValueRuntimeBufferSlot::operand)
+                              .read(instruction.z +
+                                    static_cast<std::uint32_t>(word_index));
+        for (auto lane = std::size_t{0u};
+             lane < compiler::surface_value_operands_per_word;
+             ++lane) {
+            const auto operand_index =
+                word_index * compiler::surface_value_operands_per_word + lane;
+            if (operand_index >= variant.operand_types.size()) {
+                break;
+            }
+            auto compact =
+                (word >> static_cast<std::uint32_t>(
+                             compiler::surface_value_operand_lane_bits * lane)) &
+                0xffffu;
+            auto address =
+                (compact & static_cast<std::uint32_t>(
+                               compiler::SurfaceValueOperandAddress::
+                                   index_mask)) |
+                ((compact &
+                  (static_cast<std::uint32_t>(
+                       compiler::SurfaceValueOperandAddress::parameter_bit) |
+                   static_cast<std::uint32_t>(
+                       compiler::SurfaceValueOperandAddress::bank_mask)))
+                 << (compiler::SurfaceValueAddress::bank_shift -
+                     compiler::SurfaceValueOperandAddress::bank_shift));
+            operands.values.emplace_back(read_dynamic_value(
+                variant.operand_types[operand_index],
+                services,
+                point,
+                locals,
+                std::move(address)));
+        }
     }
     return operands;
 }
