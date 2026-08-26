@@ -7,7 +7,11 @@ namespace psycles::luisa_backend::detail {
 SurfaceClosureEvaluationCallable
 make_surface_closure_evaluation_callable(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
-    SurfaceClosureEvaluationCallable callable = [scene](
+    const auto reachability =
+        scene->surface_values
+            ? scene->surface_values->physical_closure_reachability
+            : all_surface_closure_reachability;
+    SurfaceClosureEvaluationCallable callable = [scene, reachability](
                BufferFloat scalar_parameters,
                BufferFloat3 vector_parameters,
                BufferFloat cycles_bsdf_tables,
@@ -64,7 +68,7 @@ make_surface_closure_evaluation_callable(
             Expr<luisa::float3>{packed_query.outgoing.expression()},
             query,
             policy,
-            Expr<bool>{selected_sample.expression()});
+            Expr<bool>{selected_sample.expression()}, reachability);
     };
     callable.set_name("surface_closure_evaluation");
     return callable;

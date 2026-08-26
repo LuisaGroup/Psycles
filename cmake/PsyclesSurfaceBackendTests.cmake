@@ -70,6 +70,18 @@ psycles_add_luisa_backend_test(
     LIBRARIES Psycles::luisa)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_surface_closure_reachability_tests
+    SOURCE tests/test_luisa_surface_closure_reachability.cpp
+    TEST_STEM luisa_surface_closure_reachability
+    LIBRARIES Psycles::luisa)
+if(TEST psycles.luisa_surface_closure_reachability_vk)
+    set_tests_properties(
+        psycles.luisa_surface_closure_reachability_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_surface_population_tests
     SOURCE tests/test_luisa_surface_population.cpp
     TEST_STEM luisa_surface_population

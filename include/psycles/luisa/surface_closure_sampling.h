@@ -141,7 +141,9 @@ surface_closure_conditional_sample(
     Expr<luisa::float3> glossy_normal,
     Expr<luisa::float2> random_direction,
     Expr<float> rescaled_lobe,
-    const SurfaceQuery &query) noexcept;
+    const SurfaceQuery &query,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
 
 // First pass: construct the finite categorical measure over the retained
 // Cycles allocation sequence. Retained count includes setup-invalid entries,
@@ -302,12 +304,15 @@ class DirectSurfaceClosureSamplingOperation final
     const SurfaceQuery &_query;
     SurfaceClosureSelectionContext _selection_context;
     Float3 _incoming{make_float3(0.0f)};
+    SurfaceClosureReachability _reachability;
 
   public:
     DirectSurfaceClosureSamplingOperation(
         const ShaderServices &services,
         const SurfaceClosurePoint &point,
-        const SurfaceQuery &query) noexcept;
+        const SurfaceQuery &query,
+        SurfaceClosureReachability reachability =
+            all_surface_closure_reachability) noexcept;
 
     [[nodiscard]] luisa::compute::Var<
         SurfaceClosureSelectionCall>

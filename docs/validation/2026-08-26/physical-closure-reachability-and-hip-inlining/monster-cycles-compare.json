@@ -1,0 +1,261 @@
+{
+  "actual_label": "Psycles",
+  "cycles_channels": [
+    "View Layer.Combined.R",
+    "View Layer.Combined.G",
+    "View Layer.Combined.B",
+    "View Layer.Combined.A",
+    "View Layer.Debug Sample Count.X",
+    "View Layer.Depth.Z",
+    "View Layer.Diffuse Color.R",
+    "View Layer.Diffuse Color.G",
+    "View Layer.Diffuse Color.B",
+    "View Layer.Diffuse Direct.R",
+    "View Layer.Diffuse Direct.G",
+    "View Layer.Diffuse Direct.B",
+    "View Layer.Diffuse Indirect.R",
+    "View Layer.Diffuse Indirect.G",
+    "View Layer.Diffuse Indirect.B",
+    "View Layer.Emission.R",
+    "View Layer.Emission.G",
+    "View Layer.Emission.B",
+    "View Layer.Environment.R",
+    "View Layer.Environment.G",
+    "View Layer.Environment.B",
+    "View Layer.Glossy Color.R",
+    "View Layer.Glossy Color.G",
+    "View Layer.Glossy Color.B",
+    "View Layer.Glossy Direct.R",
+    "View Layer.Glossy Direct.G",
+    "View Layer.Glossy Direct.B",
+    "View Layer.Glossy Indirect.R",
+    "View Layer.Glossy Indirect.G",
+    "View Layer.Glossy Indirect.B",
+    "View Layer.Normal.X",
+    "View Layer.Normal.Y",
+    "View Layer.Normal.Z",
+    "View Layer.Transmission Color.R",
+    "View Layer.Transmission Color.G",
+    "View Layer.Transmission Color.B",
+    "View Layer.Transmission Direct.R",
+    "View Layer.Transmission Direct.G",
+    "View Layer.Transmission Direct.B",
+    "View Layer.Transmission Indirect.R",
+    "View Layer.Transmission Indirect.G",
+    "View Layer.Transmission Indirect.B",
+    "View Layer.Volume Direct.R",
+    "View Layer.Volume Direct.G",
+    "View Layer.Volume Direct.B",
+    "View Layer.Volume Indirect.R",
+    "View Layer.Volume Indirect.G",
+    "View Layer.Volume Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0037113428115845,
+        1.0019266605377197,
+        1.0069910287857056
+      ],
+      "cycles": "/home/mike/Projects/psycles-benchmarks/monster-480p-64spp/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.1637628674507141,
+        0.07474905252456665,
+        0.05765967071056366
+      ],
+      "cycles_luminance_mean": 0.09243973344564438,
+      "cycles_rms": 0.1596875637769699,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0028301648796318,
+      "maximum_absolute_error": 0.7447957992553711,
+      "mean_absolute_error": 0.010537807829678059,
+      "orientation_rmse": {
+        "flip_x": 0.13294734060764313,
+        "flip_xy": 0.1696680188179016,
+        "flip_y": 0.16899685561656952,
+        "identity": 0.022511085495352745
+      },
+      "p95_pixel_rmse": 0.048048704862594604,
+      "p99_pixel_rmse": 0.09177886694669724,
+      "psycles": "/tmp/psycles-closure-module-monster.oFstvA/out.exr",
+      "psycles_channel_mean": [
+        0.16437064111232758,
+        0.07489307224750519,
+        0.05806276947259903
+      ],
+      "psycles_luminance_mean": 0.09270135313272476,
+      "psycles_rms": 0.16084486925140737,
+      "relative_rmse": 0.14096955932519079,
+      "rmse": 0.022511085495352745,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 6.897236707729058,
+        "display_scale": 1.0862031325420811,
+        "mapping": "shared_linear_srgb",
+        "path": "/tmp/psycles-closure-module-monster.oFstvA/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        1.0029733180999756,
+        1.0025657415390015,
+        1.0018993616104126
+      ],
+      "cycles": "/home/mike/Projects/psycles-benchmarks/monster-480p-64spp/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.33832818269729614,
+        0.20827487111091614,
+        0.13119320571422577
+      ],
+      "cycles_luminance_mean": 0.23035988211631775,
+      "cycles_rms": 0.34975260496139526,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0026706444516174,
+      "maximum_absolute_error": 1.7223036289215088,
+      "mean_absolute_error": 0.024214664474129677,
+      "orientation_rmse": {
+        "flip_x": 0.29103919863700867,
+        "flip_xy": 0.36508476734161377,
+        "flip_y": 0.35725218057632446,
+        "identity": 0.051229946315288544
+      },
+      "p95_pixel_rmse": 0.10292132198810577,
+      "p99_pixel_rmse": 0.21779029071331024,
+      "psycles": "/tmp/psycles-closure-module-monster.oFstvA/out.exr",
+      "psycles_channel_mean": [
+        0.3393341600894928,
+        0.2088092416524887,
+        0.1314423829317093
+      ],
+      "psycles_luminance_mean": 0.23097509145736694,
+      "psycles_rms": 0.3523922981936609,
+      "relative_rmse": 0.14647480987580683,
+      "rmse": 0.051229946315288544,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.929454037218699,
+        "display_scale": 0.5020272739604695,
+        "mapping": "shared_linear_srgb",
+        "path": "/tmp/psycles-closure-module-monster.oFstvA/triptychs/diffdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        0.9989942312240601,
+        0.9988587498664856,
+        0.9986423254013062
+      ],
+      "cycles": "/home/mike/Projects/psycles-benchmarks/monster-480p-64spp/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.2921977937221527,
+        0.21369639039039612,
+        0.14333084225654602
+      ],
+      "cycles_luminance_mean": 0.22530126571655273,
+      "cycles_rms": 0.40172162652015686,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9988817247312647,
+      "maximum_absolute_error": 6.5755486488342285,
+      "mean_absolute_error": 0.025314364582300186,
+      "orientation_rmse": {
+        "flip_x": 0.44847404956817627,
+        "flip_xy": 0.46271035075187683,
+        "flip_y": 0.4557564854621887,
+        "identity": 0.08126110583543777
+      },
+      "p95_pixel_rmse": 0.08646800369024277,
+      "p99_pixel_rmse": 0.25720056891441345,
+      "psycles": "/tmp/psycles-closure-module-monster.oFstvA/out.exr",
+      "psycles_channel_mean": [
+        0.29190391302108765,
+        0.2134525030851364,
+        0.14313624799251556
+      ],
+      "psycles_luminance_mean": 0.22504931688308716,
+      "psycles_rms": 0.40250112178006436,
+      "relative_rmse": 0.20228212889444827,
+      "rmse": 0.08126110583543777,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.2198358530784055,
+        "display_scale": 0.3950913256705029,
+        "mapping": "shared_linear_srgb",
+        "path": "/tmp/psycles-closure-module-monster.oFstvA/triptychs/glossdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.9995267987251282,
+        1.0000040531158447,
+        1.0000605583190918
+      ],
+      "cycles": "/home/mike/Projects/psycles-benchmarks/monster-480p-64spp/cycles/hip.exr",
+      "cycles_channel_mean": [
+        -0.01345834694802761,
+        -0.8215909600257874,
+        0.14007878303527832
+      ],
+      "cycles_luminance_mean": -0.579895555973053,
+      "cycles_rms": 0.5700652003288269,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": -0.9999997944297239,
+      "maximum_absolute_error": 0.031198501586914062,
+      "mean_absolute_error": 2.8483758796937764e-05,
+      "orientation_rmse": {
+        "flip_x": 0.34397098422050476,
+        "flip_xy": 0.4506615102291107,
+        "flip_y": 0.4442175328731537,
+        "identity": 0.00015775239444337785
+      },
+      "p95_pixel_rmse": 0.00017003892571665347,
+      "p99_pixel_rmse": 0.00039908697362989187,
+      "psycles": "/tmp/psycles-closure-module-monster.oFstvA/out.exr",
+      "psycles_channel_mean": [
+        -0.01345197856426239,
+        -0.8215942978858948,
+        0.14008726179599762
+      ],
+      "psycles_luminance_mean": -0.5798954367637634,
+      "psycles_rms": 0.570065588607426,
+      "relative_rmse": 0.00027672693290588967,
+      "rmse": 0.00015775239444337785,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1653.6968797811396,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/tmp/psycles-closure-module-monster.oFstvA/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Cycles",
+  "schema": "psycles.cycles-differential.v1"
+}

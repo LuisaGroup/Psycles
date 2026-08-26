@@ -8,6 +8,7 @@
 #include "thin_subsurface_component.h"
 
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/surface_closure_reachability.h>
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -28,6 +29,35 @@ void expand_physical_surface_closure(
     Bool reflective_caustics,
     Bool refractive_caustics,
     const ClosureVisitor &emit) noexcept {
+    static_assert(
+        static_cast<std::uint32_t>(compiler::ClosureOperation::refraction) < 32u);
+    const auto source_operation = graph_closure.operation;
+    const auto source_features = graph_closure.principled_features;
+    const auto source_reachability = reachable_surface_closures(
+        std::uint32_t{1u} << static_cast<std::uint32_t>(source_operation),
+        source_features);
+    const ClosureVisitor checked_emit =
+        [&emit,
+         source_reachability,
+         source_operation,
+         source_features](const TracedClosure &physical) noexcept {
+            const auto identity = canonical_surface_closure_identity(physical);
+            const auto kind_reachable =
+                identity.kind == SurfaceClosureKind::none ||
+                source_reachability.contains(identity.kind);
+            const auto lobe_reachable =
+                identity.kind != SurfaceClosureKind::principled ||
+                source_reachability.contains_principled_lobe(identity.lobe);
+            LUISA_ASSERT(
+                kind_reachable && lobe_reachable,
+                "Physical closure reachability omitted emitted identity "
+                "kind={} lobe={} from source operation={} features=0x{:08x}.",
+                static_cast<std::uint32_t>(identity.kind),
+                static_cast<std::uint32_t>(identity.lobe),
+                static_cast<std::uint32_t>(source_operation),
+                source_features);
+            emit(physical);
+        };
     const SurfaceClosurePoint closure_point{point};
     const auto incoming =
         safe_normalize(point.incoming, point.shading_normal);
@@ -87,7 +117,7 @@ void expand_physical_surface_closure(
         transparent.roughness = 0.0f;
         transparent.ior = 1.0f;
         transparent.evaluation_scale = make_float3(1.0f);
-        emit(transparent);
+        checked_emit(transparent);
     }
 
     switch (graph_closure.operation) {
@@ -105,7 +135,7 @@ void expand_physical_surface_closure(
                 compiler::PrincipledClosureFeature::sheen)) {
             const auto sheen = principled_layers.evaluate_sheen(
                 graph_closure, closure.weight);
-            emit(sheen.closure);
+            checked_emit(sheen.closure);
             closure.weight = sheen.lower_weight;
         }
         if (has_principled_feature(
@@ -115,7 +145,7 @@ void expand_physical_surface_closure(
                 graph_closure,
                 closure.weight,
                 reflective_caustics);
-            emit(coat.closure);
+            checked_emit(coat.closure);
             closure.weight = coat.lower_weight;
         }
         const auto base = principled_base.evaluate(
@@ -126,24 +156,24 @@ void expand_physical_surface_closure(
         if (has_principled_feature(
                 graph_closure,
                 compiler::PrincipledClosureFeature::metallic)) {
-            emit(*base.metallic);
+            checked_emit(*base.metallic);
         }
         if (has_principled_feature(
                 graph_closure,
                 compiler::PrincipledClosureFeature::thick_transmission)) {
-            emit(*base.transmission);
+            checked_emit(*base.transmission);
         }
         if (has_principled_feature(
                 graph_closure,
                 compiler::PrincipledClosureFeature::thin_transmission)) {
-            emit(*base.thin_glass_reflection);
-            emit(*base.thin_glass_transmission);
-            emit(*base.thin_glass_transparency);
+            checked_emit(*base.thin_glass_reflection);
+            checked_emit(*base.thin_glass_transmission);
+            checked_emit(*base.thin_glass_transparency);
         }
         if (has_principled_feature(
                 graph_closure,
                 compiler::PrincipledClosureFeature::dielectric)) {
-            emit(*base.dielectric);
+            checked_emit(*base.dielectric);
         }
 
         const auto subsurface_weight =
@@ -195,9 +225,9 @@ void expand_physical_surface_closure(
                         graph_closure.thin_wall &
                             (subsurface_weight >
                              cycles_closure::closure_weight_cutoff));
-                emit(thin_subsurface_setup.reflection);
-                emit(thin_subsurface_setup.smooth_transmission);
-                emit(thin_subsurface_setup.rough_transmission);
+                checked_emit(thin_subsurface_setup.reflection);
+                checked_emit(thin_subsurface_setup.smooth_transmission);
+                checked_emit(thin_subsurface_setup.rough_transmission);
             }
 
             if (thick_subsurface_enabled) {
@@ -212,8 +242,8 @@ void expand_physical_surface_closure(
                         graph_closure.normal);
                 const auto bssrdf_setup =
                     bssrdf_closure.setup(bssrdf);
-                emit(bssrdf_setup.bssrdf);
-                emit(bssrdf_setup.diffuse_fallback);
+                checked_emit(bssrdf_setup.bssrdf);
+                checked_emit(bssrdf_setup.diffuse_fallback);
             }
         }
 
@@ -236,7 +266,7 @@ void expand_physical_surface_closure(
             diffuse.roughness =
                 graph_closure.diffuse_roughness;
             diffuse.evaluation_scale = make_float3(1.0f);
-            emit(diffuse);
+            checked_emit(diffuse);
         }
         return;
     }
@@ -244,8 +274,8 @@ void expand_physical_surface_closure(
         closure.normal = maybe_ensure_valid_specular_reflection(
             closure_point, incoming, graph_closure.normal);
         const auto setup = bssrdf_closure.setup(closure);
-        emit(setup.bssrdf);
-        emit(setup.diffuse_fallback);
+        checked_emit(setup.bssrdf);
+        checked_emit(setup.diffuse_fallback);
         return;
     }
     case compiler::ClosureOperation::glossy: {
@@ -291,7 +321,7 @@ void expand_physical_surface_closure(
             max(graph_closure.color, make_float3(0.0f));
         const auto original_ior = max(
             graph_closure.ior, 1.0e-5f);
-        emit(microfacet_glass.setup(
+        checked_emit(microfacet_glass.setup(
             {.prototype = closure,
              .weight = closure.weight,
              .normal = graph_closure.normal,
@@ -317,7 +347,7 @@ void expand_physical_surface_closure(
         return;
     }
     case compiler::ClosureOperation::refraction: {
-        emit(microfacet_glass.setup(
+        checked_emit(microfacet_glass.setup(
             {.prototype = closure,
              .weight = closure.weight,
              .normal = graph_closure.normal,
@@ -379,7 +409,7 @@ void expand_physical_surface_closure(
         closure.sample_weight = 0.0f;
         break;
     }
-    emit(closure);
+    checked_emit(closure);
 }
 
 } // namespace psycles::luisa_backend::detail

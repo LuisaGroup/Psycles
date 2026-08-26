@@ -4,6 +4,7 @@
 #error "Include <psycles/luisa/surface_closure_evaluator.h> through the Psycles::luisa target."
 #endif
 
+#include <psycles/luisa/surface_closure_reachability.h>
 #include <psycles/luisa/surface_closure_set.h>
 
 namespace psycles::luisa_backend {
@@ -24,6 +25,7 @@ class SurfaceClosureEvaluator {
     const SurfacePoint &_point;
     const SurfaceClosureSet &_closures;
     Float3 _shading_normal;
+    SurfaceClosureReachability _reachability;
 
     [[nodiscard]] SurfaceEvaluation evaluate_impl(
         const ShaderServices &services,
@@ -44,7 +46,9 @@ class SurfaceClosureEvaluator {
     SurfaceClosureEvaluator(
         const SurfacePoint &point,
         const SurfaceClosureSet &closures,
-        Float3 shading_normal) noexcept;
+        Float3 shading_normal,
+        SurfaceClosureReachability reachability =
+            all_surface_closure_reachability) noexcept;
 
     [[nodiscard]] UInt runtime_flags(
         Float glossy_filter_roughness = 0.0f) const noexcept;

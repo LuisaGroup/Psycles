@@ -20,6 +20,10 @@ namespace {
 
 SurfaceClosureSamplingCallables make_surface_closure_sampling_callables(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    const auto reachability =
+        scene->surface_values
+            ? scene->surface_values->physical_closure_reachability
+            : all_surface_closure_reachability;
     SurfaceClosureSelectionCallable selection =
         [](UInt lobe_mask, Float glossy_filter_roughness, UInt kind, UInt lobe,
            UInt bssrdf_method, Float allocation_weight, Float sample_weight,
@@ -45,7 +49,7 @@ SurfaceClosureSamplingCallables make_surface_closure_sampling_callables(
     selection.set_name("surface_closure_selection");
 
     SurfaceClosureConditionalSampleCallable conditional_sample =
-        [scene](
+        [scene, reachability](
             BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables, BindlessVar textures,
             BindlessVar geometry_heap, Var<SurfaceClosurePointCall> packed_point,
@@ -74,7 +78,7 @@ SurfaceClosureSamplingCallables make_surface_closure_sampling_callables(
                 Expr<luisa::float3>{glossy_normal.expression()},
                 Expr<luisa::float2>{random_direction.expression()},
                 Expr<float>{rescaled_lobe.expression()},
-                unpack_sampling_query(packed_query));
+                unpack_sampling_query(packed_query), reachability);
         };
     conditional_sample.set_name("surface_closure_conditional_sample");
     return {.selection = std::move(selection),

@@ -22,45 +22,37 @@ namespace {
 
 } // namespace
 
-SurfaceClosureRecord canonical_surface_closure(
+CanonicalSurfaceClosureIdentity
+canonical_surface_closure_identity(
     const TracedClosure &closure) noexcept {
-    auto result = SurfaceClosureRecord::zero();
+    auto result = CanonicalSurfaceClosureIdentity{};
     if (closure.physical_kind != SurfaceClosureKind::none) {
-        result.kind = static_cast<std::uint32_t>(
-            closure.physical_kind);
+        result.kind = closure.physical_kind;
     } else {
         switch (closure.operation) {
         case compiler::ClosureOperation::diffuse:
-            result.kind = static_cast<std::uint32_t>(
-                SurfaceClosureKind::diffuse);
+            result.kind = SurfaceClosureKind::diffuse;
             break;
         case compiler::ClosureOperation::translucent:
-            result.kind = static_cast<std::uint32_t>(
-                SurfaceClosureKind::translucent);
+            result.kind = SurfaceClosureKind::translucent;
             break;
         case compiler::ClosureOperation::principled:
-            result.kind = static_cast<std::uint32_t>(
-                SurfaceClosureKind::principled);
+            result.kind = SurfaceClosureKind::principled;
             break;
         case compiler::ClosureOperation::glossy:
-            result.kind = static_cast<std::uint32_t>(
-                SurfaceClosureKind::glossy);
+            result.kind = SurfaceClosureKind::glossy;
             break;
         case compiler::ClosureOperation::glass:
-            result.kind = static_cast<std::uint32_t>(
-                SurfaceClosureKind::glass);
+            result.kind = SurfaceClosureKind::glass;
             break;
         case compiler::ClosureOperation::refraction:
-            result.kind = static_cast<std::uint32_t>(
-                SurfaceClosureKind::refraction);
+            result.kind = SurfaceClosureKind::refraction;
             break;
         case compiler::ClosureOperation::transparent:
-            result.kind = static_cast<std::uint32_t>(
-                SurfaceClosureKind::transparent);
+            result.kind = SurfaceClosureKind::transparent;
             break;
         case compiler::ClosureOperation::subsurface:
-            result.kind = static_cast<std::uint32_t>(
-                SurfaceClosureKind::bssrdf);
+            result.kind = SurfaceClosureKind::bssrdf;
             break;
         case compiler::ClosureOperation::null_closure:
         case compiler::ClosureOperation::emission:
@@ -73,26 +65,30 @@ SurfaceClosureRecord canonical_surface_closure(
         case PrincipledLobe::none:
             break;
         case PrincipledLobe::sheen:
-            result.lobe = static_cast<std::uint32_t>(
-                SurfaceClosureLobe::sheen);
+            result.lobe = SurfaceClosureLobe::sheen;
             break;
         case PrincipledLobe::coat:
-            result.lobe = static_cast<std::uint32_t>(
-                SurfaceClosureLobe::coat);
+            result.lobe = SurfaceClosureLobe::coat;
             break;
         case PrincipledLobe::metallic:
-            result.lobe = static_cast<std::uint32_t>(
-                SurfaceClosureLobe::metallic);
+            result.lobe = SurfaceClosureLobe::metallic;
             break;
         case PrincipledLobe::transmission:
-            result.lobe = static_cast<std::uint32_t>(
-                SurfaceClosureLobe::transmission);
+            result.lobe = SurfaceClosureLobe::transmission;
             break;
         case PrincipledLobe::dielectric:
-            result.lobe = static_cast<std::uint32_t>(
-                SurfaceClosureLobe::dielectric);
+            result.lobe = SurfaceClosureLobe::dielectric;
             break;
     }
+    return result;
+}
+
+SurfaceClosureRecord canonical_surface_closure(
+    const TracedClosure &closure) noexcept {
+    auto result = SurfaceClosureRecord::zero();
+    const auto identity = canonical_surface_closure_identity(closure);
+    result.kind = static_cast<std::uint32_t>(identity.kind);
+    result.lobe = static_cast<std::uint32_t>(identity.lobe);
     result.weight = closure.weight;
     result.allocation_weight = closure.allocation_weight;
     result.sample_weight = closure.sample_weight;

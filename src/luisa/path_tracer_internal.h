@@ -7,6 +7,7 @@
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/luisa/surface_closure_reachability.h>
 #include <psycles/luisa/volume_majorant_hierarchy.h>
 
 #include "path_tracer_types.h"
@@ -336,6 +337,10 @@ struct SurfaceValueRuntime {
     // by the scene rather than by material topology count.
     std::vector<std::uint32_t> closure_static_variants;
     compiler::PrincipledClosureFeatureMask used_principled_closure_features{};
+    // Exact host/JIT image of the canonical physical identities reachable
+    // from the scene's closure opcodes and Principled feature stream. This is
+    // specialization metadata only; authored parameters remain device data.
+    SurfaceClosureReachability physical_closure_reachability{};
     // Exact semantic domains induced by each projected one-stream program.
     // The automatic-normal prefix, graph-expanded Bump samples, and endpoint
     // root form one transaction; no hidden callable domain exists.

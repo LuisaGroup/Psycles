@@ -75,7 +75,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
                 selection.glossy_normal.expression()},
             Expr<luisa::float2>{u_direction.expression()},
             Expr<float>{selected_rescaled.expression()},
-            query);
+            query, _reachability);
         selected.accept(
             Expr<std::uint32_t>{selected_index.expression()},
             Expr<luisa::float3>{closure.weight.expression()},
