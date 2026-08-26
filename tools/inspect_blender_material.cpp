@@ -127,6 +127,90 @@ struct VectorMathProducerOutputs {
     std::optional<std::size_t> vector;
 };
 
+struct ClosureControlCensus {
+    std::size_t reachable_adds{};
+    std::size_t reachable_mixes{};
+    // A live two-sided Mix admits Cycles' runtime zero/one branch skip. A
+    // one-sided endpoint projection still needs its factor, but has no
+    // alternative closure subtree in that execution domain.
+    std::size_t live_two_sided_mixes{};
+    std::size_t live_one_sided_mixes{};
+    // Structured control evaluates each contributing Mix exactly once. This
+    // source-graph census is the independent formal expectation checked
+    // against the emitted bytecode, regardless of the numerical factor value
+    // at any shading point.
+    std::size_t incremental_mix_factor_evaluations{};
+
+    ClosureControlCensus &operator+=(
+        const ClosureControlCensus &other) noexcept {
+        reachable_adds += other.reachable_adds;
+        reachable_mixes += other.reachable_mixes;
+        live_two_sided_mixes += other.live_two_sided_mixes;
+        live_one_sided_mixes += other.live_one_sided_mixes;
+        incremental_mix_factor_evaluations +=
+            other.incremental_mix_factor_evaluations;
+        return *this;
+    }
+};
+
+[[nodiscard]] ClosureControlCensus census_closure_control(
+    const psycles::compiler::SurfaceProgram &program,
+    const psycles::compiler::SurfaceClosurePlan &closure_plan,
+    const psycles::compiler::SurfaceValueDependencyPlan &dependencies) {
+    using psycles::compiler::ClosureExpressionId;
+    using psycles::compiler::ClosureOperation;
+    if (!closure_plan.compatible(program) ||
+        !dependencies.compatible(program)) {
+        std::abort();
+    }
+    const auto live = [&](ClosureExpressionId id) noexcept {
+        return id.valid() &&
+               id.value < program.closure_instructions().size() &&
+               closure_plan.entry(id).reachable &&
+               (dependencies.physical_closures[id.value] ||
+                dependencies.emission_closures[id.value]);
+    };
+
+    ClosureControlCensus result;
+    for (auto index = std::size_t{};
+         index < program.closure_instructions().size(); ++index) {
+        const auto id = ClosureExpressionId{
+            static_cast<std::uint32_t>(index)};
+        if (!live(id)) {
+            continue;
+        }
+        const auto &closure = program.closure_instructions()[index];
+        if (closure.operation == ClosureOperation::add) {
+            ++result.reachable_adds;
+            continue;
+        }
+        if (closure.operation != ClosureOperation::mix) {
+            continue;
+        }
+        ++result.reachable_mixes;
+        const auto a_live = live(closure.a);
+        const auto b_live = live(closure.b);
+        // lower_surface_closure_program contributes a factor term exactly
+        // when both topology branches survived host reachability and at least
+        // one branch is live in the selected endpoint domain.
+        const auto contributes_factor =
+            closure.a.valid() && closure.b.valid() &&
+            closure_plan.entry(closure.a).reachable &&
+            closure_plan.entry(closure.b).reachable &&
+            (a_live || b_live);
+        if (!contributes_factor) {
+            continue;
+        }
+        ++result.incremental_mix_factor_evaluations;
+        if (a_live && b_live) {
+            ++result.live_two_sided_mixes;
+        } else {
+            ++result.live_one_sided_mixes;
+        }
+    }
+    return result;
+}
+
 [[nodiscard]] bool bitwise_equal(
     std::span<const float> lhs,
     std::span<const float> rhs) noexcept {
@@ -624,6 +708,7 @@ int main(int argc, char **argv) {
         VectorMathProducerCensus physical_vector_math_producers;
         VectorMathProducerCensus emission_vector_math_producers;
         VectorMathProducerCensus preparation_vector_math_producers;
+        ClosureControlCensus closure_control;
         std::vector<psycles::compiler::SurfaceValueStoragePlan>
             value_storage_plans;
         std::vector<std::shared_ptr<const psycles::compiler::SurfaceProgram>>
@@ -673,6 +758,8 @@ int main(int argc, char **argv) {
             const auto dependencies =
                 psycles::compiler::analyze_surface_value_dependencies(
                     *execution_program, plan);
+            closure_control += census_closure_control(
+                *execution_program, plan, dependencies);
             preparation_image_producers += census_image_producers(
                 execution_program->value_instructions(),
                 &dependencies.preparation);
@@ -749,7 +836,10 @@ int main(int argc, char **argv) {
             value_execution_inputs.emplace_back(
                 psycles::compiler::SurfaceValueExecutionInput{
                     .program = execution_program,
-                    .storage = &value_storage_plans.back()});
+                    .storage = &value_storage_plans.back(),
+                    .closure_plan = &plan,
+                    .closure_endpoints =
+                        psycles::compiler::all_surface_closure_endpoints});
             for (const auto &entry : plan.entries()) {
                 reachable_closures += entry.reachable ? 1u : 0u;
                 for (const auto feature : {
@@ -781,6 +871,22 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
         const auto &value_scene_image = value_executable_scene.values;
+        const auto structured_mix_factor_evaluations =
+            static_cast<std::size_t>(std::count_if(
+                value_scene_image.closure_instructions.begin(),
+                value_scene_image.closure_instructions.end(),
+                [](const auto &instruction) noexcept {
+                    return psycles::compiler::surface_closure_instruction_kind(
+                               instruction) ==
+                           psycles::compiler::
+                               SurfaceClosureInstructionKind::mix_begin;
+                }));
+        if (structured_mix_factor_evaluations !=
+            closure_control.incremental_mix_factor_evaluations) {
+            std::cerr << "structured closure control is not in bijection with "
+                         "the formally contributing Mix nodes\n";
+            return EXIT_FAILURE;
+        }
         std::map<ValueOperation, std::size_t> value_variants_by_operation;
         for (const auto &variant : value_executable_scene.variants) {
             ++value_variants_by_operation[variant.instruction.operation];
@@ -905,6 +1011,24 @@ int main(int argc, char **argv) {
             << preparation_vector_math_producers.dual_output_producers
             << "\npreparation_exact_fusable_vector_math_pairs "
             << preparation_vector_math_producers.exact_fusable_pairs
+            << "\nreachable_closure_adds "
+            << closure_control.reachable_adds
+            << "\nreachable_closure_mixes "
+            << closure_control.reachable_mixes
+            << "\nlive_two_sided_closure_mixes "
+            << closure_control.live_two_sided_mixes
+            << "\nlive_one_sided_closure_mixes "
+            << closure_control.live_one_sided_mixes
+            << "\nincremental_closure_mix_factor_evaluations "
+            << closure_control.incremental_mix_factor_evaluations
+            << "\nstructured_closure_mix_factor_evaluations "
+            << structured_mix_factor_evaluations
+            << "\nclosure_bytecode_instructions "
+            << value_scene_image.closure_instructions.size()
+            << "\nmaximum_closure_mix_depth "
+            << value_scene_image.maximum_closure_mix_depth
+            << "\nmaximum_closure_mix_slots "
+            << value_scene_image.maximum_closure_mix_slots
             << "\nvalue_scene_descriptor_bytes "
             << value_scene_descriptor_bytes
             << "\nvalue_scene_total_bytes "

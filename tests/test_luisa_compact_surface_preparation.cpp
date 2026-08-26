@@ -324,82 +324,6 @@ struct FixtureProgram {
   return graph;
 }
 
-[[nodiscard]] ShaderGraph make_mixed_glass_emission_graph() {
-    ShaderGraph graph;
-    const auto diffuse = graph.add_node(
-        node_type::diffuse_bsdf,
-        "Nested mix diffuse");
-    const auto glass = graph.add_node(
-        node_type::glass_bsdf,
-        "Nested mix Beckmann glass");
-    const auto mix = graph.add_node(
-        node_type::mix_closure,
-        "Nested physical mix");
-    const auto emission = graph.add_node(
-        node_type::emission,
-        "Nested explicit emission");
-    const auto root = graph.add_node(
-        node_type::add_closure,
-        "Physical plus emission");
-    const auto configured =
-        graph.set_input(
-            diffuse,
-            "Color",
-            SocketValue::color({0.22f, 0.51f, 0.76f})) &&
-        graph.set_input(
-            diffuse,
-            "Roughness",
-            SocketValue::floating(0.43f)) &&
-        graph.set_input(
-            diffuse,
-            "Normal",
-            SocketValue::normal({0.18f, 0.0f, 0.984f})) &&
-        graph.set_input(
-            glass,
-            "Color",
-            SocketValue::color({0.81f, 0.91f, 0.98f})) &&
-        graph.set_input(
-            glass,
-            "Roughness",
-            SocketValue::floating(0.18f)) &&
-        graph.set_input(
-            glass,
-            "IOR",
-            SocketValue::floating(1.37f)) &&
-        graph.set_property(
-            glass,
-            "Distribution",
-            SocketValue::string("BECKMANN")) &&
-        graph.set_input(
-            mix,
-            "Factor",
-            SocketValue::floating(0.37f)) &&
-        graph.set_input(
-            emission,
-            "Color",
-            SocketValue::color({0.17f, 0.41f, 0.89f})) &&
-        graph.set_input(
-            emission,
-            "Strength",
-            SocketValue::floating(2.3f)) &&
-        graph.connect(
-            {.node = diffuse, .socket = "Closure"}, mix, "A") &&
-        graph.connect(
-            {.node = glass, .socket = "Closure"}, mix, "B") &&
-        graph.connect(
-            {.node = mix, .socket = "Closure"}, root, "A") &&
-        graph.connect(
-            {.node = emission, .socket = "Closure"}, root, "B");
-    if (!configured) {
-        throw std::runtime_error{
-            "failed to configure mixed glass/emission graph"};
-    }
-    graph.set_root(
-        ShaderDomain::surface,
-        OutputRef{.node = root, .socket = "Closure"});
-    return graph;
-}
-
 [[nodiscard]] ShaderGraph make_capacity_transparency_graph() {
     ShaderGraph graph;
     std::optional<NodeId> root;
@@ -1048,7 +972,7 @@ int main(int argc, char **argv) {
         compile_fixture(compiler, make_bssrdf_bump_graph(true)));
     fixtures.emplace_back(compile_fixture(
         compiler,
-        make_mixed_glass_emission_graph()));
+        make_nested_mix_add_replay_graph()));
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_capacity_transparency_graph()));

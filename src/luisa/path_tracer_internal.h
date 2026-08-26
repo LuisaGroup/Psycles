@@ -306,7 +306,6 @@ enum class SurfaceValueRuntimeBufferSlot : std::uint32_t {
     static_data,
     closure_instruction,
     closure_operand,
-    closure_mix_term,
     program_flag,
     count,
 };
@@ -352,6 +351,10 @@ struct SurfaceValueRuntime {
     std::vector<std::uint32_t> emission_closure_static_variants;
     compiler::PrincipledClosureFeatureMask
         emission_principled_closure_features{};
+    // Host/JIT shape of the exact structured closure control stack. Each live
+    // slot stores the immutable (parent, right) frame for one open Mix region;
+    // the compiler verifies exact laminar-interval coloring before acceptance.
+    std::uint32_t maximum_closure_mix_slots{};
     // BSSRDF exit reconstruction can only be invoked for the conservative
     // topology-tag set derived from Cycles' has_bssrdf_bump capability. Its
     // interpreter domain is the exact program image of that set. Closure
@@ -375,7 +378,6 @@ struct SurfaceValueRuntime {
     luisa::vector<float> static_data;
     luisa::vector<luisa::uint4> closure_instructions;
     luisa::vector<luisa::uint> closure_operands;
-    luisa::vector<luisa::uint2> closure_mix_terms;
 
     Buffer<luisa::uint4> program_buffer;
     Buffer<luisa::uint> program_flag_buffer;
@@ -388,7 +390,6 @@ struct SurfaceValueRuntime {
 
     Buffer<luisa::uint4> closure_instruction_buffer;
     Buffer<luisa::uint> closure_operand_buffer;
-    Buffer<luisa::uint2> closure_mix_term_buffer;
     // Declared after the bound buffers so reverse member destruction releases
     // the descriptor view before its resources.
     BindlessArray device_view;

@@ -27,6 +27,11 @@ struct CompactSurfaceProgramEvidence {
 
 [[nodiscard]] contract::ShaderGraph make_minimal_principled_graph();
 
+// A depth-three Mix tree followed by an Add sibling. The transparent leaf also
+// forces the physical-closure replay path, so compact execution must preserve
+// nested Mix frames, Add continuation weight, and replay order together.
+[[nodiscard]] contract::ShaderGraph make_nested_mix_add_replay_graph();
+
 // Differential fixture for the two-phase automatic-normal transaction. Every
 // undisplaced geometry member is distinct from its displaced counterpart.
 [[nodiscard]] luisa_backend::SurfacePoint
