@@ -431,7 +431,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     runtime->instructions.reserve(image.instructions.size());
     for (const auto &instruction : image.instructions) {
         runtime->instructions.emplace_back(luisa::make_uint4(
-            instruction.control, instruction.result, instruction.operand_begin,
+            instruction.control, instruction.result,
+            instruction.operand_payload,
             instruction.metadata_index));
     }
     runtime->operands.assign(image.operands.begin(), image.operands.end());

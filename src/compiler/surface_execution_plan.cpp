@@ -75,6 +75,15 @@ namespace {
   return address.valid();
 }
 
+[[nodiscard]] constexpr std::uint32_t pack_operand_lane(
+    std::uint32_t word, SurfaceValueOperandAddress operand,
+    std::size_t lane) noexcept {
+  const auto shift = surface_value_operand_lane_bits * lane;
+  const auto mask = std::uint32_t{0xffffu} << shift;
+  return (word & ~mask) |
+         (static_cast<std::uint32_t>(operand.encoded()) << shift);
+}
+
 [[nodiscard]] bool address_fits_program(
     SurfaceValueAddress address, const SurfaceValueProgramImage &program,
     bool allow_invalid) noexcept {
@@ -119,7 +128,7 @@ validate_surface_value_program_image(const SurfaceValueProgramImage &program) {
     }
   }
 
-  auto operand_cursor = std::size_t{0u};
+  auto operand_word_cursor = std::size_t{0u};
   auto transition_count = std::size_t{0u};
   // Definite initialization is a forward must-property. Parameters are
   // immutable inputs and therefore initialized at entry; a local slot is
@@ -136,7 +145,7 @@ validate_surface_value_program_image(const SurfaceValueProgramImage &program) {
   };
   for (const auto &instruction : program.instructions) {
     if (is_surface_value_surface_normal_transition(instruction)) {
-      if (instruction.operand_begin != operand_cursor ||
+      if (instruction.operand_payload != surface_value_invalid_operand_word ||
           instruction.metadata_index != SurfaceValueAddress::invalid_value) {
         return "a surface-normal transition owns operands or metadata";
       }
@@ -160,17 +169,27 @@ validate_surface_value_program_image(const SurfaceValueProgramImage &program) {
       return "an instruction has an invalid control word";
     }
     const auto operation = surface_value_operation(instruction);
-    if (surface_value_operand_count(instruction) !=
-        value_operation_operand_count(surface_value_operation(instruction))) {
-      return "an instruction arity disagrees with its opcode contract";
-    }
-    if (instruction.operand_begin != operand_cursor) {
-      return "the operand stream is not densely ordered";
-    }
     const auto operand_count =
-        static_cast<std::size_t>(surface_value_operand_count(instruction));
-    if (operand_count > program.operands.size() - operand_cursor) {
-      return "an instruction operand range exceeds the stream";
+        value_operation_operand_count(operation);
+    const auto inline_operands =
+        operand_count <= surface_value_inline_operand_capacity;
+    const auto operand_word_count = inline_operands
+                                        ? std::size_t{}
+                                        : static_cast<std::size_t>(
+                                              surface_value_operand_word_count(
+                                                  operand_count));
+    if (!inline_operands) {
+      if (instruction.operand_payload != operand_word_cursor) {
+        return "the packed operand stream is not densely ordered";
+      }
+      if (operand_word_count >
+          program.operands.size() - operand_word_cursor) {
+        return "an instruction operand range exceeds the packed stream";
+      }
+    } else if (operand_count == 0u &&
+               instruction.operand_payload !=
+                   surface_value_invalid_operand_word) {
+      return "a nullary instruction owns an operand payload";
     }
     const auto result = SurfaceValueAddress{instruction.result};
     if (!address_fits_program(result, program, false) || result.parameter() ||
@@ -179,13 +198,34 @@ validate_surface_value_program_image(const SurfaceValueProgramImage &program) {
     }
     for (auto operand_index = std::size_t{0u}; operand_index < operand_count;
          ++operand_index) {
-      const auto operand =
-          SurfaceValueAddress{program.operands[operand_cursor + operand_index]};
+      const auto word =
+          inline_operands
+              ? instruction.operand_payload
+              : program.operands[operand_word_cursor +
+                                 operand_index /
+                                     surface_value_operands_per_word];
+      const auto compact = surface_value_operand_from_word(
+          word, operand_index % surface_value_operands_per_word);
+      if (!compact.valid()) {
+        return "an instruction contains an invalid packed operand address";
+      }
+      const auto operand = compact.expanded();
       if (!address_fits_program(operand, program, false)) {
         return "an instruction operand exceeds its typed bank";
       }
       if (!local_is_initialized(operand)) {
         return "an instruction reads an uninitialized local";
+      }
+    }
+    if ((operand_count % surface_value_operands_per_word) != 0u) {
+      const auto last_word =
+          inline_operands
+              ? instruction.operand_payload
+              : program.operands[operand_word_cursor +
+                                 operand_word_count - 1u];
+      if (surface_value_operand_from_word(last_word, 1u).encoded() !=
+          SurfaceValueOperandAddress::invalid_value) {
+        return "an odd-arity instruction has non-canonical operand padding";
       }
     }
     if (instruction.metadata_index != SurfaceValueAddress::invalid_value &&
@@ -218,10 +258,10 @@ validate_surface_value_program_image(const SurfaceValueProgramImage &program) {
       }
     }
     initialized_locals[bank_index(result.bank())].emplace(result.index());
-    operand_cursor += operand_count;
+    operand_word_cursor += operand_word_count;
   }
-  if (operand_cursor != program.operands.size()) {
-    return "the operand stream has an unreferenced suffix";
+  if (operand_word_cursor != program.operands.size()) {
+    return "the packed operand stream has an unreferenced suffix";
   }
   if ((program.flags &
        surface_value_program_automatic_normal_uses_undisplaced_geometry) !=
@@ -308,14 +348,18 @@ make_surface_normal_transaction_image(const SurfaceValueProgramImage &normal,
           : 0u;
 
   const auto append = [&](const SurfaceValueProgramImage &source) {
-    const auto operand_begin =
+    const auto operand_word_begin =
         static_cast<std::uint32_t>(result.operands.size());
     const auto metadata_begin =
         static_cast<std::uint32_t>(result.metadata.size());
     const auto static_data_begin =
         static_cast<std::uint32_t>(result.static_data.size());
     for (auto instruction : source.instructions) {
-      instruction.operand_begin += operand_begin;
+      if (!is_surface_value_surface_normal_transition(instruction) &&
+          surface_value_operand_count(instruction) >
+              surface_value_inline_operand_capacity) {
+        instruction.operand_payload += operand_word_begin;
+      }
       if (instruction.metadata_index != SurfaceValueAddress::invalid_value) {
         instruction.metadata_index += metadata_begin;
       }
@@ -336,7 +380,7 @@ make_surface_normal_transaction_image(const SurfaceValueProgramImage &normal,
   result.instructions.emplace_back(SurfaceValueBytecodeInstruction{
       .control = surface_value_surface_normal_transition_control,
       .result = normal_output,
-      .operand_begin = static_cast<std::uint32_t>(result.operands.size()),
+      .operand_payload = surface_value_invalid_operand_word,
       .metadata_index = SurfaceValueAddress::invalid_value});
   append(root);
   result.valid = true;
@@ -908,10 +952,6 @@ SurfaceValueProgramImage lower_surface_value_program(
       return reject_image(
           "an instruction arity disagrees with its opcode contract");
     }
-    if (instruction.operands.size() >
-        std::numeric_limits<std::uint8_t>::max()) {
-      return reject_image("an instruction exceeds the encoded operand count");
-    }
     if (!surface_value_svm_static_fields_valid(
             instruction.operation,
             instruction.static_u0,
@@ -919,21 +959,14 @@ SurfaceValueProgramImage lower_surface_value_program(
       return reject_image(
           "an instruction has immutable fields outside its immediate contract");
     }
-    if (result.operands.size() >
-            std::numeric_limits<std::uint32_t>::max() ||
-        instruction.operands.size() >
-            std::numeric_limits<std::uint32_t>::max() -
-                result.operands.size()) {
-      return reject_image("the operand stream exceeds the device encoding");
-    }
     const auto result_address =
         SurfaceValueAddress{result.value_addresses[id.value]};
     if (!result_address.valid() || result_address.parameter()) {
       return reject_image("an instruction result has no local typed address");
     }
 
-    const auto operand_begin =
-        static_cast<std::uint32_t>(result.operands.size());
+    std::vector<SurfaceValueOperandAddress> compact_operands;
+    compact_operands.reserve(instruction.operands.size());
     for (const auto operand : instruction.operands) {
       if (!operand.valid() || operand.value >= storage.locations.size()) {
         return reject_image("an instruction operand has no planned address");
@@ -943,7 +976,43 @@ SurfaceValueProgramImage lower_surface_value_program(
       if (!operand_address.valid()) {
         return reject_image("an instruction operand address cannot be encoded");
       }
-      result.operands.emplace_back(operand_address.encoded());
+      SurfaceValueOperandAddress compact;
+      if (!encode_surface_value_operand_address(operand_address, compact)) {
+        return reject_image(
+            "an instruction operand exceeds the compact 13-bit address "
+            "domain");
+      }
+      compact_operands.emplace_back(compact);
+    }
+
+    auto operand_payload = surface_value_invalid_operand_word;
+    const auto pack_word = [&](std::size_t begin) noexcept {
+      auto word = surface_value_invalid_operand_word;
+      for (auto lane = std::size_t{0u};
+           lane < surface_value_operands_per_word &&
+           begin + lane < compact_operands.size();
+           ++lane) {
+        word = pack_operand_lane(word, compact_operands[begin + lane], lane);
+      }
+      return word;
+    };
+    if (compact_operands.size() <= surface_value_inline_operand_capacity) {
+      operand_payload = pack_word(0u);
+    } else {
+      const auto word_count = surface_value_operand_word_count(
+          compact_operands.size());
+      if (result.operands.size() >
+              std::numeric_limits<std::uint32_t>::max() ||
+          word_count > std::numeric_limits<std::uint32_t>::max() -
+                           result.operands.size()) {
+        return reject_image(
+            "the packed operand stream exceeds the device encoding");
+      }
+      operand_payload = static_cast<std::uint32_t>(result.operands.size());
+      for (auto begin = std::size_t{0u}; begin < compact_operands.size();
+           begin += surface_value_operands_per_word) {
+        result.operands.emplace_back(pack_word(begin));
+      }
     }
 
     auto metadata_index = ~std::uint32_t{0u};
@@ -985,14 +1054,13 @@ SurfaceValueProgramImage lower_surface_value_program(
     result.instructions.emplace_back(SurfaceValueBytecodeInstruction{
         .control = make_surface_value_control(
             instruction.operation,
-            static_cast<std::uint8_t>(instruction.operands.size()),
             result_address.bank(),
             make_surface_value_svm_immediate(
                 instruction.operation,
                 instruction.static_u0,
                 instruction.static_u1)),
         .result = result_address.encoded(),
-        .operand_begin = operand_begin,
+        .operand_payload = operand_payload,
         .metadata_index = metadata_index});
   }
   result.valid = true;
@@ -1039,7 +1107,7 @@ SurfaceValueSceneImage build_surface_value_scene_image(
   for (const auto &program : programs) {
     const auto instruction_begin =
         static_cast<std::uint32_t>(result.instructions.size());
-    const auto operand_begin =
+    const auto operand_word_begin =
         static_cast<std::uint32_t>(result.operands.size());
     const auto metadata_begin =
         static_cast<std::uint32_t>(result.metadata.size());
@@ -1054,7 +1122,11 @@ SurfaceValueSceneImage build_surface_value_scene_image(
         .unsigned_integer_slots = program.unsigned_integer_slots,
         .flags = program.flags});
     for (auto instruction : program.instructions) {
-      instruction.operand_begin += operand_begin;
+      if (!is_surface_value_surface_normal_transition(instruction) &&
+          surface_value_operand_count(instruction) >
+              surface_value_inline_operand_capacity) {
+        instruction.operand_payload += operand_word_begin;
+      }
       if (instruction.metadata_index != SurfaceValueAddress::invalid_value) {
         instruction.metadata_index += metadata_begin;
       }
