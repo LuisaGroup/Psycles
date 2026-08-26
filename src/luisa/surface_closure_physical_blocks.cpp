@@ -192,17 +192,35 @@ unpack_surface_closure_physical_general(
     Expr<luisa::float4x4> block_1_expression) noexcept {
     const auto block_1 =
         luisa::compute::Float4x4{block_1_expression};
-    auto result = make_surface_closure_physical_base(
-        common,
-        common.color_or_evaluation_scale,
-        block_1[1u].xyz());
-    result.diffuse_roughness = block_1[0u].w;
-    result.metallic = block_1[1u].w;
-    result.ior = block_1[2u].z;
-    result.specular_tint = block_1[0u].xyz();
-    result.sheen_transform_a = block_1[2u].x;
-    result.sheen_transform_b = block_1[2u].y;
-    return result;
+    return {
+        .kind = common.kind,
+        .lobe = common.lobe,
+        .weight = common.weight,
+        .allocation_weight = common.allocation_weight,
+        .sample_weight = common.sample_weight,
+        .setup_valid = common.setup_valid,
+        .color = common.color_or_evaluation_scale,
+        .normal = common.normal,
+        .roughness = common.roughness,
+        .diffuse_roughness = block_1[0u].w,
+        .metallic = block_1[1u].w,
+        .ior = block_1[2u].z,
+        .specular_tint = block_1[0u].xyz(),
+        .sheen_transform_a = block_1[2u].x,
+        .sheen_transform_b = block_1[2u].y,
+        .evaluation_scale = block_1[1u].xyz(),
+        .fresnel_f0 = make_float3(0.0f),
+        .fresnel_f90 = make_float3(0.0f),
+        .reflection_tint = make_float3(0.0f),
+        .transmission_tint = make_float3(0.0f),
+        .preserve_ggx_energy = common.preserve_ggx_energy,
+        .beckmann = common.beckmann,
+        .bssrdf_method = common.bssrdf_method,
+        .bssrdf_radius = make_float3(0.0f),
+        .bssrdf_albedo = make_float3(0.0f),
+        .bssrdf_ior = 1.4f,
+        .bssrdf_roughness = 1.0f,
+        .bssrdf_anisotropy = 0.0f};
 }
 
 SurfaceClosurePhysicalRecord
@@ -211,19 +229,38 @@ unpack_surface_closure_physical_dielectric(
     Expr<luisa::float4x4> block_1_expression) noexcept {
     const auto block_1 =
         luisa::compute::Float4x4{block_1_expression};
-    auto result = make_surface_closure_physical_base(
-        common,
-        make_float3(
+    return {
+        .kind = common.kind,
+        .lobe = common.lobe,
+        .weight = common.weight,
+        .allocation_weight = common.allocation_weight,
+        .sample_weight = common.sample_weight,
+        .setup_valid = common.setup_valid,
+        .color = make_float3(
             block_1[1u].w,
             block_1[2u].w,
             block_1[3u].w),
-        common.color_or_evaluation_scale);
-    result.ior = block_1[0u].w;
-    result.fresnel_f0 = block_1[0u].xyz();
-    result.fresnel_f90 = block_1[1u].xyz();
-    result.reflection_tint = block_1[2u].xyz();
-    result.transmission_tint = block_1[3u].xyz();
-    return result;
+        .normal = common.normal,
+        .roughness = common.roughness,
+        .diffuse_roughness = 0.0f,
+        .metallic = 0.0f,
+        .ior = block_1[0u].w,
+        .specular_tint = make_float3(0.0f),
+        .sheen_transform_a = 0.0f,
+        .sheen_transform_b = 0.0f,
+        .evaluation_scale = common.color_or_evaluation_scale,
+        .fresnel_f0 = block_1[0u].xyz(),
+        .fresnel_f90 = block_1[1u].xyz(),
+        .reflection_tint = block_1[2u].xyz(),
+        .transmission_tint = block_1[3u].xyz(),
+        .preserve_ggx_energy = common.preserve_ggx_energy,
+        .beckmann = common.beckmann,
+        .bssrdf_method = common.bssrdf_method,
+        .bssrdf_radius = make_float3(0.0f),
+        .bssrdf_albedo = make_float3(0.0f),
+        .bssrdf_ior = 1.4f,
+        .bssrdf_roughness = 1.0f,
+        .bssrdf_anisotropy = 0.0f};
 }
 
 SurfaceClosurePhysicalRecord
@@ -232,17 +269,35 @@ unpack_surface_closure_physical_bssrdf(
     Expr<luisa::float4x4> block_1_expression) noexcept {
     const auto block_1 =
         luisa::compute::Float4x4{block_1_expression};
-    auto result = make_surface_closure_physical_base(
-        common,
-        common.color_or_evaluation_scale,
-        make_float3(1.0f));
-    result.ior = block_1[2u].y;
-    result.bssrdf_radius = block_1[0u].xyz();
-    result.bssrdf_albedo = block_1[1u].xyz();
-    result.bssrdf_ior = block_1[2u].x;
-    result.bssrdf_roughness = block_1[1u].w;
-    result.bssrdf_anisotropy = block_1[0u].w;
-    return result;
+    return {
+        .kind = common.kind,
+        .lobe = common.lobe,
+        .weight = common.weight,
+        .allocation_weight = common.allocation_weight,
+        .sample_weight = common.sample_weight,
+        .setup_valid = common.setup_valid,
+        .color = common.color_or_evaluation_scale,
+        .normal = common.normal,
+        .roughness = common.roughness,
+        .diffuse_roughness = 0.0f,
+        .metallic = 0.0f,
+        .ior = block_1[2u].y,
+        .specular_tint = make_float3(0.0f),
+        .sheen_transform_a = 0.0f,
+        .sheen_transform_b = 0.0f,
+        .evaluation_scale = make_float3(1.0f),
+        .fresnel_f0 = make_float3(0.0f),
+        .fresnel_f90 = make_float3(0.0f),
+        .reflection_tint = make_float3(0.0f),
+        .transmission_tint = make_float3(0.0f),
+        .preserve_ggx_energy = common.preserve_ggx_energy,
+        .beckmann = common.beckmann,
+        .bssrdf_method = common.bssrdf_method,
+        .bssrdf_radius = block_1[0u].xyz(),
+        .bssrdf_albedo = block_1[1u].xyz(),
+        .bssrdf_ior = block_1[2u].x,
+        .bssrdf_roughness = block_1[1u].w,
+        .bssrdf_anisotropy = block_1[0u].w};
 }
 
 SurfaceClosurePhysicalRecord
