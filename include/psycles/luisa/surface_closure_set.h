@@ -9,6 +9,7 @@
 #include <functional>
 
 #include <psycles/luisa/surface.h>
+#include <psycles/luisa/surface_closure_physical_blocks.h>
 
 #include <luisa/dsl/local.h>
 
@@ -91,6 +92,20 @@ class SurfaceClosureSet final : public SurfaceClosureCollector {
     [[nodiscard]] std::size_t capacity() const noexcept;
     [[nodiscard]] SurfaceClosureStorageProfile profile() const noexcept;
     [[nodiscard]] UInt count() const noexcept;
+
+    // Staged access to the physical tagged union. Both methods require the
+    // physical profile and index < count(); keeping them unchecked prevents a
+    // redundant validity select in the two loops which already establish that
+    // invariant. Reading common never touches the payload Local. Reading the
+    // payload is deliberately a separate operation so callers can record it
+    // under a runtime family branch.
+    [[nodiscard]] SurfaceClosurePhysicalCommonRecord
+    physical_common_entry_unchecked(UInt index) const noexcept;
+    [[nodiscard]] SurfaceClosurePhysicalRecord
+    physical_payload_entry_unchecked(
+        UInt index,
+        const SurfaceClosurePhysicalCommonRecord &common) const noexcept;
+
     [[nodiscard]] SurfaceClosureRecord entry(
         UInt index) const noexcept;
 };

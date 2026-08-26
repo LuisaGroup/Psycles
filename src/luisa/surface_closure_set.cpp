@@ -327,6 +327,30 @@ UInt SurfaceClosureSet::count() const noexcept {
     return _count;
 }
 
+SurfaceClosurePhysicalCommonRecord
+SurfaceClosureSet::physical_common_entry_unchecked(
+    UInt index) const noexcept {
+    LUISA_ASSERT(
+        _profile == SurfaceClosureStorageProfile::physical,
+        "Staged physical closure access requires the physical profile.");
+    return unpack_surface_closure_physical_common(
+        Expr<luisa::float4x4>{
+            _physical_0.read(index).expression()});
+}
+
+SurfaceClosurePhysicalRecord
+SurfaceClosureSet::physical_payload_entry_unchecked(
+    UInt index,
+    const SurfaceClosurePhysicalCommonRecord &common) const noexcept {
+    LUISA_ASSERT(
+        _profile == SurfaceClosureStorageProfile::physical,
+        "Staged physical closure access requires the physical profile.");
+    return unpack_surface_closure_physical_payload(
+        common,
+        Expr<luisa::float4x4>{
+            _physical_1.read(index).expression()});
+}
+
 SurfaceClosureRecord SurfaceClosureSet::entry(
     UInt index) const noexcept {
     const auto valid = index < _count;

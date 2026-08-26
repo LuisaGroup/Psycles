@@ -56,7 +56,9 @@ constexpr std::array closure_kinds{
 constexpr auto case_count =
     static_cast<std::uint32_t>(closure_kinds.size());
 constexpr std::uint32_t logical_row_count = 12u;
-constexpr std::uint32_t rows_per_case = logical_row_count + 1u;
+constexpr std::uint32_t invariant_row_count = 2u;
+constexpr std::uint32_t rows_per_case =
+    logical_row_count + invariant_row_count;
 
 using PhysicalRoundTripCallable = Callable<luisa::float4x4(
     luisa::float4x4,
@@ -205,6 +207,44 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
     return all(observed_bits == expected_bits);
 }
 
+[[nodiscard]] Bool same_common_projection(
+    const SurfaceClosurePhysicalRecord &lhs,
+    const SurfaceClosurePhysicalRecord &rhs) noexcept {
+    return (lhs.kind == rhs.kind) &
+           (lhs.lobe == rhs.lobe) &
+           all(lhs.weight == rhs.weight) &
+           (lhs.allocation_weight == rhs.allocation_weight) &
+           (lhs.sample_weight == rhs.sample_weight) &
+           (lhs.setup_valid == rhs.setup_valid) &
+           all(lhs.color == rhs.color) &
+           all(lhs.normal == rhs.normal) &
+           (lhs.roughness == rhs.roughness) &
+           (lhs.preserve_ggx_energy == rhs.preserve_ggx_energy) &
+           (lhs.beckmann == rhs.beckmann) &
+           (lhs.bssrdf_method == rhs.bssrdf_method);
+}
+
+[[nodiscard]] Bool same_payload_projection(
+    const SurfaceClosurePhysicalRecord &lhs,
+    const SurfaceClosurePhysicalRecord &rhs) noexcept {
+    return (lhs.diffuse_roughness == rhs.diffuse_roughness) &
+           (lhs.metallic == rhs.metallic) &
+           (lhs.ior == rhs.ior) &
+           all(lhs.specular_tint == rhs.specular_tint) &
+           (lhs.sheen_transform_a == rhs.sheen_transform_a) &
+           (lhs.sheen_transform_b == rhs.sheen_transform_b) &
+           all(lhs.evaluation_scale == rhs.evaluation_scale) &
+           all(lhs.fresnel_f0 == rhs.fresnel_f0) &
+           all(lhs.fresnel_f90 == rhs.fresnel_f90) &
+           all(lhs.reflection_tint == rhs.reflection_tint) &
+           all(lhs.transmission_tint == rhs.transmission_tint) &
+           all(lhs.bssrdf_radius == rhs.bssrdf_radius) &
+           all(lhs.bssrdf_albedo == rhs.bssrdf_albedo) &
+           (lhs.bssrdf_ior == rhs.bssrdf_ior) &
+           (lhs.bssrdf_roughness == rhs.bssrdf_roughness) &
+           (lhs.bssrdf_anisotropy == rhs.bssrdf_anisotropy);
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -348,6 +388,52 @@ int main(int argc, char **argv) {
         output->write(
             case_index * rows_per_case + logical_row_count,
             make_float4(select(0.0f, 1.0f, stable)));
+
+        // A family eliminator is correct precisely when it agrees with the
+        // generic inverse after projection to fields observable for that
+        // family. General, dielectric, and BSSRDF decoders preserve their
+        // complete canonical family records. Transparent observes only the
+        // common record and therefore has no block_1 dependency at all.
+        const auto common = unpack_surface_closure_physical_common(
+            Expr<luisa::float4x4>{round_trip_0.expression()});
+        auto projected =
+            unpack_surface_closure_physical_common_only(common);
+        const auto glass =
+            (canonical.kind == static_cast<std::uint32_t>(
+                                   SurfaceClosureKind::glass)) |
+            (canonical.kind == static_cast<std::uint32_t>(
+                                   SurfaceClosureKind::refraction));
+        const auto bssrdf =
+            canonical.kind == static_cast<std::uint32_t>(
+                                  SurfaceClosureKind::bssrdf);
+        const auto transparent =
+            canonical.kind == static_cast<std::uint32_t>(
+                                  SurfaceClosureKind::transparent);
+        $if(glass) {
+            projected = unpack_surface_closure_physical_dielectric(
+                common,
+                Expr<luisa::float4x4>{round_trip_1.expression()});
+        }
+        $elif(bssrdf) {
+            projected = unpack_surface_closure_physical_bssrdf(
+                common,
+                Expr<luisa::float4x4>{round_trip_1.expression()});
+        }
+        $elif(!transparent) {
+            projected = unpack_surface_closure_physical_general(
+                common,
+                Expr<luisa::float4x4>{round_trip_1.expression()});
+        };
+        auto projection_equal =
+            same_common_projection(canonical, projected);
+        projection_equal &= transparent |
+                            same_payload_projection(
+                                canonical, projected);
+        output->write(
+            case_index * rows_per_case +
+                logical_row_count + 1u,
+            make_float4(select(
+                0.0f, 1.0f, projection_equal)));
     };
 
     if (test.function()->function().custom_callables().size() != 1u) {
