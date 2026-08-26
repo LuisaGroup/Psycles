@@ -164,7 +164,8 @@ SurfaceProgramBuilder::lower_context_node(const contract::ShaderNode &node) {
           std::pair{"GlossyDepth", ValueOperation::path_glossy_depth},
           std::pair{"TransparentDepth", ValueOperation::path_transparent_depth},
           std::pair{"TransmissionDepth",
-                    ValueOperation::path_transmission_depth}}) {
+                    ValueOperation::path_transmission_depth},
+          std::pair{"PortalDepth", ValueOperation::path_portal_depth}}) {
       publish(node.id, output_name,
               append(ValueInstruction{.operation = operation,
                                       .source_node = node.id,

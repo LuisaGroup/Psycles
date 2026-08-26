@@ -157,7 +157,8 @@ NodeRegistry make_core_node_registry() {
                              output("DiffuseDepth", SocketType::floating),
                              output("GlossyDepth", SocketType::floating),
                              output("TransparentDepth", SocketType::floating),
-                             output("TransmissionDepth", SocketType::floating)},
+                             output("TransmissionDepth", SocketType::floating),
+                             output("PortalDepth", SocketType::floating)},
                  .properties = {},
                  .required_features = feature_bit(ShaderFeature::surface) |
                                       feature_bit(ShaderFeature::ray_state)}));

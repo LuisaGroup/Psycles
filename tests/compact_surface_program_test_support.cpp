@@ -176,6 +176,7 @@ SurfacePoint make_surface_value_transaction_test_point() noexcept {
         make_float3(-0.07f, 0.04f, -0.13f);
     point.undisplaced_object_dPdy =
         make_float3(0.15f, -0.02f, 0.05f);
+    point.transmission_depth = 13u;
     return point;
 }
 

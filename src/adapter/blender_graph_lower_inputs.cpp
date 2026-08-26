@@ -1,8 +1,10 @@
 #include "blender_graph_lowering_component.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -215,24 +217,46 @@ public:
                      .type = SocketType::floating});
     }
     if (type == "LIGHT_PATH") {
+      static constexpr auto outputs = std::array{
+          std::pair{std::string_view{"Is Camera Ray"},
+                    std::string_view{"IsCameraRay"}},
+          std::pair{std::string_view{"Is Shadow Ray"},
+                    std::string_view{"IsShadowRay"}},
+          std::pair{std::string_view{"Is Diffuse Ray"},
+                    std::string_view{"IsDiffuseRay"}},
+          std::pair{std::string_view{"Is Glossy Ray"},
+                    std::string_view{"IsGlossyRay"}},
+          std::pair{std::string_view{"Is Singular Ray"},
+                    std::string_view{"IsSingularRay"}},
+          std::pair{std::string_view{"Is Reflection Ray"},
+                    std::string_view{"IsReflectionRay"}},
+          std::pair{std::string_view{"Is Transmission Ray"},
+                    std::string_view{"IsTransmissionRay"}},
+          std::pair{std::string_view{"Is Volume Scatter Ray"},
+                    std::string_view{"IsVolumeScatterRay"}},
+          std::pair{std::string_view{"Ray Length"},
+                    std::string_view{"RayLength"}},
+          std::pair{std::string_view{"Ray Depth"},
+                    std::string_view{"RayDepth"}},
+          std::pair{std::string_view{"Diffuse Depth"},
+                    std::string_view{"DiffuseDepth"}},
+          std::pair{std::string_view{"Glossy Depth"},
+                    std::string_view{"GlossyDepth"}},
+          std::pair{std::string_view{"Transparent Depth"},
+                    std::string_view{"TransparentDepth"}},
+          std::pair{std::string_view{"Transmission Depth"},
+                    std::string_view{"TransmissionDepth"}},
+          std::pair{std::string_view{"Portal Depth"},
+                    std::string_view{"PortalDepth"}}};
+      const auto mapped = std::find_if(
+          outputs.begin(), outputs.end(),
+          [&](const auto &entry) noexcept { return entry.first == socket; });
+      if (mapped == outputs.end()) {
+        return std::nullopt;
+      }
       const auto id =
           context.graph().add_node(compiler::node_type::light_path, node_name);
-      const auto output_socket =
-          socket == "Is Camera Ray"           ? "IsCameraRay"
-          : socket == "Is Shadow Ray"         ? "IsShadowRay"
-          : socket == "Is Diffuse Ray"        ? "IsDiffuseRay"
-          : socket == "Is Glossy Ray"         ? "IsGlossyRay"
-          : socket == "Is Singular Ray"       ? "IsSingularRay"
-          : socket == "Is Reflection Ray"     ? "IsReflectionRay"
-          : socket == "Is Transmission Ray"   ? "IsTransmissionRay"
-          : socket == "Is Volume Scatter Ray" ? "IsVolumeScatterRay"
-          : socket == "Ray Length"            ? "RayLength"
-          : socket == "Ray Depth"             ? "RayDepth"
-          : socket == "Diffuse Depth"         ? "DiffuseDepth"
-          : socket == "Glossy Depth"          ? "GlossyDepth"
-          : socket == "Transparent Depth"     ? "TransparentDepth"
-                                              : "TransmissionDepth";
-      return finish({.ref = {.node = id, .socket = output_socket},
+      return finish({.ref = {.node = id, .socket = std::string{mapped->second}},
                      .type = SocketType::floating});
     }
     if (type == "LAYER_WEIGHT") {

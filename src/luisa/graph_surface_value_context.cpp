@@ -59,6 +59,7 @@ supports_context_value(compiler::ValueOperation operation) noexcept {
   case compiler::ValueOperation::path_glossy_depth:
   case compiler::ValueOperation::path_transparent_depth:
   case compiler::ValueOperation::path_transmission_depth:
+  case compiler::ValueOperation::path_portal_depth:
   case compiler::ValueOperation::fresnel:
   case compiler::ValueOperation::layer_weight_fresnel:
   case compiler::ValueOperation::layer_weight_facing:
@@ -327,6 +328,14 @@ public:
       break;
     case compiler::ValueOperation::path_transmission_depth:
       value = make_float4(cast<float>(point.transmission_depth));
+      break;
+    case compiler::ValueOperation::path_portal_depth:
+      // Cycles increments portal_bounce only after sampling an
+      // SD_RAY_PORTAL closure. Psycles does not yet admit that closure into
+      // the surface program, so the reachable path-state invariant is
+      // portal_bounce == 0. Keep a distinct operation instead of aliasing
+      // Transmission Depth; this becomes a state read with Ray Portal.
+      value = make_float4(0.0f);
       break;
     case compiler::ValueOperation::fresnel: {
       auto eta = max(

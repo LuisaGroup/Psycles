@@ -468,6 +468,32 @@ struct FixtureProgram {
     return graph;
 }
 
+[[nodiscard]] ShaderGraph make_light_path_depth_emission_graph(bool portal) {
+    ShaderGraph graph;
+    const auto light_path = graph.add_node(
+        node_type::light_path,
+        portal ? "Portal depth" : "Transmission depth");
+    const auto emission = graph.add_node(
+        node_type::emission,
+        portal ? "Portal emission" : "Transmission emission");
+    if (!graph.connect(
+            {.node = light_path,
+             .socket = portal ? "PortalDepth" : "TransmissionDepth"},
+            emission,
+            "Strength") ||
+        !graph.set_input(
+            emission,
+            "Color",
+            SocketValue::color({1.0f, 1.0f, 1.0f}))) {
+        throw std::runtime_error{
+            "failed to configure Light Path depth emission graph"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    return graph;
+}
+
 [[nodiscard]] FixtureProgram compile_fixture(
     ShaderCompiler &compiler,
     ShaderGraph graph) {
@@ -1000,6 +1026,14 @@ int main(int argc, char **argv) {
              1.25f, 0.75f, 0.5f, 1.0f},
             "transform B")));
   fixtures.emplace_back(compile_fixture(compiler, make_nested_bump_graph()));
+    const auto portal_depth_topology =
+        static_cast<std::uint32_t>(fixtures.size());
+    fixtures.emplace_back(compile_fixture(
+        compiler, make_light_path_depth_emission_graph(true)));
+    const auto transmission_depth_topology =
+        static_cast<std::uint32_t>(fixtures.size());
+    fixtures.emplace_back(compile_fixture(
+        compiler, make_light_path_depth_emission_graph(false)));
 
     std::vector<std::shared_ptr<const SurfaceProgram>> programs;
     std::vector<SurfaceClosurePlan> closure_plans;
@@ -1871,6 +1905,21 @@ int main(int argc, char **argv) {
     const auto first_invocation = [](std::uint32_t topology) noexcept {
         return static_cast<std::size_t>(topology) * scenario_count;
     };
+    const auto portal_emission =
+        actual_emission[first_invocation(portal_depth_topology)];
+    const auto transmission_emission =
+        actual_emission[first_invocation(transmission_depth_topology)];
+    if (!equal(portal_emission, luisa::make_float3(0.0f), tolerance) ||
+        !equal(transmission_emission, luisa::make_float3(13.0f), tolerance)) {
+        std::cerr << "Light Path Portal Depth was not kept distinct from "
+                     "Transmission Depth on "
+                  << backend << " (portal=";
+        print(portal_emission);
+        std::cerr << ", transmission=";
+        print(transmission_emission);
+        std::cerr << ")\n";
+        return EXIT_FAILURE;
+    }
     if (equal(actual_bssrdf_normals[first_invocation(weighted_bssrdf_topology)],
               actual_bssrdf_normals[first_invocation(zero_bssrdf_topology)],
               tolerance)) {

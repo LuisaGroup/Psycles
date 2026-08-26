@@ -135,6 +135,7 @@ enum class ValueOperation : std::uint8_t {
   path_glossy_depth,
   path_transparent_depth,
   path_transmission_depth,
+  path_portal_depth,
   fresnel,
   layer_weight_fresnel,
   layer_weight_facing,
@@ -595,6 +596,7 @@ value_operation_operand_count(ValueOperation operation) noexcept {
     case ValueOperation::path_glossy_depth:
     case ValueOperation::path_transparent_depth:
     case ValueOperation::path_transmission_depth:
+    case ValueOperation::path_portal_depth:
     case ValueOperation::bump_offset_zero:
       return 0u;
 
