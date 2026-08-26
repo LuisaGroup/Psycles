@@ -1455,6 +1455,37 @@ void test_surface_value_storage_plan() {
           "Bump refinement accepted a forward value dependency");
 }
 
+void test_light_path_portal_depth_is_distinct() {
+  ShaderGraph graph;
+  const auto light_path =
+      graph.add_node(node_type::light_path, "Cycles 5.2 Light Path");
+  const auto emission =
+      graph.add_node(node_type::emission, "Portal-depth emission");
+  require(graph.connect({.node = light_path, .socket = "PortalDepth"}, emission,
+                        "Strength"),
+          "Light Path Portal Depth is absent from the core schema");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  ShaderCompiler compiler{make_core_node_registry()};
+  const auto shader = compiler.compile(graph);
+  require(shader.ok(), "Light Path Portal Depth graph failed to compile");
+  const auto surface = compile_surface_program(*shader.program);
+  require(surface.ok(), "Light Path Portal Depth graph failed to lower");
+
+  const auto &values = surface.program->value_instructions();
+  const auto portal_count = std::count_if(
+      values.begin(), values.end(), [](const auto &instruction) noexcept {
+        return instruction.operation == ValueOperation::path_portal_depth;
+      });
+  const auto transmission_count = std::count_if(
+      values.begin(), values.end(), [](const auto &instruction) noexcept {
+        return instruction.operation == ValueOperation::path_transmission_depth;
+      });
+  require(portal_count == 1u && transmission_count == 0u,
+          "Portal Depth was aliased to Transmission Depth");
+}
+
 } // namespace
 
 int main() {
@@ -1462,6 +1493,7 @@ int main() {
     psycles::test_support::test_surface_closure_metadata();
     test_surface_value_operand_address_encoding();
     test_surface_value_storage_plan();
+    test_light_path_portal_depth_is_distinct();
     return EXIT_SUCCESS;
   } catch (const std::exception &error) {
     std::cerr << "Surface-program metadata test failure: " << error.what()

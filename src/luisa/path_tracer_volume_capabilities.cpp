@@ -97,6 +97,7 @@ is_light_path_source(compiler::ValueOperation operation) noexcept {
   case ValueOperation::path_glossy_depth:
   case ValueOperation::path_transparent_depth:
   case ValueOperation::path_transmission_depth:
+  case ValueOperation::path_portal_depth:
     return true;
   default:
     return false;

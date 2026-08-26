@@ -433,6 +433,7 @@ bool value_instruction_observes_shading_normal(
   case ValueOperation::path_glossy_depth:
   case ValueOperation::path_transparent_depth:
   case ValueOperation::path_transmission_depth:
+  case ValueOperation::path_portal_depth:
   case ValueOperation::mapping:
   case ValueOperation::environment_color:
   case ValueOperation::environment_alpha:
