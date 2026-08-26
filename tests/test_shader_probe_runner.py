@@ -61,12 +61,22 @@ class ShaderProbeRunnerContract(unittest.TestCase):
             pathlib.Path("/probe/report.json"),
             pathlib.Path("/probe/triptychs"),
             pathlib.Path("/probe/psycles.exr"),
+            pathlib.Path("/probe/cycles.json"),
+            pathlib.Path("/probe/export/scene.json"),
         )
         self.assertEqual(command[0], "/venv/bin/python")
         self.assertEqual(
             command[1], "/tools/compare_cycles.py"
         )
         self.assertNotIn("/opt/blender", command)
+        self.assertEqual(
+            command[command.index("--reference-metadata") + 1],
+            "/probe/cycles.json",
+        )
+        self.assertEqual(
+            command[command.index("--actual-metadata") + 1],
+            "/probe/export/scene.json",
+        )
         bindings = [
             item for item in command if "=" in item
         ]

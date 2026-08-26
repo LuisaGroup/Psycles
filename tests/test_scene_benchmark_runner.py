@@ -250,6 +250,8 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             pathlib.Path("/out/psycles/fallback.exr"),
             pathlib.Path("/out/report.json"),
             pathlib.Path("/out/triptychs"),
+            pathlib.Path("/out/cycles/hip.json"),
+            pathlib.Path("/out/export/scene.json"),
             reference_label="Cycles HIP",
             actual_label="Psycles fallback",
         )
@@ -260,6 +262,14 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
         self.assertEqual(
             command[command.index("--actual-label") + 1],
             "Psycles fallback",
+        )
+        self.assertEqual(
+            command[command.index("--reference-metadata") + 1],
+            "/out/cycles/hip.json",
+        )
+        self.assertEqual(
+            command[command.index("--actual-metadata") + 1],
+            "/out/export/scene.json",
         )
         bindings = [item for item in command if "=" in item]
         self.assertEqual(

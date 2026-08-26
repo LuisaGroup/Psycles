@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import pathlib
 import sys
+import tempfile
 import unittest
 
 
@@ -27,6 +29,10 @@ class ChannelResolutionTests(unittest.TestCase):
         )
 
     def test_flat_exr_combined_channels(self) -> None:
+        self.assertEqual(
+            self.comparison._REPORT_SCHEMA,
+            "psycles.cycles-differential.v2",
+        )
         self.assertEqual(
             self.comparison._find_cycles_channels(
                 ["R", "G", "B", "A"], "Combined"
@@ -82,6 +88,70 @@ class ChannelResolutionTests(unittest.TestCase):
                 "Volume Indirect",
             ),
             [3, 4, 5],
+        )
+
+    def test_comparison_requires_matching_exact_blender_builds(self) -> None:
+        identity = {
+            "version": "5.2.0 LTS",
+            "version_cycle": "release",
+            "version_tuple": [5, 2, 0],
+            "build_hash": "fbe6228777e7",
+            "build_branch": "blender-v5.2-release",
+            "build_type": "Release",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            reference = root / "cycles.json"
+            actual = root / "scene.json"
+            reference.write_text(
+                json.dumps({"blender_build": identity}),
+                encoding="utf-8",
+            )
+            actual.write_text(
+                json.dumps({"blender_build": identity}),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                self.comparison._validate_build_metadata(
+                    reference,
+                    actual,
+                    allow_unverified=False,
+                ),
+                identity,
+            )
+
+            mismatched = dict(identity)
+            mismatched["build_hash"] = "ec438d7429e5"
+            actual.write_text(
+                json.dumps({"blender_build": mismatched}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "different Blender builds"
+            ):
+                self.comparison._validate_build_metadata(
+                    reference,
+                    actual,
+                    allow_unverified=False,
+                )
+
+    def test_unverified_comparison_requires_explicit_diagnostic_mode(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(
+            ValueError, "requires exact Blender build metadata"
+        ):
+            self.comparison._validate_build_metadata(
+                None,
+                None,
+                allow_unverified=False,
+            )
+        self.assertIsNone(
+            self.comparison._validate_build_metadata(
+                None,
+                None,
+                allow_unverified=True,
+            )
         )
 
 

@@ -4,7 +4,10 @@ Run with a Python environment containing the packages declared in
 ``requirements-validation.txt``:
 
     python compare_cycles.py \
-      cycles.exr report.json --triptych-dir triptychs \
+      cycles.exr report.json \
+      --reference-metadata cycles.json \
+      --actual-metadata export/scene.json \
+      --triptych-dir triptychs \
       Combined=psycles.exr \
       Normal=psycles.exr \
       DiffCol=psycles.exr
@@ -23,6 +26,13 @@ from typing import Any
 import numpy as np
 import OpenImageIO as oiio
 from PIL import Image, ImageDraw, ImageFont
+
+
+_TOOLS = pathlib.Path(__file__).resolve().parent
+if str(_TOOLS) not in sys.path:
+    sys.path.insert(0, str(_TOOLS))
+
+import blender_build_identity  # noqa: E402
 
 
 _PASS_CHANNELS = {
@@ -44,6 +54,8 @@ _PASS_CHANNELS = {
     "Depth": ("Z",),
     "Debug Sample Count": ("X",),
 }
+
+_REPORT_SCHEMA = "psycles.cycles-differential.v2"
 
 _CYCLES_PASS_ALIASES = {
     "DiffCol": ("DiffCol", "Diffuse Color"),
@@ -97,6 +109,53 @@ def _read_image(path: pathlib.Path) -> tuple[np.ndarray, list[str]]:
         return np.concatenate(arrays, axis=2), channel_names
     finally:
         source.close()
+
+
+def _read_build_identity(path: pathlib.Path) -> dict[str, Any]:
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            f"could not read renderer metadata {path}: {error}"
+        ) from error
+    if not isinstance(document, dict):
+        raise RuntimeError(f"renderer metadata root is not an object: {path}")
+    return blender_build_identity.from_document(document, path)
+
+
+def _validate_build_metadata(
+    reference_metadata: pathlib.Path | None,
+    actual_metadata: pathlib.Path | None,
+    *,
+    allow_unverified: bool,
+) -> dict[str, Any] | None:
+    metadata_count = int(reference_metadata is not None) + int(
+        actual_metadata is not None
+    )
+    if metadata_count == 1:
+        raise ValueError(
+            "comparison requires both --reference-metadata and "
+            "--actual-metadata"
+        )
+    if metadata_count == 2:
+        assert reference_metadata is not None
+        assert actual_metadata is not None
+        reference_build = _read_build_identity(reference_metadata)
+        actual_build = _read_build_identity(actual_metadata)
+        blender_build_identity.require_same(
+            reference_build,
+            actual_build,
+            reference_source=reference_metadata,
+            candidate_source=actual_metadata,
+        )
+        return reference_build
+    if not allow_unverified:
+        raise ValueError(
+            "comparison requires exact Blender build metadata; pass both "
+            "--reference-metadata and --actual-metadata. Use "
+            "--allow-unverified-build-identity only for diagnostics."
+        )
+    return None
 
 
 def _find_cycles_channels(
@@ -390,6 +449,8 @@ def _main() -> None:
             "expected: cycles.exr report.json "
             "[--triptych-dir directory] "
             "[--reference-label label] [--actual-label label] "
+            "--reference-metadata cycles.json "
+            "--actual-metadata scene.json "
             "Pass=psycles.exr [Pass=psycles.exr ...]"
         )
     cycles_path = pathlib.Path(args[0]).resolve()
@@ -397,6 +458,9 @@ def _main() -> None:
     triptych_dir: pathlib.Path | None = None
     reference_label = "Cycles"
     actual_label = "Psycles"
+    reference_metadata: pathlib.Path | None = None
+    actual_metadata: pathlib.Path | None = None
+    allow_unverified_build_identity = False
     bindings: list[str] = []
     argument_index = 2
     while argument_index < len(args):
@@ -423,10 +487,33 @@ def _main() -> None:
                 actual_label = label
             argument_index += 2
             continue
+        if argument in {"--reference-metadata", "--actual-metadata"}:
+            if argument_index + 1 >= len(args):
+                raise ValueError(f"{argument} requires a JSON path")
+            metadata = pathlib.Path(
+                args[argument_index + 1]
+            ).resolve()
+            if argument == "--reference-metadata":
+                reference_metadata = metadata
+            else:
+                actual_metadata = metadata
+            argument_index += 2
+            continue
+        if argument == "--allow-unverified-build-identity":
+            allow_unverified_build_identity = True
+            argument_index += 1
+            continue
         bindings.append(argument)
         argument_index += 1
     if not bindings:
         raise ValueError("at least one pass binding is required")
+
+    build_identity = _validate_build_metadata(
+        reference_metadata,
+        actual_metadata,
+        allow_unverified=allow_unverified_build_identity,
+    )
+
     cycles, channel_names = _read_image(cycles_path)
     results: dict[str, Any] = {}
     for binding in bindings:
@@ -473,9 +560,23 @@ def _main() -> None:
             results[pass_name]["triptych"] = triptych
 
     report = {
-        "schema": "psycles.cycles-differential.v1",
+        "schema": _REPORT_SCHEMA,
         "reference_label": reference_label,
         "actual_label": actual_label,
+        "build_identity": {
+            "verified": build_identity is not None,
+            "blender_build": build_identity,
+            "reference_metadata": (
+                str(reference_metadata)
+                if reference_metadata is not None
+                else None
+            ),
+            "actual_metadata": (
+                str(actual_metadata)
+                if actual_metadata is not None
+                else None
+            ),
+        },
         "cycles_channels": channel_names,
         "passes": results,
     }

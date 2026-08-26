@@ -591,6 +591,8 @@ def _comparison_command(
     report: pathlib.Path,
     triptych_dir: pathlib.Path,
     psycles_exr: pathlib.Path,
+    cycles_metadata: pathlib.Path,
+    scene_metadata: pathlib.Path,
 ) -> list[str]:
     # Comparison is a standalone Python/OIIO/Pillow tool. It must not inherit
     # Blender's private Python environment, which need not contain Pillow.
@@ -601,6 +603,10 @@ def _comparison_command(
         str(report),
         "--triptych-dir",
         str(triptych_dir),
+        "--reference-metadata",
+        str(cycles_metadata),
+        "--actual-metadata",
+        str(scene_metadata),
         *(
             f"{pass_name}={psycles_exr}"
             for pass_name in _REPORT_PASSES
@@ -744,6 +750,8 @@ def _main() -> int:
                     report,
                     probe_root / "triptychs",
                     psycles_exr,
+                    cycles.with_suffix(".json"),
+                    bundle / "scene.json",
                 )
             )
             gate_failures = _probe_gate_failures(

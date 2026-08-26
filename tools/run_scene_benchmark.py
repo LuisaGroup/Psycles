@@ -31,6 +31,13 @@ import time
 from typing import Any
 
 
+_TOOLS = pathlib.Path(__file__).resolve().parent
+if str(_TOOLS) not in sys.path:
+    sys.path.insert(0, str(_TOOLS))
+
+import blender_build_identity  # noqa: E402
+
+
 _LUISA_BACKENDS = ("fallback", "hip", "vk")
 _KNOWN_LUISA_BACKENDS = {
     "cuda",
@@ -525,6 +532,8 @@ def _comparison_command(
     actual: pathlib.Path,
     report: pathlib.Path,
     triptychs: pathlib.Path,
+    reference_metadata: pathlib.Path,
+    actual_metadata: pathlib.Path,
     *,
     reference_label: str,
     actual_label: str,
@@ -540,6 +549,10 @@ def _comparison_command(
         reference_label,
         "--actual-label",
         actual_label,
+        "--reference-metadata",
+        str(reference_metadata),
+        "--actual-metadata",
+        str(actual_metadata),
         *(f"{name}={actual}" for name in _REPORT_PASSES),
     ]
 
@@ -623,67 +636,11 @@ def _require_output(path: pathlib.Path) -> None:
         raise RuntimeError(f"renderer did not produce output: {path}")
 
 
-_BLENDER_BUILD_IDENTITY_FIELDS = (
-    "version",
-    "version_cycle",
-    "version_tuple",
-    "build_hash",
-    "build_branch",
-    "build_type",
-)
-
-
 def _blender_build_identity(
     document: dict[str, Any],
     source: pathlib.Path,
 ) -> dict[str, Any]:
-    identity = document.get("blender_build")
-    if not isinstance(identity, dict):
-        raise RuntimeError(
-            f"{source} has no exact Blender build identity; regenerate it "
-            "with the current Psycles exporter/golden script"
-        )
-    missing = [
-        field
-        for field in _BLENDER_BUILD_IDENTITY_FIELDS
-        if field not in identity
-    ]
-    if missing:
-        raise RuntimeError(
-            f"{source} has an incomplete Blender build identity: "
-            + ", ".join(missing)
-        )
-    if (
-        not isinstance(identity["version_tuple"], list)
-        or len(identity["version_tuple"]) != 3
-        or not all(
-            isinstance(value, int)
-            for value in identity["version_tuple"]
-        )
-    ):
-        raise RuntimeError(
-            f"{source} has an invalid Blender version tuple"
-        )
-    text_fields = (
-        field
-        for field in _BLENDER_BUILD_IDENTITY_FIELDS
-        if field != "version_tuple"
-    )
-    invalid_text_fields = [
-        field
-        for field in text_fields
-        if not isinstance(identity[field], str)
-        or not identity[field]
-    ]
-    if invalid_text_fields:
-        raise RuntimeError(
-            f"{source} has invalid Blender build identity fields: "
-            + ", ".join(invalid_text_fields)
-        )
-    return {
-        field: identity[field]
-        for field in _BLENDER_BUILD_IDENTITY_FIELDS
-    }
+    return blender_build_identity.from_document(document, source)
 
 
 def _require_same_blender_build(
@@ -693,13 +650,12 @@ def _require_same_blender_build(
     reference_source: pathlib.Path,
     candidate_source: pathlib.Path,
 ) -> None:
-    if candidate != reference:
-        raise RuntimeError(
-            "Cycles golden and Psycles export use different Blender builds: "
-            f"{reference_source} reports {reference}, while "
-            f"{candidate_source} reports {candidate}. Re-export and render "
-            "the golden with the same Blender executable."
-        )
+    blender_build_identity.require_same(
+        reference,
+        candidate,
+        reference_source=reference_source,
+        candidate_source=candidate_source,
+    )
 
 
 def _validate_resume_configuration(
@@ -1060,6 +1016,7 @@ def _main() -> int:
 
     try:
         cycles_outputs: dict[str, pathlib.Path] = {}
+        cycles_metadata: dict[str, pathlib.Path] = {}
         cycles_build: dict[str, Any] | None = None
         cycles_build_source: pathlib.Path | None = None
         cycles_runs = []
@@ -1127,6 +1084,7 @@ def _main() -> int:
                     "process_wall_seconds": record["wall_seconds"],
                 }
             cycles_outputs[key] = output
+            cycles_metadata[key] = metadata_path
             metadata_document = json.loads(
                 metadata_path.read_text(encoding="utf-8")
             )
@@ -1333,6 +1291,7 @@ def _main() -> int:
                 f"psycles-{run_key}": (
                     output,
                     psycles_labels[run_key],
+                    bundle_scene_path,
                 )
                 for run_key, output in psycles_outputs.items()
             }
@@ -1340,25 +1299,30 @@ def _main() -> int:
                 candidates["cycles-cpu"] = (
                     cycles_outputs["cpu"],
                     "Cycles CPU",
+                    cycles_metadata["cpu"],
                 )
             references = {
                 f"cycles-{gpu_key}": (
                     cycles_outputs[gpu_key],
                     gpu_label,
+                    cycles_metadata[gpu_key],
                 ),
             }
             if "cpu" in cycles_outputs:
                 references["cycles-cpu"] = (
                     cycles_outputs["cpu"],
                     "Cycles CPU",
+                    cycles_metadata["cpu"],
                 )
             for reference_key, (
                 reference,
                 reference_label,
+                reference_metadata,
             ) in references.items():
                 for candidate_key, (
                     actual,
                     actual_label,
+                    actual_metadata,
                 ) in candidates.items():
                     if actual == reference:
                         continue
@@ -1379,6 +1343,8 @@ def _main() -> int:
                             actual,
                             report,
                             comparison_root / "triptychs",
+                            reference_metadata,
+                            actual_metadata,
                             reference_label=reference_label,
                             actual_label=actual_label,
                         ),
