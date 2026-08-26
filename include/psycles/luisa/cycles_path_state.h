@@ -452,6 +452,48 @@ continuation_probability(
         before_minimum);
 }
 
+// Cycles resolves continuation roulette in INTERSECT_CLOSEST, after the
+// committed endpoint's static shader flags are known and before scheduling
+// any surface or volume shading. The outcomes below form a disjoint and
+// exhaustive partition of a failed decision: defer to an emissive surface,
+// defer to an active volume, or terminate immediately.
+struct ClosestContinuationDecision {
+    luisa::compute::Bool failed;
+    luisa::compute::Bool terminate_immediately;
+    luisa::compute::UInt deferred_flags;
+};
+
+[[nodiscard]] inline ClosestContinuationDecision
+decide_closest_continuation(
+    luisa::compute::Float probability,
+    luisa::compute::Float terminate_sample,
+    luisa::compute::Bool surface_may_emit,
+    luisa::compute::Bool inside_volume) noexcept {
+    using namespace luisa::compute;
+    const auto failed =
+        (probability != 1.0f) &
+        ((probability == 0.0f) |
+         (terminate_sample >= probability));
+    const auto defer_to_surface =
+        failed & surface_may_emit;
+    const auto defer_to_volume =
+        failed & !surface_may_emit & inside_volume;
+    UInt deferred_flags = 0u;
+    deferred_flags |= select(
+        0u,
+        flag_terminate_on_next_surface,
+        defer_to_surface);
+    deferred_flags |= select(
+        0u,
+        flag_terminate_in_next_volume,
+        defer_to_volume);
+    return {
+        .failed = failed,
+        .terminate_immediately =
+            failed & !defer_to_surface & !defer_to_volume,
+        .deferred_flags = deferred_flags};
+}
+
 [[nodiscard]] inline luisa::compute::UInt
 contract_visibility(
     luisa::compute::UInt cycles_visibility) noexcept {

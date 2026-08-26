@@ -39,7 +39,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &cycles_primitive_index =
             surface.cycles_primitive_index;
         auto &path_step = bounce.path_step;
-        auto &terminate_sample = bounce.random().terminate_sample;
         auto &light_sample = bounce.random().light_sample;
         auto &light_terminate_sample = bounce.random().light_terminate_sample;
         auto &throughput = sample.throughput;
@@ -56,8 +55,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &ray_events = sample.ray_events;
         auto &transparent_depth = sample.transparent_depth;
         auto &continuation_probability = sample.continuation_probability;
-        auto &continuation_decided_in_volume =
-            sample.continuation_decided_in_volume;
         auto &cycles_rng_offset = sample.cycles_rng_offset;
         auto &cycles_path_visibility = sample.cycles_path_visibility;
         auto &path_flags = sample.path_flags;
@@ -241,38 +238,15 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             $break;
         };
 
-        // Cycles performs continuation roulette only after the
-        // next ray is known to hit a surface. Background and
-        // surface-emission contributions above are therefore
-        // retained even when the path does not continue
-        // scattering.
+        // INTERSECT_CLOSEST already made Cycles' continuation decision after
+        // the endpoint became known. Surface emission above remains visible;
+        // surviving paths are renormalized only now, before further shading.
         $if(!bounce.subsurface_exit) {
-            $if(continuation_decided_in_volume) {
-                $if(continuation_probability <= 0.0f) {
-                    $break;
-                };
-                $if(continuation_probability != 1.0f) {
-                    throughput /= continuation_probability;
-                };
-            }
-            $else {
-                continuation_probability =
-                    cycles_path_state::continuation_probability(
-                        path_flags,
-                        path_depth,
-                        transparent_depth,
-                        kernel_parameters.min_bounces,
-                        kernel_parameters.transparent_min_bounces,
-                        throughput);
-                $if(continuation_probability <= 0.0f) {
-                    $break;
-                };
-                $if(continuation_probability != 1.0f) {
-                    $if(terminate_sample >= continuation_probability) {
-                        $break;
-                    };
-                    throughput /= continuation_probability;
-                };
+            $if(continuation_probability == 0.0f) {
+                $break;
+            };
+            $if(continuation_probability != 1.0f) {
+                throughput /= continuation_probability;
             };
 
             // Cycles writes camera data passes only at the entry surface.
@@ -334,6 +308,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                     cycles_rng_offset,
                     tabulated_sobol::surface_bsdf_dimension));
         if (path_trace_enabled) {
+            const auto terminate_sample =
+                sample.continuation_terminate_sample();
             auto closure_summary = trace_surface_closure(
                 surface_tag,
                 point,

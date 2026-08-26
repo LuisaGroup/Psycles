@@ -134,6 +134,7 @@ void PathKernelPipeline::emit(
     Bool volume_scattered = false;
     $while(search_events & !path_terminated) {
       auto event = _impl->closest_event->emit(bounce, previous_analytic_light);
+      path_terminated = path_terminated | event.terminated;
       if (_impl->volume_segment) {
         VolumeSegmentEvent volume{.scattered = false, .terminated = false};
         // This is the same routing predicate as Cycles'
@@ -145,7 +146,7 @@ void PathKernelPipeline::emit(
         // inside_volume. Keeping the complete stage in this branch therefore
         // preserves semantics and removes it from the empty-stack intersect
         // path.
-        $if(!sample.volume.stack->empty()) {
+        $if(!path_terminated & !sample.volume.stack->empty()) {
           if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
             $suspend(path_transition::shade_volume);
           }

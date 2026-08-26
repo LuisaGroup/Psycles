@@ -32,8 +32,6 @@ class PathBounceSetupStageImpl final
         const auto &scene = config.scene;
         auto &continuation_probability =
             sample.continuation_probability;
-        auto &continuation_decided_in_volume =
-            sample.continuation_decided_in_volume;
         auto &ray = sample.ray;
         const auto ray_visibility =
             sample.contracted_ray_visibility();
@@ -47,8 +45,6 @@ class PathBounceSetupStageImpl final
             sample.pending_subsurface_hit;
 
         continuation_probability = 1.0f;
-        continuation_decided_in_volume =
-            false;
         // `has_subsurface` is proved over all reachable material graphs and
         // their bound parameters while constructing the immutable scene. If
         // false, no scatter can produce a BSSRDF exit, so the pending state is

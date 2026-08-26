@@ -112,8 +112,6 @@ class PathVolumeSegmentStageImpl final
             sample.optical_depth;
         auto &continuation_probability =
             sample.continuation_probability;
-        auto &continuation_decided =
-            sample.continuation_decided_in_volume;
         auto &ray_source_object =
             sample.ray_source_object;
         auto &ray_source_primitive =
@@ -147,41 +145,6 @@ class PathVolumeSegmentStageImpl final
                     flag_volume_primary_transmit,
                 inside_volume &
                     (path_depth == 0u));
-        continuation_decided =
-            inside_volume;
-
-        continuation_probability =
-            select(
-                continuation_probability,
-                cycles_path_state::
-                    continuation_probability(
-                        path_flags,
-                        path_depth,
-                        transparent_depth,
-                        parameters.min_bounces,
-                        parameters
-                            .transparent_min_bounces,
-                        throughput),
-                inside_volume);
-        const auto roulette_failed =
-            inside_volume &
-            (continuation_probability != 1.0f) &
-            ((continuation_probability <= 0.0f) |
-             (bounce.random().terminate_sample >=
-              continuation_probability));
-        path_flags |= select(
-            0u,
-            cycles_path_state::
-                flag_terminate_on_next_surface,
-            roulette_failed &
-                event.surface_may_emit);
-        path_flags |= select(
-            0u,
-            cycles_path_state::
-                flag_terminate_in_next_volume,
-            roulette_failed &
-                !event.surface_may_emit);
-
         const auto segment_start =
             ray->t_min();
         const auto segment_length =
