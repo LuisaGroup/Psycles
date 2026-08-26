@@ -142,7 +142,7 @@ inline constexpr auto emission_principled_features =
 enum class ClosureLoweringActionKind : std::uint8_t {
   visit,
   emit_mix_right,
-  emit_mix_end,
+  finish_mix,
 };
 
 struct ClosureLoweringAction {
@@ -151,6 +151,9 @@ struct ClosureLoweringAction {
   std::uint32_t mix_begin{};
   std::uint32_t mix_slot{};
   std::uint32_t mix_depth{};
+  // Continuation demand: the enclosing region evaluates another closure with
+  // this region's entry weight after the current subtree completes.
+  bool restore_after{};
 };
 
 [[nodiscard]] bool closure_leaf_operation(
@@ -286,6 +289,7 @@ all_principled_closure_features() noexcept {
     std::size_t end{};
     std::uint32_t mix_slot{};
     bool executing_right{};
+    bool restores_parent{};
   };
 
   auto expected_operations = std::uint32_t{};
@@ -296,8 +300,33 @@ all_principled_closure_features() noexcept {
   std::vector<bool> live_mix_slots(closures.mix_slots, false);
   std::vector<OpenMixRegion> open_regions;
 
+  // A non-restoring Mix is legal only in tail position, so its logical end is
+  // exactly the enclosing branch boundary. Closing such regions before the
+  // boundary instruction models an implicit end marker without consuming a
+  // device instruction. Multiple right-nested tail regions may share a
+  // boundary and therefore close in strict LIFO order here.
+  const auto close_tail_regions = [&](std::size_t boundary) {
+    while (!open_regions.empty() &&
+           open_regions.back().executing_right &&
+           !open_regions.back().restores_parent &&
+           open_regions.back().end == boundary) {
+      const auto slot = open_regions.back().mix_slot;
+      if (slot >= live_mix_slots.size() || !live_mix_slots[slot] ||
+          live_mix_slot_count == 0u) {
+        return false;
+      }
+      live_mix_slots[slot] = false;
+      --live_mix_slot_count;
+      open_regions.pop_back();
+    }
+    return true;
+  };
+
   for (auto instruction_index = std::size_t{0u};
        instruction_index < closures.instructions.size();) {
+    if (!close_tail_regions(instruction_index)) {
+      return "an implicit tail Mix consumes a frame slot that is not live";
+    }
     const auto enclosing_end = open_regions.empty()
                                    ? closures.instructions.size()
                                    : (open_regions.back().executing_right
@@ -354,7 +383,7 @@ all_principled_closure_features() noexcept {
           marker.control != make_surface_closure_instruction_kind(
                                 SurfaceClosureInstructionKind::mix_right) ||
           surface_closure_right_frame_slot(marker) != slot ||
-          marker.payload2 != 0u) {
+          (marker.payload2 & ~surface_closure_mix_right_flags_mask) != 0u) {
         return "a Mix-begin does not target its exact right marker";
       }
       const auto end_offset = surface_closure_mix_end_offset(marker);
@@ -362,17 +391,23 @@ all_principled_closure_features() noexcept {
         return "a Mix-right has an invalid region-end offset";
       }
       const auto end = right + end_offset;
-      if (end >= enclosing_end) {
-        return "a Mix-end marker is outside its enclosing branch";
-      }
-      const auto &end_marker = closures.instructions[end];
-      if (surface_closure_instruction_kind(end_marker) !=
-              SurfaceClosureInstructionKind::mix_end ||
-          end_marker.control != make_surface_closure_instruction_kind(
-                                    SurfaceClosureInstructionKind::mix_end) ||
-          surface_closure_end_frame_slot(end_marker) != slot ||
-          end_marker.payload1 != 0u || end_marker.payload2 != 0u) {
-        return "a Mix-right does not target its exact end marker";
+      const auto restores_parent =
+          surface_closure_mix_restores_parent(marker);
+      if (restores_parent) {
+        if (end >= enclosing_end) {
+          return "a restoring Mix-end marker is outside its enclosing branch";
+        }
+        const auto &end_marker = closures.instructions[end];
+        if (surface_closure_instruction_kind(end_marker) !=
+                SurfaceClosureInstructionKind::mix_end ||
+            end_marker.control != make_surface_closure_instruction_kind(
+                                      SurfaceClosureInstructionKind::mix_end) ||
+            surface_closure_end_frame_slot(end_marker) != slot ||
+            end_marker.payload1 != 0u || end_marker.payload2 != 0u) {
+          return "a Mix-right does not target its exact end marker";
+        }
+      } else if (end != enclosing_end) {
+        return "a non-restoring Mix does not consume its enclosing branch tail";
       }
 
       live_mix_slots[slot] = true;
@@ -382,7 +417,8 @@ all_principled_closure_features() noexcept {
       open_regions.emplace_back(OpenMixRegion{
           .right = right,
           .end = end,
-          .mix_slot = slot});
+          .mix_slot = slot,
+          .restores_parent = restores_parent});
       expected_maximum_mix_depth = std::max(
           expected_maximum_mix_depth,
           static_cast<std::uint32_t>(open_regions.size()));
@@ -394,7 +430,11 @@ all_principled_closure_features() noexcept {
           open_regions.back().executing_right ||
           open_regions.back().right != instruction_index ||
           open_regions.back().mix_slot !=
-              surface_closure_right_frame_slot(instruction)) {
+              surface_closure_right_frame_slot(instruction) ||
+          open_regions.back().restores_parent !=
+              surface_closure_mix_restores_parent(instruction) ||
+          (instruction.payload2 &
+           ~surface_closure_mix_right_flags_mask) != 0u) {
         return "a Mix-right marker is unpaired or improperly nested";
       }
       const auto slot = open_regions.back().mix_slot;
@@ -408,6 +448,7 @@ all_principled_closure_features() noexcept {
     if (kind == SurfaceClosureInstructionKind::mix_end) {
       if (open_regions.empty() ||
           !open_regions.back().executing_right ||
+          !open_regions.back().restores_parent ||
           open_regions.back().end != instruction_index ||
           open_regions.back().mix_slot !=
               surface_closure_end_frame_slot(instruction)) {
@@ -471,6 +512,9 @@ all_principled_closure_features() noexcept {
     }
     expected_features |= features;
     ++instruction_index;
+  }
+  if (!close_tail_regions(closures.instructions.size())) {
+    return "an implicit tail Mix consumes a frame slot that is not live";
   }
   if (!open_regions.empty() || live_mix_slot_count != 0u) {
     return "the closure stream ends inside an open Mix region";
@@ -639,7 +683,7 @@ SurfaceClosureProgramImage lower_surface_closure_program(
       }
       continue;
     }
-    if (current.kind == ClosureLoweringActionKind::emit_mix_end) {
+    if (current.kind == ClosureLoweringActionKind::finish_mix) {
       if (current.mix_begin >= result.instructions.size()) {
         return reject("a closure Mix region has no begin instruction");
       }
@@ -654,17 +698,19 @@ SurfaceClosureProgramImage lower_surface_closure_program(
       auto &marker = result.instructions[marker_index];
       if (surface_closure_instruction_kind(marker) !=
               SurfaceClosureInstructionKind::mix_right ||
-          result.instructions.size() >=
-              std::numeric_limits<std::uint32_t>::max()) {
+          surface_closure_right_frame_slot(marker) != current.mix_slot) {
         return reject("a closure Mix right region is inconsistent");
       }
       marker.payload1 = static_cast<std::uint32_t>(
           result.instructions.size() - marker_index);
-      if (!append_instruction(SurfaceClosureBytecodeInstruction{
-              .control = make_surface_closure_instruction_kind(
-                  SurfaceClosureInstructionKind::mix_end),
-              .payload0 = current.mix_slot})) {
-        return reject("a closure Mix end exceeds 32-bit device offsets");
+      if (current.restore_after) {
+        marker.payload2 = surface_closure_mix_right_restores_parent;
+        if (!append_instruction(SurfaceClosureBytecodeInstruction{
+                .control = make_surface_closure_instruction_kind(
+                    SurfaceClosureInstructionKind::mix_end),
+                .payload0 = current.mix_slot})) {
+          return reject("a closure Mix end exceeds 32-bit device offsets");
+        }
       }
       if (!release_mix_slot(current.mix_slot)) {
         return reject("a closure Mix frame interval is not properly nested");
@@ -724,15 +770,17 @@ SurfaceClosureProgramImage lower_surface_closure_program(
             std::max(result.maximum_mix_depth, child_depth);
 
         pending.emplace_back(ClosureLoweringAction{
-            .kind = ClosureLoweringActionKind::emit_mix_end,
+            .kind = ClosureLoweringActionKind::finish_mix,
             .mix_begin = begin,
             .mix_slot = mix_slot,
-            .mix_depth = current.mix_depth});
+            .mix_depth = current.mix_depth,
+            .restore_after = current.restore_after});
         if (b_active) {
           pending.emplace_back(ClosureLoweringAction{
               .kind = ClosureLoweringActionKind::visit,
               .id = closure.b,
-              .mix_depth = child_depth});
+              .mix_depth = child_depth,
+              .restore_after = false});
         }
         pending.emplace_back(ClosureLoweringAction{
             .kind = ClosureLoweringActionKind::emit_mix_right,
@@ -743,7 +791,8 @@ SurfaceClosureProgramImage lower_surface_closure_program(
           pending.emplace_back(ClosureLoweringAction{
               .kind = ClosureLoweringActionKind::visit,
               .id = closure.a,
-              .mix_depth = child_depth});
+              .mix_depth = child_depth,
+              .restore_after = false});
         }
         continue;
       }
@@ -754,13 +803,15 @@ SurfaceClosureProgramImage lower_surface_closure_program(
         pending.emplace_back(ClosureLoweringAction{
             .kind = ClosureLoweringActionKind::visit,
             .id = closure.b,
-            .mix_depth = current.mix_depth});
+            .mix_depth = current.mix_depth,
+            .restore_after = current.restore_after});
       }
       if (a_active) {
         pending.emplace_back(ClosureLoweringAction{
             .kind = ClosureLoweringActionKind::visit,
             .id = closure.a,
-            .mix_depth = current.mix_depth});
+            .mix_depth = current.mix_depth,
+            .restore_after = b_active || current.restore_after});
       }
       continue;
     }

@@ -412,13 +412,15 @@ surface_closure_operand_count(ClosureOperation operation) noexcept {
 // consecutive regions with the same current weight.
 //
 // Execution keeps the current weight in one scalar. Each open Mix stores an
-// immutable `(parent, right)` float2 until its paired `mix_end`: `mix_right`
-// selects the right component and `mix_end` restores the parent. This gives a
-// compositional invariant: every closed closure region exits with exactly its
-// entry weight, so consecutive AddClosure children cannot leak branch state.
-// Mix intervals are laminar; exact interval coloring therefore needs precisely
-// the maximum number of simultaneously open Mix regions, rather than one
-// factor path per leaf.
+// immutable `(parent, right)` float2: `mix_right` selects the right component.
+// A paired `mix_end` restores the parent exactly when a continuation observes
+// the region's exit weight. A tail Mix instead consumes the rest of its
+// enclosing branch, where the next enclosing marker either overwrites the
+// weight or execution ends. This continuation-sensitive invariant prevents
+// AddClosure siblings from leaking branch state without retaining unobservable
+// restoration traffic. Mix intervals are laminar; exact interval coloring
+// therefore needs precisely the maximum number of simultaneously open Mix
+// regions, rather than one factor path per leaf.
 enum class SurfaceClosureInstructionKind : std::uint32_t {
   leaf = 0u,
   mix_begin = 1u,
@@ -433,7 +435,7 @@ enum class SurfaceClosureInstructionKind : std::uint32_t {
 // mix_begin: payload0 = factor address, payload1 = Mix-frame slot,
 //            payload2 = relative offset to the paired mix_right
 // mix_right: payload0 = Mix-frame slot, payload1 = relative offset to the
-//            paired mix_end, payload2 = zero
+//            region end, payload2 = restoration flags
 // mix_end:   payload0 = Mix-frame slot, payload1/2 = zero
 struct SurfaceClosureBytecodeInstruction {
   std::uint32_t control{};
@@ -516,6 +518,17 @@ surface_closure_instruction_kind(
 [[nodiscard]] constexpr std::uint32_t surface_closure_mix_end_offset(
     const SurfaceClosureBytecodeInstruction &instruction) noexcept {
   return instruction.payload1;
+}
+
+inline constexpr std::uint32_t
+    surface_closure_mix_right_restores_parent = 1u << 0u;
+inline constexpr std::uint32_t surface_closure_mix_right_flags_mask =
+    surface_closure_mix_right_restores_parent;
+
+[[nodiscard]] constexpr bool surface_closure_mix_restores_parent(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return (instruction.payload2 &
+          surface_closure_mix_right_restores_parent) != 0u;
 }
 
 // Host-selected semantic handler identity. Endpoint membership and Bump

@@ -273,6 +273,14 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         image.used_closure_operations, image.used_principled_closure_features);
     runtime->maximum_closure_mix_slots =
         image.maximum_closure_mix_slots;
+    runtime->closure_mix_restoration_required = std::any_of(
+        image.closure_instructions.begin(),
+        image.closure_instructions.end(),
+        [](const auto &instruction) noexcept {
+            return compiler::surface_closure_instruction_kind(instruction) ==
+                       compiler::SurfaceClosureInstructionKind::mix_right &&
+                   compiler::surface_closure_mix_restores_parent(instruction);
+        });
     LUISA_INFO("Surface physical-closure reachability: operations=0x{:08x}, "
                "Principled features=0x{:08x}, kinds=0x{:08x}, "
                "Principled lobes=0x{:08x}.",
@@ -502,7 +510,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         "{} semantic variants (population {}, emission {}, BSSRDF {} tags / "
         "{} values), {} closure instructions "
         "(population/emission/BSSRDF variants {}/{}/{}), maximum program "
-        "length {}, typed slots {}/{}/{}, structured closure Mix-frame slots {}.",
+        "length {}, typed slots {}/{}/{}, structured closure Mix-frame slots {}, "
+        "parent restoration {}.",
         image.programs.size(), image.instructions.size(), image.operands.size(),
         image.metadata.size(), image.static_data.size(),
         runtime->executable.variants.size(),
@@ -515,7 +524,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         runtime->bssrdf_closure_static_variants.size(),
         maximum_instruction_count, maximum_scalar_slots, maximum_vector_slots,
         maximum_unsigned_integer_slots,
-        runtime->maximum_closure_mix_slots);
+        runtime->maximum_closure_mix_slots,
+        runtime->closure_mix_restoration_required ? "required" : "elided");
 
     runtime->program_buffer =
         device.create_buffer<luisa::uint4>(runtime->program_ranges.size());

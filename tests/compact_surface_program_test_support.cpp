@@ -76,7 +76,7 @@ count_bump_configuration(const SurfaceValueSceneImage &image,
 
 } // namespace
 
-ShaderGraph make_nested_mix_add_replay_graph() {
+ShaderGraph make_nested_mix_replay_graph(bool restore_after) {
     ShaderGraph graph;
     const auto diffuse = graph.add_node(
         node_type::diffuse_bsdf, "Nested mix diffuse");
@@ -92,11 +92,7 @@ ShaderGraph make_nested_mix_add_replay_graph() {
         node_type::mix_closure, "Nested physical mix level two");
     const auto outer_mix = graph.add_node(
         node_type::mix_closure, "Nested physical mix level three");
-    const auto emission = graph.add_node(
-        node_type::emission, "Nested explicit emission");
-    const auto root = graph.add_node(
-        node_type::add_closure, "Physical plus emission");
-    const auto configured =
+    auto configured =
         graph.set_input(
             diffuse, "Color", SocketValue::color({0.22f, 0.51f, 0.76f})) &&
         graph.set_input(
@@ -122,10 +118,6 @@ ShaderGraph make_nested_mix_add_replay_graph() {
             glossy, "Roughness", SocketValue::floating(0.31f)) &&
         graph.set_input(
             transparent, "Color", SocketValue::color({0.92f, 0.84f, 0.73f})) &&
-        graph.set_input(
-            emission, "Color", SocketValue::color({0.17f, 0.41f, 0.89f})) &&
-        graph.set_input(
-            emission, "Strength", SocketValue::floating(2.3f)) &&
         graph.connect(
             {.node = diffuse, .socket = "Closure"}, inner_mix, "A") &&
         graph.connect(
@@ -137,14 +129,28 @@ ShaderGraph make_nested_mix_add_replay_graph() {
         graph.connect(
             {.node = middle_mix, .socket = "Closure"}, outer_mix, "A") &&
         graph.connect(
-            {.node = transparent, .socket = "Closure"}, outer_mix, "B") &&
-        graph.connect(
-            {.node = outer_mix, .socket = "Closure"}, root, "A") &&
-        graph.connect(
-            {.node = emission, .socket = "Closure"}, root, "B");
+            {.node = transparent, .socket = "Closure"}, outer_mix, "B");
+    auto root = outer_mix;
+    if (restore_after) {
+        const auto emission = graph.add_node(
+            node_type::emission, "Nested explicit emission");
+        root = graph.add_node(
+            node_type::add_closure, "Physical plus emission");
+        configured = configured &&
+            graph.set_input(
+                emission,
+                "Color",
+                SocketValue::color({0.17f, 0.41f, 0.89f})) &&
+            graph.set_input(
+                emission, "Strength", SocketValue::floating(2.3f)) &&
+            graph.connect(
+                {.node = outer_mix, .socket = "Closure"}, root, "A") &&
+            graph.connect(
+                {.node = emission, .socket = "Closure"}, root, "B");
+    }
     if (!configured) {
         throw std::runtime_error{
-            "failed to configure nested Mix/Add/replay graph"};
+            "failed to configure nested Mix/replay graph"};
     }
     graph.set_root(
         ShaderDomain::surface,

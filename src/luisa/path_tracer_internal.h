@@ -355,6 +355,10 @@ struct SurfaceValueRuntime {
     // slot stores the immutable (parent, right) frame for one open Mix region;
     // the compiler verifies exact laminar-interval coloring before acceptance.
     std::uint32_t maximum_closure_mix_slots{};
+    // Exact scene capability derived from verified Mix-right markers. If
+    // false, every Mix is in tail position, so the JIT emits scalar right-
+    // weight slots and no parent-restoration control path.
+    bool closure_mix_restoration_required{};
     // BSSRDF exit reconstruction can only be invoked for the conservative
     // topology-tag set derived from Cycles' has_bssrdf_bump capability. Its
     // interpreter domain is the exact program image of that set. Closure
