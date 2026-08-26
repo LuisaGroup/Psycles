@@ -13,10 +13,11 @@ namespace psycles::luisa_backend {
 SurfaceClosureEvaluator::SurfaceClosureEvaluator(
     const SurfacePoint &point,
     const SurfaceClosureSet &closures,
-    Float3 shading_normal) noexcept
+    Float3 shading_normal, SurfaceClosureReachability reachability) noexcept
     : _point{point},
       _closures{closures},
-      _shading_normal{shading_normal} {}
+      _shading_normal{shading_normal},
+      _reachability{reachability} {}
 
 UInt SurfaceClosureEvaluator::runtime_flags(
     Float glossy_filter_roughness) const noexcept {
@@ -128,7 +129,7 @@ SurfaceEvaluation SurfaceClosureEvaluator::evaluate_impl(
                 directions.outgoing.expression()},
             query,
             policy,
-            Expr<bool>{selected_sample.expression()}));
+            Expr<bool>{selected_sample.expression()}, _reachability));
         index += 1u;
     };
     return accumulator.finish(

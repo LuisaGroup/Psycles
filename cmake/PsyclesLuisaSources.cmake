@@ -10,6 +10,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/surface_closure_physical_blocks.cpp
     src/luisa/surface_closure_visitor.cpp
     src/luisa/surface_closure_operations.cpp
+    src/luisa/surface_closure_reachability.cpp
     src/luisa/surface_physical_closure_component.cpp
     src/luisa/surface_closure_evaluation.cpp
     src/luisa/surface_closure_population.cpp

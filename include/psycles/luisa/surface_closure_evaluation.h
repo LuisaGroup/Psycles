@@ -4,6 +4,7 @@
 #error "Include <psycles/luisa/surface_closure_evaluation.h> through the Psycles::luisa target."
 #endif
 
+#include <psycles/luisa/surface_closure_reachability.h>
 #include <psycles/luisa/surface_closure_visitor.h>
 
 #include <luisa/dsl/struct.h>
@@ -79,7 +80,9 @@ surface_closure_evaluation_contribution(
     Expr<luisa::float3> outgoing,
     const SurfaceQuery &query,
     const SurfaceClosureEvaluationPolicy &policy,
-    Expr<bool> selected_sample) noexcept;
+    Expr<bool> selected_sample,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
 
 // Ordered additive fold over per-closure contributions followed by the one
 // non-linear normalization step. The visitor preserves Cycles allocation
@@ -141,6 +144,7 @@ class DirectSurfaceClosureEvaluationOperation final
     SurfaceClosurePoint _point;
     const SurfaceQuery &_query;
     const SurfaceClosureEvaluationPolicy &_policy;
+    SurfaceClosureReachability _reachability;
     Float3 _incoming{make_float3(0.0f)};
     Float3 _outgoing{make_float3(0.0f)};
 
@@ -149,7 +153,9 @@ class DirectSurfaceClosureEvaluationOperation final
         const ShaderServices &services,
         const SurfaceClosurePoint &point,
         const SurfaceQuery &query,
-        const SurfaceClosureEvaluationPolicy &policy) noexcept;
+        const SurfaceClosureEvaluationPolicy &policy,
+        SurfaceClosureReachability reachability =
+            all_surface_closure_reachability) noexcept;
 
     void set_outgoing(
         Expr<luisa::float3> outgoing) noexcept override;

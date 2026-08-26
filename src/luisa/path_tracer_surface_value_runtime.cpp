@@ -269,6 +269,15 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     const auto &image = runtime->executable.values;
     runtime->used_principled_closure_features =
         image.used_principled_closure_features;
+    runtime->physical_closure_reachability = reachable_surface_closures(
+        image.used_closure_operations, image.used_principled_closure_features);
+    LUISA_INFO("Surface physical-closure reachability: operations=0x{:08x}, "
+               "Principled features=0x{:08x}, kinds=0x{:08x}, "
+               "Principled lobes=0x{:08x}.",
+               image.used_closure_operations,
+               image.used_principled_closure_features,
+               runtime->physical_closure_reachability.kinds,
+               runtime->physical_closure_reachability.principled_lobes);
     runtime->closure_static_variants.reserve(image.closure_instructions.size());
     for (const auto &instruction : image.closure_instructions) {
         const auto key =

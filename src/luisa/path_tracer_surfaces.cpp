@@ -113,8 +113,12 @@ class PopulatedSurfaceShaderImpl final
             surface_tag, _services, _point, query, _population);
         _preparation = _population.preparation(population.emission);
         _shading_normal = population.shading_normal;
+        const auto reachability =
+            _scene->surface_values
+                ? _scene->surface_values->physical_closure_reachability
+                : all_surface_closure_reachability;
         _evaluator = std::make_unique<SurfaceClosureEvaluator>(
-            _point, _population.closures(), _shading_normal);
+            _point, _population.closures(), _shading_normal, reachability);
     }
 
     [[nodiscard]] SurfacePreparation preparation()

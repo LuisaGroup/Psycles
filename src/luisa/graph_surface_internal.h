@@ -125,6 +125,18 @@ struct TracedClosure {
 
 using ClosureVisitor = std::function<void(const TracedClosure &)>;
 
+struct CanonicalSurfaceClosureIdentity {
+    SurfaceClosureKind kind{SurfaceClosureKind::none};
+    SurfaceClosureLobe lobe{SurfaceClosureLobe::none};
+};
+
+// Resolve only the immutable host-stage identity tags. This is shared by the
+// device-record projection and the reachability soundness check, so the latter
+// audits the exact identity consumed by scattering rather than a parallel
+// approximation of the canonicalization switch.
+[[nodiscard]] CanonicalSurfaceClosureIdentity
+canonical_surface_closure_identity(const TracedClosure &closure) noexcept;
+
 // Project a host-tagged setup closure into the canonical device-tagged
 // physical record consumed by every directional scattering component.
 [[nodiscard]] SurfaceClosureRecord canonical_surface_closure(
