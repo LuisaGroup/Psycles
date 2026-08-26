@@ -175,7 +175,9 @@ psycles_render_blender_scene <classroom-export> baseline.exr hip \
 psycles_render_blender_scene <classroom-export> typed-records.exr hip \
   320 180 4 4 - 0 0 0 0 4 - 1 0 wavefront-staged
 
-python tools/compare_cycles.py baseline.exr typed-records.exr \
-  --cycles-label baseline --psycles-label typed-records \
-  --output-dir <comparison-directory>
+python tools/compare_cycles.py baseline.exr <comparison-directory>/report.json \
+  --allow-unverified-build-identity \
+  --reference-label baseline --actual-label typed-records \
+  --triptych-dir <comparison-directory>/triptychs \
+  Combined=typed-records.exr Normal=typed-records.exr
 ```

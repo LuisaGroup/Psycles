@@ -196,6 +196,7 @@ The direct 1-versus-4 image comparison uses the project comparator:
 python3 ../tools/compare_cycles.py \
   benchmarks/2026-08-21/classroom-1080p64-compact-metal/staged-dispatch4.exr \
   benchmarks/2026-08-21/classroom-1080p64-compact-metal/staged-dispatch1-vs-dispatch4.json \
+  --allow-unverified-build-identity \
   --triptych-dir benchmarks/2026-08-21/classroom-1080p64-compact-metal/triptychs/dispatch-ab \
   Combined=benchmarks/2026-08-21/classroom-1080p64-compact-metal/staged-dispatch1.exr
 ```

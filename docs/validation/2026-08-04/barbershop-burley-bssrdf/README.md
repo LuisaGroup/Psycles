@@ -203,5 +203,5 @@ cmake --build build -j32
 ctest --test-dir build --output-on-failure -R 'psycles.(luisa_bssrdf|luisa_pointiness_scene|blender_export_pointiness_source)'
 build/bin/psycles_render_blender_scene /tmp/barbershop-export /tmp/barbershop.ppm hip 320 180 16 8
 /path/to/blender barbershop_interior.blend --background --python tools/render_cycles_golden.py -- /tmp/cycles.exr 320 180 16 0 --cycles-device HIP --device-name '9070 XT'
-python3 tools/compare_cycles.py /tmp/cycles.exr /tmp/report.json --triptych-dir /tmp/triptychs Combined=/tmp/psycles.exr Normal=/tmp/psycles.exr DiffCol=/tmp/psycles.exr
+python3 tools/compare_cycles.py /tmp/cycles.exr /tmp/report.json --reference-metadata /tmp/cycles.json --actual-metadata /tmp/barbershop-export/scene.json --triptych-dir /tmp/triptychs Combined=/tmp/psycles.exr Normal=/tmp/psycles.exr DiffCol=/tmp/psycles.exr
 ```

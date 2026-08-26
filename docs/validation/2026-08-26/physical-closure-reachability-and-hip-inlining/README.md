@@ -15,9 +15,13 @@ link time from `2590.97 ms` to `2381.20 ms` (`-8.10%`). Render time was
 statistically flat (`2.77594 s` versus `2.80564 s` at 640x480, 64 spp); this is
 a compile-size/JIT improvement, not a claimed render-speed win.
 
-The renderer still has a real Barbershop light-transport mismatch against the
-stored Cycles 5.2 HIP golden. It is recorded below rather than hidden by the
-successful compiler A/B.
+The first Barbershop comparison made during this change was invalid: its
+export and golden came from Blender 5.3 Alpha even though the report called it
+Cycles 5.2. A fresh export and golden from the exact Blender 5.2 release build
+reproduce the established alignment: Combined luminance ratio `0.999578` and
+RMSE `0.017347` at 640x480, 64 spp. The comparison tool now rejects missing or
+mismatched build identities by default so this oracle error cannot silently
+produce another renderer conclusion.
 
 ## Formal reachability model
 
@@ -184,13 +188,28 @@ materials, normals, and lighting structure:
 
 ![Monster Cycles/Psycles Normal](triptychs/monster/normal.png)
 
-Barbershop is not yet at that level. Its Diffuse Color luminance ratio is close
-(`0.99557`), and Emission (`1.00012`) and direct transmission (`1.00447`) are
-aligned, but Combined is `1.22918` with RMSE `0.054052`. The difference is
-coherent in direct and indirect illumination, not fine floating-point noise.
-The render also reports several unavailable source images. This result is a
-remaining scene-export/light-transport investigation; it is not attributed to
-the reachability or inliner change.
+The exact Blender 5.2 Barbershop rerun is also structurally aligned. Geometry,
+UV placement, material regions, silhouettes, normals, and the direct/indirect
+lighting pattern agree under visual inspection. The difference image is
+dominated by independent Monte Carlo noise and sparse fireflies rather than a
+coherent missing surface or lighting term.
+
+| Pass | RMSE | Relative RMSE | Luminance ratio |
+| --- | ---: | ---: | ---: |
+| Combined | 0.017347 | 0.107201 | 0.999578 |
+| Diffuse Color | 0.021141 | 0.080620 | 0.997216 |
+| Diffuse Direct | 0.034566 | 0.072587 | 0.999642 |
+| Diffuse Indirect | 0.045442 | 0.404927 | 1.004920 |
+| Glossy Color | 0.000797 | 0.004398 | 1.000542 |
+| Glossy Direct | 0.276702 | 0.176119 | 0.996297 |
+| Glossy Indirect | 0.173500 | 0.541908 | 1.001327 |
+| Normal | 0.010050 | 0.018290 | 1.003860 |
+| Emission | 0.0000248 | 0.000403 | 0.999995 |
+
+The high relative error in the indirect glossy and diffuse passes is paired
+with an approximately unit mean and visibly stochastic residual; those passes
+have a much smaller RMS denominator at only 64 spp. Both volume passes are
+exactly zero in this non-volume scene.
 
 ![Barbershop Cycles/Psycles Combined](triptychs/barbershop/combined.png)
 
@@ -203,6 +222,48 @@ Machine-readable reports are
 [Barbershop versus Cycles](barbershop-cycles-compare.json),
 [Classroom versus Cycles](classroom-cycles-compare.json), and
 [Monster versus Cycles](monster-cycles-compare.json).
+
+### Exact oracle identity and regression
+
+The accepted Barbershop artifacts use this exact Blender identity:
+
+```text
+version       = 5.2.0 LTS
+version_cycle = release
+version_tuple = [5, 2, 0]
+build_hash    = fbe6228777e7
+build_branch  = blender-v5.2-release
+build_type    = Release
+```
+
+The source `.blend` SHA-256 is
+`95972b56180462cac47ec82f3a755bd9111ec18ca37a6196a319c013db994130`.
+The fresh `scene.json` and `geometry.bin` hashes are respectively
+`56844951ebab83f4f89af82b393d9eab5cc63962ad7c2feda99e586cdc3b8bac`
+and `02182cb86234edbfe30be8156f4cd1a12c3ed30fd72dad4c071ce802c462f1af`.
+
+A cache-warm repeat of the accepted 5.2 export reported `16.681 s` scene
+construction, `2.40693 s` shader JIT/cache loading, and `2.69466 s`
+render-only time for the staged wavefront kernel. The freshly launched Blender
+golden reported `8.59937 s` around `bpy.ops.render`; that interval also owns
+Cycles scene synchronization and device setup, so it is recorded for
+reproducibility but is not presented as an apples-to-apples kernel speedup.
+
+`compare_cycles.py` now treats the Blender build identity as part of the
+comparison domain. It requires both `--reference-metadata` and
+`--actual-metadata`, validates all six fields above, and fails before reading
+the images if either identity is absent, incomplete, invalid, or unequal. An
+unverified comparison remains available only through the explicit
+`--allow-unverified-build-identity` diagnostic switch and records
+`verified: false`. Reports carrying this contract use schema
+`psycles.cycles-differential.v2`. The scene benchmark and shader-probe runners pass their
+metadata sidecars automatically. Regression tests cover exact equality, a
+hash mismatch, missing metadata, and the explicit diagnostic escape.
+
+The rejected artifacts were an older export that reported `5.3.0 Alpha` and
+did not contain an exact `blender_build` record. Their apparent Combined
+luminance ratio of `1.22918` was therefore never valid evidence about the
+5.2 renderer implementation.
 
 ## Cycles source audit
 
