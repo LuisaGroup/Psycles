@@ -405,27 +405,41 @@ surface_closure_operand_count(ClosureOperation operation) noexcept {
   return 0u;
 }
 
-// A Mix term multiplies the current leaf weight by either factor or
-// (1 - factor). Address and polarity are separate because the high address
-// bit already selects material-parameter storage.
-struct SurfaceClosureMixTerm {
-  std::uint32_t address{SurfaceValueAddress::invalid_value};
-  std::uint32_t flags{};
+// The closure stream is a structured, single-entry program. A Mix is lowered
+// to a `mix_begin` followed by its left region, a paired `mix_right`, and its
+// right region. Relative forward offsets make every region closed under scene
+// concatenation. AddClosure contributes no instruction: its children are
+// consecutive regions with the same current weight.
+//
+// Execution keeps the current weight in one scalar. Each open Mix stores an
+// immutable `(parent, right)` float2 until its paired `mix_end`: `mix_right`
+// selects the right component and `mix_end` restores the parent. This gives a
+// compositional invariant: every closed closure region exits with exactly its
+// entry weight, so consecutive AddClosure children cannot leak branch state.
+// Mix intervals are laminar; exact interval coloring therefore needs precisely
+// the maximum number of simultaneously open Mix regions, rather than one
+// factor path per leaf.
+enum class SurfaceClosureInstructionKind : std::uint32_t {
+  leaf = 0u,
+  mix_begin = 1u,
+  mix_right = 2u,
+  mix_end = 3u,
 };
 
-inline constexpr std::uint32_t surface_closure_mix_complement = 1u << 0u;
-inline constexpr std::uint32_t surface_closure_mix_flags_mask =
-    surface_closure_mix_complement;
-
-// The hot closure stream is one uint4. Operand arity is fixed by opcode;
-// feature masks are parallel data so ordinary non-Principled leaves do not
-// carry an extra word. Mix paths are flattened per leaf, avoiding a dynamic
-// traversal stack while preserving exact DFS source order.
+// The hot closure stream remains one uint4. Payload fields have a semantic
+// interpretation selected by `kind`:
+//
+// leaf:      payload0 = operand begin, payload1/2 = zero
+// mix_begin: payload0 = factor address, payload1 = Mix-frame slot,
+//            payload2 = relative offset to the paired mix_right
+// mix_right: payload0 = Mix-frame slot, payload1 = relative offset to the
+//            paired mix_end, payload2 = zero
+// mix_end:   payload0 = Mix-frame slot, payload1/2 = zero
 struct SurfaceClosureBytecodeInstruction {
   std::uint32_t control{};
-  std::uint32_t operand_begin{};
-  std::uint32_t mix_term_begin{};
-  std::uint32_t mix_term_count{};
+  std::uint32_t payload0{};
+  std::uint32_t payload1{};
+  std::uint32_t payload2{};
 };
 
 inline constexpr std::uint32_t surface_closure_opcode_mask = 0xffu;
@@ -439,11 +453,70 @@ inline constexpr std::uint32_t surface_closure_normal_uses_bump = 1u << 12u;
 inline constexpr std::uint32_t surface_closure_coat_normal_linked = 1u << 13u;
 inline constexpr std::uint32_t surface_closure_preserve_ggx_energy = 1u << 14u;
 inline constexpr std::uint32_t surface_closure_beckmann = 1u << 15u;
+inline constexpr std::uint32_t surface_closure_instruction_kind_shift = 16u;
+inline constexpr std::uint32_t surface_closure_instruction_kind_mask =
+    0x3u << surface_closure_instruction_kind_shift;
 inline constexpr std::uint32_t surface_closure_control_mask =
     surface_closure_opcode_mask | surface_closure_endpoint_mask |
     surface_closure_bssrdf_method_mask | surface_closure_normal_uses_bump |
     surface_closure_coat_normal_linked |
-    surface_closure_preserve_ggx_energy | surface_closure_beckmann;
+    surface_closure_preserve_ggx_energy | surface_closure_beckmann |
+    surface_closure_instruction_kind_mask;
+
+[[nodiscard]] constexpr std::uint32_t make_surface_closure_instruction_kind(
+    SurfaceClosureInstructionKind kind) noexcept {
+  return static_cast<std::uint32_t>(kind)
+         << surface_closure_instruction_kind_shift;
+}
+
+[[nodiscard]] constexpr SurfaceClosureInstructionKind
+surface_closure_instruction_kind(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return static_cast<SurfaceClosureInstructionKind>(
+      (instruction.control & surface_closure_instruction_kind_mask) >>
+      surface_closure_instruction_kind_shift);
+}
+
+[[nodiscard]] constexpr bool surface_closure_is_leaf(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return surface_closure_instruction_kind(instruction) ==
+         SurfaceClosureInstructionKind::leaf;
+}
+
+[[nodiscard]] constexpr std::uint32_t surface_closure_leaf_operand_begin(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return instruction.payload0;
+}
+
+[[nodiscard]] constexpr std::uint32_t surface_closure_mix_factor_address(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return instruction.payload0;
+}
+
+[[nodiscard]] constexpr std::uint32_t surface_closure_mix_frame_slot(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return instruction.payload1;
+}
+
+[[nodiscard]] constexpr std::uint32_t surface_closure_mix_right_offset(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return instruction.payload2;
+}
+
+[[nodiscard]] constexpr std::uint32_t surface_closure_right_frame_slot(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return instruction.payload0;
+}
+
+[[nodiscard]] constexpr std::uint32_t surface_closure_end_frame_slot(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return instruction.payload0;
+}
+
+[[nodiscard]] constexpr std::uint32_t surface_closure_mix_end_offset(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return instruction.payload1;
+}
 
 // Host-selected semantic handler identity. Endpoint membership and Bump
 // provenance are data/control-flow properties outside raw closure setup; the
@@ -498,17 +571,18 @@ inline constexpr std::uint32_t surface_closure_emission_static_variant_mask =
       surface_closure_bssrdf_method_shift);
 }
 
-// One exact flattened closure program. `principled_features` is parallel to
-// `instructions`; aggregate masks allow the JIT to omit handlers unused by the
-// complete scene without specializing on individual material topologies.
+// One exact structured closure program. `principled_features` is parallel to
+// `instructions` and zero on control instructions; aggregate masks allow the
+// JIT to omit leaf handlers unused by the complete scene without specializing
+// on individual material topologies.
 struct SurfaceClosureProgramImage {
   bool valid{};
   std::string diagnostic;
   std::vector<SurfaceClosureBytecodeInstruction> instructions;
   std::vector<PrincipledClosureFeatureMask> principled_features;
   std::vector<std::uint32_t> operands;
-  std::vector<SurfaceClosureMixTerm> mix_terms;
   std::uint32_t maximum_mix_depth{};
+  std::uint32_t mix_slots{};
   std::uint32_t used_operations{};
   PrincipledClosureFeatureMask used_principled_features{};
 };
@@ -1251,8 +1325,8 @@ struct SurfaceValueSceneImage {
   std::vector<SurfaceClosureBytecodeInstruction> closure_instructions;
   std::vector<PrincipledClosureFeatureMask> closure_principled_features;
   std::vector<std::uint32_t> closure_operands;
-  std::vector<SurfaceClosureMixTerm> closure_mix_terms;
   std::uint32_t maximum_closure_mix_depth{};
+  std::uint32_t maximum_closure_mix_slots{};
   std::uint32_t used_closure_operations{};
   PrincipledClosureFeatureMask used_principled_closure_features{};
 };

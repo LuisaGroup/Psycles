@@ -139,9 +139,18 @@ inline constexpr auto emission_principled_features =
          child.value < parent.value;
 }
 
-struct PendingClosure {
-  ClosureExpressionId id;
-  std::vector<SurfaceClosureMixTerm> mix_path;
+enum class ClosureLoweringActionKind : std::uint8_t {
+  visit,
+  emit_mix_right,
+  emit_mix_end,
+};
+
+struct ClosureLoweringAction {
+  ClosureLoweringActionKind kind{ClosureLoweringActionKind::visit};
+  ClosureExpressionId id{};
+  std::uint32_t mix_begin{};
+  std::uint32_t mix_slot{};
+  std::uint32_t mix_depth{};
 };
 
 [[nodiscard]] bool closure_leaf_operation(
@@ -272,15 +281,153 @@ all_principled_closure_features() noexcept {
     return "the Principled feature stream is not parallel to closures";
   }
 
+  struct OpenMixRegion {
+    std::size_t right{};
+    std::size_t end{};
+    std::uint32_t mix_slot{};
+    bool executing_right{};
+  };
+
   auto expected_operations = std::uint32_t{};
   auto expected_features = PrincipledClosureFeatureMask{};
   auto expected_maximum_mix_depth = std::uint32_t{};
+  auto maximum_live_mix_slots = std::uint32_t{};
+  auto live_mix_slot_count = std::uint32_t{};
+  std::vector<bool> live_mix_slots(closures.mix_slots, false);
+  std::vector<OpenMixRegion> open_regions;
+
   for (auto instruction_index = std::size_t{0u};
-       instruction_index < closures.instructions.size();
-       ++instruction_index) {
+       instruction_index < closures.instructions.size();) {
+    const auto enclosing_end = open_regions.empty()
+                                   ? closures.instructions.size()
+                                   : (open_regions.back().executing_right
+                                          ? open_regions.back().end
+                                          : open_regions.back().right);
+    if (instruction_index > enclosing_end) {
+      return "closure instruction " + std::to_string(instruction_index) +
+             " crosses enclosing branch end " +
+             std::to_string(enclosing_end) + " at structured depth " +
+             std::to_string(open_regions.size());
+    }
+
     const auto &instruction = closures.instructions[instruction_index];
     if ((instruction.control & ~surface_closure_control_mask) != 0u) {
       return "a closure control word contains undefined bits";
+    }
+    const auto kind = surface_closure_instruction_kind(instruction);
+    if (!open_regions.empty() && instruction_index == enclosing_end) {
+      const auto expected_kind = open_regions.back().executing_right
+                                     ? SurfaceClosureInstructionKind::mix_end
+                                     : SurfaceClosureInstructionKind::mix_right;
+      if (kind != expected_kind) {
+        return "closure instruction " + std::to_string(instruction_index) +
+               " does not close its enclosing Mix branch at structured depth " +
+               std::to_string(open_regions.size());
+      }
+    }
+    if (kind == SurfaceClosureInstructionKind::mix_begin) {
+      if (instruction.control != make_surface_closure_instruction_kind(kind)) {
+        return "a Mix-begin instruction contains leaf semantic bits";
+      }
+      if (!address_fits_value_program(
+              surface_closure_mix_factor_address(instruction),
+              SurfaceValueBank::scalar, values, false)) {
+        return "a Mix-begin factor has the wrong type or exceeds its bank";
+      }
+      const auto slot = surface_closure_mix_frame_slot(instruction);
+      if (slot >= closures.mix_slots || live_mix_slots[slot]) {
+        return "a Mix-begin frame slot is out of range or already live";
+      }
+      const auto right_offset =
+          surface_closure_mix_right_offset(instruction);
+      if (right_offset == 0u ||
+          right_offset > enclosing_end - instruction_index) {
+        return "a Mix-begin has an invalid right-region offset";
+      }
+      const auto right = instruction_index + right_offset;
+      if (right >= enclosing_end) {
+        return "a Mix-begin marker is outside its enclosing branch";
+      }
+      const auto &marker = closures.instructions[right];
+      if (surface_closure_instruction_kind(marker) !=
+              SurfaceClosureInstructionKind::mix_right ||
+          marker.control != make_surface_closure_instruction_kind(
+                                SurfaceClosureInstructionKind::mix_right) ||
+          surface_closure_right_frame_slot(marker) != slot ||
+          marker.payload2 != 0u) {
+        return "a Mix-begin does not target its exact right marker";
+      }
+      const auto end_offset = surface_closure_mix_end_offset(marker);
+      if (end_offset == 0u || end_offset > enclosing_end - right) {
+        return "a Mix-right has an invalid region-end offset";
+      }
+      const auto end = right + end_offset;
+      if (end >= enclosing_end) {
+        return "a Mix-end marker is outside its enclosing branch";
+      }
+      const auto &end_marker = closures.instructions[end];
+      if (surface_closure_instruction_kind(end_marker) !=
+              SurfaceClosureInstructionKind::mix_end ||
+          end_marker.control != make_surface_closure_instruction_kind(
+                                    SurfaceClosureInstructionKind::mix_end) ||
+          surface_closure_end_frame_slot(end_marker) != slot ||
+          end_marker.payload1 != 0u || end_marker.payload2 != 0u) {
+        return "a Mix-right does not target its exact end marker";
+      }
+
+      live_mix_slots[slot] = true;
+      ++live_mix_slot_count;
+      maximum_live_mix_slots =
+          std::max(maximum_live_mix_slots, live_mix_slot_count);
+      open_regions.emplace_back(OpenMixRegion{
+          .right = right,
+          .end = end,
+          .mix_slot = slot});
+      expected_maximum_mix_depth = std::max(
+          expected_maximum_mix_depth,
+          static_cast<std::uint32_t>(open_regions.size()));
+      ++instruction_index;
+      continue;
+    }
+    if (kind == SurfaceClosureInstructionKind::mix_right) {
+      if (open_regions.empty() ||
+          open_regions.back().executing_right ||
+          open_regions.back().right != instruction_index ||
+          open_regions.back().mix_slot !=
+              surface_closure_right_frame_slot(instruction)) {
+        return "a Mix-right marker is unpaired or improperly nested";
+      }
+      const auto slot = open_regions.back().mix_slot;
+      if (!live_mix_slots[slot] || live_mix_slot_count == 0u) {
+        return "a Mix-right reads a frame slot that is not live";
+      }
+      open_regions.back().executing_right = true;
+      ++instruction_index;
+      continue;
+    }
+    if (kind == SurfaceClosureInstructionKind::mix_end) {
+      if (open_regions.empty() ||
+          !open_regions.back().executing_right ||
+          open_regions.back().end != instruction_index ||
+          open_regions.back().mix_slot !=
+              surface_closure_end_frame_slot(instruction)) {
+        return "a Mix-end marker is unpaired or improperly nested";
+      }
+      const auto slot = open_regions.back().mix_slot;
+      if (!live_mix_slots[slot] || live_mix_slot_count == 0u) {
+        return "a Mix-end consumes a frame slot that is not live";
+      }
+      live_mix_slots[slot] = false;
+      --live_mix_slot_count;
+      open_regions.pop_back();
+      ++instruction_index;
+      continue;
+    }
+    if (kind != SurfaceClosureInstructionKind::leaf) {
+      return "the closure stream contains an unknown instruction kind";
+    }
+    if (instruction.payload1 != 0u || instruction.payload2 != 0u) {
+      return "a closure leaf contains nonzero control payload";
     }
     const auto operation = surface_closure_operation(instruction);
     if (!closure_leaf_operation(operation)) {
@@ -300,26 +447,21 @@ all_principled_closure_features() noexcept {
     }
 
     const auto operand_count = surface_closure_operand_count(operation);
-    if (instruction.operand_begin > closures.operands.size() ||
+    const auto operand_begin =
+        surface_closure_leaf_operand_begin(instruction);
+    if (operand_begin > closures.operands.size() ||
         operand_count >
-            closures.operands.size() - instruction.operand_begin) {
+            closures.operands.size() - operand_begin) {
       return "a closure leaf exceeds the operand stream";
     }
     for (auto operand = std::size_t{0u}; operand < operand_count;
          ++operand) {
       if (!address_fits_value_program(
-              closures.operands[instruction.operand_begin + operand],
+              closures.operands[operand_begin + operand],
               closure_operand_bank(operation, operand), values, true)) {
         return "a closure operand has the wrong type or exceeds its bank";
       }
     }
-    if (instruction.mix_term_begin > closures.mix_terms.size() ||
-        instruction.mix_term_count >
-            closures.mix_terms.size() - instruction.mix_term_begin) {
-      return "a closure leaf exceeds the Mix-term stream";
-    }
-    expected_maximum_mix_depth = std::max(
-        expected_maximum_mix_depth, instruction.mix_term_count);
     expected_operations |= 1u << static_cast<std::uint32_t>(operation);
 
     const auto features = closures.principled_features[instruction_index];
@@ -328,16 +470,16 @@ all_principled_closure_features() noexcept {
       return "a closure leaf has an invalid Principled feature mask";
     }
     expected_features |= features;
+    ++instruction_index;
   }
-  for (const auto &term : closures.mix_terms) {
-    if (!address_fits_value_program(
-            term.address, SurfaceValueBank::scalar, values, false) ||
-        (term.flags & ~surface_closure_mix_flags_mask) != 0u) {
-      return "a closure Mix term is invalid";
-    }
+  if (!open_regions.empty() || live_mix_slot_count != 0u) {
+    return "the closure stream ends inside an open Mix region";
   }
   if (closures.maximum_mix_depth != expected_maximum_mix_depth) {
     return "the maximum closure Mix depth is inconsistent";
+  }
+  if (closures.mix_slots != maximum_live_mix_slots) {
+    return "the closure Mix-frame allocation is not exact";
   }
   if (closures.used_operations != expected_operations) {
     return "the used closure-operation mask is inconsistent";
@@ -376,9 +518,7 @@ SurfaceClosureProgramImage lower_surface_closure_program(
     SurfaceClosureEndpointMask selected_endpoints) {
   static_assert(
       std::is_trivially_copyable_v<SurfaceClosureBytecodeInstruction>);
-  static_assert(std::is_trivially_copyable_v<SurfaceClosureMixTerm>);
   static_assert(sizeof(SurfaceClosureBytecodeInstruction) == 16u);
-  static_assert(sizeof(SurfaceClosureMixTerm) == 8u);
   static_assert(static_cast<std::uint32_t>(ClosureOperation::refraction) <
                 32u);
   static_assert(static_cast<std::uint32_t>(BssrdfMethod::random_walk_skin) <
@@ -432,11 +572,106 @@ SurfaceClosureProgramImage lower_surface_closure_program(
     return true;
   };
 
-  std::vector<PendingClosure> pending;
-  pending.emplace_back(PendingClosure{.id = root, .mix_path = {}});
+  std::vector<bool> occupied_mix_slots;
+  auto live_mix_slots = std::uint32_t{};
+  const auto allocate_mix_slot = [&]() noexcept {
+    for (auto slot = std::size_t{};
+         slot < occupied_mix_slots.size(); ++slot) {
+      if (!occupied_mix_slots[slot]) {
+        occupied_mix_slots[slot] = true;
+        ++live_mix_slots;
+        return static_cast<std::uint32_t>(slot);
+      }
+    }
+    occupied_mix_slots.emplace_back(true);
+    ++live_mix_slots;
+    return static_cast<std::uint32_t>(occupied_mix_slots.size() - 1u);
+  };
+  const auto release_mix_slot = [&](std::uint32_t slot) noexcept {
+    if (slot >= occupied_mix_slots.size() ||
+        !occupied_mix_slots[slot] || live_mix_slots == 0u) {
+      return false;
+    }
+    occupied_mix_slots[slot] = false;
+    --live_mix_slots;
+    return true;
+  };
+  const auto append_instruction = [&](
+                                      SurfaceClosureBytecodeInstruction value,
+                                      PrincipledClosureFeatureMask features = 0u)
+      noexcept {
+    if (result.instructions.size() >=
+        std::numeric_limits<std::uint32_t>::max()) {
+      return false;
+    }
+    result.instructions.emplace_back(value);
+    result.principled_features.emplace_back(features);
+    return true;
+  };
+
+  std::vector<ClosureLoweringAction> pending;
+  pending.emplace_back(ClosureLoweringAction{
+      .kind = ClosureLoweringActionKind::visit,
+      .id = root});
   while (!pending.empty()) {
-    auto current = std::move(pending.back());
+    const auto current = pending.back();
     pending.pop_back();
+    if (current.kind == ClosureLoweringActionKind::emit_mix_right) {
+      if (current.mix_begin >= result.instructions.size() ||
+          result.instructions.size() >=
+              std::numeric_limits<std::uint32_t>::max()) {
+        return reject("a closure Mix marker exceeds 32-bit offsets");
+      }
+      const auto marker = static_cast<std::uint32_t>(
+          result.instructions.size());
+      auto &begin = result.instructions[current.mix_begin];
+      if (surface_closure_instruction_kind(begin) !=
+              SurfaceClosureInstructionKind::mix_begin ||
+          marker <= current.mix_begin) {
+        return reject("the closure Mix lowering stack is inconsistent");
+      }
+      begin.payload2 = marker - current.mix_begin;
+      if (!append_instruction(SurfaceClosureBytecodeInstruction{
+              .control = make_surface_closure_instruction_kind(
+                  SurfaceClosureInstructionKind::mix_right),
+              .payload0 = current.mix_slot})) {
+        return reject("a closure Mix marker exceeds 32-bit offsets");
+      }
+      continue;
+    }
+    if (current.kind == ClosureLoweringActionKind::emit_mix_end) {
+      if (current.mix_begin >= result.instructions.size()) {
+        return reject("a closure Mix region has no begin instruction");
+      }
+      const auto &begin = result.instructions[current.mix_begin];
+      const auto marker_index = static_cast<std::size_t>(current.mix_begin) +
+                                begin.payload2;
+      if (marker_index >= result.instructions.size() ||
+          result.instructions.size() >
+              std::numeric_limits<std::uint32_t>::max()) {
+        return reject("a closure Mix region has no right marker");
+      }
+      auto &marker = result.instructions[marker_index];
+      if (surface_closure_instruction_kind(marker) !=
+              SurfaceClosureInstructionKind::mix_right ||
+          result.instructions.size() >=
+              std::numeric_limits<std::uint32_t>::max()) {
+        return reject("a closure Mix right region is inconsistent");
+      }
+      marker.payload1 = static_cast<std::uint32_t>(
+          result.instructions.size() - marker_index);
+      if (!append_instruction(SurfaceClosureBytecodeInstruction{
+              .control = make_surface_closure_instruction_kind(
+                  SurfaceClosureInstructionKind::mix_end),
+              .payload0 = current.mix_slot})) {
+        return reject("a closure Mix end exceeds 32-bit device offsets");
+      }
+      if (!release_mix_slot(current.mix_slot)) {
+        return reject("a closure Mix frame interval is not properly nested");
+      }
+      continue;
+    }
+
     if (!closure_active(dependencies, current.id, selected_endpoints) ||
         !closure_plan.entry(current.id).reachable) {
       continue;
@@ -461,9 +696,6 @@ SurfaceClosureProgramImage lower_surface_closure_program(
       const auto b_active =
           b_reachable &&
           closure_active(dependencies, closure.b, selected_endpoints);
-
-      auto a_path = current.mix_path;
-      auto b_path = std::move(current.mix_path);
       if (closure.operation == ClosureOperation::mix &&
           a_reachable && b_reachable && (a_active || b_active)) {
         std::uint32_t factor_address{};
@@ -472,24 +704,63 @@ SurfaceClosureProgramImage lower_surface_closure_program(
           return reject(
               "a live closure Mix has no typed factor address");
         }
-        a_path.emplace_back(SurfaceClosureMixTerm{
-            .address = factor_address,
-            .flags = surface_closure_mix_complement});
-        b_path.emplace_back(SurfaceClosureMixTerm{
-            .address = factor_address});
+        if (occupied_mix_slots.size() >=
+            std::numeric_limits<std::uint32_t>::max()) {
+          return reject("a closure Mix exceeds 32-bit frame slots");
+        }
+        const auto mix_slot = allocate_mix_slot();
+        result.mix_slots = std::max(result.mix_slots, live_mix_slots);
+        const auto begin = static_cast<std::uint32_t>(
+            result.instructions.size());
+        if (!append_instruction(SurfaceClosureBytecodeInstruction{
+                .control = make_surface_closure_instruction_kind(
+                    SurfaceClosureInstructionKind::mix_begin),
+                .payload0 = factor_address,
+                .payload1 = mix_slot})) {
+          return reject("a closure Mix exceeds 32-bit device offsets");
+        }
+        const auto child_depth = current.mix_depth + 1u;
+        result.maximum_mix_depth =
+            std::max(result.maximum_mix_depth, child_depth);
+
+        pending.emplace_back(ClosureLoweringAction{
+            .kind = ClosureLoweringActionKind::emit_mix_end,
+            .mix_begin = begin,
+            .mix_slot = mix_slot,
+            .mix_depth = current.mix_depth});
+        if (b_active) {
+          pending.emplace_back(ClosureLoweringAction{
+              .kind = ClosureLoweringActionKind::visit,
+              .id = closure.b,
+              .mix_depth = child_depth});
+        }
+        pending.emplace_back(ClosureLoweringAction{
+            .kind = ClosureLoweringActionKind::emit_mix_right,
+            .mix_begin = begin,
+            .mix_slot = mix_slot,
+            .mix_depth = current.mix_depth});
+        if (a_active) {
+          pending.emplace_back(ClosureLoweringAction{
+              .kind = ClosureLoweringActionKind::visit,
+              .id = closure.a,
+              .mix_depth = child_depth});
+        }
+        continue;
       }
 
       // LIFO insertion is reversed so the resulting leaf stream is the same
       // left-to-right depth-first order as GraphSurface::for_each_closure.
       if (b_active) {
-        pending.emplace_back(PendingClosure{
+        pending.emplace_back(ClosureLoweringAction{
+            .kind = ClosureLoweringActionKind::visit,
             .id = closure.b,
-            .mix_path = std::move(b_path)});
+            .mix_depth = current.mix_depth});
       }
       if (a_active) {
-        pending.emplace_back(PendingClosure{
+        pending.emplace_back(ClosureLoweringAction{
+            .kind = ClosureLoweringActionKind::visit,
             .id = closure.a,
-            .mix_path = std::move(a_path)});
+            .mix_depth = current.mix_depth});
       }
       continue;
     }
@@ -507,14 +778,9 @@ SurfaceClosureProgramImage lower_surface_closure_program(
         surface_closure_operand_count(closure.operation)) {
       return reject("a closure opcode has an inconsistent operand layout");
     }
-    if (result.instructions.size() >=
-            std::numeric_limits<std::uint32_t>::max() ||
-        operands.size() >
+    if (operands.size() >
             std::numeric_limits<std::uint32_t>::max() -
-                result.operands.size() ||
-        current.mix_path.size() >
-            std::numeric_limits<std::uint32_t>::max() -
-                result.mix_terms.size()) {
+                result.operands.size()) {
       return reject("the closure program exceeds 32-bit device offsets");
     }
 
@@ -529,14 +795,6 @@ SurfaceClosureProgramImage lower_surface_closure_program(
       }
       result.operands.emplace_back(address);
     }
-    const auto mix_term_begin =
-        static_cast<std::uint32_t>(result.mix_terms.size());
-    result.mix_terms.insert(result.mix_terms.end(),
-                            current.mix_path.begin(),
-                            current.mix_path.end());
-    result.maximum_mix_depth = std::max(
-        result.maximum_mix_depth,
-        static_cast<std::uint32_t>(current.mix_path.size()));
 
     auto features = closure.operation == ClosureOperation::principled
         ? closure_plan.entry(current.id).principled_features
@@ -545,29 +803,52 @@ SurfaceClosureProgramImage lower_surface_closure_program(
                          SurfaceClosureEndpoint::physical)) == 0u) {
       features &= emission_principled_features;
     }
-    result.instructions.emplace_back(SurfaceClosureBytecodeInstruction{
-        .control = make_surface_closure_control(closure, endpoints),
-        .operand_begin = operand_begin,
-        .mix_term_begin = mix_term_begin,
-        .mix_term_count =
-            static_cast<std::uint32_t>(current.mix_path.size())});
-    result.principled_features.emplace_back(features);
+    if (!append_instruction(SurfaceClosureBytecodeInstruction{
+            .control = make_surface_closure_control(closure, endpoints),
+            .payload0 = operand_begin},
+          features)) {
+      return reject("the closure program exceeds 32-bit device offsets");
+    }
     result.used_operations |=
         1u << static_cast<std::uint32_t>(closure.operation);
     result.used_principled_features |= features;
   }
 
-  if (result.principled_features.size() != result.instructions.size()) {
-    return reject(
-        "the Principled feature stream is not parallel to closures");
-  }
-  for (const auto &term : result.mix_terms) {
-    if (term.address == SurfaceValueAddress::invalid_value ||
-        (term.flags & ~surface_closure_mix_flags_mask) != 0u) {
-      return reject("a flattened closure Mix term is invalid");
-    }
+  if (live_mix_slots != 0u ||
+      std::any_of(occupied_mix_slots.begin(),
+                  occupied_mix_slots.end(),
+                  [](bool occupied) noexcept { return occupied; })) {
+    return reject("the closure Mix lowering left a live frame interval");
   }
   result.valid = true;
+  SurfaceValueProgramImage validation_values;
+  validation_values.valid = true;
+  for (const auto encoded : value_addresses) {
+    const auto address = SurfaceValueAddress{encoded};
+    if (!address.valid() || address.parameter()) {
+      continue;
+    }
+    const auto extent = address.index() + 1u;
+    switch (address.bank()) {
+    case SurfaceValueBank::scalar:
+      validation_values.scalar_slots =
+          std::max(validation_values.scalar_slots, extent);
+      break;
+    case SurfaceValueBank::vector:
+      validation_values.vector_slots =
+          std::max(validation_values.vector_slots, extent);
+      break;
+    case SurfaceValueBank::unsigned_integer:
+      validation_values.unsigned_integer_slots =
+          std::max(validation_values.unsigned_integer_slots, extent);
+      break;
+    }
+  }
+  if (const auto diagnostic =
+          validate_surface_closure_program_image(result, validation_values);
+      !diagnostic.empty()) {
+    return reject("internal closure verifier: " + diagnostic);
+  }
   return result;
 }
 
@@ -581,7 +862,6 @@ SurfaceValueSceneImage build_surface_execution_scene_image(
 
   auto closure_instruction_count = std::size_t{0u};
   auto closure_operand_count = std::size_t{0u};
-  auto closure_mix_term_count = std::size_t{0u};
   for (auto program_index = std::size_t{0u};
        program_index < value_programs.size(); ++program_index) {
     const auto diagnostic = validate_surface_closure_program_image(
@@ -595,10 +875,7 @@ SurfaceValueSceneImage build_surface_execution_scene_image(
                           closure_programs[program_index]
                               .instructions.size()) ||
         !add_scene_extent(closure_operand_count,
-                          closure_programs[program_index].operands.size()) ||
-        !add_scene_extent(closure_mix_term_count,
-                          closure_programs[program_index]
-                              .mix_terms.size())) {
+                          closure_programs[program_index].operands.size())) {
       return reject_scene(
           "the aggregate closure program exceeds 32-bit device offsets");
     }
@@ -611,7 +888,6 @@ SurfaceValueSceneImage build_surface_execution_scene_image(
   result.closure_instructions.reserve(closure_instruction_count);
   result.closure_principled_features.reserve(closure_instruction_count);
   result.closure_operands.reserve(closure_operand_count);
-  result.closure_mix_terms.reserve(closure_mix_term_count);
 
   for (auto program_index = std::size_t{0u};
        program_index < closure_programs.size(); ++program_index) {
@@ -623,11 +899,10 @@ SurfaceValueSceneImage build_surface_execution_scene_image(
         static_cast<std::uint32_t>(program.instructions.size());
     const auto operand_begin =
         static_cast<std::uint32_t>(result.closure_operands.size());
-    const auto mix_term_begin =
-        static_cast<std::uint32_t>(result.closure_mix_terms.size());
     for (auto instruction : program.instructions) {
-      instruction.operand_begin += operand_begin;
-      instruction.mix_term_begin += mix_term_begin;
+      if (surface_closure_is_leaf(instruction)) {
+        instruction.payload0 += operand_begin;
+      }
       result.closure_instructions.emplace_back(instruction);
     }
     result.closure_principled_features.insert(
@@ -637,11 +912,10 @@ SurfaceValueSceneImage build_surface_execution_scene_image(
     result.closure_operands.insert(
         result.closure_operands.end(), program.operands.begin(),
         program.operands.end());
-    result.closure_mix_terms.insert(
-        result.closure_mix_terms.end(), program.mix_terms.begin(),
-        program.mix_terms.end());
     result.maximum_closure_mix_depth = std::max(
         result.maximum_closure_mix_depth, program.maximum_mix_depth);
+    result.maximum_closure_mix_slots = std::max(
+        result.maximum_closure_mix_slots, program.mix_slots);
     result.used_closure_operations |= program.used_operations;
     result.used_principled_closure_features |=
         program.used_principled_features;

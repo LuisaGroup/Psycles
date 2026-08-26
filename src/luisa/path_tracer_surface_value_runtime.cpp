@@ -271,6 +271,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         image.used_principled_closure_features;
     runtime->physical_closure_reachability = reachable_surface_closures(
         image.used_closure_operations, image.used_principled_closure_features);
+    runtime->maximum_closure_mix_slots =
+        image.maximum_closure_mix_slots;
     LUISA_INFO("Surface physical-closure reachability: operations=0x{:08x}, "
                "Principled features=0x{:08x}, kinds=0x{:08x}, "
                "Principled lobes=0x{:08x}.",
@@ -280,6 +282,9 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                runtime->physical_closure_reachability.principled_lobes);
     runtime->closure_static_variants.reserve(image.closure_instructions.size());
     for (const auto &instruction : image.closure_instructions) {
+        if (!compiler::surface_closure_is_leaf(instruction)) {
+            continue;
+        }
         const auto key =
             instruction.control & compiler::surface_closure_static_variant_mask;
         if (std::find(runtime->closure_static_variants.begin(),
@@ -363,6 +368,9 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
              ++offset) {
             const auto closure = range.closure_begin + offset;
             const auto &instruction = image.closure_instructions[closure];
+            if (!compiler::surface_closure_is_leaf(instruction)) {
+                continue;
+            }
             const auto endpoints =
                 compiler::surface_closure_endpoints(instruction);
             const auto operation =
@@ -388,6 +396,9 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                  offset < bssrdf_range.closure_count; ++offset) {
                 const auto closure = bssrdf_range.closure_begin + offset;
                 const auto &instruction = image.closure_instructions[closure];
+                if (!compiler::surface_closure_is_leaf(instruction)) {
+                    continue;
+                }
                 if (compiler::surface_closure_endpoints(instruction) == 0u) {
                     diagnostic =
                         "BSSRDF topology retained an endpoint-free closure";
@@ -451,16 +462,11 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     runtime->closure_instructions.reserve(image.closure_instructions.size());
     for (const auto &instruction : image.closure_instructions) {
         runtime->closure_instructions.emplace_back(luisa::make_uint4(
-            instruction.control, instruction.operand_begin,
-            instruction.mix_term_begin, instruction.mix_term_count));
+            instruction.control, instruction.payload0,
+            instruction.payload1, instruction.payload2));
     }
     runtime->closure_operands.assign(image.closure_operands.begin(),
                                      image.closure_operands.end());
-    runtime->closure_mix_terms.reserve(image.closure_mix_terms.size());
-    for (const auto &term : image.closure_mix_terms) {
-        runtime->closure_mix_terms.emplace_back(
-            luisa::make_uint2(term.address, term.flags));
-    }
     provide_dummy_if_empty(runtime->program_ranges, luisa::make_uint4(0u));
     provide_dummy_if_empty(runtime->program_flags, 0u);
     provide_dummy_if_empty(runtime->instructions, luisa::make_uint4(0u));
@@ -475,7 +481,6 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                            luisa::make_uint4(0u));
     provide_dummy_if_empty(runtime->closure_operands,
                            compiler::SurfaceValueAddress::invalid_value);
-    provide_dummy_if_empty(runtime->closure_mix_terms, luisa::make_uint2(0u));
 
     auto maximum_instruction_count = std::uint32_t{0u};
     auto maximum_scalar_slots = std::uint32_t{0u};
@@ -497,7 +502,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         "{} semantic variants (population {}, emission {}, BSSRDF {} tags / "
         "{} values), {} closure instructions "
         "(population/emission/BSSRDF variants {}/{}/{}), maximum program "
-        "length {}, typed slots {}/{}/{}.",
+        "length {}, typed slots {}/{}/{}, structured closure Mix-frame slots {}.",
         image.programs.size(), image.instructions.size(), image.operands.size(),
         image.metadata.size(), image.static_data.size(),
         runtime->executable.variants.size(),
@@ -509,7 +514,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         runtime->emission_closure_static_variants.size(),
         runtime->bssrdf_closure_static_variants.size(),
         maximum_instruction_count, maximum_scalar_slots, maximum_vector_slots,
-        maximum_unsigned_integer_slots);
+        maximum_unsigned_integer_slots,
+        runtime->maximum_closure_mix_slots);
 
     runtime->program_buffer =
         device.create_buffer<luisa::uint4>(runtime->program_ranges.size());
@@ -531,8 +537,6 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         runtime->closure_instructions.size());
     runtime->closure_operand_buffer =
         device.create_buffer<luisa::uint>(runtime->closure_operands.size());
-    runtime->closure_mix_term_buffer =
-        device.create_buffer<luisa::uint2>(runtime->closure_mix_terms.size());
     runtime->device_view =
         device.create_bindless_array(surface_value_runtime_buffer_slot_count);
     const auto bind = [&](SurfaceValueRuntimeBufferSlot slot,
@@ -558,8 +562,6 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
          runtime->closure_instruction_buffer);
     bind(SurfaceValueRuntimeBufferSlot::closure_operand,
          runtime->closure_operand_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::closure_mix_term,
-         runtime->closure_mix_term_buffer);
     return runtime;
 }
 
@@ -584,8 +586,6 @@ void upload_surface_value_runtime(Stream &stream,
                   luisa::span{runtime.closure_instructions})
            << runtime.closure_operand_buffer.copy_from(
                   luisa::span{runtime.closure_operands})
-           << runtime.closure_mix_term_buffer.copy_from(
-                  luisa::span{runtime.closure_mix_terms})
            << runtime.device_view.update();
 }
 

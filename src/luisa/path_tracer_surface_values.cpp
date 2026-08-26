@@ -78,34 +78,6 @@ namespace {
     return result;
 }
 
-[[nodiscard]] Float closure_mix_weight(
-    const SurfaceValueRuntime &runtime,
-    const ShaderServices &services,
-    const SurfacePoint &point,
-    const SurfaceValueLocalsView &locals,
-    Var<luisa::uint4> instruction) noexcept {
-    Float weight = 1.0f;
-    UInt term_index = instruction.z;
-    const auto term_end = instruction.z + instruction.w;
-    $while(term_index < term_end) {
-        const auto term =
-            surface_value_runtime_buffer<luisa::uint2>(
-                runtime,
-                SurfaceValueRuntimeBufferSlot::closure_mix_term)
-                .read(term_index);
-        const auto factor = clamp(
-            read_scalar_dynamic(
-                services, point, locals, term.x),
-            0.0f,
-            1.0f);
-        const auto complement =
-            (term.y & compiler::surface_closure_mix_complement) != 0u;
-        weight *= select(factor, 1.0f - factor, complement);
-        term_index += 1u;
-    };
-    return weight;
-}
-
 [[nodiscard]] TracedClosure decode_surface_closure(
     std::uint32_t static_variant,
     compiler::PrincipledClosureFeatureMask scene_features,
@@ -484,7 +456,90 @@ namespace {
     std::abort();
 }
 
-template<typename Visitor>
+template<bool FilterLeafPrefix, typename Visitor>
+void traverse_surface_closure_program(
+    const SurfaceValueRuntime &runtime,
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceValueLocalsView &locals,
+    UInt instruction_begin,
+    UInt instruction_end,
+    UInt leaf_begin,
+    Visitor &&visit_leaf) noexcept {
+    // Slot zero is a harmless dummy for Mix-free scenes. For every nonempty
+    // control stack the host verifier proves write-before-read, proper nesting,
+    // and exact laminar-interval coloring. A frame remains immutable from its
+    // Mix-begin to Mix-end: x is the region's entry weight and y is its right
+    // branch weight. Hence every closed region restores its entry weight.
+    luisa::compute::Local<luisa::float2> mix_frames{
+        std::max(runtime.maximum_closure_mix_slots, 1u)};
+    Float current_weight = 1.0f;
+    UInt instruction_index = instruction_begin;
+    $while(instruction_index < instruction_end) {
+        Var<luisa::uint4> instruction =
+            surface_value_runtime_buffer<luisa::uint4>(
+                runtime,
+                SurfaceValueRuntimeBufferSlot::closure_instruction)
+                .read(instruction_index);
+        const auto kind =
+            (instruction.x &
+             compiler::surface_closure_instruction_kind_mask) >>
+            compiler::surface_closure_instruction_kind_shift;
+        UInt next_instruction = instruction_index + 1u;
+        $if(kind == static_cast<std::uint32_t>(
+                        compiler::SurfaceClosureInstructionKind::mix_begin)) {
+            const auto factor = clamp(
+                read_scalar_dynamic(
+                    services, point, locals, instruction.y),
+                0.0f,
+                1.0f);
+            const auto parent_weight = current_weight;
+            mix_frames.write(
+                instruction.z,
+                make_float2(parent_weight, parent_weight * factor));
+            current_weight = parent_weight * (1.0f - factor);
+            $if(current_weight <= 0.0f) {
+                next_instruction = instruction_index + instruction.w;
+            };
+        }
+        $else {
+            $if(kind == static_cast<std::uint32_t>(
+                            compiler::SurfaceClosureInstructionKind::mix_right)) {
+                current_weight = mix_frames.read(instruction.y).y;
+                $if(current_weight <= 0.0f) {
+                    next_instruction = instruction_index + instruction.z;
+                };
+            }
+            $else {
+                $if(kind == static_cast<std::uint32_t>(
+                                compiler::SurfaceClosureInstructionKind::mix_end)) {
+                    current_weight = mix_frames.read(instruction.y).x;
+                }
+                $else {
+                    $if(kind == static_cast<std::uint32_t>(
+                                    compiler::SurfaceClosureInstructionKind::leaf)) {
+                        if constexpr (FilterLeafPrefix) {
+                            $if(instruction_index >= leaf_begin) {
+                                visit_leaf(
+                                    instruction, current_weight, instruction_index);
+                            };
+                        } else {
+                            visit_leaf(
+                                instruction, current_weight, instruction_index);
+                        }
+                    }
+                    $else {
+                        luisa::compute::dsl::unreachable(
+                            "invalid compact surface closure instruction kind");
+                    };
+                };
+            };
+        };
+        instruction_index = next_instruction;
+    };
+}
+
+template<bool FilterLeafPrefix = false, typename Visitor>
 void emit_surface_closure_program(
     const SurfaceValueRuntime &runtime,
     const SurfaceClosureProgramDomainView &domain,
@@ -493,14 +548,19 @@ void emit_surface_closure_program(
     const SurfaceValueLocalsView &locals,
     UInt instruction_begin,
     UInt instruction_end,
+    UInt leaf_begin,
     Visitor &&visit) noexcept {
-    UInt instruction_index = instruction_begin;
-    $while(instruction_index < instruction_end) {
-        Var<luisa::uint4> instruction =
-            surface_value_runtime_buffer<luisa::uint4>(
-                runtime,
-                SurfaceValueRuntimeBufferSlot::closure_instruction)
-                .read(instruction_index);
+    traverse_surface_closure_program<FilterLeafPrefix>(
+        runtime,
+        services,
+        point,
+        locals,
+        instruction_begin,
+        instruction_end,
+        leaf_begin,
+        [&](Var<luisa::uint4> instruction,
+            Float mix_weight,
+            UInt instruction_index) noexcept {
         const auto static_variant =
             instruction.x &
             compiler::surface_closure_static_variant_mask;
@@ -508,12 +568,6 @@ void emit_surface_closure_program(
             (instruction.x &
              compiler::surface_closure_endpoint_mask) >>
             compiler::surface_closure_endpoint_shift;
-        const auto mix_weight = closure_mix_weight(
-            runtime,
-            services,
-            point,
-            locals,
-            instruction);
         luisa::compute::detail::SwitchStmtBuilder{static_variant} % [&] {
             for (const auto variant :
                  domain.static_variants) {
@@ -536,8 +590,7 @@ void emit_surface_closure_program(
                     "invalid compact surface closure variant");
             };
         };
-        instruction_index += 1u;
-    };
+        });
 }
 
 void accumulate_surface_emission(
@@ -617,6 +670,7 @@ template<typename PhysicalClosureSink>
         locals,
         closure_begin,
         closure_end,
+        closure_begin,
         [&](const TracedClosure &raw,
             UInt endpoints,
             UInt instruction_index) noexcept {
@@ -677,14 +731,15 @@ template<typename PhysicalClosureSink>
     // identical to the expanded route.
     Bool reached_first_transparent = false;
     $if(transparent_pending) {
-        emit_surface_closure_program(
+        emit_surface_closure_program<true>(
             runtime,
             domain_view,
             services,
             point,
             locals,
-            replay_begin,
+            closure_begin,
             closure_end,
+            replay_begin,
             [&](const TracedClosure &raw,
                 UInt endpoints,
                 UInt) noexcept {
@@ -817,16 +872,19 @@ template<typename PhysicalClosureSink>
   const auto closure_begin = range.z;
   const auto closure_end = range.z + range.w;
   Float3 emission = make_float3(0.0f);
-  UInt instruction_index = closure_begin;
-  $while(instruction_index < closure_end) {
-    Var<luisa::uint4> instruction =
-        surface_value_runtime_buffer<luisa::uint4>(
-            runtime, SurfaceValueRuntimeBufferSlot::closure_instruction)
-            .read(instruction_index);
+  traverse_surface_closure_program<false>(
+      runtime,
+      services,
+      point,
+      locals,
+      closure_begin,
+      closure_end,
+      closure_begin,
+      [&](Var<luisa::uint4> instruction,
+          Float mix_weight,
+          UInt) noexcept {
     const auto static_variant =
         instruction.x & compiler::surface_closure_emission_static_variant_mask;
-    const auto mix_weight =
-        closure_mix_weight(runtime, services, point, locals, instruction);
     luisa::compute::detail::SwitchStmtBuilder{static_variant} % [&] {
       for (const auto variant : runtime.emission_closure_static_variants) {
         luisa::compute::detail::SwitchCaseStmtBuilder{variant} % [&, variant] {
@@ -840,8 +898,7 @@ template<typename PhysicalClosureSink>
             "invalid compact emission closure variant");
       };
     };
-    instruction_index += 1u;
-  };
+      });
   return emission;
 }
 
