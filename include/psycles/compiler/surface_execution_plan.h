@@ -1188,25 +1188,6 @@ struct SurfaceValueExecutableScene {
   std::vector<std::uint32_t> instruction_variants;
 };
 
-// Exact finite-strata execution plan for authored Bump. Root programs may
-// contain Bump instructions. Each such instruction names a topologically
-// closed height subprogram evaluated at the X/Y offset points. Nested Bump
-// dependencies share height subprograms, and `maximum_bump_depth` records the
-// number of non-recursive device-callable strata required by the scene.
-struct SurfaceValueBumpExecutableScene {
-  bool valid{};
-  std::string diagnostic;
-  SurfaceValueExecutableScene executable;
-  std::uint32_t root_program_count{};
-  std::uint32_t maximum_bump_depth{};
-  // Parallel to executable.values.instructions. Non-Bump instructions retain
-  // SurfaceValueAddress::invalid_value.
-  std::vector<std::uint32_t> bump_height_programs;
-  // Parallel to executable.values.programs. Root entries are invalid; each
-  // height subprogram names the typed address returned at stream completion.
-  std::vector<std::uint32_t> program_outputs;
-};
-
 // `active` must be transitively closed over ValueInstruction operands.
 // `outputs` names values consumed after the stream (normally closure roots),
 // and must be a subset of `active`.
@@ -1253,9 +1234,5 @@ plan_surface_value_storage(const SurfaceProgram &program,
 [[nodiscard]] SurfaceValueExecutableScene
 build_surface_value_executable_scene(
     std::span<const SurfaceValueExecutionInput> inputs);
-
-[[nodiscard]] SurfaceValueBumpExecutableScene
-build_surface_value_bump_executable_scene(
-    std::span<const SurfaceValueExecutionInput> root_inputs);
 
 } // namespace psycles::compiler

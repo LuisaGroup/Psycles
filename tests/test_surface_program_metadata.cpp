@@ -1950,116 +1950,6 @@ void test_surface_value_storage_plan() {
           "Color Ramp record data changed the evaluator body or lost its "
           "late-bound shader-table address");
 
-    std::vector<ParameterDesc> bump_parameters;
-    for (auto index = 0u; index < 4u; ++index) {
-        bump_parameters.emplace_back(make_parameter(index));
-    }
-    bump_parameters.emplace_back(ParameterDesc{
-        .id = ParameterId{4u},
-        .node = NodeId{5u},
-        .socket = "Normal",
-        .type = SocketType::normal,
-        .default_value = SocketValue::normal({0.0f, 0.0f, 1.0f}),
-        .source = ParameterSource::input});
-    std::vector<ValueInstruction> bump_values;
-    for (auto index = 0u; index < 4u; ++index) {
-        bump_values.emplace_back(make_parameter_value(index));
-    }
-    bump_values.emplace_back(ValueInstruction{
-        .operation = ValueOperation::parameter,
-        .source_node = NodeId{5u},
-        .result_type = SocketType::normal,
-        .parameter = ParameterId{4u}});
-    const auto make_bump_instruction =
-        [](ValueExpressionId height) {
-            return ValueInstruction{
-                .operation = ValueOperation::bump,
-                .result_type = SocketType::normal,
-                .operands = make_value_operands<value_operand::bump>({
-                    {value_operand::bump::height, height},
-                    {value_operand::bump::strength,
-                     ValueExpressionId{1u}},
-                    {value_operand::bump::distance,
-                     ValueExpressionId{2u}},
-                    {value_operand::bump::filter_width,
-                     ValueExpressionId{3u}},
-                    {value_operand::bump::normal,
-                     ValueExpressionId{4u}}}),
-                .static_u0 = 2u};
-        };
-    bump_values.emplace_back(make_bump_instruction(ValueExpressionId{0u}));
-    const SurfaceProgram bump_program{
-        20u, bump_parameters, bump_values, {}, {}};
-    const auto bump_plan = plan_surface_value_storage(
-        bump_program, std::vector<bool>(6u, true),
-        std::vector<bool>{false, false, false, false, false, true});
-    const auto bump_scene = build_surface_value_bump_executable_scene(
-        std::vector{SurfaceValueExecutionInput{.program = &bump_program,
-                                               .storage = &bump_plan}});
-    require(
-        bump_scene.valid && bump_scene.root_program_count == 1u &&
-            bump_scene.maximum_bump_depth == 1u &&
-            bump_scene.executable.values.programs.size() == 2u &&
-            bump_scene.executable.values.instructions.size() == 1u &&
-            bump_scene.bump_height_programs == std::vector<std::uint32_t>{1u} &&
-            SurfaceValueAddress{bump_scene.program_outputs[1u]}.parameter() &&
-            SurfaceValueAddress{bump_scene.program_outputs[1u]}.index() == 0u,
-        "Bump height did not lower to an exact typed subprogram");
-
-    const auto bump_transaction_scene =
-        build_surface_value_bump_executable_scene(
-            std::vector{SurfaceValueExecutionInput{
-                .program = &bump_program,
-                .storage = &bump_plan,
-                .surface_normal_storage = &bump_plan,
-                .surface_normal_output = ValueExpressionId{5u}}});
-    require(
-        bump_transaction_scene.valid &&
-            bump_transaction_scene.maximum_bump_depth == 1u &&
-            bump_transaction_scene.executable.values.programs.size() == 2u &&
-            bump_transaction_scene.executable.values.instructions.size() ==
-                3u &&
-            is_surface_value_surface_normal_transition(
-                bump_transaction_scene.executable.values.instructions[1u]) &&
-            bump_transaction_scene.bump_height_programs ==
-                std::vector<std::uint32_t>{
-                    1u, SurfaceValueAddress::invalid_value, 1u},
-        "surface-normal transaction insertion shifted or lost a Bump "
-        "height-program edge");
-
-    auto nested_values = bump_values;
-    nested_values.emplace_back(ValueInstruction{
-        .operation = ValueOperation::vector_to_scalar,
-        .result_type = SocketType::floating,
-        .operands = make_value_operands<value_operand::unary>(
-            {{value_operand::unary::input, ValueExpressionId{5u}}})});
-    nested_values.emplace_back(make_bump_instruction(ValueExpressionId{6u}));
-    const SurfaceProgram nested_bump_program{
-        21u, bump_parameters, std::move(nested_values), {}, {}};
-    const auto nested_bump_plan = plan_surface_value_storage(
-        nested_bump_program, std::vector<bool>(8u, true),
-        std::vector<bool>{false, false, false, false, false, false, false,
-                          true});
-    const auto nested_bump_scene = build_surface_value_bump_executable_scene(
-        std::vector{SurfaceValueExecutionInput{.program = &nested_bump_program,
-                                               .storage = &nested_bump_plan}});
-    const auto invalid_address = SurfaceValueAddress::invalid_value;
-    require(
-        nested_bump_scene.valid && nested_bump_scene.maximum_bump_depth == 2u &&
-            nested_bump_scene.executable.values.programs.size() == 3u &&
-            nested_bump_scene.executable.values.instructions.size() == 5u &&
-            nested_bump_scene.bump_height_programs ==
-                std::vector<std::uint32_t>{1u, invalid_address, 2u, 1u,
-                                           invalid_address} &&
-            SurfaceValueAddress{nested_bump_scene.program_outputs[1u]}
-                .parameter() &&
-            !SurfaceValueAddress{nested_bump_scene.program_outputs[2u]}
-                 .parameter() &&
-            SurfaceValueAddress{nested_bump_scene.program_outputs[2u]}.bank() ==
-                SurfaceValueBank::scalar,
-        "nested Bump did not lower to a shared finite-strata evaluator "
-        "DAG");
-
     // The compact path refines Bump into one pure topological graph. This is
     // deliberately a structural test, not a host renderer: Cycles remains the
     // only numerical oracle, while the compiler invariants are checked here
@@ -2175,6 +2065,29 @@ void test_surface_value_storage_plan() {
     require(refined_plan.valid,
             "expanded Bump graph could not be colored as one typed stream: " +
                 refined_plan.diagnostic);
+    const auto refined_scene = build_surface_value_executable_scene(
+        std::vector{SurfaceValueExecutionInput{
+            .program = expanded.program.get(), .storage = &refined_plan}});
+    const auto refined_bump_samples = std::count_if(
+        refined_scene.values.instructions.begin(),
+        refined_scene.values.instructions.end(), [](const auto &instruction) {
+            return surface_value_operation(instruction) ==
+                   ValueOperation::bump_samples;
+        });
+    const auto refined_recursive_bumps = std::count_if(
+        refined_scene.values.instructions.begin(),
+        refined_scene.values.instructions.end(), [](const auto &instruction) {
+            return surface_value_operation(instruction) ==
+                   ValueOperation::bump;
+        });
+    require(refined_scene.valid && refined_scene.values.programs.size() == 1u &&
+                refined_scene.values.instructions.size() ==
+                    refined_plan.instructions.size() &&
+                refined_scene.instruction_variants.size() ==
+                    refined_scene.values.instructions.size() &&
+                refined_bump_samples == 1u && refined_recursive_bumps == 0u,
+            "expanded Bump graph did not lower directly to one executable "
+            "stream");
 
     // Nest a position-dependent Bump inside another height expression. The
     // formal context law C+(w,0)/(0,w) requires an explicit scalar add for at

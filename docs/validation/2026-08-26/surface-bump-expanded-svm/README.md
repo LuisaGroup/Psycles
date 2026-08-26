@@ -144,10 +144,28 @@ component:
 - the preparation, emission, and BSSRDF height-variant domains are removed;
 - the height-program and program-output host arrays, GPU buffers, uploads, and
   two private bindless slots are removed;
+- the compiler no longer exposes the dead finite-strata recursive wrapper;
+  its regression now lowers an expanded Bump DAG directly and proves that one
+  input root produces one executable stream with a parallel variant image;
 - the compact regression proves the exact `2 * topology_count` program
   bijection, valid variant coverage for every ordinary instruction, the unique
   transition sentinel contract, both authored Bump configurations, and absence
   of the recursive opcode.
+
+`psycles_inspect_blender_material` now follows the same expansion-before-plan
+pipeline instead of reporting both the direct and obsolete recursive models.
+The inspector also partitions multi-output image and Vector Math producers by
+the exact equivalence relation `(valid source provenance, remapped operands,
+parameter, integer fields, bitwise float fields, static table)`. Source-node
+identity alone is insufficient: expansion may clone one authored producer in
+multiple differential contexts. A permanent
+`psycles.inspect_blender_material_producer_partition` regression proves that
+same-source color/alpha and vector/value pairs merge within a context but stay
+distinct across contexts. On Barbershop the aligned inspector reports 189
+topologies, 13,335 authored values, 16,389 expanded values, 104 Bump nodes, 364
+sampled instructions, and a single 189-program preparation image containing
+6,272 instructions and 60 evaluator variants; no hidden height program is
+constructed.
 
 Fallback, HIP, and strict native Vulkan tests passed after this quotient. The
 strict Vulkan run again disabled DXC and emitted five optimized native SPIR-V
