@@ -756,26 +756,28 @@ int main(int argc, char **argv) {
                         closure.valid)));
         };
 
+    constexpr auto transparent_order_case_count = 2u;
+    constexpr auto transparent_order_record_count =
+        2u * transparent_order_case_count;
     Kernel1D trace_transparent_order =
         [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
             ParameterShaderServices services{parameters};
             const auto point = make_surface_point();
-            const auto first = transparent_order_surfaces.closure_trace(
-                UInt{transparent_order_surface_tag}, services, point, 0u);
-            const auto second = transparent_order_surfaces.closure_trace(
-                UInt{transparent_order_surface_tag}, services, point, 1u);
-            output.write(0u,
-                make_float4(cast<float>(first.count),
-                    cast<float>(first.type),
-                    first.sample_weight,
-                    select(0.0f, 1.0f, first.valid)));
-            output.write(1u,
-                make_float4(cast<float>(second.count),
-                    cast<float>(second.type),
-                    second.sample_weight,
-                    select(0.0f, 1.0f, second.valid)));
-            output.write(2u, make_float4(first.weight, 0.0f));
-            output.write(3u, make_float4(second.weight, 0.0f));
+            const auto requested_index = dispatch_x();
+            const auto closure =
+                transparent_order_surfaces.closure_trace(
+                    UInt{transparent_order_surface_tag},
+                    services,
+                    point,
+                    requested_index);
+            output.write(requested_index,
+                make_float4(cast<float>(closure.count),
+                    cast<float>(closure.type),
+                    closure.sample_weight,
+                    select(0.0f, 1.0f, closure.valid)));
+            output.write(
+                requested_index + transparent_order_case_count,
+                make_float4(closure.weight, 0.0f));
         };
 
     Kernel1D trace_subsurface =
@@ -1020,7 +1022,7 @@ int main(int argc, char **argv) {
             37000u);
         bounded &= require_bounded_xir("cycles_closure_transparent_order",
             trace_transparent_order,
-            11000u);
+            7300u);
         bounded &= require_bounded_xir(
             "cycles_closure_subsurface", trace_subsurface, 455000u);
         bounded &= require_bounded_xir("cycles_closure_emission",
@@ -1061,7 +1063,8 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(
             transparent_order_parameters.size());
     auto transparent_order_output =
-        device.create_buffer<luisa::float4>(4u);
+        device.create_buffer<luisa::float4>(
+            transparent_order_record_count);
     const auto subsurface_parameters =
         parameter_data(*subsurface_program.program);
     auto subsurface_parameter_buffer =
@@ -1124,7 +1127,8 @@ int main(int argc, char **argv) {
         "evaluate_translucent_light", evaluate_translucent_light);
     std::array<luisa::float4, 11u> actual{};
     std::array<luisa::float4, 8u> physical_actual{};
-    std::array<luisa::float4, 4u> transparent_order_actual{};
+    std::array<luisa::float4, transparent_order_record_count>
+        transparent_order_actual{};
     std::array<luisa::float4, 9u> subsurface_actual{};
     std::array<luisa::float4, 2u>
         principled_emission_actual{};
@@ -1161,7 +1165,7 @@ int main(int argc, char **argv) {
            << transparent_order_kernel(
                   transparent_order_parameter_buffer,
                   transparent_order_output)
-                  .dispatch(1u)
+                  .dispatch(transparent_order_case_count)
            << transparent_order_output.copy_to(
                   luisa::span{transparent_order_actual})
            << subsurface_kernel(
