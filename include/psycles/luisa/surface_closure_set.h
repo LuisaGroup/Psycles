@@ -47,7 +47,6 @@ class SurfaceClosureSet final : public SurfaceClosureCollector {
     luisa::compute::Local<luisa::float4x4> _complete_3;
     luisa::compute::Local<luisa::float4x4> _physical_0;
     luisa::compute::Local<luisa::float4x4> _physical_1;
-    luisa::compute::Local<luisa::float4x4> _physical_2;
     luisa::compute::Local<luisa::uint4> _identity;
     luisa::compute::Local<luisa::float4> _weight;
     luisa::compute::Local<luisa::float4> _albedo;

@@ -32,7 +32,7 @@ using SurfaceClosureConditionalSampleCallable =
         Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
         BindlessArray, SurfaceClosurePointCall, SurfaceClosureSamplingQueryCall,
         luisa::float3, luisa::float3, luisa::float2, float, luisa::float4x4,
-        luisa::float4x4, luisa::float4x4)>;
+        luisa::float4x4)>;
 
 struct SurfaceClosureSamplingCallables {
     SurfaceClosureSelectionCallable selection;

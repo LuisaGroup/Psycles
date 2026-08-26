@@ -56,7 +56,6 @@ using SurfaceClosureEvaluationCallable =
         luisa::float3,
         bool,
         luisa::float4x4,
-        luisa::float4x4,
         luisa::float4x4)>;
 
 [[nodiscard]] SurfaceClosureEvaluationCallable

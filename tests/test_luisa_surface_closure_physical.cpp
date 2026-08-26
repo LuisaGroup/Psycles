@@ -4,7 +4,6 @@
 
 #include <array>
 #include <bit>
-#include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <iostream>
@@ -37,39 +36,72 @@ concept HasSpecularIorLevel = requires(T value) {
     value.specular_ior_level;
 };
 
-static_assert(surface_closure_physical_block_count == 3u);
+static_assert(surface_closure_physical_block_count == 2u);
 static_assert(!HasAlbedo<SurfaceClosurePhysicalRecord>);
 static_assert(!HasReflectionAlbedo<SurfaceClosurePhysicalRecord>);
 static_assert(!HasTransmissionAlbedo<SurfaceClosurePhysicalRecord>);
 static_assert(!HasSpecularIorLevel<SurfaceClosurePhysicalRecord>);
 
-constexpr std::uint32_t case_count = 8u;
-constexpr std::uint32_t rows_per_case =
-    static_cast<std::uint32_t>(
-        surface_closure_physical_block_count * 4u);
+constexpr std::array closure_kinds{
+    SurfaceClosureKind::diffuse,
+    SurfaceClosureKind::translucent,
+    SurfaceClosureKind::principled,
+    SurfaceClosureKind::glossy,
+    SurfaceClosureKind::glass,
+    SurfaceClosureKind::refraction,
+    SurfaceClosureKind::bssrdf,
+    SurfaceClosureKind::rough_translucent,
+    SurfaceClosureKind::thin_glass_transmission,
+    SurfaceClosureKind::transparent};
+constexpr auto case_count =
+    static_cast<std::uint32_t>(closure_kinds.size());
+constexpr std::uint32_t logical_row_count = 12u;
+constexpr std::uint32_t rows_per_case = logical_row_count + 1u;
 
 using PhysicalRoundTripCallable = Callable<luisa::float4x4(
     luisa::float4x4,
     luisa::float4x4,
-    luisa::float4x4,
     std::uint32_t)>;
+
+[[nodiscard]] constexpr bool uses_glass_payload(
+    SurfaceClosureKind kind) noexcept {
+    return kind == SurfaceClosureKind::glass ||
+           kind == SurfaceClosureKind::refraction;
+}
+
+[[nodiscard]] constexpr bool uses_bssrdf_payload(
+    SurfaceClosureKind kind) noexcept {
+    return kind == SurfaceClosureKind::bssrdf;
+}
+
+[[nodiscard]] luisa::float4 identity_row(
+    std::uint32_t case_index) noexcept {
+    const auto flags =
+        ((case_index & 1u) != 0u ? 1u : 0u) |
+        ((case_index & 2u) != 0u ? 2u : 0u) |
+        ((case_index & 4u) != 0u ? 4u : 0u);
+    const auto kind = static_cast<std::uint32_t>(
+        closure_kinds[case_index]);
+    const auto lobe = case_index == 2u
+                          ? static_cast<std::uint32_t>(
+                                SurfaceClosureLobe::sheen)
+                          : static_cast<std::uint32_t>(
+                                SurfaceClosureLobe::none);
+    return std::bit_cast<luisa::float4>(
+        luisa::uint4{kind, lobe, flags, 17u + case_index});
+}
 
 [[nodiscard]] luisa::float4 expected_row(
     std::uint32_t case_index,
     std::uint32_t row) noexcept {
+    const auto kind = closure_kinds[case_index];
+    const auto glass = uses_glass_payload(kind);
+    const auto bssrdf = uses_bssrdf_payload(kind);
+    const auto general = !glass && !bssrdf;
     const auto offset = 10.0f * static_cast<float>(case_index);
     switch (row) {
-        case 0u: {
-            const auto flags =
-                ((case_index & 1u) != 0u ? 1u : 0u) |
-                ((case_index & 2u) != 0u ? 2u : 0u) |
-                ((case_index & 4u) != 0u ? 4u : 0u);
-            return {
-                std::bit_cast<float>(11u + case_index),
-                std::bit_cast<float>(13u + case_index),
-                std::bit_cast<float>(flags),
-                std::bit_cast<float>(17u + case_index)};
-        }
+        case 0u:
+            return identity_row(case_index);
         case 1u:
             return {1.1f + offset,
                     1.2f + offset,
@@ -86,45 +118,80 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
                     3.3f + offset,
                     3.4f + offset};
         case 4u:
-            return {4.1f + offset,
-                    4.2f + offset,
-                    4.3f + offset,
-                    4.4f + offset};
+            return general
+                       ? luisa::float4{4.1f + offset,
+                                      4.2f + offset,
+                                      4.3f + offset,
+                                      4.4f + offset}
+                       : luisa::float4{0.0f};
         case 5u:
-            return {5.1f + offset,
-                    5.2f + offset,
-                    5.3f + offset,
-                    5.4f + offset};
+            return general
+                       ? luisa::float4{5.1f + offset,
+                                      5.2f + offset,
+                                      5.3f + offset,
+                                      5.4f + offset}
+                       : glass
+                             ? luisa::float4{5.1f + offset,
+                                            5.2f + offset,
+                                            5.3f + offset,
+                                            0.0f}
+                             : luisa::float4{1.0f, 1.0f, 1.0f, 0.0f};
         case 6u:
-            return {6.1f + offset,
-                    6.2f + offset,
-                    6.3f + offset,
-                    6.4f + offset};
+            return glass
+                       ? luisa::float4{6.1f + offset,
+                                      6.2f + offset,
+                                      6.3f + offset,
+                                      6.4f + offset}
+                       : luisa::float4{0.0f,
+                                      0.0f,
+                                      0.0f,
+                                      6.4f + offset};
         case 7u:
-            return {7.1f + offset,
-                    7.2f + offset,
-                    7.3f + offset,
-                    7.4f + offset};
+            return glass
+                       ? luisa::float4{7.1f + offset,
+                                      7.2f + offset,
+                                      7.3f + offset,
+                                      0.0f}
+                       : luisa::float4{0.0f,
+                                      0.0f,
+                                      0.0f,
+                                      general ? 7.4f + offset : 0.0f};
         case 8u:
-            return {8.1f + offset,
-                    8.2f + offset,
-                    8.3f + offset,
-                    8.4f + offset};
+            return glass
+                       ? luisa::float4{8.1f + offset,
+                                      8.2f + offset,
+                                      8.3f + offset,
+                                      0.0f}
+                       : luisa::float4{0.0f,
+                                      0.0f,
+                                      0.0f,
+                                      general ? 8.4f + offset : 0.0f};
         case 9u:
-            return {9.1f + offset,
-                    9.2f + offset,
-                    9.3f + offset,
-                    9.4f + offset};
+            return glass
+                       ? luisa::float4{9.1f + offset,
+                                      9.2f + offset,
+                                      9.3f + offset,
+                                      1.4f}
+                       : luisa::float4{0.0f,
+                                      0.0f,
+                                      0.0f,
+                                      bssrdf ? 9.4f + offset : 1.4f};
         case 10u:
-            return {10.1f + offset,
-                    10.2f + offset,
-                    10.3f + offset,
-                    10.4f + offset};
+            return bssrdf
+                       ? luisa::float4{10.1f + offset,
+                                      10.2f + offset,
+                                      10.3f + offset,
+                                      10.4f + offset}
+                       : luisa::float4{0.0f};
+        case 11u:
+            return bssrdf
+                       ? luisa::float4{11.1f + offset,
+                                      11.2f + offset,
+                                      11.3f + offset,
+                                      11.4f + offset}
+                       : luisa::float4{0.0f, 0.0f, 0.0f, 1.0f};
         default:
-            return {11.1f + offset,
-                    11.2f + offset,
-                    11.3f + offset,
-                    11.4f + offset};
+            return luisa::float4{1.0f};
     }
 }
 
@@ -135,10 +202,7 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
         std::bit_cast<luisa::uint4>(observed);
     const auto expected_bits =
         std::bit_cast<luisa::uint4>(expected);
-    return observed_bits.x == expected_bits.x &&
-           observed_bits.y == expected_bits.y &&
-           observed_bits.z == expected_bits.z &&
-           observed_bits.w == expected_bits.w;
+    return all(observed_bits == expected_bits);
 }
 
 }// namespace
@@ -150,19 +214,14 @@ int main(int argc, char **argv) {
     PhysicalRoundTripCallable round_trip = [](
         Float4x4 block_0,
         Float4x4 block_1,
-        Float4x4 block_2,
         UInt requested_block) noexcept {
         const auto closure = unpack_surface_closure_physical(
             Expr<luisa::float4x4>{block_0.expression()},
-            Expr<luisa::float4x4>{block_1.expression()},
-            Expr<luisa::float4x4>{block_2.expression()});
+            Expr<luisa::float4x4>{block_1.expression()});
         const auto packed = pack_surface_closure_physical(closure);
         Float4x4 result{packed.block_0};
         $if (requested_block == 1u) {
             result = packed.block_1;
-        };
-        $if (requested_block == 2u) {
-            result = packed.block_2;
         };
         return result;
     };
@@ -172,8 +231,18 @@ int main(int argc, char **argv) {
         const auto case_index = dispatch_x();
         const auto offset = 10.0f * cast<float>(case_index);
         auto closure = SurfaceClosureRecord::zero();
-        closure.kind = 11u + case_index;
-        closure.lobe = 13u + case_index;
+        closure.kind = static_cast<std::uint32_t>(
+            SurfaceClosureKind::diffuse);
+        for (auto i = 1u; i < case_count; ++i) {
+            closure.kind = select(
+                closure.kind,
+                static_cast<std::uint32_t>(closure_kinds[i]),
+                case_index == i);
+        }
+        closure.lobe = select(
+            static_cast<std::uint32_t>(SurfaceClosureLobe::none),
+            static_cast<std::uint32_t>(SurfaceClosureLobe::sheen),
+            case_index == 2u);
         closure.weight = make_float3(
             1.1f + offset, 1.2f + offset, 1.3f + offset);
         closure.allocation_weight = 1.4f + offset;
@@ -212,29 +281,73 @@ int main(int argc, char **argv) {
         closure.beckmann = (case_index & 4u) != 0u;
         closure.bssrdf_method = 17u + case_index;
 
-        // These deliberately distinct sentinels live on the setup/AOV side of
-        // the dependency cut and therefore have no lane in the callable ABI.
+        // Setup/AOV-only fields deliberately remain distinct poison values.
         closure.albedo = make_float3(101.0f + offset);
         closure.reflection_albedo = make_float3(211.0f + offset);
         closure.transmission_albedo = make_float3(307.0f + offset);
         closure.specular_ior_level = 401.0f + offset;
 
         const auto packed = pack_surface_closure_physical(closure);
-        for (auto block = 0u;
-             block < surface_closure_physical_block_count;
-             ++block) {
-            const auto matrix = round_trip(
-                packed.block_0,
-                packed.block_1,
-                packed.block_2,
-                static_cast<std::uint32_t>(block));
-            for (auto row = 0u; row < 4u; ++row) {
-                output->write(
-                    case_index * rows_per_case +
-                        static_cast<std::uint32_t>(block * 4u + row),
-                    matrix[row]);
-            }
+        const auto round_trip_0 = round_trip(
+            packed.block_0, packed.block_1, 0u);
+        const auto round_trip_1 = round_trip(
+            packed.block_0, packed.block_1, 1u);
+        const auto canonical = unpack_surface_closure_physical(
+            Expr<luisa::float4x4>{round_trip_0.expression()},
+            Expr<luisa::float4x4>{round_trip_1.expression()});
+
+        UInt flags = 0u;
+        flags |= select(0u, 1u, canonical.setup_valid);
+        flags |= select(0u, 2u, canonical.preserve_ggx_energy);
+        flags |= select(0u, 4u, canonical.beckmann);
+        std::array logical_rows{
+            make_uint4(
+                canonical.kind,
+                canonical.lobe,
+                flags,
+                canonical.bssrdf_method)
+                .bitcast<luisa::float4>(),
+            make_float4(canonical.weight, canonical.allocation_weight),
+            make_float4(canonical.color, canonical.sample_weight),
+            make_float4(canonical.normal, canonical.roughness),
+            make_float4(
+                canonical.specular_tint,
+                canonical.diffuse_roughness),
+            make_float4(canonical.evaluation_scale, canonical.metallic),
+            make_float4(canonical.fresnel_f0, canonical.ior),
+            make_float4(canonical.fresnel_f90, canonical.sheen_transform_a),
+            make_float4(
+                canonical.reflection_tint,
+                canonical.sheen_transform_b),
+            make_float4(canonical.transmission_tint, canonical.bssrdf_ior),
+            make_float4(
+                canonical.bssrdf_radius,
+                canonical.bssrdf_anisotropy),
+            make_float4(
+                canonical.bssrdf_albedo,
+                canonical.bssrdf_roughness)};
+        for (auto row = 0u; row < logical_row_count; ++row) {
+            output->write(
+                case_index * rows_per_case + row,
+                logical_rows[row]);
         }
+
+        // Formal round-trip property on the encoded quotient: irrelevant
+        // fields may canonicalize, but the physical representation must be
+        // idempotent bit-for-bit after one pack/unpack step.
+        const auto repacked = pack_surface_closure_physical(canonical);
+        Bool stable = true;
+        for (auto row = 0u; row < 4u; ++row) {
+            stable &= all(
+                packed.block_0[row].bitcast<luisa::uint4>() ==
+                repacked.block_0[row].bitcast<luisa::uint4>());
+            stable &= all(
+                packed.block_1[row].bitcast<luisa::uint4>() ==
+                repacked.block_1[row].bitcast<luisa::uint4>());
+        }
+        output->write(
+            case_index * rows_per_case + logical_row_count,
+            make_float4(select(0.0f, 1.0f, stable)));
     };
 
     if (test.function()->function().custom_callables().size() != 1u) {
