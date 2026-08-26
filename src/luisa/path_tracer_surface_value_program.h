@@ -93,9 +93,14 @@ template<typename T>
         surface_value_runtime_buffer_slot(slot), false, true);
 }
 
-using SurfaceValueProgramCallable = Callable<SurfacePointCall(
+// A value program observes the immutable surface point and produces only the
+// transaction's shading-normal projection. Passing the point by reference is
+// the device analogue of Cycles' ShaderData pointer: it preserves field-wise
+// demand loads instead of forcing every SurfacePointCall member through the
+// callable ABI. No other SurfacePoint field is an output of this program.
+using SurfaceValueProgramCallable = Callable<luisa::float3(
     Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
-    BindlessArray, luisa::uint, SurfacePointCall, SurfaceValueScalarBank &,
+    BindlessArray, luisa::uint, SurfacePointCall &, SurfaceValueScalarBank &,
     SurfaceValueVectorBank &, luisa::ulong &)>;
 
 [[nodiscard]] Float read_scalar_dynamic(

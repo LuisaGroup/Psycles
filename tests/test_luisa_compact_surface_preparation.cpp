@@ -43,15 +43,7 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 using namespace psycles::luisa_backend::detail;
-using psycles::test_support::approximately_equal;
-using psycles::test_support::has_typed_clamp_record_domain;
-using psycles::test_support::has_typed_map_range_record_domains;
-using psycles::test_support::has_color_ramp_record_product;
-using psycles::test_support::make_typed_clamp_graph;
-using psycles::test_support::make_typed_map_range_graphs;
-using psycles::test_support::make_minimal_principled_graph;
-using psycles::test_support::make_sampled_color_ramp_graph;
-using psycles::test_support::make_surface_point;
+using namespace psycles::test_support;
 
 constexpr auto scenario_count = 8u;
 constexpr auto population_closure_capacity = 12u;
@@ -1284,10 +1276,10 @@ int main(int argc, char **argv) {
         device.create_buffer<SurfacePreparationCall>(invocation_count);
     auto compact_buffer =
         device.create_buffer<SurfacePreparationCall>(invocation_count);
-  auto expanded_emission_buffer =
-      device.create_buffer<luisa::float3>(invocation_count);
-  auto compact_emission_buffer =
-      device.create_buffer<luisa::float3>(invocation_count);
+    auto expanded_emission_buffer =
+        device.create_buffer<luisa::float3>(invocation_count);
+    auto compact_emission_buffer =
+        device.create_buffer<luisa::float3>(invocation_count);
 
     const auto closure_setup =
         make_surface_closure_setup_callables();
@@ -1299,10 +1291,17 @@ int main(int argc, char **argv) {
         make_texture_2d_sampling_callables();
     const auto attribute_lookup =
         make_surface_attribute_lookup_callable(0u, 1u);
+    if (const auto diagnostic =
+            validate_compact_surface_value_program_abi(scene);
+        !diagnostic.empty()) {
+        std::cerr << diagnostic << " on " << backend << '\n';
+        return EXIT_FAILURE;
+    }
     Kernel1D collector_begin_lifecycle =
         [closure_identity,
          closure_aov](BufferFloat3 output) noexcept {
-            const auto point = make_surface_point();
+            const auto point =
+                make_surface_value_transaction_test_point();
             const auto final_normal = normalize(
                 make_float3(0.43f, -0.27f, 0.86f));
             const auto query = SurfacePopulationQuery{
@@ -1340,7 +1339,7 @@ int main(int argc, char **argv) {
             const auto invocation = dispatch_x();
             const auto topology = invocation / scenario_count;
             const auto scenario = invocation % scenario_count;
-            auto point = make_surface_point();
+            auto point = make_surface_value_transaction_test_point();
             point.parameter_block =
                 parameter_base_buffer.read(topology);
             point.back_facing = (scenario & 4u) != 0u;
@@ -1394,7 +1393,7 @@ int main(int argc, char **argv) {
             const auto invocation = dispatch_x();
             const auto topology = invocation / scenario_count;
             const auto scenario = invocation % scenario_count;
-            auto point = make_surface_point();
+            auto point = make_surface_value_transaction_test_point();
             point.parameter_block =
                 parameter_base_buffer.read(topology);
             point.back_facing = (scenario & 4u) != 0u;
@@ -1425,7 +1424,7 @@ int main(int argc, char **argv) {
         const auto invocation = dispatch_x();
         const auto topology = invocation / scenario_count;
         const auto scenario = invocation % scenario_count;
-        auto point = make_surface_point();
+        auto point = make_surface_value_transaction_test_point();
         point.parameter_block = parameter_base_buffer.read(topology);
         point.back_facing = (scenario & 4u) != 0u;
         point.incoming = normalize(make_float3(
@@ -1463,7 +1462,7 @@ int main(int argc, char **argv) {
         const auto invocation = dispatch_x();
         const auto topology = invocation / scenario_count;
         const auto scenario = invocation % scenario_count;
-        auto point = make_surface_point();
+        auto point = make_surface_value_transaction_test_point();
         point.parameter_block = parameter_base_buffer.read(topology);
         point.back_facing = (scenario & 4u) != 0u;
         point.incoming = normalize(make_float3(
@@ -1486,7 +1485,7 @@ int main(int argc, char **argv) {
             const auto invocation = dispatch_x();
             const auto topology = invocation / scenario_count;
             const auto scenario = invocation % scenario_count;
-            auto point = make_surface_point();
+            auto point = make_surface_value_transaction_test_point();
             point.parameter_block = parameter_base_buffer.read(topology);
             point.back_facing = (scenario & 4u) != 0u;
             point.incoming = normalize(make_float3(
@@ -1538,7 +1537,7 @@ int main(int argc, char **argv) {
             const auto invocation = dispatch_x();
             const auto topology = invocation / scenario_count;
             const auto scenario = invocation % scenario_count;
-            auto point = make_surface_point();
+            auto point = make_surface_value_transaction_test_point();
             point.parameter_block = parameter_base_buffer.read(topology);
             point.back_facing = (scenario & 4u) != 0u;
             point.incoming = normalize(make_float3(
@@ -1577,7 +1576,7 @@ int main(int argc, char **argv) {
             const auto invocation = dispatch_x();
             const auto topology = invocation / scenario_count;
             const auto scenario = invocation % scenario_count;
-            auto point = make_surface_point();
+            auto point = make_surface_value_transaction_test_point();
             point.parameter_block =
                 parameter_base_buffer.read(topology);
             point.back_facing = (scenario & 4u) != 0u;
@@ -1646,7 +1645,7 @@ int main(int argc, char **argv) {
             const auto invocation = dispatch_x();
             const auto topology = invocation / scenario_count;
             const auto scenario = invocation % scenario_count;
-            auto point = make_surface_point();
+            auto point = make_surface_value_transaction_test_point();
             point.parameter_block =
                 parameter_base_buffer.read(topology);
             point.back_facing = (scenario & 4u) != 0u;
@@ -1971,10 +1970,10 @@ int main(int argc, char **argv) {
                 population_actual_samples[invocation],
                 population_expected_samples[invocation],
                 tolerance)) {
-            std::cerr
-                << "compact population sample mismatch on "
-                << backend << ", topology " << topology
-                << ", scenario " << scenario << '\n';
+            print_compact_surface_sample_mismatch(
+                population_actual_samples[invocation],
+                population_expected_samples[invocation], backend,
+                topology, scenario);
             return EXIT_FAILURE;
         }
         for (auto closure_index = std::size_t{0u};

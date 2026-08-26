@@ -907,17 +907,18 @@ void emit_compact_surface_values(
             locals.define_all();
         }
         const auto locals_view = locals.view();
-        point = unpack_surface_point(value_program(
+        auto packed_point = pack_surface_point(point);
+        point.shading_normal = value_program(
             scalar_parameters,
             vector_parameters,
             cycles_bsdf_tables,
             textures,
             geometry_heap,
             surface_tag,
-            pack_surface_point(point),
+            packed_point,
             locals_view.scalars.storage,
             locals_view.vectors.storage,
-            locals_view.unsigned_integers.storage));
+            locals_view.unsigned_integers.storage);
 
         const auto program =
             surface_tag * SurfaceValueRuntime::programs_per_topology +
