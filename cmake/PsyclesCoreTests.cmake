@@ -19,7 +19,8 @@ if(PSYCLES_BUILD_TESTS)
 
     add_executable(
         psycles_surface_program_metadata_tests
-        tests/test_surface_program_metadata.cpp)
+        tests/test_surface_program_metadata.cpp
+        tests/surface_program_metadata_closure_tests.cpp)
     target_link_libraries(
         psycles_surface_program_metadata_tests
         PRIVATE Psycles::core)
