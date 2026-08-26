@@ -20,6 +20,75 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
         preserve_ggx_energy_bit,
         closure.preserve_ggx_energy);
     flags |= select(0u, beckmann_bit, closure.beckmann);
+    const auto glass_payload =
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::glass)) |
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::refraction));
+    const auto bssrdf_payload =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::bssrdf);
+
+    // block_0 is the common tagged record. Glass uses the otherwise
+    // unobservable Color lanes for evaluation_scale; its Color is preserved
+    // in the three spare scalar lanes of the dielectric payload below.
+    const auto common_color = select(
+        closure.color, closure.evaluation_scale, glass_payload);
+
+    auto payload_0 = make_float4(
+        closure.specular_tint,
+        closure.diffuse_roughness);
+    auto payload_1 = make_float4(
+        closure.evaluation_scale,
+        closure.metallic);
+    auto payload_2 = make_float4(
+        closure.sheen_transform_a,
+        closure.sheen_transform_b,
+        closure.ior,
+        0.0f);
+    Float4 payload_3 = make_float4(0.0f);
+
+    payload_0 = select(
+        payload_0,
+        make_float4(closure.fresnel_f0, closure.ior),
+        glass_payload);
+    payload_1 = select(
+        payload_1,
+        make_float4(closure.fresnel_f90, closure.color.x),
+        glass_payload);
+    payload_2 = select(
+        payload_2,
+        make_float4(closure.reflection_tint, closure.color.y),
+        glass_payload);
+    payload_3 = select(
+        payload_3,
+        make_float4(closure.transmission_tint, closure.color.z),
+        glass_payload);
+
+    payload_0 = select(
+        payload_0,
+        make_float4(
+            closure.bssrdf_radius,
+            closure.bssrdf_anisotropy),
+        bssrdf_payload);
+    payload_1 = select(
+        payload_1,
+        make_float4(
+            closure.bssrdf_albedo,
+            closure.bssrdf_roughness),
+        bssrdf_payload);
+    payload_2 = select(
+        payload_2,
+        make_float4(
+            closure.bssrdf_ior,
+            closure.ior,
+            0.0f,
+            0.0f),
+        bssrdf_payload);
+    payload_3 = select(
+        payload_3,
+        make_float4(0.0f),
+        bssrdf_payload);
     return {
         .block_0 = make_float4x4(
             make_uint4(
@@ -32,52 +101,46 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
                 closure.weight,
                 closure.allocation_weight),
             make_float4(
-                closure.color,
+                common_color,
                 closure.sample_weight),
             make_float4(
                 closure.normal,
                 closure.roughness)),
         .block_1 = make_float4x4(
-            make_float4(
-                closure.specular_tint,
-                closure.diffuse_roughness),
-            make_float4(
-                closure.evaluation_scale,
-                closure.metallic),
-            make_float4(
-                closure.fresnel_f0,
-                closure.ior),
-            make_float4(
-                closure.fresnel_f90,
-                closure.sheen_transform_a)),
-        .block_2 = make_float4x4(
-            make_float4(
-                closure.reflection_tint,
-                closure.sheen_transform_b),
-            make_float4(
-                closure.transmission_tint,
-                closure.bssrdf_ior),
-            make_float4(
-                closure.bssrdf_radius,
-                closure.bssrdf_anisotropy),
-            make_float4(
-                closure.bssrdf_albedo,
-                closure.bssrdf_roughness))};
+            payload_0,
+            payload_1,
+            payload_2,
+            payload_3)};
 }
 
 SurfaceClosurePhysicalRecord unpack_surface_closure_physical(
     Expr<luisa::float4x4> block_0_expression,
-    Expr<luisa::float4x4> block_1_expression,
-    Expr<luisa::float4x4> block_2_expression) noexcept {
+    Expr<luisa::float4x4> block_1_expression) noexcept {
     const auto block_0 =
         luisa::compute::Float4x4{block_0_expression};
     const auto block_1 =
         luisa::compute::Float4x4{block_1_expression};
-    const auto block_2 =
-        luisa::compute::Float4x4{block_2_expression};
     const auto identity =
         block_0[0u].bitcast<luisa::uint4>();
     const auto flags = identity.z;
+    const auto glass_payload =
+        (identity.x == static_cast<std::uint32_t>(
+                           SurfaceClosureKind::glass)) |
+        (identity.x == static_cast<std::uint32_t>(
+                           SurfaceClosureKind::refraction));
+    const auto bssrdf_payload =
+        identity.x == static_cast<std::uint32_t>(
+                          SurfaceClosureKind::bssrdf);
+    const auto specialized_payload =
+        glass_payload | bssrdf_payload;
+    const auto zero3 = make_float3(0.0f);
+    const auto common_color = block_0[2u].xyz();
+    const auto glass_color = make_float3(
+        block_1[1u].w,
+        block_1[2u].w,
+        block_1[3u].w);
+    const auto general_ior = block_1[2u].z;
+    const auto bssrdf_ior = block_1[2u].x;
     return {
         .kind = identity.x,
         .lobe = identity.y,
@@ -86,30 +149,54 @@ SurfaceClosurePhysicalRecord unpack_surface_closure_physical(
         .sample_weight = block_0[2u].w,
         .setup_valid =
             (flags & setup_valid_bit) != 0u,
-        .color = block_0[2u].xyz(),
+        .color = select(
+            common_color, glass_color, glass_payload),
         .normal = block_0[3u].xyz(),
         .roughness = block_0[3u].w,
-        .diffuse_roughness = block_1[0u].w,
-        .metallic = block_1[1u].w,
-        .ior = block_1[2u].w,
-        .specular_tint = block_1[0u].xyz(),
-        .sheen_transform_a = block_1[3u].w,
-        .sheen_transform_b = block_2[0u].w,
-        .evaluation_scale = block_1[1u].xyz(),
-        .fresnel_f0 = block_1[2u].xyz(),
-        .fresnel_f90 = block_1[3u].xyz(),
-        .reflection_tint = block_2[0u].xyz(),
-        .transmission_tint = block_2[1u].xyz(),
+        .diffuse_roughness = select(
+            block_1[0u].w, 0.0f, specialized_payload),
+        .metallic = select(
+            block_1[1u].w, 0.0f, specialized_payload),
+        .ior = select(
+            select(general_ior, block_1[0u].w, glass_payload),
+            block_1[2u].y,
+            bssrdf_payload),
+        .specular_tint = select(
+            block_1[0u].xyz(), zero3, specialized_payload),
+        .sheen_transform_a = select(
+            block_1[2u].x, 0.0f, specialized_payload),
+        .sheen_transform_b = select(
+            block_1[2u].y, 0.0f, specialized_payload),
+        .evaluation_scale = select(
+            select(
+                block_1[1u].xyz(),
+                common_color,
+                glass_payload),
+            make_float3(1.0f),
+            bssrdf_payload),
+        .fresnel_f0 = select(
+            zero3, block_1[0u].xyz(), glass_payload),
+        .fresnel_f90 = select(
+            zero3, block_1[1u].xyz(), glass_payload),
+        .reflection_tint = select(
+            zero3, block_1[2u].xyz(), glass_payload),
+        .transmission_tint = select(
+            zero3, block_1[3u].xyz(), glass_payload),
         .preserve_ggx_energy =
             (flags & preserve_ggx_energy_bit) != 0u,
         .beckmann =
             (flags & beckmann_bit) != 0u,
         .bssrdf_method = identity.w,
-        .bssrdf_radius = block_2[2u].xyz(),
-        .bssrdf_albedo = block_2[3u].xyz(),
-        .bssrdf_ior = block_2[1u].w,
-        .bssrdf_roughness = block_2[3u].w,
-        .bssrdf_anisotropy = block_2[2u].w};
+        .bssrdf_radius = select(
+            zero3, block_1[0u].xyz(), bssrdf_payload),
+        .bssrdf_albedo = select(
+            zero3, block_1[1u].xyz(), bssrdf_payload),
+        .bssrdf_ior = select(
+            1.4f, bssrdf_ior, bssrdf_payload),
+        .bssrdf_roughness = select(
+            1.0f, block_1[1u].w, bssrdf_payload),
+        .bssrdf_anisotropy = select(
+            0.0f, block_1[0u].w, bssrdf_payload)};
 }
 
 }// namespace psycles::luisa_backend

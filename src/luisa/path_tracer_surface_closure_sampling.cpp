@@ -56,8 +56,7 @@ SurfaceClosureSamplingCallables make_surface_closure_sampling_callables(
             Var<SurfaceClosureSamplingQueryCall> packed_query,
             Float3 shading_normal, Float3 glossy_normal, Float2 random_direction,
             Float rescaled_lobe, luisa::compute::Float4x4 block_0,
-            luisa::compute::Float4x4 block_1,
-            luisa::compute::Float4x4 block_2) noexcept {
+            luisa::compute::Float4x4 block_1) noexcept {
             BufferShaderServices services{scalar_parameters,
                                           vector_parameters,
                                           cycles_bsdf_tables,
@@ -70,8 +69,7 @@ SurfaceClosureSamplingCallables make_surface_closure_sampling_callables(
             const auto point = unpack_surface_closure_point(packed_point);
             const auto closure = unpack_surface_closure_physical(
                 Expr<luisa::float4x4>{block_0.expression()},
-                Expr<luisa::float4x4>{block_1.expression()},
-                Expr<luisa::float4x4>{block_2.expression()});
+                Expr<luisa::float4x4>{block_1.expression()});
             return surface_closure_conditional_sample(
                 services, point, Expr<luisa::float3>{shading_normal.expression()},
                 closure, Expr<luisa::float3>{packed_query.incoming.expression()},
@@ -128,8 +126,7 @@ CallableSurfaceClosureSamplingOperation::conditional_sample(
     return _callables.conditional_sample(
         _scalar_parameters, _vector_parameters, _cycles_bsdf_tables, _textures,
         _geometry_heap, _point, _query, shading_normal, glossy_normal,
-        random_direction, rescaled_lobe, blocks.block_0, blocks.block_1,
-        blocks.block_2);
+        random_direction, rescaled_lobe, blocks.block_0, blocks.block_1);
 }
 
 SurfaceSampleTrace sample_surface_closures_for_surface(

@@ -22,8 +22,7 @@ make_surface_closure_evaluation_callable(
                Float3 shading_normal,
                Bool selected_sample,
                luisa::compute::Float4x4 block_0,
-               luisa::compute::Float4x4 block_1,
-               luisa::compute::Float4x4 block_2) noexcept {
+               luisa::compute::Float4x4 block_1) noexcept {
         BufferShaderServices services{
             scalar_parameters,
             vector_parameters,
@@ -37,8 +36,7 @@ make_surface_closure_evaluation_callable(
         const auto point = unpack_surface_closure_point(packed_point);
         const auto closure = unpack_surface_closure_physical(
             Expr<luisa::float4x4>{block_0.expression()},
-            Expr<luisa::float4x4>{block_1.expression()},
-            Expr<luisa::float4x4>{block_2.expression()});
+            Expr<luisa::float4x4>{block_1.expression()});
         const auto query = SurfaceQuery{
             .lobe_mask = packed_query.lobe_mask,
             .transport_mode = packed_query.transport_mode,
@@ -139,8 +137,7 @@ CallableSurfaceClosureEvaluationOperation::evaluate(
         shading_normal,
         selected_sample,
         blocks.block_0,
-        blocks.block_1,
-        blocks.block_2);
+        blocks.block_1);
 }
 
 }// namespace psycles::luisa_backend::detail

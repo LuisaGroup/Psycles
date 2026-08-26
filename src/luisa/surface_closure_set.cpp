@@ -106,7 +106,6 @@ SurfaceClosureSet::SurfaceClosureSet(
       _complete_3{complete_storage_size(profile, _capacity)},
       _physical_0{physical_storage_size(profile, _capacity)},
       _physical_1{physical_storage_size(profile, _capacity)},
-      _physical_2{physical_storage_size(profile, _capacity)},
       _identity{storage_size(
           profile, StorageField::identity, _capacity)},
       _weight{storage_size(
@@ -152,7 +151,6 @@ SurfaceClosureSet::SurfaceClosureSet(
         // suffix would add stores without changing any observable value.
         _physical_0.write(0u, packed.block_0);
         _physical_1.write(0u, packed.block_1);
-        _physical_2.write(0u, packed.block_2);
         return;
     }
     _identity.write(0u,
@@ -254,7 +252,6 @@ void SurfaceClosureSet::append_impl(
                 static_cast<SurfaceClosurePhysicalRecord>(closure));
             _physical_0.write(_count, packed.block_0);
             _physical_1.write(_count, packed.block_1);
-            _physical_2.write(_count, packed.block_2);
         } else {
             UInt flags = 0u;
             flags |= select(
@@ -391,9 +388,7 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
             Expr<luisa::float4x4>{
                 _physical_0.read(safe_index).expression()},
             Expr<luisa::float4x4>{
-                _physical_1.read(safe_index).expression()},
-            Expr<luisa::float4x4>{
-                _physical_2.read(safe_index).expression()});
+                _physical_1.read(safe_index).expression()});
         UInt physical_flags = 0u;
         physical_flags |= select(
             0u, setup_valid_bit, physical.setup_valid);

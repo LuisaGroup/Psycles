@@ -1852,12 +1852,12 @@ int main(int argc, char **argv) {
         luisa::float4{1.0f, 2.0f, 3.0f, 0.4f},
         luisa::float4{0.0f, 0.0f, 0.0f, 0.5f},
         luisa::float4{0.0f, 0.0f, 0.0f, 0.19f},
-        luisa::float4{0.0f, 0.0f, 0.0f, 0.20f},
-        luisa::float4{13.0f, 14.0f, 15.0f, 0.21f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{13.0f, 14.0f, 15.0f, 0.0f},
         luisa::float4{16.0f, 17.0f, 18.0f, 1.37f},
-        luisa::float4{23.0f, 24.0f, 25.0f, 0.0f},
-        luisa::float4{28.0f, 29.0f, 30.0f, 0.26f},
-        luisa::float4{31.0f, 32.0f, 33.0f, 0.27f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{28.0f, 29.0f, 30.0f, 0.0f},
+        luisa::float4{31.0f, 32.0f, 33.0f, 0.0f},
         luisa::float4{34.0f, 35.0f, 36.0f, 7.0f},
         luisa::float4{37.0f, 38.0f, 39.0f, 0.0f},
         luisa::float4{40.0f, 41.0f, 42.0f, 0.0f}};
@@ -1869,12 +1869,20 @@ int main(int argc, char **argv) {
             stored[4u * storage_records_per_slot + record],
             physical_storage_expected[record]);
     }
+    constexpr std::array physical_bssrdf_storage_expected{
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 1.0f},
+        luisa::float4{
+            static_cast<float>(SurfaceBssrdfMethod::random_walk_skin),
+            1.4f,
+            0.0f,
+            0.0f}};
     for (auto record = 0u;
-         record < bssrdf_storage_expected.size();
+         record < physical_bssrdf_storage_expected.size();
          ++record) {
         physical_round_trip &= approximately_equal(
             stored[4u * storage_records_per_slot + 14u + record],
-            bssrdf_storage_expected[record]);
+            physical_bssrdf_storage_expected[record]);
     }
     physical_round_trip &= approximately_equal(
         stored[4u * storage_records_per_slot + 13u],

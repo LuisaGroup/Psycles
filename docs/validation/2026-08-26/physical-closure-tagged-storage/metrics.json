@@ -1,0 +1,60 @@
+{
+  "scene": "barbershop-5.2",
+  "device": "AMD Radeon RX 9070 XT (gfx1201)",
+  "resolution": [640, 480],
+  "spp": 64,
+  "luisa_compute_revision": "9ff741933",
+  "static": {
+    "checkpoint": {
+      "final_llvm_ir_bytes": 3425622,
+      "surface_object_bytes": 364448,
+      "root_kernel_code_bytes": 170472,
+      "private_segment_bytes": 4320,
+      "vgpr_count": 256,
+      "vgpr_spill_count": 282
+    },
+    "tagged_storage": {
+      "final_llvm_ir_bytes": 3358482,
+      "surface_object_bytes": 362912,
+      "root_kernel_code_bytes": 168836,
+      "private_segment_bytes": 3552,
+      "vgpr_count": 256,
+      "vgpr_spill_count": 293
+    }
+  },
+  "hip_profile_ms": {
+    "production_baseline": {
+      "shade_surface": 1635.321742,
+      "renderer_kernel_sum": 2390.230561
+    },
+    "state_projection": [
+      {"shade_surface": 1555.016, "renderer_kernel_sum": 2316.572},
+      {"shade_surface": 1574.894, "renderer_kernel_sum": 2343.734},
+      {"shade_surface": 1583.952, "renderer_kernel_sum": 2357.914}
+    ],
+    "tagged_storage": [
+      {"shade_surface": 1551.466576, "renderer_kernel_sum": 2323.553128},
+      {"shade_surface": 1534.480345, "renderer_kernel_sum": 2296.731348},
+      {"shade_surface": 1531.667335, "renderer_kernel_sum": 2292.462047}
+    ],
+    "cycles_5_2_hip": {
+      "shade_surface": 582.323318,
+      "renderer_kernel_sum": 1436.930
+    }
+  },
+  "relative": {
+    "tagged_vs_checkpoint_shade_surface_percent": -2.566119,
+    "tagged_vs_checkpoint_kernel_sum_percent": -2.005460,
+    "tagged_vs_baseline_shade_surface_percent": -6.166456,
+    "tagged_vs_baseline_kernel_sum_percent": -3.911724,
+    "tagged_over_cycles_shade_surface": 2.635100,
+    "tagged_over_cycles_kernel_sum": 1.598360
+  },
+  "tests": {
+    "focused_passed": 51,
+    "focused_total": 51,
+    "full_passed": 283,
+    "full_total": 289,
+    "preexisting_numeric_oracle_failures": 6
+  }
+}
