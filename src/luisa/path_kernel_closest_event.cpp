@@ -53,6 +53,13 @@ class ClosestEventStageImpl final
         auto &previous_mis_origin_normal =
             sample.previous_mis_origin_normal;
         auto &path_flags = sample.path_flags;
+        auto &continuation_probability =
+            sample.continuation_probability;
+        auto &throughput = sample.throughput;
+        auto &path_depth = sample.path_depth;
+        auto &transparent_depth = sample.transparent_depth;
+        const auto &parameters =
+            sample.invocation.parameters;
 
         Bool light_hit = false;
         // Unified traversal defines committed_ray_t for every result: the
@@ -274,6 +281,32 @@ class ClosestEventStageImpl final
                 }
             };
         }
+        Bool inside_volume = false;
+        if (config.volume_state) {
+            inside_volume = !sample.volume.stack->empty();
+        }
+        Bool terminated = false;
+        // This is Cycles' integrator_intersect_terminate transfer. A surface
+        // needs the decision even in vacuum; a lamp or background endpoint
+        // needs it only while an active volume segment still contributes.
+        $if(surface | inside_volume) {
+            continuation_probability =
+                cycles_path_state::continuation_probability(
+                    path_flags,
+                    path_depth,
+                    transparent_depth,
+                    parameters.min_bounces,
+                    parameters.transparent_min_bounces,
+                    throughput);
+            const auto decision =
+                cycles_path_state::decide_closest_continuation(
+                    continuation_probability,
+                    sample.continuation_terminate_sample(),
+                    surface_may_emit,
+                    inside_volume);
+            path_flags |= decision.deferred_flags;
+            terminated = decision.terminate_immediately;
+        };
         return {
             bounce,
             std::move(light_hit),
@@ -287,6 +320,7 @@ class ClosestEventStageImpl final
             std::move(light_hit_pdf),
             std::move(
                 light_hit_evaluation_factor),
+            std::move(terminated),
             std::move(surface_may_emit)};
     }
 };

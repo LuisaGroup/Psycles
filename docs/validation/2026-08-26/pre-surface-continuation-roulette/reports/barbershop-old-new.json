@@ -1,0 +1,700 @@
+{
+  "actual_label": "Psycles-after",
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0000001192092896
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.09006528556346893,
+        0.06404053419828415,
+        0.04895764961838722
+      ],
+      "cycles_luminance_mean": 0.06848640739917755,
+      "cycles_rms": 0.16221629083156586,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0016093747690320015,
+      "mean_absolute_error": 4.423629018646125e-09,
+      "orientation_rmse": {
+        "flip_x": 0.18657167255878448,
+        "flip_xy": 0.19626742601394653,
+        "flip_y": 0.18838812410831451,
+        "identity": 1.8979029619003995e-06
+      },
+      "p95_pixel_rmse": 9.618657870191782e-09,
+      "p99_pixel_rmse": 3.4412757088375656e-08,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.09006528556346893,
+        0.06404053419828415,
+        0.04895765706896782
+      ],
+      "psycles_luminance_mean": 0.06848640739917755,
+      "psycles_rms": 0.16221628340688724,
+      "relative_rmse": 1.1699829605098357e-05,
+      "rmse": 1.8979029619003995e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.23345550894737244,
+        0.20772990584373474,
+        0.18235652148723602
+      ],
+      "cycles_luminance_mean": 0.2113390415906906,
+      "cycles_rms": 0.2613076865673065,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.000000070508322,
+      "maximum_absolute_error": 0.006556853652000427,
+      "mean_absolute_error": 8.874703638639403e-08,
+      "orientation_rmse": {
+        "flip_x": 0.22229115664958954,
+        "flip_xy": 0.22446873784065247,
+        "flip_y": 0.21722504496574402,
+        "identity": 1.866646380221937e-05
+      },
+      "p95_pixel_rmse": 1.2166747609398954e-08,
+      "p99_pixel_rmse": 3.4412757088375656e-08,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.23345552384853363,
+        0.20772992074489594,
+        0.18235652148723602
+      ],
+      "psycles_luminance_mean": 0.2113390564918518,
+      "psycles_rms": 0.26130769247738894,
+      "relative_rmse": 7.143480564017523e-05,
+      "rmse": 1.866646380221937e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        0.9999997019767761,
+        0.9999998211860657,
+        1.0000001192092896
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.23456116020679474,
+        0.19746847450733185,
+        0.1879778951406479
+      ],
+      "cycles_luminance_mean": 0.20467115938663483,
+      "cycles_rms": 0.47612667083740234,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.999999781583865,
+      "maximum_absolute_error": 0.01276707649230957,
+      "mean_absolute_error": 8.160450448713163e-08,
+      "orientation_rmse": {
+        "flip_x": 0.4956760108470917,
+        "flip_xy": 0.5038977265357971,
+        "flip_y": 0.48430803418159485,
+        "identity": 2.4440489141852595e-05
+      },
+      "p95_pixel_rmse": 3.4412757088375656e-08,
+      "p99_pixel_rmse": 1.3765102835350262e-07,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.23456108570098877,
+        0.19746844470500946,
+        0.18797792494297028
+      ],
+      "psycles_luminance_mean": 0.20467111468315125,
+      "psycles_rms": 0.4761266591460548,
+      "relative_rmse": 5.133190522359761e-05,
+      "rmse": 2.4440489141852595e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0000001192092896
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.0775115042924881,
+        0.05627211928367615,
+        0.04496639221906662
+      ],
+      "cycles_luminance_mean": 0.059972744435071945,
+      "cycles_rms": 0.11338649690151215,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000001242327772,
+      "maximum_absolute_error": 0.001928672194480896,
+      "mean_absolute_error": 6.7767067513102575e-09,
+      "orientation_rmse": {
+        "flip_x": 0.1252894103527069,
+        "flip_xy": 0.1287391483783722,
+        "flip_y": 0.12184572964906693,
+        "identity": 2.3475122361560352e-06
+      },
+      "p95_pixel_rmse": 8.603189272093914e-09,
+      "p99_pixel_rmse": 1.9237315740383565e-08,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.0775115042924881,
+        0.05627211928367615,
+        0.04496639594435692
+      ],
+      "psycles_luminance_mean": 0.05997275188565254,
+      "psycles_rms": 0.11338649990467935,
+      "relative_rmse": 2.070363138738726e-05,
+      "rmse": 2.3475122361560352e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        1.0,
+        0.9999998807907104,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.013192628510296345,
+        0.008194736205041409,
+        0.003885585581883788
+      ],
+      "cycles_luminance_mean": 0.008946302346885204,
+      "cycles_rms": 0.06143856793642044,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 2.384185791015625e-07,
+      "mean_absolute_error": 1.337533417355985e-10,
+      "orientation_rmse": {
+        "flip_x": 0.0841793492436409,
+        "flip_xy": 0.08591227978467941,
+        "flip_y": 0.08322064578533173,
+        "identity": 2.6474671344089984e-09
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 2.1507973180234785e-09,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.013192628510296345,
+        0.008194735273718834,
+        0.003885585581883788
+      ],
+      "psycles_luminance_mean": 0.008946302346885204,
+      "psycles_rms": 0.06143856628133954,
+      "relative_rmse": 4.3091289776622455e-08,
+      "rmse": 2.6474671344089984e-09,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "Env": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.00015926190826576203,
+        0.00015926190826576203,
+        0.00015926190826576203
+      ],
+      "cycles_luminance_mean": 0.00015926201012916863,
+      "cycles_rms": 0.008149487897753716,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.011525115929543972,
+        "flip_xy": 0.011525116860866547,
+        "flip_y": 0.011525116860866547,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.00015926190826576203,
+        0.00015926190826576203,
+        0.00015926190826576203
+      ],
+      "psycles_luminance_mean": 0.00015926201012916863,
+      "psycles_rms": 0.008149488039063802,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.06911961734294891,
+        0.06739165633916855,
+        0.06610878556966782
+      ],
+      "cycles_luminance_mean": 0.0676737055182457,
+      "cycles_rms": 0.18124397099018097,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 2.384185791015625e-07,
+      "mean_absolute_error": 9.123956590251225e-10,
+      "orientation_rmse": {
+        "flip_x": 0.2359289675951004,
+        "flip_xy": 0.23566706478595734,
+        "flip_y": 0.23837769031524658,
+        "identity": 6.856810230715382e-09
+      },
+      "p95_pixel_rmse": 3.0416869023497384e-09,
+      "p99_pixel_rmse": 2.9802322387695312e-08,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.06911961734294891,
+        0.06739165633916855,
+        0.06610878556966782
+      ],
+      "psycles_luminance_mean": 0.0676737055182457,
+      "psycles_rms": 0.181243976131177,
+      "relative_rmse": 3.7831935557662524e-08,
+      "rmse": 6.856810230715382e-09,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.13925862312316895,
+        0.14773601293563843,
+        0.1630340814590454
+      ],
+      "cycles_luminance_mean": 0.14705891907215118,
+      "cycles_rms": 1.5945299863815308,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 7.62939453125e-06,
+      "mean_absolute_error": 1.6314477546686135e-09,
+      "orientation_rmse": {
+        "flip_x": 2.2231223583221436,
+        "flip_xy": 2.2354347705841064,
+        "flip_y": 2.229620933532715,
+        "identity": 3.316350927207168e-08
+      },
+      "p95_pixel_rmse": 2.4046644675479456e-09,
+      "p99_pixel_rmse": 5.960464477539063e-08,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.13925862312316895,
+        0.14773601293563843,
+        0.1630340814590454
+      ],
+      "psycles_luminance_mean": 0.14705891907215118,
+      "psycles_rms": 1.594530026904043,
+      "relative_rmse": 2.079829765216876e-08,
+      "rmse": 3.316350927207168e-08,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        1.0,
+        0.9999998807907104,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.0837898924946785,
+        0.0614883229136467,
+        0.050221409648656845
+      ],
+      "cycles_luminance_mean": 0.0654262825846672,
+      "cycles_rms": 0.31244781613349915,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 3.814697265625e-06,
+      "mean_absolute_error": 7.213994956956071e-10,
+      "orientation_rmse": {
+        "flip_x": 0.42929700016975403,
+        "flip_xy": 0.42883166670799255,
+        "flip_y": 0.42920053005218506,
+        "identity": 9.069043294118728e-09
+      },
+      "p95_pixel_rmse": 4.301594636046957e-09,
+      "p99_pixel_rmse": 1.9237315740383565e-08,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.0837898924946785,
+        0.0614883154630661,
+        0.050221409648656845
+      ],
+      "psycles_luminance_mean": 0.0654262825846672,
+      "psycles_rms": 0.31244780581426185,
+      "relative_rmse": 2.9025785509871544e-08,
+      "rmse": 9.069043294118728e-09,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.10977820307016373,
+        0.31434082984924316,
+        -0.0570940263569355
+      ],
+      "cycles_luminance_mean": 0.24400070309638977,
+      "cycles_rms": 0.551543116569519,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 6.556510925292969e-07,
+      "mean_absolute_error": 2.062346515785407e-09,
+      "orientation_rmse": {
+        "flip_x": 0.6507176160812378,
+        "flip_xy": 0.8734650611877441,
+        "flip_y": 0.7784232497215271,
+        "identity": 1.1610758576807712e-08
+      },
+      "p95_pixel_rmse": 3.4412757088375656e-08,
+      "p99_pixel_rmse": 6.882551417675131e-08,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.10977820307016373,
+        0.31434082984924316,
+        -0.0570940263569355
+      ],
+      "psycles_luminance_mean": 0.24400070309638977,
+      "psycles_rms": 0.5515431214297281,
+      "relative_rmse": 2.1051406912707317e-08,
+      "rmse": 1.1610758576807712e-08,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "TransCol": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.006176760885864496,
+        0.006367097608745098,
+        0.00600309856235981
+      ],
+      "cycles_luminance_mean": 0.006300358101725578,
+      "cycles_rms": 0.049560025334358215,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999999260897111,
+      "maximum_absolute_error": 1.7881393432617188e-07,
+      "mean_absolute_error": 1.0528917321339648e-10,
+      "orientation_rmse": {
+        "flip_x": 0.0700884610414505,
+        "flip_xy": 0.06547332555055618,
+        "flip_y": 0.0700884610414505,
+        "identity": 2.293774947759175e-09
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.006176760885864496,
+        0.006367097608745098,
+        0.00600309856235981
+      ],
+      "psycles_luminance_mean": 0.006300357636064291,
+      "psycles_rms": 0.049560025405019525,
+      "relative_rmse": 4.628276382596968e-08,
+      "rmse": 2.293774947759175e-09,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "TransDir": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        5.779154889751226e-06,
+        5.524046173377428e-06,
+        4.541318503470393e-06
+      ],
+      "cycles_luminance_mean": 5.5073510338843334e-06,
+      "cycles_rms": 0.00024354789638891816,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 3.725290298461914e-09,
+      "mean_absolute_error": 1.194029684153941e-13,
+      "orientation_rmse": {
+        "flip_x": 0.00034442872856743634,
+        "flip_xy": 0.00034442872856743634,
+        "flip_y": 0.00034442872856743634,
+        "identity": 1.1984986787727525e-11
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        5.779154889751226e-06,
+        5.524046173377428e-06,
+        4.541318503470393e-06
+      ],
+      "psycles_luminance_mean": 5.5073510338843334e-06,
+      "psycles_rms": 0.00024354789719255434,
+      "relative_rmse": 4.920997867536031e-08,
+      "rmse": 1.1984986787727525e-11,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "TransInd": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.0006669706199318171,
+        0.000475432287203148,
+        0.0003641163057181984
+      ],
+      "cycles_luminance_mean": 0.0005081160925328732,
+      "cycles_rms": 0.015003162436187267,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 2.384185791015625e-07,
+      "mean_absolute_error": 8.002291537745343e-12,
+      "orientation_rmse": {
+        "flip_x": 0.021217675879597664,
+        "flip_xy": 0.02121618762612343,
+        "flip_y": 0.021217675879597664,
+        "identity": 4.860269964268582e-10
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.0006669706199318171,
+        0.000475432287203148,
+        0.0003641163057181984
+      ],
+      "psycles_luminance_mean": 0.0005081160925328732,
+      "psycles_rms": 0.015003162639064321,
+      "relative_rmse": 3.239496996010473e-08,
+      "rmse": 4.860269964268582e-10,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "Volume Direct": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "Volume Indirect": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-rr-correct52-base-profile.y1cGtk/out.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-rr-correct52-new-profile.X8Lkq3/out.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Psycles-before",
+  "schema": "psycles.cycles-differential.v1"
+}

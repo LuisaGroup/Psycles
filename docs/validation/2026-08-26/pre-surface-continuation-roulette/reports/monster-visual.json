@@ -1,0 +1,159 @@
+{
+  "actual_label": "Psycles-HIP",
+  "cycles_channels": [
+    "View Layer.Combined.R",
+    "View Layer.Combined.G",
+    "View Layer.Combined.B",
+    "View Layer.Combined.A",
+    "View Layer.Debug Sample Count.X",
+    "View Layer.Depth.Z",
+    "View Layer.Diffuse Color.R",
+    "View Layer.Diffuse Color.G",
+    "View Layer.Diffuse Color.B",
+    "View Layer.Diffuse Direct.R",
+    "View Layer.Diffuse Direct.G",
+    "View Layer.Diffuse Direct.B",
+    "View Layer.Diffuse Indirect.R",
+    "View Layer.Diffuse Indirect.G",
+    "View Layer.Diffuse Indirect.B",
+    "View Layer.Emission.R",
+    "View Layer.Emission.G",
+    "View Layer.Emission.B",
+    "View Layer.Environment.R",
+    "View Layer.Environment.G",
+    "View Layer.Environment.B",
+    "View Layer.Glossy Color.R",
+    "View Layer.Glossy Color.G",
+    "View Layer.Glossy Color.B",
+    "View Layer.Glossy Direct.R",
+    "View Layer.Glossy Direct.G",
+    "View Layer.Glossy Direct.B",
+    "View Layer.Glossy Indirect.R",
+    "View Layer.Glossy Indirect.G",
+    "View Layer.Glossy Indirect.B",
+    "View Layer.Normal.X",
+    "View Layer.Normal.Y",
+    "View Layer.Normal.Z",
+    "View Layer.Transmission Color.R",
+    "View Layer.Transmission Color.G",
+    "View Layer.Transmission Color.B",
+    "View Layer.Transmission Direct.R",
+    "View Layer.Transmission Direct.G",
+    "View Layer.Transmission Direct.B",
+    "View Layer.Transmission Indirect.R",
+    "View Layer.Transmission Indirect.G",
+    "View Layer.Transmission Indirect.B",
+    "View Layer.Volume Direct.R",
+    "View Layer.Volume Direct.G",
+    "View Layer.Volume Direct.B",
+    "View Layer.Volume Indirect.R",
+    "View Layer.Volume Indirect.G",
+    "View Layer.Volume Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0037087202072144,
+        1.001928448677063,
+        1.0069949626922607
+      ],
+      "cycles": "/var/tmp/psycles-current-profile.EkD0cf/cycles-monster/out.exr",
+      "cycles_channel_mean": [
+        0.1637628972530365,
+        0.07474896311759949,
+        0.05765967071056366
+      ],
+      "cycles_luminance_mean": 0.09243970364332199,
+      "cycles_rms": 0.1596875786781311,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.002829923994001,
+      "maximum_absolute_error": 0.7447960376739502,
+      "mean_absolute_error": 0.010537740774452686,
+      "orientation_rmse": {
+        "flip_x": 0.13294795155525208,
+        "flip_xy": 0.16966795921325684,
+        "flip_y": 0.16899694502353668,
+        "identity": 0.02251097373664379
+      },
+      "p95_pixel_rmse": 0.04805438593029976,
+      "p99_pixel_rmse": 0.09176290780305862,
+      "psycles": "/var/tmp/psycles-pre-surface-rr-multiscene.QOhK5d/monster-3.exr",
+      "psycles_channel_mean": [
+        0.16437025368213654,
+        0.07489310950040817,
+        0.058062996715307236
+      ],
+      "psycles_luminance_mean": 0.09270130097866058,
+      "psycles_rms": 0.16084485767102422,
+      "relative_rmse": 0.1409688463121936,
+      "rmse": 0.02251097373664379,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 6.897235132449049,
+        "display_scale": 1.0862030544045533,
+        "mapping": "shared_linear_srgb",
+        "path": "/tmp/psycles-svm-bssrdf.jPeuwa/docs/validation/2026-08-26/pre-surface-continuation-roulette/triptychs/monster/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.9995272159576416,
+        1.0000040531158447,
+        1.0000604391098022
+      ],
+      "cycles": "/var/tmp/psycles-current-profile.EkD0cf/cycles-monster/out.exr",
+      "cycles_channel_mean": [
+        -0.013458344154059887,
+        -0.8215909004211426,
+        0.14007878303527832
+      ],
+      "cycles_luminance_mean": -0.579895555973053,
+      "cycles_rms": 0.5700652003288269,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": -0.9999997944297239,
+      "maximum_absolute_error": 0.031198501586914062,
+      "mean_absolute_error": 2.8483256755862385e-05,
+      "orientation_rmse": {
+        "flip_x": 0.34397098422050476,
+        "flip_xy": 0.4506615102291107,
+        "flip_y": 0.4442175328731537,
+        "identity": 0.00015775248175486922
+      },
+      "p95_pixel_rmse": 0.00017006542475428432,
+      "p99_pixel_rmse": 0.0003991084231529385,
+      "psycles": "/var/tmp/psycles-pre-surface-rr-multiscene.QOhK5d/monster-3.exr",
+      "psycles_channel_mean": [
+        -0.013451981358230114,
+        -0.82159423828125,
+        0.14008724689483643
+      ],
+      "psycles_luminance_mean": -0.5798954367637634,
+      "psycles_rms": 0.570065588607426,
+      "relative_rmse": 0.00027672708606642525,
+      "rmse": 0.00015775248175486922,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1653.6961723091376,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/tmp/psycles-svm-bssrdf.jPeuwa/docs/validation/2026-08-26/pre-surface-continuation-roulette/triptychs/monster/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Cycles-5.2-HIP",
+  "schema": "psycles.cycles-differential.v1"
+}

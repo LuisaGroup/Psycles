@@ -3,6 +3,7 @@
 
 #include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/cycles_path_state.h>
+#include <psycles/luisa/cycles_sampler.h>
 
 #include <utility>
 
@@ -538,6 +539,19 @@ Bool PathSampleContext::terminate_on_next_surface_requested() const noexcept {
            0u;
 }
 
+Float PathSampleContext::continuation_terminate_sample() const noexcept {
+    const auto value = cycles_sampler::sample_1d(
+        invocation.sobol_table,
+        invocation.parameters.sobol_sequence_size,
+        sample_index,
+        rng_hash,
+        cycles_sampler::path_state_dimension(
+            cycles_rng_offset,
+            sampling::tabulated_sobol::terminate_dimension));
+    value.set_name("path_continuation_terminate_sample");
+    return value;
+}
+
 Float3 PathSampleContext::trace_uint32(UInt value) const noexcept {
     return make_float3(
         cast<float>(value & 0xffffu), cast<float>(value >> 16u), 0.0f);
@@ -698,7 +712,6 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     Float previous_light_tree_dt = 0.0f;
     Float minimum_bsdf_pdf = std::numeric_limits<float>::max();
     Float continuation_probability = 1.0f;
-    Bool continuation_decided_in_volume = false;
     Float3 path_diffuse_weight = make_float3(0.0f);
     Float3 path_glossy_weight = make_float3(0.0f);
     UInt ray_events = 0u;
@@ -771,8 +784,6 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(previous_light_tree_dt),
             std::move(minimum_bsdf_pdf),
             std::move(continuation_probability),
-            std::move(
-                continuation_decided_in_volume),
             std::move(path_diffuse_weight),
             std::move(path_glossy_weight),
             std::move(ray_events),

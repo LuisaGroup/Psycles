@@ -20,11 +20,6 @@ public:
         const auto &rng_hash = sample.rng_hash;
         const auto &rng_offset = sample.cycles_rng_offset;
 
-        const auto terminate_sample = cycles_sampler::sample_1d(
-            sobol_table, parameters.sobol_sequence_size, sample_index, rng_hash,
-            cycles_sampler::path_state_dimension(
-                rng_offset, tabulated_sobol::terminate_dimension));
-        terminate_sample.set_name("path_bounce_terminate_sample");
         const auto light_sample = cycles_sampler::sample_3d(
             sobol_table, parameters.sobol_sequence_size, sample_index, rng_hash,
             cycles_sampler::path_state_dimension(rng_offset,
@@ -48,8 +43,7 @@ public:
                 rng_offset, tabulated_sobol::light_terminate_dimension));
         light_terminate_sample.set_name("path_bounce_light_terminate_sample");
 
-        return {.terminate_sample = std::move(terminate_sample),
-                .light_sample = std::move(light_sample),
+        return {.light_sample = std::move(light_sample),
                 .selected_light = std::move(selected_light),
                 .light_terminate_sample = std::move(light_terminate_sample)};
     }

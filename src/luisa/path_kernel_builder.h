@@ -342,11 +342,9 @@ struct PathSampleContext {
     // mis_origin_n. It is not generally the distance to the sampled collision.
     Float previous_light_tree_dt;
     Float minimum_bsdf_pdf;
+    // INTERSECT_CLOSEST owns Cycles' continuation decision. Later surface or
+    // volume stages retain only its probability for survivor renormalization.
     Float continuation_probability;
-    // The closest-event volume stage performs Cycles' roulette before
-    // integrating the segment. An attenuated surface must reuse that exact
-    // decision and divide only after recording surface emission.
-    Bool continuation_decided_in_volume;
     Float3 path_diffuse_weight;
     Float3 path_glossy_weight;
     UInt ray_events;
@@ -379,6 +377,10 @@ struct PathSampleContext {
     [[nodiscard]] Bool mis_competition_skipped() const noexcept;
     [[nodiscard]] Bool terminate_after_transparent_requested() const noexcept;
     [[nodiscard]] Bool terminate_on_next_surface_requested() const noexcept;
+    // Pure Cycles Sobol lookup for PRNG_TERMINATE. Keeping it independent of
+    // the light sampler prevents surface-only random state from crossing the
+    // intersect-to-shade scheduling boundary.
+    [[nodiscard]] Float continuation_terminate_sample() const noexcept;
     [[nodiscard]] Float3 trace_uint32(UInt value) const noexcept;
     void trace_write(UInt slot, Float3 value) const noexcept;
     void trace_write_global(path_trace_schema::GlobalSlot slot,
@@ -428,7 +430,6 @@ begin_path_sample(PathKernelInvocation &invocation,
 void accumulate_path_sample(PathSampleContext &sample) noexcept;
 
 struct PathBounceRandomState {
-    Float terminate_sample;
     Float3 light_sample;
     Var<LightDistributionGpu> selected_light;
     Float light_terminate_sample;
@@ -464,6 +465,9 @@ struct ClosestPathEvent {
     Float2 light_uv;
     Float light_pdf;
     Float light_evaluation_factor;
+    // True only if no surface-emission or in-volume contribution remains
+    // after a failed continuation decision.
+    Bool terminated;
     // Potential endpoint emission and sampled-light participation are not the
     // same predicate: EmissionSampling::NONE remains visibly emissive but has
     // no competing light-sampling PDF.

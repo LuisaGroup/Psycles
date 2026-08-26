@@ -371,15 +371,58 @@ int main(int argc, char **argv) {
                          cycles_path_state::flag_mis_skip) != 0u),
                     cast<float>(portal.bounce),
                     cast<float>(portal.transparent_bounce)));
+
+            const auto write_continuation_decision =
+                [&](std::uint32_t index,
+                    Float probability,
+                    Float terminate_sample,
+                    Bool surface_may_emit,
+                    Bool inside_volume) noexcept {
+                    const auto decision =
+                        cycles_path_state::decide_closest_continuation(
+                            probability,
+                            terminate_sample,
+                            surface_may_emit,
+                            inside_volume);
+                    output.write(
+                        index,
+                        make_float4(
+                            cast<float>(decision.failed),
+                            cast<float>(decision.terminate_immediately),
+                            cast<float>(decision.deferred_flags),
+                            0.0f));
+                };
+            write_continuation_decision(
+                20u, 1.0f, 1.0f, false, false);
+            write_continuation_decision(
+                21u, 0.25f, 0.1f, false, false);
+            write_continuation_decision(
+                22u, 0.25f, 0.25f, false, false);
+            write_continuation_decision(
+                23u, 0.25f, 0.5f, true, false);
+            write_continuation_decision(
+                24u, 0.25f, 0.5f, false, true);
+            // Emission has priority over the volume fallback, matching the
+            // if/else ordering in Cycles' integrator_intersect_terminate().
+            write_continuation_decision(
+                25u, 0.25f, 0.5f, true, true);
+            // Both closed probability boundaries are part of the contract:
+            // p=1 always survives, while p=0 fails even for the smallest
+            // representable sampler result. Keep the volume route covered at
+            // that lower boundary as well.
+            write_continuation_decision(
+                26u, 0.0f, 0.0f, false, false);
+            write_continuation_decision(
+                27u, 0.0f, 0.0f, false, true);
         };
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
     auto output =
-        device.create_buffer<luisa::float4>(20u);
+        device.create_buffer<luisa::float4>(28u);
     auto kernel = device.compile(evaluate);
-    std::array<luisa::float4, 20u> actual{};
+    std::array<luisa::float4, 28u> actual{};
     stream << kernel(output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
            << synchronize();
@@ -457,7 +500,38 @@ int main(int argc, char **argv) {
                 cycles_path_state::flag_surface_pass),
             1.0f,
             1.0f,
-            1.0f}};
+            1.0f},
+        // Continuation decisions partition failed roulette into exactly one
+        // routing outcome. Probability one and a surviving random sample do
+        // not terminate or set deferred flags.
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{1.0f, 1.0f, 0.0f, 0.0f},
+        luisa::float4{
+            1.0f,
+            0.0f,
+            static_cast<float>(
+                cycles_path_state::flag_terminate_on_next_surface),
+            0.0f},
+        luisa::float4{
+            1.0f,
+            0.0f,
+            static_cast<float>(
+                cycles_path_state::flag_terminate_in_next_volume),
+            0.0f},
+        luisa::float4{
+            1.0f,
+            0.0f,
+            static_cast<float>(
+                cycles_path_state::flag_terminate_on_next_surface),
+            0.0f},
+        luisa::float4{1.0f, 1.0f, 0.0f, 0.0f},
+        luisa::float4{
+            1.0f,
+            0.0f,
+            static_cast<float>(
+                cycles_path_state::flag_terminate_in_next_volume),
+            0.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {
