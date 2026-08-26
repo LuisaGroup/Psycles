@@ -1,6 +1,7 @@
 #include <psycles/adapter/blender_scene.h>
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/material_library.h>
+#include <psycles/compiler/surface_bump_expansion.h>
 #include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/contract/cycles_pointiness.h>
 
@@ -10,12 +11,12 @@
 #include <cstdlib>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <span>
 #include <stdexcept>
 #include <string_view>
-#include <tuple>
 #include <vector>
 
 namespace {
@@ -99,6 +100,7 @@ struct ImageProducerCensus {
 
 struct ImageProducerOutputs {
     bool environment{};
+    std::size_t representative{};
     std::optional<std::size_t> color;
     std::optional<std::size_t> alpha;
 };
@@ -120,6 +122,7 @@ struct VectorMathProducerCensus {
 };
 
 struct VectorMathProducerOutputs {
+    std::size_t representative{};
     std::optional<std::size_t> value;
     std::optional<std::size_t> vector;
 };
@@ -154,20 +157,18 @@ struct VectorMathProducerOutputs {
 }
 
 [[nodiscard]] ImageProducerCensus census_image_producers(
-    const psycles::compiler::SurfaceProgram &program,
+    std::span<const psycles::compiler::ValueInstruction> instructions,
     const std::vector<bool> *active = nullptr) {
     using psycles::compiler::ValueOperation;
-    const auto &instructions = program.value_instructions();
     if (active != nullptr && active->size() != instructions.size()) {
         std::abort();
     }
-    // A valid source node is the identity of one authored image producer.
-    // Synthetic instructions without that identity must remain distinct:
-    // grouping every invalid NodeId would manufacture a false dual-output
-    // producer and make the census claim an unsafe fusion opportunity.
-    std::map<std::tuple<std::uint32_t, bool, std::size_t>,
-             ImageProducerOutputs>
-        producers;
+    // Producer equivalence is source provenance plus the complete projected
+    // configuration. Graph expansion intentionally clones the same authored
+    // node under different differential contexts, whose remapped operands
+    // make them distinct equivalence classes. Synthetic instructions have no
+    // provenance and therefore remain singleton classes.
+    std::vector<ImageProducerOutputs> producers;
     for (auto index = std::size_t{}; index < instructions.size(); ++index) {
         if (active != nullptr && !(*active)[index]) {
             continue;
@@ -191,14 +192,19 @@ struct VectorMathProducerOutputs {
             default:
                 continue;
         }
-        const auto key = std::tuple{
-            instruction.source_node.value,
-            environment,
-            instruction.source_node ? std::size_t{0u} : index + 1u};
-        auto [iter, inserted] = producers.try_emplace(
-            key, ImageProducerOutputs{.environment = environment});
-        static_cast<void>(inserted);
-        auto &output = color ? iter->second.color : iter->second.alpha;
+        auto producer = std::find_if(
+            producers.begin(), producers.end(), [&](const auto &candidate) {
+                return candidate.environment == environment &&
+                       exact_same_producer_configuration(
+                           instructions[candidate.representative], instruction);
+            });
+        if (producer == producers.end()) {
+            producer = producers.emplace(
+                producer, ImageProducerOutputs{
+                              .environment = environment,
+                              .representative = index});
+        }
+        auto &output = color ? producer->color : producer->alpha;
         if (output) {
             std::abort();
         }
@@ -207,8 +213,7 @@ struct VectorMathProducerOutputs {
 
     ImageProducerCensus result;
     result.producers = producers.size();
-    for (const auto &[key, outputs] : producers) {
-        static_cast<void>(key);
+    for (const auto &outputs : producers) {
         result.output_instructions += outputs.color.has_value() ? 1u : 0u;
         result.output_instructions += outputs.alpha.has_value() ? 1u : 0u;
         if (!outputs.color || !outputs.alpha) {
@@ -231,20 +236,16 @@ struct VectorMathProducerOutputs {
 }
 
 [[nodiscard]] VectorMathProducerCensus census_vector_math_producers(
-    const psycles::compiler::SurfaceProgram &program,
+    std::span<const psycles::compiler::ValueInstruction> instructions,
     const std::vector<bool> *active = nullptr) {
     using psycles::compiler::ValueOperation;
-    const auto &instructions = program.value_instructions();
     if (active != nullptr && active->size() != instructions.size()) {
         std::abort();
     }
 
-    // Source-node identity is the proof that two result instructions came from
-    // one authored Vector Math evaluation. Invalid identities remain distinct;
-    // equality of operands or metadata alone does not prove common provenance.
-    std::map<std::tuple<std::uint32_t, std::size_t>,
-             VectorMathProducerOutputs>
-        producers;
+    // Use the same exact equivalence relation as the image census. Source-node
+    // identity alone is insufficient after differential-context expansion.
+    std::vector<VectorMathProducerOutputs> producers;
     for (auto index = std::size_t{}; index < instructions.size(); ++index) {
         if (active != nullptr && !(*active)[index]) {
             continue;
@@ -256,14 +257,17 @@ struct VectorMathProducerOutputs {
             instruction.operation != ValueOperation::vector_math_vector) {
             continue;
         }
-        const auto key = std::tuple{
-            instruction.source_node.value,
-            instruction.source_node ? std::size_t{0u} : index + 1u};
-        auto [iter, inserted] =
-            producers.try_emplace(key, VectorMathProducerOutputs{});
-        static_cast<void>(inserted);
-        auto &output =
-            is_value ? iter->second.value : iter->second.vector;
+        auto producer = std::find_if(
+            producers.begin(), producers.end(), [&](const auto &candidate) {
+                return exact_same_producer_configuration(
+                    instructions[candidate.representative], instruction);
+            });
+        if (producer == producers.end()) {
+            producer = producers.emplace(
+                producer,
+                VectorMathProducerOutputs{.representative = index});
+        }
+        auto &output = is_value ? producer->value : producer->vector;
         if (output) {
             std::abort();
         }
@@ -272,8 +276,7 @@ struct VectorMathProducerOutputs {
 
     VectorMathProducerCensus result;
     result.producers = producers.size();
-    for (const auto &[key, outputs] : producers) {
-        static_cast<void>(key);
+    for (const auto &outputs : producers) {
         result.output_instructions += outputs.value.has_value() ? 1u : 0u;
         result.output_instructions += outputs.vector.has_value() ? 1u : 0u;
         if (!outputs.value || !outputs.vector) {
@@ -288,9 +291,66 @@ struct VectorMathProducerOutputs {
     return result;
 }
 
+[[nodiscard]] bool producer_partition_regression() {
+    using psycles::compiler::ValueExpressionId;
+    using psycles::compiler::ValueInstruction;
+    using psycles::compiler::ValueOperation;
+    using psycles::contract::NodeId;
+    using psycles::contract::SocketType;
+
+    const auto make_output = [](ValueOperation operation, NodeId source,
+                                SocketType type,
+                                ValueExpressionId context) {
+        return ValueInstruction{
+            .operation = operation,
+            .source_node = source,
+            .result_type = type,
+            .operands = {context, ValueExpressionId{2u}},
+            .static_u0 = 3u,
+            .static_u1 = 5u};
+    };
+    const std::vector image_instructions{
+        make_output(ValueOperation::image_color, NodeId{7u},
+                    SocketType::color, ValueExpressionId{0u}),
+        make_output(ValueOperation::image_alpha, NodeId{7u},
+                    SocketType::floating, ValueExpressionId{0u}),
+        make_output(ValueOperation::image_color, NodeId{7u},
+                    SocketType::color, ValueExpressionId{1u}),
+        make_output(ValueOperation::image_alpha, NodeId{7u},
+                    SocketType::floating, ValueExpressionId{1u})};
+    const auto image = census_image_producers(image_instructions);
+
+    const std::vector vector_math_instructions{
+        make_output(ValueOperation::vector_math_vector, NodeId{8u},
+                    SocketType::vector, ValueExpressionId{0u}),
+        make_output(ValueOperation::vector_math_value, NodeId{8u},
+                    SocketType::floating, ValueExpressionId{0u}),
+        make_output(ValueOperation::vector_math_vector, NodeId{8u},
+                    SocketType::vector, ValueExpressionId{1u}),
+        make_output(ValueOperation::vector_math_value, NodeId{8u},
+                    SocketType::floating, ValueExpressionId{1u})};
+    const auto vector_math =
+        census_vector_math_producers(vector_math_instructions);
+    return image.producers == 2u && image.output_instructions == 4u &&
+           image.dual_output_producers == 2u &&
+           image.exact_fusable_pairs == 2u &&
+           vector_math.producers == 2u &&
+           vector_math.output_instructions == 4u &&
+           vector_math.dual_output_producers == 2u &&
+           vector_math.exact_fusable_pairs == 2u;
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
+    if (argc == 2 &&
+        std::string_view{argv[1]} == "--self-test-producer-partition") {
+        if (!producer_partition_regression()) {
+            std::cerr << "exact producer partition regression failed\n";
+            return EXIT_FAILURE;
+        }
+        return EXIT_SUCCESS;
+    }
     if (argc != 3 && argc != 4) {
         std::cerr
             << "usage: psycles_inspect_blender_material "
@@ -538,6 +598,9 @@ int main(int argc, char **argv) {
         using psycles::compiler::ValueOperation;
         std::map<ValueOperation, std::size_t> value_operations;
         auto unique_values = std::size_t{};
+        auto expanded_values = std::size_t{};
+        auto expanded_bump_nodes = std::size_t{};
+        auto expanded_bump_sampled_instructions = std::size_t{};
         auto unique_closures = std::size_t{};
         auto reachable_closures = std::size_t{};
         auto preparation_active_values = std::size_t{};
@@ -560,9 +623,12 @@ int main(int argc, char **argv) {
         VectorMathProducerCensus preparation_vector_math_producers;
         std::vector<psycles::compiler::SurfaceValueStoragePlan>
             value_storage_plans;
+        std::vector<std::shared_ptr<const psycles::compiler::SurfaceProgram>>
+            value_execution_programs;
         std::vector<psycles::compiler::SurfaceValueExecutionInput>
             value_execution_inputs;
         value_storage_plans.reserve(representative_programs.size());
+        value_execution_programs.reserve(representative_programs.size());
         value_execution_inputs.reserve(representative_programs.size());
         std::map<PrincipledClosureFeature, std::size_t>
             feature_occurrences;
@@ -575,24 +641,50 @@ int main(int argc, char **argv) {
                  program->value_instructions()) {
                 value_operations[instruction.operation] += 1u;
             }
-            reachable_image_producers += census_image_producers(*program);
+            reachable_image_producers +=
+                census_image_producers(program->value_instructions());
             reachable_vector_math_producers +=
-                census_vector_math_producers(*program);
+                census_vector_math_producers(program->value_instructions());
             const auto &plan = closure_plans.at(signature);
+            auto expansion =
+                psycles::compiler::expand_surface_bump_program(*program);
+            if (!expansion.valid || !expansion.program) {
+                std::cerr << "surface Bump graph expansion failed for topology "
+                          << signature << ": " << expansion.diagnostic << '\n';
+                return EXIT_FAILURE;
+            }
+            if (!plan.compatible(*expansion.program)) {
+                std::cerr << "surface Bump graph expansion changed closure "
+                             "topology "
+                          << signature << '\n';
+                return EXIT_FAILURE;
+            }
+            expanded_values += expansion.program->value_instructions().size();
+            expanded_bump_nodes += expansion.bump_count;
+            expanded_bump_sampled_instructions +=
+                expansion.sampled_instruction_count;
+            value_execution_programs.emplace_back(
+                std::move(expansion.program));
+            const auto *execution_program =
+                value_execution_programs.back().get();
             const auto dependencies =
                 psycles::compiler::analyze_surface_value_dependencies(
-                    *program, plan);
+                    *execution_program, plan);
             preparation_image_producers += census_image_producers(
-                *program, &dependencies.preparation);
+                execution_program->value_instructions(),
+                &dependencies.preparation);
             physical_vector_math_producers += census_vector_math_producers(
-                *program, &dependencies.physical);
+                execution_program->value_instructions(),
+                &dependencies.physical);
             emission_vector_math_producers += census_vector_math_producers(
-                *program, &dependencies.emission);
+                execution_program->value_instructions(),
+                &dependencies.emission);
             preparation_vector_math_producers += census_vector_math_producers(
-                *program, &dependencies.preparation);
+                execution_program->value_instructions(),
+                &dependencies.preparation);
             const auto storage =
                 psycles::compiler::plan_surface_value_storage(
-                    *program,
+                    *execution_program,
                     dependencies.preparation,
                     dependencies.preparation_outputs);
             if (!storage.valid) {
@@ -602,7 +694,7 @@ int main(int argc, char **argv) {
             }
             const auto image =
                 psycles::compiler::lower_surface_value_program(
-                    *program, storage);
+                    *execution_program, storage);
             if (!image.valid) {
                 std::cerr << "surface bytecode lowering failed for topology "
                           << signature << ": " << image.diagnostic << '\n';
@@ -634,7 +726,7 @@ int main(int argc, char **argv) {
             value_storage_plans.emplace_back(storage);
             value_execution_inputs.emplace_back(
                 psycles::compiler::SurfaceValueExecutionInput{
-                    .program = program,
+                    .program = execution_program,
                     .storage = &value_storage_plans.back()});
             for (const auto &entry : plan.entries()) {
                 reachable_closures += entry.reachable ? 1u : 0u;
@@ -667,14 +759,6 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
         const auto &value_scene_image = value_executable_scene.values;
-        const auto value_bump_scene =
-            psycles::compiler::build_surface_value_bump_executable_scene(
-                value_execution_inputs);
-        if (!value_bump_scene.valid) {
-            std::cerr << "surface Bump bytecode aggregation failed: "
-                      << value_bump_scene.diagnostic << '\n';
-            return EXIT_FAILURE;
-        }
         std::map<ValueOperation, std::size_t> value_variants_by_operation;
         for (const auto &variant : value_executable_scene.variants) {
             ++value_variants_by_operation[variant.instruction.operation];
@@ -688,22 +772,16 @@ int main(int argc, char **argv) {
             value_bytecode_operand_bytes +
             value_bytecode_metadata_bytes +
             value_bytecode_static_bytes;
-        const auto &bump_values =
-            value_bump_scene.executable.values;
-        const auto value_bump_scene_image_bytes =
-            bump_values.programs.size() *
+        const auto value_executable_scene_image_bytes =
+            value_scene_image.programs.size() *
                 sizeof(psycles::compiler::SurfaceValueProgramDescriptor) +
-            bump_values.instructions.size() *
+            value_scene_image.instructions.size() *
                 sizeof(psycles::compiler::SurfaceValueBytecodeInstruction) +
-            bump_values.operands.size() * sizeof(std::uint32_t) +
-            bump_values.metadata.size() *
+            value_scene_image.operands.size() * sizeof(std::uint32_t) +
+            value_scene_image.metadata.size() *
                 sizeof(psycles::compiler::SurfaceValueBytecodeMetadata) +
-            bump_values.static_data.size() * sizeof(float) +
-            value_bump_scene.executable.instruction_variants.size() *
-                sizeof(std::uint32_t) +
-            value_bump_scene.bump_height_programs.size() *
-                sizeof(std::uint32_t) +
-            value_bump_scene.program_outputs.size() *
+            value_scene_image.static_data.size() * sizeof(float) +
+            value_executable_scene.instruction_variants.size() *
                 sizeof(std::uint32_t);
         const auto feature_count =
             [&](PrincipledClosureFeature feature) {
@@ -716,6 +794,10 @@ int main(int argc, char **argv) {
             << "scene_summary\nunique_topologies "
             << representative_programs.size()
             << "\nunique_values " << unique_values
+            << "\nexpanded_values " << expanded_values
+            << "\nexpanded_bump_nodes " << expanded_bump_nodes
+            << "\nexpanded_bump_sampled_instructions "
+            << expanded_bump_sampled_instructions
             << "\nunique_closures " << unique_closures
             << "\nreachable_closures " << reachable_closures
             << "\nvalue_opcode_kinds " << value_operations.size()
@@ -799,17 +881,14 @@ int main(int argc, char **argv) {
             << value_scene_descriptor_bytes
             << "\nvalue_scene_total_bytes "
             << value_scene_total_bytes
-            << "\nvalue_bump_height_subprograms "
-            << bump_values.programs.size() -
-                   value_bump_scene.root_program_count
-            << "\nvalue_bump_scene_programs "
-            << bump_values.programs.size()
-            << "\nvalue_bump_scene_instructions "
-            << bump_values.instructions.size()
-            << "\nvalue_bump_scene_variants "
-            << value_bump_scene.executable.variants.size()
-            << "\nvalue_bump_scene_image_bytes "
-            << value_bump_scene_image_bytes
+            << "\nvalue_executable_scene_programs "
+            << value_scene_image.programs.size()
+            << "\nvalue_executable_scene_instructions "
+            << value_scene_image.instructions.size()
+            << "\nvalue_executable_scene_variants "
+            << value_executable_scene.variants.size()
+            << "\nvalue_executable_scene_image_bytes "
+            << value_executable_scene_image_bytes
             << "\nprincipled_alpha "
             << feature_count(PrincipledClosureFeature::alpha)
             << "\nprincipled_sheen "

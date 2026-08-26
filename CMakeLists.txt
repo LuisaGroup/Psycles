@@ -1872,6 +1872,13 @@ if(PSYCLES_ENABLE_LUISA)
                 PROPERTIES
                     RUNTIME_OUTPUT_DIRECTORY
                         "${CMAKE_BINARY_DIR}/bin")
+            if(PSYCLES_BUILD_TESTS)
+                add_test(
+                    NAME psycles.inspect_blender_material_producer_partition
+                    COMMAND
+                        psycles_inspect_blender_material
+                        --self-test-producer-partition)
+            endif()
         endif()
     else()
         message(STATUS
