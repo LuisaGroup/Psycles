@@ -932,6 +932,13 @@ void report_mismatch(
 int main(int argc, char **argv) {
     const auto backend = std::string_view{
         argc > 1 ? argv[1] : "fallback"};
+    const auto tail_fast_path =
+        argc > 2 && std::string_view{argv[2]} == "tail";
+    if (argc > 2 && !tail_fast_path) {
+        std::cerr << "unknown compact surface fixture mode '"
+                  << argv[2] << "'\n";
+        return EXIT_FAILURE;
+    }
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
@@ -972,7 +979,7 @@ int main(int argc, char **argv) {
         compile_fixture(compiler, make_bssrdf_bump_graph(true)));
     fixtures.emplace_back(compile_fixture(
         compiler,
-        make_nested_mix_add_replay_graph()));
+        make_nested_mix_replay_graph(!tail_fast_path)));
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_capacity_transparency_graph()));
@@ -1064,6 +1071,13 @@ int main(int argc, char **argv) {
     if (!scene->surface_values) {
         std::cerr << "failed to build compact surface runtime on "
                   << backend << ": " << diagnostic << '\n';
+        return EXIT_FAILURE;
+    }
+    if (scene->surface_values->closure_mix_restoration_required ==
+        tail_fast_path) {
+        std::cerr << "compact runtime selected the wrong Mix-frame JIT shape "
+                     "on "
+                  << backend << " (tail_fast_path=" << tail_fast_path << ")\n";
         return EXIT_FAILURE;
     }
     // The two exact Clamp modes now inhabit one typed record domain. The

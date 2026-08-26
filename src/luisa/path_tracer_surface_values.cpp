@@ -22,6 +22,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <type_traits>
 #include <utility>
 
 #include <luisa/core/logging.h>
@@ -456,8 +457,8 @@ namespace {
     std::abort();
 }
 
-template<bool FilterLeafPrefix, typename Visitor>
-void traverse_surface_closure_program(
+template<bool MayRestoreParent, bool FilterLeafPrefix, typename Visitor>
+void traverse_surface_closure_program_impl(
     const SurfaceValueRuntime &runtime,
     const ShaderServices &services,
     const SurfacePoint &point,
@@ -465,13 +466,17 @@ void traverse_surface_closure_program(
     UInt instruction_begin,
     UInt instruction_end,
     UInt leaf_begin,
-    Visitor &&visit_leaf) noexcept {
+    Visitor &visit_leaf) noexcept {
     // Slot zero is a harmless dummy for Mix-free scenes. For every nonempty
     // control stack the host verifier proves write-before-read, proper nesting,
-    // and exact laminar-interval coloring. A frame remains immutable from its
-    // Mix-begin to Mix-end: x is the region's entry weight and y is its right
-    // branch weight. Hence every closed region restores its entry weight.
-    luisa::compute::Local<luisa::float2> mix_frames{
+    // and exact laminar-interval coloring. A full frame remains immutable from
+    // Mix-begin to its explicit end: x is the region entry and y is the right
+    // branch. When the verified scene has only tail Mixes, no continuation can
+    // observe x; the JIT therefore emits one scalar right weight per slot and
+    // removes the restoration instruction family from the AST entirely.
+    using MixFrame = std::conditional_t<
+        MayRestoreParent, luisa::float2, float>;
+    luisa::compute::Local<MixFrame> mix_frames{
         std::max(runtime.maximum_closure_mix_slots, 1u)};
     Float current_weight = 1.0f;
     UInt instruction_index = instruction_begin;
@@ -494,9 +499,14 @@ void traverse_surface_closure_program(
                 0.0f,
                 1.0f);
             const auto parent_weight = current_weight;
-            mix_frames.write(
-                instruction.z,
-                make_float2(parent_weight, parent_weight * factor));
+            if constexpr (MayRestoreParent) {
+                mix_frames.write(
+                    instruction.z,
+                    make_float2(parent_weight, parent_weight * factor));
+            } else {
+                mix_frames.write(
+                    instruction.z, parent_weight * factor);
+            }
             current_weight = parent_weight * (1.0f - factor);
             $if(current_weight <= 0.0f) {
                 next_instruction = instruction_index + instruction.w;
@@ -505,17 +515,17 @@ void traverse_surface_closure_program(
         $else {
             $if(kind == static_cast<std::uint32_t>(
                             compiler::SurfaceClosureInstructionKind::mix_right)) {
-                current_weight = mix_frames.read(instruction.y).y;
+                if constexpr (MayRestoreParent) {
+                    current_weight = mix_frames.read(instruction.y).y;
+                } else {
+                    current_weight = mix_frames.read(instruction.y);
+                }
                 $if(current_weight <= 0.0f) {
                     next_instruction = instruction_index + instruction.z;
                 };
             }
             $else {
-                $if(kind == static_cast<std::uint32_t>(
-                                compiler::SurfaceClosureInstructionKind::mix_end)) {
-                    current_weight = mix_frames.read(instruction.y).x;
-                }
-                $else {
+                const auto visit_or_reject_leaf = [&] noexcept {
                     $if(kind == static_cast<std::uint32_t>(
                                     compiler::SurfaceClosureInstructionKind::leaf)) {
                         if constexpr (FilterLeafPrefix) {
@@ -533,10 +543,46 @@ void traverse_surface_closure_program(
                             "invalid compact surface closure instruction kind");
                     };
                 };
+                if constexpr (MayRestoreParent) {
+                    $if(kind == static_cast<std::uint32_t>(
+                                    compiler::SurfaceClosureInstructionKind::mix_end)) {
+                        current_weight = mix_frames.read(instruction.y).x;
+                    }
+                    $else {
+                        visit_or_reject_leaf();
+                    };
+                } else {
+                    visit_or_reject_leaf();
+                };
             };
         };
         instruction_index = next_instruction;
     };
+}
+
+template<bool FilterLeafPrefix, typename Visitor>
+void traverse_surface_closure_program(
+    const SurfaceValueRuntime &runtime,
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceValueLocalsView &locals,
+    UInt instruction_begin,
+    UInt instruction_end,
+    UInt leaf_begin,
+    Visitor &&visit_leaf) noexcept {
+    // This is a host/JIT capability branch. Only the selected implementation
+    // contributes to the shader AST; no device-side scheduler or scene test is
+    // introduced. The serialized verifier is the proof boundary for the
+    // capability bit.
+    if (runtime.closure_mix_restoration_required) {
+        traverse_surface_closure_program_impl<true, FilterLeafPrefix>(
+            runtime, services, point, locals, instruction_begin,
+            instruction_end, leaf_begin, visit_leaf);
+    } else {
+        traverse_surface_closure_program_impl<false, FilterLeafPrefix>(
+            runtime, services, point, locals, instruction_begin,
+            instruction_end, leaf_begin, visit_leaf);
+    }
 }
 
 template<bool FilterLeafPrefix = false, typename Visitor>

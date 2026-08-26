@@ -27,10 +27,12 @@ struct CompactSurfaceProgramEvidence {
 
 [[nodiscard]] contract::ShaderGraph make_minimal_principled_graph();
 
-// A depth-three Mix tree followed by an Add sibling. The transparent leaf also
-// forces the physical-closure replay path, so compact execution must preserve
-// nested Mix frames, Add continuation weight, and replay order together.
-[[nodiscard]] contract::ShaderGraph make_nested_mix_add_replay_graph();
+// A depth-three Mix tree. `restore_after` appends an Add emission sibling;
+// otherwise the Mix consumes the root tail. The transparent leaf also forces
+// physical replay, so the paired device tests cover both scalar tail frames
+// and full parent-restoring frames with the same closure topology.
+[[nodiscard]] contract::ShaderGraph
+make_nested_mix_replay_graph(bool restore_after);
 
 // Differential fixture for the two-phase automatic-normal transaction. Every
 // undisplaced geometry member is distinct from its displaced counterpart.

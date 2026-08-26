@@ -881,8 +881,34 @@ int main(int argc, char **argv) {
                            psycles::compiler::
                                SurfaceClosureInstructionKind::mix_begin;
                 }));
+        const auto restoring_closure_mixes =
+            static_cast<std::size_t>(std::count_if(
+                value_scene_image.closure_instructions.begin(),
+                value_scene_image.closure_instructions.end(),
+                [](const auto &instruction) noexcept {
+                    return psycles::compiler::surface_closure_instruction_kind(
+                               instruction) ==
+                               psycles::compiler::
+                                   SurfaceClosureInstructionKind::mix_right &&
+                           psycles::compiler::
+                               surface_closure_mix_restores_parent(instruction);
+                }));
+        const auto tail_closure_mixes =
+            static_cast<std::size_t>(std::count_if(
+                value_scene_image.closure_instructions.begin(),
+                value_scene_image.closure_instructions.end(),
+                [](const auto &instruction) noexcept {
+                    return psycles::compiler::surface_closure_instruction_kind(
+                               instruction) ==
+                               psycles::compiler::
+                                   SurfaceClosureInstructionKind::mix_right &&
+                           !psycles::compiler::
+                               surface_closure_mix_restores_parent(instruction);
+                }));
         if (structured_mix_factor_evaluations !=
-            closure_control.incremental_mix_factor_evaluations) {
+                closure_control.incremental_mix_factor_evaluations ||
+            structured_mix_factor_evaluations !=
+                restoring_closure_mixes + tail_closure_mixes) {
             std::cerr << "structured closure control is not in bijection with "
                          "the formally contributing Mix nodes\n";
             return EXIT_FAILURE;
@@ -1023,6 +1049,10 @@ int main(int argc, char **argv) {
             << closure_control.incremental_mix_factor_evaluations
             << "\nstructured_closure_mix_factor_evaluations "
             << structured_mix_factor_evaluations
+            << "\nrestoring_closure_mixes "
+            << restoring_closure_mixes
+            << "\ntail_closure_mixes "
+            << tail_closure_mixes
             << "\nclosure_bytecode_instructions "
             << value_scene_image.closure_instructions.size()
             << "\nmaximum_closure_mix_depth "

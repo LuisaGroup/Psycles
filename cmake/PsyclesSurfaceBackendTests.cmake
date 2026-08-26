@@ -104,6 +104,24 @@ if(TEST psycles.luisa_compact_surface_preparation_vk)
         PROPERTIES ENVIRONMENT
             "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1")
 endif()
+# The default fixture contains Add(Mix(...), sibling) and therefore selects
+# full parent-restoring frames. Reuse the same differential executable with a
+# root-tail Mix scene so every enabled backend also compiles and executes the
+# scalar no-restoration JIT shape.
+foreach(_backend IN ITEMS fallback metal hip vk)
+    if(TARGET luisa-compute-backend-${_backend})
+        add_test(
+            NAME psycles.luisa_compact_surface_tail_${_backend}
+            COMMAND psycles_luisa_compact_surface_preparation_tests
+                    ${_backend} tail)
+    endif()
+endforeach()
+if(TEST psycles.luisa_compact_surface_tail_vk)
+    set_tests_properties(
+        psycles.luisa_compact_surface_tail_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1")
+endif()
 
 psycles_add_luisa_backend_test(
     TARGET psycles_luisa_surface_closure_point_tests
