@@ -42,6 +42,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/graph_surface_value_expression.cpp
     src/luisa/graph_surface_values.cpp
     src/luisa/graph_surface_value_context.cpp
+    src/luisa/graph_surface_value_bump_expanded.cpp
     src/luisa/graph_surface_value_image.cpp
     src/luisa/graph_surface_value_math.cpp
     src/luisa/graph_surface_value_normal.cpp

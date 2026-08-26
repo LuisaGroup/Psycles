@@ -1,5 +1,7 @@
 #include "path_tracer_surface_values.h"
 
+#include <psycles/compiler/surface_bump_expansion.h>
+
 #include <algorithm>
 #include <limits>
 #include <memory>
@@ -89,6 +91,36 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         }
     }
 
+    // Refine each topology before any dependency or storage analysis. The
+    // closure plan remains valid because refinement preserves closure-tree
+    // indices and remaps every ValueExpressionId endpoint transactionally.
+    // Keeping the expanded programs alive in the runtime also guarantees that
+    // static evaluator variants never retain pointers into temporary IR.
+    std::vector<std::shared_ptr<const compiler::SurfaceProgram>>
+        execution_programs;
+    execution_programs.reserve(programs.size());
+    for (auto topology = std::size_t{0u}; topology < programs.size();
+         ++topology) {
+        const auto &source = programs[topology];
+        if (!source || !closure_plans[topology].compatible(*source)) {
+            diagnostic = "surface topology " + std::to_string(topology) +
+                         " has no compatible closure plan";
+            return nullptr;
+        }
+        auto expansion = compiler::expand_surface_bump_program(*source);
+        if (!expansion.valid || !expansion.program) {
+            diagnostic = "surface topology " + std::to_string(topology) +
+                         " Bump graph expansion: " + expansion.diagnostic;
+            return nullptr;
+        }
+        if (!closure_plans[topology].compatible(*expansion.program)) {
+            diagnostic = "surface topology " + std::to_string(topology) +
+                         " Bump graph expansion changed closure topology";
+            return nullptr;
+        }
+        execution_programs.emplace_back(std::move(expansion.program));
+    }
+
     auto runtime = std::make_unique<SurfaceValueRuntime>();
     runtime->topologies.reserve(programs.size());
     std::vector<compiler::SurfaceValueStoragePlan> normal_storage;
@@ -103,12 +135,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
 
     for (auto topology = std::size_t{0u}; topology < programs.size();
          ++topology) {
-        const auto &program_ptr = programs[topology];
-        if (!program_ptr || !closure_plans[topology].compatible(*program_ptr)) {
-            diagnostic = "surface topology " + std::to_string(topology) +
-                         " has no compatible closure plan";
-            return nullptr;
-        }
+        const auto &program_ptr = execution_programs[topology];
         const auto &program = *program_ptr;
         auto normal_active =
             dependency_mask(program, program.surface_normal_root());
@@ -169,7 +196,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
             const auto &instruction = program.value_instructions()[index];
             topology_uses_undisplaced_geometry |=
                 normal_active[index] &&
-                instruction.operation == compiler::ValueOperation::bump &&
+                instruction.operation ==
+                    compiler::ValueOperation::bump_samples &&
                 (instruction.static_u0 & 4u) != 0u;
         }
         runtime->topologies.emplace_back(SurfaceValueRuntimeTopology{
@@ -191,17 +219,18 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     for (auto topology = std::size_t{0u}; topology < programs.size();
          ++topology) {
         const auto has_automatic_normal =
-            programs[topology]->surface_normal_root().valid();
+            execution_programs[topology]->surface_normal_root().valid();
         const auto *normal =
             has_automatic_normal ? &normal_storage[topology] : nullptr;
         roots.emplace_back(compiler::SurfaceValueExecutionInput{
-            .program = programs[topology].get(),
+            .program = execution_programs[topology].get(),
             .storage =
                 &root_storage[topology *
                                   SurfaceValueRuntime::programs_per_topology +
                               SurfaceValueRuntime::preparation_program_offset],
             .surface_normal_storage = normal,
-            .surface_normal_output = programs[topology]->surface_normal_root(),
+            .surface_normal_output =
+                execution_programs[topology]->surface_normal_root(),
             .surface_normal_uses_undisplaced_geometry =
                 has_automatic_normal &&
                 automatic_normal_uses_undisplaced_geometry[topology],
@@ -209,7 +238,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         const auto emission_has_automatic_normal =
             emission_uses_automatic_normal[topology];
         roots.emplace_back(compiler::SurfaceValueExecutionInput{
-            .program = programs[topology].get(),
+            .program = execution_programs[topology].get(),
             .storage =
                 &root_storage[topology *
                                   SurfaceValueRuntime::programs_per_topology +
@@ -218,7 +247,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                 emission_has_automatic_normal ? normal : nullptr,
             .surface_normal_output =
                 emission_has_automatic_normal
-                    ? programs[topology]->surface_normal_root()
+                    ? execution_programs[topology]->surface_normal_root()
                     : compiler::ValueExpressionId{},
             .surface_normal_uses_undisplaced_geometry =
                 emission_has_automatic_normal &&

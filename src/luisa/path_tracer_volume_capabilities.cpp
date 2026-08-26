@@ -42,6 +42,17 @@ is_spatial_source(compiler::ValueOperation operation) noexcept {
   case ValueOperation::attribute_alpha:
   case ValueOperation::normal_map:
   case ValueOperation::bump:
+  case ValueOperation::bump_samples:
+  case ValueOperation::sampled_surface_position:
+  case ValueOperation::sampled_uv:
+  case ValueOperation::sampled_generated:
+  case ValueOperation::sampled_object_position:
+  case ValueOperation::sampled_object_position_with_transform:
+  case ValueOperation::sampled_pointiness:
+  case ValueOperation::sampled_attribute_color:
+  case ValueOperation::sampled_attribute_factor:
+  case ValueOperation::sampled_attribute_alpha:
+  case ValueOperation::sampled_normal_map:
   case ValueOperation::noise_factor:
   case ValueOperation::noise_color:
   case ValueOperation::white_noise_value:

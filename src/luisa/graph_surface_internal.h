@@ -453,6 +453,8 @@ public:
     const compiler::ValueInstruction &instruction) noexcept;
 [[nodiscard]] std::unique_ptr<ValueNode> try_make_normal_value_node(
     const compiler::ValueInstruction &instruction) noexcept;
+[[nodiscard]] std::unique_ptr<ValueNode> try_make_bump_expanded_value_node(
+    const compiler::ValueInstruction &instruction) noexcept;
 [[nodiscard]] std::unique_ptr<ValueNode> try_make_wave_value_node(
     const compiler::ValueInstruction &instruction) noexcept;
 [[nodiscard]] std::unique_ptr<ValueNode> try_make_magic_value_node(

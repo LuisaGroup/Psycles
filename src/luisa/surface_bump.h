@@ -50,7 +50,7 @@ make_surface_bump_evaluation_domain(
     const SurfacePoint &point,
     const SurfaceBumpSvmConfiguration &configuration,
     Float3 normal,
-    const SurfaceBumpEvaluationDomain &domain,
+    Float filter_width,
     Float height_center,
     Float height_x,
     Float height_y,

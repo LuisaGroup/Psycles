@@ -121,7 +121,7 @@ Float3 evaluate_surface_bump(
     const SurfacePoint &point,
     const SurfaceBumpSvmConfiguration &configuration,
     Float3 normal,
-    const SurfaceBumpEvaluationDomain &domain,
+    Float filter_width,
     Float height_center,
     Float height_x,
     Float height_y,
@@ -134,7 +134,7 @@ Float3 evaluate_surface_bump(
     const auto strength = max(strength_expression, 0.0f);
     const auto input = SurfaceBumpInput{
         .normal = std::move(normal),
-        .filter_width = domain.filter_width,
+        .filter_width = std::move(filter_width),
         .dPdx = select(point.dPdx,
                        point.object_dPdx,
                        configuration.object_space),

@@ -340,6 +340,7 @@ bool value_instruction_observes_shading_normal(
   switch (instruction.operation) {
   case ValueOperation::shading_normal:
   case ValueOperation::normal_map:
+  case ValueOperation::sampled_normal_map:
     return true;
   case ValueOperation::fresnel:
   case ValueOperation::layer_weight_fresnel:
@@ -350,7 +351,8 @@ bool value_instruction_observes_shading_normal(
   case ValueOperation::image_alpha:
     // Box projection computes axis weights from the current ShaderData normal.
     return ((instruction.static_u1 >> 12u) & 0x3u) == 1u;
-  case ValueOperation::bump: {
+  case ValueOperation::bump:
+  case ValueOperation::bump_samples: {
     const auto normal_linked = (instruction.static_u0 & 2u) != 0u;
     const auto object_space = (instruction.static_u0 & 4u) != 0u;
     // An unlinked Bump consumes the current normal as its input. Object-space
@@ -373,6 +375,8 @@ bool value_instruction_observes_shading_normal(
   case ValueOperation::math:
   case ValueOperation::absolute:
   case ValueOperation::clamp01:
+  case ValueOperation::bump_offset_zero:
+  case ValueOperation::bump_filter_width:
   case ValueOperation::clamp_range:
   case ValueOperation::map_range_float:
   case ValueOperation::map_range_vector:
@@ -389,19 +393,25 @@ bool value_instruction_observes_shading_normal(
   case ValueOperation::blackbody:
   case ValueOperation::wavelength:
   case ValueOperation::surface_position:
+  case ValueOperation::sampled_surface_position:
   case ValueOperation::geometric_normal:
   case ValueOperation::incoming:
   case ValueOperation::tangent:
   case ValueOperation::uv:
+  case ValueOperation::sampled_uv:
   case ValueOperation::generated:
+  case ValueOperation::sampled_generated:
   case ValueOperation::object_position:
+  case ValueOperation::sampled_object_position:
   case ValueOperation::object_position_with_transform:
+  case ValueOperation::sampled_object_position_with_transform:
   case ValueOperation::object_location:
   case ValueOperation::object_random:
   case ValueOperation::particle_index:
   case ValueOperation::particle_random:
   case ValueOperation::back_facing:
   case ValueOperation::pointiness:
+  case ValueOperation::sampled_pointiness:
   case ValueOperation::random_per_island:
   case ValueOperation::curve_is_strand:
   case ValueOperation::curve_intercept:
@@ -427,8 +437,11 @@ bool value_instruction_observes_shading_normal(
   case ValueOperation::environment_color:
   case ValueOperation::environment_alpha:
   case ValueOperation::attribute_color:
+  case ValueOperation::sampled_attribute_color:
   case ValueOperation::attribute_factor:
+  case ValueOperation::sampled_attribute_factor:
   case ValueOperation::attribute_alpha:
+  case ValueOperation::sampled_attribute_alpha:
   case ValueOperation::noise_factor:
   case ValueOperation::noise_color:
   case ValueOperation::white_noise_value:

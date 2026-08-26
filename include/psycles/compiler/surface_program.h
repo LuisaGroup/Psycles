@@ -148,6 +148,25 @@ enum class ValueOperation : std::uint8_t {
   attribute_alpha,
   normal_map,
   bump,
+  // Internal post-lowering operations used by the compact SVM path. Bump
+  // height graphs are cloned into one topological stream, exactly as data,
+  // rather than recursively invoking a second shader interpreter. The
+  // sampled_* operations make the differential sample context an explicit
+  // SSA dependency; no hidden mutable SurfacePoint state constrains the
+  // scheduler.
+  bump_offset_zero,
+  bump_filter_width,
+  bump_samples,
+  sampled_surface_position,
+  sampled_uv,
+  sampled_generated,
+  sampled_object_position,
+  sampled_object_position_with_transform,
+  sampled_pointiness,
+  sampled_attribute_color,
+  sampled_attribute_factor,
+  sampled_attribute_alpha,
+  sampled_normal_map,
   noise_factor,
   noise_color,
   white_noise_value,
@@ -290,6 +309,50 @@ struct bump {
   static constexpr std::size_t distance = 2u;
   static constexpr std::size_t filter_width = 3u;
   static constexpr std::size_t normal = 4u;
+  static constexpr std::size_t count = 5u;
+};
+
+struct bump_samples {
+  static constexpr std::size_t height_center = 0u;
+  static constexpr std::size_t height_x = 1u;
+  static constexpr std::size_t height_y = 2u;
+  static constexpr std::size_t strength = 3u;
+  static constexpr std::size_t distance = 4u;
+  static constexpr std::size_t filter_width = 5u;
+  static constexpr std::size_t normal = 6u;
+  static constexpr std::size_t count = 7u;
+};
+
+// Differential sample offsets are scalar coefficients of SurfacePoint::dPdx
+// and dPdy (and of the corresponding object/generated/UV/barycentric
+// derivatives). Both are ordinary SSA operands so nested Bump contexts compose
+// by addition and remain visible to dependency analysis and storage coloring.
+struct sampled_nullary {
+  static constexpr std::size_t dx = 0u;
+  static constexpr std::size_t dy = 1u;
+  static constexpr std::size_t count = 2u;
+};
+
+struct sampled_uv {
+  static constexpr std::size_t dx = 0u;
+  static constexpr std::size_t dy = 1u;
+  static constexpr std::size_t map = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
+struct sampled_attribute {
+  static constexpr std::size_t dx = 0u;
+  static constexpr std::size_t dy = 1u;
+  static constexpr std::size_t id = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
+struct sampled_normal_map {
+  static constexpr std::size_t dx = 0u;
+  static constexpr std::size_t dy = 1u;
+  static constexpr std::size_t color = 2u;
+  static constexpr std::size_t strength = 3u;
+  static constexpr std::size_t uv_map = 4u;
   static constexpr std::size_t count = 5u;
 };
 
@@ -532,6 +595,7 @@ value_operation_operand_count(ValueOperation operation) noexcept {
     case ValueOperation::path_glossy_depth:
     case ValueOperation::path_transparent_depth:
     case ValueOperation::path_transmission_depth:
+    case ValueOperation::bump_offset_zero:
       return 0u;
 
     case ValueOperation::passthrough:
@@ -541,6 +605,7 @@ value_operation_operand_count(ValueOperation operation) noexcept {
     case ValueOperation::vector_to_scalar:
     case ValueOperation::absolute:
     case ValueOperation::clamp01:
+    case ValueOperation::bump_filter_width:
       return value_operand::unary::count;
 
     case ValueOperation::add:
@@ -602,6 +667,22 @@ value_operation_operand_count(ValueOperation operation) noexcept {
       return value_operand::normal_map::count;
     case ValueOperation::bump:
       return value_operand::bump::count;
+    case ValueOperation::bump_samples:
+      return value_operand::bump_samples::count;
+    case ValueOperation::sampled_surface_position:
+    case ValueOperation::sampled_generated:
+    case ValueOperation::sampled_object_position:
+    case ValueOperation::sampled_object_position_with_transform:
+    case ValueOperation::sampled_pointiness:
+      return value_operand::sampled_nullary::count;
+    case ValueOperation::sampled_uv:
+      return value_operand::sampled_uv::count;
+    case ValueOperation::sampled_attribute_color:
+    case ValueOperation::sampled_attribute_factor:
+    case ValueOperation::sampled_attribute_alpha:
+      return value_operand::sampled_attribute::count;
+    case ValueOperation::sampled_normal_map:
+      return value_operand::sampled_normal_map::count;
     case ValueOperation::noise_factor:
     case ValueOperation::noise_color:
       return value_operand::noise::count;

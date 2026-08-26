@@ -681,6 +681,39 @@ static_assert(
     (surface_value_handler_image_box_bit &
      (surface_value_opcode_mask | surface_value_result_bank_mask)) == 0u);
 
+// Graph-expanded Bump operations retain the immutable contract of the source
+// evaluator. Canonicalizing only for metadata/immediate validation keeps their
+// device opcodes distinct while proving that no semantic field is dropped.
+[[nodiscard]] constexpr ValueOperation
+surface_value_semantic_base_operation(ValueOperation operation) noexcept {
+  switch (operation) {
+  case ValueOperation::bump_samples:
+    return ValueOperation::bump;
+  case ValueOperation::sampled_surface_position:
+    return ValueOperation::surface_position;
+  case ValueOperation::sampled_uv:
+    return ValueOperation::uv;
+  case ValueOperation::sampled_generated:
+    return ValueOperation::generated;
+  case ValueOperation::sampled_object_position:
+    return ValueOperation::object_position;
+  case ValueOperation::sampled_object_position_with_transform:
+    return ValueOperation::object_position_with_transform;
+  case ValueOperation::sampled_pointiness:
+    return ValueOperation::pointiness;
+  case ValueOperation::sampled_attribute_color:
+    return ValueOperation::attribute_color;
+  case ValueOperation::sampled_attribute_factor:
+    return ValueOperation::attribute_factor;
+  case ValueOperation::sampled_attribute_alpha:
+    return ValueOperation::attribute_alpha;
+  case ValueOperation::sampled_normal_map:
+    return ValueOperation::normal_map;
+  default:
+    return operation;
+  }
+}
+
 [[nodiscard]] constexpr bool surface_value_operation_uses_mapping_immediate(
     ValueOperation operation) noexcept {
   return operation == ValueOperation::mapping;
@@ -696,6 +729,7 @@ static_assert(
 
 [[nodiscard]] constexpr bool
 surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
+  operation = surface_value_semantic_base_operation(operation);
   return operation == ValueOperation::noise_factor ||
          operation == ValueOperation::noise_color ||
          operation == ValueOperation::math ||
@@ -727,6 +761,7 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
 
 [[nodiscard]] constexpr std::uint64_t
 surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
+  operation = surface_value_semantic_base_operation(operation);
   return operation == ValueOperation::math ||
              operation == ValueOperation::vector_math_value ||
              operation == ValueOperation::vector_math_vector ||
@@ -753,6 +788,7 @@ surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
 
 [[nodiscard]] constexpr std::uint64_t
 surface_value_svm_static_u1_mask(ValueOperation operation) noexcept {
+  operation = surface_value_semantic_base_operation(operation);
   if (surface_value_operation_uses_noise_normalize(operation)) {
     return ~std::uint64_t{0u};
   }
@@ -781,6 +817,7 @@ surface_value_svm_evaluator_static_u0(ValueOperation operation,
 [[nodiscard]] constexpr std::uint64_t
 surface_value_svm_evaluator_static_u1(ValueOperation operation,
                                       std::uint64_t static_u1) noexcept {
+  operation = surface_value_semantic_base_operation(operation);
   const auto image = operation == ValueOperation::image_color ||
                      operation == ValueOperation::image_alpha;
   if (image) {
@@ -796,6 +833,7 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
 [[nodiscard]] constexpr bool surface_value_svm_static_fields_valid(
     ValueOperation operation, std::uint64_t static_u0,
     std::uint64_t static_u1) noexcept {
+  operation = surface_value_semantic_base_operation(operation);
   if (operation == ValueOperation::mix) {
     return static_u0 <=
                static_cast<std::uint64_t>(BlendOperation::value) &&
@@ -880,6 +918,7 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
 [[nodiscard]] constexpr std::uint32_t make_surface_value_svm_immediate(
     ValueOperation operation, std::uint64_t static_u0,
     std::uint64_t static_u1) noexcept {
+  operation = surface_value_semantic_base_operation(operation);
   if (surface_value_operation_uses_noise_normalize(operation)) {
     return ((static_u1 & 1u) != 0u
                 ? surface_value_noise_normalize_immediate_bit
