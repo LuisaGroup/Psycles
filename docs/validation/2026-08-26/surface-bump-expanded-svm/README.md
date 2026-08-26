@@ -94,10 +94,11 @@ emission, BSSRDF, volume, normal, and displacement consumers.
 - a nested position-dependent Bump contains an explicit context addition;
 - a source graph with a forward dependency is rejected.
 
-The compact device regression additionally checks that root-program count and
-total-program count are equal, the height domain and every recursive target
-are empty, and Combined, Normal, Albedo, all light passes, BSSRDF, and Bump
-preparation retain their reference results.
+The compact device regression additionally checks that the program count is
+exactly twice the topology count (preparation plus emission), the semantic
+variant stream is total except at the unique normal-transition boundary, no
+recursive `bump` opcode remains, and Combined, Normal, Albedo, all light
+passes, BSSRDF, and Bump preparation retain their reference results.
 
 Commands, all passing:
 
@@ -121,6 +122,63 @@ ctest --test-dir build --output-on-failure -j1 \
 The Vulkan command selected the RX 9070 XT, emitted five optimized native
 SPIR-V modules of 129531, 19193, 6029, 12706, and 179208 words, and passed with
 DXC disabled.
+
+## Production runtime ABI quotient
+
+The graph expansion makes the old recursive-height runtime state not merely
+unused in the Barbershop fixture, but unreachable for every successfully built
+production scene. Let `H` be the relation from an instruction to a recursively
+called height program. Expansion is total and fail-closed before dependency or
+storage planning, and its postcondition excludes the old `bump` operation.
+The production executable builder then emits exactly one program per supplied
+root and has no operation that constructs an edge in `H`. Therefore `H` is
+empty by construction. Its transitive closure is also empty, so height variant
+domains, height-program/output side streams, and their device bindings cannot
+be observed by any production execution.
+
+The follow-up runtime cleanup quotients the runtime state by that proven-empty
+component:
+
+- production now owns `SurfaceValueExecutableScene` directly rather than the
+  legacy recursive wrapper;
+- the preparation, emission, and BSSRDF height-variant domains are removed;
+- the height-program and program-output host arrays, GPU buffers, uploads, and
+  two private bindless slots are removed;
+- the compact regression proves the exact `2 * topology_count` program
+  bijection, valid variant coverage for every ordinary instruction, the unique
+  transition sentinel contract, both authored Bump configurations, and absence
+  of the recursive opcode.
+
+Fallback, HIP, and strict native Vulkan tests passed after this quotient. The
+strict Vulkan run again disabled DXC and emitted five optimized native SPIR-V
+modules (129535, 19197, 6029, 12710, and 179208 words).
+
+A cold Barbershop A/B against the already-expanded runtime used the same
+640x480, 64 spp HIP command below. Both sides produced 51 LLVM files totaling
+70,418,369 bytes and 29 ISA/code-object files totaling 985,520 bytes. The main
+final LLVM remained 3,632,957 bytes and the main code object remained 381,344
+bytes. Its textual optimized-LLVM diff contains only the generated kernel-name
+hash and two private-bindless offsets changing from 864 to 720, exactly the
+two-slot ABI contraction. Cold JIT was 15.2505 s before and 15.43 s after, while
+render-only was 3.08939 s before and 3.08827 s after; these are noise-level
+changes, so this cleanup makes no performance claim.
+
+The numerical report is
+[abi-quotient-comparison.json](abi-quotient-comparison.json). Combined RMSE is
+0.018727, Normal RMSE is 0.002094, and Diffuse Color RMSE is 0.002956; the
+previous independent expanded-runtime repeat floor was 0.018191, 0.001817, and
+0.003105 respectively. Environment and both volume passes are exactly equal.
+The following 1936x550 triptychs were opened at original resolution and
+inspected:
+
+- [Combined](abi-quotient-triptychs/combined.png): camera, geometry, material
+  boundaries, and lighting structure coincide; the amplified difference is
+  sparse stochastic path noise.
+- [Normal](abi-quotient-triptychs/normal.png): normal orientation and Bump
+  islands coincide; the 98.7x difference exposes sample-jitter edges and local
+  textured-normal variance, not a moved or flipped region.
+- [Diffuse Color](abi-quotient-triptychs/diffcol.png): UVs, floor, cabinets,
+  wall materials, and ceiling coincide; differences are sparse sample noise.
 
 ## Barbershop code-size and performance A/B
 

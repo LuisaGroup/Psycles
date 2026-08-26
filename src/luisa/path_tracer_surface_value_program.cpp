@@ -126,11 +126,11 @@ make_handler_groups(
     groups.reserve(active_variants.size());
     for (const auto variant_index : active_variants) {
         if (variant_index >=
-            runtime.executable.executable.variants.size()) {
+            runtime.executable.variants.size()) {
             std::abort();
         }
         const auto key = handler_key(
-            runtime.executable.executable.variants[variant_index]);
+            runtime.executable.variants[variant_index]);
         const auto group = std::find_if(
             groups.begin(), groups.end(), [key](const auto &candidate) {
                 return candidate.key == key;
@@ -381,11 +381,11 @@ void emit_surface_value_program(const SurfaceValueRuntime &runtime,
         $else {
             const auto emit_variant = [&](std::uint32_t index) noexcept {
                 if (index >= nodes.size() ||
-                    index >= runtime.executable.executable.variants.size()) {
+                    index >= runtime.executable.variants.size()) {
                     std::abort();
                 }
                 const auto &variant =
-                    runtime.executable.executable.variants[index];
+                    runtime.executable.variants[index];
                 auto operands = load_variant_operands(
                     variant, runtime, services, transaction_point, locals,
                     instruction);
@@ -468,8 +468,8 @@ automatic_normal_point(UInt program_flags, const SurfacePoint &point) noexcept {
 [[nodiscard]] std::shared_ptr<SurfaceValueNodes>
 make_surface_value_nodes(const SurfaceValueRuntime &runtime) noexcept {
     auto nodes = std::make_shared<SurfaceValueNodes>();
-    nodes->reserve(runtime.executable.executable.variants.size());
-    for (const auto &variant : runtime.executable.executable.variants) {
+    nodes->reserve(runtime.executable.variants.size());
+    for (const auto &variant : runtime.executable.variants) {
         nodes->emplace_back(make_value_node(variant.instruction));
     }
     return nodes;

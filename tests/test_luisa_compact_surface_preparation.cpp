@@ -1176,8 +1176,8 @@ int main(int argc, char **argv) {
             *scene->surface_values);
     if (!program_evidence.domains_match) {
         std::cerr
-            << "compact surface program domain lost its exact transaction/"
-               "height relation on "
+            << "compact surface program domain lost its exact projected "
+               "stream relation on "
             << backend << '\n';
         return EXIT_FAILURE;
     }
@@ -1194,9 +1194,9 @@ int main(int argc, char **argv) {
     };
     // This controlled graph proves the single-interpreter refinement at
     // instruction granularity. Both immutable Bump configurations remain in
-    // the root stream as typed records, while no recursive Bump opcode, height
-    // program, or callable stratum survives.
-    if (!program_evidence.bump_partition_exact) {
+    // the projected stream as typed records, while no recursive Bump opcode,
+    // hidden height program, or callable stratum survives.
+    if (!program_evidence.bump_stream_exact) {
         std::cerr << "compact runtime did not preserve the exact one-stream "
                      "Bump graph on "
                   << backend << '\n';
@@ -1217,7 +1217,6 @@ int main(int argc, char **argv) {
     // capacity before later BSSRDF leaves and cannot be erased independently.
     if (scene->surface_bssrdf_bump_tags.size() != 2u ||
         scene->surface_values->bssrdf_value_static_variants.empty() ||
-        !scene->surface_values->bssrdf_height_value_static_variants.empty() ||
         scene->surface_values->bssrdf_value_static_variants.size() >=
             scene->surface_values->preparation_value_static_variants.size() ||
         scene->surface_values->bssrdf_closure_static_variants.size() >=
@@ -1239,15 +1238,15 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     const auto transform_variant_count = std::count_if(
-        scene->surface_values->executable.executable.variants.begin(),
-        scene->surface_values->executable.executable.variants.end(),
+        scene->surface_values->executable.variants.begin(),
+        scene->surface_values->executable.variants.end(),
         [](const auto &variant) noexcept {
             return variant.instruction.operation ==
                    ValueOperation::object_position_with_transform;
         });
     const auto transform_payload_count = std::count_if(
-        scene->surface_values->executable.executable.values.metadata.begin(),
-        scene->surface_values->executable.executable.values.metadata.end(),
+        scene->surface_values->executable.values.metadata.begin(),
+        scene->surface_values->executable.values.metadata.end(),
         [](const auto &metadata) noexcept {
             return metadata.static_table_count == 16u;
         });
