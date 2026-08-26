@@ -15,7 +15,7 @@ namespace psycles::test_support {
 struct CompactSurfaceProgramEvidence {
     bool domains_match{};
     bool normal_transactions_exact{};
-    bool bump_partition_exact{};
+    bool bump_stream_exact{};
     std::uint32_t bump_variant{~std::uint32_t{0u}};
 };
 
@@ -49,8 +49,9 @@ make_typed_map_range_graphs();
 
 // Inspect the host bytecode image rather than pixels. The controlled fixture
 // has two nested Bump records. Refinement must retain both configurations as
-// bump_samples in root programs, eliminate every recursive Bump edge and
-// height program, and keep the instruction/variant side streams parallel.
+// bump_samples in the projected topological streams, eliminate every recursive
+// Bump operation and hidden height program, and keep the instruction/variant
+// side streams parallel.
 [[nodiscard]] CompactSurfaceProgramEvidence inspect_compact_surface_program(
     const luisa_backend::detail::SurfaceValueRuntime &runtime) noexcept;
 

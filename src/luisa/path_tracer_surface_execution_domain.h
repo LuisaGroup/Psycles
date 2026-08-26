@@ -15,7 +15,6 @@ enum class SurfaceValueProgramDomain {
 
 struct SurfaceValueProgramDomainView {
   std::span<const std::uint32_t> value_variants;
-  std::span<const std::uint32_t> height_variants;
   std::uint32_t program_offset{};
 };
 

@@ -306,8 +306,6 @@ enum class SurfaceValueRuntimeBufferSlot : std::uint32_t {
     closure_instruction,
     closure_operand,
     closure_mix_term,
-    bump_height_program,
-    program_output,
     program_flag,
     count,
 };
@@ -331,40 +329,37 @@ struct SurfaceValueRuntime {
     static constexpr std::uint32_t vector_capacity = 12u;
     static constexpr std::uint32_t unsigned_integer_capacity = 1u;
 
-    compiler::SurfaceValueBumpExecutableScene executable;
+    compiler::SurfaceValueExecutableScene executable;
     std::vector<SurfaceValueRuntimeTopology> topologies;
     // Sorted unique host/JIT semantic keys. The device switches on the same
     // masked control word, so AST size is bounded by closure algorithms used
     // by the scene rather than by material topology count.
     std::vector<std::uint32_t> closure_static_variants;
     compiler::PrincipledClosureFeatureMask used_principled_closure_features{};
-    // Exact semantic domains induced by the bytecode call graph. The
-    // automatic-normal prefix and endpoint root form one transaction program;
-    // transitive Bump-height programs retain their own callable strata.
+    // Exact semantic domains induced by each projected one-stream program.
+    // The automatic-normal prefix, graph-expanded Bump samples, and endpoint
+    // root form one transaction; no hidden callable domain exists.
     std::vector<std::uint32_t> preparation_value_static_variants;
-    std::vector<std::uint32_t> height_value_static_variants;
     // Emission is a separately projected consumer and therefore has its own
-    // transaction and height domains. These sets are host/JIT metadata only;
-    // material data and the device program id remain runtime values.
+    // transaction domain. These sets are host/JIT metadata only; material data
+    // and the device program id remain runtime values.
     std::vector<std::uint32_t> emission_value_static_variants;
-    std::vector<std::uint32_t> emission_height_value_static_variants;
     std::vector<std::uint32_t> emission_closure_static_variants;
     compiler::PrincipledClosureFeatureMask
         emission_principled_closure_features{};
     // BSSRDF exit reconstruction can only be invoked for the conservative
     // topology-tag set derived from Cycles' has_bssrdf_bump capability. Its
-    // interpreter domains are the exact call-graph image of that set. Closure
+    // interpreter domain is the exact program image of that set. Closure
     // variants still include every physical leaf in each selected topology:
     // non-BSSRDF leaves consume the same finite Cycles closure budget and
     // therefore cannot be erased independently.
     std::vector<std::uint32_t> bssrdf_value_static_variants;
-    std::vector<std::uint32_t> bssrdf_height_value_static_variants;
     std::vector<std::uint32_t> bssrdf_closure_static_variants;
     compiler::PrincipledClosureFeatureMask bssrdf_principled_closure_features{};
 
     // [value begin, value count, closure begin, closure count]. Closure
     // ranges are populated for endpoint-projected preparation and emission
-    // transaction programs; Bump-height programs remain value-only.
+    // transaction programs.
     luisa::vector<luisa::uint4> program_ranges;
     luisa::vector<luisa::uint> program_flags;
     luisa::vector<luisa::uint4> instructions;
@@ -376,8 +371,6 @@ struct SurfaceValueRuntime {
     luisa::vector<luisa::uint4> closure_instructions;
     luisa::vector<luisa::uint> closure_operands;
     luisa::vector<luisa::uint2> closure_mix_terms;
-    luisa::vector<luisa::uint> bump_height_programs;
-    luisa::vector<luisa::uint> program_outputs;
 
     Buffer<luisa::uint4> program_buffer;
     Buffer<luisa::uint> program_flag_buffer;
@@ -391,8 +384,6 @@ struct SurfaceValueRuntime {
     Buffer<luisa::uint4> closure_instruction_buffer;
     Buffer<luisa::uint> closure_operand_buffer;
     Buffer<luisa::uint2> closure_mix_term_buffer;
-    Buffer<luisa::uint> bump_height_program_buffer;
-    Buffer<luisa::uint> program_output_buffer;
     // Declared after the bound buffers so reverse member destruction releases
     // the descriptor view before its resources.
     BindlessArray device_view;
