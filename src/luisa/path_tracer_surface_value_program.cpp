@@ -398,177 +398,161 @@ void write_dynamic_value(
         pack_surface_point(domain.point_y),
         height_program);
     const auto result = evaluate_surface_bump(
-        services,
-        point,
-        configuration,
-        normal,
-        domain,
-        scalar(
-            variant.instruction.operand(
-                value_operand::bump::height),
-            operands),
-        Expr<float>{height_x.expression()},
-        Expr<float>{height_y.expression()},
-        scalar(
-            variant.instruction.operand(
-                value_operand::bump::distance),
-            operands),
-        scalar(
-            variant.instruction.operand(
-                value_operand::bump::strength),
-            operands));
+        services, point, configuration, normal, domain,
+        scalar(variant.instruction.operand(value_operand::bump::height),
+               operands),
+        Expr<float>{height_x.expression()}, Expr<float>{height_y.expression()},
+        scalar(variant.instruction.operand(value_operand::bump::distance),
+               operands),
+        scalar(variant.instruction.operand(value_operand::bump::strength),
+               operands));
     return SurfaceValueExpression::from_vector(
         Expr<luisa::float3>{result.expression()});
 }
 
-void emit_surface_value_program(
-    const SurfaceValueRuntime &runtime,
-    const SurfaceValueNodes &nodes,
-    std::span<const std::uint32_t> active_variants,
-    const ShaderServices &services,
-    const SurfacePoint &point,
-    UInt program,
-    const SurfaceValueLocalsView &locals,
-    const SurfaceValueHeightCallable *height,
-    Expr<Buffer<float>> scalar_parameters,
-    Expr<Buffer<luisa::float3>> vector_parameters,
-    Expr<Buffer<float>> cycles_bsdf_tables,
-    Expr<BindlessArray> textures,
-    Expr<BindlessArray> geometry_heap) noexcept {
-    const auto handler_groups = make_handler_groups(
-        runtime, active_variants);
+[[nodiscard]] SurfacePoint
+automatic_normal_point(UInt program_flags, const SurfacePoint &point) noexcept;
+
+void emit_surface_value_program(const SurfaceValueRuntime &runtime,
+                                const SurfaceValueNodes &nodes,
+                                std::span<const std::uint32_t> active_variants,
+                                const ShaderServices &services,
+                                SurfacePoint &point, UInt program,
+                                const SurfaceValueLocalsView &locals,
+                                const SurfaceValueHeightCallable *height,
+                                Expr<Buffer<float>> scalar_parameters,
+                                Expr<Buffer<luisa::float3>> vector_parameters,
+                                Expr<Buffer<float>> cycles_bsdf_tables,
+                                Expr<BindlessArray> textures,
+                                Expr<BindlessArray> geometry_heap) noexcept {
+    const auto handler_groups = make_handler_groups(runtime, active_variants);
     auto range = surface_value_runtime_buffer<luisa::uint4>(
-                     runtime,
-                     SurfaceValueRuntimeBufferSlot::program)
+                     runtime, SurfaceValueRuntimeBufferSlot::program)
                      .read(program);
+    const auto program_flags =
+        surface_value_runtime_buffer<luisa::uint>(
+            runtime, SurfaceValueRuntimeBufferSlot::program_flag)
+            .read(program);
+    auto transaction_point = automatic_normal_point(program_flags, point);
     UInt instruction_index = range.x;
     const auto instruction_end = range.x + range.y;
     $while(instruction_index < instruction_end) {
         Var<luisa::uint4> instruction =
             surface_value_runtime_buffer<luisa::uint4>(
-                runtime,
-                SurfaceValueRuntimeBufferSlot::instruction)
+                runtime, SurfaceValueRuntimeBufferSlot::instruction)
                 .read(instruction_index);
-        const auto emit_variant = [&](std::uint32_t index) noexcept {
-            if (index >= nodes.size() ||
-                index >= runtime.executable.executable.variants.size()) {
-                std::abort();
-            }
-            const auto &variant =
-                runtime.executable.executable.variants[index];
-            auto operands = load_variant_operands(
-                variant,
-                runtime,
-                services,
-                point,
-                locals,
-                instruction);
-            if (variant.instruction.operation ==
-                compiler::ValueOperation::bump) {
-                if (height == nullptr) {
-                    luisa::compute::dsl::unreachable(
-                        "Bump reached the Bump-free height evaluator");
+        $if(instruction.x ==
+            compiler::surface_value_surface_normal_transition_control) {
+            const auto normal = read_vector_dynamic(services, transaction_point,
+                                                    locals, instruction.y);
+            // The automatic-normal prefix may temporarily substitute only
+            // these Cycles ShaderData fields. Commit consumes its output
+            // before restoring the endpoint root's geometric state.
+            transaction_point.position = point.position;
+            transaction_point.object_position = point.object_position;
+            transaction_point.shading_normal = normal;
+            transaction_point.object_shading_normal =
+                point.object_shading_normal;
+            transaction_point.dPdx = point.dPdx;
+            transaction_point.dPdy = point.dPdy;
+            transaction_point.object_dPdx = point.object_dPdx;
+            transaction_point.object_dPdy = point.object_dPdy;
+        }
+        $else {
+            const auto emit_variant = [&](std::uint32_t index) noexcept {
+                if (index >= nodes.size() ||
+                    index >= runtime.executable.executable.variants.size()) {
+                    std::abort();
+                }
+                const auto &variant =
+                    runtime.executable.executable.variants[index];
+                auto operands = load_variant_operands(
+                    variant, runtime, services, transaction_point, locals,
+                    instruction);
+                if (variant.instruction.operation ==
+                    compiler::ValueOperation::bump) {
+                    if (height == nullptr) {
+                        luisa::compute::dsl::unreachable(
+                            "Bump reached the Bump-free height evaluator");
+                        return;
+                    }
+                    auto value = evaluate_bump_variant(
+                        variant, runtime, services, transaction_point, operands,
+                        instruction, instruction_index, *height,
+                        scalar_parameters, vector_parameters,
+                        cycles_bsdf_tables, textures, geometry_heap);
+                    write_dynamic_value(variant.instruction.result_type, locals,
+                                        instruction.y, value);
                     return;
                 }
-                auto value = evaluate_bump_variant(
-                    variant,
-                    runtime,
-                    services,
-                    point,
-                    operands,
-                    instruction,
-                    instruction_index,
-                    *height,
-                    scalar_parameters,
-                    vector_parameters,
-                    cycles_bsdf_tables,
-                    textures,
-                    geometry_heap);
-                write_dynamic_value(
-                    variant.instruction.result_type,
-                    locals,
-                    instruction.y,
-                    value);
-                return;
-            }
-            auto value = evaluate_non_bump_variant(
-                variant,
-                *nodes[index],
-                runtime,
-                services,
-                point,
-                operands,
-                instruction);
-            write_dynamic_value(
-                variant.instruction.result_type,
-                locals,
-                instruction.y,
-                value);
-        };
-        const auto primary_key = device_handler_key(instruction.x);
-        luisa::compute::detail::SwitchStmtBuilder{primary_key} % [&] {
-            for (const auto &group : handler_groups) {
-                luisa::compute::detail::SwitchCaseStmtBuilder{group.key} %
-                    [&] {
-                        if (group.variants.size() == 1u) {
-                            emit_variant(group.variants.front());
-                            return;
-                        }
-                        // The primary key is only an instruction-local
-                        // projection. If two exact evaluator families inhabit
-                        // one fiber, preserve the complete compiler
-                        // discriminator inside that one opcode branch. No
-                        // instruction outside an ambiguous fiber pays this
-                        // immutable-buffer read.
-                        const auto variant_index =
-                            surface_value_runtime_buffer<luisa::uint>(
-                                runtime,
-                                SurfaceValueRuntimeBufferSlot::
-                                    instruction_variant)
-                                .read(instruction_index);
-                        luisa::compute::detail::SwitchStmtBuilder{
-                            variant_index} % [&] {
-                            for (const auto index : group.variants) {
-                                luisa::compute::detail::SwitchCaseStmtBuilder{
-                                    index} %
-                                    [&, index] { emit_variant(index); };
+                auto value = evaluate_non_bump_variant(
+                    variant, *nodes[index], runtime, services,
+                    transaction_point, operands, instruction);
+                write_dynamic_value(variant.instruction.result_type, locals,
+                                    instruction.y, value);
+            };
+            const auto primary_key = device_handler_key(instruction.x);
+            luisa::compute::detail::SwitchStmtBuilder{primary_key} % [&] {
+                for (const auto &group : handler_groups) {
+                    luisa::compute::detail::SwitchCaseStmtBuilder{group.key} %
+                        [&] {
+                            if (group.variants.size() == 1u) {
+                                emit_variant(group.variants.front());
+                                return;
                             }
-                            luisa::compute::detail::
-                                SwitchDefaultStmtBuilder{} % [] {
-                                luisa::compute::dsl::unreachable(
-                                    "invalid compact surface evaluator fiber");
-                            };
+                            // The primary key is only an instruction-local
+                            // projection. If two exact evaluator families
+                            // inhabit one fiber, preserve the complete compiler
+                            // discriminator inside that one opcode branch. No
+                            // instruction outside an ambiguous fiber pays this
+                            // immutable-buffer read.
+                            const auto variant_index =
+                                surface_value_runtime_buffer<luisa::uint>(
+                                    runtime, SurfaceValueRuntimeBufferSlot::
+                                                 instruction_variant)
+                                    .read(instruction_index);
+                            luisa::compute::detail::SwitchStmtBuilder{
+                                variant_index} %
+                                [&] {
+                                    for (const auto index : group.variants) {
+                                        luisa::compute::detail::
+                                                SwitchCaseStmtBuilder{index} %
+                                            [&, index] { emit_variant(index); };
+                                    }
+                                    luisa::compute::detail::
+                                            SwitchDefaultStmtBuilder{} %
+                                        [] {
+                                            luisa::compute::dsl::unreachable(
+                                                "invalid compact surface "
+                                                "evaluator "
+                                                "fiber");
+                                        };
+                                };
                         };
-                    };
-            }
-            luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
-                luisa::compute::dsl::unreachable(
-                    "invalid compact surface value handler");
+                }
+                luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+                    luisa::compute::dsl::unreachable(
+                        "invalid compact surface value handler");
+                };
             };
         };
         instruction_index += 1u;
     };
+    point.shading_normal = transaction_point.shading_normal;
 }
 
-[[nodiscard]] SurfacePoint automatic_normal_point(
-    const SurfaceValueRuntime &runtime,
-    UInt surface_tag,
-    const SurfacePoint &point) noexcept {
+[[nodiscard]] SurfacePoint
+automatic_normal_point(UInt program_flags, const SurfacePoint &point) noexcept {
     auto result = point;
     const auto use_undisplaced =
-        surface_value_runtime_buffer<luisa::uint>(
-            runtime,
-            SurfaceValueRuntimeBufferSlot::topology_flag)
-            .read(surface_tag) &
-        surface_value_runtime_topology_flag(
-            SurfaceValueRuntimeTopologyFlag::
-                automatic_bump_uses_undisplaced_geometry);
-    $if (use_undisplaced != 0u) {
+        program_flags &
+        compiler::
+            surface_value_program_automatic_normal_uses_undisplaced_geometry;
+    $if(use_undisplaced != 0u) {
         result.position = point.undisplaced_position;
         result.object_position = point.undisplaced_object_position;
         result.shading_normal = point.undisplaced_shading_normal;
-        result.object_shading_normal =
-            point.undisplaced_object_shading_normal;
+        result.object_shading_normal = point.undisplaced_object_shading_normal;
         result.dPdx = point.undisplaced_dPdx;
         result.dPdy = point.undisplaced_dPdy;
         result.object_dPdx = point.undisplaced_object_dPdx;
@@ -577,85 +561,17 @@ void emit_surface_value_program(
     return result;
 }
 
-[[nodiscard]] Float3 evaluate_compact_surface_normal(
-    const SurfaceValueRuntime &runtime,
-    const SurfaceValueNodes &nodes,
-    std::span<const std::uint32_t> active_variants,
-    bool automatic_normal_is_conditional,
-    const ShaderServices &services,
-    UInt surface_tag,
-    const SurfacePoint &point,
-    const SurfaceValueLocalsView &locals,
-    const SurfaceValueHeightCallable &height,
-    Expr<Buffer<float>> scalar_parameters,
-    Expr<Buffer<luisa::float3>> vector_parameters,
-    Expr<Buffer<float>> cycles_bsdf_tables,
-    Expr<BindlessArray> textures,
-    Expr<BindlessArray> geometry_heap) noexcept {
-    Float3 result = point.shading_normal;
-    $if(surface_tag <
-        static_cast<luisa::uint>(runtime.topologies.size())) {
-        const auto normal_output =
-            surface_value_runtime_buffer<luisa::uint>(
-                runtime,
-                SurfaceValueRuntimeBufferSlot::normal_output_address)
-                .read(surface_tag);
-        Bool evaluate_normal =
-            normal_output != compiler::SurfaceValueAddress::invalid_value;
-        if (automatic_normal_is_conditional) {
-            const auto flags =
-                surface_value_runtime_buffer<luisa::uint>(
-                    runtime,
-                    SurfaceValueRuntimeBufferSlot::topology_flag)
-                    .read(surface_tag);
-            evaluate_normal &=
-                (flags & surface_value_runtime_topology_flag(
-                             SurfaceValueRuntimeTopologyFlag::
-                                 emission_uses_automatic_normal)) != 0u;
-        }
-        $if(evaluate_normal) {
-            const auto normal_point = automatic_normal_point(
-                runtime, surface_tag, point);
-            const auto normal_program =
-                surface_tag * SurfaceValueRuntime::programs_per_topology +
-                SurfaceValueRuntime::normal_program_offset;
-            emit_surface_value_program(
-                runtime,
-                nodes,
-                active_variants,
-                services,
-                normal_point,
-                normal_program,
-                locals,
-                &height,
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap);
-            result = read_vector_dynamic(
-                services, normal_point, locals, normal_output);
-        };
-    };
-    return result;
-}
-
 [[nodiscard]] std::shared_ptr<SurfaceValueNodes>
-make_surface_value_nodes(
-    const SurfaceValueRuntime &runtime) noexcept {
+make_surface_value_nodes(const SurfaceValueRuntime &runtime) noexcept {
     auto nodes = std::make_shared<SurfaceValueNodes>();
-    nodes->reserve(
-        runtime.executable.executable.variants.size());
-    for (const auto &variant :
-         runtime.executable.executable.variants) {
-        nodes->emplace_back(
-            make_value_node(variant.instruction));
+    nodes->reserve(runtime.executable.executable.variants.size());
+    for (const auto &variant : runtime.executable.executable.variants) {
+        nodes->emplace_back(make_value_node(variant.instruction));
     }
     return nodes;
 }
 
-[[nodiscard]] SurfaceValueHeightCallable
-make_surface_value_height_callable(
+[[nodiscard]] SurfaceValueHeightCallable make_surface_value_height_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
     const std::shared_ptr<SurfaceValueNodes> &nodes,
     const Texture2DSamplingCallables &texture_sampling,
@@ -663,72 +579,61 @@ make_surface_value_height_callable(
     std::vector<std::uint32_t> active_variants,
     std::uint32_t maximum_bump_depth) noexcept {
     const auto make_stratum =
-        [scene, nodes, texture_sampling, attribute_lookup, active_variants](
-            std::optional<SurfaceValueHeightCallable> lower,
-            std::uint32_t stratum) noexcept {
-      SurfaceValueHeightCallable height =
-        [scene, nodes, texture_sampling, attribute_lookup, active_variants,
-         lower = std::move(lower)](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            Var<SurfacePointCall> packed_point,
-            UInt program) noexcept {
-            CallableTexture2DSamplingProvider texture_provider{
-                textures, texture_sampling};
-            CallableSurfaceAttributeLookupProvider attribute_provider{
-                geometry_heap, attribute_lookup};
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space,
-                nullptr,
-                &texture_provider,
-                &attribute_provider};
-            const auto point = unpack_surface_point(packed_point);
-            SurfaceValueLocals locals;
-            const auto locals_view = locals.view();
-            emit_surface_value_program(
-                *scene->surface_values,
-                *nodes,
-                active_variants,
-                services,
-                point,
-                program,
-                locals_view,
-                lower ? &*lower : nullptr,
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap);
-            const auto output =
-                surface_value_runtime_buffer<luisa::uint>(
-                    *scene->surface_values,
-                    SurfaceValueRuntimeBufferSlot::program_output)
-                    .read(program);
-            return read_scalar_dynamic(
-                services, point, locals_view, output);
+        [scene, nodes, texture_sampling, attribute_lookup,
+         active_variants](std::optional<SurfaceValueHeightCallable> lower,
+                          std::uint32_t stratum) noexcept {
+            SurfaceValueHeightCallable height =
+                [scene, nodes, texture_sampling, attribute_lookup,
+                 active_variants, lower = std::move(lower)](
+                    BufferFloat scalar_parameters,
+                    BufferFloat3 vector_parameters,
+                    BufferFloat cycles_bsdf_tables, BindlessVar textures,
+                    BindlessVar geometry_heap,
+                    Var<SurfacePointCall> packed_point, UInt program) noexcept {
+                    CallableTexture2DSamplingProvider texture_provider{
+                        textures, texture_sampling};
+                    CallableSurfaceAttributeLookupProvider attribute_provider{
+                        geometry_heap, attribute_lookup};
+                    BufferShaderServices services{
+                        scalar_parameters,
+                        vector_parameters,
+                        cycles_bsdf_tables,
+                        textures,
+                        geometry_heap,
+                        scene->attribute_binding_slot,
+                        scene->attribute_range_slot,
+                        scene->nishita_texture_bindings,
+                        scene->shader_color_space,
+                        nullptr,
+                        &texture_provider,
+                        &attribute_provider};
+                    auto point = unpack_surface_point(packed_point);
+                    SurfaceValueLocals locals;
+                    const auto locals_view = locals.view();
+                    emit_surface_value_program(
+                        *scene->surface_values, *nodes, active_variants,
+                        services, point, program, locals_view,
+                        lower ? &*lower : nullptr, scalar_parameters,
+                        vector_parameters, cycles_bsdf_tables, textures,
+                        geometry_heap);
+                    const auto output =
+                        surface_value_runtime_buffer<luisa::uint>(
+                            *scene->surface_values,
+                            SurfaceValueRuntimeBufferSlot::program_output)
+                            .read(program);
+                    return read_scalar_dynamic(services, point, locals_view,
+                                               output);
+                };
+            const auto name =
+                luisa::format("surface_value_height_stratum_{}", stratum);
+            height.set_name(name);
+            return height;
         };
-      const auto name = luisa::format(
-          "surface_value_height_stratum_{}", stratum);
-      height.set_name(name);
-      return height;
-    };
     const auto stratum_count = std::max(maximum_bump_depth, 1u);
     auto height = make_stratum(std::nullopt, 0u);
-    for (auto stratum = std::uint32_t{1u}; stratum < stratum_count;
-         ++stratum) {
-        height = make_stratum(
-            std::optional<SurfaceValueHeightCallable>{height}, stratum);
+    for (auto stratum = std::uint32_t{1u}; stratum < stratum_count; ++stratum) {
+        height = make_stratum(std::optional<SurfaceValueHeightCallable>{height},
+                              stratum);
     }
     return height;
 }
@@ -744,31 +649,15 @@ make_surface_value_program_callable_impl(
     const auto domain_view =
         surface_value_program_domain(*scene->surface_values, domain);
     std::vector<std::uint32_t> value_variants{
-        domain_view.value_variants.begin(),
-        domain_view.value_variants.end()};
-    std::vector<std::uint32_t> normal_variants{
-        domain_view.normal_variants.begin(),
-        domain_view.normal_variants.end()};
+        domain_view.value_variants.begin(), domain_view.value_variants.end()};
     const auto program_offset = domain_view.program_offset;
-    const auto automatic_normal_is_conditional =
-        domain_view.automatic_normal_is_conditional;
 
     SurfaceValueProgramCallable value_program =
-        [scene,
-         nodes,
-         height,
-         texture_sampling,
-         attribute_lookup,
-         value_variants = std::move(value_variants),
-         normal_variants = std::move(normal_variants),
-         program_offset,
-         automatic_normal_is_conditional](
-            BufferFloat scalar_parameters,
-            BufferFloat3 vector_parameters,
-            BufferFloat cycles_bsdf_tables,
-            BindlessVar textures,
-            BindlessVar geometry_heap,
-            UInt surface_tag,
+        [scene, nodes, height, texture_sampling, attribute_lookup,
+         value_variants = std::move(value_variants), program_offset](
+            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables, BindlessVar textures,
+            BindlessVar geometry_heap, UInt surface_tag,
             Var<SurfacePointCall> packed_point,
             Var<SurfaceValueScalarBank> &scalar_bank,
             Var<SurfaceValueVectorBank> &vector_bank,
@@ -777,74 +666,45 @@ make_surface_value_program_callable_impl(
                 textures, texture_sampling};
             CallableSurfaceAttributeLookupProvider attribute_provider{
                 geometry_heap, attribute_lookup};
-            BufferShaderServices services{
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space,
-                nullptr,
-                &texture_provider,
-                &attribute_provider};
+            BufferShaderServices services{scalar_parameters,
+                                          vector_parameters,
+                                          cycles_bsdf_tables,
+                                          textures,
+                                          geometry_heap,
+                                          scene->attribute_binding_slot,
+                                          scene->attribute_range_slot,
+                                          scene->nishita_texture_bindings,
+                                          scene->shader_color_space,
+                                          nullptr,
+                                          &texture_provider,
+                                          &attribute_provider};
             SurfaceValueLocalsView locals{
-                .scalars = {
-                    luisa::compute::detail::Ref<SurfaceValueScalarBank>{
-                        scalar_bank.expression()}},
-                .vectors = {
-                    luisa::compute::detail::Ref<SurfaceValueVectorBank>{
-                        vector_bank.expression()}},
-                .unsigned_integers = {
-                    luisa::compute::detail::Ref<luisa::ulong>{
-                        unsigned_integer_bank.expression()}}};
+                .scalars = {luisa::compute::detail::Ref<SurfaceValueScalarBank>{
+                    scalar_bank.expression()}},
+                .vectors = {luisa::compute::detail::Ref<SurfaceValueVectorBank>{
+                    vector_bank.expression()}},
+                .unsigned_integers = {luisa::compute::detail::Ref<luisa::ulong>{
+                    unsigned_integer_bank.expression()}}};
             auto point = unpack_surface_point(packed_point);
-            point.shading_normal = evaluate_compact_surface_normal(
-                *scene->surface_values,
-                *nodes,
-                normal_variants,
-                automatic_normal_is_conditional,
-                services,
-                surface_tag,
-                point,
-                locals,
-                height,
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap);
             const auto program =
                 surface_tag * SurfaceValueRuntime::programs_per_topology +
                 program_offset;
             emit_surface_value_program(
-                *scene->surface_values,
-                *nodes,
-                value_variants,
-                services,
-                point,
-                program,
-                locals,
-                &height,
-                scalar_parameters,
-                vector_parameters,
-                cycles_bsdf_tables,
-                textures,
-                geometry_heap);
+                *scene->surface_values, *nodes, value_variants, services, point,
+                program, locals, &height, scalar_parameters, vector_parameters,
+                cycles_bsdf_tables, textures, geometry_heap);
             return pack_surface_point(point);
         };
     switch (domain) {
-        case SurfaceValueProgramDomain::preparation:
-            value_program.set_name("surface_value_program_preparation");
-            break;
-        case SurfaceValueProgramDomain::emission:
-            value_program.set_name("surface_value_program_emission");
-            break;
-        case SurfaceValueProgramDomain::bssrdf:
-            value_program.set_name("surface_value_program_bssrdf");
-            break;
+    case SurfaceValueProgramDomain::preparation:
+        value_program.set_name("surface_value_program_preparation");
+        break;
+    case SurfaceValueProgramDomain::emission:
+        value_program.set_name("surface_value_program_emission");
+        break;
+    case SurfaceValueProgramDomain::bssrdf:
+        value_program.set_name("surface_value_program_bssrdf");
+        break;
     }
     return value_program;
 }
@@ -860,21 +720,12 @@ SurfaceValueProgramCallable make_surface_value_program_callable(
         surface_value_program_domain(*scene->surface_values, domain);
     auto nodes = make_surface_value_nodes(*scene->surface_values);
     auto height = make_surface_value_height_callable(
-        scene,
-        nodes,
-        texture_sampling,
-        attribute_lookup,
-        std::vector<std::uint32_t>{
-            domain_view.height_variants.begin(),
-            domain_view.height_variants.end()},
+        scene, nodes, texture_sampling, attribute_lookup,
+        std::vector<std::uint32_t>{domain_view.height_variants.begin(),
+                                   domain_view.height_variants.end()},
         scene->surface_values->executable.maximum_bump_depth);
     return make_surface_value_program_callable_impl(
-        scene,
-        nodes,
-        height,
-        texture_sampling,
-        attribute_lookup,
-        domain);
+        scene, nodes, height, texture_sampling, attribute_lookup, domain);
 }
 
 } // namespace psycles::luisa_backend::detail

@@ -423,12 +423,27 @@ inline constexpr std::uint32_t surface_value_svm_immediate_shift = 18u;
 inline constexpr std::uint32_t surface_value_svm_immediate_value_mask =
     (1u << 14u) - 1u;
 inline constexpr std::uint32_t surface_value_svm_immediate_mask =
-    surface_value_svm_immediate_value_mask
-    << surface_value_svm_immediate_shift;
+    surface_value_svm_immediate_value_mask << surface_value_svm_immediate_shift;
+
+// Reserved internal opcode separating the automatic-normal prefix from the
+// endpoint root in one transaction stream. It is not a ValueOperation: the
+// record consumes no operands, writes no typed slot, and commits `result` as
+// ShaderData::N before execution continues. Keeping the boundary in the data
+// stream gives the interpreter one loop independently of backend inlining and
+// loop-unrolling choices.
+inline constexpr std::uint32_t surface_value_surface_normal_transition_control =
+    surface_value_opcode_mask;
+static_assert(static_cast<std::uint32_t>(ValueOperation::nishita_sky) <
+              surface_value_surface_normal_transition_control);
+
+[[nodiscard]] constexpr bool is_surface_value_surface_normal_transition(
+    const SurfaceValueBytecodeInstruction &instruction) noexcept {
+  return instruction.control == surface_value_surface_normal_transition_control;
+}
 
 // Operation-local layouts inside the unshifted 14-bit immediate.
-inline constexpr std::uint32_t
-    surface_value_noise_normalize_immediate_bit = 1u << 0u;
+inline constexpr std::uint32_t surface_value_noise_normalize_immediate_bit =
+    1u << 0u;
 inline constexpr std::uint32_t surface_value_uv_named_immediate_bit = 1u;
 inline constexpr std::uint32_t surface_value_noise_dimensions_shift = 1u;
 inline constexpr std::uint32_t surface_value_noise_dimensions_mask =
@@ -1041,7 +1056,13 @@ struct SurfaceValueProgramImage {
   std::uint32_t scalar_slots{};
   std::uint32_t vector_slots{};
   std::uint32_t unsigned_integer_slots{};
+  std::uint32_t flags{};
 };
+
+inline constexpr std::uint32_t
+    surface_value_program_automatic_normal_uses_undisplaced_geometry = 1u << 0u;
+inline constexpr std::uint32_t surface_value_program_flag_mask =
+    surface_value_program_automatic_normal_uses_undisplaced_geometry;
 
 // One entry per runtime surface tag. All offsets in the aggregate streams are
 // absolute, while typed local addresses remain relative to an invocation's
@@ -1099,6 +1120,13 @@ struct SurfaceValueStaticVariant {
 struct SurfaceValueExecutionInput {
   const SurfaceProgram *program{};
   const SurfaceValueStoragePlan *storage{};
+  // Optional automatic-normal prefix. The compiler emits
+  // `surface_normal_storage; transition(surface_normal_output); storage` as
+  // one transaction. Prefix and root slot plans may overlap: the transition
+  // consumes the prefix output before the first root instruction executes.
+  const SurfaceValueStoragePlan *surface_normal_storage{};
+  ValueExpressionId surface_normal_output{};
+  bool surface_normal_uses_undisplaced_geometry{};
   // Optional for value-only programs. When present, closure bytecode is
   // lowered from the exact value-address image and endpoint projection
   // produced by this input; callers cannot accidentally pair a physical or

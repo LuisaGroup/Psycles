@@ -1175,8 +1175,15 @@ int main(int argc, char **argv) {
         psycles::test_support::inspect_compact_surface_program(
             *scene->surface_values);
     if (!program_evidence.domains_match) {
-        std::cerr << "compact surface program domain lost its exact root/normal/"
-                     "height relation on "
+        std::cerr
+            << "compact surface program domain lost its exact transaction/"
+               "height relation on "
+            << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    if (!program_evidence.normal_transactions_exact) {
+        std::cerr << "compact runtime violated the single normal-transaction "
+                     "boundary contract on "
                   << backend << '\n';
         return EXIT_FAILURE;
     }
@@ -1207,12 +1214,11 @@ int main(int argc, char **argv) {
     };
     // The BSSRDF callable is induced only by its two capability-tagged
     // topologies. The controlled non-BSSRDF nested Bumps and Glass closure must
-    // therefore be absent. Diffuse must remain beside Subsurface: even though it
-    // does not contribute to the exit normal, it consumes Cycles closure
+    // therefore be absent. Diffuse must remain beside Subsurface: even though
+    // it does not contribute to the exit normal, it consumes Cycles closure
     // capacity before later BSSRDF leaves and cannot be erased independently.
     if (scene->surface_bssrdf_bump_tags.size() != 2u ||
         scene->surface_values->bssrdf_value_static_variants.empty() ||
-        scene->surface_values->bssrdf_normal_value_static_variants.empty() ||
         !scene->surface_values->bssrdf_height_value_static_variants.empty() ||
         scene->surface_values->bssrdf_value_static_variants.size() >=
             scene->surface_values->preparation_value_static_variants.size() ||

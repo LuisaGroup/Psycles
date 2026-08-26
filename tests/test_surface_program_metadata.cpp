@@ -1206,25 +1206,186 @@ void test_surface_value_storage_plan() {
                                    .storage = &uint_passthrough_plan}};
     const auto passthrough_scene =
         build_surface_value_executable_scene(passthrough_inputs);
+    require(passthrough_scene.valid &&
+                passthrough_scene.variants.size() == 3u &&
+                passthrough_scene.instruction_variants ==
+                    std::vector<std::uint32_t>{0u, 0u, 1u, 1u, 2u} &&
+                passthrough_scene.variants[0u].instruction.result_type ==
+                    SocketType::floating &&
+                passthrough_scene.variants[0u].operand_types ==
+                    std::vector<SocketType>{SocketType::floating} &&
+                passthrough_scene.variants[1u].instruction.result_type ==
+                    SocketType::vector &&
+                passthrough_scene.variants[1u].operand_types ==
+                    std::vector<SocketType>{SocketType::vector} &&
+                passthrough_scene.variants[2u].instruction.result_type ==
+                    SocketType::unsigned_integer &&
+                passthrough_scene.variants[2u].operand_types ==
+                    std::vector<SocketType>{SocketType::unsigned_integer},
+            "nominal socket spellings did not quotient to the three exact SVM "
+            "execution banks");
+
+    const SurfaceProgram transaction_program{
+        35u,
+        {ParameterDesc{.id = ParameterId{0u},
+                       .node = NodeId{40u},
+                       .socket = "Normal",
+                       .type = SocketType::normal,
+                       .default_value = SocketValue::normal({0.0f, 0.0f, 1.0f}),
+                       .source = ParameterSource::input},
+         ParameterDesc{.id = ParameterId{1u},
+                       .node = NodeId{41u},
+                       .socket = "Color",
+                       .type = SocketType::color,
+                       .default_value = SocketValue::color({0.2f, 0.4f, 0.6f}),
+                       .source = ParameterSource::input}},
+        {ValueInstruction{.operation = ValueOperation::parameter,
+                          .source_node = NodeId{40u},
+                          .result_type = SocketType::normal,
+                          .parameter = ParameterId{0u}},
+         ValueInstruction{
+             .operation = ValueOperation::passthrough,
+             .source_node = NodeId{40u},
+             .result_type = SocketType::normal,
+             .operands = make_value_operands<value_operand::unary>(
+                 {{value_operand::unary::input, ValueExpressionId{0u}}})},
+         ValueInstruction{.operation = ValueOperation::parameter,
+                          .source_node = NodeId{41u},
+                          .result_type = SocketType::color,
+                          .parameter = ParameterId{1u}},
+         ValueInstruction{
+             .operation = ValueOperation::passthrough,
+             .source_node = NodeId{41u},
+             .result_type = SocketType::color,
+             .operands = make_value_operands<value_operand::unary>(
+                 {{value_operand::unary::input, ValueExpressionId{2u}}})}},
+        {},
+        {},
+        {},
+        {},
+        ValueExpressionId{1u}};
+    const auto transaction_normal_plan = plan_surface_value_storage(
+        transaction_program, std::vector<bool>{true, true, false, false},
+        std::vector<bool>{false, true, false, false});
+    const auto transaction_root_plan = plan_surface_value_storage(
+        transaction_program, std::vector<bool>{false, false, true, true},
+        std::vector<bool>{false, false, false, true});
+    const auto transaction_scene = build_surface_value_executable_scene(
+        std::vector{SurfaceValueExecutionInput{
+            .program = &transaction_program,
+            .storage = &transaction_root_plan,
+            .surface_normal_storage = &transaction_normal_plan,
+            .surface_normal_output = ValueExpressionId{1u},
+            .surface_normal_uses_undisplaced_geometry = true}});
+    const auto transaction_invalid = SurfaceValueAddress::invalid_value;
     require(
-        passthrough_scene.valid &&
-            passthrough_scene.variants.size() == 3u &&
-            passthrough_scene.instruction_variants ==
-                std::vector<std::uint32_t>{0u, 0u, 1u, 1u, 2u} &&
-            passthrough_scene.variants[0u].instruction.result_type ==
-                SocketType::floating &&
-            passthrough_scene.variants[0u].operand_types ==
-                std::vector<SocketType>{SocketType::floating} &&
-            passthrough_scene.variants[1u].instruction.result_type ==
-                SocketType::vector &&
-            passthrough_scene.variants[1u].operand_types ==
-                std::vector<SocketType>{SocketType::vector} &&
-            passthrough_scene.variants[2u].instruction.result_type ==
-                SocketType::unsigned_integer &&
-            passthrough_scene.variants[2u].operand_types ==
-                std::vector<SocketType>{SocketType::unsigned_integer},
-        "nominal socket spellings did not quotient to the three exact SVM "
-        "execution banks");
+        transaction_scene.valid && transaction_scene.variants.size() == 1u &&
+            transaction_scene.instruction_variants ==
+                std::vector<std::uint32_t>{0u, transaction_invalid, 0u} &&
+            transaction_scene.values.programs.size() == 1u &&
+            transaction_scene.values.programs[0u].instruction_count == 3u &&
+            transaction_scene.values.programs[0u].flags ==
+                surface_value_program_automatic_normal_uses_undisplaced_geometry &&
+            transaction_scene.values.instructions.size() == 3u &&
+            is_surface_value_surface_normal_transition(
+                transaction_scene.values.instructions[1u]) &&
+            transaction_scene.values.instructions[1u].operand_begin == 1u &&
+            transaction_scene.values.instructions[1u].result ==
+                transaction_scene.values.instructions[0u].result &&
+            transaction_scene.values.instructions[2u].result ==
+                transaction_scene.values.instructions[0u].result &&
+            transaction_scene.values.operands.size() == 2u,
+        "automatic normal and endpoint root did not compose into one exact "
+        "transaction stream with a consuming slot-overlap boundary");
+
+    const auto parameter_normal_plan = plan_surface_value_storage(
+        transaction_program, std::vector<bool>{true, false, false, false},
+        std::vector<bool>{true, false, false, false});
+    const auto parameter_normal_scene = build_surface_value_executable_scene(
+        std::vector{SurfaceValueExecutionInput{
+            .program = &transaction_program,
+            .storage = &transaction_root_plan,
+            .surface_normal_storage = &parameter_normal_plan,
+            .surface_normal_output = ValueExpressionId{0u}}});
+    require(parameter_normal_scene.valid &&
+                parameter_normal_scene.instruction_variants ==
+                    std::vector<std::uint32_t>{transaction_invalid, 0u} &&
+                parameter_normal_scene.values.instructions.size() == 2u &&
+                is_surface_value_surface_normal_transition(
+                    parameter_normal_scene.values.instructions.front()) &&
+                SurfaceValueAddress{
+                    parameter_normal_scene.values.instructions.front().result}
+                    .parameter(),
+            "a parameter-only automatic normal lost its zero-instruction "
+            "transaction boundary");
+
+    const auto incomplete_transaction = build_surface_value_executable_scene(
+        std::vector{SurfaceValueExecutionInput{
+            .program = &transaction_program,
+            .storage = &transaction_root_plan,
+            .surface_normal_storage = &transaction_normal_plan}});
+    require(!incomplete_transaction.valid &&
+                incomplete_transaction.diagnostic.find(
+                    "automatic-normal transaction") != std::string::npos,
+            "an incomplete automatic-normal transaction was accepted");
+
+    const auto transaction_normal_image = lower_surface_value_program(
+        transaction_program, transaction_normal_plan);
+    require(transaction_normal_image.valid &&
+                transaction_normal_image.instructions.size() == 1u,
+            "failed to construct the transaction verifier fixture");
+    auto raw_transaction = transaction_normal_image;
+    raw_transaction.instructions.emplace_back(SurfaceValueBytecodeInstruction{
+        .control = surface_value_surface_normal_transition_control,
+        .result = transaction_normal_image.instructions.front().result,
+        .operand_begin =
+            static_cast<std::uint32_t>(raw_transaction.operands.size()),
+        .metadata_index = SurfaceValueAddress::invalid_value});
+    require(build_surface_value_scene_image(std::vector{raw_transaction}).valid,
+            "the bytecode verifier rejected a well-formed normal commit");
+
+    auto uninitialized_instruction = transaction_normal_image;
+    require(!uninitialized_instruction.operands.empty(),
+            "the definite-initialization fixture has no operand");
+    uninitialized_instruction.operands.front() =
+        uninitialized_instruction.instructions.front().result;
+    const auto uninitialized_instruction_scene =
+        build_surface_value_scene_image(std::vector{uninitialized_instruction});
+    require(!uninitialized_instruction_scene.valid &&
+                uninitialized_instruction_scene.diagnostic.find(
+                    "uninitialized") != std::string::npos,
+            "the bytecode verifier accepted an ordinary read-before-write");
+
+    auto repeated_transition = raw_transaction;
+    repeated_transition.instructions.emplace_back(
+        repeated_transition.instructions.back());
+    const auto repeated_transition_scene =
+        build_surface_value_scene_image(std::vector{repeated_transition});
+    require(!repeated_transition_scene.valid &&
+                repeated_transition_scene.diagnostic.find("multiple") !=
+                    std::string::npos,
+            "the bytecode verifier accepted two normal commits");
+
+    auto unknown_transaction_flags = raw_transaction;
+    unknown_transaction_flags.flags = surface_value_program_flag_mask << 1u;
+    const auto unknown_flags_scene =
+        build_surface_value_scene_image(std::vector{unknown_transaction_flags});
+    require(!unknown_flags_scene.valid &&
+                unknown_flags_scene.diagnostic.find("unknown flags") !=
+                    std::string::npos,
+            "the bytecode verifier accepted unknown transaction flags");
+
+    auto uninitialized_transition = raw_transaction;
+    uninitialized_transition.instructions.erase(
+        uninitialized_transition.instructions.begin());
+    uninitialized_transition.operands.clear();
+    uninitialized_transition.instructions.front().operand_begin = 0u;
+    const auto uninitialized_transition_scene =
+        build_surface_value_scene_image(std::vector{uninitialized_transition});
+    require(!uninitialized_transition_scene.valid &&
+                uninitialized_transition_scene.diagnostic.find(
+                    "uninitialized") != std::string::npos,
+            "the bytecode verifier accepted an uninitialized normal commit");
 
     auto positive_zero_values = metadata_program.value_instructions();
     positive_zero_values.front().static_f1 = 0.0f;
@@ -1240,8 +1401,7 @@ void test_surface_value_storage_plan() {
                                    .storage = &positive_zero_plan}};
     const auto signed_zero_scene =
         build_surface_value_executable_scene(zero_inputs);
-    require(signed_zero_scene.valid &&
-                signed_zero_scene.variants.size() == 2u,
+    require(signed_zero_scene.valid && signed_zero_scene.variants.size() == 2u,
             "exact immutable-variant interning merged signed zero");
 
     auto translated_transform = transform;
@@ -1252,8 +1412,7 @@ void test_surface_value_storage_plan() {
     const SurfaceProgram translated_program{
         5u, {}, std::move(translated_values), {}, {}};
     const auto translated_plan = plan_surface_value_storage(
-        translated_program, std::vector<bool>{true},
-        std::vector<bool>{true});
+        translated_program, std::vector<bool>{true}, std::vector<bool>{true});
     const std::vector transform_inputs{
         SurfaceValueExecutionInput{.program = &metadata_program,
                                    .storage = &metadata_plan},
@@ -1827,64 +1986,78 @@ void test_surface_value_storage_plan() {
                      ValueExpressionId{4u}}}),
                 .static_u0 = 2u};
         };
-    bump_values.emplace_back(
-        make_bump_instruction(ValueExpressionId{0u}));
+    bump_values.emplace_back(make_bump_instruction(ValueExpressionId{0u}));
     const SurfaceProgram bump_program{
         20u, bump_parameters, bump_values, {}, {}};
     const auto bump_plan = plan_surface_value_storage(
         bump_program, std::vector<bool>(6u, true),
         std::vector<bool>{false, false, false, false, false, true});
     const auto bump_scene = build_surface_value_bump_executable_scene(
-        std::vector{SurfaceValueExecutionInput{
-            .program = &bump_program, .storage = &bump_plan}});
-    require(bump_scene.valid && bump_scene.root_program_count == 1u &&
-                bump_scene.maximum_bump_depth == 1u &&
-                bump_scene.executable.values.programs.size() == 2u &&
-                bump_scene.executable.values.instructions.size() == 1u &&
-                bump_scene.bump_height_programs ==
-                    std::vector<std::uint32_t>{1u} &&
-                SurfaceValueAddress{
-                    bump_scene.program_outputs[1u]}.parameter() &&
-                SurfaceValueAddress{
-                    bump_scene.program_outputs[1u]}.index() == 0u,
-            "Bump height did not lower to an exact typed subprogram");
+        std::vector{SurfaceValueExecutionInput{.program = &bump_program,
+                                               .storage = &bump_plan}});
+    require(
+        bump_scene.valid && bump_scene.root_program_count == 1u &&
+            bump_scene.maximum_bump_depth == 1u &&
+            bump_scene.executable.values.programs.size() == 2u &&
+            bump_scene.executable.values.instructions.size() == 1u &&
+            bump_scene.bump_height_programs == std::vector<std::uint32_t>{1u} &&
+            SurfaceValueAddress{bump_scene.program_outputs[1u]}.parameter() &&
+            SurfaceValueAddress{bump_scene.program_outputs[1u]}.index() == 0u,
+        "Bump height did not lower to an exact typed subprogram");
+
+    const auto bump_transaction_scene =
+        build_surface_value_bump_executable_scene(
+            std::vector{SurfaceValueExecutionInput{
+                .program = &bump_program,
+                .storage = &bump_plan,
+                .surface_normal_storage = &bump_plan,
+                .surface_normal_output = ValueExpressionId{5u}}});
+    require(
+        bump_transaction_scene.valid &&
+            bump_transaction_scene.maximum_bump_depth == 1u &&
+            bump_transaction_scene.executable.values.programs.size() == 2u &&
+            bump_transaction_scene.executable.values.instructions.size() ==
+                3u &&
+            is_surface_value_surface_normal_transition(
+                bump_transaction_scene.executable.values.instructions[1u]) &&
+            bump_transaction_scene.bump_height_programs ==
+                std::vector<std::uint32_t>{
+                    1u, SurfaceValueAddress::invalid_value, 1u},
+        "surface-normal transaction insertion shifted or lost a Bump "
+        "height-program edge");
 
     auto nested_values = bump_values;
     nested_values.emplace_back(ValueInstruction{
         .operation = ValueOperation::vector_to_scalar,
         .result_type = SocketType::floating,
-        .operands = make_value_operands<value_operand::unary>({
-            {value_operand::unary::input, ValueExpressionId{5u}}})});
-    nested_values.emplace_back(
-        make_bump_instruction(ValueExpressionId{6u}));
+        .operands = make_value_operands<value_operand::unary>(
+            {{value_operand::unary::input, ValueExpressionId{5u}}})});
+    nested_values.emplace_back(make_bump_instruction(ValueExpressionId{6u}));
     const SurfaceProgram nested_bump_program{
         21u, bump_parameters, std::move(nested_values), {}, {}};
     const auto nested_bump_plan = plan_surface_value_storage(
         nested_bump_program, std::vector<bool>(8u, true),
-        std::vector<bool>{false, false, false, false, false, false,
-                          false, true});
-    const auto nested_bump_scene =
-        build_surface_value_bump_executable_scene(
-            std::vector{SurfaceValueExecutionInput{
-                .program = &nested_bump_program,
-                .storage = &nested_bump_plan}});
+        std::vector<bool>{false, false, false, false, false, false, false,
+                          true});
+    const auto nested_bump_scene = build_surface_value_bump_executable_scene(
+        std::vector{SurfaceValueExecutionInput{.program = &nested_bump_program,
+                                               .storage = &nested_bump_plan}});
     const auto invalid_address = SurfaceValueAddress::invalid_value;
-    require(nested_bump_scene.valid &&
-                nested_bump_scene.maximum_bump_depth == 2u &&
-                nested_bump_scene.executable.values.programs.size() == 3u &&
-                nested_bump_scene.executable.values.instructions.size() == 5u &&
-                nested_bump_scene.bump_height_programs ==
-                    std::vector<std::uint32_t>{
-                        1u, invalid_address, 2u, 1u, invalid_address} &&
-                SurfaceValueAddress{
-                    nested_bump_scene.program_outputs[1u]}.parameter() &&
-                !SurfaceValueAddress{
-                    nested_bump_scene.program_outputs[2u]}.parameter() &&
-                SurfaceValueAddress{
-                    nested_bump_scene.program_outputs[2u]}.bank() ==
-                    SurfaceValueBank::scalar,
-            "nested Bump did not lower to a shared finite-strata evaluator "
-            "DAG");
+    require(
+        nested_bump_scene.valid && nested_bump_scene.maximum_bump_depth == 2u &&
+            nested_bump_scene.executable.values.programs.size() == 3u &&
+            nested_bump_scene.executable.values.instructions.size() == 5u &&
+            nested_bump_scene.bump_height_programs ==
+                std::vector<std::uint32_t>{1u, invalid_address, 2u, 1u,
+                                           invalid_address} &&
+            SurfaceValueAddress{nested_bump_scene.program_outputs[1u]}
+                .parameter() &&
+            !SurfaceValueAddress{nested_bump_scene.program_outputs[2u]}
+                 .parameter() &&
+            SurfaceValueAddress{nested_bump_scene.program_outputs[2u]}.bank() ==
+                SurfaceValueBank::scalar,
+        "nested Bump did not lower to a shared finite-strata evaluator "
+        "DAG");
 
     auto malformed_image = image;
     malformed_image.instructions.front().control |= 1u << 31u;

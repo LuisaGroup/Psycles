@@ -18,28 +18,21 @@ using namespace compiler;
 using namespace contract;
 using namespace luisa_backend::detail;
 
-[[nodiscard]] bool domain_matches(
-    const SurfaceValueProgramDomainView &view,
-    const std::vector<std::uint32_t> &values,
-    const std::vector<std::uint32_t> &normals,
-    const std::vector<std::uint32_t> &heights,
-    std::uint32_t offset,
-    bool conditional_normal) noexcept {
-    return std::equal(view.value_variants.begin(),
-                      view.value_variants.end(), values.begin(), values.end()) &&
-           std::equal(view.normal_variants.begin(),
-                      view.normal_variants.end(), normals.begin(), normals.end()) &&
-           std::equal(view.height_variants.begin(),
-                      view.height_variants.end(), heights.begin(), heights.end()) &&
-           view.program_offset == offset &&
-           view.automatic_normal_is_conditional == conditional_normal;
+[[nodiscard]] bool domain_matches(const SurfaceValueProgramDomainView &view,
+                                  const std::vector<std::uint32_t> &values,
+                                  const std::vector<std::uint32_t> &heights,
+                                  std::uint32_t offset) noexcept {
+    return std::equal(view.value_variants.begin(), view.value_variants.end(),
+                      values.begin(), values.end()) &&
+           std::equal(view.height_variants.begin(), view.height_variants.end(),
+                      heights.begin(), heights.end()) &&
+           view.program_offset == offset;
 }
 
-[[nodiscard]] std::size_t count_bump_configuration(
-    const SurfaceValueSceneImage &image,
-    std::uint32_t program_begin,
-    std::uint32_t program_end,
-    std::uint16_t configuration) noexcept {
+[[nodiscard]] std::size_t
+count_bump_configuration(const SurfaceValueSceneImage &image,
+                         std::uint32_t program_begin, std::uint32_t program_end,
+                         std::uint16_t configuration) noexcept {
     auto count = std::size_t{0u};
     for (auto program = program_begin; program < program_end; ++program) {
         const auto &range = image.programs[program];
@@ -47,6 +40,9 @@ using namespace luisa_backend::detail;
              instruction < range.instruction_begin + range.instruction_count;
              ++instruction) {
             const auto &record = image.instructions[instruction];
+            if (is_surface_value_surface_normal_transition(record)) {
+                continue;
+            }
             count += surface_value_operation(record) == ValueOperation::bump &&
                      surface_value_svm_immediate(record) == configuration;
         }
@@ -58,9 +54,8 @@ using namespace luisa_backend::detail;
 
 ShaderGraph make_minimal_principled_graph() {
     ShaderGraph graph;
-    const auto principled = graph.add_node(
-        node_type::principled_bsdf,
-        "Minimal Principled");
+    const auto principled =
+        graph.add_node(node_type::principled_bsdf, "Minimal Principled");
     const auto configured =
         graph.set_input(
             principled, "BaseColor",
@@ -427,8 +422,8 @@ bool has_color_ramp_record_product(
     return variant_count == 1u && parameters.size() >= 2u;
 }
 
-CompactSurfaceProgramEvidence inspect_compact_surface_program(
-    const SurfaceValueRuntime &runtime) noexcept {
+CompactSurfaceProgramEvidence
+inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
     CompactSurfaceProgramEvidence result;
     const auto preparation = surface_value_program_domain(
         runtime, SurfaceValueProgramDomain::preparation);
@@ -437,27 +432,75 @@ CompactSurfaceProgramEvidence inspect_compact_surface_program(
     const auto bssrdf = surface_value_program_domain(
         runtime, SurfaceValueProgramDomain::bssrdf);
     result.domains_match =
-        domain_matches(preparation,
-                       runtime.preparation_value_static_variants,
-                       runtime.normal_value_static_variants,
+        domain_matches(preparation, runtime.preparation_value_static_variants,
                        runtime.height_value_static_variants,
-                       SurfaceValueRuntime::preparation_program_offset,
-                       false) &&
-        domain_matches(emission,
-                       runtime.emission_value_static_variants,
-                       runtime.emission_normal_value_static_variants,
+                       SurfaceValueRuntime::preparation_program_offset) &&
+        domain_matches(emission, runtime.emission_value_static_variants,
                        runtime.emission_height_value_static_variants,
-                       SurfaceValueRuntime::emission_program_offset,
-                       true) &&
-        domain_matches(bssrdf,
-                       runtime.bssrdf_value_static_variants,
-                       runtime.bssrdf_normal_value_static_variants,
+                       SurfaceValueRuntime::emission_program_offset) &&
+        domain_matches(bssrdf, runtime.bssrdf_value_static_variants,
                        runtime.bssrdf_height_value_static_variants,
-                       SurfaceValueRuntime::preparation_program_offset,
-                       false);
+                       SurfaceValueRuntime::preparation_program_offset);
 
     const auto &executable = runtime.executable;
     const auto &scene = executable.executable;
+    const auto &image = scene.values;
+    const auto root_end = executable.root_program_count;
+    const auto all_end = static_cast<std::uint32_t>(image.programs.size());
+
+    // A normal transaction has one consuming boundary in a root program and
+    // none in any Bump-height subprogram. The invalid entries are not optional
+    // metadata: they prove the variant and Bump-call side streams remain
+    // parallel without assigning executable semantics to the boundary.
+    auto transactions_exact =
+        image.programs.size() >= root_end &&
+        executable.bump_height_programs.size() == image.instructions.size() &&
+        scene.instruction_variants.size() == image.instructions.size();
+    for (auto program = std::uint32_t{0u};
+         transactions_exact && program < all_end; ++program) {
+        const auto &range = image.programs[program];
+        auto transition_count = std::uint32_t{0u};
+        for (auto offset = std::uint32_t{0u}; offset < range.instruction_count;
+             ++offset) {
+            const auto instruction = range.instruction_begin + offset;
+            if (!is_surface_value_surface_normal_transition(
+                    image.instructions[instruction])) {
+                continue;
+            }
+            ++transition_count;
+            transactions_exact &=
+                scene.instruction_variants[instruction] ==
+                    SurfaceValueAddress::invalid_value &&
+                executable.bump_height_programs[instruction] ==
+                    SurfaceValueAddress::invalid_value;
+        }
+        const auto known_flags =
+            (range.flags & ~surface_value_program_flag_mask) == 0u;
+        const auto flags_require_transition =
+            range.flags == 0u || transition_count == 1u;
+        const auto height_has_no_transition =
+            program < root_end || transition_count == 0u;
+        transactions_exact &= transition_count <= 1u && known_flags &&
+                              flags_require_transition &&
+                              height_has_no_transition;
+    }
+    for (auto topology = std::size_t{0u};
+         transactions_exact && topology < runtime.topologies.size();
+         ++topology) {
+        const auto program = static_cast<std::uint32_t>(
+            topology * SurfaceValueRuntime::programs_per_topology +
+            SurfaceValueRuntime::preparation_program_offset);
+        const auto &range = image.programs[program];
+        const auto transition_count =
+            std::count_if(image.instructions.begin() + range.instruction_begin,
+                          image.instructions.begin() + range.instruction_begin +
+                              range.instruction_count,
+                          is_surface_value_surface_normal_transition);
+        transactions_exact &=
+            (transition_count == 1u) ==
+            runtime.topologies[topology].program->surface_normal_root().valid();
+    }
+    result.normal_transactions_exact = transactions_exact;
     const auto bump = std::find_if(
         scene.variants.begin(), scene.variants.end(), [](const auto &variant) {
             return variant.instruction.operation == ValueOperation::bump;
@@ -465,16 +508,13 @@ CompactSurfaceProgramEvidence inspect_compact_surface_program(
     if (bump == scene.variants.end()) {
         return result;
     }
-    result.bump_variant = static_cast<std::uint32_t>(
-        std::distance(scene.variants.begin(), bump));
+    result.bump_variant =
+        static_cast<std::uint32_t>(std::distance(scene.variants.begin(), bump));
 
     const auto contains = [variant = result.bump_variant](
                               const auto &domain) noexcept {
         return std::find(domain.begin(), domain.end(), variant) != domain.end();
     };
-    const auto &image = scene.values;
-    const auto root_end = executable.root_program_count;
-    const auto all_end = static_cast<std::uint32_t>(image.programs.size());
     const auto targets_are_height_programs = [&] {
         for (auto instruction = std::size_t{0u};
              instruction < image.instructions.size(); ++instruction) {
