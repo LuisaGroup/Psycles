@@ -1,0 +1,64 @@
+{
+  "schema": "psycles.surface-normal-transaction-svm.v1",
+  "cycles_reference": {
+    "commit": "fbe6228777e7",
+    "main_interpreter": "intern/cycles/kernel/svm/svm.h:102",
+    "normal_commit_case": "intern/cycles/kernel/svm/svm.h:307",
+    "normal_commit_operation": "intern/cycles/kernel/svm/closure.h:1519"
+  },
+  "scene": {
+    "name": "barbershop",
+    "resolution": [640, 480],
+    "spp": 64,
+    "backend": "hip",
+    "device": "AMD Radeon RX 9070 XT",
+    "missing_optional_image_bindings": 10
+  },
+  "before": {
+    "git_commit": "4ed6a2f974e1",
+    "root_programs": 567,
+    "total_programs": 671,
+    "instructions": 9233,
+    "main_final_llvm_bytes": 4443821,
+    "main_final_llvm_lines": 71806,
+    "main_isa_bytes": 472912,
+    "main_callable_top_level_loops": 2,
+    "main_callable_lines": 14400,
+    "main_llvm_codegen_ms": 1373.715712,
+    "main_comgr_link_ms": 3404.474738,
+    "render_seconds": 3.27005
+  },
+  "after": {
+    "root_programs": 378,
+    "total_programs": 482,
+    "instructions": 9295,
+    "main_final_llvm_bytes": 4054798,
+    "main_final_llvm_lines": 65354,
+    "main_isa_bytes": 430032,
+    "main_callable_top_level_loops": 1,
+    "main_callable_lines": 9745,
+    "main_llvm_codegen_ms": 1303.041152,
+    "main_comgr_link_ms": 2916.208266,
+    "render_seconds": 3.2563
+  },
+  "relative_change_percent": {
+    "root_programs": -33.3333333333,
+    "total_programs": -28.1669150522,
+    "main_final_llvm_bytes": -8.7542455018,
+    "main_final_llvm_lines": -8.9853215609,
+    "main_isa_bytes": -9.0672260378,
+    "main_callable_lines": -32.3263888889,
+    "main_llvm_codegen_ms": -5.1447733605,
+    "main_comgr_link_ms": -14.3419032178,
+    "render_seconds": -0.4204828672
+  },
+  "artifacts": {
+    "before_log": "/var/tmp/psycles-image-box-final-cold.JnnKSh/barbershop-cold.log",
+    "before_llvm": "/var/tmp/psycles-image-box-final-llvm.n965W5/hip_kernel_final_6.ll",
+    "before_isa": "/var/tmp/psycles-image-box-final-isa.w2LeSJ/hip_isa_14.co",
+    "after_log": "/var/tmp/psycles-svm-transaction.eRuSeZ/run.log",
+    "after_llvm": "/var/tmp/psycles-svm-transaction.eRuSeZ/llvm/hip_kernel_final_5.ll",
+    "after_isa": "/var/tmp/psycles-svm-transaction.eRuSeZ/isa/hip_isa_14.co",
+    "after_exr": "/var/tmp/psycles-svm-transaction.eRuSeZ/out.exr"
+  }
+}

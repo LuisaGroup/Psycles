@@ -9,8 +9,10 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <optional>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -106,16 +108,18 @@ namespace {
   return false;
 }
 
-[[nodiscard]] std::string validate_surface_value_program_image(
-    const SurfaceValueProgramImage &program) {
+[[nodiscard]] std::string
+validate_surface_value_program_image(const SurfaceValueProgramImage &program) {
   if (!program.valid) {
     return "source value program is invalid: " + program.diagnostic;
   }
   if (program.scalar_slots > SurfaceValueAddress::index_mask + 1u ||
       program.vector_slots > SurfaceValueAddress::index_mask + 1u ||
-      program.unsigned_integer_slots >
-          SurfaceValueAddress::index_mask + 1u) {
+      program.unsigned_integer_slots > SurfaceValueAddress::index_mask + 1u) {
     return "a typed local bank exceeds the address encoding";
+  }
+  if ((program.flags & ~surface_value_program_flag_mask) != 0u) {
+    return "a value program has unknown flags";
   }
   for (const auto encoded : program.value_addresses) {
     if (!address_fits_program(SurfaceValueAddress{encoded}, program, true)) {
@@ -124,7 +128,40 @@ namespace {
   }
 
   auto operand_cursor = std::size_t{0u};
+  auto transition_count = std::size_t{0u};
+  // Definite initialization is a forward must-property. Parameters are
+  // immutable inputs and therefore initialized at entry; a local slot is
+  // initialized exactly after an ordinary instruction writes it. Checking
+  // operands before inserting the result preserves the interpreter's
+  // read-before-write contract when the allocator reuses a dying operand.
+  // Sparse sets make validation proportional to the bytecode itself instead
+  // of trusting potentially malformed bank extents for host allocation.
+  std::array<std::unordered_set<std::uint32_t>, 3u> initialized_locals;
+  const auto local_is_initialized = [&](SurfaceValueAddress address) {
+    return address.parameter() ||
+           initialized_locals[bank_index(address.bank())].contains(
+               address.index());
+  };
   for (const auto &instruction : program.instructions) {
+    if (is_surface_value_surface_normal_transition(instruction)) {
+      if (instruction.operand_begin != operand_cursor ||
+          instruction.metadata_index != SurfaceValueAddress::invalid_value) {
+        return "a surface-normal transition owns operands or metadata";
+      }
+      const auto output = SurfaceValueAddress{instruction.result};
+      if (!address_fits_program(output, program, false) ||
+          output.bank() != SurfaceValueBank::vector) {
+        return "a surface-normal transition has no vector output";
+      }
+      if (!local_is_initialized(output)) {
+        return "a surface-normal transition reads an uninitialized local";
+      }
+      if (++transition_count != 1u) {
+        return "a value program contains multiple surface-normal "
+               "transitions";
+      }
+      continue;
+    }
     if ((instruction.control & ~surface_value_control_mask) != 0u ||
         static_cast<std::uint32_t>(surface_value_operation(instruction)) >
             static_cast<std::uint32_t>(ValueOperation::nishita_sky)) {
@@ -132,8 +169,7 @@ namespace {
     }
     const auto operation = surface_value_operation(instruction);
     if (surface_value_operand_count(instruction) !=
-        value_operation_operand_count(
-            surface_value_operation(instruction))) {
+        value_operation_operand_count(surface_value_operation(instruction))) {
       return "an instruction arity disagrees with its opcode contract";
     }
     if (instruction.operand_begin != operand_cursor) {
@@ -145,22 +181,22 @@ namespace {
       return "an instruction operand range exceeds the stream";
     }
     const auto result = SurfaceValueAddress{instruction.result};
-    if (!address_fits_program(result, program, false) ||
-        result.parameter() ||
+    if (!address_fits_program(result, program, false) || result.parameter() ||
         result.bank() != surface_value_result_bank(instruction)) {
       return "an instruction result is inconsistent with its typed bank";
     }
-    for (auto operand_index = std::size_t{0u};
-         operand_index < operand_count; ++operand_index) {
-      if (!address_fits_program(
-              SurfaceValueAddress{
-                  program.operands[operand_cursor + operand_index]},
-              program, false)) {
+    for (auto operand_index = std::size_t{0u}; operand_index < operand_count;
+         ++operand_index) {
+      const auto operand =
+          SurfaceValueAddress{program.operands[operand_cursor + operand_index]};
+      if (!address_fits_program(operand, program, false)) {
         return "an instruction operand exceeds its typed bank";
       }
+      if (!local_is_initialized(operand)) {
+        return "an instruction reads an uninitialized local";
+      }
     }
-    if (instruction.metadata_index !=
-            SurfaceValueAddress::invalid_value &&
+    if (instruction.metadata_index != SurfaceValueAddress::invalid_value &&
         instruction.metadata_index >= program.metadata.size()) {
       return "an instruction metadata index exceeds the side table";
     }
@@ -178,21 +214,28 @@ namespace {
         static_u0 = metadata.static_u0;
         static_u1 = metadata.static_u1;
       }
-      if (!surface_value_svm_static_fields_valid(
-              operation, static_u0, static_u1)) {
+      if (!surface_value_svm_static_fields_valid(operation, static_u0,
+                                                 static_u1)) {
         return "an instruction has immutable fields outside its immediate "
                "contract";
       }
-      const auto expected_immediate = make_surface_value_svm_immediate(
-          operation, static_u0, static_u1);
+      const auto expected_immediate =
+          make_surface_value_svm_immediate(operation, static_u0, static_u1);
       if (actual_immediate != expected_immediate) {
         return "an instruction immediate disagrees with immutable metadata";
       }
     }
+    initialized_locals[bank_index(result.bank())].emplace(result.index());
     operand_cursor += operand_count;
   }
   if (operand_cursor != program.operands.size()) {
     return "the operand stream has an unreferenced suffix";
+  }
+  if ((program.flags &
+       surface_value_program_automatic_normal_uses_undisplaced_geometry) !=
+          0u &&
+      transition_count != 1u) {
+    return "undisplaced automatic-normal evaluation has no transition";
   }
   for (const auto &metadata : program.metadata) {
     if (metadata.static_table_begin > program.static_data.size() ||
@@ -214,9 +257,107 @@ namespace {
   return true;
 }
 
-[[nodiscard]] std::vector<std::uint64_t> make_static_variant_key(
-    const SurfaceProgram &program,
-    const ValueInstruction &instruction) {
+// Sequential composition theorem used here:
+//
+//   eval(N, automatic_point(P), L); n = read(output_N, L);
+//   eval(R, P[N := n], L)
+//
+// is observationally equal to interpreting `N; commit(output_N); R` once.
+// N and R are independently topologically closed, and commit is sequenced
+// before every R instruction. Therefore their typed-slot allocations may
+// overlap: no N slot is live after commit except the value consumed by commit
+// itself. Parameters remain late-bound addresses and require no instructions.
+[[nodiscard]] SurfaceValueProgramImage
+make_surface_normal_transaction_image(const SurfaceValueProgramImage &normal,
+                                      const SurfaceValueProgramImage &root,
+                                      std::uint32_t normal_output,
+                                      bool uses_undisplaced_geometry) {
+  if (const auto diagnostic = validate_surface_value_program_image(normal);
+      !diagnostic.empty()) {
+    return reject_image("automatic-normal prefix: " + diagnostic);
+  }
+  if (const auto diagnostic = validate_surface_value_program_image(root);
+      !diagnostic.empty()) {
+    return reject_image("endpoint root: " + diagnostic);
+  }
+  if (normal.flags != 0u || root.flags != 0u ||
+      std::any_of(normal.instructions.begin(), normal.instructions.end(),
+                  is_surface_value_surface_normal_transition) ||
+      std::any_of(root.instructions.begin(), root.instructions.end(),
+                  is_surface_value_surface_normal_transition)) {
+    return reject_image("a surface-normal transaction cannot nest");
+  }
+
+  auto instruction_count = normal.instructions.size();
+  auto operand_count = normal.operands.size();
+  auto metadata_count = normal.metadata.size();
+  auto static_data_count = normal.static_data.size();
+  if (!add_scene_extent(instruction_count, 1u) ||
+      !add_scene_extent(instruction_count, root.instructions.size()) ||
+      !add_scene_extent(operand_count, root.operands.size()) ||
+      !add_scene_extent(metadata_count, root.metadata.size()) ||
+      !add_scene_extent(static_data_count, root.static_data.size())) {
+    return reject_image("a surface-normal transaction exceeds 32-bit offsets");
+  }
+
+  SurfaceValueProgramImage result;
+  result.instructions.reserve(instruction_count);
+  result.operands.reserve(operand_count);
+  result.metadata.reserve(metadata_count);
+  result.static_data.reserve(static_data_count);
+  result.value_addresses = root.value_addresses;
+  result.scalar_slots = std::max(normal.scalar_slots, root.scalar_slots);
+  result.vector_slots = std::max(normal.vector_slots, root.vector_slots);
+  result.unsigned_integer_slots =
+      std::max(normal.unsigned_integer_slots, root.unsigned_integer_slots);
+  result.flags =
+      uses_undisplaced_geometry
+          ? surface_value_program_automatic_normal_uses_undisplaced_geometry
+          : 0u;
+
+  const auto append = [&](const SurfaceValueProgramImage &source) {
+    const auto operand_begin =
+        static_cast<std::uint32_t>(result.operands.size());
+    const auto metadata_begin =
+        static_cast<std::uint32_t>(result.metadata.size());
+    const auto static_data_begin =
+        static_cast<std::uint32_t>(result.static_data.size());
+    for (auto instruction : source.instructions) {
+      instruction.operand_begin += operand_begin;
+      if (instruction.metadata_index != SurfaceValueAddress::invalid_value) {
+        instruction.metadata_index += metadata_begin;
+      }
+      result.instructions.emplace_back(instruction);
+    }
+    result.operands.insert(result.operands.end(), source.operands.begin(),
+                           source.operands.end());
+    for (auto metadata : source.metadata) {
+      metadata.static_table_begin += static_data_begin;
+      result.metadata.emplace_back(metadata);
+    }
+    result.static_data.insert(result.static_data.end(),
+                              source.static_data.begin(),
+                              source.static_data.end());
+  };
+
+  append(normal);
+  result.instructions.emplace_back(SurfaceValueBytecodeInstruction{
+      .control = surface_value_surface_normal_transition_control,
+      .result = normal_output,
+      .operand_begin = static_cast<std::uint32_t>(result.operands.size()),
+      .metadata_index = SurfaceValueAddress::invalid_value});
+  append(root);
+  result.valid = true;
+  if (const auto diagnostic = validate_surface_value_program_image(result);
+      !diagnostic.empty()) {
+    return reject_image("composed surface-normal transaction: " + diagnostic);
+  }
+  return result;
+}
+
+[[nodiscard]] std::vector<std::uint64_t>
+make_static_variant_key(const SurfaceProgram &program,
+                        const ValueInstruction &instruction) {
   const auto type_key = [](contract::SocketType type) noexcept {
     auto bank = SurfaceValueBank::scalar;
     return classify_surface_value_type(type, bank)
@@ -918,11 +1059,11 @@ SurfaceValueSceneImage build_surface_value_scene_image(
             static_cast<std::uint32_t>(program.instructions.size()),
         .scalar_slots = program.scalar_slots,
         .vector_slots = program.vector_slots,
-        .unsigned_integer_slots = program.unsigned_integer_slots});
+        .unsigned_integer_slots = program.unsigned_integer_slots,
+        .flags = program.flags});
     for (auto instruction : program.instructions) {
       instruction.operand_begin += operand_begin;
-      if (instruction.metadata_index !=
-          SurfaceValueAddress::invalid_value) {
+      if (instruction.metadata_index != SurfaceValueAddress::invalid_value) {
         instruction.metadata_index += metadata_begin;
       }
       result.instructions.emplace_back(instruction);
@@ -960,25 +1101,56 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
           "value program " + std::to_string(input_index) +
           ": execution input is incomplete or incompatible");
     }
+    const auto has_surface_normal = input.surface_normal_storage != nullptr;
+    if (has_surface_normal != input.surface_normal_output.valid() ||
+        (has_surface_normal &&
+         !input.surface_normal_storage->compatible(*program)) ||
+        (!has_surface_normal &&
+         input.surface_normal_uses_undisplaced_geometry)) {
+      return reject_executable_scene(
+          "value program " + std::to_string(input_index) +
+          ": automatic-normal transaction is incomplete or incompatible");
+    }
     auto image = lower_surface_value_program(*program, *storage);
     if (!image.valid) {
-      return reject_executable_scene(
-          "value program " + std::to_string(input_index) + ": " +
-          image.diagnostic);
+      return reject_executable_scene("value program " +
+                                     std::to_string(input_index) + ": " +
+                                     image.diagnostic);
+    }
+    std::optional<SurfaceValueProgramImage> surface_normal_image;
+    auto surface_normal_output = SurfaceValueAddress::invalid_value;
+    if (has_surface_normal) {
+      surface_normal_image.emplace(
+          lower_surface_value_program(*program, *input.surface_normal_storage));
+      if (!surface_normal_image->valid ||
+          input.surface_normal_output.value >=
+              surface_normal_image->value_addresses.size()) {
+        return reject_executable_scene(
+            "value program " + std::to_string(input_index) +
+            ": automatic-normal prefix cannot be lowered");
+      }
+      surface_normal_output =
+          surface_normal_image
+              ->value_addresses[input.surface_normal_output.value];
+      if (surface_normal_output == SurfaceValueAddress::invalid_value) {
+        return reject_executable_scene(
+            "value program " + std::to_string(input_index) +
+            ": automatic-normal output has no typed address");
+      }
     }
     SurfaceClosureProgramImage closure_image;
     closure_image.valid = true;
     if (input.closure_plan != nullptr) {
       if (!input.closure_plan->compatible(*program)) {
-        return reject_executable_scene(
-            "value program " + std::to_string(input_index) +
-            ": closure plan is incompatible");
+        return reject_executable_scene("value program " +
+                                       std::to_string(input_index) +
+                                       ": closure plan is incompatible");
       }
-      const auto dependencies = analyze_surface_value_dependencies(
-          *program, *input.closure_plan);
+      const auto dependencies =
+          analyze_surface_value_dependencies(*program, *input.closure_plan);
       closure_image = lower_surface_closure_program(
-          *program, *input.closure_plan, dependencies,
-          image.value_addresses, input.closure_endpoints);
+          *program, *input.closure_plan, dependencies, image.value_addresses,
+          input.closure_endpoints);
       if (!closure_image.valid) {
         return reject_executable_scene(
             "value program " + std::to_string(input_index) +
@@ -986,97 +1158,120 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
       }
     }
     closure_images.emplace_back(std::move(closure_image));
-    program_images.emplace_back(std::move(image));
-    for (const auto id : storage->instructions) {
-      if (!id.valid() || id.value >= program->value_instructions().size()) {
-        return reject_executable_scene(
-            "value program " + std::to_string(input_index) +
-            ": storage schedule contains an invalid instruction");
+    if (surface_normal_image) {
+      image = make_surface_normal_transaction_image(
+          *surface_normal_image, image, surface_normal_output,
+          input.surface_normal_uses_undisplaced_geometry);
+      if (!image.valid) {
+        return reject_executable_scene("value program " +
+                                       std::to_string(input_index) + ": " +
+                                       image.diagnostic);
       }
-      const auto &instruction = program->value_instructions()[id.value];
-      auto key = make_static_variant_key(*program, instruction);
-      auto [iter, inserted] = variant_indices.try_emplace(
-          key, static_cast<std::uint32_t>(result.variants.size()));
-      if (inserted) {
-        if (result.variants.size() >=
-            std::numeric_limits<std::uint32_t>::max()) {
+    }
+    program_images.emplace_back(std::move(image));
+    const std::array<const SurfaceValueStoragePlan *, 2u> schedules{
+        input.surface_normal_storage, storage};
+    for (auto schedule_index = std::size_t{0u};
+         schedule_index < schedules.size(); ++schedule_index) {
+      const auto *schedule = schedules[schedule_index];
+      if (schedule == nullptr) {
+        continue;
+      }
+      for (const auto id : schedule->instructions) {
+        if (!id.valid() || id.value >= program->value_instructions().size()) {
           return reject_executable_scene(
-              "the scene has too many immutable value variants");
+              "value program " + std::to_string(input_index) +
+              ": storage schedule contains an invalid instruction");
         }
-        auto normalized = instruction;
-        auto result_bank = SurfaceValueBank::scalar;
-        if (!classify_surface_value_type(normalized.result_type,
-                                         result_bank)) {
-          return reject_executable_scene(
-              "a value evaluator has an unsupported result execution type");
-        }
-        normalized.result_type = canonical_surface_value_type(result_bank);
-        if (normalized.operation == ValueOperation::color_ramp ||
-            normalized.operation == ValueOperation::rgb_curve) {
-          normalized.parameter = {};
-        }
-        normalized.static_u0 = surface_value_svm_evaluator_static_u0(
-            normalized.operation, normalized.static_u0);
-        normalized.static_u1 = surface_value_svm_evaluator_static_u1(
-            normalized.operation, normalized.static_u1);
-        // Preserve the statically proven shape but erase authored payloads
-        // from the host AST representative. Compact execution must obtain
-        // every entry from the instruction metadata/static-data streams;
-        // zeroing here makes an accidental bake observable in regressions.
-        std::fill(normalized.static_table.begin(),
-                  normalized.static_table.end(), 0.0f);
-        std::vector<contract::SocketType> operand_types;
-        operand_types.reserve(normalized.operands.size());
-        for (auto operand_index = std::size_t{0u};
-             operand_index < normalized.operands.size(); ++operand_index) {
-          const auto source = normalized.operands[operand_index];
-          auto operand_bank = SurfaceValueBank::scalar;
-          if (!classify_surface_value_type(
-                  program->value_instructions()[source.value].result_type,
-                  operand_bank)) {
+        const auto &instruction = program->value_instructions()[id.value];
+        auto key = make_static_variant_key(*program, instruction);
+        auto [iter, inserted] = variant_indices.try_emplace(
+            key, static_cast<std::uint32_t>(result.variants.size()));
+        if (inserted) {
+          if (result.variants.size() >=
+              std::numeric_limits<std::uint32_t>::max()) {
             return reject_executable_scene(
-                "a value evaluator has an unsupported operand execution "
+                "the scene has too many immutable value variants");
+          }
+          auto normalized = instruction;
+          auto result_bank = SurfaceValueBank::scalar;
+          if (!classify_surface_value_type(normalized.result_type,
+                                           result_bank)) {
+            return reject_executable_scene(
+                "a value evaluator has an unsupported result execution "
                 "type");
           }
-          operand_types.emplace_back(
-              canonical_surface_value_type(operand_bank));
-          normalized.operands[operand_index] = ValueExpressionId{
-              static_cast<std::uint32_t>(operand_index)};
+          normalized.result_type = canonical_surface_value_type(result_bank);
+          if (normalized.operation == ValueOperation::color_ramp ||
+              normalized.operation == ValueOperation::rgb_curve) {
+            normalized.parameter = {};
+          }
+          normalized.static_u0 = surface_value_svm_evaluator_static_u0(
+              normalized.operation, normalized.static_u0);
+          normalized.static_u1 = surface_value_svm_evaluator_static_u1(
+              normalized.operation, normalized.static_u1);
+          // Preserve the statically proven shape but erase authored
+          // payloads from the host AST representative. Compact execution
+          // must obtain every entry from the instruction
+          // metadata/static-data streams; zeroing here makes an
+          // accidental bake observable in regressions.
+          std::fill(normalized.static_table.begin(),
+                    normalized.static_table.end(), 0.0f);
+          std::vector<contract::SocketType> operand_types;
+          operand_types.reserve(normalized.operands.size());
+          for (auto operand_index = std::size_t{0u};
+               operand_index < normalized.operands.size(); ++operand_index) {
+            const auto source = normalized.operands[operand_index];
+            auto operand_bank = SurfaceValueBank::scalar;
+            if (!classify_surface_value_type(
+                    program->value_instructions()[source.value].result_type,
+                    operand_bank)) {
+              return reject_executable_scene(
+                  "a value evaluator has an unsupported operand "
+                  "execution "
+                  "type");
+            }
+            operand_types.emplace_back(
+                canonical_surface_value_type(operand_bank));
+            normalized.operands[operand_index] =
+                ValueExpressionId{static_cast<std::uint32_t>(operand_index)};
+          }
+          normalized.source_node = {};
+          result.variants.emplace_back(SurfaceValueStaticVariant{
+              .instruction = std::move(normalized),
+              .operand_types = std::move(operand_types),
+              .svm_immediates = {static_cast<std::uint16_t>(
+                  make_surface_value_svm_immediate(instruction.operation,
+                                                   instruction.static_u0,
+                                                   instruction.static_u1))}});
+        } else {
+          auto &immediates = result.variants[iter->second].svm_immediates;
+          const auto immediate =
+              static_cast<std::uint16_t>(make_surface_value_svm_immediate(
+                  instruction.operation, instruction.static_u0,
+                  instruction.static_u1));
+          if (std::find(immediates.begin(), immediates.end(), immediate) ==
+              immediates.end()) {
+            immediates.emplace_back(immediate);
+          }
         }
-        normalized.source_node = {};
-        result.variants.emplace_back(SurfaceValueStaticVariant{
-            .instruction = std::move(normalized),
-            .operand_types = std::move(operand_types),
-            .svm_immediates = {static_cast<std::uint16_t>(
-                make_surface_value_svm_immediate(
-                    instruction.operation,
-                    instruction.static_u0,
-                    instruction.static_u1))}});
-      } else {
-        auto &immediates = result.variants[iter->second].svm_immediates;
-        const auto immediate = static_cast<std::uint16_t>(
-            make_surface_value_svm_immediate(
-                instruction.operation,
-                instruction.static_u0,
-                instruction.static_u1));
-        if (std::find(immediates.begin(), immediates.end(), immediate) ==
-            immediates.end()) {
-          immediates.emplace_back(immediate);
-        }
+        result.instruction_variants.emplace_back(iter->second);
       }
-      result.instruction_variants.emplace_back(iter->second);
+      if (schedule_index == 0u) {
+        result.instruction_variants.emplace_back(
+            SurfaceValueAddress::invalid_value);
+      }
     }
   }
   for (auto &variant : result.variants) {
     std::sort(variant.svm_immediates.begin(), variant.svm_immediates.end());
   }
-  result.values = build_surface_execution_scene_image(
-      program_images, closure_images);
+  result.values =
+      build_surface_execution_scene_image(program_images, closure_images);
   if (!result.values.valid) {
     return reject_executable_scene(result.values.diagnostic);
   }
-  if (result.instruction_variants.size() !=
-      result.values.instructions.size()) {
+  if (result.instruction_variants.size() != result.values.instructions.size()) {
     return reject_executable_scene(
         "the immutable-variant stream is not parallel to the instructions");
   }
@@ -1086,16 +1281,21 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
 
 SurfaceValueBumpExecutableScene build_surface_value_bump_executable_scene(
     std::span<const SurfaceValueExecutionInput> root_inputs) {
-  if (root_inputs.size() >
-      std::numeric_limits<std::uint32_t>::max()) {
+  if (root_inputs.size() > std::numeric_limits<std::uint32_t>::max()) {
     return reject_bump_scene("the root program count exceeds device tags");
   }
 
   for (const auto &input : root_inputs) {
     const auto *program = input.program;
     const auto *storage = input.storage;
+    const auto has_surface_normal = input.surface_normal_storage != nullptr;
     if (program == nullptr || storage == nullptr ||
-        !storage->compatible(*program)) {
+        !storage->compatible(*program) ||
+        has_surface_normal != input.surface_normal_output.valid() ||
+        (has_surface_normal &&
+         !input.surface_normal_storage->compatible(*program)) ||
+        (!has_surface_normal &&
+         input.surface_normal_uses_undisplaced_geometry)) {
       return reject_bump_scene(
           "a root execution input is incomplete or incompatible");
     }
@@ -1137,8 +1337,7 @@ SurfaceValueBumpExecutableScene build_surface_value_bump_executable_scene(
   std::vector<PendingBump> pending_bumps;
   std::vector<std::uint32_t> program_outputs(
       root_inputs.size(), SurfaceValueAddress::invalid_value);
-  std::vector<std::vector<std::uint32_t>> program_children(
-      root_inputs.size());
+  std::vector<std::vector<std::uint32_t>> program_children(root_inputs.size());
   auto instruction_begin = std::size_t{0u};
   for (auto program_index = std::size_t{0u};
        program_index < expanded_inputs.size(); ++program_index) {
@@ -1146,84 +1345,108 @@ SurfaceValueBumpExecutableScene build_surface_value_bump_executable_scene(
     // may reallocate its own descriptor storage.
     const auto input = expanded_inputs[program_index];
     const auto &program = *input.program;
-    const auto &storage = *input.storage;
-    for (auto schedule_index = std::size_t{0u};
-         schedule_index < storage.instructions.size(); ++schedule_index) {
-      const auto id = storage.instructions[schedule_index];
-      if (!id.valid() || id.value >= program.value_instructions().size()) {
-        return reject_bump_scene(
-            "a value program contains an invalid storage schedule");
-      }
-      const auto &instruction = program.value_instructions()[id.value];
-      if (instruction.operation != ValueOperation::bump) {
+    const std::array<const SurfaceValueStoragePlan *, 2u> schedules{
+        input.surface_normal_storage, input.storage};
+    auto instruction_offset = std::size_t{0u};
+    for (auto transaction_stage = std::size_t{0u};
+         transaction_stage < schedules.size(); ++transaction_stage) {
+      const auto *storage = schedules[transaction_stage];
+      if (storage == nullptr) {
         continue;
       }
-      const auto height = instruction.operand(value_operand::bump::height);
-      if (!height.valid() || height.value >=
-                                 program.value_instructions().size()) {
-        return reject_bump_scene(
-            "a Bump instruction has an invalid height dependency");
-      }
-      const auto key = HeightProgramKey{.program = &program,
-                                        .height = height.value};
-      auto child_program = std::uint32_t{};
-      if (const auto iter = height_programs.find(key);
-          iter != height_programs.end()) {
-        child_program = iter->second;
-      } else {
-        auto active = transitive_value_mask(program, height);
-        auto outputs = std::vector<bool>(active.size(), false);
-        outputs[height.value] = true;
-        auto subprogram_storage =
-            plan_surface_value_storage(program, active, outputs);
-        if (!subprogram_storage.compatible(program)) {
+      for (auto schedule_index = std::size_t{0u};
+           schedule_index < storage->instructions.size(); ++schedule_index) {
+        const auto id = storage->instructions[schedule_index];
+        if (!id.valid() || id.value >= program.value_instructions().size()) {
           return reject_bump_scene(
-              "a Bump height subprogram cannot be planned: " +
-              subprogram_storage.diagnostic);
+              "a value program contains an invalid storage schedule");
         }
-        auto subprogram_image =
-            lower_surface_value_program(program, subprogram_storage);
-        if (!subprogram_image.valid ||
-            height.value >= subprogram_image.value_addresses.size() ||
-            subprogram_image.value_addresses[height.value] ==
-                SurfaceValueAddress::invalid_value) {
+        const auto &instruction = program.value_instructions()[id.value];
+        if (instruction.operation != ValueOperation::bump) {
+          continue;
+        }
+        const auto height = instruction.operand(value_operand::bump::height);
+        if (!height.valid() ||
+            height.value >= program.value_instructions().size()) {
           return reject_bump_scene(
-              "a Bump height subprogram has no typed output address");
+              "a Bump instruction has an invalid height dependency");
         }
-        if (expanded_inputs.size() >
-            std::numeric_limits<std::uint32_t>::max()) {
+        const auto key =
+            HeightProgramKey{.program = &program, .height = height.value};
+        auto child_program = std::uint32_t{};
+        if (const auto iter = height_programs.find(key);
+            iter != height_programs.end()) {
+          child_program = iter->second;
+        } else {
+          auto active = transitive_value_mask(program, height);
+          auto outputs = std::vector<bool>(active.size(), false);
+          outputs[height.value] = true;
+          auto subprogram_storage =
+              plan_surface_value_storage(program, active, outputs);
+          if (!subprogram_storage.compatible(program)) {
+            return reject_bump_scene(
+                "a Bump height subprogram cannot be planned: " +
+                subprogram_storage.diagnostic);
+          }
+          auto subprogram_image =
+              lower_surface_value_program(program, subprogram_storage);
+          if (!subprogram_image.valid ||
+              height.value >= subprogram_image.value_addresses.size() ||
+              subprogram_image.value_addresses[height.value] ==
+                  SurfaceValueAddress::invalid_value) {
+            return reject_bump_scene(
+                "a Bump height subprogram has no typed output address");
+          }
+          if (expanded_inputs.size() >=
+              std::numeric_limits<std::uint32_t>::max()) {
+            return reject_bump_scene(
+                "Bump program references exceed device indices");
+          }
+          child_program = static_cast<std::uint32_t>(expanded_inputs.size());
+          height_storage.emplace_back(std::move(subprogram_storage));
+          expanded_inputs.emplace_back(SurfaceValueExecutionInput{
+              .program = &program, .storage = &height_storage.back()});
+          program_outputs.emplace_back(
+              subprogram_image.value_addresses[height.value]);
+          program_children.emplace_back();
+          height_programs.emplace(key, child_program);
+        }
+        const auto device_index_limit =
+            static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max());
+        if (instruction_begin > device_index_limit ||
+            instruction_offset > device_index_limit - instruction_begin ||
+            schedule_index >
+                device_index_limit - instruction_begin - instruction_offset) {
           return reject_bump_scene(
               "Bump program references exceed device indices");
         }
-        child_program =
-            static_cast<std::uint32_t>(expanded_inputs.size());
-        height_storage.emplace_back(std::move(subprogram_storage));
-        expanded_inputs.emplace_back(SurfaceValueExecutionInput{
-            .program = &program,
-            .storage = &height_storage.back()});
-        program_outputs.emplace_back(
-            subprogram_image.value_addresses[height.value]);
-        program_children.emplace_back();
-        height_programs.emplace(key, child_program);
+        pending_bumps.emplace_back(PendingBump{
+            .instruction = static_cast<std::uint32_t>(
+                instruction_begin + instruction_offset + schedule_index),
+            .program = child_program,
+            .output = program_outputs[child_program]});
+        program_children[program_index].emplace_back(child_program);
       }
-      if (instruction_begin + schedule_index >
-          std::numeric_limits<std::uint32_t>::max()) {
+      if (storage->instructions.size() >
+          std::numeric_limits<std::size_t>::max() - instruction_offset) {
         return reject_bump_scene(
-            "Bump program references exceed device indices");
+            "the aggregate Bump instruction stream overflows host indices");
       }
-      pending_bumps.emplace_back(PendingBump{
-          .instruction = static_cast<std::uint32_t>(
-              instruction_begin + schedule_index),
-          .program = child_program,
-          .output = program_outputs[child_program]});
-      program_children[program_index].emplace_back(child_program);
+      instruction_offset += storage->instructions.size();
+      if (transaction_stage == 0u) {
+        if (instruction_offset == std::numeric_limits<std::size_t>::max()) {
+          return reject_bump_scene("the aggregate Bump instruction "
+                                   "stream overflows host indices");
+        }
+        ++instruction_offset;
+      }
     }
-    if (storage.instructions.size() >
+    if (instruction_offset >
         std::numeric_limits<std::size_t>::max() - instruction_begin) {
       return reject_bump_scene(
           "the aggregate Bump instruction stream overflows host indices");
     }
-    instruction_begin += storage.instructions.size();
+    instruction_begin += instruction_offset;
   }
 
   // The height-program graph is a DAG because every Bump height is a
@@ -1251,8 +1474,7 @@ SurfaceValueBumpExecutableScene build_surface_value_bump_executable_scene(
       if (!self(self, child)) {
         return false;
       }
-      if (program_depths[child] ==
-          std::numeric_limits<std::uint32_t>::max()) {
+      if (program_depths[child] == std::numeric_limits<std::uint32_t>::max()) {
         depth_diagnostic = "the Bump evaluator depth exceeds device tags";
         return false;
       }
@@ -1265,8 +1487,7 @@ SurfaceValueBumpExecutableScene build_surface_value_bump_executable_scene(
   auto maximum_bump_depth = std::uint32_t{0u};
   for (auto root_index = std::size_t{0u}; root_index < root_inputs.size();
        ++root_index) {
-    if (!visit_depth(visit_depth,
-                     static_cast<std::uint32_t>(root_index))) {
+    if (!visit_depth(visit_depth, static_cast<std::uint32_t>(root_index))) {
       return reject_bump_scene(std::move(depth_diagnostic));
     }
     maximum_bump_depth =
@@ -1279,8 +1500,7 @@ SurfaceValueBumpExecutableScene build_surface_value_bump_executable_scene(
   }
   SurfaceValueBumpExecutableScene result;
   result.executable = std::move(executable);
-  result.root_program_count =
-      static_cast<std::uint32_t>(root_inputs.size());
+  result.root_program_count = static_cast<std::uint32_t>(root_inputs.size());
   result.maximum_bump_depth = maximum_bump_depth;
   result.bump_height_programs.assign(
       result.executable.values.instructions.size(),

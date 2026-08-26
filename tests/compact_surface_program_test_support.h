@@ -14,6 +14,7 @@ namespace psycles::test_support {
 
 struct CompactSurfaceProgramEvidence {
     bool domains_match{};
+    bool normal_transactions_exact{};
     bool bump_partition_exact{};
     std::uint32_t bump_variant{~std::uint32_t{0u}};
 };
@@ -22,8 +23,8 @@ struct CompactSurfaceProgramEvidence {
 
 // The shifted form places a live Add node before the Color Ramp, giving the
 // runtime table a different ParameterId without changing the ramp evaluator.
-[[nodiscard]] contract::ShaderGraph make_sampled_color_ramp_graph(
-    std::string table, bool shifted_parameter);
+[[nodiscard]] contract::ShaderGraph
+make_sampled_color_ramp_graph(std::string table, bool shifted_parameter);
 
 // A live graph containing both Cycles Clamp modes. Compact execution must use
 // one shared typed handler whose record domain contains both immediates.
