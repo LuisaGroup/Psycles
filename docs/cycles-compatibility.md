@@ -1118,6 +1118,17 @@ regressions, profiler records, all-pass differentials, and inspected
 triptychs are in
 [`validation/2026-08-16/scene-traversal-quotient`](validation/2026-08-16/scene-traversal-quotient/README.md).
 
+Authored Bump height graphs are now expanded into the same topological typed
+SVM stream as their consuming surface graph. Explicit differential-context SSA
+values replace the recursive height interpreter while exact GVN shares cloned
+invariants; no closure, texture value, or material parameter is baked. On the
+retained Barbershop HIP A/B this removes 104 height programs, reduces the main
+LLVM and code object by 10.40% and 11.32%, and improves the paired three-run
+render median by 5.47%. The formal model, nested-Bump and invalid-graph
+regressions, fallback/HIP/native-XIR Vulkan gates, full-pass repeat-floor
+analysis, and inspected triptychs are in
+[`validation/2026-08-26/surface-bump-expanded-svm`](validation/2026-08-26/surface-bump-expanded-svm/README.md).
+
 The following integrator work remains explicit and is not considered Cycles
 compatible yet:
 
