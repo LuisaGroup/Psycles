@@ -43,7 +43,8 @@ count_bump_configuration(const SurfaceValueSceneImage &image,
             if (is_surface_value_surface_normal_transition(record)) {
                 continue;
             }
-            count += surface_value_operation(record) == ValueOperation::bump &&
+            count += surface_value_operation(record) ==
+                         ValueOperation::bump_samples &&
                      surface_value_svm_immediate(record) == configuration;
         }
     }
@@ -503,7 +504,8 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
     result.normal_transactions_exact = transactions_exact;
     const auto bump = std::find_if(
         scene.variants.begin(), scene.variants.end(), [](const auto &variant) {
-            return variant.instruction.operation == ValueOperation::bump;
+            return variant.instruction.operation ==
+                   ValueOperation::bump_samples;
         });
     if (bump == scene.variants.end()) {
         return result;
@@ -515,15 +517,13 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
                               const auto &domain) noexcept {
         return std::find(domain.begin(), domain.end(), variant) != domain.end();
     };
-    const auto targets_are_height_programs = [&] {
+    const auto has_no_recursive_edges = [&] {
         for (auto instruction = std::size_t{0u};
              instruction < image.instructions.size(); ++instruction) {
-            if (surface_value_operation(image.instructions[instruction]) !=
-                ValueOperation::bump) {
-                continue;
-            }
             const auto target = executable.bump_height_programs[instruction];
-            if (target < root_end || target >= all_end) {
+            if (target != SurfaceValueAddress::invalid_value ||
+                surface_value_operation(image.instructions[instruction]) ==
+                    ValueOperation::bump) {
                 return false;
             }
         }
@@ -531,14 +531,14 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
     }();
 
     result.bump_partition_exact =
-        executable.maximum_bump_depth == 2u &&
+        executable.maximum_bump_depth == 0u && root_end == all_end &&
         contains(runtime.preparation_value_static_variants) &&
-        contains(runtime.height_value_static_variants) &&
+        runtime.height_value_static_variants.empty() &&
+        runtime.emission_height_value_static_variants.empty() &&
+        runtime.bssrdf_height_value_static_variants.empty() &&
         count_bump_configuration(image, 0u, root_end, 1u) != 0u &&
-        count_bump_configuration(image, root_end, all_end, 1u) == 0u &&
         count_bump_configuration(image, 0u, root_end, 0u) != 0u &&
-        count_bump_configuration(image, root_end, all_end, 0u) != 0u &&
-        targets_are_height_programs;
+        has_no_recursive_edges;
     return result;
 }
 

@@ -1192,15 +1192,13 @@ int main(int argc, char **argv) {
                                      std::uint32_t variant) noexcept {
         return std::find(domain.begin(), domain.end(), variant) != domain.end();
     };
-    // This controlled graph proves the program-role partition at instruction
-    // granularity. Cycles-style typed records deliberately merge the outer and
-    // inner Bump configurations into one handler, so handler-set membership can
-    // no longer distinguish their call-graph roles. The root evaluates both
-    // records; offset-height programs reach only the inner record, and every
-    // Bump edge targets a generated height program.
+    // This controlled graph proves the single-interpreter refinement at
+    // instruction granularity. Both immutable Bump configurations remain in
+    // the root stream as typed records, while no recursive Bump opcode, height
+    // program, or callable stratum survives.
     if (!program_evidence.bump_partition_exact) {
-        std::cerr << "compact runtime did not preserve the exact root/height "
-                     "call-graph partition on "
+        std::cerr << "compact runtime did not preserve the exact one-stream "
+                     "Bump graph on "
                   << backend << '\n';
         return EXIT_FAILURE;
     }

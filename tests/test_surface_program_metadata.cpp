@@ -1,5 +1,6 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
+#include <psycles/compiler/surface_bump_expansion.h>
 #include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/compiler/surface_program.h>
 #include <psycles/contract/scene.h>
@@ -2059,6 +2060,174 @@ void test_surface_value_storage_plan() {
         "nested Bump did not lower to a shared finite-strata evaluator "
         "DAG");
 
+    // The compact path refines Bump into one pure topological graph. This is
+    // deliberately a structural test, not a host renderer: Cycles remains the
+    // only numerical oracle, while the compiler invariants are checked here
+    // without duplicating shader semantics on the CPU.
+    std::vector<ParameterDesc> expanded_parameters;
+    for (auto index = 0u; index < 3u; ++index) {
+        expanded_parameters.emplace_back(make_parameter(index));
+    }
+    expanded_parameters.emplace_back(ParameterDesc{
+        .id = ParameterId{3u},
+        .node = NodeId{103u},
+        .socket = "Normal",
+        .type = SocketType::normal,
+        .default_value = SocketValue::normal({0.0f, 0.0f, 1.0f}),
+        .source = ParameterSource::input});
+    std::vector<ValueInstruction> expanded_values;
+    for (auto index = 0u; index < 3u; ++index) {
+        expanded_values.emplace_back(make_parameter_value(index));
+    }
+    expanded_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::parameter,
+        .source_node = NodeId{103u},
+        .result_type = SocketType::normal,
+        .parameter = ParameterId{3u}});
+    expanded_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::surface_position,
+        .source_node = NodeId{104u},
+        .result_type = SocketType::point});
+    expanded_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::vector_to_scalar,
+        .source_node = NodeId{105u},
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::unary>({
+            {value_operand::unary::input, ValueExpressionId{4u}}})});
+    expanded_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::bump,
+        .source_node = NodeId{106u},
+        .result_type = SocketType::normal,
+        .operands = make_value_operands<value_operand::bump>({
+            {value_operand::bump::height, ValueExpressionId{5u}},
+            {value_operand::bump::strength, ValueExpressionId{0u}},
+            {value_operand::bump::distance, ValueExpressionId{1u}},
+            {value_operand::bump::filter_width, ValueExpressionId{2u}},
+            {value_operand::bump::normal, ValueExpressionId{3u}}}),
+        .static_u0 = 2u});
+    const SurfaceProgram expanded_source{
+        22u,
+        expanded_parameters,
+        expanded_values,
+        {ClosureInstruction{.operation = ClosureOperation::diffuse,
+                            .source_node = NodeId{107u},
+                            .color = ValueExpressionId{4u},
+                            .normal = ValueExpressionId{6u},
+                            .roughness = ValueExpressionId{0u}}},
+        ClosureExpressionId{0u},
+        {},
+        {},
+        ValueExpressionId{6u},
+        ValueExpressionId{5u}};
+    const auto expanded = expand_surface_bump_program(expanded_source);
+    require(expanded.valid && expanded.program &&
+                expanded.root_values.size() == expanded_values.size() &&
+                expanded.bump_count == 1u &&
+                expanded.sampled_instruction_count == 2u,
+            "single-stream Bump refinement did not report its exact graph "
+            "domain");
+    const auto &refined_values = expanded.program->value_instructions();
+    auto parameter_count = std::size_t{0u};
+    auto zero_count = std::size_t{0u};
+    auto sampled_position_count = std::size_t{0u};
+    auto bump_sample_count = std::size_t{0u};
+    for (auto index = std::size_t{0u}; index < refined_values.size(); ++index) {
+        const auto &instruction = refined_values[index];
+        parameter_count +=
+            instruction.operation == ValueOperation::parameter ? 1u : 0u;
+        zero_count +=
+            instruction.operation == ValueOperation::bump_offset_zero ? 1u : 0u;
+        sampled_position_count +=
+            instruction.operation == ValueOperation::sampled_surface_position
+                ? 1u
+                : 0u;
+        bump_sample_count +=
+            instruction.operation == ValueOperation::bump_samples ? 1u : 0u;
+        require(instruction.operation != ValueOperation::bump,
+                "single-stream Bump refinement retained a recursive opcode");
+        for (const auto operand : instruction.operands) {
+            require(operand.valid() && operand.value < index,
+                    "single-stream Bump refinement violated strict "
+                    "topological order");
+        }
+    }
+    require(parameter_count == expanded_parameters.size() && zero_count == 1u &&
+                sampled_position_count == 2u && bump_sample_count == 1u,
+            "Bump refinement duplicated invariant parameters or lost an exact "
+            "differential sample");
+    const auto &expanded_closure =
+        expanded.program->closure_instructions().front();
+    require(expanded_closure.color == expanded.root_values[4u] &&
+                expanded_closure.normal == expanded.root_values[6u] &&
+                expanded_closure.roughness == expanded.root_values[0u] &&
+                expanded.program->surface_normal_root() ==
+                    expanded.root_values[6u] &&
+                expanded.program->displacement_root() ==
+                    expanded.root_values[5u],
+            "Bump refinement did not remap every public value endpoint");
+    const auto refined_plan = plan_surface_value_storage(
+        *expanded.program, std::vector<bool>(refined_values.size(), true),
+        [&] {
+            auto outputs = std::vector<bool>(refined_values.size(), false);
+            outputs[expanded.root_values[6u].value] = true;
+            return outputs;
+        }());
+    require(refined_plan.valid,
+            "expanded Bump graph could not be colored as one typed stream: " +
+                refined_plan.diagnostic);
+
+    // Nest a position-dependent Bump inside another height expression. The
+    // formal context law C+(w,0)/(0,w) requires an explicit scalar add for at
+    // least one second-order sample; this guards against accidentally
+    // overwriting the outer context with the inner one.
+    auto compositional_values = expanded_values;
+    compositional_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::vector_to_scalar,
+        .source_node = NodeId{108u},
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::unary>({
+            {value_operand::unary::input, ValueExpressionId{6u}}})});
+    compositional_values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::add,
+        .source_node = NodeId{109u},
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::binary>({
+            {value_operand::binary::a, ValueExpressionId{5u}},
+            {value_operand::binary::b, ValueExpressionId{7u}}})});
+    auto outer_bump = expanded_values[6u];
+    outer_bump.source_node = NodeId{110u};
+    outer_bump.operands[value_operand::bump::height] = ValueExpressionId{8u};
+    compositional_values.emplace_back(std::move(outer_bump));
+    const SurfaceProgram compositional_source{
+        23u, expanded_parameters, std::move(compositional_values), {}, {}, {},
+        {}, ValueExpressionId{9u}};
+    const auto compositional =
+        expand_surface_bump_program(compositional_source);
+    require(compositional.valid && compositional.program &&
+                compositional.program->surface_normal_root() ==
+                    compositional.root_values[9u],
+            "nested Bump refinement failed to produce one graph");
+    auto composed_offset_found = false;
+    for (const auto &instruction :
+         compositional.program->value_instructions()) {
+        require(instruction.operation != ValueOperation::bump,
+                "nested Bump refinement retained a recursive opcode");
+        if (instruction.operation !=
+            ValueOperation::sampled_surface_position) {
+            continue;
+        }
+        const auto dx = instruction.operand(value_operand::sampled_nullary::dx);
+        const auto dy = instruction.operand(value_operand::sampled_nullary::dy);
+        composed_offset_found |=
+            compositional.program->value_instructions()[dx.value].operation ==
+                ValueOperation::add ||
+            compositional.program->value_instructions()[dy.value].operation ==
+                ValueOperation::add;
+    }
+    require(composed_offset_found,
+            "nested Bump refinement replaced rather than composed sample "
+            "contexts");
+
     auto malformed_image = image;
     malformed_image.instructions.front().control |= 1u << 31u;
     const auto malformed_scene = build_surface_value_scene_image(
@@ -2102,6 +2271,11 @@ void test_surface_value_storage_plan() {
                 invalid_plan.diagnostic.find("topological") !=
                     std::string::npos,
             "storage planning accepted a forward value dependency");
+    const auto invalid_expansion = expand_surface_bump_program(invalid_program);
+    require(!invalid_expansion.valid &&
+                invalid_expansion.diagnostic.find("topological") !=
+                    std::string::npos,
+            "Bump refinement accepted a forward value dependency");
 }
 
 }// namespace

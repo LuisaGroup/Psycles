@@ -48,10 +48,9 @@ make_typed_map_range_graphs();
     const luisa_backend::detail::SurfaceValueRuntime &runtime) noexcept;
 
 // Inspect the host bytecode image rather than pixels. The controlled fixture
-// has two nested Bump records: configuration 1 is a root-only outer Bump and
-// configuration 0 is reachable from both roots and offset-height programs.
-// Cycles-style typed records share one execution handler for both records, so
-// exact call-graph evidence must come from the instruction stream.
+// has two nested Bump records. Refinement must retain both configurations as
+// bump_samples in root programs, eliminate every recursive Bump edge and
+// height program, and keep the instruction/variant side streams parallel.
 [[nodiscard]] CompactSurfaceProgramEvidence inspect_compact_surface_program(
     const luisa_backend::detail::SurfaceValueRuntime &runtime) noexcept;
 

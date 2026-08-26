@@ -3,7 +3,6 @@
 #include "graph_surface_internal.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surfaces.h"
-#include "surface_bump.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -87,12 +86,6 @@ Float3 read_vector_dynamic(
 }
 
 namespace {
-
-namespace value_operand = compiler::value_operand;
-
-using SurfaceValueHeightCallable = Callable<float(
-    Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
-    BindlessArray, SurfacePointCall, luisa::uint)>;
 
 using SurfaceValueNodes =
     std::vector<std::unique_ptr<ValueNode>>;
@@ -343,73 +336,6 @@ void write_dynamic_value(
     return node.evaluate(context);
 }
 
-[[nodiscard]] SurfaceValueExpression evaluate_bump_variant(
-    const compiler::SurfaceValueStaticVariant &variant,
-    const SurfaceValueRuntime &runtime,
-    const ShaderServices &services,
-    const SurfacePoint &point,
-    TracedValues &operands,
-    Var<luisa::uint4> instruction,
-    UInt instruction_index,
-    const SurfaceValueHeightCallable &height,
-    Expr<Buffer<float>> scalar_parameters,
-    Expr<Buffer<luisa::float3>> vector_parameters,
-    Expr<Buffer<float>> cycles_bsdf_tables,
-    Expr<BindlessArray> textures,
-    Expr<BindlessArray> geometry_heap) noexcept {
-    const UInt encoded_configuration =
-        (instruction.x & compiler::surface_value_svm_immediate_mask) >>
-        compiler::surface_value_svm_immediate_shift;
-    const auto configuration = SurfaceBumpSvmConfiguration{
-        .invert = (encoded_configuration & 1u) != 0u,
-        .normal_linked = (encoded_configuration & 2u) != 0u,
-        .object_space = (encoded_configuration & 4u) != 0u};
-    const auto normal = select(
-        operands.shading_normal,
-        vector(
-            variant.instruction.operand(value_operand::bump::normal),
-            operands),
-        configuration.normal_linked);
-    const auto domain = make_surface_bump_evaluation_domain(
-        point,
-        scalar(
-            variant.instruction.operand(
-                value_operand::bump::filter_width),
-            operands));
-    const auto height_program =
-        surface_value_runtime_buffer<luisa::uint>(
-            runtime,
-            SurfaceValueRuntimeBufferSlot::bump_height_program)
-            .read(instruction_index);
-    const auto height_x = height(
-        scalar_parameters,
-        vector_parameters,
-        cycles_bsdf_tables,
-        textures,
-        geometry_heap,
-        pack_surface_point(domain.point_x),
-        height_program);
-    const auto height_y = height(
-        scalar_parameters,
-        vector_parameters,
-        cycles_bsdf_tables,
-        textures,
-        geometry_heap,
-        pack_surface_point(domain.point_y),
-        height_program);
-    const auto result = evaluate_surface_bump(
-        services, point, configuration, normal, domain,
-        scalar(variant.instruction.operand(value_operand::bump::height),
-               operands),
-        Expr<float>{height_x.expression()}, Expr<float>{height_y.expression()},
-        scalar(variant.instruction.operand(value_operand::bump::distance),
-               operands),
-        scalar(variant.instruction.operand(value_operand::bump::strength),
-               operands));
-    return SurfaceValueExpression::from_vector(
-        Expr<luisa::float3>{result.expression()});
-}
-
 [[nodiscard]] SurfacePoint
 automatic_normal_point(UInt program_flags, const SurfacePoint &point) noexcept;
 
@@ -418,13 +344,7 @@ void emit_surface_value_program(const SurfaceValueRuntime &runtime,
                                 std::span<const std::uint32_t> active_variants,
                                 const ShaderServices &services,
                                 SurfacePoint &point, UInt program,
-                                const SurfaceValueLocalsView &locals,
-                                const SurfaceValueHeightCallable *height,
-                                Expr<Buffer<float>> scalar_parameters,
-                                Expr<Buffer<luisa::float3>> vector_parameters,
-                                Expr<Buffer<float>> cycles_bsdf_tables,
-                                Expr<BindlessArray> textures,
-                                Expr<BindlessArray> geometry_heap) noexcept {
+                                const SurfaceValueLocalsView &locals) noexcept {
     const auto handler_groups = make_handler_groups(runtime, active_variants);
     auto range = surface_value_runtime_buffer<luisa::uint4>(
                      runtime, SurfaceValueRuntimeBufferSlot::program)
@@ -469,22 +389,6 @@ void emit_surface_value_program(const SurfaceValueRuntime &runtime,
                 auto operands = load_variant_operands(
                     variant, runtime, services, transaction_point, locals,
                     instruction);
-                if (variant.instruction.operation ==
-                    compiler::ValueOperation::bump) {
-                    if (height == nullptr) {
-                        luisa::compute::dsl::unreachable(
-                            "Bump reached the Bump-free height evaluator");
-                        return;
-                    }
-                    auto value = evaluate_bump_variant(
-                        variant, runtime, services, transaction_point, operands,
-                        instruction, instruction_index, *height,
-                        scalar_parameters, vector_parameters,
-                        cycles_bsdf_tables, textures, geometry_heap);
-                    write_dynamic_value(variant.instruction.result_type, locals,
-                                        instruction.y, value);
-                    return;
-                }
                 auto value = evaluate_non_bump_variant(
                     variant, *nodes[index], runtime, services,
                     transaction_point, operands, instruction);
@@ -571,78 +475,10 @@ make_surface_value_nodes(const SurfaceValueRuntime &runtime) noexcept {
     return nodes;
 }
 
-[[nodiscard]] SurfaceValueHeightCallable make_surface_value_height_callable(
-    const std::shared_ptr<LuisaSceneData> &scene,
-    const std::shared_ptr<SurfaceValueNodes> &nodes,
-    const Texture2DSamplingCallables &texture_sampling,
-    const SurfaceAttributeLookupCallable &attribute_lookup,
-    std::vector<std::uint32_t> active_variants,
-    std::uint32_t maximum_bump_depth) noexcept {
-    const auto make_stratum =
-        [scene, nodes, texture_sampling, attribute_lookup,
-         active_variants](std::optional<SurfaceValueHeightCallable> lower,
-                          std::uint32_t stratum) noexcept {
-            SurfaceValueHeightCallable height =
-                [scene, nodes, texture_sampling, attribute_lookup,
-                 active_variants, lower = std::move(lower)](
-                    BufferFloat scalar_parameters,
-                    BufferFloat3 vector_parameters,
-                    BufferFloat cycles_bsdf_tables, BindlessVar textures,
-                    BindlessVar geometry_heap,
-                    Var<SurfacePointCall> packed_point, UInt program) noexcept {
-                    CallableTexture2DSamplingProvider texture_provider{
-                        textures, texture_sampling};
-                    CallableSurfaceAttributeLookupProvider attribute_provider{
-                        geometry_heap, attribute_lookup};
-                    BufferShaderServices services{
-                        scalar_parameters,
-                        vector_parameters,
-                        cycles_bsdf_tables,
-                        textures,
-                        geometry_heap,
-                        scene->attribute_binding_slot,
-                        scene->attribute_range_slot,
-                        scene->nishita_texture_bindings,
-                        scene->shader_color_space,
-                        nullptr,
-                        &texture_provider,
-                        &attribute_provider};
-                    auto point = unpack_surface_point(packed_point);
-                    SurfaceValueLocals locals;
-                    const auto locals_view = locals.view();
-                    emit_surface_value_program(
-                        *scene->surface_values, *nodes, active_variants,
-                        services, point, program, locals_view,
-                        lower ? &*lower : nullptr, scalar_parameters,
-                        vector_parameters, cycles_bsdf_tables, textures,
-                        geometry_heap);
-                    const auto output =
-                        surface_value_runtime_buffer<luisa::uint>(
-                            *scene->surface_values,
-                            SurfaceValueRuntimeBufferSlot::program_output)
-                            .read(program);
-                    return read_scalar_dynamic(services, point, locals_view,
-                                               output);
-                };
-            const auto name =
-                luisa::format("surface_value_height_stratum_{}", stratum);
-            height.set_name(name);
-            return height;
-        };
-    const auto stratum_count = std::max(maximum_bump_depth, 1u);
-    auto height = make_stratum(std::nullopt, 0u);
-    for (auto stratum = std::uint32_t{1u}; stratum < stratum_count; ++stratum) {
-        height = make_stratum(std::optional<SurfaceValueHeightCallable>{height},
-                              stratum);
-    }
-    return height;
-}
-
 [[nodiscard]] SurfaceValueProgramCallable
 make_surface_value_program_callable_impl(
     const std::shared_ptr<LuisaSceneData> &scene,
     const std::shared_ptr<SurfaceValueNodes> &nodes,
-    const SurfaceValueHeightCallable &height,
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
     SurfaceValueProgramDomain domain) noexcept {
@@ -653,7 +489,7 @@ make_surface_value_program_callable_impl(
     const auto program_offset = domain_view.program_offset;
 
     SurfaceValueProgramCallable value_program =
-        [scene, nodes, height, texture_sampling, attribute_lookup,
+        [scene, nodes, texture_sampling, attribute_lookup,
          value_variants = std::move(value_variants), program_offset](
             BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables, BindlessVar textures,
@@ -691,8 +527,7 @@ make_surface_value_program_callable_impl(
                 program_offset;
             emit_surface_value_program(
                 *scene->surface_values, *nodes, value_variants, services, point,
-                program, locals, &height, scalar_parameters, vector_parameters,
-                cycles_bsdf_tables, textures, geometry_heap);
+                program, locals);
             return pack_surface_point(point);
         };
     switch (domain) {
@@ -716,16 +551,9 @@ SurfaceValueProgramCallable make_surface_value_program_callable(
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
     SurfaceValueProgramDomain domain) noexcept {
-    const auto domain_view =
-        surface_value_program_domain(*scene->surface_values, domain);
     auto nodes = make_surface_value_nodes(*scene->surface_values);
-    auto height = make_surface_value_height_callable(
-        scene, nodes, texture_sampling, attribute_lookup,
-        std::vector<std::uint32_t>{domain_view.height_variants.begin(),
-                                   domain_view.height_variants.end()},
-        scene->surface_values->executable.maximum_bump_depth);
     return make_surface_value_program_callable_impl(
-        scene, nodes, height, texture_sampling, attribute_lookup, domain);
+        scene, nodes, texture_sampling, attribute_lookup, domain);
 }
 
 } // namespace psycles::luisa_backend::detail
