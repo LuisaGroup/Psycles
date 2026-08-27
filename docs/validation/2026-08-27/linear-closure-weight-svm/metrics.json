@@ -1,0 +1,102 @@
+{
+  "schema": "psycles.linear-closure-weight-svm.v1",
+  "reference": {
+    "baseline_psycles": "e647eb3",
+    "candidate_psycles": "2e0aae2",
+    "luisa_compute": "eeda4b154fcf43e8709d1b42478e958677b9c6ae",
+    "cycles_source": "9e2066aef7ef7e20c142ad7bd3303138a4304c93",
+    "blender_version": "5.2.0 LTS",
+    "device": "AMD Radeon RX 9070 XT",
+    "architecture": "gfx1201",
+    "rocm": "7.2.4"
+  },
+  "barbershop_closure_stream": {
+    "mixes": 184,
+    "leaves": 377,
+    "structured_instructions": 745,
+    "linear_instructions": 561,
+    "instruction_reduction_percent": 24.6979865772,
+    "structured_runtime_instructions": 754,
+    "linear_runtime_instructions": 570,
+    "runtime_instruction_reduction_percent": 24.4031830239,
+    "maximum_mix_depth": 3,
+    "maximum_linear_weight_slots": 4
+  },
+  "hip_full_barbershop": {
+    "resolution": [640, 480],
+    "samples": 64,
+    "adaptive_sampling": false,
+    "baseline": {
+      "stage_hash": "2c13ad1718d2ee38",
+      "calls": 293,
+      "work": 53659264,
+      "gpu_ms": 1548.386792,
+      "ns_per_work": 28.8559081243,
+      "private_bytes": 3152,
+      "vgpr": 256,
+      "mapped_renderer_kernel_ms": 2299.054983,
+      "coroutine_frame_bytes": 864,
+      "coroutine_frame_fields": 182
+    },
+    "linear": {
+      "stage_hash": "532b1aa4609106c1",
+      "calls": 293,
+      "work": 53659296,
+      "gpu_ms": 1490.08648,
+      "ns_per_work": 27.7694004782,
+      "private_bytes": 3136,
+      "vgpr": 256,
+      "mapped_renderer_kernel_ms": 2240.593751,
+      "render_seconds": 2.57011,
+      "warm_render_seconds": 2.5567,
+      "coroutine_frame_bytes": 880,
+      "coroutine_frame_fields": 178
+    },
+    "shade_surface_speedup_percent": 3.76522922446,
+    "mapped_renderer_kernel_speedup_percent": 2.54283748898,
+    "cycles_ns_per_work": 10.778,
+    "baseline_over_cycles": 2.67729709819,
+    "linear_over_cycles": 2.57648918892
+  },
+  "hip_constant_closure_inputs": {
+    "calls": 128,
+    "work": 56089600,
+    "baseline_gpu_ms": 749.52019,
+    "linear_gpu_ms": 721.017018,
+    "baseline_ns_per_work": 13.3629084536,
+    "linear_ns_per_work": 12.8547363148,
+    "shade_surface_speedup_percent": 3.80285579765,
+    "baseline_private_bytes": 2456,
+    "linear_private_bytes": 2424,
+    "vgpr": 256,
+    "baseline_mapped_renderer_kernel_ms": 1243.855653,
+    "linear_mapped_renderer_kernel_ms": 1214.848408
+  },
+  "image_validation": {
+    "all_46_channels": {
+      "mean_error": 1.01062e-7,
+      "rms_error": 0.000178515,
+      "peak_snr_db": 123.847,
+      "pixels_over_1e-6": 29,
+      "fraction_over_1e-6": 0.0000944
+    },
+    "combined": {
+      "mean_absolute_error": 1.04884982477e-7,
+      "rms_error": 5.76396159886e-5,
+      "maximum_absolute_error": 0.0351357534528,
+      "luminance_mean_ratio": 1.00000174063
+    },
+    "normal": {
+      "mean_absolute_error": 1.35777555865e-9,
+      "rms_error": 1.42343195009e-8,
+      "maximum_absolute_error": 9.33557748795e-6
+    },
+    "visual_result": "no_structural_difference"
+  },
+  "focused_backend_matrix": {
+    "fallback": "pass",
+    "hip": "pass",
+    "vulkan_native_xir_spirv": "pass",
+    "tests": 10
+  }
+}

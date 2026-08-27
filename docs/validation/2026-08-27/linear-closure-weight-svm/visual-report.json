@@ -1,0 +1,163 @@
+{
+  "actual_label": "Linear closure weights",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.000001311302185,
+        1.0000016689300537,
+        1.0000017881393433
+      ],
+      "cycles": "/var/tmp/psycles-checked-physical-access.uyOQ9v/profile.exr",
+      "cycles_channel_mean": [
+        0.09006480872631073,
+        0.06404027342796326,
+        0.04895734414458275
+      ],
+      "cycles_luminance_mean": 0.06848610937595367,
+      "cycles_rms": 0.16221480071544647,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.00000174063457,
+      "maximum_absolute_error": 0.03513575345277786,
+      "mean_absolute_error": 1.0488498247696043e-07,
+      "orientation_rmse": {
+        "flip_x": 0.18656930327415466,
+        "flip_xy": 0.19626545906066895,
+        "flip_y": 0.18838579952716827,
+        "identity": 5.7639615988591686e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 4.301594636046957e-09,
+      "psycles": "/var/tmp/psycles-linear-closure-weights-20260827/profile.exr",
+      "psycles_channel_mean": [
+        0.09006492793560028,
+        0.06404037773609161,
+        0.04895743355154991
+      ],
+      "psycles_luminance_mean": 0.06848622858524323,
+      "psycles_rms": 0.16221483660801791,
+      "relative_rmse": 0.00035532895724910943,
+      "rmse": 5.7639615988591686e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 241591910.4,
+        "display_scale": 1.075576939912485,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-linear-closure-weights-20260827/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-checked-physical-access.uyOQ9v/profile.exr",
+      "cycles_channel_mean": [
+        0.10977820307016373,
+        0.3143407702445984,
+        -0.0570940263569355
+      ],
+      "cycles_luminance_mean": 0.24400070309638977,
+      "cycles_rms": 0.551543116569519,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 9.335577487945557e-06,
+      "mean_absolute_error": 1.3577755586524631e-09,
+      "orientation_rmse": {
+        "flip_x": 0.6507176160812378,
+        "flip_xy": 0.8734650611877441,
+        "flip_y": 0.7784232497215271,
+        "identity": 1.4234319500872061e-08
+      },
+      "p95_pixel_rmse": 1.7206378544187828e-08,
+      "p99_pixel_rmse": 3.847463148076713e-08,
+      "psycles": "/var/tmp/psycles-linear-closure-weights-20260827/profile.exr",
+      "psycles_channel_mean": [
+        0.10977820307016373,
+        0.3143407702445984,
+        -0.0570940263569355
+      ],
+      "psycles_luminance_mean": 0.24400070309638977,
+      "psycles_rms": 0.5515431214297281,
+      "relative_rmse": 2.5808171787922045e-08,
+      "rmse": 1.4234319500872061e-08,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/var/tmp/psycles-linear-closure-weights-20260827/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Structured closure control",
+  "schema": "psycles.cycles-differential.v2"
+}
