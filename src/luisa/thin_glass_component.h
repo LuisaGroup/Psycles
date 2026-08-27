@@ -36,13 +36,13 @@ public:
         Bool refractive_caustics) const noexcept;
 
     [[nodiscard]] MicrofacetEvaluation evaluate(
-        const SurfaceClosurePhysicalRecord &closure,
+        const SurfaceClosurePhysicalGeneralRecord &closure,
         Float3 incoming,
         Float3 outgoing,
         Float glossy_filter_roughness) const noexcept;
 
     [[nodiscard]] MicrofacetReflectionSample sample(
-        const SurfaceClosurePhysicalRecord &closure,
+        const SurfaceClosurePhysicalGeneralRecord &closure,
         Float3 incoming,
         Float2 random_direction,
         Float glossy_filter_roughness) const noexcept;

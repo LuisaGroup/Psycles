@@ -40,11 +40,43 @@ concept HasSpecularIorLevel = requires(T value) {
     value.specular_ior_level;
 };
 
+template<typename T>
+concept HasGeneralMetallic = requires(T value) {
+    value.payload.metallic;
+};
+
+template<typename T>
+concept HasDielectricFresnel = requires(T value) {
+    value.payload.fresnel_f0;
+};
+
+template<typename T>
+concept HasBssrdfRadius = requires(T value) {
+    value.payload.radius;
+};
+
+template<typename T>
+concept HasBssrdfIor = requires(T value) {
+    value.payload.bssrdf_ior;
+};
+
 static_assert(surface_closure_physical_block_count == 2u);
 static_assert(!HasAlbedo<SurfaceClosurePhysicalRecord>);
 static_assert(!HasReflectionAlbedo<SurfaceClosurePhysicalRecord>);
 static_assert(!HasTransmissionAlbedo<SurfaceClosurePhysicalRecord>);
 static_assert(!HasSpecularIorLevel<SurfaceClosurePhysicalRecord>);
+static_assert(HasGeneralMetallic<SurfaceClosurePhysicalGeneralRecord>);
+static_assert(!HasDielectricFresnel<SurfaceClosurePhysicalGeneralRecord>);
+static_assert(!HasBssrdfRadius<SurfaceClosurePhysicalGeneralRecord>);
+static_assert(!HasBssrdfIor<SurfaceClosurePhysicalGeneralRecord>);
+static_assert(!HasGeneralMetallic<SurfaceClosurePhysicalDielectricRecord>);
+static_assert(HasDielectricFresnel<SurfaceClosurePhysicalDielectricRecord>);
+static_assert(!HasBssrdfRadius<SurfaceClosurePhysicalDielectricRecord>);
+static_assert(!HasBssrdfIor<SurfaceClosurePhysicalDielectricRecord>);
+static_assert(!HasGeneralMetallic<SurfaceClosurePhysicalBssrdfRecord>);
+static_assert(!HasDielectricFresnel<SurfaceClosurePhysicalBssrdfRecord>);
+static_assert(HasBssrdfRadius<SurfaceClosurePhysicalBssrdfRecord>);
+static_assert(HasBssrdfIor<SurfaceClosurePhysicalBssrdfRecord>);
 
 constexpr std::array closure_kinds{
     SurfaceClosureKind::diffuse,
@@ -213,14 +245,16 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
 
 [[nodiscard]] Bool same_common_projection(
     const SurfaceClosurePhysicalRecord &lhs,
-    const SurfaceClosurePhysicalRecord &rhs) noexcept {
+    const SurfaceClosurePhysicalCommonRecord &rhs,
+    Float3 expected_color_or_evaluation_scale) noexcept {
     return (lhs.kind == rhs.kind) &
            (lhs.lobe == rhs.lobe) &
            all(lhs.weight == rhs.weight) &
            (lhs.allocation_weight == rhs.allocation_weight) &
            (lhs.sample_weight == rhs.sample_weight) &
            (lhs.setup_valid == rhs.setup_valid) &
-           all(lhs.color == rhs.color) &
+           all(expected_color_or_evaluation_scale ==
+               rhs.color_or_evaluation_scale) &
            all(lhs.normal == rhs.normal) &
            (lhs.roughness == rhs.roughness) &
            (lhs.preserve_ggx_energy == rhs.preserve_ggx_energy) &
@@ -230,23 +264,41 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
 
 [[nodiscard]] Bool same_payload_projection(
     const SurfaceClosurePhysicalRecord &lhs,
-    const SurfaceClosurePhysicalRecord &rhs) noexcept {
-    return (lhs.diffuse_roughness == rhs.diffuse_roughness) &
-           (lhs.metallic == rhs.metallic) &
-           (lhs.ior == rhs.ior) &
-           all(lhs.specular_tint == rhs.specular_tint) &
-           (lhs.sheen_transform_a == rhs.sheen_transform_a) &
-           (lhs.sheen_transform_b == rhs.sheen_transform_b) &
-           all(lhs.evaluation_scale == rhs.evaluation_scale) &
-           all(lhs.fresnel_f0 == rhs.fresnel_f0) &
-           all(lhs.fresnel_f90 == rhs.fresnel_f90) &
-           all(lhs.reflection_tint == rhs.reflection_tint) &
-           all(lhs.transmission_tint == rhs.transmission_tint) &
-           all(lhs.bssrdf_radius == rhs.bssrdf_radius) &
-           all(lhs.bssrdf_albedo == rhs.bssrdf_albedo) &
-           (lhs.bssrdf_ior == rhs.bssrdf_ior) &
-           (lhs.bssrdf_roughness == rhs.bssrdf_roughness) &
-           (lhs.bssrdf_anisotropy == rhs.bssrdf_anisotropy);
+    const SurfaceClosurePhysicalGeneralRecord &rhs) noexcept {
+    return same_common_projection(
+               lhs, rhs.common, lhs.color) &
+           (lhs.diffuse_roughness == rhs.payload.diffuse_roughness) &
+           (lhs.metallic == rhs.payload.metallic) &
+           (lhs.ior == rhs.payload.ior) &
+           all(lhs.specular_tint == rhs.payload.specular_tint) &
+           (lhs.sheen_transform_a == rhs.payload.sheen_transform_a) &
+           (lhs.sheen_transform_b == rhs.payload.sheen_transform_b) &
+           all(lhs.evaluation_scale == rhs.payload.evaluation_scale);
+}
+
+[[nodiscard]] Bool same_payload_projection(
+    const SurfaceClosurePhysicalRecord &lhs,
+    const SurfaceClosurePhysicalDielectricRecord &rhs) noexcept {
+    return same_common_projection(
+               lhs, rhs.common, lhs.evaluation_scale) &
+           all(lhs.color == rhs.payload.color) &
+           (lhs.ior == rhs.payload.ior) &
+           all(lhs.fresnel_f0 == rhs.payload.fresnel_f0) &
+           all(lhs.fresnel_f90 == rhs.payload.fresnel_f90) &
+           all(lhs.reflection_tint == rhs.payload.reflection_tint) &
+           all(lhs.transmission_tint == rhs.payload.transmission_tint);
+}
+
+[[nodiscard]] Bool same_payload_projection(
+    const SurfaceClosurePhysicalRecord &lhs,
+    const SurfaceClosurePhysicalBssrdfRecord &rhs) noexcept {
+    return same_common_projection(
+               lhs, rhs.common, lhs.color) &
+           all(lhs.bssrdf_radius == rhs.payload.radius) &
+           all(lhs.bssrdf_albedo == rhs.payload.albedo) &
+           (lhs.bssrdf_ior == rhs.payload.bssrdf_ior) &
+           (lhs.bssrdf_roughness == rhs.payload.roughness) &
+           (lhs.bssrdf_anisotropy == rhs.payload.anisotropy);
 }
 
 [[nodiscard]] Bool close(Float lhs, Float rhs) noexcept {
@@ -440,13 +492,10 @@ int main(int argc, char **argv) {
 
         // A family eliminator is correct precisely when it agrees with the
         // generic inverse after projection to fields observable for that
-        // family. General, dielectric, and BSSRDF decoders preserve their
-        // complete canonical family records. Transparent observes only the
-        // common record and therefore has no block_1 dependency at all.
+        // family. The comparison itself stays branch-local: merging the
+        // distinct record types would recreate the forbidden product.
         const auto common = unpack_surface_closure_physical_common(
             Expr<luisa::float4x4>{round_trip_0.expression()});
-        auto projected =
-            unpack_surface_closure_physical_common_only(common);
         const auto glass =
             (canonical.kind == static_cast<std::uint32_t>(
                                    SurfaceClosureKind::glass)) |
@@ -455,29 +504,44 @@ int main(int argc, char **argv) {
         const auto bssrdf =
             canonical.kind == static_cast<std::uint32_t>(
                                   SurfaceClosureKind::bssrdf);
-        const auto transparent =
-            canonical.kind == static_cast<std::uint32_t>(
-                                  SurfaceClosureKind::transparent);
+        const auto general =
+            (canonical.kind == static_cast<std::uint32_t>(
+                                   SurfaceClosureKind::principled)) |
+            (canonical.kind == static_cast<std::uint32_t>(
+                                   SurfaceClosureKind::glossy)) |
+            (canonical.kind == static_cast<std::uint32_t>(
+                                   SurfaceClosureKind::thin_glass_transmission));
+        Bool projection_equal = false;
         $if(glass) {
-            projected = unpack_surface_closure_physical_dielectric(
+            const auto projected =
+                unpack_surface_closure_physical_dielectric(
                 common,
                 Expr<luisa::float4x4>{round_trip_1.expression()});
+            projection_equal =
+                same_payload_projection(canonical, projected);
         }
         $elif(bssrdf) {
-            projected = unpack_surface_closure_physical_bssrdf(
+            const auto projected =
+                unpack_surface_closure_physical_bssrdf(
                 common,
                 Expr<luisa::float4x4>{round_trip_1.expression()});
+            projection_equal =
+                same_payload_projection(canonical, projected);
         }
-        $elif(!transparent) {
-            projected = unpack_surface_closure_physical_general(
+        $elif(general) {
+            const auto projected =
+                unpack_surface_closure_physical_general(
                 common,
                 Expr<luisa::float4x4>{round_trip_1.expression()});
+            projection_equal =
+                same_payload_projection(canonical, projected);
+        }
+        $else {
+            const auto projected =
+                unpack_surface_closure_physical_common_only(common);
+            projection_equal = same_common_projection(
+                canonical, projected.common, canonical.color);
         };
-        auto projection_equal =
-            same_common_projection(canonical, projected);
-        projection_equal &= transparent |
-                            same_payload_projection(
-                                canonical, projected);
         output->write(
             case_index * rows_per_case +
                 logical_row_count + 1u,

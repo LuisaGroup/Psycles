@@ -248,35 +248,37 @@ ThinGlassSetupResult ThinGlassComponent::setup(
 }
 
 MicrofacetEvaluation ThinGlassComponent::evaluate(
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalGeneralRecord &closure,
     Float3 incoming,
     Float3 outgoing,
     Float glossy_filter_roughness) const noexcept {
-    const auto transformed_incoming = mirror(incoming, closure.normal);
+    const auto transformed_incoming =
+        mirror(incoming, closure.common.normal);
     return microfacet_evaluate(
         _services,
         closure,
         transformed_incoming,
         outgoing,
-        closure.normal,
+        closure.common.normal,
         glossy_filter_roughness);
 }
 
 MicrofacetReflectionSample ThinGlassComponent::sample(
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalGeneralRecord &closure,
     Float3 incoming,
     Float2 random_direction,
     Float glossy_filter_roughness) const noexcept {
-    const auto transformed_incoming = mirror(incoming, closure.normal);
+    const auto transformed_incoming =
+        mirror(incoming, closure.common.normal);
     const auto alpha = microfacet_alpha(
-        closure, glossy_filter_roughness);
+        closure.common, glossy_filter_roughness);
     const auto singular =
         alpha * alpha <=
         cycles_closure::microfacet_singular_alpha_product;
     const auto sampling_alpha = max(alpha, 1.0e-10f);
     const auto half_vector =
         cycles_sample_mapping::sample_ggx_visible_normal(
-            closure.normal,
+            closure.common.normal,
             transformed_incoming,
             sampling_alpha,
             random_direction);
@@ -286,12 +288,12 @@ MicrofacetReflectionSample ThinGlassComponent::sample(
     const auto direction = select(
         regular_direction, -incoming, singular);
     const auto valid =
-        (dot(closure.normal, transformed_incoming) > 0.0f) &
-        (dot(closure.normal, direction) > 0.0f) &
+        (dot(closure.common.normal, transformed_incoming) > 0.0f) &
+        (dot(closure.common.normal, direction) > 0.0f) &
         (dot(_point.geometric_normal, direction) < 0.0f);
     return {
         .direction = direction,
-        .singular_evaluation = closure.weight * 1.0e6f,
+        .singular_evaluation = closure.common.weight * 1.0e6f,
         .singular_pdf = 1.0e6f,
         .alpha = select(alpha, 0.0f, singular),
         .singular = singular,

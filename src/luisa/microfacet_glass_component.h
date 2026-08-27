@@ -43,7 +43,7 @@ public:
     setup(const MicrofacetGlassSetup &parameters) const noexcept;
 
     [[nodiscard]] MicrofacetEvaluation evaluate(
-        const SurfaceClosurePhysicalRecord &closure,
+        const SurfaceClosurePhysicalDielectricRecord &closure,
         Float3 incoming,
         Float3 outgoing,
         Float3 glossy_normal,
@@ -52,7 +52,7 @@ public:
         Float glossy_filter_roughness) const noexcept;
 
     [[nodiscard]] GlassSample
-    sample(const SurfaceClosurePhysicalRecord &closure,
+    sample(const SurfaceClosurePhysicalDielectricRecord &closure,
         Float3 incoming,
         Float3 glossy_normal,
         Float2 random_direction,

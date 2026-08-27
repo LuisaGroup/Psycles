@@ -24,40 +24,43 @@ struct GlassGeometry {
 };
 
 [[nodiscard]] Bool is_refraction(
-    const SurfaceClosurePhysicalRecord &closure) noexcept {
-    return closure.kind == static_cast<std::uint32_t>(
-                               SurfaceClosureKind::refraction);
+    const SurfaceClosurePhysicalDielectricRecord &closure) noexcept {
+    return closure.common.kind == static_cast<std::uint32_t>(
+                                      SurfaceClosureKind::refraction);
 }
 
 [[nodiscard]] GlassFresnel glass_fresnel(
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalDielectricRecord &closure,
     Float cosine_half_incoming) noexcept {
     // Cycles' negative generalized-Schlick exponent is a model tag: the
     // physical dielectric curve determines an interpolation coordinate
     // between the authored spectral F0 and F90 endpoints.
     const auto real_fresnel =
-        fresnel_dielectric_cos(cosine_half_incoming, closure.ior);
-    const auto real_f0 = f0_from_ior(closure.ior);
+        fresnel_dielectric_cos(cosine_half_incoming, closure.payload.ior);
+    const auto real_f0 = f0_from_ior(closure.payload.ior);
     const auto interpolation =
         clamp((real_fresnel - real_f0) / (1.0f - real_f0), 0.0f, 1.0f);
     const auto fresnel =
-        lerp(closure.fresnel_f0, closure.fresnel_f90, interpolation);
+        lerp(closure.payload.fresnel_f0,
+             closure.payload.fresnel_f90,
+             interpolation);
     const auto refraction_only = is_refraction(closure);
     const auto pure_transmission = select(
         make_float3(1.0f), make_float3(0.0f), real_fresnel == 1.0f);
     return {
         .reflection = select(
-            fresnel * closure.reflection_tint,
+            fresnel * closure.payload.reflection_tint,
             make_float3(0.0f),
             refraction_only),
         .transmission = select(
-            (make_float3(1.0f) - fresnel) * closure.transmission_tint,
+            (make_float3(1.0f) - fresnel) *
+                closure.payload.transmission_tint,
             pure_transmission,
             refraction_only)};
 }
 
 [[nodiscard]] GlassFresnel masked_fresnel(
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalDielectricRecord &closure,
     Float cosine_half_incoming,
     Bool reflection_allowed,
     Bool transmission_allowed) noexcept {
@@ -77,20 +80,23 @@ reflection_probability(const GlassFresnel &fresnel) noexcept {
 }
 
 [[nodiscard]] GlassGeometry glass_geometry(
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalDielectricRecord &closure,
     Float3 incoming,
     Float3 outgoing,
     Float3 normal) noexcept {
     const auto cosine_outgoing = dot(normal, outgoing);
     const auto transmission = cosine_outgoing < 0.0f;
     const auto unnormalized_half = select(
-        incoming + outgoing, -(closure.ior * outgoing + incoming), transmission);
+        incoming + outgoing,
+        -(closure.payload.ior * outgoing + incoming),
+        transmission);
     const auto half_length = sqrt(dot(unnormalized_half, unnormalized_half));
     // At eta == 1 every transmitted microfacet maps to -incoming. Cycles
     // classifies that event as singular; its finite-direction evaluation has
     // zero measure. Make the definition explicit so backend normalization
     // precision cannot turn the zero half-vector into an unbounded Jacobian.
-    const auto unit_ior_transmission = transmission & (closure.ior == 1.0f);
+    const auto unit_ior_transmission =
+        transmission & (closure.payload.ior == 1.0f);
     const auto has_finite_half =
         (half_length != 0.0f) & !unit_ior_transmission;
     const auto safe_half_length =
@@ -249,7 +255,7 @@ TracedClosure MicrofacetGlassComponent::setup(
 }
 
 MicrofacetEvaluation MicrofacetGlassComponent::evaluate(
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalDielectricRecord &closure,
     Float3 incoming, Float3 outgoing,
     Float3 glossy_normal, Bool reflection_allowed, Bool transmission_allowed,
     Float glossy_filter_roughness) const noexcept {
@@ -258,10 +264,10 @@ MicrofacetEvaluation MicrofacetGlassComponent::evaluate(
     const auto geometry =
         glass_geometry(closure, incoming, outgoing, glossy_normal);
     const auto setup_alpha =
-        microfacet_alpha(closure, glossy_filter_roughness);
+        microfacet_alpha(closure.common, glossy_filter_roughness);
     const auto alpha = max(setup_alpha, 1.0e-7f);
     const auto terms = microfacet_distribution_terms(
-        closure,
+        closure.common,
         geometry.cosine_normal_half,
         geometry.cosine_incoming,
         geometry.cosine_outgoing,
@@ -271,7 +277,8 @@ MicrofacetEvaluation MicrofacetGlassComponent::evaluate(
     const auto intensity_lobe = select(
         fresnel.reflection, fresnel.transmission, geometry.transmission);
     const auto transmission_jacobian =
-        closure.ior * closure.ior * geometry.inverse_half_length *
+        closure.payload.ior * closure.payload.ior *
+        geometry.inverse_half_length *
         geometry.inverse_half_length *
         abs(geometry.cosine_half_incoming * geometry.cosine_half_outgoing);
     const auto common =
@@ -280,7 +287,7 @@ MicrofacetEvaluation MicrofacetGlassComponent::evaluate(
     const auto value = intensity_lobe * common /
                        (1.0f + terms.lambda_incoming +
                            terms.lambda_outgoing) *
-                       closure.evaluation_scale;
+                       closure.common.color_or_evaluation_scale;
     // Cycles orients the refractive half-vector by eta, not by N. For an
     // inverse-eta (backface) configuration both N.H and H.I may therefore be
     // negative. D, Fresnel, and the Jacobian are defined for that orientation;
@@ -313,12 +320,13 @@ MicrofacetEvaluation MicrofacetGlassComponent::evaluate(
 }
 
 GlassSample MicrofacetGlassComponent::sample(
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalDielectricRecord &closure,
     Float3 incoming, Float3 glossy_normal,
     Float2 random_direction, Float random_lobe, Bool reflection_allowed,
     Bool transmission_allowed, Float glossy_filter_roughness) const noexcept {
     static_cast<void>(_services);
-    auto alpha = microfacet_alpha(closure, glossy_filter_roughness);
+    auto alpha = microfacet_alpha(
+        closure.common, glossy_filter_roughness);
     auto singular =
         alpha * alpha <= cycles_closure::microfacet_singular_alpha_product;
     const auto sampling_alpha = max(alpha, 1.0e-7f);
@@ -329,7 +337,7 @@ GlassSample MicrofacetGlassComponent::sample(
         cycles_sample_mapping::sample_beckmann_visible_normal(
             glossy_normal, incoming, sampling_alpha, random_direction);
     const auto sampled_half = select(
-        ggx_half, beckmann_half, closure.beckmann);
+        ggx_half, beckmann_half, closure.common.beckmann);
     const auto half_vector = select(sampled_half, glossy_normal, singular);
     const auto cosine_half_incoming = dot(half_vector, incoming);
     const auto fresnel = masked_fresnel(closure, cosine_half_incoming,
@@ -338,11 +346,12 @@ GlassSample MicrofacetGlassComponent::sample(
     const auto transmission = random_lobe >= probability;
     const auto reflected = 2.0f * cosine_half_incoming * half_vector - incoming;
     const auto eta_squared_cosine_transmitted =
-        closure.ior * closure.ior -
+        closure.payload.ior * closure.payload.ior -
         (1.0f - cosine_half_incoming * cosine_half_incoming);
     const auto cosine_half_outgoing =
-        -sqrt(max(eta_squared_cosine_transmitted, 0.0f)) / closure.ior;
-    const auto inverse_eta = 1.0f / closure.ior;
+        -sqrt(max(eta_squared_cosine_transmitted, 0.0f)) /
+        closure.payload.ior;
+    const auto inverse_eta = 1.0f / closure.payload.ior;
     const auto transmitted =
         (inverse_eta * cosine_half_incoming + cosine_half_outgoing) *
             half_vector -
@@ -364,12 +373,15 @@ GlassSample MicrofacetGlassComponent::sample(
         sample_weight(fresnel.reflection + fresnel.transmission) > 0.0f;
     const auto valid = has_energy & (cosine_half_incoming > 0.0f) &
                        shading_hemisphere_valid & geometric_hemisphere_valid;
-    singular = singular | (transmission & (abs(closure.ior - 1.0f) < 1.0e-4f));
+    singular = singular |
+               (transmission &
+                (abs(closure.payload.ior - 1.0f) < 1.0e-4f));
     return {.direction = direction,
-            .singular_evaluation = closure.weight * selected_fresnel *
-                                   closure.evaluation_scale * 1.0e6f,
+            .singular_evaluation =
+                closure.common.weight * selected_fresnel *
+                closure.common.color_or_evaluation_scale * 1.0e6f,
             .singular_pdf = lobe_probability * 1.0e6f,
-            .eta = select(1.0f, closure.ior, transmission),
+            .eta = select(1.0f, closure.payload.ior, transmission),
             .alpha = alpha,
             .transmission = transmission,
             .singular = singular,
