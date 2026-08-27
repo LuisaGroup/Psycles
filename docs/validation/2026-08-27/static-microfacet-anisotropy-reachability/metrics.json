@@ -1,0 +1,61 @@
+{
+  "schema": "psycles.static-microfacet-anisotropy-reachability.v1",
+  "device": "AMD Radeon RX 9070 XT",
+  "arch": "gfx1201",
+  "rocm": "7.2.4",
+  "resolution": [640, 480],
+  "samples": 64,
+  "surface_workgroup_size": 64,
+  "baseline_commit": "f196ecf",
+  "profiles": [
+    {
+      "label": "baseline_a",
+      "kernel": "kernel_1d9189cdaa03cb0b",
+      "calls": 100,
+      "work": 67632448,
+      "milliseconds": 270.957076,
+      "nanoseconds_per_item": 4.006317737,
+      "private_bytes": 2112,
+      "vgpr": 256
+    },
+    {
+      "label": "candidate_a",
+      "kernel": "kernel_e4d4f5440fa50795",
+      "calls": 100,
+      "work": 67632448,
+      "milliseconds": 263.879743,
+      "nanoseconds_per_item": 3.901673691,
+      "private_bytes": 2096,
+      "vgpr": 256
+    },
+    {
+      "label": "candidate_b",
+      "kernel": "kernel_e4d4f5440fa50795",
+      "calls": 100,
+      "work": 67632448,
+      "milliseconds": 260.765026,
+      "nanoseconds_per_item": 3.855620101,
+      "private_bytes": 2096,
+      "vgpr": 256
+    },
+    {
+      "label": "baseline_b",
+      "kernel": "kernel_1d9189cdaa03cb0b",
+      "calls": 100,
+      "work": 67632448,
+      "milliseconds": 272.517383,
+      "nanoseconds_per_item": 4.029388127,
+      "private_bytes": 2112,
+      "vgpr": 256
+    }
+  ],
+  "baseline_mean_nanoseconds_per_item": 4.017852932,
+  "candidate_mean_nanoseconds_per_item": 3.878646896,
+  "relative_change_percent": -3.464687194,
+  "constant_closure_inputs": {
+    "baseline_nanoseconds_per_item": 12.922612437,
+    "candidate_nanoseconds_per_item": 12.894987824,
+    "private_bytes": 2424,
+    "interpretation": "single-pair neutral result; anisotropic Glossy remains reachable"
+  }
+}

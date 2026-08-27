@@ -34,9 +34,20 @@ void expand_physical_surface_closure(
         static_cast<std::uint32_t>(compiler::ClosureOperation::refraction) < 32u);
     const auto source_operation = graph_closure.operation;
     const auto source_features = graph_closure.principled_features;
+    const auto source_operation_bit =
+        std::uint32_t{1u} << static_cast<std::uint32_t>(source_operation);
+    const auto anisotropic_operations =
+        graph_closure.anisotropy_enabled ? source_operation_bit : 0u;
+    const auto anisotropic_principled_features =
+        graph_closure.anisotropy_enabled &&
+                source_operation == compiler::ClosureOperation::principled
+            ? source_features
+            : 0u;
     const auto source_reachability = reachable_surface_closures(
-        std::uint32_t{1u} << static_cast<std::uint32_t>(source_operation),
-        source_features);
+        source_operation_bit,
+        source_features,
+        anisotropic_operations,
+        anisotropic_principled_features);
     const ClosureVisitor checked_emit =
         [&emit,
          source_reachability,

@@ -40,7 +40,10 @@ inline constexpr auto sampling_general_payload_reachability =
                  surface_closure_kind_bit(SurfaceClosureKind::glossy) |
                  surface_closure_kind_bit(
                      SurfaceClosureKind::thin_glass_transmission),
-        .principled_lobes = all_surface_closure_lobes};
+        .principled_lobes = all_surface_closure_lobes,
+        .anisotropic_microfacet_kinds =
+            surface_closure_kind_bit(SurfaceClosureKind::principled) |
+            surface_closure_kind_bit(SurfaceClosureKind::glossy)};
 
 inline constexpr auto sampling_dielectric_payload_reachability =
     SurfaceClosureReachability{
@@ -386,7 +389,11 @@ sample_general_closure(
                 incoming,
                 random_direction,
                 glossy_normal,
-                query.glossy_filter_roughness);
+                query.glossy_filter_roughness,
+                reachability.contains_anisotropic_microfacet(
+                    SurfaceClosureKind::principled) ||
+                    reachability.contains_anisotropic_microfacet(
+                        SurfaceClosureKind::glossy));
             direction = glossy.direction;
             roughness = glossy.roughness;
             singular_evaluation = glossy.singular_evaluation;

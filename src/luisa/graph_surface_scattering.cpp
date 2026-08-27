@@ -695,19 +695,6 @@ namespace {
             closure, glossy_filter_roughness));
 }
 
-[[nodiscard]] Float microfacet_specular_roughness_squared(
-    const SurfaceClosurePhysicalGeneralRecord &closure,
-    Float glossy_filter_roughness) noexcept {
-    const auto alpha = microfacet_alpha(
-        closure, glossy_filter_roughness);
-    const auto alpha_product = alpha.x * alpha.y;
-    return select(
-        alpha_product,
-        0.0f,
-        alpha_product <=
-            cycles_closure::microfacet_singular_alpha_product);
-}
-
 [[nodiscard]] MicrofacetDistributionTerms
 microfacet_reflection_distribution_terms(
     const SurfaceClosurePhysicalGeneralRecord &closure,
@@ -826,25 +813,51 @@ microfacet_reflection_distribution_terms(
     Float3 incoming,
     Float3 outgoing,
     Float3 glossy_normal,
-    Float glossy_filter_roughness) noexcept {
+    Float glossy_filter_roughness,
+    bool may_be_anisotropic) noexcept {
     static_cast<void>(services);
     auto n_dot_v = max(dot(glossy_normal, incoming), 0.0f);
     auto n_dot_l = max(dot(glossy_normal, outgoing), 0.0f);
     auto half_vector =
         safe_normalize(incoming + outgoing, glossy_normal);
     auto v_dot_h = max(dot(incoming, half_vector), 0.0f);
-    const auto singular = microfacet_is_singular(
-        closure, glossy_filter_roughness);
-    auto alpha = max(
-        microfacet_alpha(closure, glossy_filter_roughness),
-        make_float2(1.0e-10f));
-    const auto terms = microfacet_reflection_distribution_terms(
-        closure,
-        half_vector,
-        incoming,
-        outgoing,
-        glossy_normal,
-        alpha);
+    Bool singular;
+    Float roughness_squared;
+    MicrofacetDistributionTerms terms;
+    if (may_be_anisotropic) {
+        const auto setup_alpha = microfacet_alpha(
+            closure, glossy_filter_roughness);
+        const auto alpha_product = setup_alpha.x * setup_alpha.y;
+        singular = alpha_product <=
+                   cycles_closure::microfacet_singular_alpha_product;
+        roughness_squared = select(
+            alpha_product, 0.0f, singular);
+        const auto alpha = max(
+            setup_alpha,
+            make_float2(1.0e-10f));
+        terms = microfacet_reflection_distribution_terms(
+            closure,
+            half_vector,
+            incoming,
+            outgoing,
+            glossy_normal,
+            alpha);
+    } else {
+        const auto setup_alpha = microfacet_alpha(
+            closure.common, glossy_filter_roughness);
+        const auto alpha_squared = setup_alpha * setup_alpha;
+        singular = alpha_squared <=
+                   cycles_closure::microfacet_singular_alpha_product;
+        roughness_squared = select(
+            alpha_squared, 0.0f, singular);
+        const auto scalar_alpha = max(setup_alpha, 1.0e-10f);
+        terms = microfacet_distribution_terms(
+            closure.common,
+            max(dot(glossy_normal, half_vector), 0.0f),
+            n_dot_v,
+            n_dot_l,
+            scalar_alpha);
+    }
     auto geometry = 1.0f /
                     (1.0f + terms.lambda_incoming +
                         terms.lambda_outgoing);
@@ -861,7 +874,8 @@ microfacet_reflection_distribution_terms(
         (v_dot_h > 0.0f) & !singular;
     return {
         .intensity = select(make_float3(0.0f), intensity, valid),
-        .pdf = select(0.0f, pdf, valid)};
+        .pdf = select(0.0f, pdf, valid),
+        .roughness_squared = roughness_squared};
 }
 
 [[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
@@ -871,18 +885,27 @@ microfacet_reflection_distribution_terms(
     Float3 incoming,
     Float2 random,
     Float3 glossy_normal,
-    Float glossy_filter_roughness) noexcept {
-    const auto alpha = microfacet_alpha(
-        closure, glossy_filter_roughness);
+    Float glossy_filter_roughness,
+    bool may_be_anisotropic) noexcept {
+    Float2 alpha;
+    if (may_be_anisotropic) {
+        alpha = microfacet_alpha(
+            closure, glossy_filter_roughness);
+    } else {
+        alpha = make_float2(microfacet_alpha(
+            closure.common, glossy_filter_roughness));
+    }
     const auto sampling_alpha = max(alpha, make_float2(1.0e-10f));
     auto basis = cycles_sample_mapping::make_orthonormals(glossy_normal);
-    $if(sampling_alpha.x != sampling_alpha.y) {
-        const auto anisotropic_basis =
-            cycles_sample_mapping::make_orthonormals_tangent(
-                glossy_normal, closure.payload.microfacet_tangent);
-        basis.tangent = anisotropic_basis.tangent;
-        basis.bitangent = anisotropic_basis.bitangent;
-    };
+    if (may_be_anisotropic) {
+        $if(sampling_alpha.x != sampling_alpha.y) {
+            const auto anisotropic_basis =
+                cycles_sample_mapping::make_orthonormals_tangent(
+                    glossy_normal, closure.payload.microfacet_tangent);
+            basis.tangent = anisotropic_basis.tangent;
+            basis.bitangent = anisotropic_basis.bitangent;
+        };
+    }
     const auto ggx_half =
         cycles_sample_mapping::sample_ggx_visible_normal(
             glossy_normal,

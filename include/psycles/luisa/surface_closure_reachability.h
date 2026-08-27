@@ -45,12 +45,19 @@ inline constexpr auto all_surface_closure_lobes =
 // Abstract domain for host/JIT physical-closure reachability. The first
 // component is a set of canonical SurfaceClosureKind values. The second
 // refines the only kind whose directional algorithm also depends on its lobe
-// tag. The partial order, join, and meet are component-wise subset, union, and
-// intersection, reduced by the invariant that no Principled kind implies no
-// Principled lobe.
+// tag. The third is the subset of reachable kinds whose microfacet state may
+// be anisotropic. The partial order, join, and meet are component-wise subset,
+// union, and intersection, reduced by the invariants
+//
+//   Principled not in kinds => principled_lobes is empty
+//   anisotropic_microfacet_kinds is a subset of kinds.
+//
+// This is host/JIT capability metadata. It never classifies a device value or
+// changes the authored closure graph.
 struct SurfaceClosureReachability {
     SurfaceClosureKindMask kinds{};
     SurfaceClosureLobeMask principled_lobes{};
+    SurfaceClosureKindMask anisotropic_microfacet_kinds{};
 
     [[nodiscard]] constexpr bool
     contains(SurfaceClosureKind kind) const noexcept {
@@ -63,10 +70,30 @@ struct SurfaceClosureReachability {
                (principled_lobes & surface_closure_lobe_bit(lobe)) != 0u;
     }
 
+    [[nodiscard]] constexpr bool
+    contains_anisotropic_microfacet(
+        SurfaceClosureKind kind) const noexcept {
+        return contains(kind) &&
+               (anisotropic_microfacet_kinds &
+                surface_closure_kind_bit(kind)) != 0u;
+    }
+
+private:
+    constexpr void normalize() noexcept {
+        if (!contains(SurfaceClosureKind::principled)) {
+            principled_lobes = 0u;
+        }
+        anisotropic_microfacet_kinds &= kinds;
+    }
+
+public:
+
     constexpr SurfaceClosureReachability &
     operator|=(SurfaceClosureReachability rhs) noexcept {
         kinds |= rhs.kinds;
         principled_lobes |= rhs.principled_lobes;
+        anisotropic_microfacet_kinds |= rhs.anisotropic_microfacet_kinds;
+        normalize();
         return *this;
     }
 
@@ -80,9 +107,9 @@ struct SurfaceClosureReachability {
     operator&=(SurfaceClosureReachability rhs) noexcept {
         kinds &= rhs.kinds;
         principled_lobes &= rhs.principled_lobes;
-        if (!contains(SurfaceClosureKind::principled)) {
-            principled_lobes = 0u;
-        }
+        anisotropic_microfacet_kinds &=
+            rhs.anisotropic_microfacet_kinds;
+        normalize();
         return *this;
     }
 
@@ -101,15 +128,26 @@ struct SurfaceClosureReachability {
 
 inline constexpr auto all_surface_closure_reachability =
     SurfaceClosureReachability{.kinds = all_surface_closure_kinds,
-                               .principled_lobes = all_surface_closure_lobes};
+                               .principled_lobes = all_surface_closure_lobes,
+                               .anisotropic_microfacet_kinds =
+                                   surface_closure_kind_bit(
+                                       SurfaceClosureKind::principled) |
+                                   surface_closure_kind_bit(
+                                       SurfaceClosureKind::glossy)};
 
 // Monotone transfer from the scene image's immutable closure-operation and
-// Principled-feature sets to canonical physical identities. For recognized
-// bits this is a union homomorphism: no authored parameter is inspected and no
-// closure is pre-evaluated. Any unrecognized bit maps to top, so schema drift
-// can only disable specialization rather than remove required shader code.
+// Principled-feature sets to canonical physical identities. The final two
+// inputs preserve the correlation between the anisotropy bit and the feature
+// mask of the same bytecode leaf; using the scene-wide Principled union there
+// would unsoundly conflate distinct material nodes. For recognized and
+// consistent bits this is a union homomorphism: no authored parameter is
+// inspected and no closure is pre-evaluated. Any unrecognized or inconsistent
+// bit maps to top, so schema drift can only disable specialization rather than
+// remove required shader code.
 [[nodiscard]] SurfaceClosureReachability
 reachable_surface_closures(std::uint32_t closure_operations,
-                           std::uint32_t principled_features) noexcept;
+                           std::uint32_t principled_features,
+                           std::uint32_t anisotropic_closure_operations,
+                           std::uint32_t anisotropic_principled_features) noexcept;
 
 } // namespace psycles::luisa_backend

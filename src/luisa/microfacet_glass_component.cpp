@@ -313,10 +313,16 @@ MicrofacetEvaluation MicrofacetGlassComponent::evaluate(
         select(sample_weight(pdf_fresnel.reflection),
                sample_weight(pdf_fresnel.transmission), geometry.transmission);
     const auto pdf_valid = intensity_valid & (lobe_energy > 0.0f);
+    const auto roughness_squared = setup_alpha * setup_alpha;
+    const auto singular =
+        roughness_squared <=
+        cycles_closure::microfacet_singular_alpha_product;
     return {
         .intensity = select(make_float3(0.0f), value, intensity_valid),
         .pdf = select(
-            0.0f, directional_pdf * lobe_probability, pdf_valid)};
+            0.0f, directional_pdf * lobe_probability, pdf_valid),
+        .roughness_squared = select(
+            roughness_squared, 0.0f, singular)};
 }
 
 GlassSample MicrofacetGlassComponent::sample(

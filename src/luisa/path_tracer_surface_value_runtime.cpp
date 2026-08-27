@@ -267,23 +267,36 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         return nullptr;
     }
     const auto &image = runtime->executable.values;
+    if (runtime->executable.instruction_variants.size() !=
+            image.instructions.size() ||
+        image.closure_principled_features.size() !=
+            image.closure_instructions.size()) {
+        diagnostic = "compact surface semantic side streams are not parallel";
+        return nullptr;
+    }
     runtime->used_principled_closure_features =
         image.used_principled_closure_features;
-    runtime->physical_closure_reachability = reachable_surface_closures(
-        image.used_closure_operations, image.used_principled_closure_features);
-    runtime->maximum_closure_mix_slots =
-        image.maximum_closure_mix_slots;
-    LUISA_INFO("Surface physical-closure reachability: operations=0x{:08x}, "
-               "Principled features=0x{:08x}, kinds=0x{:08x}, "
-               "Principled lobes=0x{:08x}.",
-               image.used_closure_operations,
-               image.used_principled_closure_features,
-               runtime->physical_closure_reachability.kinds,
-               runtime->physical_closure_reachability.principled_lobes);
+    std::uint32_t anisotropic_closure_operations = 0u;
+    std::uint32_t anisotropic_principled_features = 0u;
     runtime->closure_static_variants.reserve(image.closure_instructions.size());
-    for (const auto &instruction : image.closure_instructions) {
+    for (auto instruction_index = std::size_t{0u};
+         instruction_index < image.closure_instructions.size();
+         ++instruction_index) {
+        const auto &instruction =
+            image.closure_instructions[instruction_index];
         if (!compiler::surface_closure_is_leaf(instruction)) {
             continue;
+        }
+        if ((instruction.control &
+             compiler::surface_closure_microfacet_anisotropy) != 0u) {
+            const auto operation =
+                compiler::surface_closure_operation(instruction);
+            anisotropic_closure_operations |=
+                std::uint32_t{1u} << static_cast<std::uint32_t>(operation);
+            if (operation == compiler::ClosureOperation::principled) {
+                anisotropic_principled_features |=
+                    image.closure_principled_features[instruction_index];
+            }
         }
         const auto key =
             instruction.control & compiler::surface_closure_static_variant_mask;
@@ -295,13 +308,25 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     }
     std::sort(runtime->closure_static_variants.begin(),
               runtime->closure_static_variants.end());
-    if (runtime->executable.instruction_variants.size() !=
-            image.instructions.size() ||
-        image.closure_principled_features.size() !=
-            image.closure_instructions.size()) {
-        diagnostic = "compact surface semantic side streams are not parallel";
-        return nullptr;
-    }
+    runtime->physical_closure_reachability = reachable_surface_closures(
+        image.used_closure_operations,
+        image.used_principled_closure_features,
+        anisotropic_closure_operations,
+        anisotropic_principled_features);
+    runtime->maximum_closure_mix_slots = image.maximum_closure_mix_slots;
+    LUISA_INFO(
+        "Surface physical-closure reachability: operations=0x{:08x}, "
+        "Principled features=0x{:08x}, anisotropic operations=0x{:08x}, "
+        "anisotropic Principled features=0x{:08x}, kinds=0x{:08x}, "
+        "Principled lobes=0x{:08x}, anisotropic kinds=0x{:08x}.",
+        image.used_closure_operations,
+        image.used_principled_closure_features,
+        anisotropic_closure_operations,
+        anisotropic_principled_features,
+        runtime->physical_closure_reachability.kinds,
+        runtime->physical_closure_reachability.principled_lobes,
+        runtime->physical_closure_reachability
+            .anisotropic_microfacet_kinds);
     const auto append_unique = [](auto &values, auto value) noexcept {
         if (std::find(values.begin(), values.end(), value) == values.end()) {
             values.emplace_back(value);
