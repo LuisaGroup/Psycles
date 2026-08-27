@@ -276,18 +276,22 @@ MicrofacetReflectionSample ThinGlassComponent::sample(
     const auto singular =
         alpha.x * alpha.y <=
         cycles_closure::microfacet_singular_alpha_product;
-    const auto sampling_alpha = max(alpha.x, 1.0e-10f);
-    const auto half_vector =
-        cycles_sample_mapping::sample_ggx_visible_normal(
-            closure.common.normal,
-            transformed_incoming,
-            sampling_alpha,
-            random_direction);
-    const auto regular_direction =
-        2.0f * dot(transformed_incoming, half_vector) * half_vector -
-        transformed_incoming;
-    const auto direction = select(
-        regular_direction, -incoming, singular);
+    Float3 direction = -incoming;
+    // The thin-walled delta limit has the unique direction -incoming and does
+    // not depend on a sampled half-vector. Keep the VNDF in the regular branch
+    // rather than computing it eagerly and discarding it through select.
+    $if(!singular) {
+        const auto sampling_alpha = max(alpha.x, 1.0e-10f);
+        const auto half_vector =
+            cycles_sample_mapping::sample_ggx_visible_normal(
+                closure.common.normal,
+                transformed_incoming,
+                sampling_alpha,
+                random_direction);
+        direction =
+            2.0f * dot(transformed_incoming, half_vector) * half_vector -
+            transformed_incoming;
+    };
     const auto valid =
         (dot(closure.common.normal, transformed_incoming) > 0.0f) &
         (dot(closure.common.normal, direction) > 0.0f) &
