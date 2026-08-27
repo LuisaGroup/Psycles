@@ -1318,6 +1318,18 @@ struct SurfaceValueProgramImage {
   std::uint32_t flags{};
 };
 
+// Exact storage-class abstraction for one operand position of an interned
+// evaluator variant. The scene builder joins the concrete class observed at
+// every instruction mapped to that variant over the two-point domain
+// {local, parameter}. A singleton remains directly routable; observing both
+// classes yields `dynamic`. There is deliberately no public bottom value:
+// every published variant is used by at least one validated instruction.
+enum class SurfaceValueOperandRoute : std::uint8_t {
+  local,
+  parameter,
+  dynamic,
+};
+
 inline constexpr std::uint32_t
     surface_value_program_automatic_normal_uses_undisplaced_geometry = 1u << 0u;
 inline constexpr std::uint32_t surface_value_program_flag_mask =
@@ -1374,6 +1386,10 @@ struct SurfaceValueStaticVariant {
   // class. Dynamic handler switches are generated from this minimal domain,
   // not from every mode known to the frontend.
   std::vector<std::uint16_t> svm_immediates;
+  // Parallel to operand_types. This is a scene-wide, exact storage-class
+  // join: a direct route is recorded only when every bytecode instruction
+  // using this evaluator reads that operand position from the same class.
+  std::vector<SurfaceValueOperandRoute> operand_routes;
 };
 
 struct SurfaceValueExecutionInput {

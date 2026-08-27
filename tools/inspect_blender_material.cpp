@@ -16,6 +16,7 @@
 #include <set>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -152,6 +153,166 @@ struct ClosureControlCensus {
         return *this;
     }
 };
+
+struct SurfaceOperandRouteCensus {
+    bool valid{};
+    std::string diagnostic;
+    std::size_t references{};
+    std::size_t parameter_references{};
+    std::size_t local_references{};
+    std::size_t zero_arity_instructions{};
+    std::size_t all_parameter_instructions{};
+    std::size_t all_local_instructions{};
+    std::size_t mixed_source_instructions{};
+    std::size_t variant_route_pairs{};
+    std::size_t polymorphic_variants{};
+    std::size_t maximum_routes_per_variant{};
+    std::size_t statically_routed_references{};
+    std::size_t dynamically_routed_references{};
+    std::size_t statically_parameter_references{};
+    std::size_t statically_local_references{};
+    std::vector<std::set<std::uint16_t>> routes_by_variant;
+};
+
+[[nodiscard]] SurfaceOperandRouteCensus census_surface_operand_routes(
+    const psycles::compiler::SurfaceValueExecutableScene &scene) {
+    SurfaceOperandRouteCensus result;
+    if (!scene.valid ||
+        scene.instruction_variants.size() != scene.values.instructions.size()) {
+        result.diagnostic = "surface value executable scene is not parallel";
+        return result;
+    }
+    result.routes_by_variant.resize(scene.variants.size());
+
+    for (auto instruction_index = std::size_t{};
+         instruction_index < scene.values.instructions.size();
+         ++instruction_index) {
+        const auto &instruction = scene.values.instructions[instruction_index];
+        if (psycles::compiler::is_surface_value_surface_normal_transition(
+                instruction)) {
+            continue;
+        }
+        const auto variant_index =
+            scene.instruction_variants[instruction_index];
+        if (variant_index >= scene.variants.size()) {
+            result.diagnostic =
+                "surface value instruction has an invalid static variant";
+            return result;
+        }
+        const auto operand_count =
+            psycles::compiler::surface_value_operand_count(instruction);
+        if (operand_count >
+            psycles::compiler::surface_value_max_operand_count) {
+            result.diagnostic =
+                "surface value instruction exceeds the closed operand-arity "
+                "contract";
+            return result;
+        }
+
+        auto parameter_mask = std::uint16_t{};
+        for (auto operand_index = std::size_t{}; operand_index < operand_count;
+             ++operand_index) {
+            const auto word_index =
+                operand_index /
+                psycles::compiler::surface_value_operands_per_word;
+            const auto lane =
+                operand_index %
+                psycles::compiler::surface_value_operands_per_word;
+            const auto word =
+                operand_count <=
+                        psycles::compiler::surface_value_inline_operand_capacity
+                    ? instruction.operand_payload
+                    : scene.values.operands.at(instruction.operand_payload +
+                                               word_index);
+            const auto operand =
+                psycles::compiler::surface_value_operand_from_word(word, lane);
+            if (!operand.valid()) {
+                result.diagnostic =
+                    "surface value instruction has an invalid compact "
+                    "operand";
+                return result;
+            }
+            ++result.references;
+            if (operand.parameter()) {
+                parameter_mask |= static_cast<std::uint16_t>(std::uint16_t{1u}
+                                                             << operand_index);
+                ++result.parameter_references;
+            } else {
+                ++result.local_references;
+            }
+        }
+        result.routes_by_variant[variant_index].insert(parameter_mask);
+        if (operand_count == 0u) {
+            ++result.zero_arity_instructions;
+        } else {
+            const auto all_parameter_mask = static_cast<std::uint16_t>(
+                (std::uint32_t{1u} << operand_count) - 1u);
+            if (parameter_mask == 0u) {
+                ++result.all_local_instructions;
+            } else if (parameter_mask == all_parameter_mask) {
+                ++result.all_parameter_instructions;
+            } else {
+                ++result.mixed_source_instructions;
+            }
+        }
+    }
+
+    for (const auto &routes : result.routes_by_variant) {
+        if (routes.empty()) {
+            result.diagnostic =
+                "surface value executable scene has an unobserved variant";
+            return result;
+        }
+        result.variant_route_pairs += routes.size();
+        result.polymorphic_variants += routes.size() > 1u ? 1u : 0u;
+        result.maximum_routes_per_variant =
+            std::max(result.maximum_routes_per_variant, routes.size());
+    }
+
+    // Independently reconstruct the same finite product-domain join used by
+    // the compiler. This is a census, not a read of the published route, so a
+    // broken compiler projection remains visible in the diagnostic output.
+    for (auto instruction_index = std::size_t{};
+         instruction_index < scene.values.instructions.size();
+         ++instruction_index) {
+        const auto &instruction = scene.values.instructions[instruction_index];
+        if (psycles::compiler::is_surface_value_surface_normal_transition(
+                instruction)) {
+            continue;
+        }
+        const auto variant_index =
+            scene.instruction_variants[instruction_index];
+        const auto operand_count =
+            psycles::compiler::surface_value_operand_count(instruction);
+        const auto &routes = result.routes_by_variant[variant_index];
+        auto parameter_union = std::uint16_t{};
+        auto parameter_intersection = static_cast<std::uint16_t>(
+            (std::uint32_t{1u} << operand_count) - 1u);
+        for (const auto route : routes) {
+            parameter_union |= route;
+            parameter_intersection &= route;
+        }
+        const auto dynamic_mask = static_cast<std::uint16_t>(
+            parameter_union ^ parameter_intersection);
+        for (auto operand_index = std::size_t{}; operand_index < operand_count;
+             ++operand_index) {
+            const auto bit =
+                static_cast<std::uint16_t>(std::uint16_t{1u} << operand_index);
+            if ((dynamic_mask & bit) != 0u) {
+                ++result.dynamically_routed_references;
+            } else {
+                ++result.statically_routed_references;
+                if ((parameter_intersection & bit) != 0u) {
+                    ++result.statically_parameter_references;
+                } else {
+                    ++result.statically_local_references;
+                }
+            }
+        }
+    }
+    result.valid = true;
+    return result;
+}
 
 [[nodiscard]] ClosureControlCensus census_closure_control(
     const psycles::compiler::SurfaceProgram &program,
@@ -950,6 +1111,12 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
         const auto &value_scene_image = value_executable_scene.values;
+        const auto value_operand_routes =
+            census_surface_operand_routes(value_executable_scene);
+        if (!value_operand_routes.valid) {
+            std::cerr << value_operand_routes.diagnostic << '\n';
+            return EXIT_FAILURE;
+        }
         const auto linear_mix_factor_evaluations =
             static_cast<std::size_t>(std::count_if(
                 value_scene_image.closure_instructions.begin(),
@@ -1095,6 +1262,34 @@ int main(int argc, char **argv) {
             << value_bytecode_inline_operands
             << "\nvalue_bytecode_packed_operand_loads "
             << value_bytecode_packed_operand_loads
+            << "\nvalue_operand_references "
+            << value_operand_routes.references
+            << "\nvalue_operand_parameter_references "
+            << value_operand_routes.parameter_references
+            << "\nvalue_operand_local_references "
+            << value_operand_routes.local_references
+            << "\nvalue_operand_zero_arity_instructions "
+            << value_operand_routes.zero_arity_instructions
+            << "\nvalue_operand_all_parameter_instructions "
+            << value_operand_routes.all_parameter_instructions
+            << "\nvalue_operand_all_local_instructions "
+            << value_operand_routes.all_local_instructions
+            << "\nvalue_operand_mixed_source_instructions "
+            << value_operand_routes.mixed_source_instructions
+            << "\nvalue_operand_variant_route_pairs "
+            << value_operand_routes.variant_route_pairs
+            << "\nvalue_operand_route_polymorphic_variants "
+            << value_operand_routes.polymorphic_variants
+            << "\nmaximum_value_operand_routes_per_variant "
+            << value_operand_routes.maximum_routes_per_variant
+            << "\nvalue_operand_statically_routed_references "
+            << value_operand_routes.statically_routed_references
+            << "\nvalue_operand_dynamically_routed_references "
+            << value_operand_routes.dynamically_routed_references
+            << "\nvalue_operand_statically_parameter_references "
+            << value_operand_routes.statically_parameter_references
+            << "\nvalue_operand_statically_local_references "
+            << value_operand_routes.statically_local_references
             << "\nreachable_image_producers "
             << reachable_image_producers.producers
             << "\nreachable_image_output_instructions "
@@ -1274,6 +1469,18 @@ int main(int argc, char **argv) {
                           << (valid
                                   ? static_cast<unsigned>(bank)
                                   : 3u + static_cast<unsigned>(type));
+            }
+            std::cout << '\n';
+        }
+        for (auto variant = std::size_t{};
+             variant < value_operand_routes.routes_by_variant.size();
+             ++variant) {
+            const auto &routes =
+                value_operand_routes.routes_by_variant[variant];
+            std::cout << "value_variant_operand_routes " << variant << ' '
+                      << routes.size();
+            for (const auto route : routes) {
+                std::cout << ' ' << route;
             }
             std::cout << '\n';
         }

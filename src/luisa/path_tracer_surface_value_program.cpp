@@ -206,28 +206,92 @@ make_handler_groups(
     return result;
 }
 
-[[nodiscard]] SurfaceValueExpression read_dynamic_value(
+[[nodiscard]] Float read_scalar_routed(
+    compiler::SurfaceValueOperandRoute route,
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceValueLocalsView &locals,
+    UInt address) noexcept {
+    switch (route) {
+        case compiler::SurfaceValueOperandRoute::local:
+            return locals.scalars.read(
+                address & compiler::SurfaceValueAddress::index_mask);
+        case compiler::SurfaceValueOperandRoute::parameter:
+            return services.parameter_float(
+                point.parameter_block,
+                address & compiler::SurfaceValueAddress::index_mask);
+        case compiler::SurfaceValueOperandRoute::dynamic:
+            return read_scalar_dynamic(
+                services, point, locals, std::move(address));
+    }
+    std::abort();
+}
+
+[[nodiscard]] Float3 read_vector_routed(
+    compiler::SurfaceValueOperandRoute route,
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceValueLocalsView &locals,
+    UInt address) noexcept {
+    switch (route) {
+        case compiler::SurfaceValueOperandRoute::local:
+            return locals.vectors.read(
+                address & compiler::SurfaceValueAddress::index_mask);
+        case compiler::SurfaceValueOperandRoute::parameter:
+            return services.parameter_float3(
+                point.parameter_block,
+                address & compiler::SurfaceValueAddress::index_mask);
+        case compiler::SurfaceValueOperandRoute::dynamic:
+            return read_vector_dynamic(
+                services, point, locals, std::move(address));
+    }
+    std::abort();
+}
+
+[[nodiscard]] ULong read_unsigned_integer_routed(
+    compiler::SurfaceValueOperandRoute route,
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceValueLocalsView &locals,
+    UInt address) noexcept {
+    switch (route) {
+        case compiler::SurfaceValueOperandRoute::local:
+            return locals.unsigned_integers.read(
+                address & compiler::SurfaceValueAddress::index_mask);
+        case compiler::SurfaceValueOperandRoute::parameter:
+            return services.parameter_uint64(
+                point.parameter_block,
+                address & compiler::SurfaceValueAddress::index_mask);
+        case compiler::SurfaceValueOperandRoute::dynamic:
+            return read_unsigned_integer_dynamic(
+                services, point, locals, std::move(address));
+    }
+    std::abort();
+}
+
+[[nodiscard]] SurfaceValueExpression read_routed_value(
     contract::SocketType type,
+    compiler::SurfaceValueOperandRoute route,
     const ShaderServices &services,
     const SurfacePoint &point,
     const SurfaceValueLocalsView &locals,
     UInt address) noexcept {
     switch (surface_value_category(type)) {
         case SurfaceValueCategory::scalar: {
-            const auto value = read_scalar_dynamic(
-                services, point, locals, address);
+            const auto value = read_scalar_routed(
+                route, services, point, locals, address);
             return SurfaceValueExpression::from_scalar(
                 Expr<float>{value.expression()});
         }
         case SurfaceValueCategory::vector: {
-            const auto value = read_vector_dynamic(
-                services, point, locals, address);
+            const auto value = read_vector_routed(
+                route, services, point, locals, address);
             return SurfaceValueExpression::from_vector(
                 Expr<luisa::float3>{value.expression()});
         }
         case SurfaceValueCategory::unsigned_integer: {
-            const auto value = read_unsigned_integer_dynamic(
-                services, point, locals, address);
+            const auto value = read_unsigned_integer_routed(
+                route, services, point, locals, address);
             return SurfaceValueExpression::from_unsigned_integer(
                 Expr<luisa::ulong>{value.expression()});
         }
@@ -266,6 +330,10 @@ void write_dynamic_value(
     Var<luisa::uint4> instruction) noexcept {
     TracedValues operands;
     operands.shading_normal = point.shading_normal;
+    if (variant.operand_routes.size() !=
+        variant.operand_types.size()) {
+        std::abort();
+    }
     operands.values.reserve(variant.operand_types.size());
     const auto inline_operands =
         variant.operand_types.size() <=
@@ -308,8 +376,9 @@ void write_dynamic_value(
                        compiler::SurfaceValueOperandAddress::bank_mask)))
                  << (compiler::SurfaceValueAddress::bank_shift -
                      compiler::SurfaceValueOperandAddress::bank_shift));
-            operands.values.emplace_back(read_dynamic_value(
+            operands.values.emplace_back(read_routed_value(
                 variant.operand_types[operand_index],
+                variant.operand_routes[operand_index],
                 services,
                 point,
                 locals,
