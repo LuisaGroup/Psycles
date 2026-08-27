@@ -38,12 +38,22 @@ inline constexpr auto sampling_general_payload_reachability =
     SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::principled) |
                  surface_closure_kind_bit(SurfaceClosureKind::glossy) |
+                 surface_closure_kind_bit(SurfaceClosureKind::metallic_f82) |
+                 surface_closure_kind_bit(
+                     SurfaceClosureKind::metallic_conductor) |
                  surface_closure_kind_bit(
                      SurfaceClosureKind::thin_glass_transmission),
         .principled_lobes = all_surface_closure_lobes,
         .anisotropic_microfacet_kinds =
             surface_closure_kind_bit(SurfaceClosureKind::principled) |
-            surface_closure_kind_bit(SurfaceClosureKind::glossy),
+            surface_closure_kind_bit(SurfaceClosureKind::glossy) |
+            surface_closure_kind_bit(SurfaceClosureKind::metallic_f82) |
+            surface_closure_kind_bit(
+                SurfaceClosureKind::metallic_conductor),
+        .thin_film_kinds =
+            surface_closure_kind_bit(SurfaceClosureKind::metallic_f82) |
+            surface_closure_kind_bit(
+                SurfaceClosureKind::metallic_conductor),
         .thin_film_principled_lobes =
             all_thin_film_principled_lobes};
 
@@ -193,6 +203,9 @@ surface_closure_selection(
         has_lobe(closure, SurfaceClosureLobe::sheen);
     const auto is_glossy = has_kind(
         closure, SurfaceClosureKind::glossy);
+    const auto is_metallic =
+        has_kind(closure, SurfaceClosureKind::metallic_f82) |
+        has_kind(closure, SurfaceClosureKind::metallic_conductor);
     const auto is_glass = has_kind(
         closure, SurfaceClosureKind::glass);
     const auto is_refraction = has_kind(
@@ -226,7 +239,7 @@ surface_closure_selection(
         is_diffuse | is_sheen | is_bssrdf);
     eligible = select(eligible,
         glossy_enabled,
-        (is_principled & !is_sheen) | is_glossy);
+        (is_principled & !is_sheen) | is_glossy | is_metallic);
     eligible = select(eligible,
         glossy_enabled | transmission_enabled,
         is_glass);
@@ -340,10 +353,15 @@ sample_general_closure(
                   has_lobe(common, SurfaceClosureLobe::sheen)
             : Bool{false};
     const auto is_glossy = reachable_kind(SurfaceClosureKind::glossy);
+    const auto is_metallic_f82 =
+        reachable_kind(SurfaceClosureKind::metallic_f82);
+    const auto is_metallic_conductor =
+        reachable_kind(SurfaceClosureKind::metallic_conductor);
     const auto is_thin = reachable_kind(
         SurfaceClosureKind::thin_glass_transmission);
     const auto sample_glossy =
-        is_glossy | (is_principled & !is_sheen);
+        is_glossy | is_metallic_f82 | is_metallic_conductor |
+        (is_principled & !is_sheen);
     Float3 direction = make_float3(0.0f, 0.0f, 1.0f);
     Float2 roughness = make_float2(1.0f);
     Float3 singular_evaluation = make_float3(0.0f);
@@ -385,6 +403,8 @@ sample_general_closure(
              (all_surface_closure_lobes &
               ~surface_closure_lobe_bit(SurfaceClosureLobe::sheen))) != 0u;
         if (reachability.contains(SurfaceClosureKind::glossy) ||
+            reachability.contains(SurfaceClosureKind::metallic_f82) ||
+            reachability.contains(SurfaceClosureKind::metallic_conductor) ||
             principled_glossy_possible) {
             const auto glossy = detail::sample_microfacet_reflection(
                 point,
@@ -397,12 +417,24 @@ sample_general_closure(
                 reachability.contains_anisotropic_microfacet(
                     SurfaceClosureKind::principled) ||
                 reachability.contains_anisotropic_microfacet(
-                    SurfaceClosureKind::glossy),
+                    SurfaceClosureKind::glossy) ||
+                reachability.contains_anisotropic_microfacet(
+                    SurfaceClosureKind::metallic_f82) ||
+                reachability.contains_anisotropic_microfacet(
+                    SurfaceClosureKind::metallic_conductor),
                 &services,
                 reachability.contains_thin_film_principled_lobe(
                     SurfaceClosureLobe::metallic),
                 reachability.contains_thin_film_principled_lobe(
-                    SurfaceClosureLobe::dielectric));
+                    SurfaceClosureLobe::dielectric),
+                reachability.contains(
+                    SurfaceClosureKind::metallic_f82),
+                reachability.contains_thin_film(
+                    SurfaceClosureKind::metallic_f82),
+                reachability.contains(
+                    SurfaceClosureKind::metallic_conductor),
+                reachability.contains_thin_film(
+                    SurfaceClosureKind::metallic_conductor));
             direction = glossy.direction;
             roughness = glossy.roughness;
             singular_evaluation = glossy.singular_evaluation;
@@ -514,6 +546,10 @@ surface_closure_conditional_sample(
         (common.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::glossy)) |
         (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::metallic_f82)) |
+        (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::metallic_conductor)) |
+        (common.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::thin_glass_transmission));
     const auto is_dielectric =
         (common.kind == static_cast<std::uint32_t>(
@@ -586,6 +622,8 @@ surface_closure_conditional_sample_from_physical_common(
     const auto is_general_payload =
         reachable_kind(SurfaceClosureKind::principled) |
         reachable_kind(SurfaceClosureKind::glossy) |
+        reachable_kind(SurfaceClosureKind::metallic_f82) |
+        reachable_kind(SurfaceClosureKind::metallic_conductor) |
         reachable_kind(SurfaceClosureKind::thin_glass_transmission);
     const auto is_dielectric_payload =
         reachable_kind(SurfaceClosureKind::glass) |

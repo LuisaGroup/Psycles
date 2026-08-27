@@ -37,6 +37,18 @@ if(TEST psycles.luisa_microfacet_anisotropy_vk)
 endif()
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_metallic_surface_tests
+    SOURCE tests/test_luisa_metallic_surface.cpp
+    TEST_STEM luisa_metallic_surface
+    LIBRARIES Psycles::luisa)
+if(TEST psycles.luisa_metallic_surface_vk)
+    set_tests_properties(
+        psycles.luisa_metallic_surface_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_ray_differential_tests
     SOURCE tests/test_luisa_ray_differential.cpp
     TEST_STEM luisa_ray_differential

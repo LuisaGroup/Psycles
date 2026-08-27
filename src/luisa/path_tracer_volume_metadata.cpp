@@ -277,6 +277,13 @@ cycles_program_closure_allocation_count(
                         ? 2u
                         : 1u);
                 break;
+            case compiler::ClosureOperation::metallic_f82:
+            case compiler::ClosureOperation::metallic_conductor:
+                // ShaderGraph::get_num_closures reserves one MicrofacetBsdf
+                // slot plus one Fresnel payload slot for either conductor
+                // model, independent of the MULTI_GGX distribution flag.
+                add(2u);
+                break;
         }
     }
     for (const auto &volume :

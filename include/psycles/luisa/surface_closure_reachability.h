@@ -28,6 +28,8 @@ inline constexpr auto all_surface_closure_kinds =
     surface_closure_kind_bit(SurfaceClosureKind::translucent) |
     surface_closure_kind_bit(SurfaceClosureKind::principled) |
     surface_closure_kind_bit(SurfaceClosureKind::glossy) |
+    surface_closure_kind_bit(SurfaceClosureKind::metallic_f82) |
+    surface_closure_kind_bit(SurfaceClosureKind::metallic_conductor) |
     surface_closure_kind_bit(SurfaceClosureKind::glass) |
     surface_closure_kind_bit(SurfaceClosureKind::transparent) |
     surface_closure_kind_bit(SurfaceClosureKind::refraction) |
@@ -44,10 +46,14 @@ inline constexpr auto all_surface_closure_lobes =
 
 inline constexpr auto all_anisotropic_surface_closure_kinds =
     surface_closure_kind_bit(SurfaceClosureKind::principled) |
-    surface_closure_kind_bit(SurfaceClosureKind::glossy);
+    surface_closure_kind_bit(SurfaceClosureKind::glossy) |
+    surface_closure_kind_bit(SurfaceClosureKind::metallic_f82) |
+    surface_closure_kind_bit(SurfaceClosureKind::metallic_conductor);
 
 inline constexpr auto all_thin_film_surface_closure_kinds =
-    surface_closure_kind_bit(SurfaceClosureKind::glass);
+    surface_closure_kind_bit(SurfaceClosureKind::glass) |
+    surface_closure_kind_bit(SurfaceClosureKind::metallic_f82) |
+    surface_closure_kind_bit(SurfaceClosureKind::metallic_conductor);
 
 inline constexpr auto all_thin_film_principled_lobes =
     surface_closure_lobe_bit(SurfaceClosureLobe::metallic) |

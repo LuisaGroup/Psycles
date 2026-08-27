@@ -43,6 +43,12 @@ canonical_surface_closure_identity(
         case compiler::ClosureOperation::glossy:
             result.kind = SurfaceClosureKind::glossy;
             break;
+        case compiler::ClosureOperation::metallic_f82:
+            result.kind = SurfaceClosureKind::metallic_f82;
+            break;
+        case compiler::ClosureOperation::metallic_conductor:
+            result.kind = SurfaceClosureKind::metallic_conductor;
+            break;
         case compiler::ClosureOperation::glass:
             result.kind = SurfaceClosureKind::glass;
             break;
@@ -101,6 +107,8 @@ SurfaceClosureRecord canonical_surface_closure(
     const auto general_payload =
         identity.kind == SurfaceClosureKind::principled ||
         identity.kind == SurfaceClosureKind::glossy ||
+        identity.kind == SurfaceClosureKind::metallic_f82 ||
+        identity.kind == SurfaceClosureKind::metallic_conductor ||
         identity.kind == SurfaceClosureKind::thin_glass_transmission;
     if (general_payload) {
         const auto state = closure.microfacet_state_configured
@@ -123,7 +131,9 @@ SurfaceClosureRecord canonical_surface_closure(
         result.diffuse_roughness = closure.diffuse_roughness;
     }
     if (closure.operation == compiler::ClosureOperation::principled ||
-        closure.operation == compiler::ClosureOperation::glossy) {
+        closure.operation == compiler::ClosureOperation::glossy ||
+        closure.operation == compiler::ClosureOperation::metallic_f82 ||
+        closure.operation == compiler::ClosureOperation::metallic_conductor) {
         result.metallic = closure.metallic;
         result.specular_ior_level = closure.specular_ior_level;
         result.specular_tint = closure.specular_tint;
@@ -144,11 +154,15 @@ SurfaceClosureRecord canonical_surface_closure(
     }
     if (closure.operation == compiler::ClosureOperation::principled ||
         closure.operation == compiler::ClosureOperation::glossy ||
+        closure.operation == compiler::ClosureOperation::metallic_f82 ||
+        closure.operation == compiler::ClosureOperation::metallic_conductor ||
         closure.operation == compiler::ClosureOperation::glass ||
         closure.operation == compiler::ClosureOperation::refraction) {
         result.preserve_ggx_energy = closure.preserve_ggx_energy;
     }
     if (closure.operation == compiler::ClosureOperation::glossy ||
+        closure.operation == compiler::ClosureOperation::metallic_f82 ||
+        closure.operation == compiler::ClosureOperation::metallic_conductor ||
         closure.operation == compiler::ClosureOperation::glass ||
         closure.operation == compiler::ClosureOperation::refraction) {
         result.beckmann = closure.beckmann;

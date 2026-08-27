@@ -17,6 +17,8 @@ operation_bit(compiler::ClosureOperation operation) noexcept {
            operation_bit(ClosureOperation::translucent) |
            operation_bit(ClosureOperation::principled) |
            operation_bit(ClosureOperation::glossy) |
+           operation_bit(ClosureOperation::metallic_f82) |
+           operation_bit(ClosureOperation::metallic_conductor) |
            operation_bit(ClosureOperation::glass) |
            operation_bit(ClosureOperation::emission) |
            operation_bit(ClosureOperation::transparent) |
@@ -64,10 +66,14 @@ reachable_surface_closures(std::uint32_t closure_operations,
 
     constexpr auto anisotropic_operation_mask =
         operation_bit(compiler::ClosureOperation::principled) |
-        operation_bit(compiler::ClosureOperation::glossy);
+        operation_bit(compiler::ClosureOperation::glossy) |
+        operation_bit(compiler::ClosureOperation::metallic_f82) |
+        operation_bit(compiler::ClosureOperation::metallic_conductor);
     constexpr auto thin_film_operation_mask =
         operation_bit(compiler::ClosureOperation::principled) |
-        operation_bit(compiler::ClosureOperation::glass);
+        operation_bit(compiler::ClosureOperation::glass) |
+        operation_bit(compiler::ClosureOperation::metallic_f82) |
+        operation_bit(compiler::ClosureOperation::metallic_conductor);
     if ((closure_operations & ~known_operation_mask()) != 0u ||
         (principled_features & ~known_principled_feature_mask()) != 0u ||
         (anisotropic_closure_operations & ~anisotropic_operation_mask) != 0u ||
@@ -146,6 +152,24 @@ reachable_surface_closures(std::uint32_t closure_operations,
                 surface_closure_kind_bit(SurfaceClosureKind::glossy);
         }
     }
+    const auto add_metallic = [&](ClosureOperation operation,
+                                  SurfaceClosureKind kind) noexcept {
+        if (!has_operation(operation)) {
+            return;
+        }
+        add_kind(kind);
+        if (has_anisotropic_operation(operation)) {
+            result.anisotropic_microfacet_kinds |=
+                surface_closure_kind_bit(kind);
+        }
+        if (has_thin_film_operation(operation)) {
+            result.thin_film_kinds |= surface_closure_kind_bit(kind);
+        }
+    };
+    add_metallic(ClosureOperation::metallic_f82,
+                 SurfaceClosureKind::metallic_f82);
+    add_metallic(ClosureOperation::metallic_conductor,
+                 SurfaceClosureKind::metallic_conductor);
     if (has_operation(ClosureOperation::glass)) {
         add_kind(SurfaceClosureKind::glass);
         if (has_thin_film_operation(ClosureOperation::glass)) {

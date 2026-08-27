@@ -69,6 +69,11 @@ aov_contribution(
     const auto is_glossy =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::glossy);
+    const auto is_metallic =
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::metallic_f82)) |
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::metallic_conductor));
     const auto is_glass =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::glass);
@@ -85,7 +90,7 @@ aov_contribution(
     const auto is_dielectric_family =
         is_dielectric | is_thin_glass_transmission;
     const auto generic_glossy =
-        (is_principled & !is_sheen) | is_glossy;
+        (is_principled & !is_sheen) | is_glossy | is_metallic;
 
     const auto incoming = detail::safe_normalize(
         Float3{incoming_expression},

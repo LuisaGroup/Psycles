@@ -82,9 +82,9 @@ fresnel_dielectric_polarized(Float cosine_incoming, Float eta) noexcept {
 }
 
 [[nodiscard]] PolarizedConductorFresnel
-fresnel_f82_conductor_polarized(Float cosine_incoming, Float ambient_ior,
-                                Float conductor_n, Float conductor_k,
-                                Float f82) noexcept {
+fresnel_conductor_polarized(Float cosine_incoming, Float ambient_ior,
+                            Float conductor_n, Float conductor_k, Float f82,
+                            bool use_f82_model) noexcept {
   const auto eta1_squared = square(ambient_ior);
   const auto eta2_squared = square(conductor_n);
   const auto k2_squared = square(conductor_k);
@@ -97,13 +97,33 @@ fresnel_f82_conductor_polarized(Float cosine_incoming, Float ambient_ior,
   const auto u = sqrt(u_squared);
   const auto v = sqrt(v_squared);
 
-  const auto relative_n = conductor_n / max(ambient_ior, 1.0e-20f);
-  const auto relative_k_squared =
-      square(conductor_k / max(ambient_ior, 1.0e-20f));
-  const auto f0 = (square(relative_n - 1.0f) + relative_k_squared) /
-                  max(square(relative_n + 1.0f) + relative_k_squared, 1.0e-20f);
-  const auto reflectance =
-      fresnel_f82_scalar(cosine_incoming, f0, fresnel_f82_b_scalar(f0, f82));
+  Float reflection_s;
+  Float reflection_p;
+  if (use_f82_model) {
+    const auto relative_n = conductor_n / max(ambient_ior, 1.0e-20f);
+    const auto relative_k_squared =
+        square(conductor_k / max(ambient_ior, 1.0e-20f));
+    const auto f0 = (square(relative_n - 1.0f) + relative_k_squared) /
+                    max(square(relative_n + 1.0f) + relative_k_squared,
+                        1.0e-20f);
+    const auto reflectance = fresnel_f82_scalar(
+        cosine_incoming, f0, fresnel_f82_b_scalar(f0, f82));
+    reflection_s = reflectance;
+    reflection_p = reflectance;
+  } else {
+    reflection_s =
+        (square(ambient_ior * cosine_incoming - u) + v_squared) /
+        max(square(ambient_ior * cosine_incoming + u) + v_squared,
+            1.0e-20f);
+    const auto t3 = (eta2_squared - k2_squared) * cosine_incoming;
+    const auto t4 = two_eta2_k2 * cosine_incoming;
+    reflection_p =
+        (square(t3 - ambient_ior * u) +
+         square(t4 - ambient_ior * v)) /
+        max(square(t3 + ambient_ior * u) +
+                square(t4 + ambient_ior * v),
+            1.0e-20f);
+  }
 
   const auto phase_s_real =
       -u_squared - v_squared + square(ambient_ior * cosine_incoming);
@@ -121,8 +141,8 @@ fresnel_f82_conductor_polarized(Float cosine_incoming, Float ambient_ior,
       sqrt(square(phase_p_real) + square(phase_p_imaginary));
 
   return {
-      .reflection_s = reflectance,
-      .reflection_p = reflectance,
+      .reflection_s = reflection_s,
+      .reflection_p = reflection_p,
       .phase_s = {.real = select(
                       1.0f, phase_s_real / max(phase_s_magnitude, 1.0e-20f),
                       phase_s_magnitude != 0.0f),
@@ -191,7 +211,7 @@ template <std::uint32_t Channel>
                 thickness < 1.0f);
 }
 
-template <std::uint32_t Channel, bool Conductive>
+template <std::uint32_t Channel, bool Conductive, bool F82Model = false>
 [[nodiscard]] Float
 iridescence_channel(const ShaderServices &services, Float thickness,
                     Float authored_film_ior, Float ambient_ior,
@@ -210,8 +230,9 @@ iridescence_channel(const ShaderServices &services, Float thickness,
     ComplexFloat phase_23_p;
     Bool bottom_total_internal_reflection = false;
     if constexpr (Conductive) {
-      const auto bottom = fresnel_f82_conductor_polarized(
-          -top.cosine_transmitted, film_ior, substrate_n, substrate_k, f82);
+      const auto bottom = fresnel_conductor_polarized(
+          -top.cosine_transmitted, film_ior, substrate_n, substrate_k, f82,
+          F82Model);
       reflection_23_s = bottom.reflection_s;
       reflection_23_p = bottom.reflection_p;
       phase_23_s = bottom.phase_s;
@@ -260,9 +281,9 @@ template <std::uint32_t Channel>
       max((r * square(n + 1.0f) - square(n - 1.0f)) / max(1.0f - r, 1.0e-20f),
           0.0f));
   Float unused_cosine;
-  return iridescence_channel<Channel, true>(services, thickness, film_ior, 1.0f,
-                                            n, k, g, cosine_incoming,
-                                            unused_cosine);
+  return iridescence_channel<Channel, true, true>(
+      services, thickness, film_ior, 1.0f, n, k, g, cosine_incoming,
+      unused_cosine);
 }
 
 } // namespace
@@ -303,6 +324,23 @@ Float3 thin_film_f82_fresnel(const ShaderServices &services, Float thickness,
                                      cosine_incoming),
                      f82_channel<2u>(services, thickness, film_ior, f0.z, b.z,
                                      cosine_incoming));
+}
+
+Float3 thin_film_conductor_fresnel(
+    const ShaderServices &services, Float thickness, Float film_ior,
+    Float3 substrate_ior, Float3 substrate_extinction,
+    Float cosine_incoming) noexcept {
+  Float unused_cosine;
+  return make_float3(
+      iridescence_channel<0u, true>(
+          services, thickness, film_ior, 1.0f, substrate_ior.x,
+          substrate_extinction.x, -1.0f, cosine_incoming, unused_cosine),
+      iridescence_channel<1u, true>(
+          services, thickness, film_ior, 1.0f, substrate_ior.y,
+          substrate_extinction.y, -1.0f, cosine_incoming, unused_cosine),
+      iridescence_channel<2u, true>(
+          services, thickness, film_ior, 1.0f, substrate_ior.z,
+          substrate_extinction.z, -1.0f, cosine_incoming, unused_cosine));
 }
 
 } // namespace psycles::luisa_backend::detail

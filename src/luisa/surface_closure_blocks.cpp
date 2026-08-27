@@ -20,15 +20,19 @@ SurfaceClosureBlocks pack_surface_closure(
         preserve_ggx_energy_bit,
         closure.preserve_ggx_energy);
     flags |= select(0u, beckmann_bit, closure.beckmann);
-    const auto principled_film_payload =
+    const auto general_film_payload =
         (closure.kind == static_cast<std::uint32_t>(
                              SurfaceClosureKind::principled)) &
         ((closure.lobe == static_cast<std::uint32_t>(
                               SurfaceClosureLobe::metallic)) |
          (closure.lobe == static_cast<std::uint32_t>(
-                              SurfaceClosureLobe::dielectric)));
+                              SurfaceClosureLobe::dielectric))) |
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::metallic_f82)) |
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::metallic_conductor));
     const auto film_payload =
-        principled_film_payload |
+        general_film_payload |
         (closure.kind == static_cast<std::uint32_t>(
                              SurfaceClosureKind::glass));
     return {
@@ -104,15 +108,19 @@ SurfaceClosureRecord unpack_surface_closure(
         block_2_expression,
         block_3_expression);
     const auto flags = rows.identity.z;
-    const auto principled_film_payload =
+    const auto general_film_payload =
         (rows.identity.x == static_cast<std::uint32_t>(
                                 SurfaceClosureKind::principled)) &
         ((rows.identity.y == static_cast<std::uint32_t>(
                                  SurfaceClosureLobe::metallic)) |
          (rows.identity.y == static_cast<std::uint32_t>(
-                                 SurfaceClosureLobe::dielectric)));
+                                 SurfaceClosureLobe::dielectric))) |
+        (rows.identity.x == static_cast<std::uint32_t>(
+                                SurfaceClosureKind::metallic_f82)) |
+        (rows.identity.x == static_cast<std::uint32_t>(
+                                SurfaceClosureKind::metallic_conductor));
     const auto film_payload =
-        principled_film_payload |
+        general_film_payload |
         (rows.identity.x == static_cast<std::uint32_t>(
                                 SurfaceClosureKind::glass));
     return {

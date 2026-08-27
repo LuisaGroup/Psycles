@@ -140,6 +140,11 @@ thin_film_principled_lobe(SurfaceClosureLobe lobe) noexcept {
         ReachabilityBasis{operation_bit(ClosureOperation::principled), {}},
         ReachabilityBasis{operation_bit(ClosureOperation::glossy),
                           kinds({SurfaceClosureKind::glossy})},
+        ReachabilityBasis{operation_bit(ClosureOperation::metallic_f82),
+                          kinds({SurfaceClosureKind::metallic_f82})},
+        ReachabilityBasis{
+            operation_bit(ClosureOperation::metallic_conductor),
+            kinds({SurfaceClosureKind::metallic_conductor})},
         ReachabilityBasis{operation_bit(ClosureOperation::glass),
                           kinds({SurfaceClosureKind::glass})},
         ReachabilityBasis{operation_bit(ClosureOperation::emission), {}},
@@ -251,6 +256,10 @@ thin_film_principled_lobe(SurfaceClosureLobe lobe) noexcept {
     }
 
     constexpr auto glossy_operation = operation_bit(ClosureOperation::glossy);
+    constexpr auto metallic_f82_operation =
+        operation_bit(ClosureOperation::metallic_f82);
+    constexpr auto metallic_conductor_operation =
+        operation_bit(ClosureOperation::metallic_conductor);
     constexpr auto principled_operation =
         operation_bit(ClosureOperation::principled);
     constexpr auto diffuse_operation = operation_bit(ClosureOperation::diffuse);
@@ -263,6 +272,15 @@ thin_film_principled_lobe(SurfaceClosureLobe lobe) noexcept {
     if (reachable_surface_closures(
             glossy_operation, 0u, glossy_operation, 0u) !=
             anisotropic_kind(SurfaceClosureKind::glossy) ||
+        reachable_surface_closures(
+            metallic_f82_operation, 0u, metallic_f82_operation, 0u) !=
+            anisotropic_kind(SurfaceClosureKind::metallic_f82) ||
+        reachable_surface_closures(
+            metallic_conductor_operation,
+            0u,
+            metallic_conductor_operation,
+            0u) !=
+            anisotropic_kind(SurfaceClosureKind::metallic_conductor) ||
         reachable_surface_closures(principled_operation,
                                    metallic_feature,
                                    principled_operation,
@@ -310,6 +328,22 @@ thin_film_principled_lobe(SurfaceClosureLobe lobe) noexcept {
     if (reachable_surface_closures(
             glass_operation, 0u, 0u, 0u, glass_operation, 0u) !=
             thin_film_kind(SurfaceClosureKind::glass) ||
+        reachable_surface_closures(
+            metallic_f82_operation,
+            0u,
+            0u,
+            0u,
+            metallic_f82_operation,
+            0u) !=
+            thin_film_kind(SurfaceClosureKind::metallic_f82) ||
+        reachable_surface_closures(
+            metallic_conductor_operation,
+            0u,
+            0u,
+            0u,
+            metallic_conductor_operation,
+            0u) !=
+            thin_film_kind(SurfaceClosureKind::metallic_conductor) ||
         reachable_surface_closures(
             principled_operation,
             metallic_feature,
@@ -488,12 +522,23 @@ int main(int argc, char **argv) {
     auto no_film_metallic_probe =
         make_probe_kernel(no_film_metallic_reachability);
     auto film_metallic_probe = make_probe_kernel(film_metallic_reachability);
+    const auto standalone_f82_reachability =
+        kinds({SurfaceClosureKind::metallic_f82});
+    const auto standalone_conductor_reachability =
+        kinds({SurfaceClosureKind::metallic_conductor});
+    auto standalone_f82_probe =
+        make_probe_kernel(standalone_f82_reachability);
+    auto standalone_conductor_probe =
+        make_probe_kernel(standalone_conductor_reachability);
     const auto diffuse_ast = ast_footprint(diffuse_probe);
     const auto top_ast = ast_footprint(top_probe);
     const auto isotropic_glossy_ast = ast_footprint(isotropic_glossy_probe);
     const auto anisotropic_glossy_ast = ast_footprint(anisotropic_glossy_probe);
     const auto no_film_metallic_ast = ast_footprint(no_film_metallic_probe);
     const auto film_metallic_ast = ast_footprint(film_metallic_probe);
+    const auto standalone_f82_ast = ast_footprint(standalone_f82_probe);
+    const auto standalone_conductor_ast =
+        ast_footprint(standalone_conductor_probe);
     if (diffuse_probe.function()->function().hash() ==
             top_probe.function()->function().hash() ||
         top_ast.expressions.size() <= diffuse_ast.expressions.size() + 100u ||
@@ -533,11 +578,26 @@ int main(int argc, char **argv) {
                   << backend << '\n';
         return EXIT_FAILURE;
     }
+    if (standalone_f82_probe.function()->function().hash() ==
+            standalone_conductor_probe.function()->function().hash() ||
+        standalone_conductor_ast.expressions.size() <=
+            standalone_f82_ast.expressions.size()) {
+        std::cerr << "standalone Metallic Fresnel tags did not select "
+                     "distinct static algebra: F82 "
+                  << standalone_f82_ast.expressions.size() << "/"
+                  << standalone_f82_ast.statements.size() << " versus conductor "
+                  << standalone_conductor_ast.expressions.size() << "/"
+                  << standalone_conductor_ast.statements.size() << " on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
 
     constexpr auto scene_operations =
         operation_bit(ClosureOperation::diffuse) |
         operation_bit(ClosureOperation::translucent) |
         operation_bit(ClosureOperation::glossy) |
+        operation_bit(ClosureOperation::metallic_f82) |
+        operation_bit(ClosureOperation::metallic_conductor) |
         operation_bit(ClosureOperation::glass) |
         operation_bit(ClosureOperation::transparent) |
         operation_bit(ClosureOperation::subsurface) |
@@ -561,6 +621,8 @@ int main(int argc, char **argv) {
         static_cast<std::uint32_t>(SurfaceClosureKind::diffuse),
         static_cast<std::uint32_t>(SurfaceClosureKind::translucent),
         static_cast<std::uint32_t>(SurfaceClosureKind::glossy),
+        static_cast<std::uint32_t>(SurfaceClosureKind::metallic_f82),
+        static_cast<std::uint32_t>(SurfaceClosureKind::metallic_conductor),
         static_cast<std::uint32_t>(SurfaceClosureKind::glass),
         static_cast<std::uint32_t>(SurfaceClosureKind::transparent),
         static_cast<std::uint32_t>(SurfaceClosureKind::bssrdf),
@@ -570,6 +632,8 @@ int main(int argc, char **argv) {
         static_cast<std::uint32_t>(SurfaceClosureKind::principled),
         static_cast<std::uint32_t>(SurfaceClosureKind::principled)};
     constexpr std::array closure_lobes{
+        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
+        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
         static_cast<std::uint32_t>(SurfaceClosureLobe::none),
         static_cast<std::uint32_t>(SurfaceClosureLobe::none),
         static_cast<std::uint32_t>(SurfaceClosureLobe::none),

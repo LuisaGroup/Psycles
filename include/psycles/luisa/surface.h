@@ -283,6 +283,12 @@ enum class SurfaceClosureKind : std::uint32_t {
     translucent,
     principled,
     glossy,
+    // Standalone Metallic retains its authored Fresnel algebra as a physical
+    // tag. Both variants share the general payload layout; the tag is the
+    // eliminator which assigns (color, specular_tint) to either (F0, B) or
+    // (n, k) without a runtime mode field.
+    metallic_f82,
+    metallic_conductor,
     glass,
     transparent,
     refraction,

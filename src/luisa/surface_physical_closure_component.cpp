@@ -3,6 +3,7 @@
 #include "bssrdf_closure_component.h"
 #include "microfacet_anisotropy.h"
 #include "microfacet_glass_component.h"
+#include "metallic_closure_component.h"
 #include "principled_base_component.h"
 #include "principled_diffuse_component.h"
 #include "principled_layer_component.h"
@@ -86,6 +87,8 @@ void expand_physical_surface_closure(
     const PrincipledBaseComponent principled_base{services, point};
     const PrincipledDiffuseComponent principled_diffuse{services};
     const MicrofacetGlassComponent microfacet_glass{
+        services, closure_point};
+    const MetallicClosureComponent metallic_closure{
         services, closure_point};
     const BssrdfClosureComponent bssrdf_closure{point};
     const ThinSubsurfaceComponent thin_subsurface;
@@ -340,6 +343,11 @@ void expand_physical_surface_closure(
         closure.evaluation_scale = energy.energy_scale;
         break;
     }
+    case compiler::ClosureOperation::metallic_f82:
+    case compiler::ClosureOperation::metallic_conductor:
+        checked_emit(metallic_closure.setup(
+            graph_closure, reflective_caustics));
+        return;
     case compiler::ClosureOperation::glass: {
         const auto color =
             max(graph_closure.color, make_float3(0.0f));

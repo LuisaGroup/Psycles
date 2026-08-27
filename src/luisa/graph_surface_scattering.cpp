@@ -122,6 +122,56 @@ template<typename Closure>
         make_float3(1.0f));
 }
 
+[[nodiscard]] Float3 fresnel_conductor(
+    Float cosine, Float3 ior, Float3 extinction) noexcept {
+    // Exact unpolarized Fresnel at an air/conductor interface. This is the
+    // vector form of the two polarized rational equations used by Cycles;
+    // n and k are already canonical non-negative physical parameters.
+    const auto c = clamp(cosine, 0.0f, 1.0f);
+    const auto n2 = ior * ior;
+    const auto k2 = extinction * extinction;
+    const auto two_nk = 2.0f * ior * extinction;
+    const auto t1 = n2 - k2 - (1.0f - c * c);
+    const auto t2 = sqrt(max(t1 * t1 + two_nk * two_nk,
+                             make_float3(0.0f)));
+    const auto u2 = max(0.5f * (t2 + t1), make_float3(0.0f));
+    const auto v2 = max(0.5f * (t2 - t1), make_float3(0.0f));
+    const auto u = sqrt(u2);
+    const auto v = sqrt(v2);
+    const auto rs_numerator =
+        (c - u) * (c - u) + v2;
+    const auto rs_denominator =
+        (c + u) * (c + u) + v2;
+    const auto t3 = (n2 - k2) * c;
+    const auto t4 = two_nk * c;
+    const auto rp_numerator =
+        (t3 - u) * (t3 - u) + (t4 - v) * (t4 - v);
+    const auto rp_denominator =
+        (t3 + u) * (t3 + u) + (t4 + v) * (t4 + v);
+    const auto rs = rs_numerator /
+                    max(rs_denominator, make_float3(1.0e-20f));
+    const auto rp = rp_numerator /
+                    max(rp_denominator, make_float3(1.0e-20f));
+    return clamp(0.5f * (rs + rp),
+                 make_float3(0.0f), make_float3(1.0f));
+}
+
+[[nodiscard]] Float3 fresnel_conductor_fss(
+    Float3 ior, Float3 extinction) noexcept {
+    // Cycles fits F82 to the physical conductor at normal incidence and at
+    // cos(theta)=1/7, then integrates that closed form. The fit is a pure
+    // projection of the exact Fresnel function, not an authored tint model.
+    constexpr float f = 6.0f / 7.0f;
+    constexpr float f5 = f * f * f * f * f;
+    const auto f0 = fresnel_conductor(1.0f, ior, extinction);
+    const auto f82 = fresnel_conductor(1.0f / 7.0f, ior, extinction);
+    const auto b = (7.0f / (f5 * f)) *
+                   (lerp(f0, make_float3(1.0f), f5) - f82);
+    return clamp(
+        lerp(f0, make_float3(1.0f), 1.0f / 21.0f) - b * (1.0f / 126.0f),
+        make_float3(0.0f), make_float3(1.0f));
+}
+
 [[nodiscard]] Float3 ensure_valid_specular_reflection(
     Float3 geometric_normal,
     Float3 incoming,
@@ -316,6 +366,9 @@ template<typename Closure>
         has_lobe(closure, SurfaceClosureLobe::sheen);
     const auto is_glossy = has_kind(
         closure, SurfaceClosureKind::glossy);
+    const auto is_metallic =
+        has_kind(closure, SurfaceClosureKind::metallic_f82) |
+        has_kind(closure, SurfaceClosureKind::metallic_conductor);
     const auto is_glass = has_kind(
         closure, SurfaceClosureKind::glass);
     const auto is_refraction = has_kind(
@@ -348,7 +401,7 @@ template<typename Closure>
         bsdf | select(0u, has_eval, regular_microfacet);
     flags = select(flags,
         microfacet_flags,
-        (is_principled & !is_sheen) | is_glossy);
+        (is_principled & !is_sheen) | is_glossy | is_metallic);
     flags = select(flags,
         microfacet_flags |
             cycles_closure::runtime_bsdf_has_transmission,
@@ -396,6 +449,9 @@ template<typename Closure>
         has_lobe(closure, SurfaceClosureLobe::sheen);
     const auto is_glossy = has_kind(
         closure, SurfaceClosureKind::glossy);
+    const auto is_metallic =
+        has_kind(closure, SurfaceClosureKind::metallic_f82) |
+        has_kind(closure, SurfaceClosureKind::metallic_conductor);
     const auto is_glass = has_kind(
         closure, SurfaceClosureKind::glass);
     const auto is_refraction = has_kind(
@@ -423,10 +479,10 @@ template<typename Closure>
     const auto reflection = select(
         UInt{cycles_closure::type_microfacet_ggx},
         UInt{cycles_closure::type_microfacet_beckmann},
-        is_glossy & closure.beckmann);
+        (is_glossy | is_metallic) & closure.beckmann);
     type = select(type,
         reflection,
-        is_glossy | (is_principled & !is_sheen));
+        is_glossy | is_metallic | (is_principled & !is_sheen));
     const auto single_glass = select(
         UInt{cycles_closure::type_microfacet_ggx_glass},
         UInt{cycles_closure::type_microfacet_beckmann_glass},
@@ -765,7 +821,11 @@ microfacet_reflection_distribution_terms(
     Float cosine,
     const ShaderServices *services,
     bool may_have_metallic_thin_film,
-    bool may_have_dielectric_thin_film) noexcept {
+    bool may_have_dielectric_thin_film,
+    bool may_have_standalone_f82,
+    bool may_have_standalone_f82_thin_film,
+    bool may_have_conductor,
+    bool may_have_conductor_thin_film) noexcept {
     // Cycles' standalone Glossy closure uses MicrofacetFresnel::NONE:
     // Color is already baked into ShaderClosure::weight, so the remaining
     // directional factor is constant one (plus optional MULTI_GGX scale).
@@ -780,8 +840,26 @@ microfacet_reflection_distribution_terms(
             closure.payload.ior,
             closure.common.color_or_evaluation_scale) *
         closure.payload.evaluation_scale;
+    Float3 standalone_f82 = make_float3(0.0f);
+    if (may_have_standalone_f82) {
+        standalone_f82 =
+            fresnel_f82(cosine,
+                        closure.common.color_or_evaluation_scale,
+                        closure.payload.specular_tint) *
+            closure.payload.evaluation_scale;
+    }
+    Float3 conductor = make_float3(0.0f);
+    if (may_have_conductor) {
+        conductor =
+            fresnel_conductor(cosine,
+                              closure.common.color_or_evaluation_scale,
+                              closure.payload.specular_tint) *
+            closure.payload.evaluation_scale;
+    }
     if (may_have_metallic_thin_film ||
-        may_have_dielectric_thin_film) {
+        may_have_dielectric_thin_film ||
+        may_have_standalone_f82_thin_film ||
+        may_have_conductor_thin_film) {
         LUISA_ASSERT(services != nullptr,
                      "Thin-film Fresnel requires Cycles table services.");
         const auto film_active =
@@ -819,17 +897,55 @@ microfacet_reflection_distribution_terms(
                     has_lobe(closure.common,
                              SurfaceClosureLobe::dielectric));
         }
+        if (may_have_standalone_f82_thin_film) {
+            const auto film = thin_film_f82_fresnel(
+                *services,
+                closure.payload.thin_film_thickness,
+                closure.payload.thin_film_ior,
+                closure.common.color_or_evaluation_scale,
+                closure.payload.specular_tint,
+                cosine) * closure.payload.evaluation_scale;
+            standalone_f82 = select(
+                standalone_f82,
+                film,
+                film_active & has_kind(
+                    closure.common, SurfaceClosureKind::metallic_f82));
+        }
+        if (may_have_conductor_thin_film) {
+            const auto film = thin_film_conductor_fresnel(
+                *services,
+                closure.payload.thin_film_thickness,
+                closure.payload.thin_film_ior,
+                closure.common.color_or_evaluation_scale,
+                closure.payload.specular_tint,
+                cosine) * closure.payload.evaluation_scale;
+            conductor = select(
+                conductor,
+                film,
+                film_active & has_kind(
+                    closure.common,
+                    SurfaceClosureKind::metallic_conductor));
+        }
     }
     const auto principled = select(
         dielectric,
         metallic,
         has_lobe(closure.common, SurfaceClosureLobe::metallic));
-    return select(principled,
+    auto result = principled;
+    result = select(
+        result,
+        standalone_f82,
+        has_kind(closure.common, SurfaceClosureKind::metallic_f82));
+    result = select(
+        result,
+        conductor,
+        has_kind(closure.common, SurfaceClosureKind::metallic_conductor));
+    return select(
+        result,
         closure.payload.evaluation_scale,
         has_kind(closure.common, SurfaceClosureKind::glossy) |
-            has_kind(
-                closure.common,
-                SurfaceClosureKind::thin_glass_transmission));
+            has_kind(closure.common,
+                     SurfaceClosureKind::thin_glass_transmission));
 }
 
 [[nodiscard]] MicrofacetEvaluation microfacet_evaluate(
@@ -841,7 +957,11 @@ microfacet_reflection_distribution_terms(
     Float glossy_filter_roughness,
     bool may_be_anisotropic,
     bool may_have_metallic_thin_film,
-    bool may_have_dielectric_thin_film) noexcept {
+    bool may_have_dielectric_thin_film,
+    bool may_have_standalone_f82,
+    bool may_have_standalone_f82_thin_film,
+    bool may_have_conductor,
+    bool may_have_conductor_thin_film) noexcept {
     Float2 setup_alpha;
     if (may_be_anisotropic) {
         setup_alpha = microfacet_alpha(
@@ -900,7 +1020,11 @@ microfacet_reflection_distribution_terms(
             v_dot_h,
             &services,
             may_have_metallic_thin_film,
-            may_have_dielectric_thin_film);
+            may_have_dielectric_thin_film,
+            may_have_standalone_f82,
+            may_have_standalone_f82_thin_film,
+            may_have_conductor,
+            may_have_conductor_thin_film);
         const auto intensity =
             fresnel * terms.distribution * geometry /
             max(4.0f * n_dot_v, 1.0e-20f);
@@ -930,7 +1054,11 @@ microfacet_reflection_distribution_terms(
     bool may_be_anisotropic,
     const ShaderServices *services,
     bool may_have_metallic_thin_film,
-    bool may_have_dielectric_thin_film) noexcept {
+    bool may_have_dielectric_thin_film,
+    bool may_have_standalone_f82,
+    bool may_have_standalone_f82_thin_film,
+    bool may_have_conductor,
+    bool may_have_conductor_thin_film) noexcept {
     Float2 alpha;
     if (may_be_anisotropic) {
         alpha = microfacet_alpha(
@@ -995,7 +1123,11 @@ microfacet_reflection_distribution_terms(
         fresnel_cosine,
         services,
         may_have_metallic_thin_film,
-        may_have_dielectric_thin_film);
+        may_have_dielectric_thin_film,
+        may_have_standalone_f82,
+        may_have_standalone_f82_thin_film,
+        may_have_conductor,
+        may_have_conductor_thin_film);
     const auto bump_shadowing = bump_shadowing_term(
         point,
         smooth_normal,

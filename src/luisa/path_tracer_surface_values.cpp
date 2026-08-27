@@ -184,6 +184,88 @@ namespace {
                     glossy && preserve_ggx_energy,
                 .beckmann = glossy && beckmann};
         }
+        case compiler::ClosureOperation::metallic_f82:
+        case compiler::ClosureOperation::metallic_conductor: {
+            const auto f82 =
+                operation == compiler::ClosureOperation::metallic_f82;
+            const auto clamp_parameter = [f82](Float3 value) noexcept {
+                value = max(value, make_float3(0.0f));
+                return f82 ? min(value, make_float3(1.0f)) : value;
+            };
+            const auto vector = [&](std::size_t index,
+                                    luisa::float3 fallback) noexcept {
+                return read_closure_vector_or(
+                    runtime,
+                    services,
+                    point,
+                    locals,
+                    instruction,
+                    index,
+                    Float3{fallback});
+            };
+            const auto scalar = [&](std::size_t index,
+                                    float fallback) noexcept {
+                return read_closure_scalar_or(
+                    runtime,
+                    services,
+                    point,
+                    locals,
+                    instruction,
+                    index,
+                    Float{fallback});
+            };
+            return TracedClosure{
+                .operation = operation,
+                .weight = make_float3(mix_weight),
+                .color = clamp_parameter(vector(
+                    operand::metallic::base_ior,
+                    luisa::make_float3(0.0f))),
+                .normal = safe_normalize(
+                    vector(
+                        operand::metallic::normal,
+                        luisa::make_float3(0.0f)),
+                    point.shading_normal),
+                .roughness = scalar(
+                    operand::metallic::roughness, 0.0f),
+                .metallic = 1.0f,
+                .ior = 1.0f,
+                .specular_tint = clamp_parameter(vector(
+                    operand::metallic::edge_tint_k,
+                    luisa::make_float3(0.0f))),
+                .anisotropy_enabled = anisotropy_enabled,
+                .anisotropy = anisotropy_enabled
+                                  ? scalar(
+                                        operand::metallic::anisotropy,
+                                        0.0f)
+                                  : Float{0.0f},
+                .anisotropic_rotation = anisotropy_enabled
+                                            ? scalar(
+                                                  operand::metallic::rotation,
+                                                  0.0f)
+                                            : Float{0.0f},
+                .tangent = anisotropy_enabled
+                               ? vector(
+                                     operand::metallic::tangent,
+                                     luisa::make_float3(0.0f))
+                               : make_float3(0.0f),
+                .thin_film_enabled = thin_film_enabled,
+                .thin_film_thickness = thin_film_enabled
+                                           ? max(
+                                                 scalar(
+                                                     operand::metallic::thin_film_thickness,
+                                                     0.0f),
+                                                 1.0e-5f)
+                                           : Float{0.0f},
+                .thin_film_ior = thin_film_enabled
+                                     ? max(
+                                           scalar(
+                                               operand::metallic::thin_film_ior,
+                                               1.33f),
+                                           1.0e-5f)
+                                     : Float{0.0f},
+                .preserve_ggx_energy = preserve_ggx_energy,
+                .beckmann = beckmann};
+        }
         case compiler::ClosureOperation::translucent: {
             const auto color = read_closure_vector_or(
                 runtime,

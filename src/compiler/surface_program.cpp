@@ -55,6 +55,8 @@ struct EmissionProof {
             case ClosureOperation::diffuse:
             case ClosureOperation::translucent:
             case ClosureOperation::glossy:
+            case ClosureOperation::metallic_f82:
+            case ClosureOperation::metallic_conductor:
             case ClosureOperation::glass:
             case ClosureOperation::refraction:
             case ClosureOperation::transparent:
@@ -522,6 +524,23 @@ namespace {
                     std::abs(*anisotropy) > 1.0e-4f;
                 return;
             }
+            case ClosureOperation::metallic_f82:
+            case ClosureOperation::metallic_conductor: {
+                entry.thin_film = thin_film_possible(
+                    program, parameters, closure);
+                const auto *anisotropy = direct_float(
+                    program,
+                    parameters,
+                    closure.microfacet_anisotropy,
+                    closure.source_node);
+                // MetallicBsdfNode::is_isotropic() is a topology
+                // specialization at |a| <= 1e-4. Runtime SVM setup then
+                // saturates the surviving authored value to [0, 1].
+                entry.microfacet_anisotropy =
+                    unknown_float(anisotropy) ||
+                    std::abs(*anisotropy) > 1.0e-4f;
+                return;
+            }
             case ClosureOperation::glass:
                 entry.thin_film = thin_film_possible(
                     program, parameters, closure);
@@ -724,6 +743,8 @@ Vec3f estimate_surface_emission(
             case ClosureOperation::diffuse:
             case ClosureOperation::translucent:
             case ClosureOperation::glossy:
+            case ClosureOperation::metallic_f82:
+            case ClosureOperation::metallic_conductor:
             case ClosureOperation::glass:
             case ClosureOperation::refraction:
             case ClosureOperation::transparent:

@@ -88,6 +88,27 @@ class ShaderProbeRunnerContract(unittest.TestCase):
             list(self.runner._REPORT_PASSES),
         )
 
+    def test_vulkan_probe_forces_native_xir_without_dxc(self) -> None:
+        environment = self.runner._psycles_environment(
+            "vk",
+            {
+                "KEEP_ME": "yes",
+                "LUISA_VULKAN_USE_XIR": "0",
+                "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "0",
+                "LUISA_VULKAN_DISABLE_DXC": "0",
+            },
+        )
+        self.assertIsNotNone(environment)
+        self.assertEqual(environment["KEEP_ME"], "yes")
+        self.assertEqual(environment["LUISA_VULKAN_USE_XIR"], "1")
+        self.assertEqual(
+            environment["LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV"], "1"
+        )
+        self.assertEqual(environment["LUISA_VULKAN_DISABLE_DXC"], "1")
+        self.assertIsNone(
+            self.runner._psycles_environment("hip", {"KEEP_ME": "yes"})
+        )
+
     def test_indirect_principled_gate_rejects_missing_filter(self) -> None:
         report = {
             "passes": {
@@ -395,6 +416,36 @@ class ShaderProbeRunnerContract(unittest.TestCase):
         report["passes"]["GlossDir"]["p99_pixel_rmse"] = 0.01
         failures = self.runner._probe_gate_failures(
             "thin_film_surface", report
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("normalized p99 pixel RMSE", failures[0])
+
+    def test_metallic_gate_rejects_one_wrong_fresnel_cell(self) -> None:
+        pass_names = ("Combined", "GlossCol", "GlossDir", "Normal")
+        report = {
+            "passes": {
+                pass_name: {
+                    "luminance_mean_ratio": 1.0,
+                    "relative_rmse": 0.01,
+                    "p99_pixel_rmse": 0.00001,
+                    "cycles_rms": 1.0,
+                }
+                for pass_name in pass_names
+            }
+        }
+        self.assertEqual(
+            self.runner._probe_gate_failures(
+                "metallic_bsdf_matrix", report
+            ),
+            [],
+        )
+
+        # One wrong model/distribution cell occupies 1/16 of the image, so
+        # cancelling errors cannot evade the order-statistic gate even when
+        # the whole-frame mean energy happens to remain exact.
+        report["passes"]["GlossDir"]["p99_pixel_rmse"] = 0.01
+        failures = self.runner._probe_gate_failures(
+            "metallic_bsdf_matrix", report
         )
         self.assertEqual(len(failures), 1)
         self.assertIn("normalized p99 pixel RMSE", failures[0])

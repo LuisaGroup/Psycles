@@ -110,6 +110,22 @@ include_physical_leaf(ValueDependencyMask &dependencies,
       dependencies.include(closure.tangent);
     }
     return true;
+  case ClosureOperation::metallic_f82:
+  case ClosureOperation::metallic_conductor:
+    dependencies.include(closure.metallic_base_ior);
+    dependencies.include(closure.metallic_edge_tint_k);
+    dependencies.include(closure.normal);
+    dependencies.include(closure.roughness);
+    if (entry.microfacet_anisotropy) {
+      dependencies.include(closure.microfacet_anisotropy);
+      dependencies.include(closure.microfacet_rotation);
+      dependencies.include(closure.tangent);
+    }
+    if (entry.thin_film) {
+      dependencies.include(closure.thin_film_thickness);
+      dependencies.include(closure.thin_film_ior);
+    }
+    return true;
   case ClosureOperation::glass:
     dependencies.include(closure.color);
     dependencies.include(closure.normal);
@@ -314,6 +330,8 @@ template <typename LeafFunction>
   case ClosureOperation::translucent:
   case ClosureOperation::principled:
   case ClosureOperation::glossy:
+  case ClosureOperation::metallic_f82:
+  case ClosureOperation::metallic_conductor:
   case ClosureOperation::glass:
   case ClosureOperation::emission:
   case ClosureOperation::transparent:

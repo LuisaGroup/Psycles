@@ -26,9 +26,9 @@ namespace psycles::luisa_backend {
 // unobservable field inside the selected conservative family is harmless;
 // fields belonging only to another family never alias it. Thin-film lanes
 // are further canonicalized by the exact observable tags: Principled
-// Metallic/Dielectric and Glass. A third block would mean mutually exclusive
-// family payloads had been combined again and is guarded by the focused
-// regression.
+// Metallic/Dielectric, standalone Metallic F82/Conductor, and Glass. A third
+// block would mean mutually exclusive family payloads had been combined again
+// and is guarded by the focused regression.
 inline constexpr std::size_t
     surface_closure_physical_block_count = 2u;
 
