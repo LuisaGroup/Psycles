@@ -64,6 +64,14 @@ class SurfaceClosurePopulationCollector final
         Expr<luisa::float3> shading_normal) noexcept override;
     void add(
         const SurfaceClosureRecord &closure) noexcept override;
+    [[nodiscard]] bool
+    supports_transparent_closure_finalization()
+        const noexcept override;
+    void begin_transparent_closure(
+        const SurfaceClosureRecord &closure) noexcept override;
+    void finalize_transparent_closure(
+        Expr<luisa::float3> weight,
+        Expr<float> sample_weight) noexcept override;
     void finish() noexcept override;
 
     [[nodiscard]] const SurfaceClosureSet &closures() const noexcept;

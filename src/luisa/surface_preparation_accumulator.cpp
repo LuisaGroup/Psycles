@@ -51,7 +51,7 @@ void SurfacePreparationAccumulator::set_shading_normal(
     _aov.normal = shading_normal;
 }
 
-void SurfacePreparationAccumulator::fold_retained(
+void SurfacePreparationAccumulator::fold_runtime_identity(
     const SurfaceClosureRecord &closure) noexcept {
     const auto fold_runtime_flags = [&] noexcept {
         _runtime_flags |= _identity(
@@ -74,6 +74,11 @@ void SurfacePreparationAccumulator::fold_retained(
             fold_runtime_flags();
         };
     }
+}
+
+void SurfacePreparationAccumulator::fold_retained(
+    const SurfaceClosureRecord &closure) noexcept {
+    fold_runtime_identity(closure);
     $if(_include_aov) {
         const auto contribution = _aov_operation(
             _point.incoming,
@@ -112,7 +117,17 @@ void SurfacePreparationAccumulator::add(
     const auto retained =
         allocated &
         (_retained_count < static_cast<std::uint32_t>(_capacity));
-    $if(retained) {
+    const auto transparent =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::transparent);
+    $if(allocated & transparent) {
+        begin_transparent_setup(closure);
+        $if(retained) {
+            retain_transparent_slot();
+        };
+        finalize_transparent_setup(closure.weight);
+    };
+    $if(retained & !transparent) {
         fold_retained(closure);
     };
 }
@@ -120,6 +135,22 @@ void SurfacePreparationAccumulator::add(
 void SurfacePreparationAccumulator::add_retained(
     const SurfaceClosureRecord &closure) noexcept {
     fold_retained(closure);
+}
+
+void SurfacePreparationAccumulator::begin_transparent_setup(
+    const SurfaceClosureRecord &closure) noexcept {
+    fold_runtime_identity(closure);
+}
+
+void SurfacePreparationAccumulator::retain_transparent_slot() noexcept {
+    _retained_count += 1u;
+}
+
+void SurfacePreparationAccumulator::finalize_transparent_setup(
+    Expr<luisa::float3> weight) noexcept {
+    $if(_include_aov) {
+        _aov.transparency += weight;
+    };
 }
 
 void SurfacePreparationAccumulator::finish() noexcept {

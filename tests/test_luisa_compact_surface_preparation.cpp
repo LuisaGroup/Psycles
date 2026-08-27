@@ -324,7 +324,8 @@ struct FixtureProgram {
   return graph;
 }
 
-[[nodiscard]] ShaderGraph make_capacity_transparency_graph() {
+[[nodiscard]] ShaderGraph make_capacity_transparency_graph(
+    std::uint32_t prefix_count = 11u) {
     ShaderGraph graph;
     std::optional<NodeId> root;
     const auto append = [&](NodeId closure) {
@@ -345,7 +346,7 @@ struct FixtureProgram {
         root = add;
     };
 
-    for (auto index = 0u; index < 11u; ++index) {
+    for (auto index = 0u; index < prefix_count; ++index) {
         const auto diffuse = graph.add_node(
             node_type::diffuse_bsdf,
             "Capacity prefix diffuse");
@@ -413,6 +414,19 @@ struct FixtureProgram {
         }
         append(diffuse);
     }
+    // Once the capacity is full, a later transparent setup must still merge
+    // into the first transparent slot instead of requiring another slot.
+    const auto merged = graph.add_node(
+        node_type::transparent_bsdf,
+        "Post-capacity transparent merge");
+    if (!graph.set_input(
+            merged,
+            "Color",
+            SocketValue::color({0.11f, 0.07f, 0.05f}))) {
+        throw std::runtime_error{
+            "failed to configure post-capacity transparency"};
+    }
+    append(merged);
     if (!root) {
         throw std::runtime_error{"empty capacity graph"};
     }
@@ -1009,9 +1023,17 @@ int main(int argc, char **argv) {
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_nested_mix_replay_graph(!tail_fast_path)));
+    const auto capacity_transparency_topology =
+        static_cast<std::uint32_t>(fixtures.size());
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_capacity_transparency_graph()));
+    const auto exhausted_capacity_transparency_topology =
+        static_cast<std::uint32_t>(fixtures.size());
+    fixtures.emplace_back(compile_fixture(
+        compiler,
+        make_capacity_transparency_graph(
+            population_closure_capacity)));
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_transformed_emission_graph(
@@ -1982,6 +2004,79 @@ int main(int argc, char **argv) {
                 return EXIT_FAILURE;
             }
         }
+    }
+    // Formal transparent-allocation oracle for the capacity fixture:
+    // 11 diffuse records precede the first retained transparent record;
+    // sub-cutoff transparency is the identity element; two suffix diffuse
+    // records are rejected by capacity; a later allocated transparent record
+    // merges into slot 11 despite that full capacity. This checks source
+    // order, cutoff, count, in-place merge, and the matching AOV reduction
+    // independently of the expanded-vs-compact differential comparison.
+    const auto capacity_invocation =
+        first_invocation(capacity_transparency_topology);
+    const auto &transparent_record =
+        population_actual_closures[
+            capacity_invocation * population_closure_capacity + 11u];
+    constexpr auto merged_weight =
+        luisa::float3{0.34f, 0.26f, 0.22f};
+    constexpr auto merged_sample_weight =
+        (0.23f + 0.19f + 0.17f + 0.11f + 0.07f + 0.05f) /
+        3.0f;
+    constexpr auto transparent_tolerance = 2.0e-7f;
+    if (transparent_record.count != population_closure_capacity ||
+        transparent_record.index != 11u ||
+        transparent_record.type != cycles_closure::type_transparent ||
+        transparent_record.valid != 1u ||
+        !equal(
+            transparent_record.weight,
+            merged_weight,
+            transparent_tolerance) ||
+        std::abs(
+            transparent_record.sample_weight -
+            merged_sample_weight) > transparent_tolerance ||
+        !equal(
+            population_actual_preparation[capacity_invocation]
+                .transparency,
+            merged_weight,
+            transparent_tolerance)) {
+        std::cerr
+            << "single-pass transparent merge/cutoff invariant failed on "
+            << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    // Cycles updates closure_transparent_extinction and SD_TRANSPARENT before
+    // closure_alloc. With all 12 slots occupied by the diffuse prefix, no
+    // transparent record may be stored, but the setup identity and the full
+    // above-cutoff extinction sum remain observable by camera passes.
+    const auto exhausted_invocation =
+        first_invocation(exhausted_capacity_transparency_topology);
+    for (auto closure_index = 0u;
+         closure_index < population_closure_capacity;
+         ++closure_index) {
+        const auto &record = population_actual_closures[
+            exhausted_invocation * population_closure_capacity +
+            closure_index];
+        if (record.count != population_closure_capacity ||
+            record.valid != 1u ||
+            record.type == cycles_closure::type_transparent) {
+            std::cerr
+                << "capacity-exhausted transparency stored a closure on "
+                << backend << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+    const auto &exhausted_preparation =
+        population_actual_preparation[exhausted_invocation];
+    if (!equal(
+            exhausted_preparation.transparency,
+            merged_weight,
+            transparent_tolerance) ||
+        (exhausted_preparation.runtime_flags &
+         cycles_closure::runtime_transparent) == 0u) {
+        std::cerr
+            << "capacity-exhausted transparent setup state was lost on "
+            << backend << '\n';
+        return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }

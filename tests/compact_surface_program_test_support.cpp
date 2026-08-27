@@ -126,10 +126,13 @@ ShaderGraph make_nested_mix_replay_graph(bool restore_after) {
             {.node = inner_mix, .socket = "Closure"}, middle_mix, "A") &&
         graph.connect(
             {.node = glossy, .socket = "Closure"}, middle_mix, "B") &&
+        // Put transparency before the remaining physical tree. The compact
+        // population path must keep this source position without replaying
+        // the diffuse/glass/glossy suffix.
         graph.connect(
-            {.node = middle_mix, .socket = "Closure"}, outer_mix, "A") &&
+            {.node = transparent, .socket = "Closure"}, outer_mix, "A") &&
         graph.connect(
-            {.node = transparent, .socket = "Closure"}, outer_mix, "B");
+            {.node = middle_mix, .socket = "Closure"}, outer_mix, "B");
     auto root = outer_mix;
     if (restore_after) {
         const auto emission = graph.add_node(
