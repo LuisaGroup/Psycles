@@ -5,6 +5,7 @@
 #endif
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -147,6 +148,34 @@ struct LuisaPathTraceRequest {
     std::shared_ptr<LuisaPathTraceSink> sink;
 };
 
+// Hit-weighted diagnostic over the post-population ShaderData-equivalent
+// closure count. Cycles and Psycles both cap the retained surface closure
+// sequence at 64, so the map is injective: bin i records exactly count == i.
+// This is intentionally not a material census; one event is recorded for
+// every surface-shading invocation that reaches closure population.
+inline constexpr std::uint32_t luisa_surface_closure_count_histogram_max = 64u;
+inline constexpr std::size_t luisa_surface_closure_count_histogram_bin_count =
+    static_cast<std::size_t>(luisa_surface_closure_count_histogram_max) + 1u;
+
+struct LuisaSurfaceClosureCountHistogram {
+    std::array<std::uint64_t, luisa_surface_closure_count_histogram_bin_count> counts{};
+    // Device counters are four-way sharded IEEE-754 floats. `exact` is false
+    // if any shard reached the largest consecutive integer or contained an
+    // invalid/non-integral value; callers must then reject quantitative use.
+    bool exact{};
+};
+
+class LuisaSurfaceClosureCountHistogramSink {
+
+public:
+    virtual ~LuisaSurfaceClosureCountHistogramSink() noexcept = default;
+    virtual void write(const LuisaSurfaceClosureCountHistogram &histogram) = 0;
+};
+
+struct LuisaSurfaceClosureCountHistogramRequest {
+    std::shared_ptr<LuisaSurfaceClosureCountHistogramSink> sink;
+};
+
 struct LuisaPathTracerOptions {
     bool next_event_estimation{true};
     // Cycles' HIP kernels are compiled with fast math and explicitly select
@@ -230,6 +259,11 @@ struct LuisaPathTracerOptions {
     // Diagnostic-only, observational trace. The kernel writes this fixed
     // schema only for the requested full-film pixel and absolute sample.
     std::optional<LuisaPathTraceRequest> path_trace;
+    // Diagnostic-only, hit-weighted count distribution. Presence is a
+    // host/JIT specialization: production shaders contain neither the atomic
+    // write nor a device-side enable branch. The sink receives cumulative
+    // counts after each completed render_samples() call.
+    std::optional<LuisaSurfaceClosureCountHistogramRequest> surface_closure_count_histogram;
 };
 
 class LuisaPathTracerBackend final : public contract::RendererBackend {

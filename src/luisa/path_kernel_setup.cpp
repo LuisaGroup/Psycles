@@ -607,6 +607,40 @@ void PathSampleContext::trace_write_closure(UInt event,
     };
 }
 
+void PathSampleContext::record_surface_closure_count(
+    UInt count) const noexcept {
+    static_assert(
+        luisa_surface_closure_count_histogram_max ==
+        maximum_surface_closure_capacity);
+    const auto &config = invocation.config;
+    if (!config.surface_closure_count_histogram_enabled) {
+        return;
+    }
+
+    // Four independent float lanes preserve exact unit increments up to four
+    // times the IEEE-754 consecutive-integer range per bin. The lane map is a
+    // deterministic projection of the logical (pixel, sample) identity; host
+    // chunking and scheduler order can only permute atomic arrival order and
+    // therefore cannot change the lane sums.
+    const auto bin = min(
+        count, luisa_surface_closure_count_histogram_max);
+    const auto lane = (invocation.pixel + sample_index) & 3u;
+    auto destination = invocation.path_trace.atomic(
+        config.surface_closure_count_histogram_base + bin);
+    $if (lane == 0u) {
+        destination.x.fetch_add(1.0f);
+    }
+    $elif (lane == 1u) {
+        destination.y.fetch_add(1.0f);
+    }
+    $elif (lane == 2u) {
+        destination.z.fetch_add(1.0f);
+    }
+    $else {
+        destination.w.fetch_add(1.0f);
+    };
+}
+
 PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
                                     const UInt &sample_offset) noexcept {
     const auto &sample_first = invocation.sample_first;

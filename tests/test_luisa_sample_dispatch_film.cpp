@@ -207,14 +207,33 @@ public:
     }
 };
 
+class ClosureHistogramSink final
+    : public psycles::luisa_backend::
+          LuisaSurfaceClosureCountHistogramSink {
+
+public:
+    std::optional<psycles::luisa_backend::
+                      LuisaSurfaceClosureCountHistogram>
+        histogram;
+
+    void write(
+        const psycles::luisa_backend::
+            LuisaSurfaceClosureCountHistogram &value) override {
+        histogram = value;
+    }
+};
+
 struct RenderResult {
     psycles::io::MemoryOutputSink output;
   std::optional<psycles::luisa_backend::LuisaPathTrace> trace;
+  std::optional<psycles::luisa_backend::
+                    LuisaSurfaceClosureCountHistogram>
+      closure_histogram;
 };
 
 [[nodiscard]] std::optional<RenderResult>
 render(luisa::compute::Context &context, std::string_view backend,
-    psycles::luisa_backend::LuisaPathScheduler scheduler,
+       psycles::luisa_backend::LuisaPathScheduler scheduler,
        std::uint32_t samples_per_dispatch, bool split_request,
        bool staged_surface_sorting = true, bool path_trace_enabled = true,
        bool staged_direct_light_queue = false,
@@ -222,10 +241,15 @@ render(luisa::compute::Context &context, std::string_view backend,
            psycles::luisa_backend::luisa_wavefront_auto_tail_threshold,
        std::uint32_t wavefront_counter_readback_batch_size = 4u,
        std::uint32_t wavefront_counter_readback_pipeline_depth = 2u,
-       std::uint32_t wavefront_frame_capacity = 128u) {
+       std::uint32_t wavefront_frame_capacity = 128u,
+       bool closure_histogram_enabled = false) {
     auto device = context.create_device(backend);
   auto trace_sink = path_trace_enabled ? std::make_shared<TraceSink>()
                                        : std::shared_ptr<TraceSink>{};
+  auto closure_histogram_sink =
+      closure_histogram_enabled
+          ? std::make_shared<ClosureHistogramSink>()
+          : std::shared_ptr<ClosureHistogramSink>{};
   const auto trace_request =
       trace_sink
           ? std::optional{psycles::luisa_backend::LuisaPathTraceRequest{
@@ -234,35 +258,45 @@ render(luisa::compute::Context &context, std::string_view backend,
                 .sample = traced_sample,
                 .sink = trace_sink}}
           : std::optional<psycles::luisa_backend::LuisaPathTraceRequest>{};
-    psycles::luisa_backend::LuisaPathTracerBackend renderer{
-        std::move(device),
-        {.next_event_estimation = true,
-         .scheduler = scheduler,
-         .wavefront_frame_capacity = wavefront_frame_capacity,
-         .wavefront_graph_worker_count = 5u,
-         .wavefront_graph_selective_scheduling =
-             scheduler ==
-             psycles::luisa_backend::LuisaPathScheduler::wavefront_graph,
-         .wavefront_counter_readback_batch_size =
-             wavefront_counter_readback_batch_size,
-         .wavefront_counter_readback_pipeline_depth =
-             wavefront_counter_readback_pipeline_depth,
-         .wavefront_tail_megakernel_threshold =
-             wavefront_tail_megakernel_threshold,
-         .staged_surface_sorting = staged_surface_sorting,
+  std::optional<psycles::luisa_backend::
+                    LuisaSurfaceClosureCountHistogramRequest>
+      closure_histogram_request;
+  if (closure_histogram_sink) {
+    closure_histogram_request = psycles::luisa_backend::
+        LuisaSurfaceClosureCountHistogramRequest{
+            .sink = closure_histogram_sink};
+  }
+  psycles::luisa_backend::LuisaPathTracerBackend renderer{
+      std::move(device),
+      {.next_event_estimation = true,
+       .scheduler = scheduler,
+       .wavefront_frame_capacity = wavefront_frame_capacity,
+       .wavefront_graph_worker_count = 5u,
+       .wavefront_graph_selective_scheduling =
+           scheduler ==
+           psycles::luisa_backend::LuisaPathScheduler::wavefront_graph,
+       .wavefront_counter_readback_batch_size =
+           wavefront_counter_readback_batch_size,
+       .wavefront_counter_readback_pipeline_depth =
+           wavefront_counter_readback_pipeline_depth,
+       .wavefront_tail_megakernel_threshold =
+           wavefront_tail_megakernel_threshold,
+       .staged_surface_sorting = staged_surface_sorting,
        .staged_direct_light_queue = staged_direct_light_queue,
-         .persistent_worker_count = 128u,
-         .persistent_block_size = 64u,
-         .persistent_fetch_size = 4u,
-         .max_samples_per_dispatch = samples_per_dispatch,
-       .path_trace = trace_request}};
-    auto compilation = renderer.compile_scene(make_scene());
-    if (!compilation.ok()) {
-        for (const auto &diagnostic : compilation.diagnostics) {
-            std::cerr << diagnostic.message << '\n';
-        }
-        return std::nullopt;
-    }
+       .persistent_worker_count = 128u,
+       .persistent_block_size = 64u,
+       .persistent_fetch_size = 4u,
+       .max_samples_per_dispatch = samples_per_dispatch,
+       .path_trace = trace_request,
+       .surface_closure_count_histogram =
+           closure_histogram_request}};
+  auto compilation = renderer.compile_scene(make_scene());
+  if (!compilation.ok()) {
+      for (const auto &diagnostic : compilation.diagnostics) {
+          std::cerr << diagnostic.message << '\n';
+      }
+      return std::nullopt;
+  }
   auto session = renderer.create_session(*compilation.scene, make_settings());
     if (!session) {
         return std::nullopt;
@@ -291,9 +325,18 @@ render(luisa::compute::Context &context, std::string_view backend,
   if (trace_sink && !trace_sink->trace) {
         return std::nullopt;
     }
-  return RenderResult{.output = std::move(output),
-                      .trace = trace_sink ? std::move(trace_sink->trace)
-                                          : std::nullopt};
+    if (closure_histogram_sink && !closure_histogram_sink->histogram) {
+        return std::nullopt;
+    }
+    return RenderResult{.output = std::move(output),
+                        .trace = trace_sink
+                                     ? std::move(trace_sink->trace)
+                                     : std::nullopt,
+                        .closure_histogram =
+                            closure_histogram_sink
+                                ? std::move(
+                                      closure_histogram_sink->histogram)
+                                : std::nullopt};
 }
 
 [[nodiscard]] bool same_bits(float lhs, float rhs) noexcept {
@@ -407,6 +450,38 @@ render(luisa::compute::Context &context, std::string_view backend,
     return true;
 }
 
+[[nodiscard]] bool validate_closure_histograms(
+    const RenderResult &single_request,
+    const RenderResult &split_request) {
+    if (!single_request.closure_histogram ||
+        !split_request.closure_histogram) {
+        std::cerr << "surface closure histogram is missing\n";
+        return false;
+    }
+    const auto &expected = *single_request.closure_histogram;
+    const auto &actual = *split_request.closure_histogram;
+    if (!expected.exact || !actual.exact ||
+        expected.counts != actual.counts) {
+        std::cerr << "surface closure histogram changed across sample "
+                     "chunking\n";
+        return false;
+    }
+    auto total = std::uint64_t{0u};
+    for (const auto count : expected.counts) {
+        total += count;
+    }
+    constexpr auto expected_surface_events =
+        static_cast<std::uint64_t>(width) * height * sample_count;
+    if (total != expected_surface_events ||
+        expected.counts[3u] != expected_surface_events) {
+        std::cerr << "surface closure histogram did not record exactly one "
+                     "three-closure event per (pixel, sample): total "
+                  << total << ", count-3 " << expected.counts[3u] << '\n';
+        return false;
+    }
+    return true;
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -430,7 +505,9 @@ int main(int argc, char **argv) {
   const auto per_sample =
       render(context, backend,
              psycles::luisa_backend::LuisaPathScheduler::megakernel_per_sample,
-             sample_count, false);
+             sample_count, false, true, true, false,
+             psycles::luisa_backend::luisa_wavefront_auto_tail_threshold, 4u,
+             2u, 128u, true);
   // Same atomic per-(pixel,sample) film topology as the deferred shadow
   // coroutine below, but without coroutine cuts. This isolates the semantic
   // effect of moving BSDF continuation construction before the shadow state
@@ -442,8 +519,10 @@ int main(int argc, char **argv) {
   const auto chunked =
       render(context, backend,
              psycles::luisa_backend::LuisaPathScheduler::megakernel_per_sample,
-             sample_count, true);
-    const auto wavefront = render(
+             sample_count, true, true, true, false,
+             psycles::luisa_backend::luisa_wavefront_auto_tail_threshold, 4u,
+             2u, 128u, true);
+  const auto wavefront = render(
       context, backend, psycles::luisa_backend::LuisaPathScheduler::wavefront,
       sample_count, false);
   const auto graph_wavefront =
@@ -492,39 +571,40 @@ int main(int argc, char **argv) {
       context, backend, psycles::luisa_backend::LuisaPathScheduler::persistent,
       sample_count, false);
     if (!reference || !deterministic || !single_plane || !per_sample ||
-      !per_sample_no_trace || !chunked || !wavefront || !graph_wavefront ||
-      !graph_wavefront_tail || !staged_wavefront ||
-      !staged_wavefront_unsorted || !staged_direct_inline ||
-      !staged_direct_queued || !staged_direct_queued_chunked ||
-      !staged_direct_queued_small_capacity || !persistent ||
+        !per_sample_no_trace || !chunked || !wavefront || !graph_wavefront ||
+        !graph_wavefront_tail || !staged_wavefront ||
+        !staged_wavefront_unsorted || !staged_direct_inline ||
+        !staged_direct_queued || !staged_direct_queued_chunked ||
+        !staged_direct_queued_small_capacity || !persistent ||
         !validate_reference(*reference) ||
-      !compare_outputs(*reference, *deterministic, true,
-            "deterministic serial chunking") ||
-      !compare_outputs(*reference, *single_plane, false,
-            "single-plane atomic dispatch") ||
-      !compare_outputs(*reference, *per_sample, false,
-            "batched per-sample dispatch") ||
-      !compare_outputs(*reference, *chunked, false,
-            "chunked per-sample dispatch") ||
-      !compare_outputs(*per_sample_no_trace, *staged_direct_inline, false,
-                       "deferred shadow after surface continuation") ||
-      !compare_outputs(*reference, *wavefront, false, "wavefront dispatch") ||
-      !compare_outputs(*reference, *graph_wavefront, false,
-                       "graph wavefront dispatch") ||
-      !compare_outputs(*reference, *graph_wavefront_tail, false,
-                       "graph wavefront tail dispatch") ||
-      !compare_outputs(*reference, *staged_wavefront, false,
-            "staged wavefront dispatch") ||
-      !compare_outputs(*reference, *staged_wavefront_unsorted, false,
-            "staged wavefront dispatch without surface sorting") ||
-      !compare_outputs(*staged_direct_inline, *staged_direct_queued, false,
-                       "queued direct-light visibility") ||
-      !compare_outputs(*staged_direct_inline, *staged_direct_queued_chunked,
-                       false, "chunked queued direct-light visibility") ||
-      !compare_outputs(*staged_direct_inline,
-                       *staged_direct_queued_small_capacity, false,
-                       "small-capacity queued direct-light visibility") ||
-      !compare_outputs(*reference, *persistent, false, "persistent dispatch")) {
+        !compare_outputs(*reference, *deterministic, true,
+                         "deterministic serial chunking") ||
+        !compare_outputs(*reference, *single_plane, false,
+                         "single-plane atomic dispatch") ||
+        !compare_outputs(*reference, *per_sample, false,
+                         "batched per-sample dispatch") ||
+        !compare_outputs(*reference, *chunked, false,
+                         "chunked per-sample dispatch") ||
+        !validate_closure_histograms(*per_sample, *chunked) ||
+        !compare_outputs(*per_sample_no_trace, *staged_direct_inline, false,
+                         "deferred shadow after surface continuation") ||
+        !compare_outputs(*reference, *wavefront, false, "wavefront dispatch") ||
+        !compare_outputs(*reference, *graph_wavefront, false,
+                         "graph wavefront dispatch") ||
+        !compare_outputs(*reference, *graph_wavefront_tail, false,
+                         "graph wavefront tail dispatch") ||
+        !compare_outputs(*reference, *staged_wavefront, false,
+                         "staged wavefront dispatch") ||
+        !compare_outputs(*reference, *staged_wavefront_unsorted, false,
+                         "staged wavefront dispatch without surface sorting") ||
+        !compare_outputs(*staged_direct_inline, *staged_direct_queued, false,
+                         "queued direct-light visibility") ||
+        !compare_outputs(*staged_direct_inline, *staged_direct_queued_chunked,
+                         false, "chunked queued direct-light visibility") ||
+        !compare_outputs(*staged_direct_inline,
+                         *staged_direct_queued_small_capacity, false,
+                         "small-capacity queued direct-light visibility") ||
+        !compare_outputs(*reference, *persistent, false, "persistent dispatch")) {
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;

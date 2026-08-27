@@ -67,6 +67,29 @@ public:
     }
 };
 
+class MemorySurfaceClosureCountHistogramSink final
+    : public psycles::luisa_backend::
+          LuisaSurfaceClosureCountHistogramSink {
+
+private:
+    std::optional<psycles::luisa_backend::
+                      LuisaSurfaceClosureCountHistogram>
+        _histogram;
+
+public:
+    void write(
+        const psycles::luisa_backend::
+            LuisaSurfaceClosureCountHistogram &histogram) override {
+        _histogram = histogram;
+    }
+
+    [[nodiscard]] const std::optional<
+        psycles::luisa_backend::LuisaSurfaceClosureCountHistogram> &
+    histogram() const noexcept {
+        return _histogram;
+    }
+};
+
 [[nodiscard]] bool
 write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
     const std::filesystem::path &path) {
@@ -98,6 +121,45 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
     if (!written) {
     std::cerr << "error: could not write path trace JSON: "
               << (error.msg != nullptr ? error.msg : "unknown error") << '\n';
+    }
+    yyjson_mut_doc_free(document);
+    return written;
+}
+
+[[nodiscard]] bool write_surface_closure_count_histogram(
+    const psycles::luisa_backend::LuisaSurfaceClosureCountHistogram
+        &histogram,
+    const std::filesystem::path &path) {
+    auto *document = yyjson_mut_doc_new(nullptr);
+    if (document == nullptr) {
+        return false;
+    }
+    auto *root = yyjson_mut_obj(document);
+    yyjson_mut_doc_set_root(document, root);
+    yyjson_mut_obj_add_str(
+        document, root, "schema",
+        "psycles.surface-closure-count-histogram.v1");
+    yyjson_mut_obj_add_bool(document, root, "exact", histogram.exact);
+    auto total = std::uint64_t{0u};
+    auto *bins = yyjson_mut_arr(document);
+    for (auto count = std::size_t{0u};
+         count < histogram.counts.size(); ++count) {
+        auto *bin = yyjson_mut_obj(document);
+        yyjson_mut_obj_add_uint(document, bin, "closure_count", count);
+        yyjson_mut_obj_add_uint(
+            document, bin, "surface_events", histogram.counts[count]);
+        yyjson_mut_arr_add_val(bins, bin);
+        total += histogram.counts[count];
+    }
+    yyjson_mut_obj_add_uint(document, root, "surface_events", total);
+    yyjson_mut_obj_add_val(document, root, "bins", bins);
+    yyjson_write_err error{};
+    const auto written = yyjson_mut_write_file(
+        path.string().c_str(), document, YYJSON_WRITE_PRETTY, nullptr, &error);
+    if (!written) {
+        std::cerr << "error: could not write surface closure histogram: "
+                  << (error.msg != nullptr ? error.msg : "unknown error")
+                  << '\n';
     }
     yyjson_mut_doc_free(document);
     return written;
@@ -156,31 +218,32 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-    std::cerr << "usage: psycles_render_blender_scene "
-               "<export-directory> <output.ppm> "
-               "[backend=fallback] [width] [height] [samples] "
-               "[max-samples-per-dispatch=64] "
-               "[path-trace.json|-] [trace-x] [trace-y] "
-               "[trace-sample=0] [sample-first=0] "
-               "[sample-count=samples-sample-first] "
-               "[sample-chunk-pixel.json|-] "
-               "[probe-chunk-size=1] [probe-full-frame=0] "
-                 "[scheduler=megakernel|megakernel-per-sample|wavefront|"
-                 "wavefront-graph|wavefront-staged|persistent] "
-               "[wavefront-execution-block-size=32] "
-               "[persistent-workers=32768] "
-               "[persistent-block-size=32] "
-               "[persistent-fetch-size=1] "
-                 "[staged-surface-sorting=1] "
-                 "[staged-direct-light-queue=0] "
-                 "[wavefront-counter-readback-batch-size=4] "
-                 "[wavefront-counter-readback-pipeline-depth=2] "
-                 "[wavefront-tail-megakernel-threshold=auto] "
-                 "[wavefront-graph-worker-count=0] "
-                 "[wavefront-graph-selective=0] "
-                 "[wavefront-graph-refill-threshold=0] "
-                 "[fast-math=1] "
-                 "[wavefront-frame-capacity=1048576]\n";
+        std::cerr << "usage: psycles_render_blender_scene "
+                     "<export-directory> <output.ppm> "
+                     "[backend=fallback] [width] [height] [samples] "
+                     "[max-samples-per-dispatch=64] "
+                     "[path-trace.json|-] [trace-x] [trace-y] "
+                     "[trace-sample=0] [sample-first=0] "
+                     "[sample-count=samples-sample-first] "
+                     "[sample-chunk-pixel.json|-] "
+                     "[probe-chunk-size=1] [probe-full-frame=0] "
+                     "[scheduler=megakernel|megakernel-per-sample|wavefront|"
+                     "wavefront-graph|wavefront-staged|persistent] "
+                     "[wavefront-execution-block-size=32] "
+                     "[persistent-workers=32768] "
+                     "[persistent-block-size=32] "
+                     "[persistent-fetch-size=1] "
+                     "[staged-surface-sorting=1] "
+                     "[staged-direct-light-queue=0] "
+                     "[wavefront-counter-readback-batch-size=4] "
+                     "[wavefront-counter-readback-pipeline-depth=2] "
+                     "[wavefront-tail-megakernel-threshold=auto] "
+                     "[wavefront-graph-worker-count=0] "
+                     "[wavefront-graph-selective=0] "
+                     "[wavefront-graph-refill-threshold=0] "
+                     "[fast-math=1] "
+                     "[wavefront-frame-capacity=1048576] "
+                     "[surface-closure-count-histogram.json|-]\n";
         return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -465,6 +528,15 @@ int main(int argc, char **argv) {
     }
     wavefront_frame_capacity = *value;
   }
+  std::optional<std::filesystem::path>
+      surface_closure_count_histogram_output;
+  if (argc > 32 && std::string_view{argv[32]} != "-") {
+      surface_closure_count_histogram_output =
+          std::filesystem::path{argv[32]};
+      if (surface_closure_count_histogram_output->empty()) {
+          return EXIT_FAILURE;
+      }
+  }
   if (!psycles::luisa_backend::valid_luisa_persistent_scheduler_shape(
           persistent_worker_count, persistent_block_size,
                 persistent_fetch_size)) {
@@ -475,6 +547,10 @@ int main(int argc, char **argv) {
   auto path_trace_sink = path_trace_output
             ? std::make_shared<MemoryPathTraceSink>()
             : std::shared_ptr<MemoryPathTraceSink>{};
+  auto surface_closure_count_histogram_sink =
+      surface_closure_count_histogram_output
+          ? std::make_shared<MemorySurfaceClosureCountHistogramSink>()
+          : std::shared_ptr<MemorySurfaceClosureCountHistogramSink>{};
   std::optional<psycles::luisa_backend::LuisaPathTraceRequest>
         path_trace_request;
     if (path_trace_sink) {
@@ -484,6 +560,14 @@ int main(int argc, char **argv) {
                 .sample = path_trace_sample,
                 .sink = path_trace_sink};
     }
+  std::optional<psycles::luisa_backend::
+                    LuisaSurfaceClosureCountHistogramRequest>
+      surface_closure_count_histogram_request;
+  if (surface_closure_count_histogram_sink) {
+    surface_closure_count_histogram_request =
+        psycles::luisa_backend::LuisaSurfaceClosureCountHistogramRequest{
+            .sink = surface_closure_count_histogram_sink};
+  }
 
     enforce_vulkan_native_xir_spirv(backend_name);
     luisa::compute::Context context{argv[0]};
@@ -493,25 +577,27 @@ int main(int argc, char **argv) {
         {.next_event_estimation = true,
          .enable_fast_math = enable_fast_math,
          .scheduler = scheduler,
-       .wavefront_frame_capacity = wavefront_frame_capacity,
-       .wavefront_execution_block_size = wavefront_execution_block_size,
-       .wavefront_graph_worker_count = wavefront_graph_worker_count,
-       .wavefront_graph_selective_scheduling = wavefront_graph_selective,
-       .wavefront_graph_refill_threshold =
-           wavefront_graph_refill_threshold,
-       .wavefront_counter_readback_batch_size =
-           wavefront_counter_readback_batch_size,
-       .wavefront_counter_readback_pipeline_depth =
-           wavefront_counter_readback_pipeline_depth,
-       .wavefront_tail_megakernel_threshold =
-           wavefront_tail_megakernel_threshold,
-       .staged_surface_sorting = staged_surface_sorting,
-       .staged_direct_light_queue = staged_direct_light_queue,
+         .wavefront_frame_capacity = wavefront_frame_capacity,
+         .wavefront_execution_block_size = wavefront_execution_block_size,
+         .wavefront_graph_worker_count = wavefront_graph_worker_count,
+         .wavefront_graph_selective_scheduling = wavefront_graph_selective,
+         .wavefront_graph_refill_threshold =
+             wavefront_graph_refill_threshold,
+         .wavefront_counter_readback_batch_size =
+             wavefront_counter_readback_batch_size,
+         .wavefront_counter_readback_pipeline_depth =
+             wavefront_counter_readback_pipeline_depth,
+         .wavefront_tail_megakernel_threshold =
+             wavefront_tail_megakernel_threshold,
+         .staged_surface_sorting = staged_surface_sorting,
+         .staged_direct_light_queue = staged_direct_light_queue,
          .persistent_worker_count = persistent_worker_count,
          .persistent_block_size = persistent_block_size,
          .persistent_fetch_size = persistent_fetch_size,
-       .max_samples_per_dispatch = max_samples_per_dispatch,
-         .path_trace = path_trace_request}};
+         .max_samples_per_dispatch = max_samples_per_dispatch,
+         .path_trace = path_trace_request,
+         .surface_closure_count_histogram =
+             surface_closure_count_histogram_request}};
     const auto compile_begin = std::chrono::steady_clock::now();
     auto compilation = renderer.compile_scene(*imported.scene);
     if (!compilation.ok()) {
@@ -609,6 +695,23 @@ int main(int argc, char **argv) {
       std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                     session_begin)
             .count();
+    const auto write_surface_closure_histogram_if_requested = [&]() {
+        if (!surface_closure_count_histogram_output) {
+            return true;
+        }
+        if (!surface_closure_count_histogram_sink->histogram()) {
+            std::cerr << "error: requested surface closure histogram was not "
+                         "produced\n";
+            return false;
+        }
+        if (!surface_closure_count_histogram_output->parent_path().empty()) {
+            std::filesystem::create_directories(
+                surface_closure_count_histogram_output->parent_path());
+        }
+        return write_surface_closure_count_histogram(
+            *surface_closure_count_histogram_sink->histogram(),
+            *surface_closure_count_histogram_output);
+    };
     if (sample_chunk_output) {
         const auto raster_y = height - 1u - path_trace_y;
     psycles::io::PixelOutputSink pixel_sink{path_trace_x, raster_y};
@@ -664,6 +767,9 @@ int main(int argc, char **argv) {
                 return EXIT_FAILURE;
             }
         }
+        if (!write_surface_closure_histogram_if_requested()) {
+            return EXIT_FAILURE;
+        }
         const auto render_seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                       render_begin)
@@ -703,6 +809,9 @@ int main(int argc, char **argv) {
     if (!write_raw_path_trace(*path_trace_sink->trace(), *path_trace_output)) {
             return EXIT_FAILURE;
         }
+    }
+    if (!write_surface_closure_histogram_if_requested()) {
+        return EXIT_FAILURE;
     }
     const auto render_seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() -
@@ -778,25 +887,26 @@ int main(int argc, char **argv) {
     }
 #endif
 
-  std::cout << "Luisa/" << backend_name << '/'
-            << psycles::luisa_backend::luisa_path_scheduler_name(scheduler)
-            << " compiled " << imported.scene->geometries.size()
-            << " geometries, " << imported.scene->instances.size()
-            << " instances, " << imported.scene->materials.size()
-            << " materials in " << compile_seconds << " s\n"
-            << "Luisa shader JIT completed in " << session_seconds << " s\n"
-            << "Rendered " << width << 'x' << height << " at " << sample_count
-            << " spp from absolute sample range [" << sample_first << ", "
-            << sample_first + sample_count << ") of " << samples << " in "
-            << render_seconds << " s: " << output << '\n'
-        << "Linear Combined: " << combined_path << '\n'
-        << "Linear Normal:   " << normal_path << '\n'
-        << "Linear Albedo:   " << albedo_path << '\n'
-        << (path_trace_output
-                    ? "Path trace:      " + path_trace_output->string() + "\n"
-                : std::string{})
+    std::cout << "Luisa/" << backend_name << '/'
+              << psycles::luisa_backend::luisa_path_scheduler_name(scheduler)
+              << " compiled " << imported.scene->geometries.size()
+              << " geometries, " << imported.scene->instances.size()
+              << " instances, " << imported.scene->materials.size()
+              << " materials in " << compile_seconds << " s\n"
+              << "Luisa shader JIT completed in " << session_seconds << " s\n"
+              << "Rendered " << width << 'x' << height << " at " << sample_count
+              << " spp from absolute sample range [" << sample_first << ", "
+              << sample_first + sample_count << ") of " << samples << " in "
+              << render_seconds << " s: " << output << '\n'
+              << "Linear Combined: " << combined_path << '\n'
+              << "Linear Normal:   " << normal_path << '\n'
+              << "Linear Albedo:   " << albedo_path << '\n'
+              << (path_trace_output ? "Path trace:      " + path_trace_output->string() + "\n" : std::string{})
+              << (surface_closure_count_histogram_output ? "Closure histogram: " +
+                                                               surface_closure_count_histogram_output->string() + "\n" :
+                                                           std::string{})
 #if defined(PSYCLES_WITH_OPENIMAGEIO)
-        << "Multilayer EXR:  " << exr_path << '\n'
+              << "Multilayer EXR:  " << exr_path << '\n'
 #endif
         ;
     return EXIT_SUCCESS;

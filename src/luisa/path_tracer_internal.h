@@ -53,6 +53,16 @@
 
 namespace psycles::luisa_backend::detail {
 
+struct PathDiagnosticBufferLayout {
+    std::size_t path_trace_slot_count{};
+    std::size_t surface_closure_count_histogram_base{};
+    std::size_t surface_closure_count_histogram_slot_count{};
+    std::size_t allocation_slot_count{};
+};
+
+[[nodiscard]] PathDiagnosticBufferLayout path_diagnostic_buffer_layout(
+    const LuisaPathTracerOptions &options) noexcept;
+
 namespace cycles_sampler =
     ::psycles::luisa_backend::cycles_sampler;
 namespace tabulated_sobol =
@@ -603,6 +613,7 @@ private:
     void initialize(const RenderSettings &settings);
     [[nodiscard]] bool write_passes(contract::OutputSink &output);
     void deliver_path_trace();
+    void deliver_surface_closure_count_histogram();
 
 public:
     LuisaRenderSession(

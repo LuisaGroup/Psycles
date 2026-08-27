@@ -107,6 +107,11 @@ class PopulatedSurfaceShader {
   public:
     virtual ~PopulatedSurfaceShader() noexcept = default;
 
+    // Number of entries in the retained ShaderData-equivalent closure
+    // prefix. This observes the already-populated arena and never replays the
+    // graph or substitutes a static material count.
+    [[nodiscard]] virtual Expr<std::uint32_t>
+    closure_count() const noexcept = 0;
     [[nodiscard]] virtual SurfacePreparation preparation() const noexcept = 0;
     [[nodiscard]] virtual SurfaceEvaluation evaluate_light(
         Expr<luisa::float3> outgoing,
