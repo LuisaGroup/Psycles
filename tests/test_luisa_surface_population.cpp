@@ -710,5 +710,48 @@ int main(int argc, char **argv) {
             return EXIT_FAILURE;
         }
     }
+
+    // Scenario 6 requests closure index 6, which is outside both retained
+    // physical closure arrays. This is a focused regression for staged
+    // block_0 access: an unchecked safe-index load may provide expressions,
+    // but the public trace must project every invalid field to the canonical
+    // zero closure rather than leak slot 0 through the validity predicate.
+    constexpr auto invalid_requested_scenario = 6u;
+    for (auto material = 0u; material < material_count; ++material) {
+        const auto invocation =
+            material * scenario_count + invalid_requested_scenario;
+        const auto base = invocation * ResultLayout::count;
+        const auto meta =
+            populated[base + ResultLayout::closure_meta];
+        const auto weight =
+            populated[base + ResultLayout::closure_weight];
+        const auto normal =
+            populated[base + ResultLayout::closure_normal];
+        const auto canonical =
+            approximately_equal(
+                meta,
+                luisa::float4{
+                    static_cast<float>(invalid_requested_scenario),
+                    0.0f,
+                    0.0f,
+                    0.0f}) &&
+            approximately_equal(
+                weight,
+                luisa::float4{0.0f, 0.0f, 0.0f, weight.w}) &&
+            approximately_equal(
+                normal,
+                luisa::float4{0.0f, 0.0f, 1.0f, 0.0f});
+        if (!canonical) {
+            std::cerr
+                << "invalid physical closure trace was not canonical on "
+                << backend << " for material " << material
+                << ": meta {" << meta.x << ", " << meta.y << ", "
+                << meta.z << ", " << meta.w << "}, weight {"
+                << weight.x << ", " << weight.y << ", " << weight.z
+                << "}, normal {" << normal.x << ", " << normal.y
+                << ", " << normal.z << "}\n";
+            return EXIT_FAILURE;
+        }
+    }
     return EXIT_SUCCESS;
 }
