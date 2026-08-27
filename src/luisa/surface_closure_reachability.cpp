@@ -50,7 +50,9 @@ operation_bit(compiler::ClosureOperation operation) noexcept {
 
 SurfaceClosureReachability
 reachable_surface_closures(std::uint32_t closure_operations,
-                           std::uint32_t principled_features) noexcept {
+                           std::uint32_t principled_features,
+                           std::uint32_t anisotropic_closure_operations,
+                           std::uint32_t anisotropic_principled_features) noexcept {
     static_assert(
         static_cast<std::uint32_t>(compiler::ClosureOperation::refraction) < 32u);
     static_assert(static_cast<std::uint32_t>(
@@ -58,8 +60,19 @@ reachable_surface_closures(std::uint32_t closure_operations,
     static_assert(static_cast<std::uint32_t>(SurfaceClosureLobe::dielectric) <
                   32u);
 
+    constexpr auto anisotropic_operation_mask =
+        operation_bit(compiler::ClosureOperation::principled) |
+        operation_bit(compiler::ClosureOperation::glossy);
     if ((closure_operations & ~known_operation_mask()) != 0u ||
-        (principled_features & ~known_principled_feature_mask()) != 0u) {
+        (principled_features & ~known_principled_feature_mask()) != 0u ||
+        (anisotropic_closure_operations & ~anisotropic_operation_mask) != 0u ||
+        (anisotropic_closure_operations & ~closure_operations) != 0u ||
+        (anisotropic_principled_features &
+         ~known_principled_feature_mask()) != 0u ||
+        (anisotropic_principled_features & ~principled_features) != 0u ||
+        (anisotropic_principled_features != 0u &&
+         (anisotropic_closure_operations &
+          operation_bit(compiler::ClosureOperation::principled)) == 0u)) {
         return all_surface_closure_reachability;
     }
 
@@ -76,6 +89,17 @@ reachable_surface_closures(std::uint32_t closure_operations,
         return (principled_features & principled_closure_feature_bit(feature)) !=
                0u;
     };
+    const auto has_anisotropic_operation =
+        [anisotropic_closure_operations](ClosureOperation operation) noexcept {
+            return (anisotropic_closure_operations & operation_bit(operation)) !=
+                   0u;
+        };
+    const auto has_anisotropic_principled_feature =
+        [anisotropic_principled_features](
+            PrincipledClosureFeature feature) noexcept {
+            return (anisotropic_principled_features &
+                    principled_closure_feature_bit(feature)) != 0u;
+        };
     const auto add_kind = [&result](SurfaceClosureKind kind) noexcept {
         result.kinds |= surface_closure_kind_bit(kind);
     };
@@ -93,6 +117,10 @@ reachable_surface_closures(std::uint32_t closure_operations,
     }
     if (has_operation(ClosureOperation::glossy)) {
         add_kind(SurfaceClosureKind::glossy);
+        if (has_anisotropic_operation(ClosureOperation::glossy)) {
+            result.anisotropic_microfacet_kinds |=
+                surface_closure_kind_bit(SurfaceClosureKind::glossy);
+        }
     }
     if (has_operation(ClosureOperation::glass)) {
         add_kind(SurfaceClosureKind::glass);
@@ -119,6 +147,11 @@ reachable_surface_closures(std::uint32_t closure_operations,
     }
     if (has_feature(PrincipledClosureFeature::metallic)) {
         add_principled_lobe(SurfaceClosureLobe::metallic);
+        if (has_anisotropic_principled_feature(
+                PrincipledClosureFeature::metallic)) {
+            result.anisotropic_microfacet_kinds |=
+                surface_closure_kind_bit(SurfaceClosureKind::principled);
+        }
     }
     if (has_feature(PrincipledClosureFeature::thick_transmission)) {
         add_kind(SurfaceClosureKind::glass);
@@ -130,6 +163,11 @@ reachable_surface_closures(std::uint32_t closure_operations,
     }
     if (has_feature(PrincipledClosureFeature::dielectric)) {
         add_principled_lobe(SurfaceClosureLobe::dielectric);
+        if (has_anisotropic_principled_feature(
+                PrincipledClosureFeature::dielectric)) {
+            result.anisotropic_microfacet_kinds |=
+                surface_closure_kind_bit(SurfaceClosureKind::principled);
+        }
     }
     if (has_feature(PrincipledClosureFeature::thick_subsurface)) {
         add_kind(SurfaceClosureKind::bssrdf);

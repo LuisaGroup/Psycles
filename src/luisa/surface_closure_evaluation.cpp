@@ -31,7 +31,10 @@ inline constexpr auto evaluation_general_payload_reachability =
                  surface_closure_kind_bit(SurfaceClosureKind::glossy) |
                  surface_closure_kind_bit(
                      SurfaceClosureKind::thin_glass_transmission),
-        .principled_lobes = all_surface_closure_lobes};
+        .principled_lobes = all_surface_closure_lobes,
+        .anisotropic_microfacet_kinds =
+            surface_closure_kind_bit(SurfaceClosureKind::principled) |
+            surface_closure_kind_bit(SurfaceClosureKind::glossy)};
 
 inline constexpr auto evaluation_dielectric_payload_reachability =
     SurfaceClosureReachability{
@@ -361,7 +364,11 @@ evaluate_general_closure(
                     incoming,
                     outgoing,
                     glossy_normal,
-                    query.glossy_filter_roughness);
+                    query.glossy_filter_roughness,
+                    reachability.contains_anisotropic_microfacet(
+                        SurfaceClosureKind::principled) ||
+                        reachability.contains_anisotropic_microfacet(
+                            SurfaceClosureKind::glossy));
                 const auto pdf = select(
                     0.0f, evaluation.pdf, bump_pdf_valid);
                 const auto value =
@@ -376,9 +383,7 @@ evaluate_general_closure(
                 result.total_sample_weight = weight;
                 result.weighted_pdf = weighted_pdf;
                 result.weighted_roughness_squared =
-                    weighted_pdf *
-                    detail::microfacet_specular_roughness_squared(
-                        closure, query.glossy_filter_roughness);
+                    weighted_pdf * evaluation.roughness_squared;
                 result.events = select(
                     0u,
                     static_cast<std::uint32_t>(
@@ -426,9 +431,7 @@ evaluate_general_closure(
                 result.total_sample_weight = weight;
                 result.weighted_pdf = weighted_pdf;
                 result.weighted_roughness_squared =
-                    weighted_pdf *
-                    detail::microfacet_specular_roughness_squared(
-                        closure, query.glossy_filter_roughness);
+                    weighted_pdf * evaluation.roughness_squared;
                 result.events = select(
                     0u,
                     static_cast<std::uint32_t>(
@@ -549,9 +552,7 @@ evaluate_dielectric_closure(
         result.total_sample_weight = weight;
         result.weighted_pdf = weighted_pdf;
         result.weighted_roughness_squared =
-            weighted_pdf *
-            detail::microfacet_specular_roughness_squared(
-                common, query.glossy_filter_roughness);
+            weighted_pdf * evaluation.roughness_squared;
         result.events = events;
     };
     return result;

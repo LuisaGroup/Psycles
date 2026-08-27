@@ -52,23 +52,35 @@ principled_lobe(SurfaceClosureLobe lobe) noexcept {
             .principled_lobes = surface_closure_lobe_bit(lobe)};
 }
 
+[[nodiscard]] SurfaceClosureReachability
+anisotropic_kind(SurfaceClosureKind kind) noexcept {
+    return {.kinds = surface_closure_kind_bit(kind),
+            .anisotropic_microfacet_kinds = surface_closure_kind_bit(kind)};
+}
+
 [[nodiscard]] bool verify_reachability_lattice() noexcept {
     constexpr auto meet_lhs = SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::diffuse) |
                  surface_closure_kind_bit(SurfaceClosureKind::principled),
         .principled_lobes =
             surface_closure_lobe_bit(SurfaceClosureLobe::sheen) |
-            surface_closure_lobe_bit(SurfaceClosureLobe::coat)};
+            surface_closure_lobe_bit(SurfaceClosureLobe::coat),
+        .anisotropic_microfacet_kinds =
+            surface_closure_kind_bit(SurfaceClosureKind::principled)};
     constexpr auto meet_rhs = SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::principled) |
                  surface_closure_kind_bit(SurfaceClosureKind::glass),
         .principled_lobes =
             surface_closure_lobe_bit(SurfaceClosureLobe::coat) |
-            surface_closure_lobe_bit(SurfaceClosureLobe::metallic)};
+            surface_closure_lobe_bit(SurfaceClosureLobe::metallic),
+        .anisotropic_microfacet_kinds =
+            surface_closure_kind_bit(SurfaceClosureKind::principled)};
     constexpr auto meet_expected = SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::principled),
         .principled_lobes =
-            surface_closure_lobe_bit(SurfaceClosureLobe::coat)};
+            surface_closure_lobe_bit(SurfaceClosureLobe::coat),
+        .anisotropic_microfacet_kinds =
+            surface_closure_kind_bit(SurfaceClosureKind::principled)};
     static_assert((meet_lhs & meet_rhs) == meet_expected);
     static_assert((meet_rhs & meet_lhs) == meet_expected);
     static_assert((meet_lhs & meet_lhs) == meet_lhs);
@@ -79,13 +91,18 @@ principled_lobe(SurfaceClosureLobe lobe) noexcept {
     // so later family specialization cannot observe a dangling lobe.
     constexpr auto malformed = SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::diffuse),
-        .principled_lobes = all_surface_closure_lobes};
+        .principled_lobes = all_surface_closure_lobes,
+        .anisotropic_microfacet_kinds =
+            surface_closure_kind_bit(SurfaceClosureKind::principled) |
+            surface_closure_kind_bit(SurfaceClosureKind::glossy)};
     constexpr auto normalized =
         malformed & all_surface_closure_reachability;
     static_assert(normalized == SurfaceClosureReachability{
                                     .kinds = surface_closure_kind_bit(
                                         SurfaceClosureKind::diffuse),
-                                    .principled_lobes = 0u});
+                                    .principled_lobes = 0u,
+                                    .anisotropic_microfacet_kinds = 0u});
+    static_assert((malformed | SurfaceClosureReachability{}) == normalized);
 
     const std::array operation_basis{
         ReachabilityBasis{operation_bit(ClosureOperation::null_closure), {}},
@@ -177,7 +194,10 @@ principled_lobe(SurfaceClosureLobe lobe) noexcept {
             const auto expected = operation_expected[operation_subset] |
                                   feature_expected[feature_subset];
             const auto actual = reachable_surface_closures(
-                operation_masks[operation_subset], feature_masks[feature_subset]);
+                operation_masks[operation_subset],
+                feature_masks[feature_subset],
+                0u,
+                0u);
             if (actual != expected) {
                 std::cerr << "closure reachability is not additive at op "
                           << operation_subset << ", feature " << feature_subset << '\n';
@@ -187,11 +207,68 @@ principled_lobe(SurfaceClosureLobe lobe) noexcept {
     }
 
     constexpr auto unknown_bit = std::uint32_t{1u} << 31u;
-    if (reachable_surface_closures(unknown_bit, 0u) !=
+    if (reachable_surface_closures(unknown_bit, 0u, 0u, 0u) !=
             all_surface_closure_reachability ||
-        reachable_surface_closures(0u, unknown_bit) !=
+        reachable_surface_closures(0u, unknown_bit, 0u, 0u) !=
+            all_surface_closure_reachability ||
+        reachable_surface_closures(0u, 0u, unknown_bit, 0u) !=
+            all_surface_closure_reachability ||
+        reachable_surface_closures(0u, 0u, 0u, unknown_bit) !=
             all_surface_closure_reachability) {
         std::cerr << "unknown closure metadata did not map to lattice top\n";
+        return false;
+    }
+
+    constexpr auto glossy_operation = operation_bit(ClosureOperation::glossy);
+    constexpr auto principled_operation =
+        operation_bit(ClosureOperation::principled);
+    constexpr auto diffuse_operation = operation_bit(ClosureOperation::diffuse);
+    constexpr auto metallic_feature =
+        principled_closure_feature_bit(PrincipledClosureFeature::metallic);
+    constexpr auto dielectric_feature =
+        principled_closure_feature_bit(PrincipledClosureFeature::dielectric);
+    constexpr auto diffuse_feature =
+        principled_closure_feature_bit(PrincipledClosureFeature::diffuse);
+    if (reachable_surface_closures(
+            glossy_operation, 0u, glossy_operation, 0u) !=
+            anisotropic_kind(SurfaceClosureKind::glossy) ||
+        reachable_surface_closures(principled_operation,
+                                   metallic_feature,
+                                   principled_operation,
+                                   metallic_feature) !=
+            (principled_lobe(SurfaceClosureLobe::metallic) |
+             anisotropic_kind(SurfaceClosureKind::principled)) ||
+        reachable_surface_closures(principled_operation,
+                                   dielectric_feature,
+                                   principled_operation,
+                                   dielectric_feature) !=
+            (principled_lobe(SurfaceClosureLobe::dielectric) |
+             anisotropic_kind(SurfaceClosureKind::principled)) ||
+        // An anisotropic Principled node which has only a diffuse lobe cannot
+        // create an anisotropic physical closure. A separate isotropic node's
+        // metallic feature must not be spuriously correlated with it.
+        reachable_surface_closures(principled_operation,
+                                   diffuse_feature | metallic_feature,
+                                   principled_operation,
+                                   diffuse_feature) !=
+            (kinds({SurfaceClosureKind::diffuse}) |
+             principled_lobe(SurfaceClosureLobe::metallic)) ||
+        reachable_surface_closures(diffuse_operation,
+                                   0u,
+                                   diffuse_operation,
+                                   0u) !=
+            all_surface_closure_reachability ||
+        reachable_surface_closures(glossy_operation,
+                                   0u,
+                                   principled_operation,
+                                   0u) !=
+            all_surface_closure_reachability ||
+        reachable_surface_closures(principled_operation,
+                                   0u,
+                                   principled_operation,
+                                   metallic_feature) !=
+            all_surface_closure_reachability) {
+        std::cerr << "anisotropic closure transfer violated its reduced product\n";
         return false;
     }
     return true;
@@ -248,6 +325,10 @@ template <typename Kernel>
         closure_record.color = make_float3(0.8f, 0.6f, 0.4f);
         closure_record.normal = make_float3(0.0f, 0.0f, 1.0f);
         closure_record.roughness = 0.37f;
+        closure_record.microfacet_alpha_x =
+            closure_record.roughness * closure_record.roughness;
+        closure_record.microfacet_alpha_y =
+            closure_record.microfacet_alpha_x;
         closure_record.diffuse_roughness = 0.21f;
         closure_record.ior = 1.45f;
         closure_record.specular_tint = make_float3(0.9f, 0.8f, 0.7f);
@@ -306,8 +387,19 @@ int main(int argc, char **argv) {
 
     auto diffuse_probe = make_probe_kernel(kinds({SurfaceClosureKind::diffuse}));
     auto top_probe = make_probe_kernel(all_surface_closure_reachability);
+    const auto isotropic_glossy_reachability =
+        kinds({SurfaceClosureKind::glossy});
+    const auto anisotropic_glossy_reachability =
+        isotropic_glossy_reachability |
+        anisotropic_kind(SurfaceClosureKind::glossy);
+    auto isotropic_glossy_probe =
+        make_probe_kernel(isotropic_glossy_reachability);
+    auto anisotropic_glossy_probe =
+        make_probe_kernel(anisotropic_glossy_reachability);
     const auto diffuse_ast = ast_footprint(diffuse_probe);
     const auto top_ast = ast_footprint(top_probe);
+    const auto isotropic_glossy_ast = ast_footprint(isotropic_glossy_probe);
+    const auto anisotropic_glossy_ast = ast_footprint(anisotropic_glossy_probe);
     if (diffuse_probe.function()->function().hash() ==
             top_probe.function()->function().hash() ||
         top_ast.expressions.size() <= diffuse_ast.expressions.size() + 100u ||
@@ -317,6 +409,20 @@ int main(int argc, char **argv) {
                   << diffuse_ast.statements.size() << " versus "
                   << top_ast.expressions.size() << "/" << top_ast.statements.size()
                   << " on " << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    if (isotropic_glossy_probe.function()->function().hash() ==
+            anisotropic_glossy_probe.function()->function().hash() ||
+        anisotropic_glossy_ast.expressions.size() <=
+            isotropic_glossy_ast.expressions.size() ||
+        anisotropic_glossy_ast.statements.size() <=
+            isotropic_glossy_ast.statements.size()) {
+        std::cerr << "isotropic proof did not remove anisotropic microfacet ASTs: "
+                  << isotropic_glossy_ast.expressions.size() << "/"
+                  << isotropic_glossy_ast.statements.size() << " versus "
+                  << anisotropic_glossy_ast.expressions.size() << "/"
+                  << anisotropic_glossy_ast.statements.size() << " on "
+                  << backend << '\n';
         return EXIT_FAILURE;
     }
 
@@ -334,7 +440,10 @@ int main(int argc, char **argv) {
         principled_closure_feature_bit(PrincipledClosureFeature::metallic) |
         principled_closure_feature_bit(PrincipledClosureFeature::dielectric);
     const auto scene_reachability =
-        reachable_surface_closures(scene_operations, scene_features);
+        reachable_surface_closures(scene_operations,
+                                   scene_features,
+                                   0u,
+                                   0u);
     auto scene_probe = make_probe_kernel(scene_reachability);
 
     Context context{argv[0]};
@@ -427,6 +536,12 @@ int main(int argc, char **argv) {
               << ": AST expressions " << top_ast.expressions.size() << " -> "
               << diffuse_ast.expressions.size() << ", statements "
               << top_ast.statements.size() << " -> "
-              << diffuse_ast.statements.size() << '\n';
+              << diffuse_ast.statements.size()
+              << "; isotropic/anisotropic Glossy expressions "
+              << isotropic_glossy_ast.expressions.size() << "/"
+              << anisotropic_glossy_ast.expressions.size()
+              << ", statements "
+              << isotropic_glossy_ast.statements.size() << "/"
+              << anisotropic_glossy_ast.statements.size() << '\n';
     return EXIT_SUCCESS;
 }

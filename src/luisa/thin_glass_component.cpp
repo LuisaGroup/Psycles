@@ -260,7 +260,8 @@ MicrofacetEvaluation ThinGlassComponent::evaluate(
         transformed_incoming,
         outgoing,
         closure.common.normal,
-        glossy_filter_roughness);
+        glossy_filter_roughness,
+        false);
 }
 
 MicrofacetReflectionSample ThinGlassComponent::sample(

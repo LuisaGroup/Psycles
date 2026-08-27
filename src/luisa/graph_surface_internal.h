@@ -186,6 +186,7 @@ struct GlassSample {
 struct MicrofacetEvaluation {
     Float3 intensity;
     Float pdf;
+    Float roughness_squared;
 };
 
 struct MicrofacetDistributionTerms {
@@ -380,9 +381,6 @@ template <typename Id, typename Values>
 [[nodiscard]] Float microfacet_specular_roughness_squared(
     const SurfaceClosurePhysicalCommonRecord &closure,
     Float glossy_filter_roughness) noexcept;
-[[nodiscard]] Float microfacet_specular_roughness_squared(
-    const SurfaceClosurePhysicalGeneralRecord &closure,
-    Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Float3 microfacet_reflection_fresnel(
     const SurfaceClosurePhysicalGeneralRecord &closure,
     Float cosine) noexcept;
@@ -392,7 +390,8 @@ template <typename Id, typename Values>
     Float3 incoming,
     Float3 outgoing,
     Float3 glossy_normal,
-    Float glossy_filter_roughness) noexcept;
+    Float glossy_filter_roughness,
+    bool may_be_anisotropic) noexcept;
 [[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
     const SurfaceClosurePoint &point,
     Float3 smooth_normal,
@@ -400,7 +399,8 @@ template <typename Id, typename Values>
     Float3 incoming,
     Float2 random,
     Float3 glossy_normal,
-    Float glossy_filter_roughness) noexcept;
+    Float glossy_filter_roughness,
+    bool may_be_anisotropic) noexcept;
 [[nodiscard]] Float sheen_intensity(
     const SurfaceClosurePhysicalGeneralRecord &closure,
     Float3 incoming,
