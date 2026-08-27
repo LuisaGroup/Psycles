@@ -464,6 +464,22 @@ void write_results(
                     physical.evaluation_scale +
                     physical.transmission_tint,
                 access.valid());
+
+            // A consumer first reads the tag, then enters a family branch.
+            // The counted-prefix witness must be constructed in the block
+            // which performs the payload read: a mutable counter snapshot is
+            // intentionally not assumed to survive arbitrary CFG edges.
+            $if(common.kind ==
+                static_cast<std::uint32_t>(SurfaceClosureKind::diffuse)) {
+                const auto family_access =
+                    closures.physical_access(requested);
+                const auto payload =
+                    closures.physical_payload_block(family_access);
+                weight_sum += select(
+                    make_float3(0.0f),
+                    payload[0u].xyz(),
+                    family_access.valid());
+            };
             values.write(
                 closure_capacity,
                 make_float4(

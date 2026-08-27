@@ -101,6 +101,12 @@ class CallableSurfaceClosureEvaluationOperation final
         Expr<luisa::float3> shading_normal,
         const SurfaceClosureExpression &closure,
         Expr<bool> selected_sample) const noexcept override;
+
+    [[nodiscard]] luisa::compute::Var<SurfaceClosureEvaluationContributionCall>
+    evaluate_physical(
+        Expr<luisa::float3> shading_normal,
+        const SurfaceClosurePhysicalBlocks &closure,
+        Expr<bool> selected_sample) const noexcept;
 };
 
 }// namespace psycles::luisa_backend::detail

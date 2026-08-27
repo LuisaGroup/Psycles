@@ -86,6 +86,12 @@ psycles_add_luisa_backend_test(
     SOURCE tests/test_luisa_surface_population.cpp
     TEST_STEM luisa_surface_population
     LIBRARIES Psycles::luisa)
+if(TEST psycles.luisa_surface_population_vk)
+    set_tests_properties(
+        psycles.luisa_surface_population_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1")
+endif()
 
 psycles_add_luisa_backend_test(
     TARGET psycles_luisa_compact_surface_preparation_tests
@@ -137,6 +143,12 @@ psycles_add_luisa_backend_test(
     SOURCE tests/test_luisa_surface_closure_physical.cpp
     TEST_STEM luisa_surface_closure_physical
     LIBRARIES Psycles::luisa_runtime)
+if(TEST psycles.luisa_surface_closure_physical_vk)
+    set_tests_properties(
+        psycles.luisa_surface_closure_physical_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1")
+endif()
 
 psycles_add_luisa_backend_test(
     TARGET psycles_luisa_standalone_caustics_tests
@@ -242,6 +254,12 @@ psycles_add_luisa_backend_test(
 target_include_directories(
     psycles_luisa_surface_mix_svm_tests
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+if(TEST psycles.luisa_surface_mix_svm_vk)
+    set_tests_properties(
+        psycles.luisa_surface_mix_svm_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1")
+endif()
 
 psycles_add_luisa_backend_test(
     TARGET psycles_luisa_surface_math_svm_tests

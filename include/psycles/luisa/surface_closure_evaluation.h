@@ -5,6 +5,7 @@
 #endif
 
 #include <psycles/luisa/surface_closure_reachability.h>
+#include <psycles/luisa/surface_closure_physical_blocks.h>
 #include <psycles/luisa/surface_closure_visitor.h>
 
 #include <luisa/dsl/struct.h>
@@ -76,6 +77,45 @@ surface_closure_evaluation_contribution(
     const SurfaceClosurePoint &point,
     Expr<luisa::float3> shading_normal,
     const SurfaceClosurePhysicalRecord &closure,
+    Expr<luisa::float3> incoming,
+    Expr<luisa::float3> outgoing,
+    const SurfaceQuery &query,
+    const SurfaceClosureEvaluationPolicy &policy,
+    Expr<bool> selected_sample,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
+
+// Consumer-directed elimination of the physical tagged union. The runtime
+// tag dominates the matching family decoder, and only the compact additive
+// result crosses the merge. In particular this function never dynamically
+// decodes a product of mutually exclusive family payloads or returns a
+// universal record across the merge.
+[[nodiscard]] luisa::compute::Var<SurfaceClosureEvaluationContributionCall>
+surface_closure_evaluation_contribution_from_physical_blocks(
+    const ShaderServices &services,
+    const SurfaceClosurePoint &point,
+    Expr<luisa::float3> shading_normal,
+    Expr<luisa::float4x4> block_0,
+    Expr<luisa::float4x4> block_1,
+    Expr<luisa::float3> incoming,
+    Expr<luisa::float3> outgoing,
+    const SurfaceQuery &query,
+    const SurfaceClosureEvaluationPolicy &policy,
+    Expr<bool> selected_sample,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
+
+// Storage-aware form of the same eliminator. `load_payload` is invoked only
+// inside a non-common family branch; common-only closures therefore have no
+// dynamic dependency on block_1. Passing the already decoded common record
+// also prevents a second block_0 read at the consumer boundary.
+[[nodiscard]] luisa::compute::Var<SurfaceClosureEvaluationContributionCall>
+surface_closure_evaluation_contribution_from_physical_common(
+    const ShaderServices &services,
+    const SurfaceClosurePoint &point,
+    Expr<luisa::float3> shading_normal,
+    const SurfaceClosurePhysicalCommonRecord &common,
+    const SurfaceClosurePhysicalPayloadLoader &load_payload,
     Expr<luisa::float3> incoming,
     Expr<luisa::float3> outgoing,
     const SurfaceQuery &query,

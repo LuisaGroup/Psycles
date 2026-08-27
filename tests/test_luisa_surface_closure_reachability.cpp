@@ -53,6 +53,40 @@ principled_lobe(SurfaceClosureLobe lobe) noexcept {
 }
 
 [[nodiscard]] bool verify_reachability_lattice() noexcept {
+    constexpr auto meet_lhs = SurfaceClosureReachability{
+        .kinds = surface_closure_kind_bit(SurfaceClosureKind::diffuse) |
+                 surface_closure_kind_bit(SurfaceClosureKind::principled),
+        .principled_lobes =
+            surface_closure_lobe_bit(SurfaceClosureLobe::sheen) |
+            surface_closure_lobe_bit(SurfaceClosureLobe::coat)};
+    constexpr auto meet_rhs = SurfaceClosureReachability{
+        .kinds = surface_closure_kind_bit(SurfaceClosureKind::principled) |
+                 surface_closure_kind_bit(SurfaceClosureKind::glass),
+        .principled_lobes =
+            surface_closure_lobe_bit(SurfaceClosureLobe::coat) |
+            surface_closure_lobe_bit(SurfaceClosureLobe::metallic)};
+    constexpr auto meet_expected = SurfaceClosureReachability{
+        .kinds = surface_closure_kind_bit(SurfaceClosureKind::principled),
+        .principled_lobes =
+            surface_closure_lobe_bit(SurfaceClosureLobe::coat)};
+    static_assert((meet_lhs & meet_rhs) == meet_expected);
+    static_assert((meet_rhs & meet_lhs) == meet_expected);
+    static_assert((meet_lhs & meet_lhs) == meet_lhs);
+    static_assert((meet_lhs & all_surface_closure_reachability) == meet_lhs);
+
+    // The reduced product invariant forbids a lobe bit when Principled is not
+    // reachable. Meet must restore that invariant even for a malformed input,
+    // so later family specialization cannot observe a dangling lobe.
+    constexpr auto malformed = SurfaceClosureReachability{
+        .kinds = surface_closure_kind_bit(SurfaceClosureKind::diffuse),
+        .principled_lobes = all_surface_closure_lobes};
+    constexpr auto normalized =
+        malformed & all_surface_closure_reachability;
+    static_assert(normalized == SurfaceClosureReachability{
+                                    .kinds = surface_closure_kind_bit(
+                                        SurfaceClosureKind::diffuse),
+                                    .principled_lobes = 0u});
+
     const std::array operation_basis{
         ReachabilityBasis{operation_bit(ClosureOperation::null_closure), {}},
         ReachabilityBasis{operation_bit(ClosureOperation::diffuse),

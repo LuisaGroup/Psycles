@@ -67,12 +67,13 @@ SurfaceClosureSamplingCallables make_surface_closure_sampling_callables(
                                           scene->nishita_texture_bindings,
                                           scene->shader_color_space};
             const auto point = unpack_surface_closure_point(packed_point);
-            const auto closure = unpack_surface_closure_physical(
+            return surface_closure_conditional_sample_from_physical_blocks(
+                services,
+                point,
+                Expr<luisa::float3>{shading_normal.expression()},
                 Expr<luisa::float4x4>{block_0.expression()},
-                Expr<luisa::float4x4>{block_1.expression()});
-            return surface_closure_conditional_sample(
-                services, point, Expr<luisa::float3>{shading_normal.expression()},
-                closure, Expr<luisa::float3>{packed_query.incoming.expression()},
+                Expr<luisa::float4x4>{block_1.expression()},
+                Expr<luisa::float3>{packed_query.incoming.expression()},
                 Expr<luisa::float3>{glossy_normal.expression()},
                 Expr<luisa::float2>{random_direction.expression()},
                 Expr<float>{rescaled_lobe.expression()},
@@ -123,10 +124,20 @@ CallableSurfaceClosureSamplingOperation::conditional_sample(
     Expr<luisa::float3> glossy_normal, Expr<luisa::float2> random_direction,
     Expr<float> rescaled_lobe) const noexcept {
     const auto blocks = pack_surface_closure_physical(closure.reference());
+    return conditional_sample_physical(shading_normal, blocks, glossy_normal,
+                                       random_direction, rescaled_lobe);
+}
+
+luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+CallableSurfaceClosureSamplingOperation::conditional_sample_physical(
+    Expr<luisa::float3> shading_normal,
+    const SurfaceClosurePhysicalBlocks &closure,
+    Expr<luisa::float3> glossy_normal, Expr<luisa::float2> random_direction,
+    Expr<float> rescaled_lobe) const noexcept {
     return _callables.conditional_sample(
         _scalar_parameters, _vector_parameters, _cycles_bsdf_tables, _textures,
         _geometry_heap, _point, _query, shading_normal, glossy_normal,
-        random_direction, rescaled_lobe, blocks.block_0, blocks.block_1);
+        random_direction, rescaled_lobe, closure.block_0, closure.block_1);
 }
 
 SurfaceSampleTrace sample_surface_closures_for_surface(

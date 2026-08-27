@@ -383,6 +383,16 @@ SurfaceClosureSet::physical_payload_entry(
     return physical_payload_entry_unchecked(access._index, common);
 }
 
+luisa::compute::Float4x4 SurfaceClosureSet::physical_payload_block(
+    const SurfaceClosurePhysicalAccess &access) const noexcept {
+    LUISA_ASSERT(access._owner == this,
+                 "Physical closure access belongs to a different set.");
+    LUISA_ASSERT(
+        _profile == SurfaceClosureStorageProfile::physical,
+        "Encoded physical closure access requires the physical profile.");
+    return _physical_1.read(access._index);
+}
+
 SurfaceClosureRecord SurfaceClosureSet::entry(
     UInt index) const noexcept {
     const auto valid = index < _count;

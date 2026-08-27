@@ -1,4 +1,6 @@
+#include <psycles/luisa/surface_closure_evaluation.h>
 #include <psycles/luisa/surface_closure_physical_blocks.h>
+#include <psycles/luisa/surface_closure_sampling.h>
 
 #include "luisa_surface_test_support.h"
 
@@ -17,6 +19,8 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::compile_named_kernel;
+using psycles::test_support::make_surface_point;
+using psycles::test_support::ParameterShaderServices;
 
 template<typename T>
 concept HasAlbedo = requires(T value) { value.albedo; };
@@ -56,7 +60,7 @@ constexpr std::array closure_kinds{
 constexpr auto case_count =
     static_cast<std::uint32_t>(closure_kinds.size());
 constexpr std::uint32_t logical_row_count = 12u;
-constexpr std::uint32_t invariant_row_count = 2u;
+constexpr std::uint32_t invariant_row_count = 5u;
 constexpr std::uint32_t rows_per_case =
     logical_row_count + invariant_row_count;
 
@@ -245,6 +249,49 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
            (lhs.bssrdf_anisotropy == rhs.bssrdf_anisotropy);
 }
 
+[[nodiscard]] Bool close(Float lhs, Float rhs) noexcept {
+    return abs(lhs - rhs) <= 1.0e-5f;
+}
+
+[[nodiscard]] Bool close(Float2 lhs, Float2 rhs) noexcept {
+    return all(abs(lhs - rhs) <= make_float2(1.0e-5f));
+}
+
+[[nodiscard]] Bool close(Float3 lhs, Float3 rhs) noexcept {
+    return all(abs(lhs - rhs) <= make_float3(1.0e-5f));
+}
+
+[[nodiscard]] Bool same_evaluation_contribution(
+    const Var<SurfaceClosureEvaluationContributionCall> &lhs,
+    const Var<SurfaceClosureEvaluationContributionCall> &rhs) noexcept {
+    return close(lhs.f, rhs.f) & close(lhs.diffuse_f, rhs.diffuse_f) &
+           close(lhs.glossy_f, rhs.glossy_f) &
+           close(lhs.total_sample_weight, rhs.total_sample_weight) &
+           close(lhs.weighted_pdf, rhs.weighted_pdf) &
+           close(lhs.weighted_roughness_squared,
+                 rhs.weighted_roughness_squared) &
+           (lhs.events == rhs.events);
+}
+
+[[nodiscard]] Bool same_conditional_sample(
+    const Var<SurfaceClosureConditionalSampleCall> &lhs,
+    const Var<SurfaceClosureConditionalSampleCall> &rhs) noexcept {
+    return close(lhs.direction, rhs.direction) &
+           close(lhs.roughness, rhs.roughness) &
+           close(lhs.singular_evaluation, rhs.singular_evaluation) &
+           close(lhs.singular_pdf, rhs.singular_pdf) &
+           close(lhs.eta, rhs.eta) &
+           (lhs.properties == rhs.properties) &
+           (lhs.bssrdf_method == rhs.bssrdf_method) &
+           close(lhs.bssrdf_radius, rhs.bssrdf_radius) &
+           close(lhs.bssrdf_albedo, rhs.bssrdf_albedo) &
+           close(lhs.bssrdf_normal, rhs.bssrdf_normal) &
+           close(lhs.bssrdf_ior, rhs.bssrdf_ior) &
+           close(lhs.bssrdf_roughness, rhs.bssrdf_roughness) &
+           close(lhs.bssrdf_anisotropy, rhs.bssrdf_anisotropy) &
+           (lhs.valid == rhs.valid);
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -267,7 +314,9 @@ int main(int argc, char **argv) {
     };
     round_trip.set_name("surface_closure_physical_round_trip");
 
-    Kernel1D test = [round_trip](BufferFloat4 output) noexcept {
+    Kernel1D test = [round_trip](
+                        BufferFloat4 parameter_buffer,
+                        BufferFloat4 output) noexcept {
         const auto case_index = dispatch_x();
         const auto offset = 10.0f * cast<float>(case_index);
         auto closure = SurfaceClosureRecord::zero();
@@ -434,6 +483,137 @@ int main(int argc, char **argv) {
                 logical_row_count + 1u,
             make_float4(select(
                 0.0f, 1.0f, projection_equal)));
+
+        // Differential semantic oracle for the consumer-directed
+        // eliminators. Use a separate finite closure so every family executes
+        // meaningful directional algebra while the ABI rows above retain
+        // their poison values for projection testing.
+        auto consumer_source = SurfaceClosureRecord::zero();
+        consumer_source.kind = closure.kind;
+        consumer_source.lobe = closure.lobe;
+        consumer_source.weight = make_float3(0.37f, 0.29f, 0.41f);
+        consumer_source.allocation_weight = 0.73f;
+        consumer_source.sample_weight = 0.61f;
+        consumer_source.setup_valid = true;
+        consumer_source.color = make_float3(0.62f, 0.48f, 0.31f);
+        consumer_source.normal = normalize(make_float3(0.13f, -0.09f, 0.98f));
+        consumer_source.roughness = 0.36f;
+        consumer_source.diffuse_roughness = 0.27f;
+        consumer_source.metallic = 0.22f;
+        consumer_source.ior = 1.43f;
+        consumer_source.specular_tint = make_float3(0.84f, 0.71f, 0.59f);
+        consumer_source.sheen_transform_a = 0.83f;
+        consumer_source.sheen_transform_b = 0.17f;
+        consumer_source.evaluation_scale = make_float3(0.91f, 0.87f, 0.79f);
+        consumer_source.fresnel_f0 = make_float3(0.04f, 0.05f, 0.06f);
+        consumer_source.fresnel_f90 = make_float3(1.0f);
+        consumer_source.reflection_tint = make_float3(0.92f, 0.81f, 0.73f);
+        consumer_source.transmission_tint = make_float3(0.67f, 0.76f, 0.88f);
+        consumer_source.preserve_ggx_energy = false;
+        consumer_source.beckmann = false;
+        consumer_source.bssrdf_method =
+            static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk);
+        consumer_source.bssrdf_radius = make_float3(0.8f, 0.5f, 0.3f);
+        consumer_source.bssrdf_albedo = make_float3(0.7f, 0.4f, 0.2f);
+        consumer_source.bssrdf_ior = 1.4f;
+        consumer_source.bssrdf_roughness = 0.32f;
+        consumer_source.bssrdf_anisotropy = 0.15f;
+        const auto consumer_blocks =
+            pack_surface_closure_physical(consumer_source);
+        const auto consumer_common = unpack_surface_closure_physical_common(
+            Expr<luisa::float4x4>{consumer_blocks.block_0.expression()});
+        const auto consumer_product = unpack_surface_closure_physical(
+            Expr<luisa::float4x4>{consumer_blocks.block_0.expression()},
+            Expr<luisa::float4x4>{consumer_blocks.block_1.expression()});
+        auto surface_point = make_surface_point();
+        surface_point.incoming = normalize(make_float3(0.21f, -0.16f, 0.96f));
+        const SurfaceClosurePoint point{surface_point};
+        ParameterShaderServices services{parameter_buffer, 1.0f};
+        const auto incoming = make_surface_closure_sampling_incoming(point);
+        const auto outgoing = normalize(make_float3(-0.18f, 0.24f, 0.95f));
+        const auto query = SurfaceQuery{
+            .lobe_mask = static_cast<std::uint32_t>(
+                event_diffuse | event_glossy |
+                event_transmission | event_transparent),
+            .transport_mode =
+                static_cast<std::uint32_t>(TransportMode::radiance),
+            .glossy_filter_roughness = 0.0f,
+            .reflective_caustics = true,
+            .refractive_caustics = true};
+        const auto policy = SurfaceClosureEvaluationPolicy{
+            .diffuse_included = true,
+            .glossy_included = true,
+            .glass_included = true,
+            .transmission_included = true,
+            .preserve_pdf = true};
+        const auto product_evaluation =
+            surface_closure_evaluation_contribution(
+                services, point, point.shading_normal, consumer_product,
+                incoming, outgoing, query, policy, false);
+        const auto raw_tagged_evaluation =
+            surface_closure_evaluation_contribution_from_physical_blocks(
+                services, point, point.shading_normal,
+                Expr<luisa::float4x4>{consumer_blocks.block_0.expression()},
+                Expr<luisa::float4x4>{consumer_blocks.block_1.expression()},
+                incoming, outgoing, query, policy, false);
+        UInt payload_read_count = 0u;
+        const auto load_payload = [&] {
+            payload_read_count += 1u;
+            return Float4x4{consumer_blocks.block_1};
+        };
+        const auto tagged_evaluation =
+            surface_closure_evaluation_contribution_from_physical_common(
+                services, point, point.shading_normal, consumer_common,
+                load_payload, incoming, outgoing, query, policy, false);
+        output->write(
+            case_index * rows_per_case + logical_row_count + 2u,
+            make_float4(select(
+                0.0f, 1.0f,
+                same_evaluation_contribution(
+                    product_evaluation, tagged_evaluation) &
+                    same_evaluation_contribution(
+                        raw_tagged_evaluation, tagged_evaluation))));
+
+        const auto random_direction = make_float2(0.37f, 0.64f);
+        const auto product_sample = surface_closure_conditional_sample(
+            services, point, point.shading_normal, consumer_product, incoming,
+            consumer_product.normal, random_direction, 0.42f, query);
+        const auto raw_tagged_sample =
+            surface_closure_conditional_sample_from_physical_blocks(
+                services, point, point.shading_normal,
+                Expr<luisa::float4x4>{consumer_blocks.block_0.expression()},
+                Expr<luisa::float4x4>{consumer_blocks.block_1.expression()},
+                incoming, consumer_product.normal, random_direction,
+                0.42f, query);
+        const auto tagged_sample =
+            surface_closure_conditional_sample_from_physical_common(
+                services, point, point.shading_normal, consumer_common,
+                load_payload, incoming, consumer_product.normal,
+                random_direction, 0.42f, query);
+        output->write(
+            case_index * rows_per_case + logical_row_count + 3u,
+            make_float4(select(
+                0.0f, 1.0f,
+                same_conditional_sample(product_sample, tagged_sample) &
+                    same_conditional_sample(
+                        raw_tagged_sample, tagged_sample))));
+
+        const auto general_payload =
+            (consumer_source.kind ==
+             static_cast<std::uint32_t>(SurfaceClosureKind::principled)) |
+            (consumer_source.kind ==
+             static_cast<std::uint32_t>(SurfaceClosureKind::glossy)) |
+            (consumer_source.kind ==
+             static_cast<std::uint32_t>(
+                 SurfaceClosureKind::thin_glass_transmission));
+        const auto expected_payload_reads =
+            select(0u, 2u, glass | general_payload) +
+            select(0u, 1u, bssrdf);
+        output->write(
+            case_index * rows_per_case + logical_row_count + 4u,
+            make_float4(select(
+                0.0f, 1.0f,
+                payload_read_count == expected_payload_reads)));
     };
 
     if (test.function()->function().custom_callables().size() != 1u) {
@@ -449,10 +629,13 @@ int main(int argc, char **argv) {
     auto stream = device.create_stream();
     auto output =
         device.create_buffer<luisa::float4>(case_count * rows_per_case);
+    auto parameter_buffer = device.create_buffer<luisa::float4>(1u);
     auto shader = compile_named_kernel(
         device, "surface closure physical ABI", test);
     std::array<luisa::float4, case_count * rows_per_case> actual{};
-    stream << shader(output).dispatch(case_count)
+    const std::array parameter_data{luisa::float4{1.0f}};
+    stream << parameter_buffer.copy_from(luisa::span{parameter_data})
+           << shader(parameter_buffer, output).dispatch(case_count)
            << output.copy_to(luisa::span{actual})
            << synchronize();
 

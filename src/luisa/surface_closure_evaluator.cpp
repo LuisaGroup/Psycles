@@ -169,27 +169,62 @@ SurfaceEvaluation SurfaceClosureEvaluator::evaluate_impl(
             light_shader_flags.expression()});
     SurfaceClosureEvaluationAccumulator accumulator;
     UInt index = 0u;
-    $while(index < _closures.count()) {
-        const auto closure = _closures.entry(index);
-        const auto selected_sample =
-            mode == EvaluationMode::sampled_bsdf
-                ? index == selected_closure_index
-                : Bool{false};
-        accumulator.add(surface_closure_evaluation_contribution(
-            services,
-            closure_point,
-            Expr<luisa::float3>{
-                _shading_normal.expression()},
-            closure,
-            Expr<luisa::float3>{
-                directions.incoming.expression()},
-            Expr<luisa::float3>{
-                directions.outgoing.expression()},
-            query,
-            policy,
-            Expr<bool>{selected_sample.expression()}, _reachability));
-        index += 1u;
-    };
+    if (_closures.profile() == SurfaceClosureStorageProfile::physical) {
+        $while(index < _closures.count()) {
+            const auto access = _closures.physical_access(index);
+            const auto common = _closures.physical_common_entry(access);
+            const auto selected_sample =
+                mode == EvaluationMode::sampled_bsdf
+                    ? index == selected_closure_index
+                    : Bool{false};
+            accumulator.add(
+                surface_closure_evaluation_contribution_from_physical_common(
+                    services,
+                    closure_point,
+                    Expr<luisa::float3>{_shading_normal.expression()},
+                    common,
+                    [&] {
+                        // Re-establish the initialized-prefix witness in the
+                        // payload family's device block. The counted-array
+                        // proof deliberately does not transport mutable
+                        // counter snapshots across CFG edges; reusing
+                        // `access` here would therefore make the dormant
+                        // suffix appear live across every coroutine
+                        // continuation.
+                        return _closures.physical_payload_block(
+                            _closures.physical_access(index));
+                    },
+                    Expr<luisa::float3>{directions.incoming.expression()},
+                    Expr<luisa::float3>{directions.outgoing.expression()},
+                    query,
+                    policy,
+                    Expr<bool>{selected_sample.expression()},
+                    _reachability));
+            index += 1u;
+        };
+    } else {
+        $while(index < _closures.count()) {
+            const auto closure = _closures.entry(index);
+            const auto selected_sample =
+                mode == EvaluationMode::sampled_bsdf
+                    ? index == selected_closure_index
+                    : Bool{false};
+            accumulator.add(surface_closure_evaluation_contribution(
+                services,
+                closure_point,
+                Expr<luisa::float3>{
+                    _shading_normal.expression()},
+                closure,
+                Expr<luisa::float3>{
+                    directions.incoming.expression()},
+                Expr<luisa::float3>{
+                    directions.outgoing.expression()},
+                query,
+                policy,
+                Expr<bool>{selected_sample.expression()}, _reachability));
+            index += 1u;
+        };
+    }
     return accumulator.finish(
         Expr<bool>{policy.preserve_pdf.expression()});
 }
