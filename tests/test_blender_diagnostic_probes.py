@@ -51,15 +51,17 @@ def _surface_source(tree: Any) -> Any:
 
 def _main() -> None:
     args = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-    if len(args) != 2:
+    if len(args) != 3:
         raise SystemExit(
-            "expected shader-stage and world-probe script paths after '--'"
+            "expected shader-stage, world-probe, and surface-cost-probe "
+            "script paths after '--'"
         )
-    stage_path, world_path = map(
+    stage_path, world_path, surface_cost_path = map(
         pathlib.Path, args
     )
     stage = _load(stage_path.resolve())
     world_probe = _load(world_path.resolve())
+    surface_cost = _load(surface_cost_path.resolve())
 
     material = bpy.data.materials.new("Diagnostic Material")
     material.use_nodes = True
@@ -352,6 +354,178 @@ def _main() -> None:
             "world probe did not return one RGB camera-ray sample: "
             f"{radiance}"
         )
+
+    cost_materials = [
+        bpy.data.materials.new("Surface Cost Probe A"),
+        bpy.data.materials.new("Surface Cost Probe B"),
+    ]
+    nested_value_tree = bpy.data.node_groups.new(
+        "Nested Surface Cost Values", "ShaderNodeTree"
+    )
+    nested_value_tree.interface.new_socket(
+        name="Value", in_out="OUTPUT", socket_type="NodeSocketFloat"
+    )
+    nested_output = nested_value_tree.nodes.new("NodeGroupOutput")
+    nested_value = nested_value_tree.nodes.new("ShaderNodeValue")
+    nested_value_tree.links.new(
+        nested_value.outputs["Value"], nested_output.inputs["Value"]
+    )
+    for cost_material in cost_materials:
+        cost_material.use_nodes = True
+        cost_tree = cost_material.node_tree
+        cost_output = next(
+            node
+            for node in cost_tree.nodes
+            if node.type == "OUTPUT_MATERIAL"
+        )
+        volume = cost_tree.nodes.new("ShaderNodeVolumePrincipled")
+        displacement = cost_tree.nodes.new("ShaderNodeValue")
+        value = cost_tree.nodes.new("ShaderNodeValue")
+        nested_group = cost_tree.nodes.new("ShaderNodeGroup")
+        nested_group.node_tree = nested_value_tree
+        diffuse = next(
+            node for node in cost_tree.nodes if node.type == "BSDF_PRINCIPLED"
+        )
+        glossy = cost_tree.nodes.new("ShaderNodeBsdfAnisotropic")
+        closure_mix = cost_tree.nodes.new("ShaderNodeMixShader")
+        cost_tree.links.remove(cost_output.inputs["Surface"].links[0])
+        cost_tree.links.new(diffuse.outputs["BSDF"], closure_mix.inputs[1])
+        cost_tree.links.new(glossy.outputs["BSDF"], closure_mix.inputs[2])
+        cost_tree.links.new(closure_mix.outputs["Shader"], cost_output.inputs["Surface"])
+        cost_tree.links.new(value.outputs["Value"], closure_mix.inputs[0])
+        cost_tree.links.new(nested_group.outputs["Value"], glossy.inputs["Roughness"])
+        cost_tree.links.new(
+            volume.outputs["Volume"], cost_output.inputs["Volume"]
+        )
+        cost_tree.links.new(
+            displacement.outputs["Value"],
+            cost_output.inputs["Displacement"],
+        )
+
+    cost_world_signature = _world_signature(bpy.context.scene.world)
+    material_count = len(bpy.data.materials)
+    stripped_count = surface_cost["_replace_all_material_surfaces"](
+        (0.17, 0.31, 0.53),
+        0.25,
+        "constant-closure-inputs",
+    )
+    if stripped_count != material_count:
+        raise AssertionError(
+            "surface cost probe did not strip every material value graph"
+        )
+    for cost_material in cost_materials:
+        cost_tree = cost_material.node_tree
+        cost_output = next(
+            node
+            for node in cost_tree.nodes
+            if node.type == "OUTPUT_MATERIAL" and node.is_active_output
+        )
+        current_mix = cost_output.inputs["Surface"].links[0].from_node
+        if current_mix.type != "MIX_SHADER":
+            raise AssertionError(
+                "closure-input probe changed the shader topology"
+            )
+        if len(current_mix.inputs[1].links) != 1 or len(current_mix.inputs[2].links) != 1:
+            raise AssertionError(
+                "closure-input probe removed a shader-to-shader edge"
+            )
+        if current_mix.inputs[0].is_linked:
+            raise AssertionError(
+                "closure-input probe retained a top-level value edge"
+            )
+        glossy = current_mix.inputs[2].links[0].from_node
+        if glossy.inputs["Roughness"].is_linked:
+            raise AssertionError(
+                "closure-input probe retained a nested-group value edge"
+            )
+        if (
+            cost_output.inputs["Volume"].is_linked
+            or cost_output.inputs["Displacement"].is_linked
+        ):
+            raise AssertionError(
+                "closure-input probe retained volume or displacement"
+            )
+        if cost_material.cycles.emission_sampling != "NONE":
+            raise AssertionError(
+                "closure-input probe retained mesh-light sampling"
+            )
+
+    replaced_count = surface_cost["_replace_all_material_surfaces"](
+        (0.17, 0.31, 0.53),
+        0.25,
+        "constant-diffuse",
+    )
+    if replaced_count != material_count:
+        raise AssertionError(
+            "surface cost probe did not replace every material"
+        )
+    if _world_signature(bpy.context.scene.world) != cost_world_signature:
+        raise AssertionError("surface cost probe modified the world")
+    for cost_material in bpy.data.materials:
+        cost_tree = cost_material.node_tree
+        cost_output = next(
+            node
+            for node in cost_tree.nodes
+            if node.type == "OUTPUT_MATERIAL"
+            and node.is_active_output
+        )
+        surface_links = cost_output.inputs["Surface"].links
+        if len(surface_links) != 1:
+            raise AssertionError(
+                "surface cost probe did not leave one surface closure"
+            )
+        cost_diffuse = surface_links[0].from_node
+        if cost_diffuse.type != "BSDF_DIFFUSE":
+            raise AssertionError(
+                "surface cost probe did not use a raw Diffuse closure"
+            )
+        expected_color = (0.17, 0.31, 0.53, 1.0)
+        if any(
+            abs(actual - expected) > 1.0e-6
+            for actual, expected in zip(
+                cost_diffuse.inputs["Color"].default_value,
+                expected_color,
+            )
+        ):
+            raise AssertionError("surface cost probe changed its fixed color")
+        if (
+            abs(cost_diffuse.inputs["Roughness"].default_value - 0.25)
+            > 1.0e-6
+        ):
+            raise AssertionError(
+                "surface cost probe changed its fixed roughness"
+            )
+        if (
+            cost_output.inputs["Volume"].is_linked
+            or cost_output.inputs["Displacement"].is_linked
+        ):
+            raise AssertionError(
+                "surface cost probe retained volume or displacement"
+            )
+        if cost_material.cycles.emission_sampling != "NONE":
+            raise AssertionError(
+                "surface cost probe retained mesh-light sampling"
+            )
+
+    for mode, expected_idname in (
+        ("constant-glossy", "ShaderNodeBsdfAnisotropic"),
+        ("constant-glass", "ShaderNodeBsdfGlass"),
+    ):
+        family_material = bpy.data.materials.new(
+            f"Surface Cost {mode} Family"
+        )
+        surface_cost["_replace_material_surface"](
+            family_material,
+            (0.23, 0.41, 0.67),
+            0.37,
+            mode,
+        )
+        family_closure = _surface_source(family_material.node_tree)
+        if family_closure.bl_idname != expected_idname:
+            raise AssertionError(
+                f"{mode} created {family_closure.bl_idname}, "
+                f"expected {expected_idname}"
+            )
 
     print("Psycles Blender diagnostic-probe regressions passed")
 
