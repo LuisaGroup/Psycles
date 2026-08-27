@@ -4,6 +4,7 @@
 #include <psycles/compiler/surface_bump_expansion.h>
 #include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/contract/cycles_pointiness.h>
+#include <psycles/luisa/surface_value_runtime_limits.h>
 
 #include <algorithm>
 #include <bit>
@@ -1002,7 +1003,9 @@ int main(int argc, char **argv) {
                 psycles::compiler::plan_surface_value_storage(
                     *execution_program,
                     dependencies.preparation,
-                    dependencies.preparation_outputs);
+                    dependencies.preparation_outputs,
+                    psycles::luisa_backend::
+                        compact_surface_value_storage_capacity);
             if (!storage.valid) {
                 std::cerr << "surface execution planning failed for topology "
                           << signature << ": " << storage.diagnostic << '\n';

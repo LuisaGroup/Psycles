@@ -4,6 +4,7 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <string>
 #include <vector>
@@ -80,6 +81,17 @@ struct SurfaceValueLocation {
   std::uint32_t index{};
 };
 
+// Resource constraint for typed interval coloring. The unconstrained default
+// preserves the compiler-only API, while a concrete interpreter supplies the
+// exact bank capacities of its ABI. Feasibility is component-wise; total byte
+// size cannot substitute for this contract because the banks are independent.
+struct SurfaceValueStorageCapacity {
+  std::uint32_t scalar_slots{std::numeric_limits<std::uint32_t>::max()};
+  std::uint32_t vector_slots{std::numeric_limits<std::uint32_t>::max()};
+  std::uint32_t unsigned_integer_slots{
+      std::numeric_limits<std::uint32_t>::max()};
+};
+
 // A deterministic allocation for one topologically closed value domain.
 // `instructions` excludes parameters, which are direct material-data reads.
 //
@@ -99,6 +111,10 @@ struct SurfaceValueStoragePlan {
   std::uint32_t unsigned_integer_slots{};
   std::uint32_t active_values{};
   std::uint32_t parameter_values{};
+  // Pure same-bank passthroughs are representatives of an existing SSA
+  // value, not device instructions. Their public ValueExpressionId remains
+  // valid and maps to the representative's exact address.
+  std::uint32_t alias_values{};
 
   [[nodiscard]] bool compatible(const SurfaceProgram &program) const noexcept;
 
@@ -1487,7 +1503,8 @@ struct SurfaceValueExecutableScene {
 [[nodiscard]] SurfaceValueStoragePlan
 plan_surface_value_storage(const SurfaceProgram &program,
                            const std::vector<bool> &active,
-                           const std::vector<bool> &outputs);
+                           const std::vector<bool> &outputs,
+                           SurfaceValueStorageCapacity capacity = {});
 
 // Lowers the proven storage plan without changing graph semantics. Every
 // original closure/output remains a typed address into this image; parameters

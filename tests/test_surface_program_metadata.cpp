@@ -364,11 +364,83 @@ void test_surface_value_storage_plan() {
   require(typed_pressure_plan.instructions ==
                   std::vector<ValueExpressionId>{
                       ValueExpressionId{0u}, ValueExpressionId{1u},
-                      ValueExpressionId{2u}, ValueExpressionId{3u}} &&
+                      ValueExpressionId{3u}} &&
+              typed_pressure_plan.alias_values == 1u &&
               typed_pressure_plan.scalar_slots == 1u &&
               typed_pressure_plan.vector_slots == 1u &&
-              typed_pressure_plan.payload_bytes() == 16u,
+              typed_pressure_plan.payload_bytes() == 16u &&
+              typed_pressure_plan.locations[2u].storage ==
+                  typed_pressure_plan.locations[0u].storage &&
+              typed_pressure_plan.locations[2u].bank ==
+                  typed_pressure_plan.locations[0u].bank &&
+              typed_pressure_plan.locations[2u].index ==
+                  typed_pressure_plan.locations[0u].index,
           "typed-bank no-regression selection retained a worse schedule");
+
+  // Two independent output branches expose the formal distinction between
+  // byte minimization and component-wise feasibility. Evaluating the scalar
+  // output first costs (2 scalar, 1 vector) = 20 B; authored order costs
+  // (1 scalar, 2 vector) = 28 B. An interpreter with only one scalar slot
+  // must choose the latter even though it is larger.
+  const SurfaceProgram constrained_pressure_program{
+      4u,
+      {},
+      {ValueInstruction{.operation = ValueOperation::path_ray_length,
+                        .result_type = SocketType::floating},
+       ValueInstruction{
+           .operation = ValueOperation::scalar_to_color,
+           .result_type = SocketType::color,
+           .operands = make_value_operands<value_operand::unary>(
+               {{value_operand::unary::input, ValueExpressionId{0u}}})},
+       ValueInstruction{.operation = ValueOperation::surface_position,
+                        .result_type = SocketType::point},
+       ValueInstruction{
+           .operation = ValueOperation::vector_to_scalar,
+           .result_type = SocketType::floating,
+           .operands = make_value_operands<value_operand::unary>(
+               {{value_operand::unary::input, ValueExpressionId{2u}}})}},
+      {},
+      {}};
+  const auto constrained_pressure_active = std::vector<bool>(4u, true);
+  const auto constrained_pressure_outputs =
+      std::vector<bool>{false, true, false, true};
+  const auto unconstrained_pressure_plan = plan_surface_value_storage(
+      constrained_pressure_program, constrained_pressure_active,
+      constrained_pressure_outputs);
+  require(unconstrained_pressure_plan.valid &&
+              unconstrained_pressure_plan.instructions ==
+                  std::vector<ValueExpressionId>{
+                      ValueExpressionId{2u}, ValueExpressionId{3u},
+                      ValueExpressionId{0u}, ValueExpressionId{1u}} &&
+              unconstrained_pressure_plan.scalar_slots == 2u &&
+              unconstrained_pressure_plan.vector_slots == 1u &&
+              unconstrained_pressure_plan.payload_bytes() == 20u,
+          "unconstrained typed scheduling did not minimize exact payload");
+  const auto capacity_constrained_plan = plan_surface_value_storage(
+      constrained_pressure_program, constrained_pressure_active,
+      constrained_pressure_outputs,
+      SurfaceValueStorageCapacity{.scalar_slots = 1u,
+                                  .vector_slots = 2u,
+                                  .unsigned_integer_slots = 0u});
+  require(capacity_constrained_plan.valid &&
+              capacity_constrained_plan.instructions ==
+                  std::vector<ValueExpressionId>{
+                      ValueExpressionId{0u}, ValueExpressionId{1u},
+                      ValueExpressionId{2u}, ValueExpressionId{3u}} &&
+              capacity_constrained_plan.scalar_slots == 1u &&
+              capacity_constrained_plan.vector_slots == 2u &&
+              capacity_constrained_plan.payload_bytes() == 28u,
+          "typed scheduling preferred a smaller infeasible pressure vector");
+  const auto impossible_pressure_plan = plan_surface_value_storage(
+      constrained_pressure_program, constrained_pressure_active,
+      constrained_pressure_outputs,
+      SurfaceValueStorageCapacity{.scalar_slots = 1u,
+                                  .vector_slots = 1u,
+                                  .unsigned_integer_slots = 0u});
+  require(!impossible_pressure_plan.valid &&
+              impossible_pressure_plan.diagnostic.find(
+                  "typed storage capacity") != std::string::npos,
+          "typed scheduling accepted two capacity-infeasible candidates");
 
   std::vector<float> transform(16u, 0.0f);
   for (auto diagonal = std::size_t{0u}; diagonal < 4u; ++diagonal) {
@@ -513,32 +585,36 @@ void test_surface_value_storage_plan() {
                                  .storage = &uint_passthrough_plan}};
   const auto passthrough_scene =
       build_surface_value_executable_scene(passthrough_inputs);
-  require(passthrough_scene.valid && passthrough_scene.variants.size() == 3u &&
-              passthrough_scene.instruction_variants ==
-                  std::vector<std::uint32_t>{0u, 0u, 1u, 1u, 2u} &&
-              passthrough_scene.variants[0u].instruction.result_type ==
-                  SocketType::floating &&
-              passthrough_scene.variants[0u].operand_types ==
-                  std::vector<SocketType>{SocketType::floating} &&
-              passthrough_scene.variants[1u].instruction.result_type ==
-                  SocketType::vector &&
-              passthrough_scene.variants[1u].operand_types ==
-                  std::vector<SocketType>{SocketType::vector} &&
-              passthrough_scene.variants[2u].instruction.result_type ==
-                  SocketType::unsigned_integer &&
-              passthrough_scene.variants[2u].operand_types ==
-                  std::vector<SocketType>{SocketType::unsigned_integer} &&
-              passthrough_scene.variants[0u].operand_routes ==
-                  std::vector<SurfaceValueOperandRoute>{
-                      SurfaceValueOperandRoute::parameter} &&
-              passthrough_scene.variants[1u].operand_routes ==
-                  std::vector<SurfaceValueOperandRoute>{
-                      SurfaceValueOperandRoute::parameter} &&
-              passthrough_scene.variants[2u].operand_routes ==
-                  std::vector<SurfaceValueOperandRoute>{
-                      SurfaceValueOperandRoute::parameter},
-          "nominal socket spellings did not quotient to the three exact SVM "
-          "execution banks or preserve direct parameter routing");
+  const std::vector<const SurfaceValueStoragePlan *> passthrough_plans{
+      &float_passthrough_plan, &boolean_passthrough_plan,
+      &color_passthrough_plan, &normal_passthrough_plan,
+      &uint_passthrough_plan};
+  for (const auto *passthrough_plan : passthrough_plans) {
+    require(passthrough_plan->valid && passthrough_plan->instructions.empty() &&
+                passthrough_plan->active_values == 2u &&
+                passthrough_plan->parameter_values == 1u &&
+                passthrough_plan->alias_values == 1u &&
+                passthrough_plan->payload_bytes() == 0u &&
+                passthrough_plan->locations[1u].storage ==
+                    passthrough_plan->locations[0u].storage &&
+                passthrough_plan->locations[1u].bank ==
+                    passthrough_plan->locations[0u].bank &&
+                passthrough_plan->locations[1u].index ==
+                    passthrough_plan->locations[0u].index,
+            "a pure same-bank identity was not contracted to its exact SSA "
+            "representative");
+  }
+  require(passthrough_scene.valid && passthrough_scene.variants.empty() &&
+              passthrough_scene.instruction_variants.empty() &&
+              passthrough_scene.values.programs.size() == 5u &&
+              passthrough_scene.values.instructions.empty() &&
+              std::all_of(passthrough_scene.values.programs.begin(),
+                          passthrough_scene.values.programs.end(),
+                          [](const auto &program_desc) noexcept {
+                            return program_desc.instruction_count == 0u;
+                          }),
+          "contracted identities still generated device instructions or "
+          "immutable evaluator variants");
 
   const SurfaceProgram transaction_program{
       35u,
@@ -594,25 +670,24 @@ void test_surface_value_storage_plan() {
           .surface_normal_uses_undisplaced_geometry = true}});
   const auto transaction_invalid = SurfaceValueAddress::invalid_value;
   require(
-      transaction_scene.valid && transaction_scene.variants.size() == 1u &&
+      transaction_scene.valid && transaction_scene.variants.empty() &&
           transaction_scene.instruction_variants ==
-              std::vector<std::uint32_t>{0u, transaction_invalid, 0u} &&
+              std::vector<std::uint32_t>{transaction_invalid} &&
           transaction_scene.values.programs.size() == 1u &&
-          transaction_scene.values.programs[0u].instruction_count == 3u &&
+          transaction_scene.values.programs[0u].instruction_count == 1u &&
           transaction_scene.values.programs[0u].flags ==
               surface_value_program_automatic_normal_uses_undisplaced_geometry &&
-          transaction_scene.values.instructions.size() == 3u &&
+          transaction_scene.values.instructions.size() == 1u &&
           is_surface_value_surface_normal_transition(
-              transaction_scene.values.instructions[1u]) &&
-          transaction_scene.values.instructions[1u].operand_payload ==
+              transaction_scene.values.instructions.front()) &&
+          transaction_scene.values.instructions.front().operand_payload ==
               surface_value_invalid_operand_word &&
-          transaction_scene.values.instructions[1u].result ==
-              transaction_scene.values.instructions[0u].result &&
-          transaction_scene.values.instructions[2u].result ==
-              transaction_scene.values.instructions[0u].result &&
+          SurfaceValueAddress{
+              transaction_scene.values.instructions.front().result}
+              .parameter() &&
           transaction_scene.values.operands.empty(),
       "automatic normal and endpoint root did not compose into one exact "
-      "transaction stream with a consuming slot-overlap boundary");
+      "zero-instruction identity transaction");
 
   const auto parameter_normal_plan = plan_surface_value_storage(
       transaction_program, std::vector<bool>{true, false, false, false},
@@ -625,8 +700,8 @@ void test_surface_value_storage_plan() {
           .surface_normal_output = ValueExpressionId{0u}}});
   require(parameter_normal_scene.valid &&
               parameter_normal_scene.instruction_variants ==
-                  std::vector<std::uint32_t>{transaction_invalid, 0u} &&
-              parameter_normal_scene.values.instructions.size() == 2u &&
+                  std::vector<std::uint32_t>{transaction_invalid} &&
+              parameter_normal_scene.values.instructions.size() == 1u &&
               is_surface_value_surface_normal_transition(
                   parameter_normal_scene.values.instructions.front()) &&
               SurfaceValueAddress{
@@ -645,8 +720,26 @@ void test_surface_value_storage_plan() {
                   "automatic-normal transaction") != std::string::npos,
           "an incomplete automatic-normal transaction was accepted");
 
-  const auto transaction_normal_image =
-      lower_surface_value_program(transaction_program, transaction_normal_plan);
+  // The planner contracts identities, but the low-level serializer and
+  // verifier deliberately retain support for an already serialized legacy
+  // Passthrough. Construct that layout explicitly so this compatibility
+  // contract remains covered independently of the optimizer.
+  const SurfaceValueStoragePlan legacy_transaction_normal_plan{
+      .valid = true,
+      .locations = {{.storage = SurfaceValueStorageClass::parameter,
+                     .bank = SurfaceValueBank::vector,
+                     .index = 0u},
+                    {.storage = SurfaceValueStorageClass::local_slot,
+                     .bank = SurfaceValueBank::vector,
+                     .index = 0u},
+                    {},
+                    {}},
+      .instructions = {ValueExpressionId{1u}},
+      .vector_slots = 1u,
+      .active_values = 2u,
+      .parameter_values = 1u};
+  const auto transaction_normal_image = lower_surface_value_program(
+      transaction_program, legacy_transaction_normal_plan);
   require(transaction_normal_image.valid &&
               transaction_normal_image.instructions.size() == 1u,
           "failed to construct the transaction verifier fixture");

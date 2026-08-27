@@ -564,28 +564,39 @@ struct SurfaceValueSchedulePressure {
     const std::vector<ValueInstruction> &values,
     const std::vector<bool> &active,
     const std::vector<bool> &outputs,
+    const std::vector<std::uint32_t> &representatives,
     const std::vector<ValueExpressionId> &schedule) {
   std::vector<std::uint32_t> remaining_uses(values.size(), 0u);
+  std::vector<std::uint32_t> output_uses(values.size(), 0u);
   auto computed_count = std::size_t{0u};
   for (auto index = std::size_t{0u}; index < values.size(); ++index) {
     if (!active[index]) {
       continue;
     }
-    computed_count +=
-        values[index].operation == ValueOperation::parameter ? 0u : 1u;
-    for (const auto operand : values[index].operands) {
-      if (remaining_uses[operand.value] ==
-          std::numeric_limits<std::uint32_t>::max()) {
-        return {};
+    const auto representative = representatives[index];
+    const auto executable =
+        representative == index &&
+        values[index].operation != ValueOperation::parameter;
+    computed_count += executable ? 1u : 0u;
+    if (executable) {
+      for (const auto operand : values[index].operands) {
+        const auto source = representatives[operand.value];
+        if (remaining_uses[source] ==
+            std::numeric_limits<std::uint32_t>::max()) {
+          return {};
+        }
+        ++remaining_uses[source];
       }
-      ++remaining_uses[operand.value];
     }
     if (outputs[index]) {
-      if (remaining_uses[index] ==
-          std::numeric_limits<std::uint32_t>::max()) {
+      if (remaining_uses[representative] ==
+              std::numeric_limits<std::uint32_t>::max() ||
+          output_uses[representative] ==
+              std::numeric_limits<std::uint32_t>::max()) {
         return {};
       }
-      ++remaining_uses[index];
+      ++remaining_uses[representative];
+      ++output_uses[representative];
     }
   }
   if (schedule.size() != computed_count) {
@@ -598,6 +609,7 @@ struct SurfaceValueSchedulePressure {
   for (const auto id : schedule) {
     if (!id.valid() || id.value >= values.size() || !active[id.value] ||
         emitted[id.value] ||
+        representatives[id.value] != id.value ||
         values[id.value].operation == ValueOperation::parameter) {
       return {};
     }
@@ -605,20 +617,22 @@ struct SurfaceValueSchedulePressure {
 
     // All operands are read before any dying location is made reusable.
     for (const auto operand : instruction.operands) {
-      if (values[operand.value].operation != ValueOperation::parameter &&
-          !emitted[operand.value]) {
+      const auto source = representatives[operand.value];
+      if (values[source].operation != ValueOperation::parameter &&
+          !emitted[source]) {
         return {};
       }
     }
     for (const auto operand : instruction.operands) {
-      if (remaining_uses[operand.value] == 0u) {
+      const auto source = representatives[operand.value];
+      if (remaining_uses[source] == 0u) {
         return {};
       }
-      --remaining_uses[operand.value];
-      if (remaining_uses[operand.value] == 0u &&
-          values[operand.value].operation != ValueOperation::parameter) {
+      --remaining_uses[source];
+      if (remaining_uses[source] == 0u &&
+          values[source].operation != ValueOperation::parameter) {
         SurfaceValueBank operand_bank;
-        if (!classify_surface_value_type(values[operand.value].result_type,
+        if (!classify_surface_value_type(values[source].result_type,
                                          operand_bank)) {
           return {};
         }
@@ -647,9 +661,8 @@ struct SurfaceValueSchedulePressure {
     emitted[id.value] = true;
   }
   for (auto index = std::size_t{0u}; index < values.size(); ++index) {
-    if (active[index] &&
-        values[index].operation != ValueOperation::parameter &&
-        remaining_uses[index] != (outputs[index] ? 1u : 0u)) {
+    if (active[index] && representatives[index] == index &&
+        remaining_uses[index] != output_uses[index]) {
       return {};
     }
   }
@@ -676,10 +689,11 @@ struct SurfaceValueSchedulePressure {
 // because ValueInstruction operations are pure: all device state is explicit
 // in their operands, immutable metadata, parameters, ShaderServices, and
 // SurfacePoint.
-[[nodiscard]] bool schedule_surface_value_instructions(
+[[nodiscard]] bool make_sethi_ullman_value_schedule(
     const std::vector<ValueInstruction> &values,
     const std::vector<bool> &active,
     const std::vector<bool> &outputs,
+    const std::vector<std::uint32_t> &representatives,
     std::vector<ValueExpressionId> &schedule,
     std::string &diagnostic) {
   const auto count = values.size();
@@ -690,6 +704,7 @@ struct SurfaceValueSchedulePressure {
 
   for (auto index = std::size_t{0u}; index < count; ++index) {
     if (!active[index] ||
+        representatives[index] != index ||
         values[index].operation == ValueOperation::parameter) {
       continue;
     }
@@ -697,30 +712,32 @@ struct SurfaceValueSchedulePressure {
     auto &dependencies = producers[index];
     dependencies.reserve(values[index].operands.size());
     for (const auto operand : values[index].operands) {
-      if (values[operand.value].operation == ValueOperation::parameter ||
-          std::find(dependencies.begin(), dependencies.end(), operand.value) !=
+      const auto source = representatives[operand.value];
+      if (values[source].operation == ValueOperation::parameter ||
+          std::find(dependencies.begin(), dependencies.end(), source) !=
               dependencies.end()) {
         continue;
       }
-      dependencies.emplace_back(operand.value);
-      if (instruction_consumers[operand.value] ==
+      dependencies.emplace_back(source);
+      if (instruction_consumers[source] ==
           std::numeric_limits<std::uint32_t>::max()) {
         diagnostic = "the value consumer count exceeds the scheduler encoding";
         return false;
       }
-      ++instruction_consumers[operand.value];
+      ++instruction_consumers[source];
     }
   }
   total_consumers = instruction_consumers;
   for (auto index = std::size_t{0u}; index < count; ++index) {
     if (outputs[index]) {
-      if (total_consumers[index] ==
+      const auto representative = representatives[index];
+      if (total_consumers[representative] ==
           std::numeric_limits<std::uint32_t>::max()) {
         diagnostic =
             "the terminal value consumer count exceeds the scheduler encoding";
         return false;
       }
-      ++total_consumers[index];
+      ++total_consumers[representative];
     }
   }
 
@@ -741,6 +758,7 @@ struct SurfaceValueSchedulePressure {
 
   for (auto index = std::size_t{0u}; index < count; ++index) {
     if (!active[index] ||
+        representatives[index] != index ||
         values[index].operation == ValueOperation::parameter) {
       continue;
     }
@@ -769,6 +787,7 @@ struct SurfaceValueSchedulePressure {
   sinks.reserve(computed_count);
   for (auto index = std::size_t{0u}; index < count; ++index) {
     if (active[index] &&
+        representatives[index] == index &&
         values[index].operation != ValueOperation::parameter &&
         instruction_consumers[index] == 0u) {
       sinks.emplace_back(static_cast<std::uint32_t>(index));
@@ -796,31 +815,119 @@ struct SurfaceValueSchedulePressure {
     diagnostic = "the value scheduler did not reach every active instruction";
     return false;
   }
+  return true;
+}
+
+[[nodiscard]] bool schedule_surface_value_instructions(
+    const std::vector<ValueInstruction> &values,
+    const std::vector<bool> &active,
+    const std::vector<bool> &outputs,
+    const std::vector<std::uint32_t> &representatives,
+    SurfaceValueStorageCapacity capacity,
+    std::vector<ValueExpressionId> &schedule,
+    std::string &diagnostic) {
+  if (!make_sethi_ullman_value_schedule(
+          values, active, outputs, representatives, schedule, diagnostic)) {
+    return false;
+  }
+  const auto count = values.size();
+  const auto computed_count = schedule.size();
 
   // Cycles' scalar-stack recurrence is a heuristic for DAGs, while Psycles
-  // has three separately allocated typed banks. Preserve the original legal
-  // topological order as a formal no-regression candidate and select it only
-  // when its exact read-before-write payload is smaller. Equal pressure keeps
-  // the Cycles schedule and its locality/order characteristics.
+  // has three separately allocated typed banks. Retain two independent
+  // witnesses in addition to the quotient schedule:
+  //
+  // 1. Source order is legal because SurfaceProgram is strictly topological.
+  // 2. Projecting a legal schedule of the uncontracted graph through the
+  //    identity quotient remains topological: deleting p = id(x) preserves
+  //    x-before-use, and every surviving instruction keeps its relative
+  //    order. The projected schedule cannot have greater pressure than that
+  //    pre-optimization witness because it removes one definition and one
+  //    copy edge without adding a value.
+  //
+  // Reject candidates outside the interpreter's component-wise capacity
+  // vector, then minimize exact payload bytes. This prevents a byte-saving
+  // vector-to-scalar trade from silently overflowing an independent bank and
+  // gives identity contraction a formal no-regression schedule.
   std::vector<ValueExpressionId> source_schedule;
   source_schedule.reserve(computed_count);
   for (auto index = std::size_t{0u}; index < count; ++index) {
     if (active[index] &&
+        representatives[index] == index &&
         values[index].operation != ValueOperation::parameter) {
       source_schedule.emplace_back(
           ValueExpressionId{static_cast<std::uint32_t>(index)});
     }
   }
+  std::vector<std::uint32_t> uncontracted_representatives(count);
+  for (auto index = std::size_t{0u}; index < count; ++index) {
+    uncontracted_representatives[index] = static_cast<std::uint32_t>(index);
+  }
+  std::vector<ValueExpressionId> uncontracted_schedule;
+  if (!make_sethi_ullman_value_schedule(
+          values, active, outputs, uncontracted_representatives,
+          uncontracted_schedule, diagnostic)) {
+    return false;
+  }
+  std::vector<ValueExpressionId> projected_schedule;
+  projected_schedule.reserve(computed_count);
+  for (const auto id : uncontracted_schedule) {
+    if (representatives[id.value] == id.value) {
+      projected_schedule.emplace_back(id);
+    }
+  }
   const auto cycles_pressure =
-      measure_schedule_pressure(values, active, outputs, schedule);
+      measure_schedule_pressure(
+          values, active, outputs, representatives, schedule);
   const auto source_pressure =
-      measure_schedule_pressure(values, active, outputs, source_schedule);
-  if (!cycles_pressure.valid || !source_pressure.valid) {
+      measure_schedule_pressure(
+          values, active, outputs, representatives, source_schedule);
+  const auto projected_pressure =
+      measure_schedule_pressure(
+          values, active, outputs, representatives, projected_schedule);
+  if (!cycles_pressure.valid || !source_pressure.valid ||
+      !projected_pressure.valid) {
     diagnostic = "a value schedule violates read-before-write liveness";
     return false;
   }
-  if (source_pressure.payload_bytes() < cycles_pressure.payload_bytes()) {
-    schedule = std::move(source_schedule);
+  const std::array capacity_slots{
+      capacity.scalar_slots,
+      capacity.vector_slots,
+      capacity.unsigned_integer_slots};
+  const auto fits_capacity = [&](const SurfaceValueSchedulePressure &pressure) {
+    return std::equal(
+        pressure.slots.begin(), pressure.slots.end(), capacity_slots.begin(),
+        [](std::uint32_t slots, std::uint32_t limit) noexcept {
+          return slots <= limit;
+        });
+  };
+  struct ScheduleCandidate {
+    const std::vector<ValueExpressionId> *instructions;
+    const SurfaceValueSchedulePressure *pressure;
+  };
+  const std::array candidates{
+      ScheduleCandidate{.instructions = &schedule,
+                        .pressure = &cycles_pressure},
+      ScheduleCandidate{.instructions = &projected_schedule,
+                        .pressure = &projected_pressure},
+      ScheduleCandidate{.instructions = &source_schedule,
+                        .pressure = &source_pressure}};
+  const ScheduleCandidate *best = nullptr;
+  for (const auto &candidate : candidates) {
+    if (!fits_capacity(*candidate.pressure) ||
+        (best != nullptr &&
+         candidate.pressure->payload_bytes() >=
+             best->pressure->payload_bytes())) {
+      continue;
+    }
+    best = &candidate;
+  }
+  if (best == nullptr) {
+    diagnostic = "no candidate value schedule fits the typed storage capacity";
+    return false;
+  }
+  if (best->instructions != &schedule) {
+    schedule = *best->instructions;
   }
   return true;
 }
@@ -832,7 +939,7 @@ bool SurfaceValueStoragePlan::compatible(
   return valid && locations.size() == program.value_instructions().size() &&
          static_cast<std::size_t>(active_values) >= instructions.size() &&
          static_cast<std::size_t>(active_values) ==
-             instructions.size() + parameter_values;
+             instructions.size() + parameter_values + alias_values;
 }
 
 std::size_t SurfaceValueStoragePlan::payload_bytes() const noexcept {
@@ -845,7 +952,8 @@ std::size_t SurfaceValueStoragePlan::payload_bytes() const noexcept {
 SurfaceValueStoragePlan
 plan_surface_value_storage(const SurfaceProgram &program,
                            const std::vector<bool> &active,
-                           const std::vector<bool> &outputs) {
+                           const std::vector<bool> &outputs,
+                           SurfaceValueStorageCapacity capacity) {
   const auto &values = program.value_instructions();
   if (active.size() != values.size() || outputs.size() != values.size()) {
     return reject("value storage masks do not match the program");
@@ -854,8 +962,19 @@ plan_surface_value_storage(const SurfaceProgram &program,
   SurfaceValueStoragePlan result;
   result.locations.resize(values.size());
   result.instructions.reserve(values.size());
+  constexpr auto invalid_representative =
+      std::numeric_limits<std::uint32_t>::max();
+  std::vector<std::uint32_t> representatives(
+      values.size(), invalid_representative);
   std::vector<std::uint32_t> remaining_uses(values.size(), 0u);
+  std::vector<std::uint32_t> output_uses(values.size(), 0u);
 
+  // Construct the congruence quotient before liveness. A Passthrough is
+  // defined by every evaluator as the identity on one physical execution
+  // bank. Contracting p = id(x) is therefore semantics preserving exactly
+  // when bank(p) == bank(x): every use and terminal observation of p becomes
+  // a use of representative(x), while the nominal socket spelling remains in
+  // SurfaceProgram for diagnostics and graph round-tripping.
   for (auto index = std::size_t{0u}; index < values.size(); ++index) {
     if (outputs[index] && !active[index]) {
       return reject("a value output is not active");
@@ -885,6 +1004,7 @@ plan_surface_value_storage(const SurfaceProgram &program,
       result.locations[index] = {.storage = SurfaceValueStorageClass::parameter,
                                  .bank = bank,
                                  .index = instruction.parameter.value};
+      representatives[index] = static_cast<std::uint32_t>(index);
       ++result.parameter_values;
     }
     for (const auto operand : instruction.operands) {
@@ -897,23 +1017,70 @@ plan_surface_value_storage(const SurfaceProgram &program,
       if (!active[operand.value]) {
         return reject("the active value mask is not transitively closed");
       }
-      if (remaining_uses[operand.value] ==
-          std::numeric_limits<std::uint32_t>::max()) {
-        return reject("the value use count exceeds the plan encoding");
+    }
+    if (instruction.operation == ValueOperation::passthrough) {
+      if (instruction.operands.size() != 1u) {
+        return reject("a passthrough does not have one source");
       }
-      ++remaining_uses[operand.value];
+      const auto source = instruction.operands.front().value;
+      const auto representative = representatives[source];
+      if (representative == invalid_representative) {
+        return reject("a passthrough source has no representative");
+      }
+      SurfaceValueBank source_bank;
+      if (!classify_surface_value_type(
+              values[representative].result_type, source_bank) ||
+          source_bank != bank) {
+        return reject("a passthrough crosses physical execution banks");
+      }
+      representatives[index] = representative;
+      if (result.alias_values ==
+          std::numeric_limits<std::uint32_t>::max()) {
+        return reject("the value alias count exceeds the plan encoding");
+      }
+      ++result.alias_values;
+    } else if (instruction.operation != ValueOperation::parameter) {
+      representatives[index] = static_cast<std::uint32_t>(index);
+    }
+  }
+
+  // Count uses only on quotient representatives. Identity nodes neither read
+  // nor write device storage; keeping their apparent edges here would extend
+  // live ranges and defeat the contraction.
+  for (auto index = std::size_t{0u}; index < values.size(); ++index) {
+    if (!active[index]) {
+      continue;
+    }
+    const auto representative = representatives[index];
+    if (representative == invalid_representative) {
+      return reject("an active value has no quotient representative");
+    }
+    if (representative == index &&
+        values[index].operation != ValueOperation::parameter) {
+      for (const auto operand : values[index].operands) {
+        const auto source = representatives[operand.value];
+        if (remaining_uses[source] ==
+            std::numeric_limits<std::uint32_t>::max()) {
+          return reject("the value use count exceeds the plan encoding");
+        }
+        ++remaining_uses[source];
+      }
     }
     if (outputs[index]) {
-      if (remaining_uses[index] ==
-          std::numeric_limits<std::uint32_t>::max()) {
-        return reject("the value use count exceeds the plan encoding");
+      if (remaining_uses[representative] ==
+              std::numeric_limits<std::uint32_t>::max() ||
+          output_uses[representative] ==
+              std::numeric_limits<std::uint32_t>::max()) {
+        return reject("the value output count exceeds the plan encoding");
       }
-      ++remaining_uses[index];
+      ++remaining_uses[representative];
+      ++output_uses[representative];
     }
   }
 
   if (!schedule_surface_value_instructions(
-          values, active, outputs, result.instructions, result.diagnostic)) {
+          values, active, outputs, representatives, capacity,
+          result.instructions, result.diagnostic)) {
     return result;
   }
 
@@ -925,16 +1092,18 @@ plan_surface_value_storage(const SurfaceProgram &program,
     // This is the formal read phase. Expired operands become reusable only
     // after every operand location has already been established.
     for (const auto operand : instruction.operands) {
-      const auto &location = result.locations[operand.value];
+      const auto source = representatives[operand.value];
+      const auto &location = result.locations[source];
       if (location.storage == SurfaceValueStorageClass::inactive ||
-          remaining_uses[operand.value] == 0u) {
+          remaining_uses[source] == 0u) {
         return reject("an operand has no live storage at its use");
       }
     }
     for (const auto operand : instruction.operands) {
-      auto &uses = remaining_uses[operand.value];
+      const auto source = representatives[operand.value];
+      auto &uses = remaining_uses[source];
       --uses;
-      const auto &location = result.locations[operand.value];
+      const auto &location = result.locations[source];
       if (uses == 0u &&
           location.storage == SurfaceValueStorageClass::local_slot) {
         free_slots[bank_index(location.bank)].emplace_back(location.index);
@@ -962,11 +1131,24 @@ plan_surface_value_storage(const SurfaceProgram &program,
     }
   }
 
+  // Publish the quotient without changing any source ValueExpressionId.
+  // Representatives are strictly earlier for aliases, and every executable
+  // representative has now received its final colored location.
   for (auto index = std::size_t{0u}; index < values.size(); ++index) {
-    if (!active[index]) {
+    if (active[index] && representatives[index] != index) {
+      const auto &location = result.locations[representatives[index]];
+      if (location.storage == SurfaceValueStorageClass::inactive) {
+        return reject("a value alias representative has no storage");
+      }
+      result.locations[index] = location;
+    }
+  }
+
+  for (auto index = std::size_t{0u}; index < values.size(); ++index) {
+    if (!active[index] || representatives[index] != index) {
       continue;
     }
-    const auto expected = outputs[index] ? 1u : 0u;
+    const auto expected = output_uses[index];
     if (remaining_uses[index] != expected) {
       return reject("value liveness did not converge at the stream boundary");
     }

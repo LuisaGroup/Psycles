@@ -149,7 +149,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
             normal_outputs[program.surface_normal_root().value] = true;
         }
         auto topology_normal_storage = compiler::plan_surface_value_storage(
-            program, normal_active, normal_outputs);
+            program, normal_active, normal_outputs,
+            SurfaceValueRuntime::storage_capacity);
         if (!topology_normal_storage.valid) {
             diagnostic =
                 "surface topology " + std::to_string(topology) +
@@ -161,7 +162,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
             program, closure_plans[topology]);
         auto preparation_storage = compiler::plan_surface_value_storage(
             program, dependencies.preparation,
-            dependencies.preparation_outputs);
+            dependencies.preparation_outputs,
+            SurfaceValueRuntime::storage_capacity);
         if (!preparation_storage.valid) {
             diagnostic = "surface topology " + std::to_string(topology) +
                          " preparation plan: " + preparation_storage.diagnostic;
@@ -176,7 +178,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
             return nullptr;
         }
         auto emission_storage = compiler::plan_surface_value_storage(
-            program, dependencies.emission, dependencies.emission_outputs);
+            program, dependencies.emission, dependencies.emission_outputs,
+            SurfaceValueRuntime::storage_capacity);
         if (!emission_storage.valid) {
             diagnostic = "surface topology " + std::to_string(topology) +
                          " emission plan: " + emission_storage.diagnostic;

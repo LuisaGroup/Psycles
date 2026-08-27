@@ -497,8 +497,24 @@ void test_serialized_record_coherence() {
         SocketType::floating,
         passthrough_operands,
         {});
+    // Automatic planning contracts this pure identity to its parameter.
+    // Keep the serialized-record validation independent by explicitly
+    // constructing the legacy uncoalesced layout that old scene images may
+    // still contain.
+    const SurfaceValueStoragePlan legacy_passthrough_plan{
+        .valid = true,
+        .locations = {{.storage = SurfaceValueStorageClass::parameter,
+                       .bank = SurfaceValueBank::scalar,
+                       .index = 0u},
+                      {.storage = SurfaceValueStorageClass::local_slot,
+                       .bank = SurfaceValueBank::scalar,
+                       .index = 0u}},
+        .instructions = {ValueExpressionId{1u}},
+        .scalar_slots = 1u,
+        .active_values = 2u,
+        .parameter_values = 1u};
     auto foreign =
-        lower_surface_value_program(passthrough, make_plan(passthrough));
+        lower_surface_value_program(passthrough, legacy_passthrough_plan);
     require(foreign.valid && foreign.instructions.size() == 1u,
             "valid Passthrough record failed lowering");
     foreign.instructions.front().control |=
