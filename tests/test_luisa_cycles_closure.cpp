@@ -30,6 +30,7 @@ using psycles::test_support::ParameterShaderServices;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
+using psycles::test_support::merged_surface_closure_plan;
 using psycles::test_support::parameter_data;
 using psycles::test_support::require_bounded_xir;
 using psycles::test_support::surface_aov;
@@ -607,34 +608,60 @@ int main(int argc, char **argv) {
         diffuse_surfaces.create<GraphSurface>(program.program);
     SurfaceDispatch physical_surfaces;
     const auto physical_surface_tag =
-        physical_surfaces.create<GraphSurface>(physical_program.program);
+        physical_surfaces.create<GraphSurface>(
+            physical_program.program,
+            merged_surface_closure_plan(
+                *physical_program.program,
+                parameter_data(*physical_program.program)));
     SurfaceDispatch transparent_order_surfaces;
     const auto transparent_order_surface_tag =
         transparent_order_surfaces.create<GraphSurface>(
-            transparent_order_program.program);
+            transparent_order_program.program,
+            merged_surface_closure_plan(
+                *transparent_order_program.program,
+                parameter_data(*transparent_order_program.program)));
     SurfaceDispatch subsurface_surfaces;
     const auto subsurface_surface_tag =
         subsurface_surfaces.create<GraphSurface>(
-            subsurface_program.program);
+            subsurface_program.program,
+            merged_surface_closure_plan(
+                *subsurface_program.program,
+                parameter_data(*subsurface_program.program)));
     SurfaceDispatch principled_emission_surfaces;
     const auto principled_emission_surface_tag =
         principled_emission_surfaces.create<GraphSurface>(
-            principled_emission_program.program);
+            principled_emission_program.program,
+            merged_surface_closure_plan(
+                *principled_emission_program.program,
+                parameter_data(*principled_emission_program.program)));
     SurfaceDispatch layered_emission_surfaces;
     const auto layered_emission_surface_tag =
         layered_emission_surfaces.create<GraphSurface>(
-            layered_emission_program.program);
+            layered_emission_program.program,
+            merged_surface_closure_plan(
+                *layered_emission_program.program,
+                parameter_data(*layered_emission_program.program)));
     SurfaceDispatch tangent_normal_surfaces;
     const auto tangent_normal_surface_tag =
         tangent_normal_surfaces.create<GraphSurface>(
-            tangent_normal_program.program);
+            tangent_normal_program.program,
+            merged_surface_closure_plan(
+                *tangent_normal_program.program,
+                parameter_data(*tangent_normal_program.program)));
     SurfaceDispatch glass_surfaces;
     const auto glass_surface_tag =
-        glass_surfaces.create<GraphSurface>(glass_program.program);
+        glass_surfaces.create<GraphSurface>(
+            glass_program.program,
+            merged_surface_closure_plan(
+                *glass_program.program,
+                parameter_data(*glass_program.program)));
     SurfaceDispatch translucent_surfaces;
     const auto translucent_surface_tag =
         translucent_surfaces.create<GraphSurface>(
-            translucent_program.program);
+            translucent_program.program,
+            merged_surface_closure_plan(
+                *translucent_program.program,
+                parameter_data(*translucent_program.program)));
     auto color_parameter = std::uint32_t{~std::uint32_t{0u}};
     const auto &parameters = program.program->parameters();
     for (std::uint32_t index = 0u; index < parameters.size(); ++index) {

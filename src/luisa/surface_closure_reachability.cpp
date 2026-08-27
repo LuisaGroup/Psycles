@@ -52,7 +52,9 @@ SurfaceClosureReachability
 reachable_surface_closures(std::uint32_t closure_operations,
                            std::uint32_t principled_features,
                            std::uint32_t anisotropic_closure_operations,
-                           std::uint32_t anisotropic_principled_features) noexcept {
+                           std::uint32_t anisotropic_principled_features,
+                           std::uint32_t thin_film_closure_operations,
+                           std::uint32_t thin_film_principled_features) noexcept {
     static_assert(
         static_cast<std::uint32_t>(compiler::ClosureOperation::refraction) < 32u);
     static_assert(static_cast<std::uint32_t>(
@@ -63,6 +65,9 @@ reachable_surface_closures(std::uint32_t closure_operations,
     constexpr auto anisotropic_operation_mask =
         operation_bit(compiler::ClosureOperation::principled) |
         operation_bit(compiler::ClosureOperation::glossy);
+    constexpr auto thin_film_operation_mask =
+        operation_bit(compiler::ClosureOperation::principled) |
+        operation_bit(compiler::ClosureOperation::glass);
     if ((closure_operations & ~known_operation_mask()) != 0u ||
         (principled_features & ~known_principled_feature_mask()) != 0u ||
         (anisotropic_closure_operations & ~anisotropic_operation_mask) != 0u ||
@@ -72,6 +77,14 @@ reachable_surface_closures(std::uint32_t closure_operations,
         (anisotropic_principled_features & ~principled_features) != 0u ||
         (anisotropic_principled_features != 0u &&
          (anisotropic_closure_operations &
+          operation_bit(compiler::ClosureOperation::principled)) == 0u) ||
+        (thin_film_closure_operations & ~thin_film_operation_mask) != 0u ||
+        (thin_film_closure_operations & ~closure_operations) != 0u ||
+        (thin_film_principled_features &
+         ~known_principled_feature_mask()) != 0u ||
+        (thin_film_principled_features & ~principled_features) != 0u ||
+        (thin_film_principled_features != 0u &&
+         (thin_film_closure_operations &
           operation_bit(compiler::ClosureOperation::principled)) == 0u)) {
         return all_surface_closure_reachability;
     }
@@ -100,6 +113,17 @@ reachable_surface_closures(std::uint32_t closure_operations,
             return (anisotropic_principled_features &
                     principled_closure_feature_bit(feature)) != 0u;
         };
+    const auto has_thin_film_operation =
+        [thin_film_closure_operations](ClosureOperation operation) noexcept {
+            return (thin_film_closure_operations & operation_bit(operation)) !=
+                   0u;
+        };
+    const auto has_thin_film_principled_feature =
+        [thin_film_principled_features](
+            PrincipledClosureFeature feature) noexcept {
+            return (thin_film_principled_features &
+                    principled_closure_feature_bit(feature)) != 0u;
+        };
     const auto add_kind = [&result](SurfaceClosureKind kind) noexcept {
         result.kinds |= surface_closure_kind_bit(kind);
     };
@@ -124,6 +148,10 @@ reachable_surface_closures(std::uint32_t closure_operations,
     }
     if (has_operation(ClosureOperation::glass)) {
         add_kind(SurfaceClosureKind::glass);
+        if (has_thin_film_operation(ClosureOperation::glass)) {
+            result.thin_film_kinds |=
+                surface_closure_kind_bit(SurfaceClosureKind::glass);
+        }
     }
     if (has_operation(ClosureOperation::transparent)) {
         add_kind(SurfaceClosureKind::transparent);
@@ -147,6 +175,11 @@ reachable_surface_closures(std::uint32_t closure_operations,
     }
     if (has_feature(PrincipledClosureFeature::metallic)) {
         add_principled_lobe(SurfaceClosureLobe::metallic);
+        if (has_thin_film_principled_feature(
+                PrincipledClosureFeature::metallic)) {
+            result.thin_film_principled_lobes |=
+                surface_closure_lobe_bit(SurfaceClosureLobe::metallic);
+        }
         if (has_anisotropic_principled_feature(
                 PrincipledClosureFeature::metallic)) {
             result.anisotropic_microfacet_kinds |=
@@ -155,6 +188,11 @@ reachable_surface_closures(std::uint32_t closure_operations,
     }
     if (has_feature(PrincipledClosureFeature::thick_transmission)) {
         add_kind(SurfaceClosureKind::glass);
+        if (has_thin_film_principled_feature(
+                PrincipledClosureFeature::thick_transmission)) {
+            result.thin_film_kinds |=
+                surface_closure_kind_bit(SurfaceClosureKind::glass);
+        }
     }
     if (has_feature(PrincipledClosureFeature::thin_transmission)) {
         add_kind(SurfaceClosureKind::glossy);
@@ -163,6 +201,11 @@ reachable_surface_closures(std::uint32_t closure_operations,
     }
     if (has_feature(PrincipledClosureFeature::dielectric)) {
         add_principled_lobe(SurfaceClosureLobe::dielectric);
+        if (has_thin_film_principled_feature(
+                PrincipledClosureFeature::dielectric)) {
+            result.thin_film_principled_lobes |=
+                surface_closure_lobe_bit(SurfaceClosureLobe::dielectric);
+        }
         if (has_anisotropic_principled_feature(
                 PrincipledClosureFeature::dielectric)) {
             result.anisotropic_microfacet_kinds |=

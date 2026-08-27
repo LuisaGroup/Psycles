@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "thin_film_fresnel.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_closure.h>
@@ -759,47 +760,71 @@ microfacet_reflection_distribution_terms(
         .lambda_outgoing = lambda_outgoing};
 }
 
-[[nodiscard]] Float3 specular_f0(
-    const SurfaceClosurePhysicalGeneralRecord &closure) noexcept {
-    auto dielectric = (closure.payload.ior - 1.0f) /
-                      max(closure.payload.ior + 1.0f, 1.0e-20f);
-    dielectric *= dielectric;
-    return lerp(make_float3(dielectric),
-        clamp(closure.common.color_or_evaluation_scale,
-            make_float3(0.0f),
-            make_float3(1.0f)),
-        closure.payload.metallic);
-}
-
 [[nodiscard]] Float3 microfacet_reflection_fresnel(
     const SurfaceClosurePhysicalGeneralRecord &closure,
-    Float cosine) noexcept {
+    Float cosine,
+    const ShaderServices *services,
+    bool may_have_metallic_thin_film,
+    bool may_have_dielectric_thin_film) noexcept {
     // Cycles' standalone Glossy closure uses MicrofacetFresnel::NONE:
     // Color is already baked into ShaderClosure::weight, so the remaining
     // directional factor is constant one (plus optional MULTI_GGX scale).
-    const auto f0 = specular_f0(closure);
-    const auto generic =
-        f0 + (make_float3(1.0f) - f0) *
-                 pow(1.0f - cosine, 5.0f);
-    const auto metallic =
+    auto metallic =
         fresnel_f82(cosine,
             closure.common.color_or_evaluation_scale,
             closure.payload.specular_tint) *
         closure.payload.evaluation_scale;
-    const auto dielectric =
+    auto dielectric =
         generalized_dielectric_fresnel(
             cosine,
             closure.payload.ior,
             closure.common.color_or_evaluation_scale) *
         closure.payload.evaluation_scale;
+    if (may_have_metallic_thin_film ||
+        may_have_dielectric_thin_film) {
+        LUISA_ASSERT(services != nullptr,
+                     "Thin-film Fresnel requires Cycles table services.");
+        const auto film_active =
+            closure.payload.thin_film_thickness >
+            thin_film_thickness_cutoff;
+        if (may_have_metallic_thin_film) {
+            const auto metallic_film = thin_film_f82_fresnel(
+                *services,
+                closure.payload.thin_film_thickness,
+                closure.payload.thin_film_ior,
+                closure.common.color_or_evaluation_scale,
+                closure.payload.specular_tint,
+                cosine) * closure.payload.evaluation_scale;
+            metallic = select(
+                metallic,
+                metallic_film,
+                film_active &
+                    has_lobe(closure.common,
+                             SurfaceClosureLobe::metallic));
+        }
+        if (may_have_dielectric_thin_film) {
+            const auto dielectric_film =
+                thin_film_dielectric_fresnel(
+                    *services,
+                    closure.payload.thin_film_thickness,
+                    closure.payload.thin_film_ior,
+                    closure.payload.ior,
+                    closure.common.color_or_evaluation_scale,
+                    cosine)
+                    .reflectance * closure.payload.evaluation_scale;
+            dielectric = select(
+                dielectric,
+                dielectric_film,
+                film_active &
+                    has_lobe(closure.common,
+                             SurfaceClosureLobe::dielectric));
+        }
+    }
     const auto principled = select(
         dielectric,
         metallic,
         has_lobe(closure.common, SurfaceClosureLobe::metallic));
-    const auto shaded = select(generic,
-        principled,
-        has_kind(closure.common, SurfaceClosureKind::principled));
-    return select(shaded,
+    return select(principled,
         closure.payload.evaluation_scale,
         has_kind(closure.common, SurfaceClosureKind::glossy) |
             has_kind(
@@ -814,8 +839,9 @@ microfacet_reflection_distribution_terms(
     Float3 outgoing,
     Float3 glossy_normal,
     Float glossy_filter_roughness,
-    bool may_be_anisotropic) noexcept {
-    static_cast<void>(services);
+    bool may_be_anisotropic,
+    bool may_have_metallic_thin_film,
+    bool may_have_dielectric_thin_film) noexcept {
     Float2 setup_alpha;
     if (may_be_anisotropic) {
         setup_alpha = microfacet_alpha(
@@ -870,7 +896,11 @@ microfacet_reflection_distribution_terms(
             1.0f / (1.0f + terms.lambda_incoming +
                     terms.lambda_outgoing);
         const auto fresnel = microfacet_reflection_fresnel(
-            closure, v_dot_h);
+            closure,
+            v_dot_h,
+            &services,
+            may_have_metallic_thin_film,
+            may_have_dielectric_thin_film);
         const auto intensity =
             fresnel * terms.distribution * geometry /
             max(4.0f * n_dot_v, 1.0e-20f);
@@ -897,7 +927,10 @@ microfacet_reflection_distribution_terms(
     Float2 random,
     Float3 glossy_normal,
     Float glossy_filter_roughness,
-    bool may_be_anisotropic) noexcept {
+    bool may_be_anisotropic,
+    const ShaderServices *services,
+    bool may_have_metallic_thin_film,
+    bool may_have_dielectric_thin_film) noexcept {
     Float2 alpha;
     if (may_be_anisotropic) {
         alpha = microfacet_alpha(
@@ -958,7 +991,11 @@ microfacet_reflection_distribution_terms(
         fresnel_cosine = max(dot(half_vector, incoming), 0.0f);
     };
     const auto fresnel = microfacet_reflection_fresnel(
-        closure, fresnel_cosine);
+        closure,
+        fresnel_cosine,
+        services,
+        may_have_metallic_thin_film,
+        may_have_dielectric_thin_film);
     const auto bump_shadowing = bump_shadowing_term(
         point,
         smooth_normal,

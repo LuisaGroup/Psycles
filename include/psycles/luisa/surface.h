@@ -343,6 +343,8 @@ struct SurfaceClosurePhysicalRecord {
     Float diffuse_roughness;
     Float metallic;
     Float ior;
+    Float thin_film_thickness;
+    Float thin_film_ior;
     Float3 specular_tint;
     Float sheen_transform_a;
     Float sheen_transform_b;
@@ -387,6 +389,8 @@ struct SurfaceClosureRecord {
     Float diffuse_roughness;
     Float metallic;
     Float ior;
+    Float thin_film_thickness;
+    Float thin_film_ior;
     Float specular_ior_level;
     Float3 specular_tint;
     Float sheen_transform_a;
@@ -425,6 +429,8 @@ struct SurfaceClosureRecord {
             .diffuse_roughness = diffuse_roughness,
             .metallic = metallic,
             .ior = ior,
+            .thin_film_thickness = thin_film_thickness,
+            .thin_film_ior = thin_film_ior,
             .specular_tint = specular_tint,
             .sheen_transform_a = sheen_transform_a,
             .sheen_transform_b = sheen_transform_b,
@@ -465,6 +471,8 @@ struct SurfaceClosureRecord {
             .diffuse_roughness = 0.0f,
             .metallic = 0.0f,
             .ior = 1.0f,
+            .thin_film_thickness = 0.0f,
+            .thin_film_ior = 0.0f,
             .specular_ior_level = 0.0f,
             .specular_tint = make_float3(0.0f),
             .sheen_transform_a = 0.0f,
@@ -500,7 +508,10 @@ struct PrincipledMetallicSetupInput {
     Float3 specular_tint;
     Float roughness;
     Float metallic;
+    Float thin_film_thickness;
+    Float thin_film_ior;
     Bool use_bump_map_correction;
+    bool thin_film_enabled{};
     bool preserve_ggx_energy{};
 };
 
@@ -538,7 +549,10 @@ struct PrincipledDielectricSetupInput {
     Float ior;
     Float specular_ior_level;
     Float3 specular_tint;
+    Float thin_film_thickness;
+    Float thin_film_ior;
     Bool use_bump_map_correction;
+    bool thin_film_enabled{};
     bool preserve_ggx_energy{};
 };
 
@@ -800,6 +814,8 @@ struct SurfaceClosureExpression {
     Expr<float> diffuse_roughness;
     Expr<float> metallic;
     Expr<float> ior;
+    Expr<float> thin_film_thickness;
+    Expr<float> thin_film_ior;
     Expr<float> specular_ior_level;
     Expr<luisa::float3> specular_tint;
     Expr<float> sheen_transform_a;

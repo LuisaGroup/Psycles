@@ -1,6 +1,7 @@
 #include "principled_metallic_component.h"
 
 #include "principled_specular_state.h"
+#include "thin_film_fresnel.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_closure.h>
@@ -27,6 +28,13 @@ PrincipledMetallicSetupParameters populate_principled_metallic(
         .incoming_cosine = specular.incoming_cosine,
         .roughness = specular.roughness,
         .metallic = clamp(input.metallic, 0.0f, 1.0f),
+        .thin_film_thickness = input.thin_film_enabled
+                                   ? input.thin_film_thickness
+                                   : Float{0.0f},
+        .thin_film_ior = input.thin_film_enabled
+                             ? input.thin_film_ior
+                             : Float{0.0f},
+        .thin_film_enabled = input.thin_film_enabled,
         .preserve_ggx_energy = input.preserve_ggx_energy};
 }
 
@@ -65,8 +73,22 @@ PrincipledMetallicSetupResult setup_principled_metallic(
         16u,
         16u,
         16u);
-    const auto albedo_estimate = lerp(
+    auto albedo_estimate = lerp(
         f0, make_float3(1.0f), interpolation);
+    if (parameters.thin_film_enabled) {
+        const auto film = thin_film_f82_fresnel(
+            services,
+            parameters.thin_film_thickness,
+            parameters.thin_film_ior,
+            f0,
+            fresnel_b,
+            parameters.incoming_cosine);
+        albedo_estimate = select(
+            albedo_estimate,
+            film,
+            parameters.thin_film_thickness >
+                thin_film_thickness_cutoff);
+    }
     const auto weight = select(
         make_float3(0.0f),
         pre_weight * energy.darkening,
@@ -103,7 +125,7 @@ PrincipledMetallicComponent::setup(
     Bool reflective_caustics) const noexcept {
     const auto *provider =
         _services.surface_closure_setup_provider();
-    return provider != nullptr
+    return provider != nullptr && !input.thin_film_enabled
                ? provider->principled_metallic(
                      input, reflective_caustics)
                : setup_principled_metallic(

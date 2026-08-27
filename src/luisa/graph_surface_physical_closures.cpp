@@ -114,6 +114,8 @@ SurfaceClosureRecord canonical_surface_closure(
         result.microfacet_alpha_y = state.alpha_y;
     }
     result.ior = closure.ior;
+    result.thin_film_thickness = closure.thin_film_thickness;
+    result.thin_film_ior = closure.thin_film_ior;
     result.evaluation_scale = closure.evaluation_scale;
 
     if (closure.operation == compiler::ClosureOperation::diffuse ||

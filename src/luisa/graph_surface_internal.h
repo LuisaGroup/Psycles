@@ -11,6 +11,7 @@
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/surface.h>
 #include <psycles/luisa/surface_closure_physical_blocks.h>
+#include <psycles/luisa/surface_closure_reachability.h>
 
 #include "graph_surface_value_expression.h"
 #include "surface_color_transforms.h"
@@ -127,6 +128,12 @@ struct TracedClosure {
     // Raw authored Principled emission. Closure-tree Mix/Add and
     // Principled layer weights are applied by the emission component.
     Float3 emission;
+    // Host/JIT capability and device values are intentionally separate.
+    // When the capability is false, no thin-film table lookup or arithmetic
+    // is recorded in the material variant at all.
+    bool thin_film_enabled{};
+    Float thin_film_thickness;
+    Float thin_film_ior;
     // Microfacet multiple-scattering scale after any weight darkening
     // has already been applied to `weight`.
     Float3 evaluation_scale;
@@ -383,7 +390,10 @@ template <typename Id, typename Values>
     Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Float3 microfacet_reflection_fresnel(
     const SurfaceClosurePhysicalGeneralRecord &closure,
-    Float cosine) noexcept;
+    Float cosine,
+    const ShaderServices *services = nullptr,
+    bool may_have_metallic_thin_film = false,
+    bool may_have_dielectric_thin_film = false) noexcept;
 [[nodiscard]] MicrofacetEvaluation microfacet_evaluate(
     const ShaderServices &services,
     const SurfaceClosurePhysicalGeneralRecord &closure,
@@ -391,7 +401,9 @@ template <typename Id, typename Values>
     Float3 outgoing,
     Float3 glossy_normal,
     Float glossy_filter_roughness,
-    bool may_be_anisotropic) noexcept;
+    bool may_be_anisotropic,
+    bool may_have_metallic_thin_film = false,
+    bool may_have_dielectric_thin_film = false) noexcept;
 [[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
     const SurfaceClosurePoint &point,
     Float3 smooth_normal,
@@ -400,7 +412,10 @@ template <typename Id, typename Values>
     Float2 random,
     Float3 glossy_normal,
     Float glossy_filter_roughness,
-    bool may_be_anisotropic) noexcept;
+    bool may_be_anisotropic,
+    const ShaderServices *services = nullptr,
+    bool may_have_metallic_thin_film = false,
+    bool may_have_dielectric_thin_film = false) noexcept;
 [[nodiscard]] Float sheen_intensity(
     const SurfaceClosurePhysicalGeneralRecord &closure,
     Float3 incoming,
@@ -526,6 +541,11 @@ private:
     std::shared_ptr<const compiler::SurfaceProgram> _program;
     compiler::SurfaceClosurePlan _closure_plan;
     compiler::SurfaceValueDependencyPlan _value_dependency_plan;
+    // Host/JIT abstract interpretation of this program's physical closure
+    // image. It is computed from the validated closure plan once and threaded
+    // into every generic evaluator/sampler, so absent capabilities cannot
+    // materialize dead shader AST.
+    SurfaceClosureReachability _physical_closure_reachability;
     SurfaceCapabilities _capabilities;
     std::vector<std::unique_ptr<ValueNode>> _value_nodes;
     std::vector<bool> _displacement_dependency_mask;

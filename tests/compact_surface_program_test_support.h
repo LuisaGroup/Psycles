@@ -12,6 +12,9 @@
 
 namespace psycles::luisa_backend::detail {
 struct LuisaSceneData;
+struct SurfaceClosureTraceCall;
+struct SurfaceEvaluationCall;
+struct SurfacePreparationCall;
 struct SurfaceSampleTraceCall;
 struct SurfaceValueRuntime;
 }
@@ -50,6 +53,41 @@ void print_compact_surface_sample_mismatch(
     const luisa_backend::detail::SurfaceSampleTraceCall &expected,
     std::string_view backend, std::size_t topology,
     std::size_t scenario);
+
+[[nodiscard]] bool equal(
+    luisa::float2 actual,
+    luisa::float2 expected,
+    float tolerance) noexcept;
+[[nodiscard]] bool equal(
+    luisa::float3 actual,
+    luisa::float3 expected,
+    float tolerance) noexcept;
+[[nodiscard]] bool finite_compact_value(
+    luisa::float3 value) noexcept;
+void print_compact_value(luisa::float3 value);
+[[nodiscard]] bool equal(
+    const luisa_backend::detail::SurfacePreparationCall &actual,
+    const luisa_backend::detail::SurfacePreparationCall &expected,
+    float tolerance) noexcept;
+[[nodiscard]] bool equal(
+    const luisa_backend::detail::SurfaceClosureTraceCall &actual,
+    const luisa_backend::detail::SurfaceClosureTraceCall &expected,
+    float tolerance) noexcept;
+[[nodiscard]] bool equal(
+    const luisa_backend::detail::SurfaceEvaluationCall &actual,
+    const luisa_backend::detail::SurfaceEvaluationCall &expected,
+    float tolerance) noexcept;
+[[nodiscard]] bool equal(
+    const luisa_backend::detail::SurfaceSampleTraceCall &actual,
+    const luisa_backend::detail::SurfaceSampleTraceCall &expected,
+    float tolerance) noexcept;
+
+void report_compact_surface_preparation_mismatch(
+    std::string_view backend,
+    std::size_t topology,
+    std::size_t scenario,
+    const luisa_backend::detail::SurfacePreparationCall &actual,
+    const luisa_backend::detail::SurfacePreparationCall &expected);
 
 // The shifted form places a live Add node before the Color Ramp, giving the
 // runtime table a different ParameterId without changing the ramp evaluator.

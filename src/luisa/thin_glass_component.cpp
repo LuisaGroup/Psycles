@@ -1,4 +1,5 @@
 #include "thin_glass_component.h"
+#include "thin_film_fresnel.h"
 
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_sample_mapping.h>
@@ -25,15 +26,38 @@ struct ThinGlassFresnel {
 }
 
 [[nodiscard]] ThinGlassFresnel thin_glass_fresnel(
+    const ShaderServices &services,
     Float cosine_i,
     Float ior,
     Float3 reflection_tint,
     Float3 transmission_tint,
     Bool reflective_caustics,
-    Bool refractive_caustics) noexcept {
+    Bool refractive_caustics,
+    Float thin_film_thickness,
+    Float thin_film_ior,
+    bool thin_film_enabled) noexcept {
     const auto f0 = make_float3(f0_from_ior(ior)) * reflection_tint;
-    const auto front_fresnel = generalized_dielectric_fresnel(
+    auto front_fresnel = generalized_dielectric_fresnel(
         cosine_i, ior, f0);
+    const auto eta_cosine_t_squared =
+        ior * ior - (1.0f - cosine_i * cosine_i);
+    auto cosine_t =
+        -sqrt(max(eta_cosine_t_squared, 0.0f)) / ior;
+    if (thin_film_enabled) {
+        const auto film_front = thin_film_dielectric_fresnel(
+            services,
+            thin_film_thickness,
+            thin_film_ior,
+            ior,
+            f0,
+            cosine_i);
+        const auto film_active =
+            thin_film_thickness > thin_film_thickness_cutoff;
+        front_fresnel = select(
+            front_fresnel, film_front.reflectance, film_active);
+        cosine_t = select(
+            cosine_t, film_front.cosine_transmitted, film_active);
+    }
     const auto front_reflection = select(
         make_float3(0.0f), front_fresnel, reflective_caustics);
     const auto front_transmission = select(
@@ -44,10 +68,6 @@ struct ThinGlassFresnel {
     // Cycles reports the transmitted cosine relative to the incident-side
     // normal, hence the negative sign. It makes the Beer-Lambert exponent
     // -1/cos(theta_t) positive without changing the authored tint.
-    const auto eta_cosine_t_squared =
-        ior * ior - (1.0f - cosine_i * cosine_i);
-    const auto cosine_t =
-        -sqrt(max(eta_cosine_t_squared, 0.0f)) / ior;
     const auto finite_cosine_t = cosine_t != 0.0f;
     const auto safe_cosine_t = select(-1.0f, cosine_t, finite_cosine_t);
     const auto absorption = select(
@@ -55,15 +75,42 @@ struct ThinGlassFresnel {
         color_power(transmission_tint, -1.0f / safe_cosine_t),
         finite_cosine_t);
 
-    // With no thin-film layer the back-face coefficients equal the front
-    // coefficients. Sum the infinite internal-reflection series per channel.
-    const auto round_trip = front_reflection * absorption;
+    auto back_reflection = front_reflection;
+    auto back_transmission = front_transmission;
+    if (thin_film_enabled) {
+        const auto film_back = thin_film_dielectric_fresnel(
+            services,
+            thin_film_thickness,
+            thin_film_ior / ior,
+            1.0f / ior,
+            f0,
+            -cosine_t);
+        const auto film_active =
+            thin_film_thickness > thin_film_thickness_cutoff;
+        back_reflection = select(
+            back_reflection,
+            select(make_float3(0.0f),
+                   film_back.reflectance,
+                   reflective_caustics),
+            film_active);
+        back_transmission = select(
+            back_transmission,
+            select(make_float3(0.0f),
+                   make_float3(1.0f) - film_back.reflectance,
+                   refractive_caustics),
+            film_active);
+    }
+
+    // Sum the infinite internal-reflection series per channel. Thin film makes
+    // the two interfaces asymmetric; without it back coefficients reduce to
+    // the front coefficients exactly.
+    const auto round_trip = back_reflection * absorption;
     const auto transmission = safe_divide_components(
-        absorption * front_transmission * front_transmission,
+        absorption * front_transmission * back_transmission,
         make_float3(1.0f) - round_trip * round_trip);
     return {
         .reflection = front_reflection +
-                      transmission * front_reflection * absorption,
+                      transmission * back_reflection * absorption,
         .transmission = transmission};
 }
 
@@ -138,6 +185,7 @@ ThinGlassSetupResult ThinGlassComponent::setup(
     const auto microfacet_alpha = surface_roughness * surface_roughness;
     const auto original_ior = max(ior, 1.0e-5f);
     const auto fresnel = thin_glass_fresnel(
+        _services,
         dot(normal, incoming),
         original_ior,
         max(reflection_tint, make_float3(0.0f)),
@@ -145,7 +193,10 @@ ThinGlassSetupResult ThinGlassComponent::setup(
               make_float3(0.0f),
               make_float3(1.0f)),
         reflective_caustics,
-        refractive_caustics);
+        refractive_caustics,
+        prototype.thin_film_thickness,
+        prototype.thin_film_ior,
+        prototype.thin_film_enabled);
 
     auto reflection = setup_microfacet_reflection(
         _services,

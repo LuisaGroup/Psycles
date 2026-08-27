@@ -26,6 +26,9 @@ struct PrincipledDielectricSetupParameters {
     Float ior;
     Float specular_ior_level;
     Float3 specular_tint;
+    Float thin_film_thickness;
+    Float thin_film_ior;
+    bool thin_film_enabled{};
     bool preserve_ggx_energy{};
 };
 

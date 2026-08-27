@@ -20,6 +20,17 @@ SurfaceClosureBlocks pack_surface_closure(
         preserve_ggx_energy_bit,
         closure.preserve_ggx_energy);
     flags |= select(0u, beckmann_bit, closure.beckmann);
+    const auto principled_film_payload =
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::principled)) &
+        ((closure.lobe == static_cast<std::uint32_t>(
+                              SurfaceClosureLobe::metallic)) |
+         (closure.lobe == static_cast<std::uint32_t>(
+                              SurfaceClosureLobe::dielectric)));
+    const auto film_payload =
+        principled_film_payload |
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::glass));
     return {
         .block_0 = make_float4x4(
             make_uint4(
@@ -40,10 +51,14 @@ SurfaceClosureBlocks pack_surface_closure(
         .block_1 = make_float4x4(
             make_float4(
                 closure.transmission_albedo,
-                closure.diffuse_roughness),
+                select(closure.diffuse_roughness,
+                       closure.thin_film_thickness,
+                       film_payload)),
             make_float4(
                 closure.color,
-                closure.metallic),
+                select(closure.metallic,
+                       closure.thin_film_ior,
+                       film_payload)),
             make_float4(
                 closure.normal,
                 closure.ior),
@@ -89,6 +104,17 @@ SurfaceClosureRecord unpack_surface_closure(
         block_2_expression,
         block_3_expression);
     const auto flags = rows.identity.z;
+    const auto principled_film_payload =
+        (rows.identity.x == static_cast<std::uint32_t>(
+                                SurfaceClosureKind::principled)) &
+        ((rows.identity.y == static_cast<std::uint32_t>(
+                                 SurfaceClosureLobe::metallic)) |
+         (rows.identity.y == static_cast<std::uint32_t>(
+                                 SurfaceClosureLobe::dielectric)));
+    const auto film_payload =
+        principled_film_payload |
+        (rows.identity.x == static_cast<std::uint32_t>(
+                                SurfaceClosureKind::glass));
     return {
         .kind = rows.identity.x,
         .lobe = rows.identity.y,
@@ -108,9 +134,17 @@ SurfaceClosureRecord unpack_surface_closure(
         .microfacet_alpha_x = rows.fresnel_f90_microfacet_alpha_x.w,
         .microfacet_alpha_y = rows.reflection_tint_microfacet_alpha_y.w,
         .diffuse_roughness =
-            rows.transmission_albedo_diffuse_roughness.w,
-        .metallic = rows.color_metallic.w,
+            select(rows.transmission_albedo_diffuse_roughness.w,
+                   0.0f,
+                   film_payload),
+        .metallic = select(rows.color_metallic.w, 0.0f, film_payload),
         .ior = rows.normal_ior.w,
+        .thin_film_thickness = select(
+            0.0f,
+            rows.transmission_albedo_diffuse_roughness.w,
+            film_payload),
+        .thin_film_ior = select(
+            0.0f, rows.color_metallic.w, film_payload),
         .specular_ior_level = rows.specular_tint_ior_level.w,
         .specular_tint = rows.specular_tint_ior_level.xyz(),
         .sheen_transform_a = rows.evaluation_scale_sheen_transform_a.w,

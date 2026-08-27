@@ -26,6 +26,7 @@ using psycles::test_support::ParameterShaderServices;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
+using psycles::test_support::merged_surface_closure_plan;
 using psycles::test_support::parameter_data;
 using psycles::test_support::require_bounded_xir;
 using psycles::test_support::surface_aov;
@@ -170,8 +171,11 @@ int main(int argc, char **argv) {
     // Keep this fixture in its own dispatch domain. Mixing unrelated material
     // topologies into one test dispatcher multiplies every recorded surface
     // operation by the number of fixtures and hides real code-size regressions.
+    const auto parameters = parameter_data(*program.program);
     SurfaceDispatch surfaces;
-    const auto surface_tag = surfaces.create<GraphSurface>(program.program);
+    const auto surface_tag = surfaces.create<GraphSurface>(
+        program.program,
+        merged_surface_closure_plan(*program.program, parameters));
 
     Kernel1D trace_closure =
         [&](BufferFloat4 parameters, BufferFloat4 output) noexcept {
@@ -307,7 +311,6 @@ int main(int argc, char **argv) {
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
-    const auto parameters = parameter_data(*program.program);
     auto parameter_buffer =
         device.create_buffer<luisa::float4>(parameters.size());
     constexpr auto closure_record_count =

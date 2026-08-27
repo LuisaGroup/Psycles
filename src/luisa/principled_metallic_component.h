@@ -12,6 +12,9 @@ struct PrincipledMetallicSetupParameters {
     Float incoming_cosine;
     Float roughness;
     Float metallic;
+    Float thin_film_thickness;
+    Float thin_film_ior;
+    bool thin_film_enabled{};
     bool preserve_ggx_energy{};
 };
 

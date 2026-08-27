@@ -28,19 +28,31 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
     const auto bssrdf_payload =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::bssrdf);
+    const auto principled_film_payload =
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::principled)) &
+        ((closure.lobe == static_cast<std::uint32_t>(
+                              SurfaceClosureLobe::metallic)) |
+         (closure.lobe == static_cast<std::uint32_t>(
+                              SurfaceClosureLobe::dielectric)));
+    const auto glass_film_payload =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::glass);
 
     // block_0 is the common tagged record. Glass uses the otherwise
-    // unobservable Color lanes for evaluation_scale; its Color is preserved
-    // in the three spare scalar lanes of the dielectric payload below.
+    // unobservable Color lanes for evaluation_scale. Its post-setup Color is
+    // unobservable: reflection/transmission tint are the physical inputs.
     const auto common_color = select(
         closure.color, closure.evaluation_scale, glass_payload);
 
     auto payload_0 = make_float4(
         closure.specular_tint,
-        closure.diffuse_roughness);
+        select(0.0f,
+               closure.thin_film_thickness,
+               principled_film_payload));
     auto payload_1 = make_float4(
         closure.evaluation_scale,
-        closure.metallic);
+        select(0.0f, closure.thin_film_ior, principled_film_payload));
     auto payload_2 = make_float4(
         closure.sheen_transform_a,
         closure.sheen_transform_b,
@@ -56,15 +68,21 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
         glass_payload);
     payload_1 = select(
         payload_1,
-        make_float4(closure.fresnel_f90, closure.color.x),
+        make_float4(
+            closure.fresnel_f90,
+            select(0.0f,
+                   closure.thin_film_thickness,
+                   glass_film_payload)),
         glass_payload);
     payload_2 = select(
         payload_2,
-        make_float4(closure.reflection_tint, closure.color.y),
+        make_float4(
+            closure.reflection_tint,
+            select(0.0f, closure.thin_film_ior, glass_film_payload)),
         glass_payload);
     payload_3 = select(
         payload_3,
-        make_float4(closure.transmission_tint, closure.color.z),
+        make_float4(closure.transmission_tint, 0.0f),
         glass_payload);
 
     payload_0 = select(
@@ -172,11 +190,20 @@ project_surface_closure_physical_common_only(
 SurfaceClosurePhysicalGeneralRecord
 project_surface_closure_physical_general(
     const SurfaceClosurePhysicalRecord &closure) noexcept {
+    const auto film_payload =
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::principled)) &
+        ((closure.lobe == static_cast<std::uint32_t>(
+                              SurfaceClosureLobe::metallic)) |
+         (closure.lobe == static_cast<std::uint32_t>(
+                              SurfaceClosureLobe::dielectric)));
     return {
         .common = project_surface_closure_physical_common(closure),
         .payload = {
-            .diffuse_roughness = closure.diffuse_roughness,
-            .metallic = closure.metallic,
+            .thin_film_thickness = select(
+                0.0f, closure.thin_film_thickness, film_payload),
+            .thin_film_ior = select(
+                0.0f, closure.thin_film_ior, film_payload),
             .ior = closure.ior,
             .specular_tint = closure.specular_tint,
             .sheen_transform_a = closure.sheen_transform_a,
@@ -190,11 +217,17 @@ project_surface_closure_physical_general(
 SurfaceClosurePhysicalDielectricRecord
 project_surface_closure_physical_dielectric(
     const SurfaceClosurePhysicalRecord &closure) noexcept {
+    const auto film_payload =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::glass);
     return {
         .common = project_surface_closure_physical_common(closure),
         .payload = {
-            .color = closure.color,
             .ior = closure.ior,
+            .thin_film_thickness = select(
+                0.0f, closure.thin_film_thickness, film_payload),
+            .thin_film_ior = select(
+                0.0f, closure.thin_film_ior, film_payload),
             .fresnel_f0 = closure.fresnel_f0,
             .fresnel_f90 = closure.fresnel_f90,
             .reflection_tint = closure.reflection_tint,
@@ -229,8 +262,8 @@ unpack_surface_closure_physical_general(
     return {
         .common = common,
         .payload = {
-            .diffuse_roughness = block_1[0u].w,
-            .metallic = block_1[1u].w,
+            .thin_film_thickness = block_1[0u].w,
+            .thin_film_ior = block_1[1u].w,
             .ior = block_1[2u].z,
             .specular_tint = block_1[0u].xyz(),
             .sheen_transform_a = block_1[2u].x,
@@ -250,11 +283,9 @@ unpack_surface_closure_physical_dielectric(
     return {
         .common = common,
         .payload = {
-            .color = make_float3(
-                block_1[1u].w,
-                block_1[2u].w,
-                block_1[3u].w),
             .ior = block_1[0u].w,
+            .thin_film_thickness = block_1[1u].w,
+            .thin_film_ior = block_1[2u].w,
             .fresnel_f0 = block_1[0u].xyz(),
             .fresnel_f90 = block_1[1u].xyz(),
             .reflection_tint = block_1[2u].xyz(),
@@ -291,13 +322,19 @@ unpack_surface_closure_physical_payload(
     const auto bssrdf_payload =
         common.kind == static_cast<std::uint32_t>(
                            SurfaceClosureKind::bssrdf);
+    const auto principled_film_payload =
+        (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::principled)) &
+        ((common.lobe == static_cast<std::uint32_t>(
+                             SurfaceClosureLobe::metallic)) |
+         (common.lobe == static_cast<std::uint32_t>(
+                             SurfaceClosureLobe::dielectric)));
+    const auto glass_film_payload =
+        common.kind == static_cast<std::uint32_t>(
+                           SurfaceClosureKind::glass);
     const auto specialized_payload =
         glass_payload | bssrdf_payload;
     const auto zero3 = make_float3(0.0f);
-    const auto glass_color = make_float3(
-        block_1[1u].w,
-        block_1[2u].w,
-        block_1[3u].w);
     const auto general_ior = block_1[2u].z;
     const auto bssrdf_ior = block_1[2u].x;
     return {
@@ -309,7 +346,7 @@ unpack_surface_closure_physical_payload(
         .setup_valid = common.setup_valid,
         .color = select(
             common.color_or_evaluation_scale,
-            glass_color,
+            zero3,
             glass_payload),
         .normal = common.normal,
         .roughness = common.roughness,
@@ -319,14 +356,20 @@ unpack_surface_closure_physical_payload(
             block_1[2u].w, 0.0f, specialized_payload),
         .microfacet_alpha_y = select(
             block_1[3u].w, 0.0f, specialized_payload),
-        .diffuse_roughness = select(
-            block_1[0u].w, 0.0f, specialized_payload),
-        .metallic = select(
-            block_1[1u].w, 0.0f, specialized_payload),
+        .diffuse_roughness = 0.0f,
+        .metallic = 0.0f,
         .ior = select(
             select(general_ior, block_1[0u].w, glass_payload),
             block_1[2u].y,
             bssrdf_payload),
+        .thin_film_thickness = select(
+            select(0.0f, block_1[0u].w, principled_film_payload),
+            block_1[1u].w,
+            glass_film_payload),
+        .thin_film_ior = select(
+            select(0.0f, block_1[1u].w, principled_film_payload),
+            block_1[2u].w,
+            glass_film_payload),
         .specular_tint = select(
             block_1[0u].xyz(), zero3, specialized_payload),
         .sheen_transform_a = select(

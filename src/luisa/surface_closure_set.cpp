@@ -458,6 +458,8 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
         zero.bssrdf_radius, zero.bssrdf_anisotropy);
     auto bssrdf_albedo = make_float4(
         zero.bssrdf_albedo, zero.bssrdf_roughness);
+    Float thin_film_thickness = 0.0f;
+    Float thin_film_ior = 0.0f;
     if (_profile == SurfaceClosureStorageProfile::complete) {
         // Decode through the ABI's sole semantic row projection. Going
         // through SurfaceClosureRecord here would immediately repack every
@@ -496,6 +498,23 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
         transmission_tint = complete.transmission_tint_bssrdf_ior;
         bssrdf_radius = complete.bssrdf_radius_anisotropy;
         bssrdf_albedo = complete.bssrdf_albedo_roughness;
+        const auto principled_film_payload =
+            (complete.identity.x == static_cast<std::uint32_t>(
+                                        SurfaceClosureKind::principled)) &
+            ((complete.identity.y == static_cast<std::uint32_t>(
+                                         SurfaceClosureLobe::metallic)) |
+             (complete.identity.y == static_cast<std::uint32_t>(
+                                         SurfaceClosureLobe::dielectric)));
+        const auto film_payload =
+            principled_film_payload |
+            (complete.identity.x == static_cast<std::uint32_t>(
+                                        SurfaceClosureKind::glass));
+        thin_film_thickness = select(
+            0.0f, transmission_albedo.w, film_payload);
+        thin_film_ior = select(0.0f, color.w, film_payload);
+        transmission_albedo.w = select(
+            transmission_albedo.w, 0.0f, film_payload);
+        color.w = select(color.w, 0.0f, film_payload);
     } else if (
         _profile == SurfaceClosureStorageProfile::physical) {
         const auto physical = unpack_surface_closure_physical(
@@ -549,6 +568,8 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
         bssrdf_albedo = make_float4(
             physical.bssrdf_albedo,
             physical.bssrdf_roughness);
+        thin_film_thickness = physical.thin_film_thickness;
+        thin_film_ior = physical.thin_film_ior;
     } else {
         identity = _identity.read(safe_index);
         if (stores(_profile, StorageField::weight)) {
@@ -633,6 +654,9 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
             scalar_or_zero(transmission_albedo.w),
         .metallic = scalar_or_zero(color.w),
         .ior = select(1.0f, normal.w, valid),
+        .thin_film_thickness =
+            scalar_or_zero(thin_film_thickness),
+        .thin_film_ior = scalar_or_zero(thin_film_ior),
         .specular_ior_level =
             scalar_or_zero(specular_tint.w),
         .specular_tint =

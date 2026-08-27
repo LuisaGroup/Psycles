@@ -493,7 +493,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->device.create_buffer<luisa::uint>(
             volume_surface_flags.size());
 
-    auto cycles_bsdf_values = make_cycles_bsdf_table_values();
+    auto cycles_bsdf_values = make_cycles_bsdf_table_values(snapshot.shader_color_space);
     data->cycles_bsdf_table_buffer =
         data->device.create_buffer<float>(
             cycles_bsdf_values.size());

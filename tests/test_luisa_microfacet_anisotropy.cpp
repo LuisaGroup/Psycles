@@ -32,6 +32,7 @@ using namespace psycles::luisa_backend;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
+using psycles::test_support::merged_surface_closure_plan;
 using psycles::test_support::parameter_data;
 using psycles::test_support::ParameterShaderServices;
 using psycles::test_support::require_bounded_xir;
@@ -146,6 +147,7 @@ make_anisotropic_graph(bool principled, float rotation,
 
 struct CompiledSurface {
   std::shared_ptr<const SurfaceProgram> program;
+  SurfaceClosurePlan closure_plan;
   std::vector<luisa::float4> parameters;
 };
 
@@ -159,8 +161,11 @@ struct CompiledSurface {
   if (!surface.ok()) {
     throw std::runtime_error{"failed to lower anisotropic surface program"};
   }
+  auto parameters = parameter_data(*surface.program);
   return {.program = surface.program,
-          .parameters = parameter_data(*surface.program)};
+          .closure_plan = merged_surface_closure_plan(
+              *surface.program, parameters),
+          .parameters = std::move(parameters)};
 }
 
 [[nodiscard]] SurfacePoint anisotropic_point() noexcept {
@@ -203,19 +208,21 @@ int main(int argc, char **argv) {
                                                      -anisotropy, "BECKMANN"));
 
   SurfaceDispatch glossy_surfaces;
-  const auto glossy_tag = glossy_surfaces.create<GraphSurface>(glossy.program);
+  const auto glossy_tag = glossy_surfaces.create<GraphSurface>(
+      glossy.program, glossy.closure_plan);
   SurfaceDispatch rotated_surfaces;
-  const auto rotated_tag =
-      rotated_surfaces.create<GraphSurface>(rotated.program);
+  const auto rotated_tag = rotated_surfaces.create<GraphSurface>(
+      rotated.program, rotated.closure_plan);
   SurfaceDispatch principled_surfaces;
-  const auto principled_tag =
-      principled_surfaces.create<GraphSurface>(principled.program);
+  const auto principled_tag = principled_surfaces.create<GraphSurface>(
+      principled.program, principled.closure_plan);
   SurfaceDispatch beckmann_surfaces;
-  const auto beckmann_tag =
-      beckmann_surfaces.create<GraphSurface>(beckmann.program);
+  const auto beckmann_tag = beckmann_surfaces.create<GraphSurface>(
+      beckmann.program, beckmann.closure_plan);
   SurfaceDispatch rotated_beckmann_surfaces;
   const auto rotated_beckmann_tag =
-      rotated_beckmann_surfaces.create<GraphSurface>(rotated_beckmann.program);
+      rotated_beckmann_surfaces.create<GraphSurface>(
+          rotated_beckmann.program, rotated_beckmann.closure_plan);
 
   Kernel1D test = [&](BufferFloat4 glossy_parameters,
                       BufferFloat4 rotated_parameters,
@@ -305,8 +312,8 @@ int main(int argc, char **argv) {
              .beckmann = false,
              .bssrdf_method =
                  static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk)},
-        .payload = {.diffuse_roughness = 0.0f,
-                    .metallic = 1.0f,
+        .payload = {.thin_film_thickness = 0.0f,
+                    .thin_film_ior = 0.0f,
                     .ior = 1.5f,
                     .specular_tint = make_float3(0.0f),
                     .sheen_transform_a = 0.0f,

@@ -89,6 +89,8 @@ namespace {
         bool coat_normal_linked = false;
         std::optional<ValueExpressionId> emission_color;
         std::optional<ValueExpressionId> emission_strength;
+        std::optional<ValueExpressionId> thin_film_thickness;
+        std::optional<ValueExpressionId> thin_film_ior;
         if (node.type == node_type::principled_bsdf ||
             node.type == node_type::glass_bsdf ||
             node.type == node_type::refraction_bsdf) {
@@ -138,6 +140,15 @@ namespace {
                 lower_value_input(node, "EmissionColor");
             emission_strength =
                 lower_value_input(node, "EmissionStrength");
+            thin_film_thickness =
+                lower_value_input(node, "ThinFilmThickness");
+            thin_film_ior =
+                lower_value_input(node, "ThinFilmIOR");
+        } else if (node.type == node_type::glass_bsdf) {
+            thin_film_thickness =
+                lower_value_input(node, "ThinFilmThickness");
+            thin_film_ior =
+                lower_value_input(node, "ThinFilmIOR");
         } else if (node.type == node_type::subsurface_scattering) {
             subsurface_radius = lower_value_input(node, "Radius");
             subsurface_scale = lower_value_input(node, "Scale");
@@ -162,7 +173,8 @@ namespace {
               sheen_weight && sheen_roughness && sheen_tint &&
               coat_weight && coat_roughness && coat_ior && coat_tint &&
               coat_normal &&
-              emission_color && emission_strength)) &&
+              emission_color && emission_strength &&
+              thin_film_thickness && thin_film_ior)) &&
             (node.type != node_type::subsurface_scattering ||
                 (subsurface_radius && subsurface_scale &&
                  subsurface_ior && subsurface_anisotropy)) &&
@@ -170,7 +182,9 @@ namespace {
              (microfacet_anisotropy && microfacet_rotation && tangent)) &&
             ((node.type != node_type::glass_bsdf &&
                  node.type != node_type::refraction_bsdf) ||
-                ior)) {
+                ior) &&
+            (node.type != node_type::glass_bsdf ||
+             (thin_film_thickness && thin_film_ior))) {
             auto operation = ClosureOperation::diffuse;
             if (node.type == node_type::principled_bsdf) {
                 operation = ClosureOperation::principled;
@@ -260,6 +274,12 @@ namespace {
                             ValueExpressionId{}),
                     .emission_strength =
                         emission_strength.value_or(
+                            ValueExpressionId{}),
+                    .thin_film_thickness =
+                        thin_film_thickness.value_or(
+                            ValueExpressionId{}),
+                    .thin_film_ior =
+                        thin_film_ior.value_or(
                             ValueExpressionId{}),
                     .preserve_ggx_energy =
                         property_string(

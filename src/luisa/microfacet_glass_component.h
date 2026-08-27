@@ -14,6 +14,8 @@ struct MicrofacetGlassSetup {
     Float3 normal;
     Float roughness;
     Float ior;
+    Float thin_film_thickness;
+    Float thin_film_ior;
     Float3 fresnel_f0;
     Float3 fresnel_f90;
     Float3 reflection_tint;
@@ -21,6 +23,7 @@ struct MicrofacetGlassSetup {
     Bool enabled;
     PrincipledLobe principled_lobe{PrincipledLobe::none};
     bool refraction_only{};
+    bool thin_film_enabled{};
     bool preserve_energy{};
     bool beckmann{};
 };
@@ -49,7 +52,8 @@ public:
         Float3 glossy_normal,
         Bool reflection_allowed,
         Bool transmission_allowed,
-        Float glossy_filter_roughness) const noexcept;
+        Float glossy_filter_roughness,
+        bool may_have_thin_film = false) const noexcept;
 
     [[nodiscard]] GlassSample
     sample(const SurfaceClosurePhysicalDielectricRecord &closure,
@@ -59,7 +63,8 @@ public:
         Float random_lobe,
         Bool reflection_allowed,
         Bool transmission_allowed,
-        Float glossy_filter_roughness) const noexcept;
+        Float glossy_filter_roughness,
+        bool may_have_thin_film = false) const noexcept;
 };
 
 }// namespace psycles::luisa_backend::detail
