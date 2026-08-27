@@ -575,6 +575,14 @@ int main(int argc, char **argv) {
         material_reachable_closure_operations;
     std::map<psycles::compiler::PrincipledClosureFeatureMask, std::size_t>
         material_principled_feature_masks;
+    using SurfaceExecutionClassKey =
+        std::pair<std::uint64_t, std::vector<std::uint32_t>>;
+    std::set<SurfaceExecutionClassKey> material_execution_classes;
+    auto execution_class_reachable_leaves = std::size_t{};
+    auto execution_class_reachable_mixes = std::size_t{};
+    auto execution_class_reachable_adds = std::size_t{};
+    auto material_reachable_mixes = std::size_t{};
+    auto material_reachable_adds = std::size_t{};
     if (inspect_all) {
         for (const auto &[id, material] : materials.materials()) {
             static_cast<void>(id);
@@ -584,6 +592,17 @@ int main(int argc, char **argv) {
             const auto material_plan =
                 psycles::compiler::analyze_surface_closure_plan(
                     program, material.parameters());
+            auto class_key = SurfaceExecutionClassKey{
+                program.structure_signature(), {}};
+            class_key.second.reserve(material_plan.entries().size());
+            for (const auto &entry : material_plan.entries()) {
+                class_key.second.emplace_back(
+                    (entry.principled_features << 1u) |
+                    static_cast<std::uint32_t>(entry.reachable));
+            }
+            const auto new_execution_class =
+                material_execution_classes.emplace(
+                    std::move(class_key)).second;
             closure_plans[program.structure_signature()].merge(
                 material_plan);
             for (auto index = std::size_t{0u};
@@ -594,13 +613,25 @@ int main(int argc, char **argv) {
                 }
                 const auto operation =
                     program.closure_instructions()[index].operation;
+                if (operation ==
+                    psycles::compiler::ClosureOperation::mix) {
+                    ++material_reachable_mixes;
+                    execution_class_reachable_mixes +=
+                        new_execution_class ? 1u : 0u;
+                    continue;
+                }
+                if (operation ==
+                    psycles::compiler::ClosureOperation::add) {
+                    ++material_reachable_adds;
+                    execution_class_reachable_adds +=
+                        new_execution_class ? 1u : 0u;
+                    continue;
+                }
                 if (operation !=
-                        psycles::compiler::ClosureOperation::add &&
-                    operation !=
-                        psycles::compiler::ClosureOperation::mix &&
-                    operation != psycles::compiler::ClosureOperation::
-                                     null_closure) {
+                    psycles::compiler::ClosureOperation::null_closure) {
                     ++material_reachable_closure_operations[operation];
+                    execution_class_reachable_leaves +=
+                        new_execution_class ? 1u : 0u;
                 }
                 if (operation ==
                     psycles::compiler::ClosureOperation::principled) {
@@ -1016,6 +1047,18 @@ int main(int argc, char **argv) {
             << expanded_bump_sampled_instructions
             << "\nunique_closures " << unique_closures
             << "\nreachable_closures " << reachable_closures
+            << "\nmaterial_execution_classes "
+            << material_execution_classes.size()
+            << "\nexecution_class_reachable_leaves "
+            << execution_class_reachable_leaves
+            << "\nexecution_class_reachable_mixes "
+            << execution_class_reachable_mixes
+            << "\nexecution_class_reachable_adds "
+            << execution_class_reachable_adds
+            << "\nmaterial_reachable_mixes "
+            << material_reachable_mixes
+            << "\nmaterial_reachable_adds "
+            << material_reachable_adds
             << "\nvalue_opcode_kinds " << value_operations.size()
             << "\nvalue_static_variants "
             << value_executable_scene.variants.size()
