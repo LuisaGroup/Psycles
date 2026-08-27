@@ -109,7 +109,9 @@ inline constexpr auto emission_principled_features =
             closure.emission_strength,
             closure.microfacet_anisotropy,
             closure.microfacet_rotation,
-            closure.tangent};
+            closure.tangent,
+            closure.thin_film_thickness,
+            closure.thin_film_ior};
   case ClosureOperation::glossy:
     return {closure.color,
             closure.normal,
@@ -118,6 +120,12 @@ inline constexpr auto emission_principled_features =
             closure.microfacet_rotation,
             closure.tangent};
   case ClosureOperation::glass:
+    return {closure.color,
+            closure.normal,
+            closure.roughness,
+            closure.ior,
+            closure.thin_film_thickness,
+            closure.thin_film_ior};
   case ClosureOperation::refraction:
     return {closure.color, closure.normal, closure.roughness, closure.ior};
   case ClosureOperation::emission:
@@ -426,6 +434,15 @@ all_principled_closure_features() noexcept {
           operation != ClosureOperation::glossy))) {
       return "a closure leaf has anisotropy on an incompatible projection";
     }
+    const auto thin_film =
+        (instruction.control & surface_closure_thin_film) != 0u;
+    if (thin_film &&
+        ((endpoints & surface_closure_endpoint_bit(
+                          SurfaceClosureEndpoint::physical)) == 0u ||
+         (operation != ClosureOperation::principled &&
+          operation != ClosureOperation::glass))) {
+      return "a closure leaf has thin film on an incompatible projection";
+    }
   }
   if (closures.mix_slots != maximum_weight_slot_extent) {
     return "the closure weight-slot allocation is not dense";
@@ -690,9 +707,13 @@ SurfaceClosureProgramImage lower_surface_closure_program(
         (endpoints & surface_closure_endpoint_bit(
                          SurfaceClosureEndpoint::physical)) != 0u &&
         closure_plan.entry(current.id).microfacet_anisotropy;
+    const auto thin_film =
+        (endpoints & surface_closure_endpoint_bit(
+                         SurfaceClosureEndpoint::physical)) != 0u &&
+        closure_plan.entry(current.id).thin_film;
     if (!append_instruction(SurfaceClosureBytecodeInstruction{
             .control = make_surface_closure_control(
-                closure, endpoints, microfacet_anisotropy),
+                closure, endpoints, microfacet_anisotropy, thin_film),
             .payload0 = operand_begin},
           ClosureWeightReferences{.leaf = current.weight},
           features)) {

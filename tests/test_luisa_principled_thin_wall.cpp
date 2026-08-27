@@ -29,6 +29,7 @@ using namespace psycles::luisa_backend;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
+using psycles::test_support::merged_surface_closure_plan;
 using psycles::test_support::parameter_data;
 using psycles::test_support::ParameterShaderServices;
 using psycles::test_support::require_bounded_xir;
@@ -344,7 +345,9 @@ int main(int argc, char **argv) {
     const auto parameter_stride = static_cast<std::uint32_t>(
         program.parameters().size());
     SurfaceDispatch surfaces;
-    const auto surface_tag = surfaces.create<GraphSurface>(lowered.program);
+    const auto surface_tag = surfaces.create<GraphSurface>(
+        lowered.program,
+        merged_surface_closure_plan(program, parameters));
 
     Kernel1D trace_closures = [&](BufferFloat4 parameter_buffer,
                                   BufferFloat4 output) noexcept {

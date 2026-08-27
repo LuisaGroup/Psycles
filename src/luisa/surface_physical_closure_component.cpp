@@ -43,11 +43,20 @@ void expand_physical_surface_closure(
                 source_operation == compiler::ClosureOperation::principled
             ? source_features
             : 0u;
+    const auto thin_film_operations =
+        graph_closure.thin_film_enabled ? source_operation_bit : 0u;
+    const auto thin_film_principled_features =
+        graph_closure.thin_film_enabled &&
+                source_operation == compiler::ClosureOperation::principled
+            ? source_features
+            : 0u;
     const auto source_reachability = reachable_surface_closures(
         source_operation_bit,
         source_features,
         anisotropic_operations,
-        anisotropic_principled_features);
+        anisotropic_principled_features,
+        thin_film_operations,
+        thin_film_principled_features);
     const ClosureVisitor checked_emit =
         [&emit,
          source_reachability,
@@ -342,6 +351,8 @@ void expand_physical_surface_closure(
              .normal = graph_closure.normal,
              .roughness = graph_closure.roughness,
              .ior = original_ior,
+             .thin_film_thickness = graph_closure.thin_film_thickness,
+             .thin_film_ior = graph_closure.thin_film_ior,
              .fresnel_f0 =
                  make_float3(f0_from_ior(original_ior)),
              .fresnel_f90 = make_float3(1.0f),
@@ -356,6 +367,7 @@ void expand_physical_surface_closure(
              .enabled =
                  reflective_caustics | refractive_caustics,
              .principled_lobe = PrincipledLobe::none,
+             .thin_film_enabled = graph_closure.thin_film_enabled,
              .preserve_energy =
                  graph_closure.preserve_ggx_energy,
              .beckmann = graph_closure.beckmann}));
@@ -368,6 +380,8 @@ void expand_physical_surface_closure(
              .normal = graph_closure.normal,
              .roughness = graph_closure.roughness,
              .ior = max(graph_closure.ior, 1.0e-5f),
+             .thin_film_thickness = 0.0f,
+             .thin_film_ior = 0.0f,
              .fresnel_f0 = make_float3(0.0f),
              .fresnel_f90 = make_float3(0.0f),
              .reflection_tint = make_float3(0.0f),

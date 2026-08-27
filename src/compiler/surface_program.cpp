@@ -258,10 +258,24 @@ namespace {
     return value == nullptr || !std::isfinite(*value);
 }
 
-[[nodiscard]] PrincipledClosureFeatureMask principled_feature_mask(
+[[nodiscard]] bool thin_film_possible(
     const SurfaceProgram &program,
     const SurfaceParameterBlock *parameters,
     const ClosureInstruction &closure) noexcept {
+    constexpr auto thickness_cutoff = 0.1f;
+    const auto *thickness = direct_float(
+        program,
+        parameters,
+        closure.thin_film_thickness,
+        closure.source_node);
+    return unknown_float(thickness) || *thickness > thickness_cutoff;
+}
+
+[[nodiscard]] PrincipledClosureFeatureMask principled_feature_mask(
+    const SurfaceProgram &program,
+    const SurfaceParameterBlock *parameters,
+    const ClosureInstruction &closure,
+    bool thin_film) noexcept {
     constexpr auto cutoff = 1.0e-5f;
     const auto feature = [](PrincipledClosureFeature value) noexcept {
         return principled_closure_feature_bit(value);
@@ -385,7 +399,10 @@ namespace {
         (!unknown_float(specular_level) &&
          *specular_level == 0.5f &&
          !unknown_float(ior) && *ior == 1.0f);
-    if (!dielectric_proven_unit) {
+    // An active film reflects even when the substrate has unit adjusted IOR.
+    // Cycles therefore retains this lobe for eta != 1 OR film thickness above
+    // the cutoff; applying only the eta proof would erase real interference.
+    if (!dielectric_proven_unit || thin_film) {
         result |= feature(PrincipledClosureFeature::dielectric);
     }
 
@@ -463,8 +480,10 @@ namespace {
                 return;
             }
             case ClosureOperation::principled:
-                entry.principled_features = principled_feature_mask(
+                entry.thin_film = thin_film_possible(
                     program, parameters, closure);
+                entry.principled_features = principled_feature_mask(
+                    program, parameters, closure, entry.thin_film);
                 if ((entry.principled_features &
                      (principled_closure_feature_bit(
                           PrincipledClosureFeature::metallic) |
@@ -504,6 +523,9 @@ namespace {
                 return;
             }
             case ClosureOperation::glass:
+                entry.thin_film = thin_film_possible(
+                    program, parameters, closure);
+                return;
             case ClosureOperation::emission:
             case ClosureOperation::transparent:
             case ClosureOperation::subsurface:
@@ -603,6 +625,8 @@ void SurfaceClosurePlan::merge(
             other._entries[index].principled_features;
         _entries[index].microfacet_anisotropy |=
             other._entries[index].microfacet_anisotropy;
+        _entries[index].thin_film |=
+            other._entries[index].thin_film;
     }
 }
 

@@ -58,15 +58,32 @@ anisotropic_kind(SurfaceClosureKind kind) noexcept {
             .anisotropic_microfacet_kinds = surface_closure_kind_bit(kind)};
 }
 
+[[nodiscard]] SurfaceClosureReachability
+thin_film_kind(SurfaceClosureKind kind) noexcept {
+    return {.kinds = surface_closure_kind_bit(kind),
+            .thin_film_kinds = surface_closure_kind_bit(kind)};
+}
+
+[[nodiscard]] SurfaceClosureReachability
+thin_film_principled_lobe(SurfaceClosureLobe lobe) noexcept {
+    return {.kinds = surface_closure_kind_bit(SurfaceClosureKind::principled),
+            .principled_lobes = surface_closure_lobe_bit(lobe),
+            .thin_film_principled_lobes =
+                surface_closure_lobe_bit(lobe)};
+}
+
 [[nodiscard]] bool verify_reachability_lattice() noexcept {
     constexpr auto meet_lhs = SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::diffuse) |
                  surface_closure_kind_bit(SurfaceClosureKind::principled),
         .principled_lobes =
             surface_closure_lobe_bit(SurfaceClosureLobe::sheen) |
-            surface_closure_lobe_bit(SurfaceClosureLobe::coat),
+            surface_closure_lobe_bit(SurfaceClosureLobe::coat) |
+            surface_closure_lobe_bit(SurfaceClosureLobe::metallic),
         .anisotropic_microfacet_kinds =
-            surface_closure_kind_bit(SurfaceClosureKind::principled)};
+            surface_closure_kind_bit(SurfaceClosureKind::principled),
+        .thin_film_principled_lobes =
+            surface_closure_lobe_bit(SurfaceClosureLobe::metallic)};
     constexpr auto meet_rhs = SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::principled) |
                  surface_closure_kind_bit(SurfaceClosureKind::glass),
@@ -74,13 +91,18 @@ anisotropic_kind(SurfaceClosureKind kind) noexcept {
             surface_closure_lobe_bit(SurfaceClosureLobe::coat) |
             surface_closure_lobe_bit(SurfaceClosureLobe::metallic),
         .anisotropic_microfacet_kinds =
-            surface_closure_kind_bit(SurfaceClosureKind::principled)};
+            surface_closure_kind_bit(SurfaceClosureKind::principled),
+        .thin_film_principled_lobes =
+            surface_closure_lobe_bit(SurfaceClosureLobe::metallic)};
     constexpr auto meet_expected = SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::principled),
         .principled_lobes =
-            surface_closure_lobe_bit(SurfaceClosureLobe::coat),
+            surface_closure_lobe_bit(SurfaceClosureLobe::coat) |
+            surface_closure_lobe_bit(SurfaceClosureLobe::metallic),
         .anisotropic_microfacet_kinds =
-            surface_closure_kind_bit(SurfaceClosureKind::principled)};
+            surface_closure_kind_bit(SurfaceClosureKind::principled),
+        .thin_film_principled_lobes =
+            surface_closure_lobe_bit(SurfaceClosureLobe::metallic)};
     static_assert((meet_lhs & meet_rhs) == meet_expected);
     static_assert((meet_rhs & meet_lhs) == meet_expected);
     static_assert((meet_lhs & meet_lhs) == meet_lhs);
@@ -94,14 +116,19 @@ anisotropic_kind(SurfaceClosureKind kind) noexcept {
         .principled_lobes = all_surface_closure_lobes,
         .anisotropic_microfacet_kinds =
             surface_closure_kind_bit(SurfaceClosureKind::principled) |
-            surface_closure_kind_bit(SurfaceClosureKind::glossy)};
+            surface_closure_kind_bit(SurfaceClosureKind::glossy),
+        .thin_film_kinds =
+            surface_closure_kind_bit(SurfaceClosureKind::glass),
+        .thin_film_principled_lobes = all_surface_closure_lobes};
     constexpr auto normalized =
         malformed & all_surface_closure_reachability;
     static_assert(normalized == SurfaceClosureReachability{
                                     .kinds = surface_closure_kind_bit(
                                         SurfaceClosureKind::diffuse),
                                     .principled_lobes = 0u,
-                                    .anisotropic_microfacet_kinds = 0u});
+                                    .anisotropic_microfacet_kinds = 0u,
+                                    .thin_film_kinds = 0u,
+                                    .thin_film_principled_lobes = 0u});
     static_assert((malformed | SurfaceClosureReachability{}) == normalized);
 
     const std::array operation_basis{
@@ -214,6 +241,10 @@ anisotropic_kind(SurfaceClosureKind kind) noexcept {
         reachable_surface_closures(0u, 0u, unknown_bit, 0u) !=
             all_surface_closure_reachability ||
         reachable_surface_closures(0u, 0u, 0u, unknown_bit) !=
+            all_surface_closure_reachability ||
+        reachable_surface_closures(0u, 0u, 0u, 0u, unknown_bit, 0u) !=
+            all_surface_closure_reachability ||
+        reachable_surface_closures(0u, 0u, 0u, 0u, 0u, unknown_bit) !=
             all_surface_closure_reachability) {
         std::cerr << "unknown closure metadata did not map to lattice top\n";
         return false;
@@ -269,6 +300,60 @@ anisotropic_kind(SurfaceClosureKind kind) noexcept {
                                    metallic_feature) !=
             all_surface_closure_reachability) {
         std::cerr << "anisotropic closure transfer violated its reduced product\n";
+        return false;
+    }
+
+    constexpr auto glass_operation = operation_bit(ClosureOperation::glass);
+    constexpr auto thick_transmission_feature =
+        principled_closure_feature_bit(
+            PrincipledClosureFeature::thick_transmission);
+    if (reachable_surface_closures(
+            glass_operation, 0u, 0u, 0u, glass_operation, 0u) !=
+            thin_film_kind(SurfaceClosureKind::glass) ||
+        reachable_surface_closures(
+            principled_operation,
+            metallic_feature,
+            0u,
+            0u,
+            principled_operation,
+            metallic_feature) !=
+            thin_film_principled_lobe(SurfaceClosureLobe::metallic) ||
+        reachable_surface_closures(
+            principled_operation,
+            dielectric_feature,
+            0u,
+            0u,
+            principled_operation,
+            dielectric_feature) !=
+            thin_film_principled_lobe(SurfaceClosureLobe::dielectric) ||
+        reachable_surface_closures(
+            principled_operation,
+            thick_transmission_feature,
+            0u,
+            0u,
+            principled_operation,
+            thick_transmission_feature) !=
+            thin_film_kind(SurfaceClosureKind::glass) ||
+        reachable_surface_closures(
+            glass_operation, 0u, 0u, 0u, principled_operation, 0u) !=
+            all_surface_closure_reachability ||
+        reachable_surface_closures(
+            principled_operation,
+            metallic_feature,
+            0u,
+            0u,
+            principled_operation,
+            dielectric_feature) !=
+            all_surface_closure_reachability ||
+        reachable_surface_closures(
+            principled_operation,
+            0u,
+            0u,
+            0u,
+            principled_operation,
+            metallic_feature) !=
+            all_surface_closure_reachability) {
+        std::cerr << "Thin Film closure transfer violated its reduced product\n";
         return false;
     }
     return true;
@@ -396,10 +481,19 @@ int main(int argc, char **argv) {
         make_probe_kernel(isotropic_glossy_reachability);
     auto anisotropic_glossy_probe =
         make_probe_kernel(anisotropic_glossy_reachability);
+    const auto no_film_metallic_reachability =
+        principled_lobe(SurfaceClosureLobe::metallic);
+    const auto film_metallic_reachability =
+        thin_film_principled_lobe(SurfaceClosureLobe::metallic);
+    auto no_film_metallic_probe =
+        make_probe_kernel(no_film_metallic_reachability);
+    auto film_metallic_probe = make_probe_kernel(film_metallic_reachability);
     const auto diffuse_ast = ast_footprint(diffuse_probe);
     const auto top_ast = ast_footprint(top_probe);
     const auto isotropic_glossy_ast = ast_footprint(isotropic_glossy_probe);
     const auto anisotropic_glossy_ast = ast_footprint(anisotropic_glossy_probe);
+    const auto no_film_metallic_ast = ast_footprint(no_film_metallic_probe);
+    const auto film_metallic_ast = ast_footprint(film_metallic_probe);
     if (diffuse_probe.function()->function().hash() ==
             top_probe.function()->function().hash() ||
         top_ast.expressions.size() <= diffuse_ast.expressions.size() + 100u ||
@@ -409,6 +503,20 @@ int main(int argc, char **argv) {
                   << diffuse_ast.statements.size() << " versus "
                   << top_ast.expressions.size() << "/" << top_ast.statements.size()
                   << " on " << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    if (no_film_metallic_probe.function()->function().hash() ==
+            film_metallic_probe.function()->function().hash() ||
+        film_metallic_ast.expressions.size() <=
+            no_film_metallic_ast.expressions.size() + 100u ||
+        film_metallic_ast.statements.size() <=
+            no_film_metallic_ast.statements.size()) {
+        std::cerr << "Thin Film proof did not remove interference ASTs: "
+                  << no_film_metallic_ast.expressions.size() << "/"
+                  << no_film_metallic_ast.statements.size() << " versus "
+                  << film_metallic_ast.expressions.size() << "/"
+                  << film_metallic_ast.statements.size() << " on "
+                  << backend << '\n';
         return EXIT_FAILURE;
     }
     if (isotropic_glossy_probe.function()->function().hash() ==
@@ -542,6 +650,12 @@ int main(int argc, char **argv) {
               << anisotropic_glossy_ast.expressions.size()
               << ", statements "
               << isotropic_glossy_ast.statements.size() << "/"
-              << anisotropic_glossy_ast.statements.size() << '\n';
+              << anisotropic_glossy_ast.statements.size()
+              << "; no-film/film metallic expressions "
+              << no_film_metallic_ast.expressions.size() << "/"
+              << film_metallic_ast.expressions.size()
+              << ", statements "
+              << no_film_metallic_ast.statements.size() << "/"
+              << film_metallic_ast.statements.size() << '\n';
     return EXIT_SUCCESS;
 }

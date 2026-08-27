@@ -177,6 +177,8 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
             {"Coat Normal", "CoatNormal"},
             {"Emission Color", "EmissionColor"},
             {"Emission Strength", "EmissionStrength"},
+            {"Thin Film Thickness", "ThinFilmThickness"},
+            {"Thin Film IOR", "ThinFilmIOR"},
             {"Normal", "Normal"}},
         .outputs = {{"BSDF", "Closure"}},
         .properties = {
@@ -204,6 +206,8 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
             {"Color", "Color"},
             {"Roughness", "Roughness"},
             {"IOR", "IOR"},
+            {"Thin Film Thickness", "ThinFilmThickness"},
+            {"Thin Film IOR", "ThinFilmIOR"},
             {"Normal", "Normal"}},
         .outputs = {{"BSDF", "Closure"}},
         .properties = {{"distribution", "Distribution"}}});

@@ -1,4 +1,5 @@
 #include "microfacet_glass_component.h"
+#include "thin_film_fresnel.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_closure.h>
@@ -30,8 +31,10 @@ struct GlassGeometry {
 }
 
 [[nodiscard]] GlassFresnel glass_fresnel(
+    const ShaderServices &services,
     const SurfaceClosurePhysicalDielectricRecord &closure,
-    Float cosine_half_incoming) noexcept {
+    Float cosine_half_incoming,
+    bool may_have_thin_film) noexcept {
     // Cycles' negative generalized-Schlick exponent is a model tag: the
     // physical dielectric curve determines an interpolation coordinate
     // between the authored spectral F0 and F90 endpoints.
@@ -40,11 +43,25 @@ struct GlassGeometry {
     const auto real_f0 = f0_from_ior(closure.payload.ior);
     const auto interpolation =
         clamp((real_fresnel - real_f0) / (1.0f - real_f0), 0.0f, 1.0f);
-    const auto fresnel =
+    auto fresnel =
         lerp(closure.payload.fresnel_f0,
              closure.payload.fresnel_f90,
              interpolation);
     const auto refraction_only = is_refraction(closure);
+    if (may_have_thin_film) {
+        const auto film = thin_film_dielectric_fresnel(
+            services,
+            closure.payload.thin_film_thickness,
+            closure.payload.thin_film_ior,
+            closure.payload.ior,
+            closure.payload.fresnel_f0,
+            cosine_half_incoming);
+        fresnel = select(
+            fresnel,
+            film.reflectance,
+            (closure.payload.thin_film_thickness >
+             thin_film_thickness_cutoff) & !refraction_only);
+    }
     const auto pure_transmission = select(
         make_float3(1.0f), make_float3(0.0f), real_fresnel == 1.0f);
     return {
@@ -60,11 +77,14 @@ struct GlassGeometry {
 }
 
 [[nodiscard]] GlassFresnel masked_fresnel(
+    const ShaderServices &services,
     const SurfaceClosurePhysicalDielectricRecord &closure,
     Float cosine_half_incoming,
     Bool reflection_allowed,
-    Bool transmission_allowed) noexcept {
-    auto result = glass_fresnel(closure, cosine_half_incoming);
+    Bool transmission_allowed,
+    bool may_have_thin_film) noexcept {
+    auto result = glass_fresnel(
+        services, closure, cosine_half_incoming, may_have_thin_film);
     result.reflection =
         select(make_float3(0.0f), result.reflection, reflection_allowed);
     result.transmission =
@@ -161,7 +181,8 @@ reflection_probability(const GlassFresnel &fresnel) noexcept {
 [[nodiscard]] GlassFresnel
 glass_albedo_estimate(const ShaderServices &services,
                       const TracedClosure &closure,
-                      Float incoming_cosine) noexcept {
+                      Float incoming_cosine,
+                      bool may_have_thin_film) noexcept {
     if (closure.operation == compiler::ClosureOperation::refraction) {
         const auto real_fresnel =
             fresnel_dielectric_cos(incoming_cosine, closure.ior);
@@ -177,8 +198,22 @@ glass_albedo_estimate(const ShaderServices &services,
     const auto interpolation = cycles_table_3d(
         services, roughness, incoming_cosine, z,
         UInt{cycles45_tables::ggx_gen_schlick_ior_s_offset}, 16u, 16u, 16u);
-    const auto fresnel =
+    auto fresnel =
         lerp(closure.fresnel_f0, closure.fresnel_f90, interpolation);
+    if (may_have_thin_film) {
+        const auto film = thin_film_dielectric_fresnel(
+            services,
+            closure.thin_film_thickness,
+            closure.thin_film_ior,
+            closure.ior,
+            closure.fresnel_f0,
+            incoming_cosine);
+        fresnel = select(
+            fresnel,
+            film.reflectance,
+            closure.thin_film_thickness >
+                thin_film_thickness_cutoff);
+    }
     return {.reflection = fresnel * closure.reflection_tint,
             .transmission =
                 (make_float3(1.0f) - fresnel) * closure.transmission_tint};
@@ -209,6 +244,15 @@ TracedClosure MicrofacetGlassComponent::setup(
         parameters.roughness * parameters.roughness, 0.0f, 1.0f));
     const auto original_ior = max(parameters.ior, 1.0e-5f);
     closure.ior = select(original_ior, 1.0f / original_ior, _point.back_facing);
+    closure.thin_film_thickness = parameters.thin_film_enabled
+                                      ? parameters.thin_film_thickness
+                                      : Float{0.0f};
+    closure.thin_film_ior = parameters.thin_film_enabled
+                                ? select(parameters.thin_film_ior,
+                                         parameters.thin_film_ior /
+                                             original_ior,
+                                         _point.back_facing)
+                                : Float{0.0f};
     closure.fresnel_f0 =
         clamp(parameters.fresnel_f0, make_float3(0.0f), make_float3(1.0f));
     closure.fresnel_f90 = parameters.fresnel_f90;
@@ -227,7 +271,10 @@ TracedClosure MicrofacetGlassComponent::setup(
     const auto incoming_cosine = dot(
         closure.normal, safe_normalize(_point.incoming, _point.shading_normal));
     const auto estimated =
-        glass_albedo_estimate(_services, closure, incoming_cosine);
+        glass_albedo_estimate(_services,
+                              closure,
+                              incoming_cosine,
+                              parameters.thin_film_enabled);
     const auto energy = glass_energy(_services, closure, incoming_cosine);
     closure.weight =
         select(make_float3(0.0f), allocated_weight * energy.darkening, allocated);
@@ -258,8 +305,8 @@ MicrofacetEvaluation MicrofacetGlassComponent::evaluate(
     const SurfaceClosurePhysicalDielectricRecord &closure,
     Float3 incoming, Float3 outgoing,
     Float3 glossy_normal, Bool reflection_allowed, Bool transmission_allowed,
-    Float glossy_filter_roughness) const noexcept {
-    static_cast<void>(_services);
+    Float glossy_filter_roughness,
+    bool may_have_thin_film) const noexcept {
     static_cast<void>(_point);
     const auto setup_alpha =
         microfacet_alpha(closure.common, glossy_filter_roughness);
@@ -286,7 +333,10 @@ MicrofacetEvaluation MicrofacetGlassComponent::evaluate(
             geometry.cosine_outgoing,
             alpha);
         const auto fresnel = glass_fresnel(
-            closure, geometry.cosine_half_incoming);
+            _services,
+            closure,
+            geometry.cosine_half_incoming,
+            may_have_thin_film);
         const auto intensity_lobe = select(
             fresnel.reflection,
             fresnel.transmission,
@@ -358,8 +408,8 @@ GlassSample MicrofacetGlassComponent::sample(
     const SurfaceClosurePhysicalDielectricRecord &closure,
     Float3 incoming, Float3 glossy_normal,
     Float2 random_direction, Float random_lobe, Bool reflection_allowed,
-    Bool transmission_allowed, Float glossy_filter_roughness) const noexcept {
-    static_cast<void>(_services);
+    Bool transmission_allowed, Float glossy_filter_roughness,
+    bool may_have_thin_film) const noexcept {
     auto alpha = microfacet_alpha(
         closure.common, glossy_filter_roughness);
     auto singular =
@@ -389,8 +439,13 @@ GlassSample MicrofacetGlassComponent::sample(
         };
     };
     const auto cosine_half_incoming = dot(half_vector, incoming);
-    const auto fresnel = masked_fresnel(closure, cosine_half_incoming,
-                                        reflection_allowed, transmission_allowed);
+    const auto fresnel = masked_fresnel(
+        _services,
+        closure,
+        cosine_half_incoming,
+        reflection_allowed,
+        transmission_allowed,
+        may_have_thin_film);
     const auto probability = reflection_probability(fresnel);
     const auto transmission = random_lobe >= probability;
     const auto reflected = 2.0f * cosine_half_incoming * half_vector - incoming;

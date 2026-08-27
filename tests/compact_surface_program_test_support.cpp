@@ -13,6 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
@@ -728,6 +729,208 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
             0u &&
         has_no_recursive_bump;
     return result;
+}
+
+namespace {
+
+[[nodiscard]] bool finite(luisa::float2 value) noexcept {
+    return std::isfinite(value.x) && std::isfinite(value.y);
+}
+
+[[nodiscard]] bool finite(luisa::float3 value) noexcept {
+    return std::isfinite(value.x) &&
+           std::isfinite(value.y) &&
+           std::isfinite(value.z);
+}
+
+void print(luisa::float3 value) {
+    std::cerr << '{' << value.x << ", " << value.y << ", "
+              << value.z << '}';
+}
+
+} // namespace
+
+bool finite_compact_value(luisa::float3 value) noexcept {
+    return finite(value);
+}
+
+void print_compact_value(luisa::float3 value) {
+    print(value);
+}
+
+bool equal(luisa::float2 actual, luisa::float2 expected,
+           float tolerance) noexcept {
+    return approximately_equal(actual.x, expected.x, tolerance) &&
+           approximately_equal(actual.y, expected.y, tolerance);
+}
+
+bool equal(luisa::float3 actual, luisa::float3 expected,
+           float tolerance) noexcept {
+    return approximately_equal(actual.x, expected.x, tolerance) &&
+           approximately_equal(actual.y, expected.y, tolerance) &&
+           approximately_equal(actual.z, expected.z, tolerance);
+}
+
+bool equal(const SurfacePreparationCall &actual,
+           const SurfacePreparationCall &expected,
+           float tolerance) noexcept {
+    return actual.runtime_flags == expected.runtime_flags &&
+           finite(actual.emission) && finite(actual.shading_normal) &&
+           finite(actual.albedo) && finite(actual.glossy_albedo) &&
+           finite(actual.transmission_albedo) && finite(actual.normal) &&
+           finite(actual.transparency) && finite(actual.roughness) &&
+           equal(actual.emission, expected.emission, tolerance) &&
+           equal(actual.shading_normal, expected.shading_normal, tolerance) &&
+           equal(actual.albedo, expected.albedo, tolerance) &&
+           equal(actual.glossy_albedo, expected.glossy_albedo, tolerance) &&
+           equal(actual.transmission_albedo,
+                 expected.transmission_albedo,
+                 tolerance) &&
+           equal(actual.normal, expected.normal, tolerance) &&
+           equal(actual.transparency, expected.transparency, tolerance) &&
+           equal(actual.roughness, expected.roughness, tolerance);
+}
+
+bool equal(const SurfaceClosureTraceCall &actual,
+           const SurfaceClosureTraceCall &expected,
+           float tolerance) noexcept {
+    return actual.count == expected.count &&
+           actual.runtime_flags == expected.runtime_flags &&
+           actual.index == expected.index && actual.type == expected.type &&
+           actual.valid == expected.valid &&
+           std::isfinite(actual.sample_weight) &&
+           finite(actual.weight) && finite(actual.normal) &&
+           approximately_equal(actual.sample_weight,
+                               expected.sample_weight,
+                               tolerance) &&
+           equal(actual.weight, expected.weight, tolerance) &&
+           equal(actual.normal, expected.normal, tolerance);
+}
+
+bool equal(const SurfaceEvaluationCall &actual,
+           const SurfaceEvaluationCall &expected,
+           float tolerance) noexcept {
+    return actual.events == expected.events && finite(actual.f) &&
+           finite(actual.diffuse_f) && finite(actual.glossy_f) &&
+           std::isfinite(actual.pdf) && std::isfinite(actual.diffuse_pdf) &&
+           std::isfinite(actual.average_roughness_squared) &&
+           equal(actual.f, expected.f, tolerance) &&
+           equal(actual.diffuse_f, expected.diffuse_f, tolerance) &&
+           equal(actual.glossy_f, expected.glossy_f, tolerance) &&
+           approximately_equal(actual.pdf, expected.pdf, tolerance) &&
+           approximately_equal(actual.diffuse_pdf,
+                               expected.diffuse_pdf,
+                               tolerance) &&
+           approximately_equal(actual.average_roughness_squared,
+                               expected.average_roughness_squared,
+                               tolerance);
+}
+
+bool equal(const SurfaceSampleTraceCall &actual,
+           const SurfaceSampleTraceCall &expected,
+           float tolerance) noexcept {
+    return equal(
+               SurfaceEvaluationCall{
+                   .f = actual.f,
+                   .pdf = actual.pdf,
+                   .diffuse_f = actual.diffuse_f,
+                   .glossy_f = actual.glossy_f,
+                   .diffuse_pdf = actual.diffuse_pdf,
+                   .average_roughness_squared =
+                       actual.average_roughness_squared,
+                   .events = actual.events},
+               SurfaceEvaluationCall{
+                   .f = expected.f,
+                   .pdf = expected.pdf,
+                   .diffuse_f = expected.diffuse_f,
+                   .glossy_f = expected.glossy_f,
+                   .diffuse_pdf = expected.diffuse_pdf,
+                   .average_roughness_squared =
+                       expected.average_roughness_squared,
+                   .events = expected.events},
+               tolerance) &&
+           actual.runtime_flags == expected.runtime_flags &&
+           actual.bssrdf_method == expected.bssrdf_method &&
+           actual.valid == expected.valid &&
+           actual.closure_index == expected.closure_index &&
+           actual.closure_type == expected.closure_type &&
+           actual.closure_valid == expected.closure_valid &&
+           finite(actual.wi) && finite(actual.roughness) &&
+           finite(actual.bssrdf_radius) && finite(actual.bssrdf_albedo) &&
+           finite(actual.bssrdf_normal) && finite(actual.closure_weight) &&
+           finite(actual.closure_normal) &&
+           approximately_equal(actual.eta, expected.eta, tolerance) &&
+           equal(actual.wi, expected.wi, tolerance) &&
+           equal(actual.roughness, expected.roughness, tolerance) &&
+           equal(actual.bssrdf_radius, expected.bssrdf_radius, tolerance) &&
+           equal(actual.bssrdf_albedo, expected.bssrdf_albedo, tolerance) &&
+           equal(actual.bssrdf_normal, expected.bssrdf_normal, tolerance) &&
+           approximately_equal(actual.bssrdf_ior,
+                               expected.bssrdf_ior,
+                               tolerance) &&
+           approximately_equal(actual.bssrdf_roughness,
+                               expected.bssrdf_roughness,
+                               tolerance) &&
+           approximately_equal(actual.bssrdf_anisotropy,
+                               expected.bssrdf_anisotropy,
+                               tolerance) &&
+           approximately_equal(actual.closure_sample_weight,
+                               expected.closure_sample_weight,
+                               tolerance) &&
+           approximately_equal(actual.selection_rescaled,
+                               expected.selection_rescaled,
+                               tolerance) &&
+           equal(actual.closure_weight,
+                 expected.closure_weight,
+                 tolerance) &&
+           equal(actual.closure_normal,
+                 expected.closure_normal,
+                 tolerance);
+}
+
+void report_compact_surface_preparation_mismatch(
+    std::string_view backend,
+    std::size_t topology,
+    std::size_t scenario,
+    const SurfacePreparationCall &actual,
+    const SurfacePreparationCall &expected) {
+    std::cerr << "compact surface preparation mismatch on "
+              << backend << ", topology " << topology
+              << ", scenario " << scenario << '\n';
+    std::cerr << "  compact emission=";
+    print(actual.emission);
+    std::cerr << ", expanded emission=";
+    print(expected.emission);
+    std::cerr << '\n' << "  compact shading normal=";
+    print(actual.shading_normal);
+    std::cerr << ", expanded shading normal=";
+    print(expected.shading_normal);
+    std::cerr << '\n' << "  compact albedo=";
+    print(actual.albedo);
+    std::cerr << ", expanded albedo=";
+    print(expected.albedo);
+    std::cerr << '\n' << "  compact glossy=";
+    print(actual.glossy_albedo);
+    std::cerr << ", expanded glossy=";
+    print(expected.glossy_albedo);
+    std::cerr << '\n' << "  compact transmission=";
+    print(actual.transmission_albedo);
+    std::cerr << ", expanded transmission=";
+    print(expected.transmission_albedo);
+    std::cerr << '\n' << "  compact normal=";
+    print(actual.normal);
+    std::cerr << ", expanded normal=";
+    print(expected.normal);
+    std::cerr << '\n' << "  compact transparency=";
+    print(actual.transparency);
+    std::cerr << ", expanded transparency=";
+    print(expected.transparency);
+    std::cerr << '\n' << "  compact roughness={"
+              << actual.roughness.x << ", " << actual.roughness.y
+              << "}, expanded roughness={" << expected.roughness.x
+              << ", " << expected.roughness.y << "}\n"
+              << "  compact flags=" << actual.runtime_flags
+              << ", expanded flags=" << expected.runtime_flags << '\n';
 }
 
 } // namespace psycles::test_support

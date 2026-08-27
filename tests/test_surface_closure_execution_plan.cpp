@@ -484,7 +484,8 @@ void test_statically_pruned_mix() {
           "scene operation mask includes a pruned closure family");
 }
 
-[[nodiscard]] ShaderGraph make_principled_graph() {
+[[nodiscard]] ShaderGraph make_principled_graph(
+    float thin_film_thickness = 0.0f) {
   ShaderGraph graph;
   const auto principled = graph.add_node(
       node_type::principled_bsdf, "All-feature Principled closure");
@@ -522,11 +523,47 @@ void test_statically_pruned_mix() {
           graph.set_input(
               principled,
               "EmissionStrength",
-              SocketValue::floating(1.7f)),
+              SocketValue::floating(1.7f)) &&
+          graph.set_input(
+              principled,
+              "ThinFilmThickness",
+              SocketValue::floating(thin_film_thickness)) &&
+          graph.set_input(
+              principled,
+              "ThinFilmIOR",
+              SocketValue::floating(1.33f)),
       "failed to configure closure-bytecode Principled graph");
   graph.set_root(
       ShaderDomain::surface,
       OutputRef{.node = principled, .socket = "Closure"});
+  return graph;
+}
+
+[[nodiscard]] ShaderGraph make_dielectric_graph(
+    bool refraction, float thin_film_thickness = 0.0f) {
+  ShaderGraph graph;
+  const auto closure = graph.add_node(
+      refraction ? node_type::refraction_bsdf : node_type::glass_bsdf,
+      refraction ? "Refraction operand contract" : "Glass operand contract");
+  auto configured =
+      graph.set_input(closure, "Color", SocketValue::color({0.3f, 0.5f, 0.8f})) &&
+      graph.set_input(closure, "Roughness", SocketValue::floating(0.27f)) &&
+      graph.set_input(closure, "IOR", SocketValue::floating(1.47f));
+  if (!refraction) {
+    configured = configured &&
+                 graph.set_input(
+                     closure,
+                     "ThinFilmThickness",
+                     SocketValue::floating(thin_film_thickness)) &&
+                 graph.set_input(
+                     closure,
+                     "ThinFilmIOR",
+                     SocketValue::floating(1.31f));
+  }
+  require(configured, "failed to configure dielectric operand contract");
+  graph.set_root(
+      ShaderDomain::surface,
+      OutputRef{.node = closure, .socket = "Closure"});
   return graph;
 }
 
@@ -693,6 +730,18 @@ void test_principled_static_contract() {
           "BSSRDF method was omitted from closure control");
   require((instruction.control & ~surface_closure_control_mask) == 0u,
           "closure control contains undefined bits");
+  const auto operand_begin = surface_closure_leaf_operand_begin(instruction);
+  require(!planned.closure_plan.entry(root).thin_film &&
+              (instruction.control & surface_closure_thin_film) == 0u &&
+              image.operands[
+                  operand_begin +
+                  surface_closure_operand::principled::thin_film_thickness] ==
+                  SurfaceValueAddress::invalid_value &&
+              image.operands[
+                  operand_begin +
+                  surface_closure_operand::principled::thin_film_ior] ==
+                  SurfaceValueAddress::invalid_value,
+          "inactive Principled Thin Film survived its static operand slice");
 
   const auto emission_storage = plan_surface_value_storage(
       *compiled.program, planned.dependencies.emission,
@@ -717,6 +766,72 @@ void test_principled_static_contract() {
               emission.used_principled_features ==
                   (expected_features & emission_features),
           "Principled emission retained an unobserved physical feature");
+}
+
+void test_thin_film_static_contract() {
+  const auto principled = compile_graph(make_principled_graph(325.0f));
+  const auto principled_plan = plan_program(principled);
+  const auto principled_root = principled.program->root();
+  const auto &principled_closure =
+      principled.program->closure_instructions()[principled_root.value];
+  const auto &principled_instruction =
+      principled_plan.closures.instructions.front();
+  const auto principled_begin =
+      surface_closure_leaf_operand_begin(principled_instruction);
+  require(
+      principled_plan.closure_plan.entry(principled_root).thin_film &&
+          (principled_instruction.control & surface_closure_thin_film) != 0u &&
+          principled_plan.closures.operands.size() ==
+              surface_closure_operand::principled::count &&
+          principled_plan.closures.operands[
+              principled_begin +
+              surface_closure_operand::principled::thin_film_thickness] ==
+              principled_plan.values.value_addresses[
+                  principled_closure.thin_film_thickness.value] &&
+          principled_plan.closures.operands[
+              principled_begin +
+              surface_closure_operand::principled::thin_film_ior] ==
+              principled_plan.values.value_addresses[
+                  principled_closure.thin_film_ior.value],
+      "active Principled Thin Film did not preserve its typed operand slice");
+
+  const auto glass = compile_graph(make_dielectric_graph(false, 410.0f));
+  const auto glass_plan = plan_program(glass);
+  const auto glass_root = glass.program->root();
+  const auto &glass_closure =
+      glass.program->closure_instructions()[glass_root.value];
+  const auto &glass_instruction = glass_plan.closures.instructions.front();
+  const auto glass_begin = surface_closure_leaf_operand_begin(glass_instruction);
+  require(
+      surface_closure_operation(glass_instruction) == ClosureOperation::glass &&
+          glass_plan.closure_plan.entry(glass_root).thin_film &&
+          (glass_instruction.control & surface_closure_thin_film) != 0u &&
+          glass_plan.closures.operands.size() ==
+              surface_closure_operand::glass::count &&
+          glass_plan.closures.operands[
+              glass_begin +
+              surface_closure_operand::glass::thin_film_thickness] ==
+              glass_plan.values.value_addresses[
+                  glass_closure.thin_film_thickness.value] &&
+          glass_plan.closures.operands[
+              glass_begin + surface_closure_operand::glass::thin_film_ior] ==
+              glass_plan.values.value_addresses[
+                  glass_closure.thin_film_ior.value],
+      "active Glass Thin Film did not preserve its typed operand slice");
+
+  const auto refraction = compile_graph(make_dielectric_graph(true));
+  const auto refraction_plan = plan_program(refraction);
+  const auto &refraction_instruction =
+      refraction_plan.closures.instructions.front();
+  require(
+      surface_closure_operation(refraction_instruction) ==
+              ClosureOperation::refraction &&
+          (refraction_instruction.control & surface_closure_thin_film) == 0u &&
+          refraction_plan.closures.operands.size() ==
+              surface_closure_operand::refraction::count &&
+          surface_closure_operand::refraction::count == 4u &&
+          surface_closure_operand::glass::count == 6u,
+      "Refraction inherited Glass Thin Film operands or control metadata");
 }
 
 void test_missing_live_address_rejected() {
@@ -790,6 +905,11 @@ void test_malformed_linear_weight_program_rejected() {
   semantic_control.instructions[0u].control |=
       surface_closure_endpoint_mask;
   reject_mutation(std::move(semantic_control), "leaf semantic bits");
+
+  auto illegal_thin_film = planned.closures;
+  illegal_thin_film.instructions[2u].control |= surface_closure_thin_film;
+  reject_mutation(std::move(illegal_thin_film),
+                  "thin film on an incompatible projection");
 }
 
 void test_executable_scene_relocation() {
@@ -874,6 +994,7 @@ int main() {
     test_add_sibling_retains_root_weight();
     test_statically_pruned_mix();
     test_principled_static_contract();
+    test_thin_film_static_contract();
     test_microfacet_anisotropy_specialization();
     test_missing_live_address_rejected();
     test_malformed_linear_weight_program_rejected();

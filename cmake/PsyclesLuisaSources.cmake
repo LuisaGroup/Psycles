@@ -27,6 +27,8 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/principled_metallic_component.cpp
     src/luisa/principled_specular_state.cpp
     src/luisa/thin_glass_component.cpp
+    src/luisa/cycles_thin_film_table_5_2_1.cpp
+    src/luisa/thin_film_fresnel.cpp
     src/luisa/thin_subsurface_component.cpp
     src/luisa/graph_surface_scattering.cpp
     src/luisa/graph_surface_state.cpp

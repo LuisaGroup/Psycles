@@ -24,9 +24,11 @@ namespace psycles::luisa_backend {
 // For every tag k, pack is injective on the fields observable for k and
 // unpack(pack(x)) restricted to those fields equals x. Retaining an
 // unobservable field inside the selected conservative family is harmless;
-// fields belonging only to another family never alias it. A third block
-// would mean mutually exclusive family payloads had been combined again and
-// is guarded by the focused regression.
+// fields belonging only to another family never alias it. Thin-film lanes
+// are further canonicalized by the exact observable tags: Principled
+// Metallic/Dielectric and Glass. A third block would mean mutually exclusive
+// family payloads had been combined again and is guarded by the focused
+// regression.
 inline constexpr std::size_t
     surface_closure_physical_block_count = 2u;
 
@@ -84,8 +86,12 @@ struct SurfaceClosurePhysicalCommonOnlyRecord {
 };
 
 struct SurfaceClosurePhysicalGeneralPayload {
-    Float diffuse_roughness;
-    Float metallic;
+    // Post-setup scattering never observes authored diffuse roughness or
+    // metallic weight: closure identity/lobe already encodes the selected
+    // branch. Their former lanes carry the film parameters without growing
+    // the two-block tagged-union ABI.
+    Float thin_film_thickness;
+    Float thin_film_ior;
     Float ior;
     Float3 specular_tint;
     Float sheen_transform_a;
@@ -102,8 +108,12 @@ struct SurfaceClosurePhysicalGeneralRecord {
 };
 
 struct SurfaceClosurePhysicalDielectricPayload {
-    Float3 color;
     Float ior;
+    // Glass color is fully represented by reflection/transmission tint and
+    // evaluation scale after setup. Two of its former spare lanes carry the
+    // film parameters; the third remains canonical zero.
+    Float thin_film_thickness;
+    Float thin_film_ior;
     Float3 fresnel_f0;
     Float3 fresnel_f90;
     Float3 reflection_tint;

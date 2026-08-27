@@ -298,6 +298,8 @@ void GraphSurfaceImplementation::for_each_closure(
                         ? vector(closure.emission_color, values) *
                               scalar(closure.emission_strength, values)
                         : make_float3(0.0f);
+                const auto thin_film_enabled =
+                    principled && _closure_plan.entry(id).thin_film;
                 function(TracedClosure{
                     .operation = closure.operation,
                     .principled_features =
@@ -356,6 +358,16 @@ void GraphSurfaceImplementation::for_each_closure(
                     .coat_normal_linked =
                         closure.coat_normal_linked,
                     .emission = emission,
+                    .thin_film_enabled = thin_film_enabled,
+                    .thin_film_thickness =
+                        thin_film_enabled
+                            ? scalar(closure.thin_film_thickness, values)
+                            : Float{0.0f},
+                    .thin_film_ior =
+                        thin_film_enabled
+                            ? max(scalar(closure.thin_film_ior, values),
+                                  1.0e-5f)
+                            : Float{0.0f},
                     .preserve_ggx_energy =
                         closure.preserve_ggx_energy,
                     .beckmann =
@@ -395,6 +407,8 @@ void GraphSurfaceImplementation::for_each_closure(
             case compiler::ClosureOperation::refraction: {
                 const auto glass = closure.operation ==
                                    compiler::ClosureOperation::glass;
+                const auto thin_film_enabled =
+                    glass && _closure_plan.entry(id).thin_film;
                 auto color = max(
                     vector(closure.color, values),
                     make_float3(0.0f));
@@ -417,6 +431,16 @@ void GraphSurfaceImplementation::for_each_closure(
                     .ior = max(scalar(closure.ior, values), 1.0e-5f),
                     .specular_ior_level = 0.5f,
                     .specular_tint = make_float3(1.0f),
+                    .thin_film_enabled = thin_film_enabled,
+                    .thin_film_thickness =
+                        thin_film_enabled
+                            ? scalar(closure.thin_film_thickness, values)
+                            : Float{0.0f},
+                    .thin_film_ior =
+                        thin_film_enabled
+                            ? max(scalar(closure.thin_film_ior, values),
+                                  1.0e-5f)
+                            : Float{0.0f},
                     .preserve_ggx_energy =
                         glass && closure.preserve_ggx_energy,
                     .beckmann = closure.beckmann});

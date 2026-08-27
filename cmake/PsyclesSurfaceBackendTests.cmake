@@ -83,6 +83,9 @@ psycles_add_luisa_backend_test(
     SOURCE tests/test_luisa_surface_closure_collection.cpp
     TEST_STEM luisa_surface_closure_collection
     LIBRARIES Psycles::luisa)
+target_sources(
+    psycles_luisa_surface_closure_collection_tests
+    PRIVATE tests/luisa_surface_closure_collection_test_support.cpp)
 if(TEST psycles.luisa_surface_closure_collection_vk)
     set_tests_properties(
         psycles.luisa_surface_closure_collection_vk
@@ -167,6 +170,36 @@ psycles_add_luisa_backend_test(
 if(TEST psycles.luisa_surface_closure_physical_vk)
     set_tests_properties(
         psycles.luisa_surface_closure_physical_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_thin_film_fresnel_tests
+    SOURCE tests/test_luisa_thin_film_fresnel.cpp
+    TEST_STEM luisa_thin_film_fresnel
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_thin_film_fresnel_tests
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+if(TEST psycles.luisa_thin_film_fresnel_vk)
+    set_tests_properties(
+        psycles.luisa_thin_film_fresnel_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_thin_film_surface_tests
+    SOURCE tests/test_luisa_thin_film_surface.cpp
+    TEST_STEM luisa_thin_film_surface
+    LIBRARIES Psycles::luisa Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_thin_film_surface_tests
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+if(TEST psycles.luisa_thin_film_surface_vk)
+    set_tests_properties(
+        psycles.luisa_thin_film_surface_vk
         PROPERTIES ENVIRONMENT
             "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
 endif()

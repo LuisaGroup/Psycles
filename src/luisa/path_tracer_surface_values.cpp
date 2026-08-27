@@ -105,6 +105,8 @@ namespace {
     const auto anisotropy_enabled =
         (static_variant &
          compiler::surface_closure_microfacet_anisotropy) != 0u;
+    const auto thin_film_enabled =
+        (static_variant & compiler::surface_closure_thin_film) != 0u;
 
     switch (operation) {
         case compiler::ClosureOperation::diffuse:
@@ -326,6 +328,14 @@ namespace {
                     luisa::make_float3(0.0f)),
                 .coat_normal_linked = coat_normal_linked,
                 .emission = emission_color * emission_strength,
+                .thin_film_enabled = thin_film_enabled,
+                .thin_film_thickness = thin_film_enabled
+                    ? scalar(operand::principled::thin_film_thickness, 0.0f)
+                    : Float{0.0f},
+                .thin_film_ior = thin_film_enabled
+                    ? max(scalar(operand::principled::thin_film_ior, 1.33f),
+                          1.0e-5f)
+                    : Float{0.0f},
                 .preserve_ggx_energy = preserve_ggx_energy,
                 .beckmann = false};
         }
@@ -380,6 +390,28 @@ namespace {
                     1.0e-5f),
                 .specular_ior_level = 0.5f,
                 .specular_tint = make_float3(1.0f),
+                .thin_film_enabled = glass && thin_film_enabled,
+                .thin_film_thickness = glass && thin_film_enabled
+                    ? read_closure_scalar_or(
+                          runtime,
+                          services,
+                          point,
+                          locals,
+                          instruction,
+                          operand::glass::thin_film_thickness,
+                          0.0f)
+                    : Float{0.0f},
+                .thin_film_ior = glass && thin_film_enabled
+                    ? max(read_closure_scalar_or(
+                              runtime,
+                              services,
+                              point,
+                              locals,
+                              instruction,
+                              operand::glass::thin_film_ior,
+                              1.33f),
+                          1.0e-5f)
+                    : Float{0.0f},
                 .preserve_ggx_energy =
                     glass && preserve_ggx_energy,
                 .beckmann = beckmann};

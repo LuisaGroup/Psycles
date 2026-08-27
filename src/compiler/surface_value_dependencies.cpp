@@ -111,6 +111,15 @@ include_physical_leaf(ValueDependencyMask &dependencies,
     }
     return true;
   case ClosureOperation::glass:
+    dependencies.include(closure.color);
+    dependencies.include(closure.normal);
+    dependencies.include(closure.roughness);
+    dependencies.include(closure.ior);
+    if (entry.thin_film) {
+      dependencies.include(closure.thin_film_thickness);
+      dependencies.include(closure.thin_film_ior);
+    }
+    return true;
   case ClosureOperation::refraction:
     dependencies.include(closure.color);
     dependencies.include(closure.normal);
@@ -183,9 +192,15 @@ include_physical_leaf(ValueDependencyMask &dependencies,
     dependencies.include(closure.microfacet_rotation);
     dependencies.include(closure.tangent);
   }
+  if (entry.thin_film) {
+    dependencies.include(closure.thin_film_thickness);
+    dependencies.include(closure.thin_film_ior);
+  }
+  const auto thin_subsurface =
+      has_feature(entry, PrincipledClosureFeature::thin_subsurface);
   const auto subsurface =
       has_feature(entry, PrincipledClosureFeature::thick_subsurface) ||
-      has_feature(entry, PrincipledClosureFeature::thin_subsurface);
+      thin_subsurface;
   if (subsurface) {
     dependencies.include(closure.color);
     dependencies.include(closure.normal);
@@ -200,6 +215,14 @@ include_physical_leaf(ValueDependencyMask &dependencies,
     dependencies.include(closure.ior);
     dependencies.include(closure.specular_ior_level);
     dependencies.include(closure.thin_wall);
+    // Cycles' Thin Wall subsurface split uses Diffuse Roughness to select
+    // both the reflection and transmission closure families. This read is
+    // independent of whether the lower standalone diffuse lobe survives:
+    // Subsurface Weight == 1 can eliminate that lobe while the thin
+    // subsurface closures still observe the value.
+    if (thin_subsurface) {
+      dependencies.include(closure.diffuse_roughness);
+    }
     present = true;
   }
   if (has_feature(entry, PrincipledClosureFeature::diffuse)) {

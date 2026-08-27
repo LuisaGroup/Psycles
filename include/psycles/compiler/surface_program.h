@@ -1068,6 +1068,11 @@ struct ClosureInstruction {
   bool coat_normal_linked{};
   ValueExpressionId emission_color;
   ValueExpressionId emission_strength;
+  // Cycles 5.2 thin-film interference is shared by Principled and Glass.
+  // Keep both authored values in typed SSA; the closure plan proves them
+  // dead for the overwhelmingly common zero-thickness case.
+  ValueExpressionId thin_film_thickness;
+  ValueExpressionId thin_film_ior;
   bool preserve_ggx_energy{};
   bool beckmann{};
   ValueExpressionId strength;
@@ -1111,6 +1116,8 @@ inline constexpr auto closure_value_dependency_members = std::array{
     &ClosureInstruction::coat_normal,
     &ClosureInstruction::emission_color,
     &ClosureInstruction::emission_strength,
+    &ClosureInstruction::thin_film_thickness,
+    &ClosureInstruction::thin_film_ior,
     &ClosureInstruction::strength,
     &ClosureInstruction::factor};
 
@@ -1269,6 +1276,12 @@ struct SurfaceClosurePlanEntry {
   // False is a semantic specialization: those values must not be scheduled,
   // serialized, or recorded into the shader AST.
   bool microfacet_anisotropy{};
+  // True iff the thickness input can exceed Cycles'
+  // THINFILM_THICKNESS_CUTOFF for at least one material instance sharing
+  // this topology. This is deliberately separate from the Principled lobe
+  // mask: Glass observes the same capability and the film modifies several
+  // mutually exclusive Principled lobes.
+  bool thin_film{};
 };
 
 // One entry per ClosureInstruction. Plans for material instances with the

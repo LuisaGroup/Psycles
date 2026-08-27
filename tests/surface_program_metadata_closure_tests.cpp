@@ -215,7 +215,8 @@ void test_cycles_surface_bssrdf_metadata() {
     float alpha, float sheen, float coat, float metallic, float transmission,
     float subsurface, bool thin_wall, float subsurface_scale = 1.0f,
     psycles::Vec3f emission_color = {}, float emission_strength = 1.0f,
-    float specular_ior_level = 0.5f) {
+    float specular_ior_level = 0.5f, float ior = 1.45f,
+    float thin_film_thickness = 0.0f) {
   ShaderGraph graph;
   const auto principled =
       graph.add_node(node_type::principled_bsdf, "Closure-plan Principled");
@@ -241,9 +242,11 @@ void test_cycles_surface_bssrdf_metadata() {
                           SocketValue::color(emission_color)) &&
           graph.set_input(principled, "EmissionStrength",
                           SocketValue::floating(emission_strength)) &&
-          graph.set_input(principled, "IOR", SocketValue::floating(1.45f)) &&
+          graph.set_input(principled, "IOR", SocketValue::floating(ior)) &&
           graph.set_input(principled, "SpecularIORLevel",
-                          SocketValue::floating(specular_ior_level)),
+                          SocketValue::floating(specular_ior_level)) &&
+          graph.set_input(principled, "ThinFilmThickness",
+                          SocketValue::floating(thin_film_thickness)),
       "failed to configure closure-plan Principled");
   graph.set_root(ShaderDomain::surface,
                  OutputRef{.node = principled, .socket = "Closure"});
@@ -328,7 +331,8 @@ void test_surface_closure_plan() {
               !feature(base, PrincipledClosureFeature::thick_subsurface) &&
               !feature(base, PrincipledClosureFeature::thin_subsurface) &&
               feature(base, PrincipledClosureFeature::diffuse) &&
-              !feature(base, PrincipledClosureFeature::emission),
+              !feature(base, PrincipledClosureFeature::emission) &&
+              !base.thin_film,
           "direct zero Principled sockets did not remove physical lobe code");
 
   const auto base_dependencies =
@@ -396,8 +400,81 @@ void test_surface_closure_plan() {
                   base_closure.transmission_weight) &&
           !active(base_dependencies.physical, base_closure.thin_wall) &&
           !active(base_dependencies.physical, base_closure.emission_color) &&
-          !active(base_dependencies.physical, base_closure.emission_strength),
+          !active(base_dependencies.physical, base_closure.emission_strength) &&
+          !active(base_dependencies.physical,
+                  base_closure.thin_film_thickness) &&
+          !active(base_dependencies.physical, base_closure.thin_film_ior),
       "physical dependency plan retained a proven-unreachable socket family");
+
+  const auto plan_principled_variant = [&](float thickness, float ior) {
+    const auto [shader, program] = compile(make_closure_plan_principled(
+        1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false, 1.0f, {}, 1.0f,
+        0.5f, ior, thickness));
+    require(program->structure_signature() == base_program->structure_signature(),
+            "Thin Film literals changed reusable topology");
+    const auto binding = bind_surface_parameters(*base_program, *shader);
+    require(binding.ok(), "failed to bind Thin Film closure plan");
+    return analyze_surface_closure_plan(
+        *base_program, *binding.parameters);
+  };
+  const auto cutoff_plan = plan_principled_variant(0.1f, 1.45f);
+  require(!principled_entry(*base_program, cutoff_plan).thin_film,
+          "Thin Film cutoff endpoint was treated as active");
+  const auto film_plan = plan_principled_variant(0.1001f, 1.45f);
+  const auto &film_entry = principled_entry(*base_program, film_plan);
+  require(film_entry.thin_film,
+          "positive Thin Film thickness was removed from the closure plan");
+  const auto film_dependencies =
+      analyze_surface_value_dependencies(*base_program, film_plan);
+  require(active(film_dependencies.physical,
+                 base_closure.thin_film_thickness) &&
+              active(film_dependencies.physical, base_closure.thin_film_ior),
+          "active Thin Film inputs were removed from the value schedule");
+  const auto nonfinite_film_plan = plan_principled_variant(
+      std::numeric_limits<float>::quiet_NaN(), 1.45f);
+  require(principled_entry(*base_program, nonfinite_film_plan).thin_film,
+          "non-finite Thin Film thickness was used as a negative proof");
+
+  const auto unit_ior_plan = plan_principled_variant(0.0f, 1.0f);
+  require(!feature(principled_entry(*base_program, unit_ior_plan),
+                   PrincipledClosureFeature::dielectric),
+          "unit substrate IOR retained an uncoated dielectric lobe");
+  const auto unit_ior_film_plan = plan_principled_variant(400.0f, 1.0f);
+  require(feature(principled_entry(*base_program, unit_ior_film_plan),
+                  PrincipledClosureFeature::dielectric),
+          "Thin Film failed to retain reflection over a unit-IOR substrate");
+
+  ShaderGraph linked_film_graph = make_closure_plan_principled(
+      1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, false);
+  const auto linked_film_value = linked_film_graph.add_node(
+      node_type::constant_float, "Linked zero Thin Film thickness");
+  auto linked_principled_node = NodeId{};
+  for (const auto &node : linked_film_graph.nodes()) {
+    if (node.type == node_type::principled_bsdf) {
+      linked_principled_node = node.id;
+      break;
+    }
+  }
+  require(linked_principled_node &&
+              linked_film_graph.set_input(
+                  linked_film_value, "Value", SocketValue::floating(0.0f)) &&
+              linked_film_graph.connect(
+                  {.node = linked_film_value, .socket = "Value"},
+                  linked_principled_node,
+                  "ThinFilmThickness"),
+          "failed to configure linked Thin Film closure plan");
+  const auto [linked_film_shader, linked_film_program] =
+      compile(std::move(linked_film_graph));
+  const auto linked_film_binding = bind_surface_parameters(
+      *linked_film_program, *linked_film_shader);
+  require(linked_film_binding.ok() &&
+              principled_entry(
+                  *linked_film_program,
+                  analyze_surface_closure_plan(
+                      *linked_film_program,
+                      *linked_film_binding.parameters))
+                  .thin_film,
+          "linked numerical zero was incorrectly host-folded from Thin Film");
   require(std::none_of(base_dependencies.emission.begin(),
                        base_dependencies.emission.end(),
                        [](bool value) noexcept { return value; }) &&
@@ -569,6 +646,31 @@ void test_surface_closure_plan() {
                                        *thin_zero_scale_binding.parameters)),
                   PrincipledClosureFeature::thin_subsurface),
           "subsurface scale incorrectly disabled Thin Wall scattering");
+
+  const auto [saturated_thin_shader, saturated_thin_program] = compile(
+      make_closure_plan_principled(
+          1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, true));
+  const auto saturated_thin_binding = bind_surface_parameters(
+      *saturated_thin_program, *saturated_thin_shader);
+  require(saturated_thin_binding.ok(),
+          "failed to bind saturated Thin Wall subsurface plan");
+  const auto saturated_thin_plan = analyze_surface_closure_plan(
+      *saturated_thin_program, *saturated_thin_binding.parameters);
+  const auto &saturated_thin_entry = principled_entry(
+      *saturated_thin_program, saturated_thin_plan);
+  const auto saturated_thin_dependencies =
+      analyze_surface_value_dependencies(
+          *saturated_thin_program, saturated_thin_plan);
+  const auto &saturated_thin_closure =
+      principled_instruction(*saturated_thin_program);
+  require(feature(saturated_thin_entry,
+                  PrincipledClosureFeature::thin_subsurface) &&
+              !feature(saturated_thin_entry,
+                       PrincipledClosureFeature::diffuse) &&
+              active(saturated_thin_dependencies.physical,
+                     saturated_thin_closure.diffuse_roughness),
+          "Thin Wall subsurface lost Diffuse Roughness after its lower "
+          "diffuse lobe was statically eliminated");
 
   const auto make_mix = [](float factor) {
     ShaderGraph graph;

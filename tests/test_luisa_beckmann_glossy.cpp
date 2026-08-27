@@ -30,6 +30,7 @@ using namespace psycles::luisa_backend;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
+using psycles::test_support::merged_surface_closure_plan;
 using psycles::test_support::parameter_data;
 using psycles::test_support::ParameterShaderServices;
 using psycles::test_support::require_bounded_xir;
@@ -161,9 +162,14 @@ int main(int argc, char **argv) {
   const auto ggx_values = parameter_data(*ggx_program.program);
   SurfaceDispatch beckmann_surfaces;
   const auto beckmann_tag =
-      beckmann_surfaces.create<GraphSurface>(beckmann_program.program);
+      beckmann_surfaces.create<GraphSurface>(
+          beckmann_program.program,
+          merged_surface_closure_plan(
+              *beckmann_program.program, beckmann_values));
   SurfaceDispatch ggx_surfaces;
-  const auto ggx_tag = ggx_surfaces.create<GraphSurface>(ggx_program.program);
+  const auto ggx_tag = ggx_surfaces.create<GraphSurface>(
+      ggx_program.program,
+      merged_surface_closure_plan(*ggx_program.program, ggx_values));
 
   Kernel1D trace_beckmann = [&](BufferFloat4 parameters,
                                 BufferFloat4 output) noexcept {

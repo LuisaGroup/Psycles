@@ -12,6 +12,60 @@
 #include <psycles/luisa/surface_closure_sampling.h>
 
 namespace psycles::luisa_backend::detail {
+namespace {
+
+[[nodiscard]] SurfaceClosureReachability program_closure_reachability(
+    const compiler::SurfaceProgram &program,
+    const compiler::SurfaceClosurePlan &plan) noexcept {
+    std::uint32_t operations = 0u;
+    std::uint32_t principled_features = 0u;
+    std::uint32_t anisotropic_operations = 0u;
+    std::uint32_t anisotropic_principled_features = 0u;
+    std::uint32_t thin_film_operations = 0u;
+    std::uint32_t thin_film_principled_features = 0u;
+    const auto &closures = program.closure_instructions();
+    for (std::size_t index = 0u; index < closures.size(); ++index) {
+        const auto id = compiler::ClosureExpressionId{
+            static_cast<std::uint32_t>(index)};
+        const auto &entry = plan.entry(id);
+        if (!entry.reachable) { continue; }
+        const auto operation = closures[index].operation;
+        if (operation == compiler::ClosureOperation::null_closure ||
+            operation == compiler::ClosureOperation::add ||
+            operation == compiler::ClosureOperation::mix) {
+            continue;
+        }
+        const auto operation_bit =
+            std::uint32_t{1u} << static_cast<std::uint32_t>(operation);
+        operations |= operation_bit;
+        if (operation == compiler::ClosureOperation::principled) {
+            principled_features |= entry.principled_features;
+        }
+        if (entry.microfacet_anisotropy) {
+            anisotropic_operations |= operation_bit;
+            if (operation == compiler::ClosureOperation::principled) {
+                anisotropic_principled_features |=
+                    entry.principled_features;
+            }
+        }
+        if (entry.thin_film) {
+            thin_film_operations |= operation_bit;
+            if (operation == compiler::ClosureOperation::principled) {
+                thin_film_principled_features |=
+                    entry.principled_features;
+            }
+        }
+    }
+    return reachable_surface_closures(
+        operations,
+        principled_features,
+        anisotropic_operations,
+        anisotropic_principled_features,
+        thin_film_operations,
+        thin_film_principled_features);
+}
+
+}// namespace
 
 GraphSurfaceImplementation::GraphSurfaceImplementation(
     std::shared_ptr<const compiler::SurfaceProgram> program) noexcept
@@ -34,6 +88,8 @@ GraphSurfaceImplementation::GraphSurfaceImplementation(
         _value_dependency_plan =
             compiler::analyze_surface_value_dependencies(
                 *_program, _closure_plan);
+        _physical_closure_reachability =
+            program_closure_reachability(*_program, _closure_plan);
         for (const auto &instruction : _program->value_instructions()) {
             _value_nodes.emplace_back(make_value_node(instruction));
             if (instruction.operation ==
@@ -200,7 +256,8 @@ GraphSurfaceImplementation::evaluate_traced(
                         directions.outgoing,
                         query,
                         policy,
-                        selected_sample));
+                        selected_sample,
+                        _physical_closure_reachability));
             };
             closure_index += select(0u, 1u, allocated);
         });
@@ -311,9 +368,16 @@ GraphSurfaceImplementation::sample_with_trace(
         make_surface_closure_evaluation_policy(
             false, Expr<std::uint32_t>{0u});
     DirectSurfaceClosureEvaluationOperation evaluation{
-        services, closure_point, query, policy};
+        services,
+        closure_point,
+        query,
+        policy,
+        _physical_closure_reachability};
     DirectSurfaceClosureSamplingOperation sampling{
-        services, closure_point, query};
+        services,
+        closure_point,
+        query,
+        _physical_closure_reachability};
     SurfaceClosureSamplingVisitor visitor{
         maximum_surface_closure_capacity,
         closure_point,

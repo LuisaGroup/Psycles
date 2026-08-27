@@ -278,6 +278,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         image.used_principled_closure_features;
     std::uint32_t anisotropic_closure_operations = 0u;
     std::uint32_t anisotropic_principled_features = 0u;
+    std::uint32_t thin_film_closure_operations = 0u;
+    std::uint32_t thin_film_principled_features = 0u;
     runtime->closure_static_variants.reserve(image.closure_instructions.size());
     for (auto instruction_index = std::size_t{0u};
          instruction_index < image.closure_instructions.size();
@@ -298,6 +300,16 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                     image.closure_principled_features[instruction_index];
             }
         }
+        if ((instruction.control & compiler::surface_closure_thin_film) != 0u) {
+            const auto operation =
+                compiler::surface_closure_operation(instruction);
+            thin_film_closure_operations |=
+                std::uint32_t{1u} << static_cast<std::uint32_t>(operation);
+            if (operation == compiler::ClosureOperation::principled) {
+                thin_film_principled_features |=
+                    image.closure_principled_features[instruction_index];
+            }
+        }
         const auto key =
             instruction.control & compiler::surface_closure_static_variant_mask;
         if (std::find(runtime->closure_static_variants.begin(),
@@ -312,21 +324,29 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         image.used_closure_operations,
         image.used_principled_closure_features,
         anisotropic_closure_operations,
-        anisotropic_principled_features);
+        anisotropic_principled_features,
+        thin_film_closure_operations,
+        thin_film_principled_features);
     runtime->maximum_closure_mix_slots = image.maximum_closure_mix_slots;
     LUISA_INFO(
         "Surface physical-closure reachability: operations=0x{:08x}, "
         "Principled features=0x{:08x}, anisotropic operations=0x{:08x}, "
-        "anisotropic Principled features=0x{:08x}, kinds=0x{:08x}, "
-        "Principled lobes=0x{:08x}, anisotropic kinds=0x{:08x}.",
+        "anisotropic Principled features=0x{:08x}, thin-film operations="
+        "0x{:08x}, thin-film Principled features=0x{:08x}, kinds=0x{:08x}, "
+        "Principled lobes=0x{:08x}, anisotropic kinds=0x{:08x}, "
+        "thin-film kinds=0x{:08x}, thin-film lobes=0x{:08x}.",
         image.used_closure_operations,
         image.used_principled_closure_features,
         anisotropic_closure_operations,
         anisotropic_principled_features,
+        thin_film_closure_operations,
+        thin_film_principled_features,
         runtime->physical_closure_reachability.kinds,
         runtime->physical_closure_reachability.principled_lobes,
         runtime->physical_closure_reachability
-            .anisotropic_microfacet_kinds);
+            .anisotropic_microfacet_kinds,
+        runtime->physical_closure_reachability.thin_film_kinds,
+        runtime->physical_closure_reachability.thin_film_principled_lobes);
     const auto append_unique = [](auto &values, auto value) noexcept {
         if (std::find(values.begin(), values.end(), value) == values.end()) {
             values.emplace_back(value);

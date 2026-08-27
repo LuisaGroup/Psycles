@@ -34,13 +34,17 @@ inline constexpr auto evaluation_general_payload_reachability =
         .principled_lobes = all_surface_closure_lobes,
         .anisotropic_microfacet_kinds =
             surface_closure_kind_bit(SurfaceClosureKind::principled) |
-            surface_closure_kind_bit(SurfaceClosureKind::glossy)};
+            surface_closure_kind_bit(SurfaceClosureKind::glossy),
+        .thin_film_principled_lobes =
+            all_thin_film_principled_lobes};
 
 inline constexpr auto evaluation_dielectric_payload_reachability =
     SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::glass) |
                  surface_closure_kind_bit(SurfaceClosureKind::refraction),
-        .principled_lobes = 0u};
+        .principled_lobes = 0u,
+        .thin_film_kinds =
+            surface_closure_kind_bit(SurfaceClosureKind::glass)};
 
 inline constexpr auto evaluation_common_only_reachability =
     all_surface_closure_reachability &
@@ -368,7 +372,11 @@ evaluate_general_closure(
                     reachability.contains_anisotropic_microfacet(
                         SurfaceClosureKind::principled) ||
                         reachability.contains_anisotropic_microfacet(
-                            SurfaceClosureKind::glossy));
+                            SurfaceClosureKind::glossy),
+                    reachability.contains_thin_film_principled_lobe(
+                        SurfaceClosureLobe::metallic),
+                    reachability.contains_thin_film_principled_lobe(
+                        SurfaceClosureLobe::dielectric));
                 const auto pdf = select(
                     0.0f, evaluation.pdf, bump_pdf_valid);
                 const auto value =
@@ -514,7 +522,9 @@ evaluate_dielectric_closure(
             glossy_normal,
             glossy_enabled,
             transmission_enabled,
-            query.glossy_filter_roughness);
+            query.glossy_filter_roughness,
+            reachability.contains_thin_film(
+                SurfaceClosureKind::glass));
         auto pdf = select(0.0f, evaluation.pdf, bump_pdf_valid);
         pdf = select(pdf, 0.0f, selected_unit_ior_glass_delta);
         auto value =

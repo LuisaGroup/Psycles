@@ -2,6 +2,7 @@
 #include "microfacet_anisotropy.h"
 #include "principled_metallic_component.h"
 #include "principled_specular_state.h"
+#include "thin_film_fresnel.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_closure.h>
@@ -46,6 +47,13 @@ PrincipledDielectricSetupParameters populate_principled_dielectric(
         .ior = input.ior,
         .specular_ior_level = input.specular_ior_level,
         .specular_tint = specular.specular_tint,
+        .thin_film_thickness = input.thin_film_enabled
+                                   ? input.thin_film_thickness
+                                   : Float{0.0f},
+        .thin_film_ior = input.thin_film_enabled
+                             ? input.thin_film_ior
+                             : Float{0.0f},
+        .thin_film_enabled = input.thin_film_enabled,
         .preserve_ggx_energy = input.preserve_ggx_energy};
 }
 
@@ -87,11 +95,30 @@ PrincipledDielectricSetupResult setup_principled_dielectric(
         16u,
         16u,
         16u);
-    const auto dielectric_albedo_estimate = lerp(
+    auto dielectric_albedo_estimate = lerp(
         dielectric_f0,
         make_float3(1.0f),
         dielectric_interpolation);
-    const auto dielectric_requested = adjusted.eta != 1.0f;
+    if (parameters.thin_film_enabled) {
+        const auto film = thin_film_dielectric_fresnel(
+            services,
+            parameters.thin_film_thickness,
+            parameters.thin_film_ior,
+            adjusted.eta,
+            dielectric_f0,
+            parameters.incoming_cosine);
+        dielectric_albedo_estimate = select(
+            dielectric_albedo_estimate,
+            film.reflectance,
+            parameters.thin_film_thickness >
+                thin_film_thickness_cutoff);
+    }
+    auto dielectric_requested = adjusted.eta != 1.0f;
+    if (parameters.thin_film_enabled) {
+        dielectric_requested |=
+            parameters.thin_film_thickness >
+            thin_film_thickness_cutoff;
+    }
     const auto dielectric_pre_weight = select(
         make_float3(0.0f),
         parameters.lower_weight,
@@ -185,8 +212,11 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
              .specular_tint = closure.specular_tint,
              .roughness = closure.roughness,
              .metallic = closure.metallic,
+             .thin_film_thickness = closure.thin_film_thickness,
+             .thin_film_ior = closure.thin_film_ior,
              .use_bump_map_correction =
                  _point.use_bump_map_correction,
+             .thin_film_enabled = closure.thin_film_enabled,
              .preserve_ggx_energy = closure.preserve_ggx_energy},
             {.lower_weight = lower_weight,
              .glossy_normal = glossy_normal,
@@ -195,6 +225,9 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
              .incoming_cosine = incoming_cosine,
              .roughness = roughness,
              .metallic = metallic_amount,
+             .thin_film_thickness = closure.thin_film_thickness,
+             .thin_film_ior = closure.thin_film_ior,
+             .thin_film_enabled = closure.thin_film_enabled,
              .preserve_ggx_energy = closure.preserve_ggx_energy},
             reflective_caustics);
 
@@ -237,6 +270,8 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
                  .normal = glossy_normal,
                  .roughness = roughness,
                  .ior = original_ior,
+                 .thin_film_thickness = closure.thin_film_thickness,
+                 .thin_film_ior = closure.thin_film_ior,
                  .fresnel_f0 = make_float3(f0_from_ior(original_ior)) * specular_tint,
                  .fresnel_f90 = make_float3(1.0f),
                  .reflection_tint = select(make_float3(0.0f), make_float3(1.0f),
@@ -247,6 +282,7 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
                  .enabled = transmission_requested & !closure.thin_wall &
                             (reflective_caustics | refractive_caustics),
                  .principled_lobe = PrincipledLobe::transmission,
+                 .thin_film_enabled = closure.thin_film_enabled,
                  .preserve_energy = closure.preserve_ggx_energy,
                  .beckmann = false}));
         }
@@ -280,12 +316,15 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
             .ior = closure.ior,
             .specular_ior_level = closure.specular_ior_level,
             .specular_tint = closure.specular_tint,
+            .thin_film_thickness = closure.thin_film_thickness,
+            .thin_film_ior = closure.thin_film_ior,
             .use_bump_map_correction =
                 _point.use_bump_map_correction,
+            .thin_film_enabled = closure.thin_film_enabled,
             .preserve_ggx_energy = closure.preserve_ggx_energy};
         const auto *provider =
             _services.surface_closure_setup_provider();
-        const auto setup = provider != nullptr
+        const auto setup = provider != nullptr && !closure.thin_film_enabled
                                ? provider->principled_dielectric(
                                      input,
                                      reflective_caustics)
@@ -299,6 +338,12 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
                                       .specular_ior_level =
                                           closure.specular_ior_level,
                                       .specular_tint = specular_tint,
+                                      .thin_film_thickness =
+                                          closure.thin_film_thickness,
+                                      .thin_film_ior =
+                                          closure.thin_film_ior,
+                                      .thin_film_enabled =
+                                          closure.thin_film_enabled,
                                       .preserve_ggx_energy =
                                           closure.preserve_ggx_energy},
                                      reflective_caustics);

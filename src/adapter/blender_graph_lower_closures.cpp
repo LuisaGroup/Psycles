@@ -210,6 +210,18 @@ public:
                 "Emission Strength",
                 SocketType::floating));
             static_cast<void>(context.bind(
+                id,
+                "ThinFilmThickness",
+                node,
+                "Thin Film Thickness",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "ThinFilmIOR",
+                node,
+                "Thin Film IOR",
+                SocketType::floating));
+            static_cast<void>(context.bind(
                 id, "Normal", node, "Normal", SocketType::normal));
             return finish({
                 .ref = {.node = id, .socket = "Closure"},
@@ -353,6 +365,20 @@ public:
                 SocketType::floating));
             static_cast<void>(context.bind(
                 id, "IOR", node, "IOR", SocketType::floating));
+            if (type == "BSDF_GLASS") {
+                static_cast<void>(context.bind(
+                    id,
+                    "ThinFilmThickness",
+                    node,
+                    "Thin Film Thickness",
+                    SocketType::floating));
+                static_cast<void>(context.bind(
+                    id,
+                    "ThinFilmIOR",
+                    node,
+                    "Thin Film IOR",
+                    SocketType::floating));
+            }
             if (context.raw_input(node, "Normal") != nullptr) {
                 static_cast<void>(context.bind(
                     id,

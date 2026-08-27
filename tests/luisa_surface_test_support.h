@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <span>
 #include <stdexcept>
 #include <string_view>
 #include <variant>
@@ -185,6 +186,105 @@ template<typename Device, typename Kernel>
     }
     if (result.empty()) {
         result.emplace_back(0.0f);
+    }
+    return result;
+}
+
+// Reconstruct the host-side abstract-interpretation input from the exact
+// packed parameter blocks dispatched by a Luisa regression. This lets tests
+// join the same per-material closure plans as the production scene builder,
+// instead of accidentally compiling the topology-only conservative top.
+[[nodiscard]] inline SurfaceParameterBlock surface_parameter_block(
+    const SurfaceProgram &program,
+    std::span<const luisa::float4> packed) {
+    if (packed.size() != program.parameters().size()) {
+        throw std::runtime_error{
+            "surface fixture parameter block has the wrong extent"};
+    }
+    SurfaceParameterBlock result{program};
+    for (std::size_t index = 0u; index < packed.size(); ++index) {
+        const auto &parameter = program.parameters()[index];
+        const auto value = packed[index];
+        contract::SocketValue decoded = parameter.default_value;
+        using contract::SocketType;
+        switch (parameter.type) {
+            case SocketType::boolean:
+                decoded = contract::SocketValue::boolean(value.x != 0.0f);
+                break;
+            case SocketType::integer:
+                decoded = contract::SocketValue::integer(
+                    static_cast<std::int64_t>(value.x));
+                break;
+            case SocketType::unsigned_integer: {
+                const auto low = std::bit_cast<std::uint32_t>(value.x);
+                const auto high = std::bit_cast<std::uint32_t>(value.y);
+                decoded = contract::SocketValue::unsigned_integer(
+                    static_cast<std::uint64_t>(low) |
+                    (static_cast<std::uint64_t>(high) << 32u));
+                break;
+            }
+            case SocketType::floating:
+                decoded = contract::SocketValue::floating(value.x);
+                break;
+            case SocketType::float2:
+                decoded = contract::SocketValue::float2({value.x, value.y});
+                break;
+            case SocketType::float3:
+                decoded = contract::SocketValue::float3(
+                    {value.x, value.y, value.z});
+                break;
+            case SocketType::color:
+                decoded = contract::SocketValue::color(
+                    {value.x, value.y, value.z});
+                break;
+            case SocketType::spectrum:
+                decoded = contract::SocketValue::spectrum(
+                    {value.x, value.y, value.z});
+                break;
+            case SocketType::point:
+                decoded = contract::SocketValue::point(
+                    {value.x, value.y, value.z});
+                break;
+            case SocketType::vector:
+                decoded = contract::SocketValue::vector(
+                    {value.x, value.y, value.z});
+                break;
+            case SocketType::normal:
+                decoded = contract::SocketValue::normal(
+                    {value.x, value.y, value.z});
+                break;
+            case SocketType::transform:
+            case SocketType::string:
+            case SocketType::closure:
+            case SocketType::volume_closure:
+                throw std::runtime_error{
+                    "surface fixture has an unsupported packed parameter type"};
+        }
+        if (!result.set(program, parameter.id, std::move(decoded))) {
+            throw std::runtime_error{
+                "surface fixture failed to reconstruct a parameter block"};
+        }
+    }
+    return result;
+}
+
+[[nodiscard]] inline SurfaceClosurePlan merged_surface_closure_plan(
+    const SurfaceProgram &program,
+    std::span<const luisa::float4> packed) {
+    const auto stride = program.parameters().size();
+    if (stride == 0u) {
+        return analyze_surface_closure_plan(
+            program, SurfaceParameterBlock{program});
+    }
+    if (packed.empty() || packed.size() % stride != 0u) {
+        throw std::runtime_error{
+            "surface fixture parameter stream is not block-aligned"};
+    }
+    SurfaceClosurePlan result;
+    for (std::size_t offset = 0u; offset < packed.size(); offset += stride) {
+        const auto parameters = surface_parameter_block(
+            program, packed.subspan(offset, stride));
+        result.merge(analyze_surface_closure_plan(program, parameters));
     }
     return result;
 }

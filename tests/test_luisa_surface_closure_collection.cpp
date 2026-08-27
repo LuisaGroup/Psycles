@@ -11,6 +11,7 @@
 #include <psycles/luisa/surface_closure_set.h>
 
 #include "luisa_surface_test_support.h"
+#include "luisa_surface_closure_collection_test_support.h"
 
 #include <array>
 #include <cmath>
@@ -32,12 +33,14 @@ using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::make_surface_point;
+using psycles::test_support::merged_surface_closure_plan;
 using psycles::test_support::parameter_data;
 using psycles::test_support::ParameterShaderServices;
+using psycles::test_support::RequestedClosureCollector;
 
 constexpr auto closure_slots = 8u;
-constexpr auto records_per_slot = 6u;
-constexpr auto storage_records_per_slot = 18u;
+constexpr auto records_per_slot = 7u;
+constexpr auto storage_records_per_slot = 19u;
 constexpr auto evaluator_records_per_slot = 10u;
 constexpr auto scattering_records_per_slot = 6u;
 constexpr auto sampling_records_per_slot = 8u;
@@ -46,155 +49,6 @@ constexpr auto categorical_random_count = 4u;
 constexpr auto categorical_invocation_count =
     categorical_mask_count * categorical_random_count;
 constexpr auto categorical_records_per_invocation = 2u;
-
-struct CollectedClosureTrace {
-    UInt count;
-    SurfaceClosureRecord closure;
-    Bool valid;
-    Float3 shading_normal;
-};
-
-// Multistage diagnostic consumer of the collection boundary. add() retains
-// only raw AST expression handles; runtime-indexed selection is deliberately
-// emitted later by finish(), while still inside the material dispatch branch.
-// The two fixture materials have different closure counts, so clearing the
-// host vector in begin() is also a regression for cross-branch leakage.
-class RequestedClosureCollector final : public SurfaceClosureCollector {
-
-private:
-    UInt _requested;
-    luisa::vector<SurfaceClosureExpression> _closures;
-    UInt _count{0u};
-    SurfaceClosureRecord _selected{SurfaceClosureRecord::zero()};
-    Bool _valid{false};
-    Float3 _shading_normal{make_float3(0.0f, 0.0f, 1.0f)};
-
-public:
-    explicit RequestedClosureCollector(UInt requested) noexcept
-        : _requested{requested} {}
-
-    void begin(
-        Expr<luisa::float3> shading_normal) noexcept override {
-        _closures.clear();
-        _shading_normal = shading_normal;
-    }
-
-    void add(const SurfaceClosureRecord &closure) noexcept override {
-        _closures.emplace_back(closure);
-    }
-
-    void finish() noexcept override {
-        for (const auto &closure : _closures) {
-            const auto scattering =
-                closure.kind != static_cast<std::uint32_t>(
-                                    SurfaceClosureKind::none);
-            const auto allocated =
-                scattering &
-                (closure.allocation_weight >=
-                    cycles_closure::closure_weight_cutoff);
-            const auto match = allocated & (_count == _requested);
-            _selected.kind = select(_selected.kind, closure.kind, match);
-            _selected.lobe = select(_selected.lobe, closure.lobe, match);
-            _selected.weight = select(_selected.weight, closure.weight, match);
-            _selected.allocation_weight = select(
-                _selected.allocation_weight,
-                closure.allocation_weight,
-                match);
-            _selected.sample_weight = select(
-                _selected.sample_weight,
-                closure.sample_weight,
-                match);
-            _selected.setup_valid = select(
-                _selected.setup_valid,
-                closure.setup_valid,
-                match);
-            _selected.albedo = select(
-                _selected.albedo, closure.albedo, match);
-            _selected.reflection_albedo = select(
-                _selected.reflection_albedo,
-                closure.reflection_albedo,
-                match);
-            _selected.transmission_albedo = select(
-                _selected.transmission_albedo,
-                closure.transmission_albedo,
-                match);
-            _selected.color = select(
-                _selected.color, closure.color, match);
-            _selected.normal = select(
-                _selected.normal, closure.normal, match);
-            _selected.roughness = select(
-                _selected.roughness, closure.roughness, match);
-            _selected.microfacet_tangent = select(
-                _selected.microfacet_tangent,
-                closure.microfacet_tangent,
-                match);
-            _selected.microfacet_alpha_x = select(
-                _selected.microfacet_alpha_x,
-                closure.microfacet_alpha_x,
-                match);
-            _selected.microfacet_alpha_y = select(
-                _selected.microfacet_alpha_y,
-                closure.microfacet_alpha_y,
-                match);
-            _selected.diffuse_roughness = select(
-                _selected.diffuse_roughness,
-                closure.diffuse_roughness,
-                match);
-            _selected.metallic = select(
-                _selected.metallic, closure.metallic, match);
-            _selected.ior = select(
-                _selected.ior, closure.ior, match);
-            _selected.specular_ior_level = select(
-                _selected.specular_ior_level,
-                closure.specular_ior_level,
-                match);
-            _selected.specular_tint = select(
-                _selected.specular_tint,
-                closure.specular_tint,
-                match);
-            _selected.sheen_transform_a = select(
-                _selected.sheen_transform_a,
-                closure.sheen_transform_a,
-                match);
-            _selected.sheen_transform_b = select(
-                _selected.sheen_transform_b,
-                closure.sheen_transform_b,
-                match);
-            _selected.evaluation_scale = select(
-                _selected.evaluation_scale,
-                closure.evaluation_scale,
-                match);
-            _selected.fresnel_f0 = select(
-                _selected.fresnel_f0, closure.fresnel_f0, match);
-            _selected.fresnel_f90 = select(
-                _selected.fresnel_f90, closure.fresnel_f90, match);
-            _selected.reflection_tint = select(
-                _selected.reflection_tint,
-                closure.reflection_tint,
-                match);
-            _selected.transmission_tint = select(
-                _selected.transmission_tint,
-                closure.transmission_tint,
-                match);
-            _selected.preserve_ggx_energy = select(
-                _selected.preserve_ggx_energy,
-                closure.preserve_ggx_energy,
-                match);
-            _selected.beckmann = select(
-                _selected.beckmann, closure.beckmann, match);
-            _valid |= match;
-            _count += select(0u, 1u, allocated);
-        }
-    }
-
-    [[nodiscard]] CollectedClosureTrace result() const noexcept {
-        return {
-            .count = _count,
-            .closure = _selected,
-            .valid = _valid,
-            .shading_normal = _shading_normal};
-    }
-};
 
 // Test-only operation which exercises the same OOP visitor and canonical
 // contribution algebra without the path tracer's scene-resource callable.
@@ -362,6 +216,10 @@ public:
                         SocketValue::color({0.73f, 0.86f, 0.94f})) &&
         graph.set_input(glass, "Roughness", SocketValue::floating(0.24f)) &&
         graph.set_input(glass, "IOR", SocketValue::floating(1.37f)) &&
+        graph.set_input(glass, "ThinFilmThickness",
+                        SocketValue::floating(425.0f)) &&
+        graph.set_input(glass, "ThinFilmIOR",
+                        SocketValue::floating(1.32f)) &&
         graph.set_property(glass, "Distribution",
                            SocketValue::string("BECKMANN"));
     if (!configured) {
@@ -396,13 +254,17 @@ int main(int argc, char **argv) {
     const auto layered = compile(make_layered_graph());
     const auto glass = compile(make_beckmann_glass_graph());
 
-    SurfaceDispatch surfaces;
-    const auto layered_tag = surfaces.create<GraphSurface>(layered);
-    const auto glass_tag = surfaces.create<GraphSurface>(glass);
     auto parameters = parameter_data(*layered);
     const auto glass_parameter_base =
         static_cast<std::uint32_t>(parameters.size());
     const auto glass_parameters = parameter_data(*glass);
+    SurfaceDispatch surfaces;
+    const auto layered_tag = surfaces.create<GraphSurface>(
+        layered,
+        merged_surface_closure_plan(*layered, parameters));
+    const auto glass_tag = surfaces.create<GraphSurface>(
+        glass,
+        merged_surface_closure_plan(*glass, glass_parameters));
     parameters.insert(parameters.end(), glass_parameters.begin(),
                       glass_parameters.end());
     const auto closure_identity =
@@ -446,6 +308,11 @@ int main(int argc, char **argv) {
                      make_float4(closure.reflection_albedo, cast<float>(flags)));
         output.write(base + 5u,
                      make_float4(trace.shading_normal, closure.ior));
+        output.write(base + 6u,
+                     make_float4(closure.thin_film_thickness,
+                                 closure.thin_film_ior,
+                                 0.0f,
+                                 0.0f));
     };
 
     Kernel1D legacy = [&](BufferFloat4 parameter_buffer,
@@ -558,6 +425,8 @@ int main(int argc, char **argv) {
         glass_record.diffuse_roughness = 0.20f;
         glass_record.metallic = 0.21f;
         glass_record.ior = 1.37f;
+        glass_record.thin_film_thickness = 456.0f;
+        glass_record.thin_film_ior = 1.29f;
         glass_record.specular_ior_level = 0.22f;
         glass_record.specular_tint =
             make_float3(23.0f, 24.0f, 25.0f);
@@ -682,6 +551,12 @@ int main(int argc, char **argv) {
                 make_float4(
                     cast<float>(closure.bssrdf_method),
                     closure.bssrdf_ior,
+                    0.0f,
+                    0.0f));
+            output.write(base + 18u,
+                make_float4(
+                    closure.thin_film_thickness,
+                    closure.thin_film_ior,
                     0.0f,
                     0.0f));
         };
@@ -1773,6 +1648,7 @@ int main(int argc, char **argv) {
             all_finite &= finite(collected[collected_base + record]);
         }
         const auto flags = collected[collected_base + 4u].w;
+        const auto film = collected[collected_base + 6u];
         const auto expected_flags =
             !expected_valid
                 ? 0.0f
@@ -1789,7 +1665,12 @@ int main(int argc, char **argv) {
             !approximately_equal(flags, expected_flags) ||
             !approximately_equal(collected[collected_base + 5u].x, 0.0f) ||
             !approximately_equal(collected[collected_base + 5u].y, 0.0f) ||
-            !approximately_equal(collected[collected_base + 5u].z, 1.0f)) {
+            !approximately_equal(collected[collected_base + 5u].z, 1.0f) ||
+            !approximately_equal(
+                film,
+                material != 0u && expected_valid
+                    ? luisa::float4{425.0f, 1.32f, 0.0f, 0.0f}
+                    : luisa::float4{0.0f})) {
             std::cerr << "surface closure collection failed on " << backend
                       << " at material " << material << ", closure " << requested
                       << ": collected {" << meta.x << ", " << meta.y << ", " << meta.z
@@ -1808,8 +1689,8 @@ int main(int argc, char **argv) {
         luisa::float4{1.0f, 2.0f, 3.0f, 0.4f},
         luisa::float4{4.0f, 5.0f, 6.0f, 0.5f},
         luisa::float4{7.0f, 8.0f, 9.0f, 0.19f},
-        luisa::float4{10.0f, 11.0f, 12.0f, 0.20f},
-        luisa::float4{13.0f, 14.0f, 15.0f, 0.21f},
+        luisa::float4{10.0f, 11.0f, 12.0f, 0.0f},
+        luisa::float4{13.0f, 14.0f, 15.0f, 0.0f},
         luisa::float4{16.0f, 17.0f, 18.0f, 1.37f},
         luisa::float4{23.0f, 24.0f, 25.0f, 0.22f},
         luisa::float4{28.0f, 29.0f, 30.0f, 0.26f},
@@ -1876,7 +1757,7 @@ int main(int argc, char **argv) {
         luisa::float4{0.0f, 0.0f, 0.0f, 0.5f},
         luisa::float4{0.0f, 0.0f, 0.0f, 0.19f},
         luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
-        luisa::float4{13.0f, 14.0f, 15.0f, 0.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
         luisa::float4{16.0f, 17.0f, 18.0f, 1.37f},
         luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
         luisa::float4{28.0f, 29.0f, 30.0f, 0.0f},
@@ -1911,6 +1792,16 @@ int main(int argc, char **argv) {
     physical_round_trip &= approximately_equal(
         stored[4u * storage_records_per_slot + 14u],
         luisa::float4{1.0f, 1.0f, 0.0f, 0.0f});
+    const auto thin_film_round_trip =
+        approximately_equal(
+            stored[storage_records_per_slot + 18u],
+            luisa::float4{456.0f, 1.29f, 0.0f, 0.0f}) &&
+        approximately_equal(
+            stored[3u * storage_records_per_slot + 18u],
+            luisa::float4{456.0f, 1.29f, 0.0f, 0.0f}) &&
+        approximately_equal(
+            stored[4u * storage_records_per_slot + 18u],
+            luisa::float4{456.0f, 1.29f, 0.0f, 0.0f});
     const auto overflow_truncated =
         approximately_equal(
             stored[2u * storage_records_per_slot],
@@ -1928,6 +1819,7 @@ int main(int argc, char **argv) {
         !glass_round_trip ||
         !callable_round_trip ||
         !physical_round_trip ||
+        !thin_film_round_trip ||
         !overflow_truncated) {
         std::cerr
             << "surface closure Local storage failed on "

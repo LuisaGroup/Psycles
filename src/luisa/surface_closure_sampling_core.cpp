@@ -43,13 +43,17 @@ inline constexpr auto sampling_general_payload_reachability =
         .principled_lobes = all_surface_closure_lobes,
         .anisotropic_microfacet_kinds =
             surface_closure_kind_bit(SurfaceClosureKind::principled) |
-            surface_closure_kind_bit(SurfaceClosureKind::glossy)};
+            surface_closure_kind_bit(SurfaceClosureKind::glossy),
+        .thin_film_principled_lobes =
+            all_thin_film_principled_lobes};
 
 inline constexpr auto sampling_dielectric_payload_reachability =
     SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::glass) |
                  surface_closure_kind_bit(SurfaceClosureKind::refraction),
-        .principled_lobes = 0u};
+        .principled_lobes = 0u,
+        .thin_film_kinds =
+            surface_closure_kind_bit(SurfaceClosureKind::glass)};
 
 inline constexpr auto sampling_bssrdf_payload_reachability =
     SurfaceClosureReachability{
@@ -392,8 +396,13 @@ sample_general_closure(
                 query.glossy_filter_roughness,
                 reachability.contains_anisotropic_microfacet(
                     SurfaceClosureKind::principled) ||
-                    reachability.contains_anisotropic_microfacet(
-                        SurfaceClosureKind::glossy));
+                reachability.contains_anisotropic_microfacet(
+                    SurfaceClosureKind::glossy),
+                &services,
+                reachability.contains_thin_film_principled_lobe(
+                    SurfaceClosureLobe::metallic),
+                reachability.contains_thin_film_principled_lobe(
+                    SurfaceClosureLobe::dielectric));
             direction = glossy.direction;
             roughness = glossy.roughness;
             singular_evaluation = glossy.singular_evaluation;
@@ -431,7 +440,8 @@ sample_dielectric_closure(
     Float3 glossy_normal,
     Float2 random_direction,
     Float rescaled_lobe,
-    const SurfaceQuery &query) noexcept {
+    const SurfaceQuery &query,
+    SurfaceClosureReachability reachability) noexcept {
     const detail::MicrofacetGlassComponent microfacet_glass{
         services, point};
     const auto glass = microfacet_glass.sample(
@@ -444,7 +454,9 @@ sample_dielectric_closure(
          static_cast<std::uint32_t>(event_glossy)) != 0u,
         (query.lobe_mask &
          static_cast<std::uint32_t>(event_transmission)) != 0u,
-        query.glossy_filter_roughness);
+        query.glossy_filter_roughness,
+        reachability.contains_thin_film(
+            SurfaceClosureKind::glass));
     using namespace surface_closure_sample_property;
     auto result = zero_surface_closure_conditional_sample();
     result.direction = glass.direction;
@@ -521,7 +533,8 @@ surface_closure_conditional_sample(
             Float3{glossy_normal_expression},
             Float2{random_direction_expression},
             Float{rescaled_lobe_expression},
-            query);
+            query,
+            reachability & sampling_dielectric_payload_reachability);
     }
     $elif(is_bssrdf) {
         result = sample_bssrdf_closure(
@@ -591,7 +604,8 @@ surface_closure_conditional_sample_from_physical_common(
             Float3{glossy_normal},
             Float2{random_direction},
             Float{rescaled_lobe},
-            query);
+            query,
+            reachability & sampling_dielectric_payload_reachability);
     }
     $elif(is_bssrdf_payload) {
         const auto closure =

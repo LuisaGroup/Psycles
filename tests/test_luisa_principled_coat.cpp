@@ -27,6 +27,7 @@ using namespace psycles::luisa_backend;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
+using psycles::test_support::merged_surface_closure_plan;
 using psycles::test_support::parameter_data;
 using psycles::test_support::ParameterShaderServices;
 using psycles::test_support::require_bounded_xir;
@@ -304,16 +305,30 @@ int main(int argc, char **argv) {
 
     SurfaceDispatch coat_surfaces;
     const auto coat_tag =
-        coat_surfaces.create<GraphSurface>(coat_program.program);
+        coat_surfaces.create<GraphSurface>(
+            coat_program.program,
+            merged_surface_closure_plan(
+                *coat_program.program, coat_parameters));
     SurfaceDispatch coat_normal_surfaces;
     const auto coat_normal_tag =
-        coat_normal_surfaces.create<GraphSurface>(coat_normal_program.program);
+        coat_normal_surfaces.create<GraphSurface>(
+            coat_normal_program.program,
+            merged_surface_closure_plan(
+                *coat_normal_program.program,
+                coat_normal_parameters));
     SurfaceDispatch glass_surfaces;
     const auto glass_tag =
-        glass_surfaces.create<GraphSurface>(glass_program.program);
+        glass_surfaces.create<GraphSurface>(
+            glass_program.program,
+            merged_surface_closure_plan(
+                *glass_program.program, glass_parameters));
     SurfaceDispatch transparent_surfaces;
     const auto transparent_tag =
-        transparent_surfaces.create<GraphSurface>(transparent_program.program);
+        transparent_surfaces.create<GraphSurface>(
+            transparent_program.program,
+            merged_surface_closure_plan(
+                *transparent_program.program,
+                transparent_parameters));
 
     Kernel1D trace_coat = [&](BufferFloat4 parameters,
                               BufferFloat4 output) noexcept {
