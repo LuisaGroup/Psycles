@@ -63,9 +63,14 @@ aov_contribution(
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::principled);
     const auto is_sheen =
-        is_principled &
-        (closure.lobe == static_cast<std::uint32_t>(
-                             SurfaceClosureLobe::sheen));
+        (is_principled &
+         (closure.lobe == static_cast<std::uint32_t>(
+                              SurfaceClosureLobe::sheen))) |
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::sheen_microfiber));
+    const auto is_ashikhmin =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::sheen_ashikhmin);
     const auto is_glossy =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::glossy);
@@ -90,7 +95,8 @@ aov_contribution(
     const auto is_dielectric_family =
         is_dielectric | is_thin_glass_transmission;
     const auto generic_glossy =
-        (is_principled & !is_sheen) | is_glossy | is_metallic;
+        (is_principled & !is_sheen) | is_glossy | is_metallic |
+        is_ashikhmin;
 
     const auto incoming = detail::safe_normalize(
         Float3{incoming_expression},
@@ -106,7 +112,7 @@ aov_contribution(
     const auto glossy_normal = select(
         corrected_glossy_normal,
         closure.normal,
-        is_sheen | is_rough_translucent |
+        is_sheen | is_ashikhmin | is_rough_translucent |
             is_thin_glass_transmission);
 
     const auto diffuse_family =
@@ -165,8 +171,8 @@ aov_contribution(
     result.total_weight =
         diffuse_weight + glossy_weight;
     result.roughness_weight = glossy_weight;
-    result.roughness =
-        glossy_weight * closure.roughness;
+    result.roughness = glossy_weight * select(
+        closure.roughness, 1.0f, is_ashikhmin);
     return result;
 }
 

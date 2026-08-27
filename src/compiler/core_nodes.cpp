@@ -1069,6 +1069,20 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::sheen_bsdf,
+                 .inputs = {input("Color", SocketType::color,
+                                  SocketValue::color({0.8f, 0.8f, 0.8f})),
+                            input("Roughness", SocketType::floating,
+                                  SocketValue::floating(0.5f)),
+                            input("Normal", SocketType::normal,
+                                  SocketValue::normal({0.0f, 0.0f, 0.0f}))},
+                 .outputs = {output("Closure", SocketType::closure)},
+                 .properties = {property(
+                     "Distribution", SocketType::string,
+                     SocketValue::string("MICROFIBER"))},
+                 .required_features = feature_bit(ShaderFeature::surface)}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::glass_bsdf,
                  .inputs = {input("Color", SocketType::color,
                                   SocketValue::color({1.0f, 1.0f, 1.0f})),

@@ -1159,6 +1159,17 @@ regressions, fallback/HIP/native-XIR Vulkan gates, full-pass repeat-floor
 analysis, and inspected triptychs are in
 [`validation/2026-08-26/surface-bump-expanded-svm`](validation/2026-08-26/surface-bump-expanded-svm/README.md).
 
+Blender 5.2's standalone Sheen BSDF now remains a raw closure with static
+Microfiber and Ashikhmin variants. The implementation preserves LTC setup and
+sampling, analytic Velvet evaluation, the two-block physical tagged union,
+and Cycles' unusual split where Ashikhmin samples with a diffuse event but is
+glossy for pass routing, light exclusion, and bump-normal classification. A
+16-cell 640x480, 256-spp matrix passes on HIP, fallback, and strict native-XIR
+Vulkan. The probe exposed and permanently regresses a prior 0.34% aggregate
+Ashikhmin energy loss caused by diffuse terminator softening. Formal relations,
+reports, timings, and inspected triptychs are in
+[`validation/2026-08-28/cycles-5.2-standalone-sheen`](validation/2026-08-28/cycles-5.2-standalone-sheen/README.md).
+
 The following integrator work remains explicit and is not considered Cycles
 compatible yet:
 

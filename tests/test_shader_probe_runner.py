@@ -450,6 +450,50 @@ class ShaderProbeRunnerContract(unittest.TestCase):
         self.assertEqual(len(failures), 1)
         self.assertIn("normalized p99 pixel RMSE", failures[0])
 
+    def test_sheen_gate_rejects_one_wrong_distribution_cell(self) -> None:
+        pass_names = (
+            "Combined",
+            "DiffCol",
+            "DiffDir",
+            "GlossCol",
+            "GlossDir",
+            "Normal",
+        )
+        report = {
+            "passes": {
+                pass_name: {
+                    "luminance_mean_ratio": 1.0,
+                    "relative_rmse": 0.01,
+                    "p99_pixel_rmse": 0.00001,
+                    "cycles_rms": 1.0,
+                    "actual_invalid_pixels": 0,
+                }
+                for pass_name in pass_names
+            }
+        }
+        self.assertEqual(
+            self.runner._probe_gate_failures("sheen_bsdf_matrix", report),
+            [],
+        )
+
+        # Each static distribution occupies half the matrix and every case
+        # occupies 1/16, so a wrong model or pass classification cannot be
+        # hidden by cancellation in the mean-energy ratio.
+        report["passes"]["GlossDir"]["p99_pixel_rmse"] = 0.01
+        failures = self.runner._probe_gate_failures(
+            "sheen_bsdf_matrix", report
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("normalized p99 pixel RMSE", failures[0])
+
+        report["passes"]["GlossDir"]["p99_pixel_rmse"] = 0.00001
+        report["passes"]["GlossDir"]["actual_invalid_pixels"] = 1
+        failures = self.runner._probe_gate_failures(
+            "sheen_bsdf_matrix", report
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("non-finite Psycles pixels", failures[0])
+
 
 if __name__ == "__main__":
     # unittest would otherwise treat the runner path as a test selector.

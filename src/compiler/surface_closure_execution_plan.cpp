@@ -78,6 +78,9 @@ inline constexpr auto emission_principled_features =
     return {};
   case ClosureOperation::diffuse:
     return {closure.color, closure.normal, closure.roughness};
+  case ClosureOperation::sheen_microfiber:
+  case ClosureOperation::sheen_ashikhmin:
+    return {closure.color, closure.normal, closure.roughness};
   case ClosureOperation::translucent:
     return {closure.color, closure.normal};
   case ClosureOperation::principled:
@@ -188,6 +191,8 @@ struct ClosureWeightReferences {
   case ClosureOperation::glossy:
   case ClosureOperation::metallic_f82:
   case ClosureOperation::metallic_conductor:
+  case ClosureOperation::sheen_microfiber:
+  case ClosureOperation::sheen_ashikhmin:
   case ClosureOperation::glass:
   case ClosureOperation::emission:
   case ClosureOperation::transparent:
@@ -222,6 +227,12 @@ struct ClosureWeightReferences {
                    operand == surface_closure_operand::metallic::edge_tint_k ||
                    operand == surface_closure_operand::metallic::normal ||
                    operand == surface_closure_operand::metallic::tangent
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::sheen_microfiber:
+  case ClosureOperation::sheen_ashikhmin:
+    return operand == surface_closure_operand::sheen::color ||
+                   operand == surface_closure_operand::sheen::normal
                ? SurfaceValueBank::vector
                : SurfaceValueBank::scalar;
   case ClosureOperation::translucent:

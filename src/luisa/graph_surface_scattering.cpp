@@ -362,8 +362,11 @@ template<typename Closure>
     const auto is_principled = has_kind(
         closure, SurfaceClosureKind::principled);
     const auto is_sheen =
-        is_principled &
-        has_lobe(closure, SurfaceClosureLobe::sheen);
+        (is_principled &
+         has_lobe(closure, SurfaceClosureLobe::sheen)) |
+        has_kind(closure, SurfaceClosureKind::sheen_microfiber);
+    const auto is_ashikhmin = has_kind(
+        closure, SurfaceClosureKind::sheen_ashikhmin);
     const auto is_glossy = has_kind(
         closure, SurfaceClosureKind::glossy);
     const auto is_metallic =
@@ -389,7 +392,7 @@ template<typename Closure>
         bsdf | has_eval |
             cycles_closure::runtime_bsdf_has_transmission,
         is_translucent | is_rough_translucent);
-    flags = select(flags, bsdf | has_eval, is_sheen);
+    flags = select(flags, bsdf | has_eval, is_sheen | is_ashikhmin);
 
     auto alpha = clamp(closure.roughness, 0.0f, 1.0f);
     alpha *= alpha;
@@ -445,8 +448,11 @@ template<typename Closure>
     const auto is_principled = has_kind(
         closure, SurfaceClosureKind::principled);
     const auto is_sheen =
-        is_principled &
-        has_lobe(closure, SurfaceClosureLobe::sheen);
+        (is_principled &
+         has_lobe(closure, SurfaceClosureLobe::sheen)) |
+        has_kind(closure, SurfaceClosureKind::sheen_microfiber);
+    const auto is_ashikhmin = has_kind(
+        closure, SurfaceClosureKind::sheen_ashikhmin);
     const auto is_glossy = has_kind(
         closure, SurfaceClosureKind::glossy);
     const auto is_metallic =
@@ -505,6 +511,9 @@ template<typename Closure>
     type = select(type,
         UInt{cycles_closure::type_sheen},
         is_sheen);
+    type = select(type,
+        UInt{cycles_closure::type_ashikhmin_velvet},
+        is_ashikhmin);
     auto bssrdf_type = UInt{cycles_closure::type_bssrdf_random_walk};
     bssrdf_type = select(
         bssrdf_type,
@@ -1188,6 +1197,63 @@ microfacet_reflection_distribution_terms(
     return basis.tangent * local_outgoing.x +
            basis.bitangent * local_outgoing.y +
            closure.common.normal * local_outgoing.z;
+}
+
+[[nodiscard]] AshikhminVelvetEvaluation evaluate_ashikhmin_velvet(
+    const SurfaceClosurePhysicalCommonRecord &closure,
+    Float3 incoming,
+    Float3 outgoing,
+    bool sampling_domain) noexcept {
+    const auto normal = closure.normal;
+    const auto cos_ni = dot(normal, incoming);
+    const auto cos_no = dot(normal, outgoing);
+    const auto half_sum = incoming + outgoing;
+    const auto half_length = sqrt(dot(half_sum, half_sum));
+    // Totalize normalization and all later divisions outside the accepted
+    // domain. These denominators equal the Cycles expressions wherever its
+    // predicates accept the sample, while rejected lanes remain finite.
+    const auto half_vector = half_sum /
+                             max(half_length, 1.0e-20f);
+    const auto cos_nh = dot(normal, half_vector);
+    const auto cos_hi = abs(dot(incoming, half_vector));
+    const auto valid =
+        (cos_ni > (sampling_domain ? 1.0e-5f : 0.0f)) &
+        (sampling_domain ? Bool{true} : cos_no > 0.0f) &
+        (abs(cos_nh) < 1.0f - 1.0e-5f) &
+        (cos_hi > 1.0e-5f);
+    const auto cos_nh_over_hi = max(
+        cos_nh / max(cos_hi, 1.0e-20f), 1.0e-5f);
+    const auto fac1 = 2.0f * abs(cos_nh_over_hi * cos_ni);
+    const auto fac2 = 2.0f * abs(cos_nh_over_hi * cos_no);
+    const auto sin_nh_squared = max(
+        1.0f - cos_nh * cos_nh, 1.0e-20f);
+    const auto sin_nh_fourth = sin_nh_squared * sin_nh_squared;
+    const auto cotangent_squared =
+        (cos_nh * cos_nh) / sin_nh_squared;
+    // setup stored Cycles' invsigma2 in this model-specific common scalar.
+    const auto distribution =
+        exp(-cotangent_squared * closure.roughness) *
+        closure.roughness * inverse_pi / sin_nh_fourth;
+    const auto masking = min(1.0f, min(fac1, fac2));
+    const auto intensity =
+        0.25f * distribution * masking / max(cos_ni, 1.0e-20f);
+    return {
+        .intensity = select(0.0f, intensity, valid),
+        .pdf = select(
+            0.0f, cycles_sample_mapping::inverse_two_pi, valid),
+        .valid = valid};
+}
+
+[[nodiscard]] Float3 sample_uniform_hemisphere(
+    Float3 normal,
+    Float2 random) noexcept {
+    const auto disk = cycles_sample_mapping::sample_uniform_disk(random);
+    const auto z = 1.0f - dot(disk, disk);
+    const auto xy = disk * sqrt(max(z + 1.0f, 0.0f));
+    const auto basis = cycles_sample_mapping::make_orthonormals(normal);
+    return basis.tangent * xy.x +
+           basis.bitangent * xy.y +
+           normal * z;
 }
 
 [[nodiscard]] Float3 sample_cosine_hemisphere(

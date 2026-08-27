@@ -1,5 +1,7 @@
 #include "principled_layer_component.h"
 
+#include "sheen_closure_component.h"
+
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_closure.h>
 
@@ -99,30 +101,11 @@ PrincipledLayerComponent::evaluate_sheen(
         lerp(closure.normal,
             coat_normal,
             clamp(coat_weight, 0.0f, 1.0f)));
-    const auto sheen_roughness = clamp(
-        closure.sheen_roughness, 1.0e-3f, 1.0f);
-    const auto sheen_cosine = dot(sheen_normal, incoming);
-    const auto sheen_transform_a = cycles_table_2d(
+    const auto ltc = evaluate_sheen_ltc(
         _services,
-        sheen_cosine,
-        sheen_roughness,
-        UInt{cycles45_tables::sheen_ltc_offset},
-        32u,
-        32u);
-    const auto sheen_transform_b = cycles_table_2d(
-        _services,
-        sheen_cosine,
-        sheen_roughness,
-        UInt{cycles45_tables::sheen_ltc_offset + 32u * 32u},
-        32u,
-        32u);
-    const auto sheen_albedo = cycles_table_2d(
-        _services,
-        sheen_cosine,
-        sheen_roughness,
-        UInt{cycles45_tables::sheen_ltc_offset + 2u * 32u * 32u},
-        32u,
-        32u);
+        sheen_normal,
+        incoming,
+        closure.sheen_roughness);
     const auto sheen_pre_weight = max(
         lower_weight * sheen_tint * sheen_weight,
         make_float3(0.0f));
@@ -134,10 +117,9 @@ PrincipledLayerComponent::evaluate_sheen(
         sheen_requested & sheen_allocated;
     const auto sheen_valid =
         sheen_slot_allocated &
-        (abs(sheen_transform_a) >= 1.0e-5f) &
-        (sheen_albedo >= 1.0e-5f);
+        ltc.valid;
     const auto sheen_final_weight =
-        sheen_pre_weight * sheen_albedo;
+        sheen_pre_weight * ltc.albedo;
     lower_weight = apply_layer_albedo(
         lower_weight,
         sheen_final_weight,
@@ -151,17 +133,17 @@ PrincipledLayerComponent::evaluate_sheen(
     physical.allocation_weight = select(
         0.0f, sheen_allocation_weight, sheen_slot_allocated);
     physical.sample_weight = select(0.0f,
-        sheen_allocation_weight * sheen_albedo,
+        sheen_allocation_weight * ltc.albedo,
         sheen_valid);
     physical.setup_valid = sheen_valid;
     physical.albedo = select(
         make_float3(0.0f), sheen_final_weight, sheen_valid);
     physical.color = sheen_tint;
     physical.normal = sheen_normal;
-    physical.roughness = sheen_roughness;
+    physical.roughness = ltc.roughness;
     physical.ior = 1.0f;
-    physical.sheen_transform_a = sheen_transform_a;
-    physical.sheen_transform_b = sheen_transform_b;
+    physical.sheen_transform_a = ltc.transform_a;
+    physical.sheen_transform_b = ltc.transform_b;
     physical.evaluation_scale = make_float3(1.0f);
     physical.preserve_ggx_energy = false;
     physical.beckmann = false;

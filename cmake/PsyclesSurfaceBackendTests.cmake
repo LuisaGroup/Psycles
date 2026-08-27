@@ -16,6 +16,18 @@ psycles_add_luisa_backend_test(
     LIBRARIES Psycles::luisa)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_standalone_sheen_tests
+    SOURCE tests/test_luisa_standalone_sheen.cpp
+    TEST_STEM luisa_standalone_sheen
+    LIBRARIES Psycles::luisa)
+if(TEST psycles.luisa_standalone_sheen_vk)
+    set_tests_properties(
+        psycles.luisa_standalone_sheen_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_beckmann_glossy_tests
     SOURCE tests/test_luisa_beckmann_glossy.cpp
     TEST_STEM luisa_beckmann_glossy

@@ -69,10 +69,17 @@ namespace {
         node.type == node_type::subsurface_scattering ||
         node.type == node_type::glossy_bsdf ||
         node.type == node_type::metallic_bsdf ||
+        node.type == node_type::sheen_bsdf ||
         node.type == node_type::glass_bsdf ||
         node.type == node_type::refraction_bsdf) {
         const auto standalone_metallic =
             node.type == node_type::metallic_bsdf;
+        const auto standalone_sheen =
+            node.type == node_type::sheen_bsdf;
+        const auto distribution = property_string(
+            node,
+            "Distribution",
+            standalone_sheen ? "MICROFIBER" : "GGX");
         const auto fresnel_type = property_string(
             node, "FresnelType", "F82");
         const auto physical_conductor =
@@ -246,9 +253,11 @@ namespace {
                 operation = physical_conductor
                                 ? ClosureOperation::metallic_conductor
                                 : ClosureOperation::metallic_f82;
+            } else if (node.type == node_type::sheen_bsdf) {
+                operation = enum_token_is(distribution, "ashikhmin")
+                                ? ClosureOperation::sheen_ashikhmin
+                                : ClosureOperation::sheen_microfiber;
             }
-            const auto distribution = property_string(
-                node, "Distribution", "GGX");
             publish(
                 node.id,
                 "Closure",

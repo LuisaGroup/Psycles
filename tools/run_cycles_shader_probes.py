@@ -116,6 +116,7 @@ _ALL_PROBES = (
     "rgb_curve_matrix",
     "rgb_to_bw",
     "separate_color_modes",
+    "sheen_bsdf_matrix",
     "spot_light",
     "spot_light_soft",
     "sun_light",
@@ -345,6 +346,17 @@ _PROBE_RATIO_GATES = {
         "GlossDir": (0.9995, 1.0005),
         "Normal": (0.9995, 1.0005),
     },
+    "sheen_bsdf_matrix": {
+        # The zero-angle Sun produces deterministic direct evaluation. The
+        # matrix also makes the deliberately different Cycles pass policy
+        # observable: Microfiber is diffuse while Ashikhmin is glossy.
+        "Combined": (0.9995, 1.0005),
+        "DiffCol": (0.9995, 1.0005),
+        "DiffDir": (0.9995, 1.0005),
+        "GlossCol": (0.9995, 1.0005),
+        "GlossDir": (0.9995, 1.0005),
+        "Normal": (0.9995, 1.0005),
+    },
     "refraction_bsdf_matrix": {
         "Combined": (0.99998, 1.00002),
         "GlossCol": (0.0, 0.0),
@@ -566,6 +578,28 @@ _PROBE_NORMALIZED_P99_RMSE_GATES = {
         "GlossDir": 0.0001,
         "Normal": 0.0001,
     },
+    "sheen_bsdf_matrix": {
+        "Combined": 0.0001,
+        "DiffCol": 0.0001,
+        "DiffDir": 0.0001,
+        "GlossCol": 0.0001,
+        "GlossDir": 0.0001,
+        "Normal": 0.0001,
+    },
+}
+
+# A non-finite Cycles reference sample is retained as oracle evidence but must
+# never excuse a Psycles NaN/Inf. This is intentionally per probe: older
+# reports predate the source-attributed counters and remain readable.
+_PROBE_ACTUAL_INVALID_PIXEL_GATES = {
+    "sheen_bsdf_matrix": {
+        "Combined": 0,
+        "DiffCol": 0,
+        "DiffDir": 0,
+        "GlossCol": 0,
+        "GlossDir": 0,
+        "Normal": 0,
+    },
 }
 
 
@@ -687,6 +721,7 @@ def _probe_gate_failures(
     ratio_gates = _PROBE_RATIO_GATES.get(probe, {})
     rmse_gates = _PROBE_RELATIVE_RMSE_GATES.get(probe, {})
     p99_gates = _PROBE_NORMALIZED_P99_RMSE_GATES.get(probe, {})
+    invalid_gates = _PROBE_ACTUAL_INVALID_PIXEL_GATES.get(probe, {})
     passes = report_payload.get("passes")
     if not isinstance(passes, dict):
         return [f"{probe}: report has no pass dictionary"]
@@ -747,6 +782,21 @@ def _probe_gate_failures(
             failures.append(
                 f"{probe}: {pass_name} normalized p99 pixel RMSE "
                 f"{normalized_p99_rmse:.6f} exceeds {maximum:.6f}"
+            )
+    for pass_name, maximum in invalid_gates.items():
+        pass_report = passes.get(pass_name)
+        if not isinstance(pass_report, dict):
+            continue
+        actual_invalid = pass_report.get("actual_invalid_pixels")
+        if not isinstance(actual_invalid, int):
+            failures.append(
+                f"{probe}: {pass_name} has no integer Psycles invalid-pixel "
+                "count"
+            )
+        elif actual_invalid > maximum:
+            failures.append(
+                f"{probe}: {pass_name} has {actual_invalid} non-finite "
+                f"Psycles pixels, maximum is {maximum}"
             )
     return failures
 

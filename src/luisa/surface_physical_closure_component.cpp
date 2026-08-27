@@ -7,6 +7,7 @@
 #include "principled_base_component.h"
 #include "principled_diffuse_component.h"
 #include "principled_layer_component.h"
+#include "sheen_closure_component.h"
 #include "thin_subsurface_component.h"
 
 #include <psycles/luisa/cycles_closure.h>
@@ -90,6 +91,7 @@ void expand_physical_surface_closure(
         services, closure_point};
     const MetallicClosureComponent metallic_closure{
         services, closure_point};
+    const SheenClosureComponent sheen_closure{services, point};
     const BssrdfClosureComponent bssrdf_closure{point};
     const ThinSubsurfaceComponent thin_subsurface;
 
@@ -347,6 +349,10 @@ void expand_physical_surface_closure(
     case compiler::ClosureOperation::metallic_conductor:
         checked_emit(metallic_closure.setup(
             graph_closure, reflective_caustics));
+        return;
+    case compiler::ClosureOperation::sheen_microfiber:
+    case compiler::ClosureOperation::sheen_ashikhmin:
+        checked_emit(sheen_closure.setup(graph_closure));
         return;
     case compiler::ClosureOperation::glass: {
         const auto color =

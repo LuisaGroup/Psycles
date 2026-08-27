@@ -788,6 +788,83 @@ void test_standalone_metallic_static_contract() {
       "static Metallic Fresnel selection retained the inactive value graph");
 }
 
+[[nodiscard]] ShaderGraph make_sheen_graph(std::string distribution) {
+  ShaderGraph graph;
+  const auto sheen = graph.add_node(
+      node_type::sheen_bsdf, "Standalone Sheen contract");
+  const auto geometry = graph.add_node(
+      node_type::geometry, "Standalone Sheen normal");
+  require(
+      graph.set_property(
+          sheen,
+          "Distribution",
+          SocketValue::string(std::move(distribution))) &&
+          graph.set_input(
+              sheen,
+              "Color",
+              SocketValue::color({0.6f, 0.3f, 0.15f})) &&
+          graph.set_input(
+              sheen,
+              "Roughness",
+              SocketValue::floating(0.37f)) &&
+          graph.connect(
+              {.node = geometry, .socket = "Normal"},
+              sheen,
+              "Normal"),
+      "failed to configure standalone Sheen graph");
+  graph.set_root(
+      ShaderDomain::surface,
+      OutputRef{.node = sheen, .socket = "Closure"});
+  return graph;
+}
+
+void test_standalone_sheen_static_contract() {
+  const auto verify = [](std::string distribution,
+                          ClosureOperation expected_operation) {
+    const auto compiled = compile_graph(
+        make_sheen_graph(std::move(distribution)));
+    const auto planned = plan_program(compiled);
+    const auto root = compiled.program->root();
+    const auto &closure =
+        compiled.program->closure_instructions()[root.value];
+    const auto &instruction = planned.closures.instructions.front();
+    const auto begin = surface_closure_leaf_operand_begin(instruction);
+    require(
+        closure.operation == expected_operation &&
+            surface_closure_operation(instruction) == expected_operation &&
+            closure.color.valid() && closure.normal.valid() &&
+            closure.roughness.valid() &&
+            planned.closures.operands.size() ==
+                surface_closure_operand::sheen::count &&
+            planned.closures.operands[
+                begin + surface_closure_operand::sheen::color] ==
+                planned.values.value_addresses[closure.color.value] &&
+            planned.closures.operands[
+                begin + surface_closure_operand::sheen::normal] ==
+                planned.values.value_addresses[closure.normal.value] &&
+            planned.closures.operands[
+                begin + surface_closure_operand::sheen::roughness] ==
+                planned.values.value_addresses[closure.roughness.value] &&
+            surface_closure_endpoints(instruction) ==
+                surface_closure_endpoint_bit(
+                    SurfaceClosureEndpoint::physical) &&
+            (instruction.control &
+             (surface_closure_microfacet_anisotropy |
+              surface_closure_thin_film |
+              surface_closure_preserve_ggx_energy |
+              surface_closure_beckmann)) == 0u &&
+            planned.closures.principled_features.front() == 0u,
+        "standalone Sheen did not retain exactly its typed operand slice");
+    for (const auto &parameter : compiled.program->parameters()) {
+      require(parameter.socket != "Distribution" &&
+                  parameter.socket != "Weight",
+              "static Sheen metadata leaked into the runtime parameter ABI");
+    }
+  };
+  verify("MICROFIBER", ClosureOperation::sheen_microfiber);
+  verify("ASHIKHMIN", ClosureOperation::sheen_ashikhmin);
+}
+
 void test_microfacet_anisotropy_specialization() {
   const auto isotropic = compile_graph(
       make_glossy_anisotropy_graph(1.0e-4f));
@@ -1174,6 +1251,7 @@ int main() {
     test_statically_pruned_mix();
     test_principled_static_contract();
     test_standalone_metallic_static_contract();
+    test_standalone_sheen_static_contract();
     test_thin_film_static_contract();
     test_microfacet_anisotropy_specialization();
     test_missing_live_address_rejected();

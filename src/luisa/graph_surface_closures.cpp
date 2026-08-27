@@ -95,6 +95,27 @@ void GraphSurfaceImplementation::for_each_closure(
                     .specular_tint = make_float3(1.0f)});
                 return;
             }
+            case compiler::ClosureOperation::sheen_microfiber:
+            case compiler::ClosureOperation::sheen_ashikhmin: {
+                const auto color = vector(closure.color, values);
+                function(TracedClosure{
+                    .operation = closure.operation,
+                    // Cycles' NODE_CLOSURE_WEIGHT supplies authored Color to
+                    // bsdf_alloc; closure-tree mixing remains a separate
+                    // scalar relation established by the closure program.
+                    .weight = bsdf_allocated_weight(color * mix_weight),
+                    .color = color,
+                    .normal = safe_normalize(
+                        vector(closure.normal, values),
+                        values.shading_normal),
+                    .roughness = scalar(closure.roughness, values),
+                    .diffuse_roughness = 0.0f,
+                    .metallic = 0.0f,
+                    .ior = 1.0f,
+                    .specular_ior_level = 0.0f,
+                    .specular_tint = make_float3(1.0f)});
+                return;
+            }
             case compiler::ClosureOperation::metallic_f82:
             case compiler::ClosureOperation::metallic_conductor: {
                 const auto f82 = closure.operation ==

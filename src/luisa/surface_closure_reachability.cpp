@@ -19,6 +19,8 @@ operation_bit(compiler::ClosureOperation operation) noexcept {
            operation_bit(ClosureOperation::glossy) |
            operation_bit(ClosureOperation::metallic_f82) |
            operation_bit(ClosureOperation::metallic_conductor) |
+           operation_bit(ClosureOperation::sheen_microfiber) |
+           operation_bit(ClosureOperation::sheen_ashikhmin) |
            operation_bit(ClosureOperation::glass) |
            operation_bit(ClosureOperation::emission) |
            operation_bit(ClosureOperation::transparent) |
@@ -170,6 +172,12 @@ reachable_surface_closures(std::uint32_t closure_operations,
                  SurfaceClosureKind::metallic_f82);
     add_metallic(ClosureOperation::metallic_conductor,
                  SurfaceClosureKind::metallic_conductor);
+    if (has_operation(ClosureOperation::sheen_microfiber)) {
+        add_kind(SurfaceClosureKind::sheen_microfiber);
+    }
+    if (has_operation(ClosureOperation::sheen_ashikhmin)) {
+        add_kind(SurfaceClosureKind::sheen_ashikhmin);
+    }
     if (has_operation(ClosureOperation::glass)) {
         add_kind(SurfaceClosureKind::glass);
         if (has_thin_film_operation(ClosureOperation::glass)) {

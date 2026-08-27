@@ -42,6 +42,8 @@ inline constexpr auto sampling_general_payload_reachability =
                  surface_closure_kind_bit(
                      SurfaceClosureKind::metallic_conductor) |
                  surface_closure_kind_bit(
+                     SurfaceClosureKind::sheen_microfiber) |
+                 surface_closure_kind_bit(
                      SurfaceClosureKind::thin_glass_transmission),
         .principled_lobes = all_surface_closure_lobes,
         .anisotropic_microfacet_kinds =
@@ -199,8 +201,11 @@ surface_closure_selection(
     const auto is_principled = has_kind(
         closure, SurfaceClosureKind::principled);
     const auto is_sheen =
-        is_principled &
-        has_lobe(closure, SurfaceClosureLobe::sheen);
+        (is_principled &
+         has_lobe(closure, SurfaceClosureLobe::sheen)) |
+        has_kind(closure, SurfaceClosureKind::sheen_microfiber);
+    const auto is_ashikhmin = has_kind(
+        closure, SurfaceClosureKind::sheen_ashikhmin);
     const auto is_glossy = has_kind(
         closure, SurfaceClosureKind::glossy);
     const auto is_metallic =
@@ -236,7 +241,7 @@ surface_closure_selection(
         is_translucent | is_rough_translucent);
     eligible = select(eligible,
         diffuse_enabled,
-        is_diffuse | is_sheen | is_bssrdf);
+        is_diffuse | is_sheen | is_ashikhmin | is_bssrdf);
     eligible = select(eligible,
         glossy_enabled,
         (is_principled & !is_sheen) | is_glossy | is_metallic);
@@ -295,12 +300,28 @@ sample_common_closure(
         reachable_kind(SurfaceClosureKind::rough_translucent);
     const auto is_transparent =
         reachable_kind(SurfaceClosureKind::transparent);
+    const auto is_ashikhmin =
+        reachable_kind(SurfaceClosureKind::sheen_ashikhmin);
     auto result = zero_surface_closure_conditional_sample();
     result.valid = true;
     $if(is_transparent) {
         if (reachability.contains(SurfaceClosureKind::transparent)) {
             result.direction = -point.incoming;
             result.roughness = make_float2(0.0f);
+        }
+    }
+    $elif(is_ashikhmin) {
+        if (reachability.contains(SurfaceClosureKind::sheen_ashikhmin)) {
+            const auto incoming = detail::safe_normalize(
+                point.incoming, point.shading_normal);
+            result.direction = detail::sample_uniform_hemisphere(
+                common.normal, random_direction);
+            result.valid = detail::evaluate_ashikhmin_velvet(
+                               common,
+                               incoming,
+                               result.direction,
+                               true)
+                               .valid;
         }
     }
     $else {
@@ -347,11 +368,14 @@ sample_general_closure(
     };
     const auto is_principled =
         reachable_kind(SurfaceClosureKind::principled);
+    const auto is_microfiber =
+        reachable_kind(SurfaceClosureKind::sheen_microfiber);
     const auto is_sheen =
-        reachability.contains_principled_lobe(SurfaceClosureLobe::sheen)
-            ? is_principled &
-                  has_lobe(common, SurfaceClosureLobe::sheen)
-            : Bool{false};
+        is_microfiber |
+        (reachability.contains_principled_lobe(SurfaceClosureLobe::sheen)
+             ? is_principled &
+                   has_lobe(common, SurfaceClosureLobe::sheen)
+             : Bool{false});
     const auto is_glossy = reachable_kind(SurfaceClosureKind::glossy);
     const auto is_metallic_f82 =
         reachable_kind(SurfaceClosureKind::metallic_f82);
@@ -391,9 +415,16 @@ sample_general_closure(
     }
     $elif(is_sheen) {
         if (reachability.contains_principled_lobe(
-                SurfaceClosureLobe::sheen)) {
+                SurfaceClosureLobe::sheen) ||
+            reachability.contains(SurfaceClosureKind::sheen_microfiber)) {
             direction = detail::sample_sheen(
                 closure, incoming, random_direction);
+            // Cycles' bsdf_sample() reports one_float2() for Sheen. This is
+            // deliberately distinct from bsdf_roughness_eta(), which reports
+            // the authored/clamped LTC roughness when a guiding-selected
+            // direction is classified after the fact. This callable samples
+            // the closure itself, so preserve the former relation and leave
+            // the default roughness at one.
         }
     }
     $elif(sample_glossy) {
@@ -550,6 +581,8 @@ surface_closure_conditional_sample(
         (common.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::metallic_conductor)) |
         (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::sheen_microfiber)) |
+        (common.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::thin_glass_transmission));
     const auto is_dielectric =
         (common.kind == static_cast<std::uint32_t>(
@@ -624,6 +657,7 @@ surface_closure_conditional_sample_from_physical_common(
         reachable_kind(SurfaceClosureKind::glossy) |
         reachable_kind(SurfaceClosureKind::metallic_f82) |
         reachable_kind(SurfaceClosureKind::metallic_conductor) |
+        reachable_kind(SurfaceClosureKind::sheen_microfiber) |
         reachable_kind(SurfaceClosureKind::thin_glass_transmission);
     const auto is_dielectric_payload =
         reachable_kind(SurfaceClosureKind::glass) |

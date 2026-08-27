@@ -23,6 +23,7 @@ inline constexpr std::uint32_t type_sheen = 7u;
 inline constexpr std::uint32_t type_translucent = 9u;
 inline constexpr std::uint32_t type_microfacet_ggx = 12u;
 inline constexpr std::uint32_t type_microfacet_beckmann = 13u;
+inline constexpr std::uint32_t type_ashikhmin_velvet = 16u;
 inline constexpr std::uint32_t type_microfacet_beckmann_refraction = 20u;
 inline constexpr std::uint32_t type_microfacet_ggx_refraction = 21u;
 inline constexpr std::uint32_t type_thin_glass_transmission = 22u;

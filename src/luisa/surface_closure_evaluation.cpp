@@ -33,6 +33,8 @@ inline constexpr auto evaluation_general_payload_reachability =
                  surface_closure_kind_bit(
                      SurfaceClosureKind::metallic_conductor) |
                  surface_closure_kind_bit(
+                     SurfaceClosureKind::sheen_microfiber) |
+                 surface_closure_kind_bit(
                      SurfaceClosureKind::thin_glass_transmission),
         .principled_lobes = all_surface_closure_lobes,
         .anisotropic_microfacet_kinds =
@@ -150,8 +152,11 @@ evaluate_common_closure(
     const auto is_rough_translucent =
         reachable_kind(SurfaceClosureKind::rough_translucent);
     const auto is_bssrdf = reachable_kind(SurfaceClosureKind::bssrdf);
+    const auto is_ashikhmin =
+        reachable_kind(SurfaceClosureKind::sheen_ashikhmin);
     const auto diffuse_family =
-        is_diffuse | is_translucent | is_rough_translucent | is_bssrdf;
+        is_diffuse | is_translucent | is_rough_translucent | is_bssrdf |
+        is_ashikhmin;
     const auto transparent_enabled =
         (query.lobe_mask &
          static_cast<std::uint32_t>(event_transparent)) != 0u;
@@ -176,12 +181,14 @@ evaluate_common_closure(
             reachability.contains(SurfaceClosureKind::diffuse) ||
             reachability.contains(SurfaceClosureKind::translucent) ||
             reachability.contains(SurfaceClosureKind::rough_translucent) ||
-            reachability.contains(SurfaceClosureKind::bssrdf);
+            reachability.contains(SurfaceClosureKind::bssrdf) ||
+            reachability.contains(SurfaceClosureKind::sheen_ashikhmin);
         if (diffuse_family_possible) {
             const auto translucent_family =
                 is_translucent | is_rough_translucent;
             const auto allowed =
-                ((diffuse_enabled & (is_diffuse | is_bssrdf)) |
+                ((diffuse_enabled &
+                  (is_diffuse | is_bssrdf | is_ashikhmin)) |
                  (diffuse_enabled & transmission_enabled &
                   translucent_family)) &
                 common.setup_valid;
@@ -193,7 +200,15 @@ evaluate_common_closure(
                         point,
                         shading_normal,
                         common.normal,
-                        true,
+                        // This predicate is Cycles' ClosureType interval,
+                        // not the sampling label or this implementation's
+                        // common-family dispatch. Ashikhmin Velvet samples
+                        // with LABEL_DIFFUSE but type 16 belongs to the
+                        // glossy interval, so Cycles applies only the common
+                        // wrong-hemisphere rejection and never the diffuse
+                        // bump-terminator softening to it. Every other member
+                        // of this branch has a diffuse ClosureType.
+                        !is_ashikhmin,
                         outgoing,
                         !selected_sample);
                 const auto bump_shadowing = select(
@@ -203,7 +218,15 @@ evaluate_common_closure(
                 const auto bump_pdf_valid =
                     (bump_shadowing != 0.0f) | selected_sample;
 
-                $if(is_diffuse) {
+                $if(is_ashikhmin) {
+                    const auto velvet =
+                        detail::evaluate_ashikhmin_velvet(
+                            common, incoming, outgoing);
+                    pdf = select(0.0f, velvet.pdf, bump_pdf_valid);
+                    value = common.weight * velvet.intensity *
+                            bump_shadowing;
+                }
+                $elif(is_diffuse) {
                     pdf = max(dot(common.normal, outgoing), 0.0f) *
                           detail::inverse_pi;
                     pdf = select(0.0f, pdf, bump_pdf_valid);
@@ -240,7 +263,13 @@ evaluate_common_closure(
                             bump_shadowing;
                 };
 
-                const auto contributes = policy.diffuse_included;
+                // Ashikhmin's sample label is diffuse, but its Cycles
+                // ClosureType belongs to the glossy interval. Light linking
+                // and BsdfEval pass routing therefore use the glossy policy.
+                const auto contributes = select(
+                    policy.diffuse_included,
+                    policy.glossy_included,
+                    is_ashikhmin);
                 const auto eligible_value = select(
                     make_float3(0.0f), value, contributes);
                 const auto weight = detail::closure_sample_weight(common);
@@ -258,7 +287,14 @@ evaluate_common_closure(
                         event_diffuse | event_transmission),
                     contributes & translucent_family & nonzero);
                 result.f = eligible_value;
-                result.diffuse_f = eligible_value;
+                result.diffuse_f = select(
+                    eligible_value,
+                    make_float3(0.0f),
+                    is_ashikhmin);
+                result.glossy_f = select(
+                    make_float3(0.0f),
+                    eligible_value,
+                    is_ashikhmin);
                 result.total_sample_weight = weight;
                 result.weighted_pdf = weighted_pdf;
                 result.weighted_roughness_squared = weighted_pdf;
@@ -289,11 +325,14 @@ evaluate_general_closure(
     };
     const auto is_principled =
         reachable_kind(SurfaceClosureKind::principled);
+    const auto is_microfiber =
+        reachable_kind(SurfaceClosureKind::sheen_microfiber);
     const auto is_sheen =
-        reachability.contains_principled_lobe(SurfaceClosureLobe::sheen)
-            ? is_principled &
-                  has_lobe(common, SurfaceClosureLobe::sheen)
-            : Bool{false};
+        is_microfiber |
+        (reachability.contains_principled_lobe(SurfaceClosureLobe::sheen)
+             ? is_principled &
+                   has_lobe(common, SurfaceClosureLobe::sheen)
+             : Bool{false});
     const auto is_glossy = reachable_kind(SurfaceClosureKind::glossy);
     const auto is_metallic_f82 =
         reachable_kind(SurfaceClosureKind::metallic_f82);
@@ -317,7 +356,8 @@ evaluate_general_closure(
 
     $if(is_sheen) {
         if (reachability.contains_principled_lobe(
-                SurfaceClosureLobe::sheen)) {
+                SurfaceClosureLobe::sheen) ||
+            reachability.contains(SurfaceClosureKind::sheen_microfiber)) {
             const auto allowed = diffuse_enabled & common.setup_valid;
             $if(allowed) {
                 const auto bump_shadowing =
@@ -622,6 +662,8 @@ surface_closure_evaluation_contribution(
         (common.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::metallic_conductor)) |
         (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::sheen_microfiber)) |
+        (common.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::thin_glass_transmission));
     const auto is_dielectric =
         (common.kind == static_cast<std::uint32_t>(
@@ -695,6 +737,7 @@ surface_closure_evaluation_contribution_from_physical_common(
         reachable_kind(SurfaceClosureKind::glossy) |
         reachable_kind(SurfaceClosureKind::metallic_f82) |
         reachable_kind(SurfaceClosureKind::metallic_conductor) |
+        reachable_kind(SurfaceClosureKind::sheen_microfiber) |
         reachable_kind(SurfaceClosureKind::thin_glass_transmission);
     const auto is_dielectric_payload =
         reachable_kind(SurfaceClosureKind::glass) |

@@ -100,6 +100,12 @@ include_physical_leaf(ValueDependencyMask &dependencies,
     dependencies.include(closure.normal);
     dependencies.include(closure.roughness);
     return true;
+  case ClosureOperation::sheen_microfiber:
+  case ClosureOperation::sheen_ashikhmin:
+    dependencies.include(closure.color);
+    dependencies.include(closure.normal);
+    dependencies.include(closure.roughness);
+    return true;
   case ClosureOperation::glossy:
     dependencies.include(closure.color);
     dependencies.include(closure.normal);
@@ -332,6 +338,8 @@ template <typename LeafFunction>
   case ClosureOperation::glossy:
   case ClosureOperation::metallic_f82:
   case ClosureOperation::metallic_conductor:
+  case ClosureOperation::sheen_microfiber:
+  case ClosureOperation::sheen_ashikhmin:
   case ClosureOperation::glass:
   case ClosureOperation::emission:
   case ClosureOperation::transparent:
