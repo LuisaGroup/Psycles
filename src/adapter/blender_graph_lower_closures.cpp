@@ -344,6 +344,63 @@ public:
                 .ref = {.node = id, .socket = "Closure"},
                 .type = SocketType::closure});
         }
+        if (type == "BSDF_METALLIC") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::metallic_bsdf,
+                node_name);
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Distribution",
+                SocketValue::string(context.node_property_text(
+                    node, "distribution", "MULTI_GGX"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "FresnelType",
+                SocketValue::string(context.node_property_text(
+                    node, "fresnel_type", "F82"))));
+            for (const auto &[target, source, socket_type] :
+                 std::initializer_list<std::tuple<
+                     std::string_view, std::string_view, SocketType>>{
+                     {"BaseColor", "Base Color", SocketType::color},
+                     {"EdgeTint", "Edge Tint", SocketType::color},
+                     {"IOR", "IOR", SocketType::vector},
+                     {"Extinction", "Extinction", SocketType::vector},
+                     {"Roughness", "Roughness", SocketType::floating},
+                     {"Anisotropy", "Anisotropy", SocketType::floating},
+                     {"Rotation", "Rotation", SocketType::floating},
+                     {"ThinFilmThickness", "Thin Film Thickness",
+                      SocketType::floating},
+                     {"ThinFilmIOR", "Thin Film IOR",
+                      SocketType::floating}}) {
+                static_cast<void>(context.bind(
+                    id, std::string{target}, node, source, socket_type));
+            }
+            if (context.input_source(node, "Tangent")) {
+                static_cast<void>(context.bind(
+                    id, "Tangent", node, "Tangent", SocketType::vector));
+            } else {
+                static_cast<void>(context.graph().connect(
+                    context.geometry_output(
+                        "Tangent", SocketType::vector)
+                        .ref,
+                    id,
+                    "Tangent"));
+            }
+            if (context.raw_input(node, "Normal") != nullptr) {
+                static_cast<void>(context.bind(
+                    id, "Normal", node, "Normal", SocketType::normal));
+            } else {
+                static_cast<void>(context.graph().connect(
+                    context.geometry_output(
+                        "Normal", SocketType::normal)
+                        .ref,
+                    id,
+                    "Normal"));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
         if (type == "BSDF_GLASS" || type == "BSDF_REFRACTION") {
             const auto id = context.graph().add_node(
                 type == "BSDF_GLASS"

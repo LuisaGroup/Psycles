@@ -28,13 +28,17 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
     const auto bssrdf_payload =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::bssrdf);
-    const auto principled_film_payload =
+    const auto general_film_payload =
+        ((closure.kind == static_cast<std::uint32_t>(
+                              SurfaceClosureKind::principled)) &
+         ((closure.lobe == static_cast<std::uint32_t>(
+                               SurfaceClosureLobe::metallic)) |
+          (closure.lobe == static_cast<std::uint32_t>(
+                               SurfaceClosureLobe::dielectric)))) |
         (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::principled)) &
-        ((closure.lobe == static_cast<std::uint32_t>(
-                              SurfaceClosureLobe::metallic)) |
-         (closure.lobe == static_cast<std::uint32_t>(
-                              SurfaceClosureLobe::dielectric)));
+                             SurfaceClosureKind::metallic_f82)) |
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::metallic_conductor));
     const auto glass_film_payload =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::glass);
@@ -49,10 +53,10 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
         closure.specular_tint,
         select(0.0f,
                closure.thin_film_thickness,
-               principled_film_payload));
+               general_film_payload));
     auto payload_1 = make_float4(
         closure.evaluation_scale,
-        select(0.0f, closure.thin_film_ior, principled_film_payload));
+        select(0.0f, closure.thin_film_ior, general_film_payload));
     auto payload_2 = make_float4(
         closure.sheen_transform_a,
         closure.sheen_transform_b,
@@ -191,12 +195,16 @@ SurfaceClosurePhysicalGeneralRecord
 project_surface_closure_physical_general(
     const SurfaceClosurePhysicalRecord &closure) noexcept {
     const auto film_payload =
+        ((closure.kind == static_cast<std::uint32_t>(
+                              SurfaceClosureKind::principled)) &
+         ((closure.lobe == static_cast<std::uint32_t>(
+                               SurfaceClosureLobe::metallic)) |
+          (closure.lobe == static_cast<std::uint32_t>(
+                               SurfaceClosureLobe::dielectric)))) |
         (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::principled)) &
-        ((closure.lobe == static_cast<std::uint32_t>(
-                              SurfaceClosureLobe::metallic)) |
-         (closure.lobe == static_cast<std::uint32_t>(
-                              SurfaceClosureLobe::dielectric)));
+                             SurfaceClosureKind::metallic_f82)) |
+        (closure.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::metallic_conductor));
     return {
         .common = project_surface_closure_physical_common(closure),
         .payload = {
@@ -322,13 +330,17 @@ unpack_surface_closure_physical_payload(
     const auto bssrdf_payload =
         common.kind == static_cast<std::uint32_t>(
                            SurfaceClosureKind::bssrdf);
-    const auto principled_film_payload =
+    const auto general_film_payload =
+        ((common.kind == static_cast<std::uint32_t>(
+                             SurfaceClosureKind::principled)) &
+         ((common.lobe == static_cast<std::uint32_t>(
+                              SurfaceClosureLobe::metallic)) |
+          (common.lobe == static_cast<std::uint32_t>(
+                              SurfaceClosureLobe::dielectric)))) |
         (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::principled)) &
-        ((common.lobe == static_cast<std::uint32_t>(
-                             SurfaceClosureLobe::metallic)) |
-         (common.lobe == static_cast<std::uint32_t>(
-                             SurfaceClosureLobe::dielectric)));
+                            SurfaceClosureKind::metallic_f82)) |
+        (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::metallic_conductor));
     const auto glass_film_payload =
         common.kind == static_cast<std::uint32_t>(
                            SurfaceClosureKind::glass);
@@ -363,11 +375,11 @@ unpack_surface_closure_physical_payload(
             block_1[2u].y,
             bssrdf_payload),
         .thin_film_thickness = select(
-            select(0.0f, block_1[0u].w, principled_film_payload),
+            select(0.0f, block_1[0u].w, general_film_payload),
             block_1[1u].w,
             glass_film_payload),
         .thin_film_ior = select(
-            select(0.0f, block_1[1u].w, principled_film_payload),
+            select(0.0f, block_1[1u].w, general_film_payload),
             block_1[2u].w,
             glass_film_payload),
         .specular_tint = select(

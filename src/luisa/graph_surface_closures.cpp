@@ -95,6 +95,68 @@ void GraphSurfaceImplementation::for_each_closure(
                     .specular_tint = make_float3(1.0f)});
                 return;
             }
+            case compiler::ClosureOperation::metallic_f82:
+            case compiler::ClosureOperation::metallic_conductor: {
+                const auto f82 = closure.operation ==
+                                 compiler::ClosureOperation::metallic_f82;
+                const auto clamp_parameter = [f82](Float3 value) noexcept {
+                    value = max(value, make_float3(0.0f));
+                    return f82 ? min(value, make_float3(1.0f)) : value;
+                };
+                const auto anisotropy_enabled =
+                    _closure_plan.entry(id).microfacet_anisotropy;
+                const auto thin_film_enabled =
+                    _closure_plan.entry(id).thin_film;
+                function(TracedClosure{
+                    .operation = closure.operation,
+                    // Cycles allocates standalone conductor closures with
+                    // the closure-tree mix weight. Fresnel color remains an
+                    // independent physical payload used by BSDF albedo.
+                    .weight = make_float3(mix_weight),
+                    .color = clamp_parameter(
+                        vector(closure.metallic_base_ior, values)),
+                    .normal = safe_normalize(
+                        vector(closure.normal, values),
+                        values.shading_normal),
+                    .roughness = scalar(closure.roughness, values),
+                    .metallic = 1.0f,
+                    .ior = 1.0f,
+                    .specular_tint = clamp_parameter(
+                        vector(closure.metallic_edge_tint_k, values)),
+                    .anisotropy_enabled = anisotropy_enabled,
+                    .anisotropy = anisotropy_enabled
+                                      ? scalar(
+                                            closure.microfacet_anisotropy,
+                                            values)
+                                      : Float{0.0f},
+                    .anisotropic_rotation = anisotropy_enabled
+                                                ? scalar(
+                                                      closure.microfacet_rotation,
+                                                      values)
+                                                : Float{0.0f},
+                    .tangent = anisotropy_enabled
+                                   ? vector(closure.tangent, values)
+                                   : make_float3(0.0f),
+                    .thin_film_enabled = thin_film_enabled,
+                    .thin_film_thickness = thin_film_enabled
+                                               ? max(
+                                                     scalar(
+                                                         closure.thin_film_thickness,
+                                                         values),
+                                                     1.0e-5f)
+                                               : Float{0.0f},
+                    .thin_film_ior = thin_film_enabled
+                                         ? max(
+                                               scalar(
+                                                   closure.thin_film_ior,
+                                                   values),
+                                               1.0e-5f)
+                                         : Float{0.0f},
+                    .preserve_ggx_energy =
+                        closure.preserve_ggx_energy,
+                    .beckmann = closure.beckmann});
+                return;
+            }
             case compiler::ClosureOperation::diffuse:
             case compiler::ClosureOperation::principled:
             case compiler::ClosureOperation::glossy: {

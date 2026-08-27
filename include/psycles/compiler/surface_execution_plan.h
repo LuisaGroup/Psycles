@@ -350,6 +350,19 @@ struct glossy {
   static constexpr std::size_t count = 6u;
 };
 
+struct metallic {
+  static constexpr std::size_t base_ior = 0u;
+  static constexpr std::size_t edge_tint_k = 1u;
+  static constexpr std::size_t normal = 2u;
+  static constexpr std::size_t roughness = 3u;
+  static constexpr std::size_t anisotropy = 4u;
+  static constexpr std::size_t rotation = 5u;
+  static constexpr std::size_t tangent = 6u;
+  static constexpr std::size_t thin_film_thickness = 7u;
+  static constexpr std::size_t thin_film_ior = 8u;
+  static constexpr std::size_t count = 9u;
+};
+
 struct glass {
   static constexpr std::size_t color = 0u;
   static constexpr std::size_t normal = 1u;
@@ -407,6 +420,9 @@ surface_closure_operand_count(ClosureOperation operation) noexcept {
     return surface_closure_operand::principled::count;
   case ClosureOperation::glossy:
     return surface_closure_operand::glossy::count;
+  case ClosureOperation::metallic_f82:
+  case ClosureOperation::metallic_conductor:
+    return surface_closure_operand::metallic::count;
   case ClosureOperation::glass:
     return surface_closure_operand::glass::count;
   case ClosureOperation::emission:

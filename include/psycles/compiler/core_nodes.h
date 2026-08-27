@@ -82,6 +82,7 @@ inline constexpr auto principled_bsdf = "psycles.closure.principled";
 inline constexpr auto subsurface_scattering =
     "psycles.closure.subsurface_scattering";
 inline constexpr auto glossy_bsdf = "psycles.closure.glossy";
+inline constexpr auto metallic_bsdf = "psycles.closure.metallic";
 inline constexpr auto glass_bsdf = "psycles.closure.glass";
 inline constexpr auto refraction_bsdf = "psycles.closure.refraction";
 inline constexpr auto emission = "psycles.closure.emission";

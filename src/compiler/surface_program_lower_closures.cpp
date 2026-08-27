@@ -5,20 +5,36 @@
 namespace psycles::compiler::detail {
 namespace {
 
+[[nodiscard]] bool enum_token_is(
+    std::string_view value,
+    std::string_view canonical_lowercase) noexcept {
+    if (value.size() != canonical_lowercase.size()) {
+        return false;
+    }
+    for (auto i = std::size_t{0u}; i < value.size(); ++i) {
+        auto character = value[i];
+        if (character >= 'A' && character <= 'Z') {
+            character = static_cast<char>(character - 'A' + 'a');
+        }
+        if (character != canonical_lowercase[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] BssrdfMethod bssrdf_method(
     const contract::ShaderNode &node,
     std::string_view property) {
     const auto method = property_string(
         node, property, "RANDOM_WALK");
-    if (method == "BURLEY" || method == "burley") {
+    if (enum_token_is(method, "burley")) {
         return BssrdfMethod::burley;
     }
-    if (method == "RANDOM_WALK_LEGACY" ||
-        method == "random_walk_legacy") {
+    if (enum_token_is(method, "random_walk_legacy")) {
         return BssrdfMethod::random_walk_legacy;
     }
-    if (method == "RANDOM_WALK_SKIN" ||
-        method == "random_walk_skin") {
+    if (enum_token_is(method, "random_walk_skin")) {
         return BssrdfMethod::random_walk_skin;
     }
     return BssrdfMethod::random_walk;
@@ -52,13 +68,31 @@ namespace {
         node.type == node_type::principled_bsdf ||
         node.type == node_type::subsurface_scattering ||
         node.type == node_type::glossy_bsdf ||
+        node.type == node_type::metallic_bsdf ||
         node.type == node_type::glass_bsdf ||
         node.type == node_type::refraction_bsdf) {
-        const auto color_name =
-            node.type == node_type::principled_bsdf
-                ? "BaseColor"
-                : "Color";
-        auto color = lower_value_input(node, color_name);
+        const auto standalone_metallic =
+            node.type == node_type::metallic_bsdf;
+        const auto fresnel_type = property_string(
+            node, "FresnelType", "F82");
+        const auto physical_conductor =
+            standalone_metallic &&
+            enum_token_is(fresnel_type, "physical_conductor");
+        std::optional<ValueExpressionId> color;
+        std::optional<ValueExpressionId> metallic_base_ior;
+        std::optional<ValueExpressionId> metallic_edge_tint_k;
+        if (standalone_metallic) {
+            metallic_base_ior = lower_value_input(
+                node, physical_conductor ? "IOR" : "BaseColor");
+            metallic_edge_tint_k = lower_value_input(
+                node, physical_conductor ? "Extinction" : "EdgeTint");
+        } else {
+            color = lower_value_input(
+                node,
+                node.type == node_type::principled_bsdf
+                    ? "BaseColor"
+                    : "Color");
+        }
         auto roughness =
             lower_value_input(node, "Roughness");
         auto normal = lower_value_input(node, "Normal");
@@ -155,14 +189,23 @@ namespace {
             subsurface_ior = lower_value_input(node, "IOR");
             subsurface_anisotropy =
                 lower_value_input(node, "Anisotropy");
-        } else if (node.type == node_type::glossy_bsdf) {
+        } else if (node.type == node_type::glossy_bsdf ||
+                   node.type == node_type::metallic_bsdf) {
             microfacet_anisotropy =
                 lower_value_input(node, "Anisotropy");
             microfacet_rotation =
                 lower_value_input(node, "Rotation");
             tangent = lower_value_input(node, "Tangent");
+            if (node.type == node_type::metallic_bsdf) {
+                thin_film_thickness =
+                    lower_value_input(node, "ThinFilmThickness");
+                thin_film_ior = lower_value_input(node, "ThinFilmIOR");
+            }
         }
-        if (color && roughness && normal &&
+        if ((standalone_metallic
+                 ? metallic_base_ior && metallic_edge_tint_k
+                 : color.has_value()) &&
+            roughness && normal &&
             (node.type != node_type::principled_bsdf ||
              (metallic && diffuse_roughness && subsurface_weight &&
               subsurface_radius && subsurface_scale &&
@@ -180,6 +223,9 @@ namespace {
                  subsurface_ior && subsurface_anisotropy)) &&
             (node.type != node_type::glossy_bsdf ||
              (microfacet_anisotropy && microfacet_rotation && tangent)) &&
+            (node.type != node_type::metallic_bsdf ||
+             (microfacet_anisotropy && microfacet_rotation && tangent &&
+              thin_film_thickness && thin_film_ior)) &&
             ((node.type != node_type::glass_bsdf &&
                  node.type != node_type::refraction_bsdf) ||
                 ior) &&
@@ -196,14 +242,20 @@ namespace {
                 operation = ClosureOperation::refraction;
             } else if (node.type == node_type::glossy_bsdf) {
                 operation = ClosureOperation::glossy;
+            } else if (node.type == node_type::metallic_bsdf) {
+                operation = physical_conductor
+                                ? ClosureOperation::metallic_conductor
+                                : ClosureOperation::metallic_f82;
             }
+            const auto distribution = property_string(
+                node, "Distribution", "GGX");
             publish(
                 node.id,
                 "Closure",
                 append(ClosureInstruction{
                     .operation = operation,
                     .source_node = node.id,
-                    .color = *color,
+                    .color = color.value_or(ValueExpressionId{}),
                     .normal = *normal,
                     .normal_uses_bump = normal_uses_bump(_shader, node),
                     .roughness = *roughness,
@@ -241,6 +293,12 @@ namespace {
                             ValueExpressionId{}),
                     .specular_tint =
                         specular_tint.value_or(
+                            ValueExpressionId{}),
+                    .metallic_base_ior =
+                        metallic_base_ior.value_or(
+                            ValueExpressionId{}),
+                    .metallic_edge_tint_k =
+                        metallic_edge_tint_k.value_or(
                             ValueExpressionId{}),
                     .microfacet_anisotropy =
                         microfacet_anisotropy.value_or(
@@ -282,13 +340,9 @@ namespace {
                         thin_film_ior.value_or(
                             ValueExpressionId{}),
                     .preserve_ggx_energy =
-                        property_string(
-                            node, "Distribution", "GGX") ==
-                        "MULTI_GGX",
+                        enum_token_is(distribution, "multi_ggx"),
                     .beckmann =
-                        property_string(
-                            node, "Distribution", "GGX") ==
-                        "BECKMANN"}));
+                        enum_token_is(distribution, "beckmann")}));
         }
         return true;
     }

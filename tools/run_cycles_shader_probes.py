@@ -71,6 +71,7 @@ _ALL_PROBES = (
     "math_operations",
     "mapping_modes",
     "magic_texture_matrix",
+    "metallic_bsdf_matrix",
     "mix_color_modes",
     "mix_color_edge_cases",
     "mix_data_types",
@@ -333,6 +334,17 @@ _PROBE_RATIO_GATES = {
         "TransCol": (0.9995, 1.0005),
         "Normal": (0.9995, 1.0005),
     },
+    "metallic_bsdf_matrix": {
+        # The zero-angle Sun turns all nonzero passes into deterministic
+        # closure evaluation. These gates reject an incorrect Fresnel model,
+        # distribution, anisotropic axis, film branch, or input saturation
+        # in any of the 16 equal-area cells while allowing float32 backend
+        # transcendental differences.
+        "Combined": (0.9995, 1.0005),
+        "GlossCol": (0.9995, 1.0005),
+        "GlossDir": (0.9995, 1.0005),
+        "Normal": (0.9995, 1.0005),
+    },
     "refraction_bsdf_matrix": {
         "Combined": (0.99998, 1.00002),
         "GlossCol": (0.0, 0.0),
@@ -548,6 +560,12 @@ _PROBE_NORMALIZED_P99_RMSE_GATES = {
         "TransCol": 0.0001,
         "Normal": 0.0001,
     },
+    "metallic_bsdf_matrix": {
+        "Combined": 0.0001,
+        "GlossCol": 0.0001,
+        "GlossDir": 0.0001,
+        "Normal": 0.0001,
+    },
 }
 
 
@@ -579,6 +597,23 @@ def _arguments() -> argparse.Namespace:
 def _run(command: list[str], environment: dict[str, str] | None = None) -> None:
     print("+", " ".join(command), flush=True)
     subprocess.run(command, check=True, env=environment)
+
+
+def _psycles_environment(
+    backend: str,
+    environment: dict[str, str] | None = None,
+) -> dict[str, str] | None:
+    """Return the explicit backend contract for a Psycles probe process."""
+    if backend != "vk":
+        return None
+    result = dict(os.environ if environment is None else environment)
+    # A Vulkan shader probe is a native XIR -> SPIR-V canary. Assign rather
+    # than setdefault: a stale parent-shell override must not silently turn a
+    # correctness run into the legacy DXC route.
+    result["LUISA_VULKAN_USE_XIR"] = "1"
+    result["LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV"] = "1"
+    result["LUISA_VULKAN_DISABLE_DXC"] = "1"
+    return result
 
 
 def _cycles_golden_command(
@@ -740,11 +775,7 @@ def _main() -> int:
         psycles_exr = stem.with_suffix(".exr")
         report = probe_root / f"{probe}-diff.json"
         try:
-            _run_environment = os.environ.copy()
-            if arguments.backend == "vk":
-                _run_environment.setdefault(
-                    "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV", "1"
-                )
+            _run_environment = _psycles_environment(arguments.backend)
             _run(
                 [
                     blender,
@@ -794,11 +825,7 @@ def _main() -> int:
                     str(arguments.height),
                     str(arguments.samples),
                 ],
-                environment=(
-                    _run_environment
-                    if arguments.backend == "vk"
-                    else None
-                ),
+                environment=_run_environment,
             )
             _run(
                 _comparison_command(

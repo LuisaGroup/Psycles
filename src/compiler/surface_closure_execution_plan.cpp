@@ -119,6 +119,17 @@ inline constexpr auto emission_principled_features =
             closure.microfacet_anisotropy,
             closure.microfacet_rotation,
             closure.tangent};
+  case ClosureOperation::metallic_f82:
+  case ClosureOperation::metallic_conductor:
+    return {closure.metallic_base_ior,
+            closure.metallic_edge_tint_k,
+            closure.normal,
+            closure.roughness,
+            closure.microfacet_anisotropy,
+            closure.microfacet_rotation,
+            closure.tangent,
+            closure.thin_film_thickness,
+            closure.thin_film_ior};
   case ClosureOperation::glass:
     return {closure.color,
             closure.normal,
@@ -175,6 +186,8 @@ struct ClosureWeightReferences {
   case ClosureOperation::translucent:
   case ClosureOperation::principled:
   case ClosureOperation::glossy:
+  case ClosureOperation::metallic_f82:
+  case ClosureOperation::metallic_conductor:
   case ClosureOperation::glass:
   case ClosureOperation::emission:
   case ClosureOperation::transparent:
@@ -201,6 +214,14 @@ struct ClosureWeightReferences {
     return operand == surface_closure_operand::glossy::color ||
                    operand == surface_closure_operand::glossy::normal ||
                    operand == surface_closure_operand::glossy::tangent
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::metallic_f82:
+  case ClosureOperation::metallic_conductor:
+    return operand == surface_closure_operand::metallic::base_ior ||
+                   operand == surface_closure_operand::metallic::edge_tint_k ||
+                   operand == surface_closure_operand::metallic::normal ||
+                   operand == surface_closure_operand::metallic::tangent
                ? SurfaceValueBank::vector
                : SurfaceValueBank::scalar;
   case ClosureOperation::translucent:
@@ -431,7 +452,9 @@ all_principled_closure_features() noexcept {
         ((endpoints & surface_closure_endpoint_bit(
                           SurfaceClosureEndpoint::physical)) == 0u ||
          (operation != ClosureOperation::principled &&
-          operation != ClosureOperation::glossy))) {
+          operation != ClosureOperation::glossy &&
+          operation != ClosureOperation::metallic_f82 &&
+          operation != ClosureOperation::metallic_conductor))) {
       return "a closure leaf has anisotropy on an incompatible projection";
     }
     const auto thin_film =
@@ -440,7 +463,9 @@ all_principled_closure_features() noexcept {
         ((endpoints & surface_closure_endpoint_bit(
                           SurfaceClosureEndpoint::physical)) == 0u ||
          (operation != ClosureOperation::principled &&
-          operation != ClosureOperation::glass))) {
+          operation != ClosureOperation::glass &&
+          operation != ClosureOperation::metallic_f82 &&
+          operation != ClosureOperation::metallic_conductor))) {
       return "a closure leaf has thin film on an incompatible projection";
     }
   }

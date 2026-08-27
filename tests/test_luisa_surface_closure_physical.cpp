@@ -111,6 +111,8 @@ constexpr std::array closure_cases{
     ClosureCase{SurfaceClosureKind::principled, SurfaceClosureLobe::metallic},
     ClosureCase{SurfaceClosureKind::principled, SurfaceClosureLobe::dielectric},
     ClosureCase{SurfaceClosureKind::glossy},
+    ClosureCase{SurfaceClosureKind::metallic_f82},
+    ClosureCase{SurfaceClosureKind::metallic_conductor},
     ClosureCase{SurfaceClosureKind::glass},
     ClosureCase{SurfaceClosureKind::refraction},
     ClosureCase{SurfaceClosureKind::bssrdf},
@@ -154,6 +156,8 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
 [[nodiscard]] constexpr bool uses_thin_film_payload(
     ClosureCase closure) noexcept {
     return closure.kind == SurfaceClosureKind::glass ||
+           closure.kind == SurfaceClosureKind::metallic_f82 ||
+           closure.kind == SurfaceClosureKind::metallic_conductor ||
            (closure.kind == SurfaceClosureKind::principled &&
             (closure.lobe == SurfaceClosureLobe::metallic ||
              closure.lobe == SurfaceClosureLobe::dielectric));
@@ -626,6 +630,10 @@ int main(int argc, char **argv) {
             (canonical.kind == static_cast<std::uint32_t>(
                                    SurfaceClosureKind::glossy)) |
             (canonical.kind == static_cast<std::uint32_t>(
+                                   SurfaceClosureKind::metallic_f82)) |
+            (canonical.kind == static_cast<std::uint32_t>(
+                                   SurfaceClosureKind::metallic_conductor)) |
+            (canonical.kind == static_cast<std::uint32_t>(
                                    SurfaceClosureKind::thin_glass_transmission));
         Bool projection_equal = false;
         $if(glass) {
@@ -833,6 +841,10 @@ int main(int argc, char **argv) {
              static_cast<std::uint32_t>(SurfaceClosureKind::principled)) |
             (consumer_source.kind ==
              static_cast<std::uint32_t>(SurfaceClosureKind::glossy)) |
+            (consumer_source.kind ==
+             static_cast<std::uint32_t>(SurfaceClosureKind::metallic_f82)) |
+            (consumer_source.kind == static_cast<std::uint32_t>(
+                 SurfaceClosureKind::metallic_conductor)) |
             (consumer_source.kind ==
              static_cast<std::uint32_t>(
                  SurfaceClosureKind::thin_glass_transmission));

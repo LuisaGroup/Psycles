@@ -1,0 +1,63 @@
+{
+  "adaptive_sampling": false,
+  "blender": "5.2.1 LTS",
+  "blender_build": {
+    "build_branch": "blender-v5.2-release (modified)",
+    "build_hash": "9e2066aef7ef",
+    "build_type": "Release",
+    "version": "5.2.1 LTS",
+    "version_cycle": "release",
+    "version_tuple": [
+      5,
+      2,
+      1
+    ]
+  },
+  "camera": "Probe Camera",
+  "cycles_compute_device_type": "HIP",
+  "cycles_device": "GPU",
+  "cycles_enabled_devices": [
+    {
+      "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+      "name": "AMD Radeon RX 9070 XT",
+      "type": "HIP"
+    }
+  ],
+  "denoising": false,
+  "effective_seed": 20903,
+  "elapsed_seconds": 1.7832880839996506,
+  "frame": 1,
+  "height": 480,
+  "output": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+  "passes": [
+    "Combined",
+    "Normal",
+    "DiffCol",
+    "DiffDir",
+    "DiffInd",
+    "GlossCol",
+    "GlossDir",
+    "GlossInd",
+    "TransCol",
+    "TransDir",
+    "TransInd",
+    "Emit",
+    "Env",
+    "Volume Direct",
+    "Volume Indirect",
+    "Depth",
+    "Debug Sample Count"
+  ],
+  "samples": 256,
+  "sampling_pattern": "TABULATED_SOBOL",
+  "schema": "psycles.cycles-golden.v1",
+  "scrambling_distance": 1.0,
+  "seed": 20903,
+  "source": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix.blend",
+  "transparent": false,
+  "use_animated_seed": false,
+  "view_layers": [
+    "ViewLayer"
+  ],
+  "width": 640
+}

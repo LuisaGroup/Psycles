@@ -1665,6 +1665,59 @@ void test_cycles_default_microfacet_tangent_import() {
           "special":{}
         }]
       }
+    },
+    {
+      "name":"Default Metallic Tangent",
+      "cycles_sync":{"shader_index":10},
+      "node_tree":{
+        "name":"Default Metallic Tangent",
+        "surface_root":{"node":"Metallic","socket":"BSDF"},
+        "volume_root":null,
+        "displacement_root":null,
+        "links":[],
+        "nodes":[{
+          "name":"Metallic","type":"BSDF_METALLIC","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Base Color","name":"Base Color",
+             "type":"NodeSocketColor","linked":false,
+             "default":[0.17,0.31,0.73,1.0]},
+            {"identifier":"Edge Tint","name":"Edge Tint",
+             "type":"NodeSocketColor","linked":false,
+             "default":[0.91,0.67,0.43,1.0]},
+            {"identifier":"IOR","name":"IOR",
+             "type":"NodeSocketVector","linked":false,
+             "default":[1.9,2.7,3.4]},
+            {"identifier":"Extinction","name":"Extinction",
+             "type":"NodeSocketVector","linked":false,
+             "default":[4.6,3.2,2.1]},
+            {"identifier":"Roughness","name":"Roughness",
+             "type":"NodeSocketFloat","linked":false,"default":0.38},
+            {"identifier":"Anisotropy","name":"Anisotropy",
+             "type":"NodeSocketFloat","linked":false,"default":0.63},
+            {"identifier":"Rotation","name":"Rotation",
+             "type":"NodeSocketFloat","linked":false,"default":0.2},
+            {"identifier":"Normal","name":"Normal",
+             "type":"NodeSocketVector","linked":false,
+             "default":[0.0,0.0,0.0]},
+            {"identifier":"Tangent","name":"Tangent",
+             "type":"NodeSocketVector","linked":false,
+             "default":[0.0,0.0,0.0]},
+            {"identifier":"Weight","name":"Weight",
+             "type":"NodeSocketFloat","linked":false,"default":0.0},
+            {"identifier":"Thin Film Thickness",
+             "name":"Thin Film Thickness","type":"NodeSocketFloat",
+             "linked":false,"default":420.0},
+            {"identifier":"Thin Film IOR","name":"Thin Film IOR",
+             "type":"NodeSocketFloat","linked":false,"default":1.37}
+          ],
+          "outputs":[{"identifier":"BSDF","name":"BSDF",
+            "type":"NodeSocketShader","linked":true}],
+          "properties":{"distribution":"BECKMANN",
+                        "fresnel_type":"PHYSICAL_CONDUCTOR"},
+          "special":{}
+        }]
+      }
     }
   ],
   "render":{"width":16,"height":16,"percentage":100,"cycles":{}},
@@ -1685,7 +1738,10 @@ void test_cycles_default_microfacet_tangent_import() {
                          psycles::compiler::node_type::principled_bsdf}},
            std::pair{"Default Glossy Tangent",
                      std::string_view{
-                         psycles::compiler::node_type::glossy_bsdf}}}) {
+                         psycles::compiler::node_type::glossy_bsdf}},
+           std::pair{"Default Metallic Tangent",
+                     std::string_view{
+                         psycles::compiler::node_type::metallic_bsdf}}}) {
     const psycles::contract::MaterialDesc *material = nullptr;
     for (const auto &[id, candidate] : imported.scene->materials) {
       static_cast<void>(id);
@@ -1705,6 +1761,25 @@ void test_cycles_default_microfacet_tangent_import() {
     }
     expect(closure_node != nullptr,
            std::string{material_name} + " closure is missing");
+    if (expected_type == psycles::compiler::node_type::metallic_bsdf) {
+      expect(
+          closure_node->properties.contains("FresnelType") &&
+              closure_node->properties.at("FresnelType") ==
+                  psycles::contract::SocketValue::string(
+                      "PHYSICAL_CONDUCTOR") &&
+              closure_node->properties.contains("Distribution") &&
+              closure_node->properties.at("Distribution") ==
+                  psycles::contract::SocketValue::string("BECKMANN") &&
+              closure_node->inputs.contains("BaseColor") &&
+              closure_node->inputs.contains("EdgeTint") &&
+              closure_node->inputs.contains("IOR") &&
+              closure_node->inputs.contains("Extinction") &&
+              closure_node->inputs.contains("ThinFilmThickness") &&
+              closure_node->inputs.contains("ThinFilmIOR") &&
+              !closure_node->inputs.contains("Weight"),
+          "Blender Metallic import did not preserve the original closure "
+          "sockets and static model tags");
+    }
     const auto tangent = closure_node->inputs.find("Tangent");
     expect(tangent != closure_node->inputs.end() &&
                tangent->second.source.has_value(),
@@ -1734,6 +1809,17 @@ void test_cycles_default_microfacet_tangent_import() {
                closure.tangent.valid(),
            std::string{material_name} +
                " lost anisotropy, rotation, or tangent during lowering");
+    if (expected_type == psycles::compiler::node_type::metallic_bsdf) {
+      expect(
+          closure.operation ==
+                  psycles::compiler::ClosureOperation::metallic_conductor &&
+              closure.metallic_base_ior.valid() &&
+              closure.metallic_edge_tint_k.valid() &&
+              !closure.color.valid() && closure.beckmann &&
+              !closure.preserve_ggx_energy,
+          "Blender Metallic physical-conductor tag was not lowered "
+          "without pre-baking");
+    }
   }
 }
 

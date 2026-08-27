@@ -498,15 +498,19 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
         transmission_tint = complete.transmission_tint_bssrdf_ior;
         bssrdf_radius = complete.bssrdf_radius_anisotropy;
         bssrdf_albedo = complete.bssrdf_albedo_roughness;
-        const auto principled_film_payload =
+        const auto general_film_payload =
             (complete.identity.x == static_cast<std::uint32_t>(
                                         SurfaceClosureKind::principled)) &
             ((complete.identity.y == static_cast<std::uint32_t>(
                                          SurfaceClosureLobe::metallic)) |
              (complete.identity.y == static_cast<std::uint32_t>(
-                                         SurfaceClosureLobe::dielectric)));
+                                         SurfaceClosureLobe::dielectric))) |
+            (complete.identity.x == static_cast<std::uint32_t>(
+                                        SurfaceClosureKind::metallic_f82)) |
+            (complete.identity.x == static_cast<std::uint32_t>(
+                                        SurfaceClosureKind::metallic_conductor));
         const auto film_payload =
-            principled_film_payload |
+            general_film_payload |
             (complete.identity.x == static_cast<std::uint32_t>(
                                         SurfaceClosureKind::glass));
         thin_film_thickness = select(

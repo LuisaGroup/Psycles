@@ -1,0 +1,737 @@
+{
+  "actual_label": "Psycles",
+  "build_identity": {
+    "actual_metadata": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/export/scene.json",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "reference_metadata": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.json",
+    "verified": true
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Depth.Z",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.Diffuse Direct.R",
+    "ViewLayer.Diffuse Direct.G",
+    "ViewLayer.Diffuse Direct.B",
+    "ViewLayer.Diffuse Indirect.R",
+    "ViewLayer.Diffuse Indirect.G",
+    "ViewLayer.Diffuse Indirect.B",
+    "ViewLayer.Diffuse Color.R",
+    "ViewLayer.Diffuse Color.G",
+    "ViewLayer.Diffuse Color.B",
+    "ViewLayer.Glossy Direct.R",
+    "ViewLayer.Glossy Direct.G",
+    "ViewLayer.Glossy Direct.B",
+    "ViewLayer.Glossy Indirect.R",
+    "ViewLayer.Glossy Indirect.G",
+    "ViewLayer.Glossy Indirect.B",
+    "ViewLayer.Glossy Color.R",
+    "ViewLayer.Glossy Color.G",
+    "ViewLayer.Glossy Color.B",
+    "ViewLayer.Transmission Direct.R",
+    "ViewLayer.Transmission Direct.G",
+    "ViewLayer.Transmission Direct.B",
+    "ViewLayer.Transmission Indirect.R",
+    "ViewLayer.Transmission Indirect.G",
+    "ViewLayer.Transmission Indirect.B",
+    "ViewLayer.Transmission Color.R",
+    "ViewLayer.Transmission Color.G",
+    "ViewLayer.Transmission Color.B",
+    "ViewLayer.Volume Direct.R",
+    "ViewLayer.Volume Direct.G",
+    "ViewLayer.Volume Direct.B",
+    "ViewLayer.Volume Indirect.R",
+    "ViewLayer.Volume Indirect.G",
+    "ViewLayer.Volume Indirect.B",
+    "ViewLayer.Emission.R",
+    "ViewLayer.Emission.G",
+    "ViewLayer.Emission.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B",
+    "ViewLayer.Debug Sample Count.X"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0,
+        0.9999998211860657,
+        0.9999999403953552
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.024218298494815826,
+        0.030436741188168526,
+        0.026461703702807426
+      ],
+      "cycles_luminance_mean": 0.028872063383460045,
+      "cycles_rms": 0.04789641872048378,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000002580550098,
+      "maximum_absolute_error": 0.0006477383431047201,
+      "mean_absolute_error": 1.693678797209941e-08,
+      "orientation_rmse": {
+        "flip_x": 0.051174137741327286,
+        "flip_xy": 0.06117810308933258,
+        "flip_y": 0.06016896292567253,
+        "identity": 1.886980612653133e-06
+      },
+      "p95_pixel_rmse": 4.4496044182551486e-08,
+      "p99_pixel_rmse": 1.1260404875201857e-07,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.024218298494815826,
+        0.030436735600233078,
+        0.026461701840162277
+      ],
+      "psycles_luminance_mean": 0.028872070834040642,
+      "psycles_rms": 0.04789643956725843,
+      "relative_rmse": 3.9397112833534903e-05,
+      "rmse": 1.886980612653133e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 4645998.276923077,
+        "display_scale": 5.35716906354791,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/diffcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/diffdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/diffind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/emit.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Env": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/env.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        0.9999998807907104,
+        1.0000001192092896,
+        1.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.5956259369850159,
+        0.4123706519603729,
+        0.40508967638015747
+      ],
+      "cycles_luminance_mean": 0.45050379633903503,
+      "cycles_rms": 0.5579797029495239,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000001323066425,
+      "maximum_absolute_error": 0.0036909617483615875,
+      "mean_absolute_error": 1.2930401283028914e-07,
+      "orientation_rmse": {
+        "flip_x": 0.42257678508758545,
+        "flip_xy": 0.34913837909698486,
+        "flip_y": 0.4370718002319336,
+        "identity": 1.3111157386447303e-05
+      },
+      "p95_pixel_rmse": 1.066795562110201e-06,
+      "p99_pixel_rmse": 1.066795562110201e-06,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.5956258773803711,
+        0.4123707115650177,
+        0.40508967638015747
+      ],
+      "psycles_luminance_mean": 0.4505038559436798,
+      "psycles_rms": 0.5579797264350503,
+      "relative_rmse": 2.3497552540246015e-05,
+      "rmse": 1.3111157386447303e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 487080.46451612905,
+        "display_scale": 0.9,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/glosscol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        1.0000081062316895,
+        0.9999988675117493,
+        1.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.036677729338407516,
+        0.07750524580478668,
+        0.10032221674919128
+      ],
+      "cycles_luminance_mean": 0.07055171579122543,
+      "cycles_rms": 0.11957152187824249,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.000000316813582,
+      "maximum_absolute_error": 0.09218940883874893,
+      "mean_absolute_error": 2.6659870400180807e-07,
+      "orientation_rmse": {
+        "flip_x": 0.13250556588172913,
+        "flip_xy": 0.14698868989944458,
+        "flip_y": 0.15346552431583405,
+        "identity": 0.00010304077295586467
+      },
+      "p95_pixel_rmse": 1.7483746717061877e-07,
+      "p99_pixel_rmse": 1.1715904975062585e-06,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.03667802736163139,
+        0.07750515639781952,
+        0.10032221674919128
+      ],
+      "psycles_luminance_mean": 0.07055173814296722,
+      "psycles_rms": 0.11957152021758372,
+      "relative_rmse": 0.0008617501168948006,
+      "rmse": 0.00010304077295586467,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 444102.77647058823,
+        "display_scale": 3.0270739533917244,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/glossdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.9999993443489075,
+        0.0,
+        1.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.010008938610553741,
+        0.0,
+        0.9988088011741638
+      ],
+      "cycles_luminance_mean": 0.07423955202102661,
+      "cycles_rms": 0.5773503184318542,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999998996413584,
+      "maximum_absolute_error": 0.0009382038842886686,
+      "mean_absolute_error": 6.423338305694415e-09,
+      "orientation_rmse": {
+        "flip_x": 0.04032626748085022,
+        "flip_xy": 0.04032626748085022,
+        "flip_y": 0.04032626748085022,
+        "identity": 1.3924162658440764e-06
+      },
+      "p95_pixel_rmse": 3.4412757088375656e-08,
+      "p99_pixel_rmse": 3.4412757088375656e-08,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.01000893209129572,
+        0.0,
+        0.9988088011741638
+      ],
+      "psycles_luminance_mean": 0.07423954457044601,
+      "psycles_rms": 0.5773503294119486,
+      "relative_rmse": 2.4117355120302507e-06,
+      "rmse": 1.3924162658440764e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "TransCol": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/transcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "TransDir": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/transdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "TransInd": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/metallic_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/metallic-cycles-5.2.1-vk/metallic_bsdf_matrix/triptychs/transind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Cycles",
+  "schema": "psycles.cycles-differential.v2"
+}

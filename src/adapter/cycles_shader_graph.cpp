@@ -145,6 +145,26 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
         .outputs = {{"BSDF", "Closure"}},
         .properties = {{"distribution", "Distribution"}}});
     add({
+        .cycles_type = "metallic_bsdf",
+        .cycles_variant = {},
+        .psycles_type = node_type::metallic_bsdf,
+        .inputs = {
+            {"Base Color", "BaseColor"},
+            {"Edge Tint", "EdgeTint"},
+            {"IOR", "IOR"},
+            {"Extinction", "Extinction"},
+            {"Roughness", "Roughness"},
+            {"Anisotropy", "Anisotropy"},
+            {"Rotation", "Rotation"},
+            {"Tangent", "Tangent"},
+            {"Thin Film Thickness", "ThinFilmThickness"},
+            {"Thin Film IOR", "ThinFilmIOR"},
+            {"Normal", "Normal"}},
+        .outputs = {{"BSDF", "Closure"}},
+        .properties = {
+            {"distribution", "Distribution"},
+            {"fresnel_type", "FresnelType"}}});
+    add({
         .cycles_type = "principled_bsdf",
         .cycles_variant = {},
         .psycles_type = node_type::principled_bsdf,

@@ -609,6 +609,185 @@ void test_statically_pruned_mix() {
   return graph;
 }
 
+[[nodiscard]] ShaderGraph make_metallic_graph(
+    std::string fresnel_type,
+    std::string distribution,
+    float anisotropy,
+    float thin_film_thickness) {
+  ShaderGraph graph;
+  const auto metallic = graph.add_node(
+      node_type::metallic_bsdf, "Standalone Metallic contract");
+  const auto geometry = graph.add_node(
+      node_type::geometry, "Standalone Metallic frame");
+  require(
+      graph.set_property(
+          metallic,
+          "FresnelType",
+          SocketValue::string(std::move(fresnel_type))) &&
+          graph.set_property(
+              metallic,
+              "Distribution",
+              SocketValue::string(std::move(distribution))) &&
+          graph.set_input(
+              metallic,
+              "BaseColor",
+              SocketValue::color({0.17f, 0.31f, 0.73f})) &&
+          graph.set_input(
+              metallic,
+              "EdgeTint",
+              SocketValue::color({0.91f, 0.67f, 0.43f})) &&
+          graph.set_input(
+              metallic,
+              "IOR",
+              SocketValue::vector({1.9f, 2.7f, 3.4f})) &&
+          graph.set_input(
+              metallic,
+              "Extinction",
+              SocketValue::vector({4.6f, 3.2f, 2.1f})) &&
+          graph.set_input(
+              metallic,
+              "Roughness",
+              SocketValue::floating(0.38f)) &&
+          graph.set_input(
+              metallic,
+              "Anisotropy",
+              SocketValue::floating(anisotropy)) &&
+          graph.set_input(
+              metallic,
+              "Rotation",
+              SocketValue::floating(0.2f)) &&
+          graph.set_input(
+              metallic,
+              "ThinFilmThickness",
+              SocketValue::floating(thin_film_thickness)) &&
+          graph.set_input(
+              metallic,
+              "ThinFilmIOR",
+              SocketValue::floating(1.37f)) &&
+          graph.connect(
+              {.node = geometry, .socket = "Tangent"},
+              metallic,
+              "Tangent") &&
+          graph.connect(
+              {.node = geometry, .socket = "Normal"},
+              metallic,
+              "Normal"),
+      "failed to configure standalone Metallic graph");
+  graph.set_root(
+      ShaderDomain::surface,
+      OutputRef{.node = metallic, .socket = "Closure"});
+  return graph;
+}
+
+void test_standalone_metallic_static_contract() {
+  const auto f82 = compile_graph(make_metallic_graph(
+      "F82", "multi_ggx", 1.0e-4f, 0.1f));
+  const auto f82_plan = plan_program(f82);
+  const auto f82_root = f82.program->root();
+  const auto &f82_closure =
+      f82.program->closure_instructions()[f82_root.value];
+  const auto &f82_instruction = f82_plan.closures.instructions.front();
+  const auto f82_begin =
+      surface_closure_leaf_operand_begin(f82_instruction);
+  require(
+      surface_closure_operation(f82_instruction) ==
+              ClosureOperation::metallic_f82 &&
+          f82_closure.metallic_base_ior.valid() &&
+          f82_closure.metallic_edge_tint_k.valid() &&
+          !f82_closure.color.valid() &&
+          f82_closure.preserve_ggx_energy &&
+          !f82_closure.beckmann &&
+          !f82_plan.closure_plan.entry(f82_root).microfacet_anisotropy &&
+          !f82_plan.closure_plan.entry(f82_root).thin_film &&
+          f82_plan.closures.operands.size() ==
+              surface_closure_operand::metallic::count &&
+          (f82_instruction.control &
+           (surface_closure_microfacet_anisotropy |
+            surface_closure_thin_film)) == 0u &&
+          f82_plan.closures.operands[
+              f82_begin + surface_closure_operand::metallic::anisotropy] ==
+              SurfaceValueAddress::invalid_value &&
+          f82_plan.closures.operands[
+              f82_begin + surface_closure_operand::metallic::rotation] ==
+              SurfaceValueAddress::invalid_value &&
+          f82_plan.closures.operands[
+              f82_begin + surface_closure_operand::metallic::tangent] ==
+              SurfaceValueAddress::invalid_value &&
+          f82_plan.closures.operands[
+              f82_begin +
+              surface_closure_operand::metallic::thin_film_thickness] ==
+              SurfaceValueAddress::invalid_value &&
+          f82_plan.closures.operands[
+              f82_begin + surface_closure_operand::metallic::thin_film_ior] ==
+              SurfaceValueAddress::invalid_value,
+      "F82 Metallic did not erase inactive topology operands exactly");
+
+  const auto conductor = compile_graph(make_metallic_graph(
+      "physical_conductor", "BECKMANN", 0.63f, 420.0f));
+  const auto conductor_plan = plan_program(conductor);
+  const auto conductor_root = conductor.program->root();
+  const auto &conductor_closure =
+      conductor.program->closure_instructions()[conductor_root.value];
+  const auto &conductor_instruction =
+      conductor_plan.closures.instructions.front();
+  const auto conductor_begin =
+      surface_closure_leaf_operand_begin(conductor_instruction);
+  require(
+      surface_closure_operation(conductor_instruction) ==
+              ClosureOperation::metallic_conductor &&
+          conductor_closure.metallic_base_ior.valid() &&
+          conductor_closure.metallic_edge_tint_k.valid() &&
+          !conductor_closure.color.valid() &&
+          !conductor_closure.preserve_ggx_energy &&
+          conductor_closure.beckmann &&
+          conductor_plan.closure_plan.entry(conductor_root)
+              .microfacet_anisotropy &&
+          conductor_plan.closure_plan.entry(conductor_root).thin_film &&
+          conductor_plan.closures.operands.size() ==
+              surface_closure_operand::metallic::count &&
+          (conductor_instruction.control &
+           surface_closure_microfacet_anisotropy) != 0u &&
+          (conductor_instruction.control & surface_closure_thin_film) != 0u &&
+          conductor_plan.closures.operands[
+              conductor_begin +
+              surface_closure_operand::metallic::base_ior] ==
+              conductor_plan.values.value_addresses[
+                  conductor_closure.metallic_base_ior.value] &&
+          conductor_plan.closures.operands[
+              conductor_begin +
+              surface_closure_operand::metallic::edge_tint_k] ==
+              conductor_plan.values.value_addresses[
+                  conductor_closure.metallic_edge_tint_k.value] &&
+          conductor_plan.closures.operands[
+              conductor_begin + surface_closure_operand::metallic::tangent] !=
+              SurfaceValueAddress::invalid_value &&
+          conductor_plan.closures.operands[
+              conductor_begin +
+              surface_closure_operand::metallic::thin_film_thickness] !=
+              SurfaceValueAddress::invalid_value,
+      "physical-conductor Metallic lost its live typed operand slice");
+
+  const auto has_parameter = [](const SurfaceProgram &program,
+                                std::string_view socket) noexcept {
+    for (const auto &parameter : program.parameters()) {
+      if (parameter.socket == socket) {
+        return true;
+      }
+    }
+    return false;
+  };
+  require(
+      has_parameter(*f82.program, "BaseColor") &&
+          has_parameter(*f82.program, "EdgeTint") &&
+          !has_parameter(*f82.program, "IOR") &&
+          !has_parameter(*f82.program, "Extinction") &&
+          !has_parameter(*conductor.program, "BaseColor") &&
+          !has_parameter(*conductor.program, "EdgeTint") &&
+          has_parameter(*conductor.program, "IOR") &&
+          has_parameter(*conductor.program, "Extinction"),
+      "static Metallic Fresnel selection retained the inactive value graph");
+}
+
 void test_microfacet_anisotropy_specialization() {
   const auto isotropic = compile_graph(
       make_glossy_anisotropy_graph(1.0e-4f));
@@ -994,6 +1173,7 @@ int main() {
     test_add_sibling_retains_root_weight();
     test_statically_pruned_mix();
     test_principled_static_contract();
+    test_standalone_metallic_static_contract();
     test_thin_film_static_contract();
     test_microfacet_anisotropy_specialization();
     test_missing_live_address_rejected();

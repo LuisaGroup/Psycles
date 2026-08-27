@@ -310,6 +310,10 @@ template <typename Id, typename Values>
 [[nodiscard]] Float3 fresnel_f82_b(Float3 f0, Float3 tint) noexcept;
 [[nodiscard]] Float3 fresnel_f82(
     Float cosine, Float3 f0, Float3 b) noexcept;
+[[nodiscard]] Float3 fresnel_conductor(
+    Float cosine, Float3 ior, Float3 extinction) noexcept;
+[[nodiscard]] Float3 fresnel_conductor_fss(
+    Float3 ior, Float3 extinction) noexcept;
 [[nodiscard]] Float3 ensure_valid_specular_reflection(
     Float3 geometric_normal,
     Float3 incoming,
@@ -393,7 +397,11 @@ template <typename Id, typename Values>
     Float cosine,
     const ShaderServices *services = nullptr,
     bool may_have_metallic_thin_film = false,
-    bool may_have_dielectric_thin_film = false) noexcept;
+    bool may_have_dielectric_thin_film = false,
+    bool may_have_standalone_f82 = false,
+    bool may_have_standalone_f82_thin_film = false,
+    bool may_have_conductor = false,
+    bool may_have_conductor_thin_film = false) noexcept;
 [[nodiscard]] MicrofacetEvaluation microfacet_evaluate(
     const ShaderServices &services,
     const SurfaceClosurePhysicalGeneralRecord &closure,
@@ -403,7 +411,11 @@ template <typename Id, typename Values>
     Float glossy_filter_roughness,
     bool may_be_anisotropic,
     bool may_have_metallic_thin_film = false,
-    bool may_have_dielectric_thin_film = false) noexcept;
+    bool may_have_dielectric_thin_film = false,
+    bool may_have_standalone_f82 = false,
+    bool may_have_standalone_f82_thin_film = false,
+    bool may_have_conductor = false,
+    bool may_have_conductor_thin_film = false) noexcept;
 [[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
     const SurfaceClosurePoint &point,
     Float3 smooth_normal,
@@ -415,7 +427,11 @@ template <typename Id, typename Values>
     bool may_be_anisotropic,
     const ShaderServices *services = nullptr,
     bool may_have_metallic_thin_film = false,
-    bool may_have_dielectric_thin_film = false) noexcept;
+    bool may_have_dielectric_thin_film = false,
+    bool may_have_standalone_f82 = false,
+    bool may_have_standalone_f82_thin_film = false,
+    bool may_have_conductor = false,
+    bool may_have_conductor_thin_film = false) noexcept;
 [[nodiscard]] Float sheen_intensity(
     const SurfaceClosurePhysicalGeneralRecord &closure,
     Float3 incoming,

@@ -994,6 +994,12 @@ enum class ClosureOperation : std::uint8_t {
   translucent,
   principled,
   glossy,
+  // Blender 5.2's standalone Metallic node has two statically selected
+  // Fresnel algebras. Keeping them as distinct opcodes makes the graph/SVM
+  // program a disjoint sum: Luisa records no device-side model branch and
+  // reachability can remove the unused conductor implementation exactly.
+  metallic_f82,
+  metallic_conductor,
   glass,
   emission,
   transparent,
@@ -1042,6 +1048,12 @@ struct ClosureInstruction {
   ValueExpressionId ior;
   ValueExpressionId specular_ior_level;
   ValueExpressionId specular_tint;
+  // Tagged standalone-Metallic operands. For metallic_f82 these are
+  // (Base Color, Edge Tint); for metallic_conductor they are (IOR,
+  // Extinction). The static opcode fixes the interpretation, so the compact
+  // stream needs neither a mode lane nor weakly typed float4 parameters.
+  ValueExpressionId metallic_base_ior;
+  ValueExpressionId metallic_edge_tint_k;
   // Authored microfacet anisotropy is shared by Principled and standalone
   // Glossy, but their socket spellings and alpha parameterizations differ.
   // Keep the graph inputs in the typed IR; physical setup later projects
@@ -1101,6 +1113,8 @@ inline constexpr auto closure_value_dependency_members = std::array{
     &ClosureInstruction::ior,
     &ClosureInstruction::specular_ior_level,
     &ClosureInstruction::specular_tint,
+    &ClosureInstruction::metallic_base_ior,
+    &ClosureInstruction::metallic_edge_tint_k,
     &ClosureInstruction::microfacet_anisotropy,
     &ClosureInstruction::microfacet_rotation,
     &ClosureInstruction::tangent,

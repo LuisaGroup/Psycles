@@ -1036,6 +1036,39 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::metallic_bsdf,
+                 .inputs = {
+                     input("BaseColor", SocketType::color,
+                           SocketValue::color({0.617f, 0.577f, 0.540f})),
+                     input("EdgeTint", SocketType::color,
+                           SocketValue::color({0.695f, 0.726f, 0.770f})),
+                     input("IOR", SocketType::vector,
+                           SocketValue::vector({2.757f, 2.513f, 2.231f})),
+                     input("Extinction", SocketType::vector,
+                           SocketValue::vector({3.867f, 3.404f, 3.009f})),
+                     input("Roughness", SocketType::floating,
+                           SocketValue::floating(0.5f)),
+                     input("Anisotropy", SocketType::floating,
+                           SocketValue::floating(0.0f)),
+                     input("Rotation", SocketType::floating,
+                           SocketValue::floating(0.0f)),
+                     input("Tangent", SocketType::vector,
+                           SocketValue::vector({0.0f, 0.0f, 0.0f})),
+                     input("ThinFilmThickness", SocketType::floating,
+                           SocketValue::floating(0.0f)),
+                     input("ThinFilmIOR", SocketType::floating,
+                           SocketValue::floating(1.33f)),
+                     input("Normal", SocketType::normal,
+                           SocketValue::normal({0.0f, 0.0f, 0.0f}))},
+                 .outputs = {output("Closure", SocketType::closure)},
+                 .properties = {
+                     property("Distribution", SocketType::string,
+                              SocketValue::string("MULTI_GGX")),
+                     property("FresnelType", SocketType::string,
+                              SocketValue::string("F82"))},
+                 .required_features = feature_bit(ShaderFeature::surface)}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::glass_bsdf,
                  .inputs = {input("Color", SocketType::color,
                                   SocketValue::color({1.0f, 1.0f, 1.0f})),

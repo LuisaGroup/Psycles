@@ -42,9 +42,11 @@ isotropic_microfacet_state(Float perceptual_roughness) noexcept {
   return {.tangent = make_float3(0.0f), .alpha_x = alpha, .alpha_y = alpha};
 }
 
-MicrofacetAnisotropyState
-principled_microfacet_state(const TracedClosure &closure,
-                            Float3 authored_normal) noexcept {
+namespace {
+
+[[nodiscard]] MicrofacetAnisotropyState
+aspect_ratio_microfacet_state(const TracedClosure &closure,
+                              Float3 authored_normal) noexcept {
   auto state = isotropic_microfacet_state(closure.roughness);
   if (!closure.anisotropy_enabled) {
     return state;
@@ -63,6 +65,20 @@ principled_microfacet_state(const TracedClosure &closure,
                                     closure.anisotropic_rotation);
   };
   return state;
+}
+
+} // namespace
+
+MicrofacetAnisotropyState
+principled_microfacet_state(const TracedClosure &closure,
+                            Float3 authored_normal) noexcept {
+  return aspect_ratio_microfacet_state(closure, authored_normal);
+}
+
+MicrofacetAnisotropyState
+metallic_microfacet_state(const TracedClosure &closure,
+                          Float3 authored_normal) noexcept {
+  return aspect_ratio_microfacet_state(closure, authored_normal);
 }
 
 MicrofacetAnisotropyState

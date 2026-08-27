@@ -29,4 +29,12 @@ thin_film_dielectric_fresnel(const ShaderServices &services, Float thickness,
                                            Float3 f0, Float3 b,
                                            Float cosine_incoming) noexcept;
 
+// Exact Cycles 5.2 Airy construction for a physical conductor substrate.
+// `substrate_ior` and `substrate_extinction` are the authored non-negative
+// complex-IOR components; no F82 fit participates in this path.
+[[nodiscard]] Float3 thin_film_conductor_fresnel(
+    const ShaderServices &services, Float thickness, Float film_ior,
+    Float3 substrate_ior, Float3 substrate_extinction,
+    Float cosine_incoming) noexcept;
+
 } // namespace psycles::luisa_backend::detail
