@@ -4,9 +4,9 @@
 
 The refined candidate was rejected and fully reverted. On the current
 `cd69bb8` surface baseline it preserved the 177-field, 864-byte coroutine
-frame, but enlarged the HIP surface object by 1.25%, enlarged the main entry
-by 1.51%, added 16 bytes of private storage per work-item, and made normalized
-Barbershop `shade_surface` time 0.51% slower. No renderer change or test
+frame, but enlarged the HIP surface object by 1.29%, enlarged the main entry
+by 1.52%, added 16 bytes of private storage per work-item, and made normalized
+Barbershop `shade_surface` time 0.64% slower. No renderer change or test
 tolerance from the candidate is retained.
 
 This is a second, newer-baseline confirmation of
@@ -102,17 +102,19 @@ selected seed plus competitor sum rather than only one helper in isolation.
 
 Both rows use the same one-sample Barbershop shader AST and a disabled Psycles
 shader cache. Static metadata came from `llvm-nm` and `llvm-readelf` on the
-dumped HIP object.
+dumped HIP object. The baseline was rebuilt from the fully reverted `cd69bb8`
+renderer source; the older `0fa3830` half-vector artifact was not used in this
+table or in the timing table below.
 
 | Metric | Exact baseline | Candidate | Change |
 |---|---:|---:|---:|
 | Coroutine frame | 177 fields / 864 B | 177 fields / 864 B | unchanged |
-| HIP surface object | 357,880 B | 362,360 B | +4,480 B (+1.252%) |
-| Main entry | 302,604 B | 307,188 B | +4,584 B (+1.515%) |
+| HIP surface object | 357,752 B | 362,360 B | +4,608 B (+1.288%) |
+| Main entry | 302,592 B | 307,188 B | +4,596 B (+1.519%) |
 | Private storage | 3,296 B | 3,312 B | +16 B |
 | VGPR | 256 | 256 | unchanged |
 | Reported VGPR spills | 363 | 357 | -6 |
-| Surface kernel hash | `048185b34d9b6ba1` | `c31d9c401698b1a8` | changed |
+| Surface kernel hash | `cf56d45a9da7ce66` | `c31d9c401698b1a8` | changed |
 
 The six fewer reported spill sites do not offset the larger private allocation
 or executed program.
@@ -125,16 +127,18 @@ extra dispatches in the candidate do not bias the comparison.
 
 | Build / run | Calls | Work-items | GPU duration (ns) | ns/work-item |
 |---|---:|---:|---:|---:|
-| Baseline 1 | 293 | 53,658,304 | 1,460,832,118 | 27.224716569 |
-| Baseline 2 | 293 | 53,658,336 | 1,459,120,568 | 27.192803146 |
+| Baseline 1 | 293 | 53,658,304 | 1,456,509,979 | 27.144167266 |
+| Baseline 2 | 293 | 53,658,304 | 1,459,611,970 | 27.201977349 |
 | Candidate 1 | 295 | 53,659,008 | 1,467,428,992 | 27.347300047 |
 | Candidate 2 | 295 | 53,658,976 | 1,467,475,565 | 27.348184300 |
-| Baseline mean | | | | 27.208759858 |
+| Baseline mean | | | | 27.173072308 |
 | Candidate mean | | | | 27.347742174 |
-| Candidate change | | | | **+0.511%** |
+| Candidate change | | | | **+0.643%** |
 
-Candidate render-only wall times were 2.54250 s and 2.54142 s. The normalized
-surface result is the decision metric because it isolates the modified stage.
+Baseline render-only wall times were 2.53911 s and 2.54703 s; candidate times
+were 2.54250 s and 2.54142 s. Their means differ by less than 0.05%. The
+normalized surface result is the decision metric because it isolates the
+modified stage.
 
 ## Consequence
 
