@@ -351,14 +351,10 @@ struct SurfaceValueRuntime {
     std::vector<std::uint32_t> emission_closure_static_variants;
     compiler::PrincipledClosureFeatureMask
         emission_principled_closure_features{};
-    // Host/JIT shape of the exact structured closure control stack. Each live
-    // slot stores the immutable (parent, right) frame for one open Mix region;
-    // the compiler verifies exact laminar-interval coloring before acceptance.
+    // Host/JIT capacity of the exact topological closure-weight program. The
+    // compiler colors definition-to-last-use intervals under a read-before-
+    // write contract; no traversal or parent-restoration state remains.
     std::uint32_t maximum_closure_mix_slots{};
-    // Exact scene capability derived from verified Mix-right markers. If
-    // false, every Mix is in tail position, so the JIT emits scalar right-
-    // weight slots and no parent-restoration control path.
-    bool closure_mix_restoration_required{};
     // BSSRDF exit reconstruction can only be invoked for the conservative
     // topology-tag set derived from Cycles' has_bssrdf_bump capability. Its
     // interpreter domain is the exact program image of that set. Closure

@@ -405,38 +405,44 @@ surface_closure_operand_count(ClosureOperation operation) noexcept {
   return 0u;
 }
 
-// The closure stream is a structured, single-entry program. A Mix is lowered
-// to a `mix_begin` followed by its left region, a paired `mix_right`, and its
-// right region. Relative forward offsets make every region closed under scene
-// concatenation. AddClosure contributes no instruction: its children are
-// consecutive regions with the same current weight.
+// The closure stream is a topologically ordered weight program, matching the
+// representation used by Cycles after `transform_multi_closure`. AddClosure
+// contributes no instruction and forwards its incoming weight to both
+// children. A live Mix contributes exactly one instruction and defines the
+// weights of its retained children:
 //
-// Execution keeps the current weight in one scalar. Each open Mix stores an
-// immutable `(parent, right)` float2: `mix_right` selects the right component.
-// A paired `mix_end` restores the parent exactly when a continuation observes
-// the region's exit weight. A tail Mix instead consumes the rest of its
-// enclosing branch, where the next enclosing marker either overwrites the
-// weight or execution ends. This continuation-sensitive invariant prevents
-// AddClosure siblings from leaking branch state without retaining unobservable
-// restoration traffic. Mix intervals are laminar; exact interval coloring
-// therefore needs precisely the maximum number of simultaneously open Mix
-// regions, rather than one factor path per leaf.
+//   W(root) = 1
+//   W(Add.a) = W(Add.b) = W(Add)
+//   W(Mix.a) = W(Mix) * (1 - factor)
+//   W(Mix.b) = W(Mix) * factor
+//
+// Every leaf reads its unique incoming weight. The host computes exact
+// definition-to-last-use intervals for these SSA weights and colors them into
+// a small scalar bank under the read-before-write contract. Thus one Mix is
+// one device instruction, no traversal marker or restoration state exists,
+// and execution is a single forward pass over immutable scene data.
 enum class SurfaceClosureInstructionKind : std::uint32_t {
   leaf = 0u,
-  mix_begin = 1u,
-  mix_right = 2u,
-  mix_end = 3u,
+  mix_both = 1u,
+  mix_left = 2u,
+  mix_right = 3u,
 };
 
 // The hot closure stream remains one uint4. Payload fields have a semantic
 // interpretation selected by `kind`:
 //
-// leaf:      payload0 = operand begin, payload1/2 = zero
-// mix_begin: payload0 = factor address, payload1 = Mix-frame slot,
-//            payload2 = relative offset to the paired mix_right
-// mix_right: payload0 = Mix-frame slot, payload1 = relative offset to the
-//            region end, payload2 = restoration flags
-// mix_end:   payload0 = Mix-frame slot, payload1/2 = zero
+// leaf:      payload0 = operand begin, payload1 = incoming weight slot,
+//            payload2 = zero
+// mix_both:  payload0 = factor address, payload1 = incoming weight slot,
+//            payload2 = packed (left slot, right slot)
+// mix_left:  payload0 = factor address, payload1 = incoming weight slot,
+//            payload2 = left slot
+// mix_right: payload0 = factor address, payload1 = incoming weight slot,
+//            payload2 = right slot
+//
+// `surface_closure_root_weight_slot` denotes the implicit constant one. Mix
+// result slots are 16-bit because the compact runtime is deliberately bounded;
+// 0xffff remains an unambiguous sentinel.
 struct SurfaceClosureBytecodeInstruction {
   std::uint32_t control{};
   std::uint32_t payload0{};
@@ -490,45 +496,40 @@ surface_closure_instruction_kind(
   return instruction.payload0;
 }
 
+inline constexpr std::uint32_t surface_closure_root_weight_slot =
+    ~std::uint32_t{0u};
+inline constexpr std::uint32_t surface_closure_weight_slot_mask = 0xffffu;
+inline constexpr std::uint32_t surface_closure_invalid_packed_weight_slot =
+    0xffffu;
+
+[[nodiscard]] constexpr std::uint32_t surface_closure_leaf_weight_slot(
+    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
+  return instruction.payload1;
+}
+
 [[nodiscard]] constexpr std::uint32_t surface_closure_mix_factor_address(
     const SurfaceClosureBytecodeInstruction &instruction) noexcept {
   return instruction.payload0;
 }
 
-[[nodiscard]] constexpr std::uint32_t surface_closure_mix_frame_slot(
+[[nodiscard]] constexpr std::uint32_t surface_closure_mix_parent_weight_slot(
     const SurfaceClosureBytecodeInstruction &instruction) noexcept {
   return instruction.payload1;
 }
 
-[[nodiscard]] constexpr std::uint32_t surface_closure_mix_right_offset(
+[[nodiscard]] constexpr std::uint32_t surface_closure_mix_left_weight_slot(
     const SurfaceClosureBytecodeInstruction &instruction) noexcept {
-  return instruction.payload2;
+  return instruction.payload2 & surface_closure_weight_slot_mask;
 }
 
-[[nodiscard]] constexpr std::uint32_t surface_closure_right_frame_slot(
+[[nodiscard]] constexpr std::uint32_t surface_closure_mix_unary_weight_slot(
     const SurfaceClosureBytecodeInstruction &instruction) noexcept {
-  return instruction.payload0;
+  return instruction.payload2 & surface_closure_weight_slot_mask;
 }
 
-[[nodiscard]] constexpr std::uint32_t surface_closure_end_frame_slot(
+[[nodiscard]] constexpr std::uint32_t surface_closure_mix_right_weight_slot(
     const SurfaceClosureBytecodeInstruction &instruction) noexcept {
-  return instruction.payload0;
-}
-
-[[nodiscard]] constexpr std::uint32_t surface_closure_mix_end_offset(
-    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
-  return instruction.payload1;
-}
-
-inline constexpr std::uint32_t
-    surface_closure_mix_right_restores_parent = 1u << 0u;
-inline constexpr std::uint32_t surface_closure_mix_right_flags_mask =
-    surface_closure_mix_right_restores_parent;
-
-[[nodiscard]] constexpr bool surface_closure_mix_restores_parent(
-    const SurfaceClosureBytecodeInstruction &instruction) noexcept {
-  return (instruction.payload2 &
-          surface_closure_mix_right_restores_parent) != 0u;
+  return instruction.payload2 >> 16u;
 }
 
 // Host-selected semantic handler identity. Endpoint membership and Bump
@@ -584,10 +585,10 @@ inline constexpr std::uint32_t surface_closure_emission_static_variant_mask =
       surface_closure_bssrdf_method_shift);
 }
 
-// One exact structured closure program. `principled_features` is parallel to
-// `instructions` and zero on control instructions; aggregate masks allow the
-// JIT to omit leaf handlers unused by the complete scene without specializing
-// on individual material topologies.
+// One exact topological closure-weight program. `principled_features` is
+// parallel to `instructions` and zero on weight instructions; aggregate masks
+// allow the JIT to omit leaf handlers unused by the complete scene without
+// specializing on individual material topologies.
 struct SurfaceClosureProgramImage {
   bool valid{};
   std::string diagnostic;

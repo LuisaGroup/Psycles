@@ -139,21 +139,17 @@ inline constexpr auto emission_principled_features =
          child.value < parent.value;
 }
 
-enum class ClosureLoweringActionKind : std::uint8_t {
-  visit,
-  emit_mix_right,
-  finish_mix,
+struct ClosureLoweringAction {
+  ClosureExpressionId id{};
+  std::uint32_t weight{surface_closure_root_weight_slot};
+  std::uint32_t mix_depth{};
 };
 
-struct ClosureLoweringAction {
-  ClosureLoweringActionKind kind{ClosureLoweringActionKind::visit};
-  ClosureExpressionId id{};
-  std::uint32_t mix_begin{};
-  std::uint32_t mix_slot{};
-  std::uint32_t mix_depth{};
-  // Continuation demand: the enclosing region evaluates another closure with
-  // this region's entry weight after the current subtree completes.
-  bool restore_after{};
+struct ClosureWeightReferences {
+  std::uint32_t parent{surface_closure_root_weight_slot};
+  std::uint32_t left{surface_closure_root_weight_slot};
+  std::uint32_t right{surface_closure_root_weight_slot};
+  std::uint32_t leaf{surface_closure_root_weight_slot};
 };
 
 [[nodiscard]] bool closure_leaf_operation(
@@ -284,191 +280,74 @@ all_principled_closure_features() noexcept {
     return "the Principled feature stream is not parallel to closures";
   }
 
-  struct OpenMixRegion {
-    std::size_t right{};
-    std::size_t end{};
-    std::uint32_t mix_slot{};
-    bool executing_right{};
-    bool restores_parent{};
-  };
-
   auto expected_operations = std::uint32_t{};
   auto expected_features = PrincipledClosureFeatureMask{};
-  auto expected_maximum_mix_depth = std::uint32_t{};
-  auto maximum_live_mix_slots = std::uint32_t{};
-  auto live_mix_slot_count = std::uint32_t{};
-  std::vector<bool> live_mix_slots(closures.mix_slots, false);
-  std::vector<OpenMixRegion> open_regions;
-
-  // A non-restoring Mix is legal only in tail position, so its logical end is
-  // exactly the enclosing branch boundary. Closing such regions before the
-  // boundary instruction models an implicit end marker without consuming a
-  // device instruction. Multiple right-nested tail regions may share a
-  // boundary and therefore close in strict LIFO order here.
-  const auto close_tail_regions = [&](std::size_t boundary) {
-    while (!open_regions.empty() &&
-           open_regions.back().executing_right &&
-           !open_regions.back().restores_parent &&
-           open_regions.back().end == boundary) {
-      const auto slot = open_regions.back().mix_slot;
-      if (slot >= live_mix_slots.size() || !live_mix_slots[slot] ||
-          live_mix_slot_count == 0u) {
-        return false;
-      }
-      live_mix_slots[slot] = false;
-      --live_mix_slot_count;
-      open_regions.pop_back();
+  auto maximum_weight_slot_extent = std::uint32_t{};
+  std::vector<bool> defined_weight_slots(closures.mix_slots, false);
+  const auto valid_weight_read = [&](std::uint32_t slot) noexcept {
+    return slot == surface_closure_root_weight_slot ||
+           (slot < defined_weight_slots.size() &&
+            defined_weight_slots[slot]);
+  };
+  const auto define_weight = [&](std::uint32_t slot) noexcept {
+    if (slot >= defined_weight_slots.size() ||
+        slot == surface_closure_invalid_packed_weight_slot) {
+      return false;
     }
+    defined_weight_slots[slot] = true;
+    maximum_weight_slot_extent =
+        std::max(maximum_weight_slot_extent, slot + 1u);
     return true;
   };
 
   for (auto instruction_index = std::size_t{0u};
-       instruction_index < closures.instructions.size();) {
-    if (!close_tail_regions(instruction_index)) {
-      return "an implicit tail Mix consumes a frame slot that is not live";
-    }
-    const auto enclosing_end = open_regions.empty()
-                                   ? closures.instructions.size()
-                                   : (open_regions.back().executing_right
-                                          ? open_regions.back().end
-                                          : open_regions.back().right);
-    if (instruction_index > enclosing_end) {
-      return "closure instruction " + std::to_string(instruction_index) +
-             " crosses enclosing branch end " +
-             std::to_string(enclosing_end) + " at structured depth " +
-             std::to_string(open_regions.size());
-    }
-
+       instruction_index < closures.instructions.size();
+       ++instruction_index) {
     const auto &instruction = closures.instructions[instruction_index];
     if ((instruction.control & ~surface_closure_control_mask) != 0u) {
       return "a closure control word contains undefined bits";
     }
     const auto kind = surface_closure_instruction_kind(instruction);
-    if (!open_regions.empty() && instruction_index == enclosing_end) {
-      const auto expected_kind = open_regions.back().executing_right
-                                     ? SurfaceClosureInstructionKind::mix_end
-                                     : SurfaceClosureInstructionKind::mix_right;
-      if (kind != expected_kind) {
-        return "closure instruction " + std::to_string(instruction_index) +
-               " does not close its enclosing Mix branch at structured depth " +
-               std::to_string(open_regions.size());
-      }
-    }
-    if (kind == SurfaceClosureInstructionKind::mix_begin) {
+    if (kind != SurfaceClosureInstructionKind::leaf) {
       if (instruction.control != make_surface_closure_instruction_kind(kind)) {
-        return "a Mix-begin instruction contains leaf semantic bits";
+        return "a Mix-weight instruction contains leaf semantic bits";
       }
       if (!address_fits_value_program(
               surface_closure_mix_factor_address(instruction),
               SurfaceValueBank::scalar, values, false)) {
-        return "a Mix-begin factor has the wrong type or exceeds its bank";
+        return "a Mix-weight factor has the wrong type or exceeds its bank";
       }
-      const auto slot = surface_closure_mix_frame_slot(instruction);
-      if (slot >= closures.mix_slots || live_mix_slots[slot]) {
-        return "a Mix-begin frame slot is out of range or already live";
+      if (!valid_weight_read(
+              surface_closure_mix_parent_weight_slot(instruction))) {
+        return "a Mix-weight instruction reads an undefined parent weight";
       }
-      const auto right_offset =
-          surface_closure_mix_right_offset(instruction);
-      if (right_offset == 0u ||
-          right_offset > enclosing_end - instruction_index) {
-        return "a Mix-begin has an invalid right-region offset";
-      }
-      const auto right = instruction_index + right_offset;
-      if (right >= enclosing_end) {
-        return "a Mix-begin marker is outside its enclosing branch";
-      }
-      const auto &marker = closures.instructions[right];
-      if (surface_closure_instruction_kind(marker) !=
-              SurfaceClosureInstructionKind::mix_right ||
-          marker.control != make_surface_closure_instruction_kind(
-                                SurfaceClosureInstructionKind::mix_right) ||
-          surface_closure_right_frame_slot(marker) != slot ||
-          (marker.payload2 & ~surface_closure_mix_right_flags_mask) != 0u) {
-        return "a Mix-begin does not target its exact right marker";
-      }
-      const auto end_offset = surface_closure_mix_end_offset(marker);
-      if (end_offset == 0u || end_offset > enclosing_end - right) {
-        return "a Mix-right has an invalid region-end offset";
-      }
-      const auto end = right + end_offset;
-      const auto restores_parent =
-          surface_closure_mix_restores_parent(marker);
-      if (restores_parent) {
-        if (end >= enclosing_end) {
-          return "a restoring Mix-end marker is outside its enclosing branch";
+      const auto left =
+          surface_closure_mix_left_weight_slot(instruction);
+      const auto right =
+          surface_closure_mix_right_weight_slot(instruction);
+      switch (kind) {
+      case SurfaceClosureInstructionKind::mix_both:
+        if (left == right || !define_weight(left) ||
+            !define_weight(right)) {
+          return "a binary Mix has invalid or aliased result weights";
         }
-        const auto &end_marker = closures.instructions[end];
-        if (surface_closure_instruction_kind(end_marker) !=
-                SurfaceClosureInstructionKind::mix_end ||
-            end_marker.control != make_surface_closure_instruction_kind(
-                                      SurfaceClosureInstructionKind::mix_end) ||
-            surface_closure_end_frame_slot(end_marker) != slot ||
-            end_marker.payload1 != 0u || end_marker.payload2 != 0u) {
-          return "a Mix-right does not target its exact end marker";
+        break;
+      case SurfaceClosureInstructionKind::mix_left:
+      case SurfaceClosureInstructionKind::mix_right:
+        if (right != 0u || !define_weight(left)) {
+          return "a unary Mix has an invalid result-weight encoding";
         }
-      } else if (end != enclosing_end) {
-        return "a non-restoring Mix does not consume its enclosing branch tail";
+        break;
+      case SurfaceClosureInstructionKind::leaf:
+        break;
       }
-
-      live_mix_slots[slot] = true;
-      ++live_mix_slot_count;
-      maximum_live_mix_slots =
-          std::max(maximum_live_mix_slots, live_mix_slot_count);
-      open_regions.emplace_back(OpenMixRegion{
-          .right = right,
-          .end = end,
-          .mix_slot = slot,
-          .restores_parent = restores_parent});
-      expected_maximum_mix_depth = std::max(
-          expected_maximum_mix_depth,
-          static_cast<std::uint32_t>(open_regions.size()));
-      ++instruction_index;
       continue;
     }
-    if (kind == SurfaceClosureInstructionKind::mix_right) {
-      if (open_regions.empty() ||
-          open_regions.back().executing_right ||
-          open_regions.back().right != instruction_index ||
-          open_regions.back().mix_slot !=
-              surface_closure_right_frame_slot(instruction) ||
-          open_regions.back().restores_parent !=
-              surface_closure_mix_restores_parent(instruction) ||
-          (instruction.payload2 &
-           ~surface_closure_mix_right_flags_mask) != 0u) {
-        return "a Mix-right marker is unpaired or improperly nested";
-      }
-      const auto slot = open_regions.back().mix_slot;
-      if (!live_mix_slots[slot] || live_mix_slot_count == 0u) {
-        return "a Mix-right reads a frame slot that is not live";
-      }
-      open_regions.back().executing_right = true;
-      ++instruction_index;
-      continue;
+    if (instruction.payload2 != 0u) {
+      return "a closure leaf contains nonzero reserved payload";
     }
-    if (kind == SurfaceClosureInstructionKind::mix_end) {
-      if (open_regions.empty() ||
-          !open_regions.back().executing_right ||
-          !open_regions.back().restores_parent ||
-          open_regions.back().end != instruction_index ||
-          open_regions.back().mix_slot !=
-              surface_closure_end_frame_slot(instruction)) {
-        return "a Mix-end marker is unpaired or improperly nested";
-      }
-      const auto slot = open_regions.back().mix_slot;
-      if (!live_mix_slots[slot] || live_mix_slot_count == 0u) {
-        return "a Mix-end consumes a frame slot that is not live";
-      }
-      live_mix_slots[slot] = false;
-      --live_mix_slot_count;
-      open_regions.pop_back();
-      ++instruction_index;
-      continue;
-    }
-    if (kind != SurfaceClosureInstructionKind::leaf) {
-      return "the closure stream contains an unknown instruction kind";
-    }
-    if (instruction.payload1 != 0u || instruction.payload2 != 0u) {
-      return "a closure leaf contains nonzero control payload";
+    if (!valid_weight_read(surface_closure_leaf_weight_slot(instruction))) {
+      return "a closure leaf reads an undefined incoming weight";
     }
     const auto operation = surface_closure_operation(instruction);
     if (!closure_leaf_operation(operation)) {
@@ -511,19 +390,9 @@ all_principled_closure_features() noexcept {
       return "a closure leaf has an invalid Principled feature mask";
     }
     expected_features |= features;
-    ++instruction_index;
   }
-  if (!close_tail_regions(closures.instructions.size())) {
-    return "an implicit tail Mix consumes a frame slot that is not live";
-  }
-  if (!open_regions.empty() || live_mix_slot_count != 0u) {
-    return "the closure stream ends inside an open Mix region";
-  }
-  if (closures.maximum_mix_depth != expected_maximum_mix_depth) {
-    return "the maximum closure Mix depth is inconsistent";
-  }
-  if (closures.mix_slots != maximum_live_mix_slots) {
-    return "the closure Mix-frame allocation is not exact";
+  if (closures.mix_slots != maximum_weight_slot_extent) {
+    return "the closure weight-slot allocation is not dense";
   }
   if (closures.used_operations != expected_operations) {
     return "the used closure-operation mask is inconsistent";
@@ -616,32 +485,12 @@ SurfaceClosureProgramImage lower_surface_closure_program(
     return true;
   };
 
-  std::vector<bool> occupied_mix_slots;
-  auto live_mix_slots = std::uint32_t{};
-  const auto allocate_mix_slot = [&]() noexcept {
-    for (auto slot = std::size_t{};
-         slot < occupied_mix_slots.size(); ++slot) {
-      if (!occupied_mix_slots[slot]) {
-        occupied_mix_slots[slot] = true;
-        ++live_mix_slots;
-        return static_cast<std::uint32_t>(slot);
-      }
-    }
-    occupied_mix_slots.emplace_back(true);
-    ++live_mix_slots;
-    return static_cast<std::uint32_t>(occupied_mix_slots.size() - 1u);
-  };
-  const auto release_mix_slot = [&](std::uint32_t slot) noexcept {
-    if (slot >= occupied_mix_slots.size() ||
-        !occupied_mix_slots[slot] || live_mix_slots == 0u) {
-      return false;
-    }
-    occupied_mix_slots[slot] = false;
-    --live_mix_slots;
-    return true;
-  };
+  constexpr auto invalid_weight = surface_closure_root_weight_slot;
+  std::vector<ClosureWeightReferences> weight_references;
+  std::vector<std::uint32_t> weight_definitions;
   const auto append_instruction = [&](
                                       SurfaceClosureBytecodeInstruction value,
+                                      ClosureWeightReferences weights,
                                       PrincipledClosureFeatureMask features = 0u)
       noexcept {
     if (result.instructions.size() >=
@@ -649,75 +498,25 @@ SurfaceClosureProgramImage lower_surface_closure_program(
       return false;
     }
     result.instructions.emplace_back(value);
+    weight_references.emplace_back(weights);
     result.principled_features.emplace_back(features);
     return true;
+  };
+  const auto define_weight = [&](std::uint32_t instruction) {
+    if (weight_definitions.size() >=
+        surface_closure_invalid_packed_weight_slot) {
+      return invalid_weight;
+    }
+    weight_definitions.emplace_back(instruction);
+    return static_cast<std::uint32_t>(weight_definitions.size() - 1u);
   };
 
   std::vector<ClosureLoweringAction> pending;
   pending.emplace_back(ClosureLoweringAction{
-      .kind = ClosureLoweringActionKind::visit,
       .id = root});
   while (!pending.empty()) {
     const auto current = pending.back();
     pending.pop_back();
-    if (current.kind == ClosureLoweringActionKind::emit_mix_right) {
-      if (current.mix_begin >= result.instructions.size() ||
-          result.instructions.size() >=
-              std::numeric_limits<std::uint32_t>::max()) {
-        return reject("a closure Mix marker exceeds 32-bit offsets");
-      }
-      const auto marker = static_cast<std::uint32_t>(
-          result.instructions.size());
-      auto &begin = result.instructions[current.mix_begin];
-      if (surface_closure_instruction_kind(begin) !=
-              SurfaceClosureInstructionKind::mix_begin ||
-          marker <= current.mix_begin) {
-        return reject("the closure Mix lowering stack is inconsistent");
-      }
-      begin.payload2 = marker - current.mix_begin;
-      if (!append_instruction(SurfaceClosureBytecodeInstruction{
-              .control = make_surface_closure_instruction_kind(
-                  SurfaceClosureInstructionKind::mix_right),
-              .payload0 = current.mix_slot})) {
-        return reject("a closure Mix marker exceeds 32-bit offsets");
-      }
-      continue;
-    }
-    if (current.kind == ClosureLoweringActionKind::finish_mix) {
-      if (current.mix_begin >= result.instructions.size()) {
-        return reject("a closure Mix region has no begin instruction");
-      }
-      const auto &begin = result.instructions[current.mix_begin];
-      const auto marker_index = static_cast<std::size_t>(current.mix_begin) +
-                                begin.payload2;
-      if (marker_index >= result.instructions.size() ||
-          result.instructions.size() >
-              std::numeric_limits<std::uint32_t>::max()) {
-        return reject("a closure Mix region has no right marker");
-      }
-      auto &marker = result.instructions[marker_index];
-      if (surface_closure_instruction_kind(marker) !=
-              SurfaceClosureInstructionKind::mix_right ||
-          surface_closure_right_frame_slot(marker) != current.mix_slot) {
-        return reject("a closure Mix right region is inconsistent");
-      }
-      marker.payload1 = static_cast<std::uint32_t>(
-          result.instructions.size() - marker_index);
-      if (current.restore_after) {
-        marker.payload2 = surface_closure_mix_right_restores_parent;
-        if (!append_instruction(SurfaceClosureBytecodeInstruction{
-                .control = make_surface_closure_instruction_kind(
-                    SurfaceClosureInstructionKind::mix_end),
-                .payload0 = current.mix_slot})) {
-          return reject("a closure Mix end exceeds 32-bit device offsets");
-        }
-      }
-      if (!release_mix_slot(current.mix_slot)) {
-        return reject("a closure Mix frame interval is not properly nested");
-      }
-      continue;
-    }
-
     if (!closure_active(dependencies, current.id, selected_endpoints) ||
         !closure_plan.entry(current.id).reachable) {
       continue;
@@ -750,49 +549,48 @@ SurfaceClosureProgramImage lower_surface_closure_program(
           return reject(
               "a live closure Mix has no typed factor address");
         }
-        if (occupied_mix_slots.size() >=
-            std::numeric_limits<std::uint32_t>::max()) {
-          return reject("a closure Mix exceeds 32-bit frame slots");
-        }
-        const auto mix_slot = allocate_mix_slot();
-        result.mix_slots = std::max(result.mix_slots, live_mix_slots);
-        const auto begin = static_cast<std::uint32_t>(
+        const auto definition = static_cast<std::uint32_t>(
             result.instructions.size());
+        const auto left_weight = a_active
+                                     ? define_weight(definition)
+                                     : invalid_weight;
+        const auto right_weight = b_active
+                                      ? define_weight(definition)
+                                      : invalid_weight;
+        if ((a_active && left_weight == invalid_weight) ||
+            (b_active && right_weight == invalid_weight)) {
+          return reject("a closure Mix exceeds compact weight ids");
+        }
+        const auto kind = a_active && b_active
+                              ? SurfaceClosureInstructionKind::mix_both
+                              : (a_active
+                                     ? SurfaceClosureInstructionKind::mix_left
+                                     : SurfaceClosureInstructionKind::mix_right);
         if (!append_instruction(SurfaceClosureBytecodeInstruction{
                 .control = make_surface_closure_instruction_kind(
-                    SurfaceClosureInstructionKind::mix_begin),
-                .payload0 = factor_address,
-                .payload1 = mix_slot})) {
-          return reject("a closure Mix exceeds 32-bit device offsets");
+                    kind),
+                .payload0 = factor_address},
+                ClosureWeightReferences{
+                    .parent = current.weight,
+                    .left = left_weight,
+                    .right = right_weight})) {
+          return reject("a closure Mix exceeds the device instruction domain");
         }
         const auto child_depth = current.mix_depth + 1u;
         result.maximum_mix_depth =
             std::max(result.maximum_mix_depth, child_depth);
 
-        pending.emplace_back(ClosureLoweringAction{
-            .kind = ClosureLoweringActionKind::finish_mix,
-            .mix_begin = begin,
-            .mix_slot = mix_slot,
-            .mix_depth = current.mix_depth,
-            .restore_after = current.restore_after});
         if (b_active) {
           pending.emplace_back(ClosureLoweringAction{
-              .kind = ClosureLoweringActionKind::visit,
               .id = closure.b,
-              .mix_depth = child_depth,
-              .restore_after = false});
+              .weight = right_weight,
+              .mix_depth = child_depth});
         }
-        pending.emplace_back(ClosureLoweringAction{
-            .kind = ClosureLoweringActionKind::emit_mix_right,
-            .mix_begin = begin,
-            .mix_slot = mix_slot,
-            .mix_depth = current.mix_depth});
         if (a_active) {
           pending.emplace_back(ClosureLoweringAction{
-              .kind = ClosureLoweringActionKind::visit,
               .id = closure.a,
-              .mix_depth = child_depth,
-              .restore_after = false});
+              .weight = left_weight,
+              .mix_depth = child_depth});
         }
         continue;
       }
@@ -801,17 +599,15 @@ SurfaceClosureProgramImage lower_surface_closure_program(
       // left-to-right depth-first order as GraphSurface::for_each_closure.
       if (b_active) {
         pending.emplace_back(ClosureLoweringAction{
-            .kind = ClosureLoweringActionKind::visit,
             .id = closure.b,
-            .mix_depth = current.mix_depth,
-            .restore_after = current.restore_after});
+            .weight = current.weight,
+            .mix_depth = current.mix_depth});
       }
       if (a_active) {
         pending.emplace_back(ClosureLoweringAction{
-            .kind = ClosureLoweringActionKind::visit,
             .id = closure.a,
-            .mix_depth = current.mix_depth,
-            .restore_after = b_active || current.restore_after});
+            .weight = current.weight,
+            .mix_depth = current.mix_depth});
       }
       continue;
     }
@@ -857,6 +653,7 @@ SurfaceClosureProgramImage lower_surface_closure_program(
     if (!append_instruction(SurfaceClosureBytecodeInstruction{
             .control = make_surface_closure_control(closure, endpoints),
             .payload0 = operand_begin},
+          ClosureWeightReferences{.leaf = current.weight},
           features)) {
       return reject("the closure program exceeds 32-bit device offsets");
     }
@@ -865,11 +662,148 @@ SurfaceClosureProgramImage lower_surface_closure_program(
     result.used_principled_features |= features;
   }
 
-  if (live_mix_slots != 0u ||
-      std::any_of(occupied_mix_slots.begin(),
-                  occupied_mix_slots.end(),
+  if (weight_references.size() != result.instructions.size() ||
+      weight_references.size() != result.principled_features.size()) {
+    return reject("the closure weight-reference stream is not parallel");
+  }
+
+  // The flat closure program is in strict definition-before-use order. Compute
+  // the exact last use of each virtual weight, then perform deterministic
+  // linear-scan coloring. Inputs are read before Mix outputs are written, so a
+  // weight whose final use is the current Mix may donate its slot to one child.
+  std::vector<std::uint32_t> last_uses(
+      weight_definitions.size(), invalid_weight);
+  const auto record_use = [&](std::uint32_t weight,
+                              std::uint32_t instruction) {
+    if (weight == invalid_weight) {
+      return true;
+    }
+    if (weight >= last_uses.size() ||
+        weight_definitions[weight] >= instruction) {
+      return false;
+    }
+    last_uses[weight] = instruction;
+    return true;
+  };
+  for (auto index = std::size_t{}; index < weight_references.size(); ++index) {
+    const auto instruction = static_cast<std::uint32_t>(index);
+    const auto &references = weight_references[index];
+    const auto kind =
+        surface_closure_instruction_kind(result.instructions[index]);
+    const auto input = kind == SurfaceClosureInstructionKind::leaf
+                           ? references.leaf
+                           : references.parent;
+    if (!record_use(input, instruction)) {
+      return reject("a closure weight is not defined before its use");
+    }
+  }
+  if (std::any_of(last_uses.begin(), last_uses.end(),
+                  [invalid_weight](std::uint32_t use) noexcept {
+                    return use == invalid_weight;
+                  })) {
+    return reject("a closure Mix defines an unobserved child weight");
+  }
+
+  std::vector<std::uint32_t> weight_slots(
+      weight_definitions.size(), invalid_weight);
+  std::vector<bool> occupied_slots;
+  auto live_slots = std::uint32_t{};
+  const auto release_weight = [&](std::uint32_t weight,
+                                  std::uint32_t instruction) {
+    if (weight == invalid_weight || last_uses[weight] != instruction) {
+      return true;
+    }
+    const auto slot = weight_slots[weight];
+    if (slot >= occupied_slots.size() || !occupied_slots[slot] ||
+        live_slots == 0u) {
+      return false;
+    }
+    occupied_slots[slot] = false;
+    --live_slots;
+    return true;
+  };
+  const auto allocate_weight = [&](std::uint32_t weight) {
+    if (weight == invalid_weight) {
+      return true;
+    }
+    for (auto slot = std::size_t{}; slot < occupied_slots.size(); ++slot) {
+      if (!occupied_slots[slot]) {
+        occupied_slots[slot] = true;
+        weight_slots[weight] = static_cast<std::uint32_t>(slot);
+        ++live_slots;
+        result.mix_slots = std::max(result.mix_slots, live_slots);
+        return true;
+      }
+    }
+    if (occupied_slots.size() >=
+        surface_closure_invalid_packed_weight_slot) {
+      return false;
+    }
+    occupied_slots.emplace_back(true);
+    weight_slots[weight] =
+        static_cast<std::uint32_t>(occupied_slots.size() - 1u);
+    ++live_slots;
+    result.mix_slots = std::max(result.mix_slots, live_slots);
+    return true;
+  };
+  const auto slot_of = [&](std::uint32_t weight) {
+    return weight == invalid_weight ? surface_closure_root_weight_slot
+                                    : weight_slots[weight];
+  };
+  for (auto index = std::size_t{}; index < result.instructions.size();
+       ++index) {
+    auto &instruction = result.instructions[index];
+    const auto &references = weight_references[index];
+    const auto kind = surface_closure_instruction_kind(instruction);
+    const auto input = kind == SurfaceClosureInstructionKind::leaf
+                           ? references.leaf
+                           : references.parent;
+    const auto input_slot = slot_of(input);
+    if (input != invalid_weight && input_slot == invalid_weight) {
+      return reject("a closure weight use has no allocated slot");
+    }
+    if (!release_weight(input, static_cast<std::uint32_t>(index))) {
+      return reject("closure weight coloring released an invalid interval");
+    }
+    if (kind == SurfaceClosureInstructionKind::leaf) {
+      instruction.payload1 = input_slot;
+      continue;
+    }
+    if (!allocate_weight(references.left) ||
+        !allocate_weight(references.right)) {
+      return reject("closure weight coloring exceeds compact slots");
+    }
+    instruction.payload1 = input_slot;
+    const auto left = references.left == invalid_weight
+                          ? surface_closure_invalid_packed_weight_slot
+                          : weight_slots[references.left];
+    const auto right = references.right == invalid_weight
+                           ? surface_closure_invalid_packed_weight_slot
+                           : weight_slots[references.right];
+    if (kind == SurfaceClosureInstructionKind::mix_both) {
+      if (left == surface_closure_invalid_packed_weight_slot ||
+          right == surface_closure_invalid_packed_weight_slot ||
+          left == right) {
+        return reject("a binary closure Mix has invalid colored outputs");
+      }
+      instruction.payload2 = left | (right << 16u);
+    } else {
+      const auto output = kind == SurfaceClosureInstructionKind::mix_left
+                              ? left
+                              : right;
+      if (output == surface_closure_invalid_packed_weight_slot) {
+        return reject("a unary closure Mix has no colored output");
+      }
+      instruction.payload2 = output;
+    }
+  }
+  if (live_slots != 0u ||
+      std::any_of(occupied_slots.begin(), occupied_slots.end(),
                   [](bool occupied) noexcept { return occupied; })) {
-    return reject("the closure Mix lowering left a live frame interval");
+    return reject("closure weight coloring left a live interval");
+  }
+  if (result.mix_slots != occupied_slots.size()) {
+    return reject("closure weight coloring is not a dense exact allocation");
   }
   result.valid = true;
   SurfaceValueProgramImage validation_values;

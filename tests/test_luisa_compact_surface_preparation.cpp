@@ -1107,10 +1107,8 @@ int main(int argc, char **argv) {
                   << backend << ": " << diagnostic << '\n';
         return EXIT_FAILURE;
     }
-    if (scene->surface_values->closure_mix_restoration_required ==
-        tail_fast_path) {
-        std::cerr << "compact runtime selected the wrong Mix-frame JIT shape "
-                     "on "
+    if (scene->surface_values->maximum_closure_mix_slots == 0u) {
+        std::cerr << "compact runtime omitted live closure-weight slots on "
                   << backend << " (tail_fast_path=" << tail_fast_path << ")\n";
         return EXIT_FAILURE;
     }
