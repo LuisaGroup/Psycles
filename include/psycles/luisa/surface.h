@@ -289,6 +289,11 @@ enum class SurfaceClosureKind : std::uint32_t {
     // (n, k) without a runtime mode field.
     metallic_f82,
     metallic_conductor,
+    // Standalone Sheen keeps the authored distribution in the physical tag.
+    // This is required because Microfiber and Ashikhmin differ not only in
+    // payload, but also in sampling measure and Cycles pass classification.
+    sheen_microfiber,
+    sheen_ashikhmin,
     glass,
     transparent,
     refraction,

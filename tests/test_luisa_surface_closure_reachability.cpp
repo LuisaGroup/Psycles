@@ -145,6 +145,12 @@ thin_film_principled_lobe(SurfaceClosureLobe lobe) noexcept {
         ReachabilityBasis{
             operation_bit(ClosureOperation::metallic_conductor),
             kinds({SurfaceClosureKind::metallic_conductor})},
+        ReachabilityBasis{
+            operation_bit(ClosureOperation::sheen_microfiber),
+            kinds({SurfaceClosureKind::sheen_microfiber})},
+        ReachabilityBasis{
+            operation_bit(ClosureOperation::sheen_ashikhmin),
+            kinds({SurfaceClosureKind::sheen_ashikhmin})},
         ReachabilityBasis{operation_bit(ClosureOperation::glass),
                           kinds({SurfaceClosureKind::glass})},
         ReachabilityBasis{operation_bit(ClosureOperation::emission), {}},
@@ -526,10 +532,18 @@ int main(int argc, char **argv) {
         kinds({SurfaceClosureKind::metallic_f82});
     const auto standalone_conductor_reachability =
         kinds({SurfaceClosureKind::metallic_conductor});
+    const auto standalone_microfiber_reachability =
+        kinds({SurfaceClosureKind::sheen_microfiber});
+    const auto standalone_ashikhmin_reachability =
+        kinds({SurfaceClosureKind::sheen_ashikhmin});
     auto standalone_f82_probe =
         make_probe_kernel(standalone_f82_reachability);
     auto standalone_conductor_probe =
         make_probe_kernel(standalone_conductor_reachability);
+    auto standalone_microfiber_probe =
+        make_probe_kernel(standalone_microfiber_reachability);
+    auto standalone_ashikhmin_probe =
+        make_probe_kernel(standalone_ashikhmin_reachability);
     const auto diffuse_ast = ast_footprint(diffuse_probe);
     const auto top_ast = ast_footprint(top_probe);
     const auto isotropic_glossy_ast = ast_footprint(isotropic_glossy_probe);
@@ -539,6 +553,10 @@ int main(int argc, char **argv) {
     const auto standalone_f82_ast = ast_footprint(standalone_f82_probe);
     const auto standalone_conductor_ast =
         ast_footprint(standalone_conductor_probe);
+    const auto standalone_microfiber_ast =
+        ast_footprint(standalone_microfiber_probe);
+    const auto standalone_ashikhmin_ast =
+        ast_footprint(standalone_ashikhmin_probe);
     if (diffuse_probe.function()->function().hash() ==
             top_probe.function()->function().hash() ||
         top_ast.expressions.size() <= diffuse_ast.expressions.size() + 100u ||
@@ -591,6 +609,20 @@ int main(int argc, char **argv) {
                   << backend << '\n';
         return EXIT_FAILURE;
     }
+    if (standalone_microfiber_probe.function()->function().hash() ==
+            standalone_ashikhmin_probe.function()->function().hash() ||
+        standalone_microfiber_ast.expressions.size() ==
+            standalone_ashikhmin_ast.expressions.size()) {
+        std::cerr << "standalone Sheen distribution tags did not select "
+                     "distinct static algebra: Microfiber "
+                  << standalone_microfiber_ast.expressions.size() << "/"
+                  << standalone_microfiber_ast.statements.size()
+                  << " versus Ashikhmin "
+                  << standalone_ashikhmin_ast.expressions.size() << "/"
+                  << standalone_ashikhmin_ast.statements.size() << " on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
 
     constexpr auto scene_operations =
         operation_bit(ClosureOperation::diffuse) |
@@ -598,6 +630,8 @@ int main(int argc, char **argv) {
         operation_bit(ClosureOperation::glossy) |
         operation_bit(ClosureOperation::metallic_f82) |
         operation_bit(ClosureOperation::metallic_conductor) |
+        operation_bit(ClosureOperation::sheen_microfiber) |
+        operation_bit(ClosureOperation::sheen_ashikhmin) |
         operation_bit(ClosureOperation::glass) |
         operation_bit(ClosureOperation::transparent) |
         operation_bit(ClosureOperation::subsurface) |
@@ -623,6 +657,8 @@ int main(int argc, char **argv) {
         static_cast<std::uint32_t>(SurfaceClosureKind::glossy),
         static_cast<std::uint32_t>(SurfaceClosureKind::metallic_f82),
         static_cast<std::uint32_t>(SurfaceClosureKind::metallic_conductor),
+        static_cast<std::uint32_t>(SurfaceClosureKind::sheen_microfiber),
+        static_cast<std::uint32_t>(SurfaceClosureKind::sheen_ashikhmin),
         static_cast<std::uint32_t>(SurfaceClosureKind::glass),
         static_cast<std::uint32_t>(SurfaceClosureKind::transparent),
         static_cast<std::uint32_t>(SurfaceClosureKind::bssrdf),
@@ -632,6 +668,8 @@ int main(int argc, char **argv) {
         static_cast<std::uint32_t>(SurfaceClosureKind::principled),
         static_cast<std::uint32_t>(SurfaceClosureKind::principled)};
     constexpr std::array closure_lobes{
+        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
+        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
         static_cast<std::uint32_t>(SurfaceClosureLobe::none),
         static_cast<std::uint32_t>(SurfaceClosureLobe::none),
         static_cast<std::uint32_t>(SurfaceClosureLobe::none),

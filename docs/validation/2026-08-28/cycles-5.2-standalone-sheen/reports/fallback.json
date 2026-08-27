@@ -1,0 +1,763 @@
+{
+  "actual_label": "Psycles",
+  "build_identity": {
+    "actual_metadata": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/export/scene.json",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "reference_metadata": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.json",
+    "verified": true
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Depth.Z",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.Diffuse Direct.R",
+    "ViewLayer.Diffuse Direct.G",
+    "ViewLayer.Diffuse Direct.B",
+    "ViewLayer.Diffuse Indirect.R",
+    "ViewLayer.Diffuse Indirect.G",
+    "ViewLayer.Diffuse Indirect.B",
+    "ViewLayer.Diffuse Color.R",
+    "ViewLayer.Diffuse Color.G",
+    "ViewLayer.Diffuse Color.B",
+    "ViewLayer.Glossy Direct.R",
+    "ViewLayer.Glossy Direct.G",
+    "ViewLayer.Glossy Direct.B",
+    "ViewLayer.Glossy Indirect.R",
+    "ViewLayer.Glossy Indirect.G",
+    "ViewLayer.Glossy Indirect.B",
+    "ViewLayer.Glossy Color.R",
+    "ViewLayer.Glossy Color.G",
+    "ViewLayer.Glossy Color.B",
+    "ViewLayer.Transmission Direct.R",
+    "ViewLayer.Transmission Direct.G",
+    "ViewLayer.Transmission Direct.B",
+    "ViewLayer.Transmission Indirect.R",
+    "ViewLayer.Transmission Indirect.G",
+    "ViewLayer.Transmission Indirect.B",
+    "ViewLayer.Transmission Color.R",
+    "ViewLayer.Transmission Color.G",
+    "ViewLayer.Transmission Color.B",
+    "ViewLayer.Volume Direct.R",
+    "ViewLayer.Volume Direct.G",
+    "ViewLayer.Volume Direct.B",
+    "ViewLayer.Volume Indirect.R",
+    "ViewLayer.Volume Indirect.G",
+    "ViewLayer.Volume Indirect.B",
+    "ViewLayer.Emission.R",
+    "ViewLayer.Emission.G",
+    "ViewLayer.Emission.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B",
+    "ViewLayer.Debug Sample Count.X"
+  ],
+  "passes": {
+    "Combined": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0,
+        0.9999998211860657,
+        0.9999997019767761
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0035617384128272533,
+        0.011507856659591198,
+        0.028725866228342056
+      ],
+      "cycles_luminance_mean": 0.01106270682066679,
+      "cycles_rms": 0.03597535565495491,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999999158142225,
+      "maximum_absolute_error": 0.0005536834360100329,
+      "mean_absolute_error": 5.390584867370762e-09,
+      "orientation_rmse": {
+        "flip_x": 0.04882403090596199,
+        "flip_xy": 0.050876837223768234,
+        "flip_y": 0.050876542925834656,
+        "identity": 1.1906977306352928e-06
+      },
+      "p95_pixel_rmse": 1.0757347013168328e-08,
+      "p99_pixel_rmse": 1.0757347013168328e-08,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0035617384128272533,
+        0.011507854796946049,
+        0.02872585691511631
+      ],
+      "psycles_luminance_mean": 0.011062705889344215,
+      "psycles_rms": 0.03597535803370161,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 3.3097594421454934e-05,
+      "rmse": 1.1906977306352928e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 48318382.08,
+        "display_scale": 6.349130576239686,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0,
+        0.9999998807907104,
+        0.9999997615814209
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.026766696944832802,
+        0.037939321249723434,
+        0.06423884630203247
+      ],
+      "cycles_luminance_mean": 0.03745952993631363,
+      "cycles_rms": 0.10872556269168854,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.999999801103201,
+      "maximum_absolute_error": 0.001602395554073155,
+      "mean_absolute_error": 5.471369579623797e-09,
+      "orientation_rmse": {
+        "flip_x": 0.13859954476356506,
+        "flip_xy": 0.15376116335391998,
+        "flip_y": 0.15376116335391998,
+        "identity": 2.624776016091346e-06
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.026766696944832802,
+        0.037939317524433136,
+        0.06423883140087128
+      ],
+      "psycles_luminance_mean": 0.03745952248573303,
+      "psycles_rms": 0.10872556538640972,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 2.4141296224277856e-05,
+      "rmse": 2.624776016091346e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 2.1938084584172928,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/diffcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffDir": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.999980092048645,
+        0.9999665021896362,
+        0.9999662637710571
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.05658351257443428,
+        0.08446313440799713,
+        0.11730951815843582
+      ],
+      "cycles_luminance_mean": 0.08091361075639725,
+      "cycles_rms": 0.15020892024040222,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999688767289184,
+      "maximum_absolute_error": 0.3240095376968384,
+      "mean_absolute_error": 2.6611498924467014e-06,
+      "orientation_rmse": {
+        "flip_x": 0.06882530450820923,
+        "flip_xy": 0.21242566406726837,
+        "flip_y": 0.21242566406726837,
+        "identity": 0.0007813037955202162
+      },
+      "p95_pixel_rmse": 4.632959260675307e-08,
+      "p99_pixel_rmse": 6.195490982463525e-07,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.056582387536764145,
+        0.0844603031873703,
+        0.11730556190013885
+      ],
+      "psycles_luminance_mean": 0.08091109246015549,
+      "psycles_rms": 0.15020632288028707,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.005201447385879458,
+      "rmse": 0.0007813037955202162,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 838860.8,
+        "display_scale": 2.5480078299021263,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/diffdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffInd": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        7.022366523742676,
+        2.5213348865509033,
+        2.049607753753662
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        2.0143739454248077e-10,
+        1.0743284040160006e-09,
+        2.9842452953232623e-09
+      ],
+      "cycles_luminance_mean": 1.0266477667997265e-09,
+      "cycles_rms": 1.0169999313802691e-06,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 2.6100898853828625,
+      "maximum_absolute_error": 0.0009167601820081472,
+      "mean_absolute_error": 4.833284439342833e-09,
+      "orientation_rmse": {
+        "flip_x": 1.7958961961994646e-06,
+        "flip_xy": 1.7958961961994646e-06,
+        "flip_y": 1.7958961961994646e-06,
+        "identity": 1.7958961961994646e-06
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        1.4145672411203236e-09,
+        2.7087416754056903e-09,
+        6.116532613731351e-09
+      ],
+      "psycles_luminance_mean": 2.67964295197487e-09,
+      "psycles_rms": 1.4801871555432547e-06,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 1.765876418262959,
+      "rmse": 1.7958961961994646e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/diffind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Emit": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/emit.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Env": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/env.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0000001192092896,
+        1.0,
+        1.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.24597753584384918,
+        0.20997382700443268,
+        0.2619593143463135
+      ],
+      "cycles_luminance_mean": 0.22134831547737122,
+      "cycles_rms": 0.4187079071998596,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0032031238079071045,
+      "mean_absolute_error": 1.006563365990587e-08,
+      "orientation_rmse": {
+        "flip_x": 0.40001335740089417,
+        "flip_xy": 0.5921424031257629,
+        "flip_y": 0.5921424031257629,
+        "identity": 4.553693088382715e-06
+      },
+      "p95_pixel_rmse": 3.4412757088375656e-08,
+      "p99_pixel_rmse": 3.4412757088375656e-08,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.24597755074501038,
+        0.20997382700443268,
+        0.2619593143463135
+      ],
+      "psycles_luminance_mean": 0.22134831547737122,
+      "psycles_rms": 0.4187078981443144,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 1.0875584172355087e-05,
+      "rmse": 4.553693088382715e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 0.7627145181154805,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/glosscol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossDir": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0,
+        0.9999998211860657,
+        0.9999980926513672
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.004351592157036066,
+        0.006235800217837095,
+        0.008662953041493893
+      ],
+      "cycles_luminance_mean": 0.006010588724166155,
+      "cycles_rms": 0.024812402203679085,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999996901060387,
+      "maximum_absolute_error": 0.00517529109492898,
+      "mean_absolute_error": 6.7456755736827745e-09,
+      "orientation_rmse": {
+        "flip_x": 0.03509003669023514,
+        "flip_xy": 0.03509003669023514,
+        "flip_y": 0.03509003669023514,
+        "identity": 5.399670499173226e-06
+      },
+      "p95_pixel_rmse": 8.867964140790718e-09,
+      "p99_pixel_rmse": 1.3258405928695538e-08,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.004351592157036066,
+        0.006235799286514521,
+        0.00866293627768755
+      ],
+      "psycles_luminance_mean": 0.006010586861521006,
+      "psycles_rms": 0.024812402708063428,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.00021761981991298625,
+      "rmse": 5.399670499173226e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 48318382.08,
+        "display_scale": 6.0556490268927945,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/glossdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossInd": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0000003576278687,
+        0.9999998807907104,
+        1.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.007605575490742922,
+        0.02864322066307068,
+        0.9905043244361877
+      ],
+      "cycles_luminance_mean": 0.09365222603082657,
+      "cycles_rms": 0.5773505568504333,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0008953539072535932,
+      "mean_absolute_error": 1.0193812904901733e-08,
+      "orientation_rmse": {
+        "flip_x": 0.13807210326194763,
+        "flip_xy": 0.10997460782527924,
+        "flip_y": 0.10997457802295685,
+        "identity": 1.1975836287092534e-06
+      },
+      "p95_pixel_rmse": 3.847463148076713e-08,
+      "p99_pixel_rmse": 6.882551417675131e-08,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.007605578284710646,
+        0.02864321693778038,
+        0.9905043244361877
+      ],
+      "psycles_luminance_mean": 0.09365222603082657,
+      "psycles_rms": 0.5773505616979921,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 2.0742746577440224e-06,
+      "rmse": 1.1975836287092534e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 7549747.2,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "TransCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/transcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "TransDir": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/transdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "TransInd": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/sheen_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/validation/sheen-cycles-5.2.1-fallback-final/sheen_bsdf_matrix/triptychs/transind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Cycles",
+  "schema": "psycles.cycles-differential.v2"
+}

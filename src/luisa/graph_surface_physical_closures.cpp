@@ -49,6 +49,12 @@ canonical_surface_closure_identity(
         case compiler::ClosureOperation::metallic_conductor:
             result.kind = SurfaceClosureKind::metallic_conductor;
             break;
+        case compiler::ClosureOperation::sheen_microfiber:
+            result.kind = SurfaceClosureKind::sheen_microfiber;
+            break;
+        case compiler::ClosureOperation::sheen_ashikhmin:
+            result.kind = SurfaceClosureKind::sheen_ashikhmin;
+            break;
         case compiler::ClosureOperation::glass:
             result.kind = SurfaceClosureKind::glass;
             break;
@@ -109,6 +115,7 @@ SurfaceClosureRecord canonical_surface_closure(
         identity.kind == SurfaceClosureKind::glossy ||
         identity.kind == SurfaceClosureKind::metallic_f82 ||
         identity.kind == SurfaceClosureKind::metallic_conductor ||
+        identity.kind == SurfaceClosureKind::sheen_microfiber ||
         identity.kind == SurfaceClosureKind::thin_glass_transmission;
     if (general_payload) {
         const auto state = closure.microfacet_state_configured
@@ -138,8 +145,9 @@ SurfaceClosureRecord canonical_surface_closure(
         result.specular_ior_level = closure.specular_ior_level;
         result.specular_tint = closure.specular_tint;
     }
-    if (closure.operation == compiler::ClosureOperation::principled &&
-        closure.principled_lobe == PrincipledLobe::sheen) {
+    if ((closure.operation == compiler::ClosureOperation::principled &&
+         closure.principled_lobe == PrincipledLobe::sheen) ||
+        closure.operation == compiler::ClosureOperation::sheen_microfiber) {
         result.sheen_transform_a = closure.sheen_transform_a;
         result.sheen_transform_b = closure.sheen_transform_b;
     }

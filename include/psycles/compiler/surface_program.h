@@ -1000,6 +1000,13 @@ enum class ClosureOperation : std::uint8_t {
   // reachability can remove the unused conductor implementation exactly.
   metallic_f82,
   metallic_conductor,
+  // Blender 5.2's standalone Sheen node statically selects one of two
+  // observably different closure algebras. Microfiber is a tabulated LTC
+  // distribution; Ashikhmin Velvet uses a uniform-hemisphere proposal and a
+  // distinct analytic response. Separate opcodes make this a disjoint sum
+  // and let the Luisa JIT erase the unused implementation exactly.
+  sheen_microfiber,
+  sheen_ashikhmin,
   glass,
   emission,
   transparent,

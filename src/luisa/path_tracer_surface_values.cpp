@@ -266,6 +266,44 @@ namespace {
                 .preserve_ggx_energy = preserve_ggx_energy,
                 .beckmann = beckmann};
         }
+        case compiler::ClosureOperation::sheen_microfiber:
+        case compiler::ClosureOperation::sheen_ashikhmin: {
+            const auto color = read_closure_vector_or(
+                runtime,
+                services,
+                point,
+                locals,
+                instruction,
+                operand::sheen::color,
+                make_float3(0.0f));
+            return TracedClosure{
+                .operation = operation,
+                .weight = bsdf_allocated_weight(color * mix_weight),
+                .color = color,
+                .normal = safe_normalize(
+                    read_closure_vector_or(
+                        runtime,
+                        services,
+                        point,
+                        locals,
+                        instruction,
+                        operand::sheen::normal,
+                        point.shading_normal),
+                    point.shading_normal),
+                .roughness = read_closure_scalar_or(
+                    runtime,
+                    services,
+                    point,
+                    locals,
+                    instruction,
+                    operand::sheen::roughness,
+                    0.5f),
+                .diffuse_roughness = 0.0f,
+                .metallic = 0.0f,
+                .ior = 1.0f,
+                .specular_ior_level = 0.0f,
+                .specular_tint = make_float3(1.0f)};
+        }
         case compiler::ClosureOperation::translucent: {
             const auto color = read_closure_vector_or(
                 runtime,

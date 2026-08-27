@@ -200,6 +200,8 @@ GraphSurfaceImplementation::prepare_traced_values(
             case compiler::ClosureOperation::glossy:
             case compiler::ClosureOperation::metallic_f82:
             case compiler::ClosureOperation::metallic_conductor:
+            case compiler::ClosureOperation::sheen_microfiber:
+            case compiler::ClosureOperation::sheen_ashikhmin:
             case compiler::ClosureOperation::glass:
             case compiler::ClosureOperation::refraction:
             case compiler::ClosureOperation::transparent:

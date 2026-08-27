@@ -401,6 +401,38 @@ public:
                 .ref = {.node = id, .socket = "Closure"},
                 .type = SocketType::closure});
         }
+        if (type == "BSDF_SHEEN") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::sheen_bsdf,
+                node_name);
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Distribution",
+                SocketValue::string(context.node_property_text(
+                    node, "distribution", "MICROFIBER"))));
+            static_cast<void>(context.bind(
+                id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(context.bind(
+                id,
+                "Roughness",
+                node,
+                "Roughness",
+                SocketType::floating));
+            if (context.raw_input(node, "Normal") != nullptr) {
+                static_cast<void>(context.bind(
+                    id, "Normal", node, "Normal", SocketType::normal));
+            } else {
+                static_cast<void>(context.graph().connect(
+                    context.geometry_output(
+                        "Normal", SocketType::normal)
+                        .ref,
+                    id,
+                    "Normal"));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
         if (type == "BSDF_GLASS" || type == "BSDF_REFRACTION") {
             const auto id = context.graph().add_node(
                 type == "BSDF_GLASS"

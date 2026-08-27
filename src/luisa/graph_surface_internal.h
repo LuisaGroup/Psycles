@@ -440,6 +440,19 @@ template <typename Id, typename Values>
     const SurfaceClosurePhysicalGeneralRecord &closure,
     Float3 incoming,
     Float2 random) noexcept;
+struct AshikhminVelvetEvaluation {
+    Float intensity;
+    Float pdf;
+    Bool valid;
+};
+[[nodiscard]] AshikhminVelvetEvaluation evaluate_ashikhmin_velvet(
+    const SurfaceClosurePhysicalCommonRecord &closure,
+    Float3 incoming,
+    Float3 outgoing,
+    bool sampling_domain = false) noexcept;
+[[nodiscard]] Float3 sample_uniform_hemisphere(
+    Float3 normal,
+    Float2 random) noexcept;
 [[nodiscard]] Float3 sample_cosine_hemisphere(
     Float3 normal, Float2 random) noexcept;
 class GraphSurfaceImplementation;

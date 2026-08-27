@@ -1718,6 +1718,37 @@ void test_cycles_default_microfacet_tangent_import() {
           "special":{}
         }]
       }
+    },
+    {
+      "name":"Standalone Ashikhmin Sheen",
+      "cycles_sync":{"shader_index":11},
+      "node_tree":{
+        "name":"Standalone Ashikhmin Sheen",
+        "surface_root":{"node":"Sheen","socket":"BSDF"},
+        "volume_root":null,
+        "displacement_root":null,
+        "links":[],
+        "nodes":[{
+          "name":"Sheen","type":"BSDF_SHEEN","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Color","name":"Color",
+             "type":"NodeSocketColor","linked":false,
+             "default":[0.6,0.3,0.15,1.0]},
+            {"identifier":"Roughness","name":"Roughness",
+             "type":"NodeSocketFloat","linked":false,"default":0.37},
+            {"identifier":"Normal","name":"Normal",
+             "type":"NodeSocketVector","linked":false,
+             "default":[0.0,0.0,0.0]},
+            {"identifier":"Weight","name":"Weight",
+             "type":"NodeSocketFloat","linked":false,"default":0.0}
+          ],
+          "outputs":[{"identifier":"BSDF","name":"BSDF",
+            "type":"NodeSocketShader","linked":true}],
+          "properties":{"distribution":"ASHIKHMIN"},
+          "special":{}
+        }]
+      }
     }
   ],
   "render":{"width":16,"height":16,"percentage":100,"cycles":{}},
@@ -1741,7 +1772,10 @@ void test_cycles_default_microfacet_tangent_import() {
                          psycles::compiler::node_type::glossy_bsdf}},
            std::pair{"Default Metallic Tangent",
                      std::string_view{
-                         psycles::compiler::node_type::metallic_bsdf}}}) {
+                         psycles::compiler::node_type::metallic_bsdf}},
+           std::pair{"Standalone Ashikhmin Sheen",
+                     std::string_view{
+                         psycles::compiler::node_type::sheen_bsdf}}}) {
     const psycles::contract::MaterialDesc *material = nullptr;
     for (const auto &[id, candidate] : imported.scene->materials) {
       static_cast<void>(id);
@@ -1780,18 +1814,32 @@ void test_cycles_default_microfacet_tangent_import() {
           "Blender Metallic import did not preserve the original closure "
           "sockets and static model tags");
     }
-    const auto tangent = closure_node->inputs.find("Tangent");
-    expect(tangent != closure_node->inputs.end() &&
-               tangent->second.source.has_value(),
-           std::string{material_name} +
-               " did not materialize Cycles' default tangent edge");
-    const auto *geometry_node = material->shader.find(
-        tangent->second.source->node);
-    expect(geometry_node != nullptr &&
-               geometry_node->type == psycles::compiler::node_type::geometry &&
-               tangent->second.source->socket == "Tangent",
-           std::string{material_name} +
-               " default tangent is not Geometry.Tangent");
+    if (expected_type == psycles::compiler::node_type::sheen_bsdf) {
+      expect(
+          closure_node->properties.contains("Distribution") &&
+              closure_node->properties.at("Distribution") ==
+                  psycles::contract::SocketValue::string("ASHIKHMIN") &&
+              closure_node->inputs.contains("Color") &&
+              closure_node->inputs.contains("Roughness") &&
+              closure_node->inputs.contains("Normal") &&
+              !closure_node->inputs.contains("Weight"),
+          "Blender Sheen import did not preserve the raw closure sockets "
+          "and static distribution tag");
+    } else {
+      const auto tangent = closure_node->inputs.find("Tangent");
+      expect(tangent != closure_node->inputs.end() &&
+                 tangent->second.source.has_value(),
+             std::string{material_name} +
+                 " did not materialize Cycles' default tangent edge");
+      const auto *geometry_node = material->shader.find(
+          tangent->second.source->node);
+      expect(geometry_node != nullptr &&
+                 geometry_node->type ==
+                     psycles::compiler::node_type::geometry &&
+                 tangent->second.source->socket == "Tangent",
+             std::string{material_name} +
+                 " default tangent is not Geometry.Tangent");
+    }
 
     psycles::compiler::ShaderCompiler compiler{
         psycles::compiler::make_core_node_registry()};
@@ -1804,11 +1852,13 @@ void test_cycles_default_microfacet_tangent_import() {
                surface.program->closure_instructions().size() == 1u,
            std::string{material_name} + " graph did not lower");
     const auto &closure = surface.program->closure_instructions().front();
-    expect(closure.microfacet_anisotropy.valid() &&
-               closure.microfacet_rotation.valid() &&
-               closure.tangent.valid(),
-           std::string{material_name} +
-               " lost anisotropy, rotation, or tangent during lowering");
+    if (expected_type != psycles::compiler::node_type::sheen_bsdf) {
+      expect(closure.microfacet_anisotropy.valid() &&
+                 closure.microfacet_rotation.valid() &&
+                 closure.tangent.valid(),
+             std::string{material_name} +
+                 " lost anisotropy, rotation, or tangent during lowering");
+    }
     if (expected_type == psycles::compiler::node_type::metallic_bsdf) {
       expect(
           closure.operation ==
@@ -1819,6 +1869,14 @@ void test_cycles_default_microfacet_tangent_import() {
               !closure.preserve_ggx_energy,
           "Blender Metallic physical-conductor tag was not lowered "
           "without pre-baking");
+    }
+    if (expected_type == psycles::compiler::node_type::sheen_bsdf) {
+      expect(
+          closure.operation ==
+                  psycles::compiler::ClosureOperation::sheen_ashikhmin &&
+              closure.color.valid() && closure.normal.valid() &&
+              closure.roughness.valid(),
+          "Blender Ashikhmin Sheen did not lower as a raw closure");
     }
   }
 }

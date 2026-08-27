@@ -363,6 +363,13 @@ struct metallic {
   static constexpr std::size_t count = 9u;
 };
 
+struct sheen {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t normal = 1u;
+  static constexpr std::size_t roughness = 2u;
+  static constexpr std::size_t count = 3u;
+};
+
 struct glass {
   static constexpr std::size_t color = 0u;
   static constexpr std::size_t normal = 1u;
@@ -423,6 +430,9 @@ surface_closure_operand_count(ClosureOperation operation) noexcept {
   case ClosureOperation::metallic_f82:
   case ClosureOperation::metallic_conductor:
     return surface_closure_operand::metallic::count;
+  case ClosureOperation::sheen_microfiber:
+  case ClosureOperation::sheen_ashikhmin:
+    return surface_closure_operand::sheen::count;
   case ClosureOperation::glass:
     return surface_closure_operand::glass::count;
   case ClosureOperation::emission:

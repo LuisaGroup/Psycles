@@ -113,6 +113,8 @@ constexpr std::array closure_cases{
     ClosureCase{SurfaceClosureKind::glossy},
     ClosureCase{SurfaceClosureKind::metallic_f82},
     ClosureCase{SurfaceClosureKind::metallic_conductor},
+    ClosureCase{SurfaceClosureKind::sheen_microfiber},
+    ClosureCase{SurfaceClosureKind::sheen_ashikhmin},
     ClosureCase{SurfaceClosureKind::glass},
     ClosureCase{SurfaceClosureKind::refraction},
     ClosureCase{SurfaceClosureKind::bssrdf},
@@ -634,6 +636,8 @@ int main(int argc, char **argv) {
             (canonical.kind == static_cast<std::uint32_t>(
                                    SurfaceClosureKind::metallic_conductor)) |
             (canonical.kind == static_cast<std::uint32_t>(
+                                   SurfaceClosureKind::sheen_microfiber)) |
+            (canonical.kind == static_cast<std::uint32_t>(
                                    SurfaceClosureKind::thin_glass_transmission));
         Bool projection_equal = false;
         $if(glass) {
@@ -845,6 +849,8 @@ int main(int argc, char **argv) {
              static_cast<std::uint32_t>(SurfaceClosureKind::metallic_f82)) |
             (consumer_source.kind == static_cast<std::uint32_t>(
                  SurfaceClosureKind::metallic_conductor)) |
+            (consumer_source.kind == static_cast<std::uint32_t>(
+                 SurfaceClosureKind::sheen_microfiber)) |
             (consumer_source.kind ==
              static_cast<std::uint32_t>(
                  SurfaceClosureKind::thin_glass_transmission));

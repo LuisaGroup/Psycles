@@ -9,6 +9,8 @@ import sys
 import tempfile
 import unittest
 
+import numpy as np
+
 
 def load_module(path: pathlib.Path):
     spec = importlib.util.spec_from_file_location(
@@ -153,6 +155,17 @@ class ChannelResolutionTests(unittest.TestCase):
                 allow_unverified=True,
             )
         )
+
+    def test_invalid_pixels_are_attributed_to_each_renderer(self) -> None:
+        reference = np.zeros((2, 2, 3), dtype=np.float32)
+        actual = np.zeros_like(reference)
+        reference[0, 0, 0] = np.nan
+        actual[1, 1, 1] = np.inf
+        metrics = self.comparison._metrics(reference, actual)
+        self.assertEqual(metrics["valid_pixels"], 2)
+        self.assertEqual(metrics["invalid_pixels"], 2)
+        self.assertEqual(metrics["reference_invalid_pixels"], 1)
+        self.assertEqual(metrics["actual_invalid_pixels"], 1)
 
 
 if __name__ == "__main__":

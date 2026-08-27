@@ -201,8 +201,9 @@ def _metrics(reference: np.ndarray, actual: np.ndarray) -> dict[str, Any]:
             f"shape mismatch: Cycles {reference.shape}, "
             f"Psycles {actual.shape}"
         )
-    finite = np.isfinite(reference) & np.isfinite(actual)
-    valid_pixels = np.all(finite, axis=2)
+    reference_valid_pixels = np.all(np.isfinite(reference), axis=2)
+    actual_valid_pixels = np.all(np.isfinite(actual), axis=2)
+    valid_pixels = reference_valid_pixels & actual_valid_pixels
     invalid_pixels = int(valid_pixels.size - np.count_nonzero(valid_pixels))
     if not np.any(valid_pixels):
         raise RuntimeError("no finite pixels to compare")
@@ -265,6 +266,14 @@ def _metrics(reference: np.ndarray, actual: np.ndarray) -> dict[str, Any]:
         "shape": list(reference.shape),
         "valid_pixels": int(np.count_nonzero(valid_pixels)),
         "invalid_pixels": invalid_pixels,
+        "reference_invalid_pixels": int(
+            reference_valid_pixels.size
+            - np.count_nonzero(reference_valid_pixels)
+        ),
+        "actual_invalid_pixels": int(
+            actual_valid_pixels.size
+            - np.count_nonzero(actual_valid_pixels)
+        ),
         "mean_absolute_error": float(np.mean(absolute)),
         "rmse": rmse,
         "relative_rmse": rmse / max(reference_rms, 1.0e-20),

@@ -30,6 +30,8 @@ inline constexpr auto all_surface_closure_kinds =
     surface_closure_kind_bit(SurfaceClosureKind::glossy) |
     surface_closure_kind_bit(SurfaceClosureKind::metallic_f82) |
     surface_closure_kind_bit(SurfaceClosureKind::metallic_conductor) |
+    surface_closure_kind_bit(SurfaceClosureKind::sheen_microfiber) |
+    surface_closure_kind_bit(SurfaceClosureKind::sheen_ashikhmin) |
     surface_closure_kind_bit(SurfaceClosureKind::glass) |
     surface_closure_kind_bit(SurfaceClosureKind::transparent) |
     surface_closure_kind_bit(SurfaceClosureKind::refraction) |
@@ -69,8 +71,9 @@ inline constexpr auto all_thin_film_principled_lobes =
 //
 //   Principled not in kinds => principled_lobes is empty
 //   anisotropic_microfacet_kinds is a subset of
-//     kinds intersect {Principled, Glossy}
-//   thin_film_kinds is a subset of kinds intersect {Glass}
+//     kinds intersect {Principled, Glossy, MetallicF82, MetallicConductor}
+//   thin_film_kinds is a subset of
+//     kinds intersect {Glass, MetallicF82, MetallicConductor}
 //   thin_film_principled_lobes is a subset of
 //     principled_lobes intersect {Metallic, Dielectric}.
 //
