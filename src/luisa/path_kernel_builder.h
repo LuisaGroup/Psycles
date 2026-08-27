@@ -71,6 +71,12 @@ struct PathKernelConfig {
     bool refractive_caustics{};
     bool has_subsurface{};
     bool path_trace_enabled{};
+    // Host/JIT diagnostic policy. When false, no histogram operation or
+    // device-side enable predicate is recorded. The base addresses a private
+    // suffix of the existing diagnostic buffer and is independent of image
+    // dimensions and dispatch chunking.
+    bool surface_closure_count_histogram_enabled{};
+    std::uint32_t surface_closure_count_histogram_base{};
     bool staged_surface_sorting{};
   // Optional host/JIT execution policy. When present, the canonical direct-
   // light transport stage publishes its reduced visibility task instead of
@@ -392,6 +398,7 @@ struct PathSampleContext {
         Float3 value) const noexcept;
   void trace_write_closure(UInt event, std::uint32_t closure,
                            std::uint32_t field, Float3 value) const noexcept;
+    void record_surface_closure_count(UInt count) const noexcept;
     void
     accumulate_light_pass(Var<LightPassContributionCall> contribution) noexcept;
     // These are host-specialized film operations. Serial construction updates

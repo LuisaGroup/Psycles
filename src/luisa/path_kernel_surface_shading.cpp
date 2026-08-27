@@ -158,6 +158,23 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                                            surface.path_surface_query,
                                            include_runtime_flags,
                                            include_aov);
+        if (config.surface_closure_count_histogram_enabled) {
+            UInt closure_count =
+                populated_surface
+                    ? UInt{populated_surface->closure_count()}
+                    : trace_surface_closure(
+                          surface_tag,
+                          point,
+                          0u,
+                          surface.path_surface_query.reflective_caustics,
+                          surface.path_surface_query.refractive_caustics)
+                          .count;
+            // A BSSRDF exit samples the synthetic one-closure local domain;
+            // the material population above is not the directional consumer.
+            closure_count = select(
+                closure_count, 1u, bounce.subsurface_exit);
+            sample.record_surface_closure_count(closure_count);
+        }
         surface.set_evaluated_shadow_shading_normal(
             preparation.shading_normal);
         Float3 emitted = preparation.emission;

@@ -57,8 +57,9 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
       count * volume_guiding::denoised_pixel_stride);
   _volume_guiding_intermediate = _scene->device.create_buffer<luisa::uint>(
       count * volume_guiding::denoised_pixel_stride);
+  const auto diagnostic_layout = path_diagnostic_buffer_layout(_options);
   _path_trace = _scene->device.create_buffer<luisa::float4>(
-      _options.path_trace ? path_trace_schema::slot_count : 1u);
+      diagnostic_layout.allocation_slot_count);
   const auto generated_filter_table = sampling::make_pixel_filter_table(
       settings.pixel_filter, settings.filter_width);
     luisa::vector<float> filter_table;
@@ -77,31 +78,31 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
       count * volume_guiding::raw_pixel_stride);
   luisa::vector<luisa::uint> zeros_volume_guiding_denoised(
       count * volume_guiding::denoised_pixel_stride);
-    luisa::vector<luisa::float4> zeros_path_trace(
-      _options.path_trace ? path_trace_schema::slot_count : 1u);
-    _stream << _combined.copy_from(luisa::span{zeros_float})
-            << _normal.copy_from(luisa::span{zeros_float})
-            << _albedo.copy_from(luisa::span{zeros_float})
+  luisa::vector<luisa::float4> zeros_path_trace(
+      diagnostic_layout.allocation_slot_count);
+  _stream << _combined.copy_from(luisa::span{zeros_float})
+          << _normal.copy_from(luisa::span{zeros_float})
+          << _albedo.copy_from(luisa::span{zeros_float})
           << _light_passes.copy_from(luisa::span{zeros_light_passes})
-            << _sample_count.copy_from(luisa::span{zeros_uint})
-            << _volume_guiding_raw.copy_from(
+          << _sample_count.copy_from(luisa::span{zeros_uint})
+          << _volume_guiding_raw.copy_from(
                  luisa::span{zeros_volume_guiding_raw})
-            << _volume_guiding_denoised.copy_from(
+          << _volume_guiding_denoised.copy_from(
                  luisa::span{zeros_volume_guiding_denoised})
-            << _volume_guiding_intermediate.copy_from(
+          << _volume_guiding_intermediate.copy_from(
                  luisa::span{zeros_volume_guiding_denoised})
           << _path_trace.copy_from(luisa::span{zeros_path_trace})
           << _pixel_filter_table.copy_from(luisa::span{filter_table})
-            << synchronize();
-    _volume_guiding_filter =
-        _scene->volume_metadata.has_volumes()
+          << synchronize();
+  _volume_guiding_filter =
+      _scene->volume_metadata.has_volumes()
           ? std::make_unique<VolumeGuidingFilter>(_scene->device)
-            : nullptr;
+          : nullptr;
 
-    auto scene = _scene;
-    const auto render_settings = _settings;
-    const auto render_window = _window;
-    const auto integrator = render_settings.integrator;
+  auto scene = _scene;
+  const auto render_settings = _settings;
+  const auto render_window = _window;
+  const auto integrator = render_settings.integrator;
   const auto bounce_limits = cycles_kernel_bounce_limits(
       {.maximum = integrator.max_bounces,
             .minimum = integrator.min_bounces,
@@ -293,16 +294,21 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .camera_projection = camera_projection,
         .camera_depth_of_field = camera_depth_of_field,
         .camera_aperture_blades = camera_aperture_blades,
-      .camera_aperture_rotation = camera_aperture_rotation,
+        .camera_aperture_rotation = camera_aperture_rotation,
         .next_event_estimation = next_event_estimation,
         .use_light_tree = use_light_tree,
         .reflective_caustics = reflective_caustics,
         .refractive_caustics = refractive_caustics,
         .has_subsurface = scene->has_subsurface,
         .path_trace_enabled = path_trace_enabled,
-      .staged_surface_sorting = _options.staged_surface_sorting,
-      .volume_stack_size = scene->volume_metadata.stack_size,
-      .camera_may_be_inside_volume = camera_may_be_inside_volume,
+        .surface_closure_count_histogram_enabled =
+            static_cast<bool>(_options.surface_closure_count_histogram),
+        .surface_closure_count_histogram_base =
+            static_cast<std::uint32_t>(
+                diagnostic_layout.surface_closure_count_histogram_base),
+        .staged_surface_sorting = _options.staged_surface_sorting,
+        .volume_stack_size = scene->volume_metadata.stack_size,
+        .camera_may_be_inside_volume = camera_may_be_inside_volume,
         .volume_state = std::move(volume_state),
         .light_transport = std::move(light_transport),
         .light_distribution_sample =

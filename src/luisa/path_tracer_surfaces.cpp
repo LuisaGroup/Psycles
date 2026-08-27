@@ -125,6 +125,11 @@ class PopulatedSurfaceShaderImpl final
             reachability);
     }
 
+    [[nodiscard]] Expr<std::uint32_t>
+    closure_count() const noexcept override {
+        return _population.closures().count();
+    }
+
     [[nodiscard]] SurfacePreparation preparation()
         const noexcept override {
         return _preparation;

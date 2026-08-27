@@ -5,6 +5,24 @@
 
 namespace psycles::luisa_backend::detail {
 
+PathDiagnosticBufferLayout path_diagnostic_buffer_layout(
+    const LuisaPathTracerOptions &options) noexcept {
+    PathDiagnosticBufferLayout layout;
+    layout.path_trace_slot_count =
+        options.path_trace ? path_trace_schema::slot_count : 0u;
+    layout.surface_closure_count_histogram_base =
+        layout.path_trace_slot_count;
+    layout.surface_closure_count_histogram_slot_count =
+        options.surface_closure_count_histogram
+            ? luisa_surface_closure_count_histogram_bin_count
+            : 0u;
+    layout.allocation_slot_count = std::max<std::size_t>(
+        layout.surface_closure_count_histogram_base +
+            layout.surface_closure_count_histogram_slot_count,
+        1u);
+    return layout;
+}
+
 std::size_t LuisaRenderSession::pixel_count() const noexcept {
     return static_cast<std::size_t>(_window.width) *
            static_cast<std::size_t>(_window.height);
@@ -19,7 +37,9 @@ void LuisaRenderSession::deliver_path_trace() {
     luisa::vector<luisa::float4> slots(
         path_trace_schema::slot_count);
     _stream
-        << _path_trace.copy_to(luisa::span{slots})
+        << _path_trace
+               .view(0u, path_trace_schema::slot_count)
+               .copy_to(luisa::span{slots})
         << synchronize();
     LuisaPathTrace trace{
         .pixel_x = _options.path_trace->pixel_x,
@@ -36,6 +56,45 @@ void LuisaRenderSession::deliver_path_trace() {
     }
     _options.path_trace->sink->write(trace);
     _path_trace_delivered = true;
+}
+
+void LuisaRenderSession::deliver_surface_closure_count_histogram() {
+    if (!_options.surface_closure_count_histogram ||
+        !_options.surface_closure_count_histogram->sink) {
+        return;
+    }
+    luisa::vector<luisa::float4> bins(
+        luisa_surface_closure_count_histogram_bin_count);
+    const auto layout = path_diagnostic_buffer_layout(_options);
+    _stream
+        << _path_trace
+               .view(layout.surface_closure_count_histogram_base, bins.size())
+               .copy_to(luisa::span{bins})
+        << synchronize();
+
+    constexpr auto largest_consecutive_float_integer = 16777216.0f;
+    LuisaSurfaceClosureCountHistogram histogram;
+    histogram.exact = true;
+    for (auto bin = std::size_t{0u}; bin < bins.size(); ++bin) {
+        const std::array lanes{
+            bins[bin].x, bins[bin].y, bins[bin].z, bins[bin].w};
+        for (const auto value : lanes) {
+            const auto lane_exact =
+                std::isfinite(value) && value >= 0.0f &&
+                value < largest_consecutive_float_integer &&
+                std::trunc(value) == value;
+            histogram.exact &= lane_exact;
+            // Only exact lanes are converted. Besides making an invalid
+            // result unusable by construction, this avoids an out-of-range
+            // float-to-uint conversion if a corrupted device counter is a
+            // large but finite value.
+            if (lane_exact) {
+                histogram.counts[bin] +=
+                    static_cast<std::uint64_t>(value);
+            }
+        }
+    }
+    _options.surface_closure_count_histogram->sink->write(histogram);
 }
 
 void LuisaRenderSession::prepare_sobol_table(
@@ -417,7 +476,11 @@ bool LuisaRenderSession::render_samples(
     if (_cancelled.load()) {
         return false;
     }
-    return write_passes(output);
+    if (!write_passes(output)) {
+        return false;
+    }
+    deliver_surface_closure_count_histogram();
+    return true;
 }
 
 void LuisaRenderSession::cancel() noexcept {

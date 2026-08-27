@@ -1,0 +1,267 @@
+{
+    "schema": "psycles.surface-closure-count-histogram.v1",
+    "exact": true,
+    "surface_events": 13412983,
+    "bins": [
+        {
+            "closure_count": 0,
+            "surface_events": 208073
+        },
+        {
+            "closure_count": 1,
+            "surface_events": 7396448
+        },
+        {
+            "closure_count": 2,
+            "surface_events": 5406363
+        },
+        {
+            "closure_count": 3,
+            "surface_events": 401900
+        },
+        {
+            "closure_count": 4,
+            "surface_events": 199
+        },
+        {
+            "closure_count": 5,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 6,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 7,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 8,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 9,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 10,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 11,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 12,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 13,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 14,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 15,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 16,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 17,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 18,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 19,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 20,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 21,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 22,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 23,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 24,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 25,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 26,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 27,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 28,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 29,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 30,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 31,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 32,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 33,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 34,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 35,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 36,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 37,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 38,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 39,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 40,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 41,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 42,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 43,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 44,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 45,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 46,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 47,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 48,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 49,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 50,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 51,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 52,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 53,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 54,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 55,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 56,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 57,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 58,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 59,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 60,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 61,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 62,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 63,
+            "surface_events": 0
+        },
+        {
+            "closure_count": 64,
+            "surface_events": 0
+        }
+    ]
+}
