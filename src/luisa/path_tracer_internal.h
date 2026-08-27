@@ -8,6 +8,7 @@
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_reachability.h>
+#include <psycles/luisa/surface_value_runtime_limits.h>
 #include <psycles/luisa/volume_majorant_hierarchy.h>
 
 #include "path_tracer_types.h"
@@ -335,9 +336,14 @@ struct SurfaceValueRuntime {
     // These are execution capacities, not a weakly typed value ABI. The
     // builder rejects the complete compact route when any exact liveness plan
     // exceeds a bank, leaving the established expanded route intact.
-    static constexpr std::uint32_t scalar_capacity = 8u;
-    static constexpr std::uint32_t vector_capacity = 12u;
-    static constexpr std::uint32_t unsigned_integer_capacity = 1u;
+    static constexpr auto storage_capacity =
+        compact_surface_value_storage_capacity;
+    static constexpr std::uint32_t scalar_capacity =
+        storage_capacity.scalar_slots;
+    static constexpr std::uint32_t vector_capacity =
+        storage_capacity.vector_slots;
+    static constexpr std::uint32_t unsigned_integer_capacity =
+        storage_capacity.unsigned_integer_slots;
 
     compiler::SurfaceValueExecutableScene executable;
     std::vector<SurfaceValueRuntimeTopology> topologies;

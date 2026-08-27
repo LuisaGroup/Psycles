@@ -1,0 +1,53 @@
+{
+  "schema": "psycles.surface-value-identity-quotient.v1",
+  "reference": {
+    "psycles_commit": "7aa37b082f06082a46be5d36155000182bb7281a",
+    "surface_kernel": "kernel_50428afdae2d7fde",
+    "surface_calls": 293,
+    "surface_work_items": 53660864,
+    "surface_duration_ms": 1452.051699,
+    "surface_ns_per_work_item": 27.059790,
+    "surface_code_object_bytes": 340312,
+    "render_only_seconds": 2.5423,
+    "preparation_runtime_instructions": 6274,
+    "value_semantic_variants": 61,
+    "maximum_typed_slots": [8, 9, 0],
+    "maximum_typed_payload_bytes": 140,
+    "topology_typed_payload_bytes": 8324
+  },
+  "candidate": {
+    "surface_kernel": "kernel_fd1f1c5285842623",
+    "surface_ns_per_work_item_samples": [
+      26.7558394,
+      26.7644853,
+      26.845705987887186
+    ],
+    "surface_ns_per_work_item_median": 26.7644853,
+    "surface_median_change_percent": -1.091304478,
+    "surface_code_object_bytes": 340184,
+    "render_only_seconds_samples": [2.52027, 2.52529],
+    "preparation_runtime_instructions": 5159,
+    "value_semantic_variants": 60,
+    "maximum_typed_slots": [8, 9, 0],
+    "maximum_typed_payload_bytes": 140,
+    "topology_typed_payload_bytes": 8300
+  },
+  "comparison": {
+    "width": 640,
+    "height": 480,
+    "samples": 64,
+    "channels": 46,
+    "mean_error": 3.97126e-10,
+    "rms_error": 1.20709e-8,
+    "maximum_absolute_error": 3.05176e-5,
+    "pixels_over_1e-6": 21,
+    "invalid_pixels_in_15_named_passes": 0
+  },
+  "tests": {
+    "focused_backends_passed": 15,
+    "focused_backends_failed": 0,
+    "full_suite_passed": 308,
+    "full_suite_failed": 6,
+    "full_suite_known_unrelated_failures": true
+  }
+}
