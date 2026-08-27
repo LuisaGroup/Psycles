@@ -396,8 +396,30 @@ int main(int argc, char **argv) {
     for (auto index = std::size_t{0u}; index < specialized_result.size();
          ++index) {
         if (!bit_exact(specialized_result[index], top_result[index])) {
+            const auto specialized_bits =
+                std::bit_cast<std::array<std::uint32_t, 4u>>(
+                    specialized_result[index]);
+            const auto top_bits =
+                std::bit_cast<std::array<std::uint32_t, 4u>>(
+                    top_result[index]);
             std::cerr << "closure specialization changed reachable result " << index
-                      << " on " << backend << '\n';
+                      << " on " << backend << ": specialized {"
+                      << specialized_result[index].x << ", "
+                      << specialized_result[index].y << ", "
+                      << specialized_result[index].z << ", "
+                      << specialized_result[index].w << "}, top {"
+                      << top_result[index].x << ", "
+                      << top_result[index].y << ", "
+                      << top_result[index].z << ", "
+                      << top_result[index].w << "}; bits specialized {"
+                      << specialized_bits[0u] << ", "
+                      << specialized_bits[1u] << ", "
+                      << specialized_bits[2u] << ", "
+                      << specialized_bits[3u] << "}, top {"
+                      << top_bits[0u] << ", "
+                      << top_bits[1u] << ", "
+                      << top_bits[2u] << ", "
+                      << top_bits[3u] << "}\n";
             return EXIT_FAILURE;
         }
     }

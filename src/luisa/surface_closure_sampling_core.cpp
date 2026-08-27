@@ -249,6 +249,228 @@ surface_closure_selection(
     return result;
 }
 
+namespace {
+
+[[nodiscard]] luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+sample_common_closure(
+    const SurfaceClosurePoint &point,
+    const SurfaceClosurePhysicalCommonOnlyRecord &closure,
+    Float3 glossy_normal,
+    Float2 random_direction,
+    SurfaceClosureReachability reachability) noexcept {
+    const auto &common = closure.common;
+    const auto reachable_kind = [&common, reachability](
+                                    SurfaceClosureKind kind) noexcept {
+        if (!reachability.contains(kind)) { return Bool{false}; }
+        return has_kind(common, kind);
+    };
+    const auto is_translucent =
+        reachable_kind(SurfaceClosureKind::translucent);
+    const auto is_rough_translucent =
+        reachable_kind(SurfaceClosureKind::rough_translucent);
+    const auto is_transparent =
+        reachable_kind(SurfaceClosureKind::transparent);
+    auto result = zero_surface_closure_conditional_sample();
+    result.valid = true;
+    $if(is_transparent) {
+        if (reachability.contains(SurfaceClosureKind::transparent)) {
+            result.direction = -point.incoming;
+            result.roughness = make_float2(0.0f);
+        }
+    }
+    $else {
+        const auto cosine_possible =
+            reachability.contains(SurfaceClosureKind::diffuse) ||
+            reachability.contains(SurfaceClosureKind::translucent) ||
+            reachability.contains(SurfaceClosureKind::rough_translucent);
+        if (cosine_possible) {
+            const auto normal = select(
+                common.normal,
+                select(-glossy_normal,
+                       common.normal,
+                       is_rough_translucent),
+                is_translucent | is_rough_translucent);
+            result.direction = detail::sample_cosine_hemisphere(
+                normal, random_direction);
+        }
+    };
+    using namespace surface_closure_sample_property;
+    result.properties =
+        select(0u, transparent, is_transparent) |
+        select(0u,
+               translucent,
+               is_translucent | is_rough_translucent);
+    return result;
+}
+
+[[nodiscard]] luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+sample_general_closure(
+    const ShaderServices &services,
+    const SurfaceClosurePoint &point,
+    Float3 shading_normal,
+    const SurfaceClosurePhysicalGeneralRecord &closure,
+    Float3 incoming,
+    Float3 glossy_normal,
+    Float2 random_direction,
+    const SurfaceQuery &query,
+    SurfaceClosureReachability reachability) noexcept {
+    const auto &common = closure.common;
+    const auto reachable_kind = [&common, reachability](
+                                    SurfaceClosureKind kind) noexcept {
+        if (!reachability.contains(kind)) { return Bool{false}; }
+        return has_kind(common, kind);
+    };
+    const auto is_principled =
+        reachable_kind(SurfaceClosureKind::principled);
+    const auto is_sheen =
+        reachability.contains_principled_lobe(SurfaceClosureLobe::sheen)
+            ? is_principled &
+                  has_lobe(common, SurfaceClosureLobe::sheen)
+            : Bool{false};
+    const auto is_glossy = reachable_kind(SurfaceClosureKind::glossy);
+    const auto is_thin = reachable_kind(
+        SurfaceClosureKind::thin_glass_transmission);
+    const auto sample_glossy =
+        is_glossy | (is_principled & !is_sheen);
+    Float3 direction = make_float3(0.0f, 0.0f, 1.0f);
+    Float2 roughness = make_float2(1.0f);
+    Float3 singular_evaluation = make_float3(0.0f);
+    Float singular_pdf = 0.0f;
+    Bool singular = false;
+    Bool transmission = false;
+    Bool valid = true;
+
+    $if(is_thin) {
+        if (reachability.contains(
+                SurfaceClosureKind::thin_glass_transmission)) {
+            const detail::ThinGlassComponent thin_glass{
+                services, point};
+            const auto thin = thin_glass.sample(
+                closure,
+                incoming,
+                random_direction,
+                query.glossy_filter_roughness);
+            direction = thin.direction;
+            roughness = make_float2(thin.alpha);
+            singular_evaluation = thin.singular_evaluation;
+            singular_pdf = thin.singular_pdf;
+            singular = thin.singular;
+            transmission = true;
+            valid = thin.valid;
+        }
+    }
+    $elif(is_sheen) {
+        if (reachability.contains_principled_lobe(
+                SurfaceClosureLobe::sheen)) {
+            direction = detail::sample_sheen(
+                closure, incoming, random_direction);
+        }
+    }
+    $elif(sample_glossy) {
+        const auto principled_glossy_possible =
+            reachability.contains(SurfaceClosureKind::principled) &&
+            (reachability.principled_lobes &
+             (all_surface_closure_lobes &
+              ~surface_closure_lobe_bit(SurfaceClosureLobe::sheen))) != 0u;
+        if (reachability.contains(SurfaceClosureKind::glossy) ||
+            principled_glossy_possible) {
+            const auto glossy = detail::sample_microfacet_reflection(
+                point,
+                shading_normal,
+                closure,
+                incoming,
+                random_direction,
+                glossy_normal,
+                query.glossy_filter_roughness);
+            direction = glossy.direction;
+            roughness = make_float2(glossy.alpha);
+            singular_evaluation = glossy.singular_evaluation;
+            singular_pdf = glossy.singular_pdf;
+            singular = glossy.singular;
+            valid = glossy.valid;
+        }
+    };
+
+    using namespace surface_closure_sample_property;
+    auto result = zero_surface_closure_conditional_sample();
+    result.direction = direction;
+    result.roughness = roughness;
+    result.singular_evaluation = singular_evaluation;
+    result.singular_pdf = singular_pdf;
+    result.properties =
+        select(0u, glossy, sample_glossy) |
+        select(0u, glass, is_thin) |
+        select(0u,
+               surface_closure_sample_property::transmission,
+               is_thin & transmission) |
+        select(0u,
+               surface_closure_sample_property::singular,
+               singular);
+    result.valid = valid;
+    return result;
+}
+
+[[nodiscard]] luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+sample_dielectric_closure(
+    const ShaderServices &services,
+    const SurfaceClosurePoint &point,
+    const SurfaceClosurePhysicalDielectricRecord &closure,
+    Float3 incoming,
+    Float3 glossy_normal,
+    Float2 random_direction,
+    Float rescaled_lobe,
+    const SurfaceQuery &query) noexcept {
+    const detail::MicrofacetGlassComponent microfacet_glass{
+        services, point};
+    const auto glass = microfacet_glass.sample(
+        closure,
+        incoming,
+        glossy_normal,
+        random_direction,
+        rescaled_lobe,
+        (query.lobe_mask &
+         static_cast<std::uint32_t>(event_glossy)) != 0u,
+        (query.lobe_mask &
+         static_cast<std::uint32_t>(event_transmission)) != 0u,
+        query.glossy_filter_roughness);
+    using namespace surface_closure_sample_property;
+    auto result = zero_surface_closure_conditional_sample();
+    result.direction = glass.direction;
+    result.roughness = make_float2(glass.alpha);
+    result.singular_evaluation = glass.singular_evaluation;
+    result.singular_pdf = glass.singular_pdf;
+    result.eta = glass.eta;
+    result.properties =
+        UInt{surface_closure_sample_property::glass} |
+        select(0u,
+               surface_closure_sample_property::transmission,
+               glass.transmission) |
+        select(0u,
+               surface_closure_sample_property::singular,
+               glass.singular);
+    result.valid = glass.valid;
+    return result;
+}
+
+[[nodiscard]] luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+sample_bssrdf_closure(
+    const SurfaceClosurePhysicalBssrdfRecord &closure) noexcept {
+    auto result = zero_surface_closure_conditional_sample();
+    result.properties =
+        surface_closure_sample_property::bssrdf;
+    result.bssrdf_method = closure.common.bssrdf_method;
+    result.bssrdf_radius = closure.payload.radius;
+    result.bssrdf_albedo = closure.payload.albedo;
+    result.bssrdf_normal = closure.common.normal;
+    result.bssrdf_ior = closure.payload.bssrdf_ior;
+    result.bssrdf_roughness = closure.payload.roughness;
+    result.bssrdf_anisotropy = closure.payload.anisotropy;
+    result.valid = true;
+    return result;
+}
+
+}// namespace
+
 luisa::compute::Var<SurfaceClosureConditionalSampleCall>
 surface_closure_conditional_sample(
     const ShaderServices &services,
@@ -261,198 +483,58 @@ surface_closure_conditional_sample(
     Expr<float> rescaled_lobe_expression,
     const SurfaceQuery &query,
     SurfaceClosureReachability reachability) noexcept {
-    Float3 shading_normal{shading_normal_expression};
-    Float3 incoming{incoming_expression};
-    Float3 glossy_normal{glossy_normal_expression};
-    Float2 random_direction{random_direction_expression};
-    Float rescaled_lobe{rescaled_lobe_expression};
-
-    const auto reachable_kind =
-        [&reachability, &closure](SurfaceClosureKind kind) noexcept {
-            if (!reachability.contains(kind)) { return Bool{false}; }
-            return has_kind(closure, kind);
-        };
-    const auto is_translucent = reachable_kind(SurfaceClosureKind::translucent);
-    const auto is_rough_translucent =
-        reachable_kind(SurfaceClosureKind::rough_translucent);
-    const auto is_principled = reachable_kind(SurfaceClosureKind::principled);
-    const auto is_sheen =
-        reachability.contains_principled_lobe(SurfaceClosureLobe::sheen)
-            ? is_principled &
-                  has_lobe(closure, SurfaceClosureLobe::sheen)
-            : Bool{false};
-    const auto is_glossy = reachable_kind(SurfaceClosureKind::glossy);
-    const auto is_transparent = reachable_kind(SurfaceClosureKind::transparent);
-    const auto is_glass = reachable_kind(SurfaceClosureKind::glass);
-    const auto is_refraction = reachable_kind(SurfaceClosureKind::refraction);
-    const auto is_thin_glass_transmission =
-        reachable_kind(SurfaceClosureKind::thin_glass_transmission);
-    const auto is_bssrdf = reachable_kind(SurfaceClosureKind::bssrdf);
-    const auto is_dielectric = is_glass | is_refraction;
-    const auto sample_glossy =
-        is_glossy | (is_principled & !is_sheen);
-    const auto principled_glossy_possible =
-        reachability.contains(SurfaceClosureKind::principled) &&
-        (reachability.principled_lobes &
-         (all_surface_closure_lobes &
-          ~surface_closure_lobe_bit(SurfaceClosureLobe::sheen))) != 0u;
-    const auto transparent_possible =
-        reachability.contains(SurfaceClosureKind::transparent);
-    const auto dielectric_possible =
-        reachability.contains(SurfaceClosureKind::glass) ||
-        reachability.contains(SurfaceClosureKind::refraction);
-    const auto thin_glass_possible =
-        reachability.contains(SurfaceClosureKind::thin_glass_transmission);
-    const auto sheen_possible =
-        reachability.contains_principled_lobe(SurfaceClosureLobe::sheen);
-    const auto glossy_possible =
-        reachability.contains(SurfaceClosureKind::glossy) ||
-        principled_glossy_possible;
-    const auto cosine_possible =
-        reachability.contains(SurfaceClosureKind::diffuse) ||
-        reachability.contains(SurfaceClosureKind::translucent) ||
-        reachability.contains(SurfaceClosureKind::rough_translucent);
-
-    Float3 direction = make_float3(0.0f, 0.0f, 1.0f);
-    Float2 roughness = make_float2(1.0f);
-    Float3 singular_evaluation = make_float3(0.0f);
-    Float singular_pdf = 0.0f;
-    Float eta = 1.0f;
-    Bool singular = false;
-    Bool glass_transmission = false;
-    Bool valid = true;
-
-    // This device branch executes only after the outer categorical inversion
-    // has selected this closure. Exactly one conditional sampler is therefore
-    // active for a surface sample.
-    $if(is_bssrdf) {
-        // Spatial transport consumes the payload after the categorical
-        // closure choice. A BSSRDF has no conditional surface direction.
+    const auto common = project_surface_closure_physical_common(closure);
+    const auto is_general =
+        (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::principled)) |
+        (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::glossy)) |
+        (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::thin_glass_transmission));
+    const auto is_dielectric =
+        (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::glass)) |
+        (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::refraction));
+    const auto is_bssrdf =
+        common.kind == static_cast<std::uint32_t>(
+                           SurfaceClosureKind::bssrdf);
+    auto result = zero_surface_closure_conditional_sample();
+    $if(is_dielectric) {
+        result = sample_dielectric_closure(
+            services,
+            point,
+            project_surface_closure_physical_dielectric(closure),
+            Float3{incoming_expression},
+            Float3{glossy_normal_expression},
+            Float2{random_direction_expression},
+            Float{rescaled_lobe_expression},
+            query);
     }
-    $elif(is_transparent) {
-        if (transparent_possible) {
-            direction = -point.incoming;
-            roughness = make_float2(0.0f);
-        }
+    $elif(is_bssrdf) {
+        result = sample_bssrdf_closure(
+            project_surface_closure_physical_bssrdf(closure));
     }
-    $elif(is_dielectric) {
-        if (dielectric_possible) {
-            const detail::MicrofacetGlassComponent microfacet_glass{
-                services, point};
-            const auto glass = microfacet_glass.sample(
-                closure,
-                incoming,
-                glossy_normal,
-                random_direction,
-                rescaled_lobe,
-                (query.lobe_mask &
-                 static_cast<std::uint32_t>(event_glossy)) != 0u,
-                (query.lobe_mask &
-                 static_cast<std::uint32_t>(event_transmission)) != 0u,
-                query.glossy_filter_roughness);
-            direction = glass.direction;
-            roughness = make_float2(glass.alpha);
-            singular_evaluation = glass.singular_evaluation;
-            singular_pdf = glass.singular_pdf;
-            eta = glass.eta;
-            singular = glass.singular;
-            glass_transmission = glass.transmission;
-            valid = glass.valid;
-        }
-    }
-    $elif(is_thin_glass_transmission) {
-        if (thin_glass_possible) {
-            const detail::ThinGlassComponent thin_glass{
-                services, point};
-            const auto thin = thin_glass.sample(
-                closure,
-                incoming,
-                random_direction,
-                query.glossy_filter_roughness);
-            direction = thin.direction;
-            roughness = make_float2(thin.alpha);
-            singular_evaluation = thin.singular_evaluation;
-            singular_pdf = thin.singular_pdf;
-            eta = 1.0f;
-            singular = thin.singular;
-            glass_transmission = true;
-            valid = thin.valid;
-        }
-    }
-    $elif(is_sheen) {
-        if (sheen_possible) {
-            direction = detail::sample_sheen(
-                closure, incoming, random_direction);
-        }
-    }
-    $elif(sample_glossy) {
-        if (glossy_possible) {
-            const auto glossy =
-                detail::sample_microfacet_reflection(
-                    point,
-                    shading_normal,
-                    closure,
-                    incoming,
-                    random_direction,
-                    glossy_normal,
-                    query.glossy_filter_roughness);
-            direction = glossy.direction;
-            roughness = make_float2(glossy.alpha);
-            singular_evaluation = glossy.singular_evaluation;
-            singular_pdf = glossy.singular_pdf;
-            singular = glossy.singular;
-            valid = glossy.valid;
-        }
+    $elif(is_general) {
+        result = sample_general_closure(
+            services,
+            point,
+            Float3{shading_normal_expression},
+            project_surface_closure_physical_general(closure),
+            Float3{incoming_expression},
+            Float3{glossy_normal_expression},
+            Float2{random_direction_expression},
+            query,
+            reachability & sampling_general_payload_reachability);
     }
     $else {
-        if (cosine_possible) {
-            const auto normal = select(
-                closure.normal,
-                select(-glossy_normal,
-                       closure.normal,
-                       is_rough_translucent),
-                is_translucent | is_rough_translucent);
-            direction = detail::sample_cosine_hemisphere(
-                normal, random_direction);
-        }
+        result = sample_common_closure(
+            point,
+            project_surface_closure_physical_common_only(closure),
+            Float3{glossy_normal_expression},
+            Float2{random_direction_expression},
+            reachability & sampling_common_only_reachability);
     };
-
-    using namespace surface_closure_sample_property;
-    UInt properties = 0u;
-    properties |= select(0u, transparent, is_transparent);
-    properties |= select(
-        0u, translucent, is_translucent | is_rough_translucent);
-    properties |= select(0u, glossy, sample_glossy);
-    properties |= select(
-        0u, glass, is_dielectric | is_thin_glass_transmission);
-    properties |= select(
-        0u,
-        surface_closure_sample_property::transmission,
-        (is_dielectric | is_thin_glass_transmission) &
-            glass_transmission);
-    properties |= select(0u,
-                         surface_closure_sample_property::singular,
-                         singular);
-    properties |= select(
-        0u,
-        surface_closure_sample_property::bssrdf,
-        is_bssrdf);
-
-    luisa::compute::Var<SurfaceClosureConditionalSampleCall> result;
-    result.direction = direction;
-    result.roughness = roughness;
-    result.singular_evaluation = singular_evaluation;
-    result.singular_pdf = singular_pdf;
-    result.eta = eta;
-    result.properties = properties;
-    result.bssrdf_method = closure.bssrdf_method;
-    result.bssrdf_radius = closure.bssrdf_radius;
-    result.bssrdf_albedo = closure.bssrdf_albedo;
-    result.bssrdf_normal = closure.normal;
-    result.bssrdf_ior = closure.bssrdf_ior;
-    result.bssrdf_roughness = closure.bssrdf_roughness;
-    result.bssrdf_anisotropy = closure.bssrdf_anisotropy;
-    result.valid = valid;
     return result;
 }
 
@@ -489,32 +571,42 @@ surface_closure_conditional_sample_from_physical_common(
     $if(is_dielectric_payload) {
         const auto closure =
             unpack_surface_closure_physical_dielectric(common, load_payload());
-        result = surface_closure_conditional_sample(
-            services, point, shading_normal, closure, incoming, glossy_normal,
-            random_direction, rescaled_lobe, query,
-            reachability & sampling_dielectric_payload_reachability);
+        result = sample_dielectric_closure(
+            services,
+            point,
+            closure,
+            Float3{incoming},
+            Float3{glossy_normal},
+            Float2{random_direction},
+            Float{rescaled_lobe},
+            query);
     }
     $elif(is_bssrdf_payload) {
         const auto closure =
             unpack_surface_closure_physical_bssrdf(common, load_payload());
-        result = surface_closure_conditional_sample(
-            services, point, shading_normal, closure, incoming, glossy_normal,
-            random_direction, rescaled_lobe, query,
-            reachability & sampling_bssrdf_payload_reachability);
+        result = sample_bssrdf_closure(closure);
     }
     $elif(is_general_payload) {
         const auto closure =
             unpack_surface_closure_physical_general(common, load_payload());
-        result = surface_closure_conditional_sample(
-            services, point, shading_normal, closure, incoming, glossy_normal,
-            random_direction, rescaled_lobe, query,
+        result = sample_general_closure(
+            services,
+            point,
+            Float3{shading_normal},
+            closure,
+            Float3{incoming},
+            Float3{glossy_normal},
+            Float2{random_direction},
+            query,
             reachability & sampling_general_payload_reachability);
     }
     $else {
         const auto closure = unpack_surface_closure_physical_common_only(common);
-        result = surface_closure_conditional_sample(
-            services, point, shading_normal, closure, incoming, glossy_normal,
-            random_direction, rescaled_lobe, query,
+        result = sample_common_closure(
+            point,
+            closure,
+            Float3{glossy_normal},
+            Float2{random_direction},
             reachability & sampling_common_only_reachability);
     };
     return result;

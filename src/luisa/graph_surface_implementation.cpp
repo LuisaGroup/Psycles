@@ -281,7 +281,7 @@ GraphSurfaceImplementation::closure_trace(
             result.type = select(
                 result.type, cycles_closure_type(physical), match);
             result.sample_weight = select(result.sample_weight,
-                closure_sample_weight(physical),
+                physical.sample_weight,
                 match);
             result.weight =
                 select(result.weight, closure.weight, match);

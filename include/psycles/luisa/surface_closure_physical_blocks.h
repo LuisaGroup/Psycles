@@ -69,6 +69,85 @@ struct SurfaceClosurePhysicalCommonRecord {
     UInt bssrdf_method;
 };
 
+// The physical closure representation is a tagged sum, not a product of all
+// possible payloads. These types make that distinction explicit at the C++
+// staging boundary:
+//
+//   Physical = Common x (Unit + General + Dielectric + Bssrdf).
+//
+// A family consumer receives exactly one of the records below. It therefore
+// cannot name a field owned by another family, even accidentally. These are
+// host-side bundles of Luisa expressions; they do not define an additional
+// device-memory ABI and do not introduce an IR entity.
+struct SurfaceClosurePhysicalCommonOnlyRecord {
+    SurfaceClosurePhysicalCommonRecord common;
+};
+
+struct SurfaceClosurePhysicalGeneralPayload {
+    Float diffuse_roughness;
+    Float metallic;
+    Float ior;
+    Float3 specular_tint;
+    Float sheen_transform_a;
+    Float sheen_transform_b;
+    Float3 evaluation_scale;
+};
+
+struct SurfaceClosurePhysicalGeneralRecord {
+    SurfaceClosurePhysicalCommonRecord common;
+    SurfaceClosurePhysicalGeneralPayload payload;
+};
+
+struct SurfaceClosurePhysicalDielectricPayload {
+    Float3 color;
+    Float ior;
+    Float3 fresnel_f0;
+    Float3 fresnel_f90;
+    Float3 reflection_tint;
+    Float3 transmission_tint;
+};
+
+struct SurfaceClosurePhysicalDielectricRecord {
+    SurfaceClosurePhysicalCommonRecord common;
+    SurfaceClosurePhysicalDielectricPayload payload;
+};
+
+struct SurfaceClosurePhysicalBssrdfPayload {
+    Float3 radius;
+    Float3 albedo;
+    Float bssrdf_ior;
+    Float roughness;
+    Float anisotropy;
+};
+
+struct SurfaceClosurePhysicalBssrdfRecord {
+    SurfaceClosurePhysicalCommonRecord common;
+    SurfaceClosurePhysicalBssrdfPayload payload;
+};
+
+// Expression-only projections used by direct/expanded consumers. They obey
+// the same family interfaces as the packed-storage decoders below, so the
+// scattering algebra has one implementation regardless of its producer.
+[[nodiscard]] SurfaceClosurePhysicalCommonRecord
+project_surface_closure_physical_common(
+    const SurfaceClosurePhysicalRecord &closure) noexcept;
+
+[[nodiscard]] SurfaceClosurePhysicalCommonOnlyRecord
+project_surface_closure_physical_common_only(
+    const SurfaceClosurePhysicalRecord &closure) noexcept;
+
+[[nodiscard]] SurfaceClosurePhysicalGeneralRecord
+project_surface_closure_physical_general(
+    const SurfaceClosurePhysicalRecord &closure) noexcept;
+
+[[nodiscard]] SurfaceClosurePhysicalDielectricRecord
+project_surface_closure_physical_dielectric(
+    const SurfaceClosurePhysicalRecord &closure) noexcept;
+
+[[nodiscard]] SurfaceClosurePhysicalBssrdfRecord
+project_surface_closure_physical_bssrdf(
+    const SurfaceClosurePhysicalRecord &closure) noexcept;
+
 [[nodiscard]] SurfaceClosurePhysicalBlocks
 pack_surface_closure_physical(
     const SurfaceClosurePhysicalRecord &closure) noexcept;
@@ -88,21 +167,21 @@ unpack_surface_closure_physical_common(
 // establish the corresponding tag before recording the call. This mirrors
 // Cycles' `ShaderClosure *` cast after its type switch and keeps mutually
 // exclusive payload expressions out of each other's live ranges.
-[[nodiscard]] SurfaceClosurePhysicalRecord
+[[nodiscard]] SurfaceClosurePhysicalCommonOnlyRecord
 unpack_surface_closure_physical_common_only(
     const SurfaceClosurePhysicalCommonRecord &common) noexcept;
 
-[[nodiscard]] SurfaceClosurePhysicalRecord
+[[nodiscard]] SurfaceClosurePhysicalGeneralRecord
 unpack_surface_closure_physical_general(
     const SurfaceClosurePhysicalCommonRecord &common,
     Expr<luisa::float4x4> block_1) noexcept;
 
-[[nodiscard]] SurfaceClosurePhysicalRecord
+[[nodiscard]] SurfaceClosurePhysicalDielectricRecord
 unpack_surface_closure_physical_dielectric(
     const SurfaceClosurePhysicalCommonRecord &common,
     Expr<luisa::float4x4> block_1) noexcept;
 
-[[nodiscard]] SurfaceClosurePhysicalRecord
+[[nodiscard]] SurfaceClosurePhysicalBssrdfRecord
 unpack_surface_closure_physical_bssrdf(
     const SurfaceClosurePhysicalCommonRecord &common,
     Expr<luisa::float4x4> block_1) noexcept;

@@ -10,6 +10,7 @@
 
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/surface.h>
+#include <psycles/luisa/surface_closure_physical_blocks.h>
 
 #include "graph_surface_value_expression.h"
 #include "surface_color_transforms.h"
@@ -305,7 +306,7 @@ template <typename Id, typename Values>
     Float incoming_cosine,
     Float3 fss) noexcept;
 [[nodiscard]] Float closure_sample_weight(
-    const SurfaceClosurePhysicalRecord &closure) noexcept;
+    const SurfaceClosurePhysicalCommonRecord &closure) noexcept;
 [[nodiscard]] Bool closure_allocated(
     const SurfaceClosurePhysicalRecord &closure) noexcept;
 [[nodiscard]] Bool closure_allocated(
@@ -319,7 +320,8 @@ template <typename Id, typename Values>
 [[nodiscard]] Float bump_shadowing_term(
     const SurfaceClosurePoint &point,
     Float3 smooth_normal,
-    const SurfaceClosurePhysicalRecord &closure,
+    Float3 closure_normal,
+    Bool diffuse_closure,
     Float3 direction,
     Bool is_evaluation) noexcept;
 [[nodiscard]] UInt cycles_runtime_flags(const SurfaceClosurePhysicalRecord &closure,
@@ -332,36 +334,38 @@ template <typename Id, typename Values>
 [[nodiscard]] UInt cycles_closure_type(
     const SurfaceClosureIdentityExpression &closure) noexcept;
 [[nodiscard]] Float oren_nayar_g(Float cosine) noexcept;
-[[nodiscard]] Float3 diffuse_intensity(const SurfaceClosurePhysicalRecord &closure,
+[[nodiscard]] Float3 diffuse_intensity(
+    const SurfaceClosurePhysicalCommonRecord &closure,
+    Float3 color,
     Float3 incoming,
     Float3 outgoing) noexcept;
 // Evaluate the distribution-specific D and masking-shadowing terms under one
 // device branch. This is the dynamic counterpart of Cycles' static
 // MicrofacetType specialization: a lane executes exactly one model.
 [[nodiscard]] MicrofacetDistributionTerms microfacet_distribution_terms(
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalCommonRecord &closure,
     Float n_dot_h,
     Float n_dot_incoming,
     Float n_dot_outgoing,
     Float alpha) noexcept;
-[[nodiscard]] Float microfacet_alpha(const SurfaceClosurePhysicalRecord &closure,
+[[nodiscard]] Float microfacet_alpha(
+    const SurfaceClosurePhysicalCommonRecord &closure,
     Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Bool microfacet_is_singular(
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalCommonRecord &closure,
     Float glossy_filter_roughness) noexcept;
-// Exact bsdf_get_specular_roughness_squared family classification used by
-// Cycles' PDF-weighted ray-differential widening measure.
-[[nodiscard]] Float cycles_bsdf_specular_roughness_squared(
-    const SurfaceClosurePhysicalRecord &closure,
+// Exact microfacet branch of Cycles' bsdf_get_specular_roughness_squared.
+// The family eliminator owns the remaining classification, so this helper
+// cannot re-introduce runtime kind tests after the tagged-union dispatch.
+[[nodiscard]] Float microfacet_specular_roughness_squared(
+    const SurfaceClosurePhysicalCommonRecord &closure,
     Float glossy_filter_roughness) noexcept;
-[[nodiscard]] Float3 specular_f0(
-    const SurfaceClosurePhysicalRecord &closure) noexcept;
 [[nodiscard]] Float3 microfacet_reflection_fresnel(
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalGeneralRecord &closure,
     Float cosine) noexcept;
 [[nodiscard]] MicrofacetEvaluation microfacet_evaluate(
     const ShaderServices &services,
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalGeneralRecord &closure,
     Float3 incoming,
     Float3 outgoing,
     Float3 glossy_normal,
@@ -369,15 +373,17 @@ template <typename Id, typename Values>
 [[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
     const SurfaceClosurePoint &point,
     Float3 smooth_normal,
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosurePhysicalGeneralRecord &closure,
     Float3 incoming,
     Float2 random,
     Float3 glossy_normal,
     Float glossy_filter_roughness) noexcept;
-[[nodiscard]] Float sheen_intensity(const SurfaceClosurePhysicalRecord &closure,
+[[nodiscard]] Float sheen_intensity(
+    const SurfaceClosurePhysicalGeneralRecord &closure,
     Float3 incoming,
     Float3 outgoing) noexcept;
-[[nodiscard]] Float3 sample_sheen(const SurfaceClosurePhysicalRecord &closure,
+[[nodiscard]] Float3 sample_sheen(
+    const SurfaceClosurePhysicalGeneralRecord &closure,
     Float3 incoming,
     Float2 random) noexcept;
 [[nodiscard]] Float3 sample_cosine_hemisphere(

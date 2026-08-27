@@ -16,15 +16,17 @@ The remaining gap to Cycles is split across two independent boundaries:
    the routed nodes are intentionally partial.
 2. Post-population physical closures are stored as a tagged sum. The hot
    evaluation and sampling path now keeps the tag through a family dispatch,
-   loads the payload only in the selected family block, and merges only the
-   consumer result. Each family still adapts to the existing universal record
-   API inside that block; Cycles consumes a compact derived closure directly.
+   loads the payload only in the selected family block, and passes a compact
+   `Common x Payload_family` staging record to the family handler. No hot
+   handler can name another family's payload, and only the consumer result is
+   merged. The universal record remains a producer/packing compatibility API,
+   not the domain of the packed hot consumer.
 
 The second difference remains a measured performance boundary. On the newest
-interleaved 640x480, 64-spp Barbershop HIP traces, the branch-local tagged
-consumer costs a median 28.024 ns per launched item. The retained Cycles 5.2
-trace costs 10.778 ns per item, so the current normalized gap is approximately
-2.60x. Psycles still reaches 256 VGPRs and 3,136 B private storage; Cycles uses
+interleaved 640x480, 64-spp Barbershop HIP traces, the typed-family consumer
+costs a median 27.813 ns per launched item. The retained Cycles 5.2 trace costs
+10.778 ns per item, so the current normalized gap is approximately 2.58x.
+Psycles still reaches 256 VGPRs and 3,136 B private storage; Cycles uses
 192 VGPRs and 6,976 B private storage. The result cannot be explained by
 private bytes alone.
 
@@ -39,6 +41,12 @@ block restores 880 B / 178 fields. The accepted result is performance-neutral:
 profile. This is a formal staging and representation result, not a speedup
 claim. It is covered by fallback/HIP/native-XIR-Vulkan regressions, complete
 46-channel EXR comparison, and Combined/Normal triptychs.
+
+The next follow-up removes the universal per-family adapters. It reduces the
+surface code object by 1,024 B and the optimized LLVM module by 194 lines, with
+the frame fixed at 880 B / 178 fields. Its interleaved HIP result is -0.072% in
+normalized `shade_surface` time and -0.084% render-only, both noise. This is an
+enforced non-interference and maintainability result, not a speedup claim.
 
 ## Reference identity
 
@@ -171,11 +179,90 @@ Barbershop commands:
 The candidate is -0.145% in normalized stage time and +0.238% in render-only
 time. Both are noise; no runtime speedup is claimed. The structural result is
 still useful because it establishes a correct lazy tagged-consumer boundary
-without a coroutine-frame or code-object regression. The next performance step
-must replace the universal per-family adapter with compact tagged closure
-storage/handlers (or equivalently typed closure-SVM payloads), then measure
-individual family kernels. Adding more renderer-side branches is not supported
-by this evidence.
+without a coroutine-frame or code-object regression. The compact typed-handler
+follow-up below performs the next representation step. Adding more
+renderer-side branches by itself is not supported by this evidence.
+
+### Compact typed family handlers
+
+The retained handler interface models the physical closure as
+
+```text
+Physical = Common x (Unit + General + Dielectric + Bssrdf).
+```
+
+`SurfaceClosurePhysicalCommonOnlyRecord`,
+`SurfaceClosurePhysicalGeneralRecord`,
+`SurfaceClosurePhysicalDielectricRecord`, and
+`SurfaceClosurePhysicalBssrdfRecord` are host-side bundles of Luisa
+expressions. They add neither a device-memory ABI nor an XIR entity. Their C++
+domains encode the non-interference proof: for example, a General handler has
+no dielectric Fresnel or BSSRDF radius member, while a BSSRDF handler has a
+semantic `bssrdf_ior` member and no generic dielectric `ior` member.
+
+For family `f`, packed and direct producers share the same handler, and the
+required commuting law is
+
+```text
+handler_f(unpack_f(pack(x))) = handler_f(project_f(x)).
+```
+
+The differential kernel checks that law for every represented closure kind and
+for evaluation and sampling result tuples. Compile-time concepts additionally
+make cross-family payload access ill-formed. This mirrors the relevant Cycles
+structure: a base `ShaderClosure` is classified by type and then interpreted as
+the matching compact closure payload; it does not reconstruct a universal
+product before every BSDF operation.
+
+An early version split BSSRDF evaluation into a new CFG arm and changed one
+fallback diffuse result by one ULP, while HIP and Vulkan remained bit exact.
+BSSRDF directional evaluation observes only `Common`, so the formal evaluation
+partition already places it in the common-only family. Restoring that partition
+also restores the original arithmetic/merge ordering under fallback fast math.
+The exact-bit reachability test was retained and its diagnostic now prints both
+float values and bit patterns; no tolerance was weakened.
+
+Cold Barbershop production metrics relative to exact `31e2ab5` are:
+
+| Form | Frame | Final LLVM | HIP object | Entry | Private / VGPR / spills |
+|---|---:|---:|---:|---:|---:|
+| lazy universal adapters | 880 B / 178 | 58,028 lines / 3,386,673 B | 356,512 B | 296,872 B | 3,136 B / 256 / 382 |
+| compact typed handlers | 880 B / 178 | 57,834 lines / 3,376,707 B | 355,488 B | 295,880 B | 3,136 B / 256 / 384 |
+
+The typed form removes 14 textual `phi`, 16 `select`, and 27 `call`
+occurrences; definitions remain 13. The two additional reported VGPR spills do
+not change the 3,136-byte private allocation, so the device result, rather than
+the smaller text alone, remains decisive.
+
+The same-machine A/B/B/A HIP sequence used 640x480, 64 fixed samples,
+Tabulated Sobol, staged wavefront, 32-thread continuation blocks, and adaptive
+sampling disabled:
+
+| Run | Render-only | `shade_surface` ns/item |
+|---|---:|---:|
+| baseline A | 2.57198 s | 27.856133 |
+| typed A | 2.56349 s | 27.791101 |
+| typed B | 2.56559 s | 27.835435 |
+| baseline B | 2.56143 s | 27.810585 |
+| baseline median | 2.566705 s | 27.833359 |
+| typed median | 2.564540 s | 27.813268 |
+
+Normalized `shade_surface` changes by -0.072%; render-only changes by -0.084%.
+Both are noise. The result proves that the stronger type boundary is safe and
+slightly reduces generated structure, but it does not yet remove enough
+executed scattering work to explain the remaining 2.58x Cycles gap.
+
+The 46-channel baseline/typed EXRs have mean absolute error `9.5861e-8`, RMS
+`1.784e-4`, PSNR `123.853 dB`, and 55 pixels (`0.0179%`) over `1e-6`.
+Combined has MAE `1.03645e-7`, RMSE `5.76346e-5`, and mean-luminance ratio
+`0.99999848`; Normal has MAE `1.41769e-9` and RMSE `2.40553e-8`. I inspected
+both triptychs at original resolution. Geometry, UVs, floor, ceiling, brick
+wall, cabinet, material response, lighting, and normals coincide; the amplified
+difference is sparse sampling/atomic-order noise rather than a coherent region.
+
+![Exact 31e2ab5 baseline, typed family handlers, and amplified Combined difference](triptychs/typed-family/combined.png)
+
+![Exact 31e2ab5 baseline, typed family handlers, and amplified Normal difference](triptychs/typed-family/normal.png)
 
 ### Backend and image validation
 

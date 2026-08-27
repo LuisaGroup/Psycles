@@ -1,5 +1,5 @@
 {
-  "schema": "psycles.cycles-5.2-surface-svm-gap-audit.v3",
+  "schema": "psycles.cycles-5.2-surface-svm-gap-audit.v4",
   "reference": {
     "psycles": "717176eebc7b47e7d1b55db6dcc9e00f7285ff3b",
     "branch_local_consumer_base": "d54120a",
@@ -257,6 +257,104 @@
       "normal": {
         "mean_absolute_error": 1.4308805251772583e-9,
         "rms_error": 2.4059358949557463e-8
+      },
+      "visual_result": "no_structural_difference"
+    },
+    "focused_backend_matrix": {
+      "fallback": "pass",
+      "hip": "pass",
+      "vulkan_native_xir_spirv": "pass",
+      "tests": 15
+    }
+  },
+  "typed_family_handlers": {
+    "base": "31e2ab5",
+    "formal_representation": "Common x (Unit + General + Dielectric + Bssrdf)",
+    "handler_records": [
+      "common_only",
+      "general",
+      "dielectric",
+      "bssrdf"
+    ],
+    "cross_family_payload_access": "compile_time_ill_formed",
+    "cold_surface": {
+      "stage_hash": "cdb491854da5e758",
+      "coroutine_subroutines": 9,
+      "coroutine_frame_bytes": 880,
+      "coroutine_frame_fields": 178,
+      "object_bytes": 355488,
+      "text_bytes": 351872,
+      "entry_symbol_bytes": 295880,
+      "final_llvm_bytes": 3376707,
+      "final_llvm_lines": 57834,
+      "phi_occurrences": 2817,
+      "select_occurrences": 2551,
+      "define_occurrences": 13,
+      "call_occurrences": 3315,
+      "private_bytes": 3136,
+      "vgpr": 256,
+      "vgpr_spills": 384
+    },
+    "interleaved_hip_profile": {
+      "resolution": [640, 480],
+      "samples": 64,
+      "adaptive_sampling": false,
+      "sequence": ["baseline_a", "typed_a", "typed_b", "baseline_b"],
+      "baseline_a": {
+        "render_seconds": 2.57198,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659296,
+        "shade_surface_gpu_ms": 1494.740499,
+        "shade_surface_ns_per_item": 27.856133241107003
+      },
+      "typed_a": {
+        "render_seconds": 2.56349,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659296,
+        "shade_surface_gpu_ms": 1491.250931,
+        "shade_surface_ns_per_item": 27.791101303304465
+      },
+      "typed_b": {
+        "render_seconds": 2.56559,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659296,
+        "shade_surface_gpu_ms": 1493.629824,
+        "shade_surface_ns_per_item": 27.835434590867536
+      },
+      "baseline_b": {
+        "render_seconds": 2.56143,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659264,
+        "shade_surface_gpu_ms": 1492.295547,
+        "shade_surface_ns_per_item": 27.810585456408795
+      },
+      "baseline_median": {
+        "render_seconds": 2.566705,
+        "shade_surface_ns_per_item": 27.833359348758
+      },
+      "typed_median": {
+        "render_seconds": 2.56454,
+        "shade_surface_ns_per_item": 27.813267947086
+      },
+      "shade_surface_delta_percent": -0.072185,
+      "render_delta_percent": -0.084349,
+      "performance_result": "neutral_within_noise"
+    },
+    "exr_comparison": {
+      "channels": 46,
+      "mean_absolute_error": 9.5861e-8,
+      "rms_error": 1.784e-4,
+      "psnr_db": 123.853,
+      "pixels_over_1e-6": 55,
+      "fraction_over_1e-6": 0.000179,
+      "combined": {
+        "mean_absolute_error": 1.0364538383100808e-7,
+        "rms_error": 5.763462831964716e-5,
+        "luminance_mean_ratio": 0.9999984769470709
+      },
+      "normal": {
+        "mean_absolute_error": 1.4176910756447114e-9,
+        "rms_error": 2.405525378890161e-8
       },
       "visual_result": "no_structural_difference"
     },
