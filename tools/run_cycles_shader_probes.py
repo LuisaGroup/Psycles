@@ -119,6 +119,7 @@ _ALL_PROBES = (
     "spot_light_soft",
     "sun_light",
     "sun_light_disk",
+    "thin_film_surface",
     "transparent_mix",
     "transparent_data_pass",
     "translucent_bsdf_matrix",
@@ -318,6 +319,19 @@ _PROBE_RATIO_GATES = {
         "GlossDir": (0.99998, 1.00002),
         "TransDir": (0.99998, 1.00002),
         "Normal": (0.9999, 1.0001),
+    },
+    "thin_film_surface": {
+        # A single zero-angle Sun makes every nonzero pass a deterministic
+        # closure evaluation rather than a Monte Carlo energy estimate. Keep
+        # a small backend-transcendental envelope for the spectral Fresnel
+        # calculation while rejecting any missing or misclassified lobe.
+        # TransDir/TransInd are deliberately excluded: the reference signal
+        # is numerical zero (about 1e-8/2e-5), so ratios are not meaningful.
+        "Combined": (0.9995, 1.0005),
+        "GlossCol": (0.9995, 1.0005),
+        "GlossDir": (0.9995, 1.0005),
+        "TransCol": (0.9995, 1.0005),
+        "Normal": (0.9995, 1.0005),
     },
     "refraction_bsdf_matrix": {
         "Combined": (0.99998, 1.00002),
@@ -519,6 +533,23 @@ _PROBE_RELATIVE_RMSE_GATES = {
     },
 }
 
+# A 99th-percentile error gate is appropriate for equal-area material
+# matrices whose purpose is closure evaluation rather than camera sampling.
+# Every authored case occupies 1/16 of the image, so a structural error in any
+# case necessarily reaches the 99th percentile. In contrast, isolated
+# ray/triangle boundary choices occupy less than 1% and must not dominate the
+# otherwise deterministic direct-light comparison. Normalize by Cycles RMS so
+# the gate remains independent of exposure and Sun energy.
+_PROBE_NORMALIZED_P99_RMSE_GATES = {
+    "thin_film_surface": {
+        "Combined": 0.0001,
+        "GlossCol": 0.0001,
+        "GlossDir": 0.0001,
+        "TransCol": 0.0001,
+        "Normal": 0.0001,
+    },
+}
+
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -620,6 +651,7 @@ def _probe_gate_failures(
 ) -> list[str]:
     ratio_gates = _PROBE_RATIO_GATES.get(probe, {})
     rmse_gates = _PROBE_RELATIVE_RMSE_GATES.get(probe, {})
+    p99_gates = _PROBE_NORMALIZED_P99_RMSE_GATES.get(probe, {})
     passes = report_payload.get("passes")
     if not isinstance(passes, dict):
         return [f"{probe}: report has no pass dictionary"]
@@ -654,6 +686,32 @@ def _probe_gate_failures(
             failures.append(
                 f"{probe}: {pass_name} relative RMSE "
                 f"{float(relative_rmse):.6f} exceeds {maximum:.6f}"
+            )
+    for pass_name, maximum in p99_gates.items():
+        pass_report = passes.get(pass_name)
+        if not isinstance(pass_report, dict):
+            if pass_name not in ratio_gates and pass_name not in rmse_gates:
+                failures.append(f"{probe}: missing {pass_name}")
+            continue
+        p99_rmse = pass_report.get("p99_pixel_rmse")
+        cycles_rms = pass_report.get("cycles_rms")
+        if not isinstance(p99_rmse, (float, int)):
+            failures.append(
+                f"{probe}: {pass_name} has no numeric p99 pixel RMSE"
+            )
+            continue
+        if not isinstance(cycles_rms, (float, int)):
+            failures.append(
+                f"{probe}: {pass_name} has no numeric Cycles RMS"
+            )
+            continue
+        normalized_p99_rmse = float(p99_rmse) / max(
+            abs(float(cycles_rms)), 1.0e-20
+        )
+        if normalized_p99_rmse > maximum:
+            failures.append(
+                f"{probe}: {pass_name} normalized p99 pixel RMSE "
+                f"{normalized_p99_rmse:.6f} exceeds {maximum:.6f}"
             )
     return failures
 
