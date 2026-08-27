@@ -340,7 +340,8 @@ if(PSYCLES_BUILD_TESTS)
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_diagnostic_probes.py"
             ARGUMENTS
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_blender_shader_stage_probe.py"
-                "${CMAKE_CURRENT_SOURCE_DIR}/tools/probe_cycles_world.py")
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/probe_cycles_world.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_blender_surface_cost_probe.py")
         psycles_add_blender_test(
             NAME psycles.blender_multilayer_exr_api
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_multilayer_exr_api.py"

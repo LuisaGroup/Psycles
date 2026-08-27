@@ -571,15 +571,43 @@ int main(int argc, char **argv) {
         closure_plans;
     std::map<std::uint64_t, const psycles::compiler::SurfaceProgram *>
         representative_programs;
+    std::map<psycles::compiler::ClosureOperation, std::size_t>
+        material_reachable_closure_operations;
+    std::map<psycles::compiler::PrincipledClosureFeatureMask, std::size_t>
+        material_principled_feature_masks;
     if (inspect_all) {
         for (const auto &[id, material] : materials.materials()) {
             static_cast<void>(id);
             const auto &program = *material.surface_program();
             representative_programs.try_emplace(
                 program.structure_signature(), &program);
-            closure_plans[program.structure_signature()].merge(
+            const auto material_plan =
                 psycles::compiler::analyze_surface_closure_plan(
-                    program, material.parameters()));
+                    program, material.parameters());
+            closure_plans[program.structure_signature()].merge(
+                material_plan);
+            for (auto index = std::size_t{0u};
+                 index < material_plan.entries().size(); ++index) {
+                const auto &entry = material_plan.entries()[index];
+                if (!entry.reachable) {
+                    continue;
+                }
+                const auto operation =
+                    program.closure_instructions()[index].operation;
+                if (operation !=
+                        psycles::compiler::ClosureOperation::add &&
+                    operation !=
+                        psycles::compiler::ClosureOperation::mix &&
+                    operation != psycles::compiler::ClosureOperation::
+                                     null_closure) {
+                    ++material_reachable_closure_operations[operation];
+                }
+                if (operation ==
+                    psycles::compiler::ClosureOperation::principled) {
+                    ++material_principled_feature_masks
+                        [entry.principled_features];
+                }
+            }
         }
     }
     for (const auto &[id, material] : materials.materials()) {
@@ -681,6 +709,8 @@ int main(int argc, char **argv) {
         using psycles::compiler::PrincipledClosureFeature;
         using psycles::compiler::ValueOperation;
         std::map<ValueOperation, std::size_t> value_operations;
+        std::map<ValueOperation, std::size_t>
+            preparation_runtime_operations;
         auto unique_values = std::size_t{};
         auto expanded_values = std::size_t{};
         auto expanded_bump_nodes = std::size_t{};
@@ -720,6 +750,10 @@ int main(int argc, char **argv) {
         value_execution_inputs.reserve(representative_programs.size());
         std::map<PrincipledClosureFeature, std::size_t>
             feature_occurrences;
+        std::map<psycles::compiler::PrincipledClosureFeatureMask, std::size_t>
+            principled_feature_masks;
+        std::map<psycles::compiler::ClosureOperation, std::size_t>
+            closure_bytecode_operations;
         for (const auto &[signature, program] :
              representative_programs) {
             unique_values += program->value_instructions().size();
@@ -793,6 +827,20 @@ int main(int argc, char **argv) {
             preparation_active_values += storage.active_values;
             preparation_parameter_references += storage.parameter_values;
             preparation_runtime_instructions += storage.instructions.size();
+            for (const auto id : storage.instructions) {
+                if (!id.valid() ||
+                    id.value >=
+                        execution_program->value_instructions().size()) {
+                    std::cerr
+                        << "surface execution schedule contains an invalid "
+                           "instruction for topology "
+                        << signature << '\n';
+                    return EXIT_FAILURE;
+                }
+                ++preparation_runtime_operations
+                    [execution_program->value_instructions()[id.value]
+                         .operation];
+            }
             maximum_scalar_slots =
                 std::max(maximum_scalar_slots, storage.scalar_slots);
             maximum_vector_slots =
@@ -916,6 +964,20 @@ int main(int argc, char **argv) {
         std::map<ValueOperation, std::size_t> value_variants_by_operation;
         for (const auto &variant : value_executable_scene.variants) {
             ++value_variants_by_operation[variant.instruction.operation];
+        }
+        for (const auto features :
+             value_scene_image.closure_principled_features) {
+            if (features != 0u) {
+                ++principled_feature_masks[features];
+            }
+        }
+        for (const auto &instruction :
+             value_scene_image.closure_instructions) {
+            if (psycles::compiler::surface_closure_is_leaf(instruction)) {
+                ++closure_bytecode_operations
+                    [psycles::compiler::surface_closure_operation(
+                        instruction)];
+            }
         }
         const auto value_scene_descriptor_bytes =
             value_scene_image.programs.size() *
@@ -1102,9 +1164,36 @@ int main(int argc, char **argv) {
                       << ' ' << count << '\n';
         }
         for (const auto &[operation, count] :
+             preparation_runtime_operations) {
+            std::cout << "preparation_runtime_opcode "
+                      << static_cast<unsigned>(operation)
+                      << ' ' << count << '\n';
+        }
+        for (const auto &[operation, count] :
              value_variants_by_operation) {
             std::cout << "value_variant "
                       << static_cast<unsigned>(operation)
+                      << ' ' << count << '\n';
+        }
+        for (const auto &[features, count] : principled_feature_masks) {
+            std::cout << "principled_feature_mask " << features << ' '
+                      << count << '\n';
+        }
+        for (const auto &[operation, count] :
+             closure_bytecode_operations) {
+            std::cout << "closure_bytecode_opcode "
+                      << static_cast<unsigned>(operation)
+                      << ' ' << count << '\n';
+        }
+        for (const auto &[operation, count] :
+             material_reachable_closure_operations) {
+            std::cout << "material_reachable_closure_opcode "
+                      << static_cast<unsigned>(operation)
+                      << ' ' << count << '\n';
+        }
+        for (const auto &[features, count] :
+             material_principled_feature_masks) {
+            std::cout << "material_principled_feature_mask " << features
                       << ' ' << count << '\n';
         }
         for (auto index = std::size_t{0u};
