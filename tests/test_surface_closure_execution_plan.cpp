@@ -219,31 +219,29 @@ struct PlannedProgram {
   throw std::runtime_error{"fixture closure operation is absent"};
 }
 
-void test_mixed_endpoint_structured_control() {
+void test_mixed_endpoint_linear_weight_program() {
   const auto compiled = compile_graph(make_domain_mix_graph(0.25f));
   const auto planned = plan_program(compiled);
   const auto &image = planned.closures;
-  require(image.instructions.size() == 4u &&
-              image.principled_features.size() == 4u,
-          "root Mix did not lower to a begin/left/right tail region");
+  require(image.instructions.size() == 3u &&
+              image.principled_features.size() == 3u,
+          "root Mix did not lower to one weight instruction and two leaves");
   require(surface_closure_instruction_kind(image.instructions[0u]) ==
-                  SurfaceClosureInstructionKind::mix_begin &&
+                  SurfaceClosureInstructionKind::mix_both &&
               surface_closure_instruction_kind(image.instructions[1u]) ==
                   SurfaceClosureInstructionKind::leaf &&
               surface_closure_instruction_kind(image.instructions[2u]) ==
-                  SurfaceClosureInstructionKind::mix_right &&
-              surface_closure_instruction_kind(image.instructions[3u]) ==
                   SurfaceClosureInstructionKind::leaf,
-          "Mix control regions are not properly ordered");
+          "Mix weight definitions are not topologically ordered");
   require(surface_closure_operation(image.instructions[1u]) ==
                   ClosureOperation::diffuse &&
-              surface_closure_operation(image.instructions[3u]) ==
+              surface_closure_operation(image.instructions[2u]) ==
                   ClosureOperation::emission,
-          "structured closure order is not left-to-right DFS");
+          "linear closure order is not left-to-right DFS");
   require(surface_closure_endpoints(image.instructions[1u]) ==
                   surface_closure_endpoint_bit(
                       SurfaceClosureEndpoint::physical) &&
-              surface_closure_endpoints(image.instructions[3u]) ==
+              surface_closure_endpoints(image.instructions[2u]) ==
                   surface_closure_endpoint_bit(
                       SurfaceClosureEndpoint::emission),
           "closure consumer domains were not preserved");
@@ -254,18 +252,22 @@ void test_mixed_endpoint_structured_control() {
       planned.values.value_addresses[mix.factor.value];
   require(surface_closure_mix_factor_address(image.instructions[0u]) ==
                   factor_address &&
-              surface_closure_mix_frame_slot(image.instructions[0u]) == 0u &&
-              surface_closure_mix_right_offset(image.instructions[0u]) == 2u &&
-              surface_closure_right_frame_slot(image.instructions[2u]) == 0u &&
-              surface_closure_mix_end_offset(image.instructions[2u]) == 2u &&
-              !surface_closure_mix_restores_parent(image.instructions[2u]) &&
-              image.maximum_mix_depth == 1u && image.mix_slots == 1u,
-          "tail Mix recurrence, boundary, or exact slot coloring changed");
+              surface_closure_mix_parent_weight_slot(
+                  image.instructions[0u]) ==
+                  surface_closure_root_weight_slot &&
+              surface_closure_mix_left_weight_slot(
+                  image.instructions[0u]) == 0u &&
+              surface_closure_mix_right_weight_slot(
+                  image.instructions[0u]) == 1u &&
+              surface_closure_leaf_weight_slot(image.instructions[1u]) == 0u &&
+              surface_closure_leaf_weight_slot(image.instructions[2u]) == 1u &&
+              image.maximum_mix_depth == 1u && image.mix_slots == 2u,
+          "binary Mix recurrence or exact weight-slot coloring changed");
   require(image.operands.size() ==
               surface_closure_operand::diffuse::count +
                   surface_closure_operand::emission::count &&
               surface_closure_leaf_operand_begin(image.instructions[1u]) == 0u &&
-              surface_closure_leaf_operand_begin(image.instructions[3u]) ==
+              surface_closure_leaf_operand_begin(image.instructions[2u]) ==
                   surface_closure_operand::diffuse::count,
           "closure operand stream is not densely semantic");
 }
@@ -293,14 +295,12 @@ void test_endpoint_projection() {
       emission_values.value_addresses, emission_endpoint);
   require(emission.valid,
           "emission closure projection failed: " + emission.diagnostic);
-  require(emission.instructions.size() == 3u &&
+  require(emission.instructions.size() == 2u &&
               surface_closure_instruction_kind(emission.instructions[0u]) ==
-                  SurfaceClosureInstructionKind::mix_begin &&
-              surface_closure_instruction_kind(emission.instructions[1u]) ==
                   SurfaceClosureInstructionKind::mix_right &&
-              surface_closure_operation(emission.instructions[2u]) ==
+              surface_closure_operation(emission.instructions[1u]) ==
                   ClosureOperation::emission &&
-              surface_closure_endpoints(emission.instructions[2u]) ==
+              surface_closure_endpoints(emission.instructions[1u]) ==
                   emission_endpoint &&
               emission.used_operations == (1u << static_cast<std::uint32_t>(
                                                ClosureOperation::emission)),
@@ -308,14 +308,15 @@ void test_endpoint_projection() {
   const auto &mix = find_closure(*compiled.program, ClosureOperation::mix);
   require(surface_closure_mix_factor_address(emission.instructions[0u]) ==
                   emission_values.value_addresses[mix.factor.value] &&
-              surface_closure_mix_right_offset(emission.instructions[0u]) ==
-                  1u &&
-              surface_closure_mix_end_offset(emission.instructions[1u]) ==
-                  2u &&
-              !surface_closure_mix_restores_parent(
-                  emission.instructions[1u]) &&
+              surface_closure_mix_parent_weight_slot(
+                  emission.instructions[0u]) ==
+                  surface_closure_root_weight_slot &&
+              surface_closure_mix_unary_weight_slot(
+                  emission.instructions[0u]) == 0u &&
+              surface_closure_leaf_weight_slot(
+                  emission.instructions[1u]) == 0u &&
               emission.mix_slots == 1u,
-          "one-sided emission projection changed the surviving Mix recurrence");
+          "one-sided emission projection changed the linear Mix recurrence");
 
   const auto executable = build_surface_value_executable_scene(std::vector{
       SurfaceValueExecutionInput{.program = compiled.program.get(),
@@ -323,8 +324,8 @@ void test_endpoint_projection() {
                                  .closure_plan = &closure_plan,
                                  .closure_endpoints = emission_endpoint}});
   require(executable.valid && executable.values.programs.size() == 1u &&
-              executable.values.programs.front().closure_count == 3u,
-          "executable scene rejected a valid tail emission projection");
+              executable.values.programs.front().closure_count == 2u,
+          "executable scene rejected a valid linear emission projection");
 
   const auto invalid = lower_surface_closure_program(
       *compiled.program, closure_plan, dependencies,
@@ -374,16 +375,16 @@ void test_emission_shading_normal_observation() {
           "emission DAG lost its transitive shading-normal observation");
 }
 
-void test_nested_mix_structured_recurrence() {
+void test_nested_mix_linear_recurrence() {
   const auto compiled = compile_graph(make_nested_mix_graph());
   const auto planned = plan_program(compiled);
   const auto &image = planned.closures;
-  require(image.instructions.size() == 7u &&
+  require(image.instructions.size() == 5u &&
               surface_closure_operation(image.instructions[2u]) ==
                   ClosureOperation::diffuse &&
-              surface_closure_operation(image.instructions[4u]) ==
+              surface_closure_operation(image.instructions[3u]) ==
                   ClosureOperation::glossy &&
-              surface_closure_operation(image.instructions[6u]) ==
+              surface_closure_operation(image.instructions[4u]) ==
                   ClosureOperation::emission,
           "nested Mix did not preserve exact left-to-right leaf order");
 
@@ -411,55 +412,60 @@ void test_nested_mix_structured_recurrence() {
           .factor.value];
 
   require(surface_closure_instruction_kind(image.instructions[0u]) ==
-                  SurfaceClosureInstructionKind::mix_begin &&
+                  SurfaceClosureInstructionKind::mix_both &&
               surface_closure_instruction_kind(image.instructions[1u]) ==
-                  SurfaceClosureInstructionKind::mix_begin &&
-              surface_closure_instruction_kind(image.instructions[3u]) ==
-                  SurfaceClosureInstructionKind::mix_right &&
-              surface_closure_instruction_kind(image.instructions[5u]) ==
-                  SurfaceClosureInstructionKind::mix_right &&
+                  SurfaceClosureInstructionKind::mix_both &&
               surface_closure_mix_factor_address(image.instructions[0u]) ==
                   outer_factor &&
               surface_closure_mix_factor_address(image.instructions[1u]) ==
                   inner_factor &&
-              surface_closure_mix_frame_slot(image.instructions[0u]) == 0u &&
-              surface_closure_mix_frame_slot(image.instructions[1u]) == 1u &&
-              surface_closure_mix_right_offset(image.instructions[0u]) == 5u &&
-              surface_closure_mix_right_offset(image.instructions[1u]) == 2u &&
-              surface_closure_mix_end_offset(image.instructions[3u]) == 2u &&
-              surface_closure_mix_end_offset(image.instructions[5u]) == 2u &&
-              !surface_closure_mix_restores_parent(image.instructions[3u]) &&
-              !surface_closure_mix_restores_parent(image.instructions[5u]) &&
-              image.maximum_mix_depth == 2u && image.mix_slots == 2u,
-          "nested tail Mix regions or exact live-interval coloring changed");
+              surface_closure_mix_parent_weight_slot(
+                  image.instructions[0u]) ==
+                  surface_closure_root_weight_slot &&
+              surface_closure_mix_left_weight_slot(
+                  image.instructions[0u]) == 0u &&
+              surface_closure_mix_right_weight_slot(
+                  image.instructions[0u]) == 1u &&
+              surface_closure_mix_parent_weight_slot(
+                  image.instructions[1u]) == 0u &&
+              surface_closure_mix_left_weight_slot(
+                  image.instructions[1u]) == 0u &&
+              surface_closure_mix_right_weight_slot(
+                  image.instructions[1u]) == 2u &&
+              surface_closure_leaf_weight_slot(image.instructions[2u]) == 0u &&
+              surface_closure_leaf_weight_slot(image.instructions[3u]) == 2u &&
+              surface_closure_leaf_weight_slot(image.instructions[4u]) == 1u &&
+              image.maximum_mix_depth == 2u && image.mix_slots == 3u,
+          "nested Mix recurrence or exact live-interval coloring changed");
 }
 
-void test_mix_region_restores_weight_before_add_sibling() {
+void test_add_sibling_retains_root_weight() {
   const auto compiled = compile_graph(make_add_after_mix_graph());
   const auto planned = plan_program(compiled);
   const auto &image = planned.closures;
-  require(image.instructions.size() == 6u &&
+  require(image.instructions.size() == 4u &&
               surface_closure_instruction_kind(image.instructions[0u]) ==
-                  SurfaceClosureInstructionKind::mix_begin &&
+                  SurfaceClosureInstructionKind::mix_both &&
               surface_closure_operation(image.instructions[1u]) ==
                   ClosureOperation::diffuse &&
-              surface_closure_instruction_kind(image.instructions[2u]) ==
-                  SurfaceClosureInstructionKind::mix_right &&
-              surface_closure_operation(image.instructions[3u]) ==
+              surface_closure_operation(image.instructions[2u]) ==
                   ClosureOperation::glossy &&
-              surface_closure_instruction_kind(image.instructions[4u]) ==
-                  SurfaceClosureInstructionKind::mix_end &&
-              surface_closure_operation(image.instructions[5u]) ==
+              surface_closure_operation(image.instructions[3u]) ==
                   ClosureOperation::emission,
-          "Add(Mix(A, B), C) did not close the Mix before visiting C");
-  require(surface_closure_mix_right_offset(image.instructions[0u]) == 2u &&
-              surface_closure_mix_end_offset(image.instructions[2u]) == 2u &&
-              surface_closure_mix_restores_parent(image.instructions[2u]) &&
-              surface_closure_mix_frame_slot(image.instructions[0u]) == 0u &&
-              surface_closure_right_frame_slot(image.instructions[2u]) == 0u &&
-              surface_closure_end_frame_slot(image.instructions[4u]) == 0u &&
-              image.mix_slots == 1u,
-          "Add-after-Mix did not preserve one closed immutable Mix frame");
+          "Add(Mix(A, B), C) did not retain linear left-to-right order");
+  require(surface_closure_mix_parent_weight_slot(
+                  image.instructions[0u]) ==
+                  surface_closure_root_weight_slot &&
+              surface_closure_mix_left_weight_slot(
+                  image.instructions[0u]) == 0u &&
+              surface_closure_mix_right_weight_slot(
+                  image.instructions[0u]) == 1u &&
+              surface_closure_leaf_weight_slot(image.instructions[1u]) == 0u &&
+              surface_closure_leaf_weight_slot(image.instructions[2u]) == 1u &&
+              surface_closure_leaf_weight_slot(image.instructions[3u]) ==
+                  surface_closure_root_weight_slot &&
+              image.mix_slots == 2u,
+          "Add-after-Mix did not preserve the sibling's root weight");
 }
 
 void test_statically_pruned_mix() {
@@ -539,7 +545,9 @@ void test_principled_static_contract() {
                        SurfaceClosureEndpoint::physical) |
                    surface_closure_endpoint_bit(
                        SurfaceClosureEndpoint::emission)) &&
-              instruction.payload1 == 0u && instruction.payload2 == 0u &&
+              surface_closure_leaf_weight_slot(instruction) ==
+                  surface_closure_root_weight_slot &&
+              instruction.payload2 == 0u &&
               image.operands.size() ==
                   surface_closure_operand::principled::count,
           "Principled opcode/endpoints/operand ABI is inconsistent");
@@ -604,7 +612,7 @@ void test_missing_live_address_rejected() {
           "missing live Mix address was not rejected transactionally");
 }
 
-void test_malformed_structured_control_rejected() {
+void test_malformed_linear_weight_program_rejected() {
   const auto compiled = compile_graph(make_nested_mix_graph());
   const auto planned = plan_program(compiled);
   const auto reject_mutation = [&](SurfaceClosureProgramImage malformed,
@@ -613,39 +621,45 @@ void test_malformed_structured_control_rejected() {
         std::span{&planned.values, 1u}, std::span{&malformed, 1u});
     require(!scene.valid &&
                 scene.diagnostic.find(expected) != std::string::npos,
-            "malformed structured closure control was accepted: " +
+            "malformed linear closure-weight program was accepted: " +
                 std::string{expected});
   };
 
-  auto missing_marker = planned.closures;
-  missing_marker.instructions[0u].payload2 = 0u;
-  reject_mutation(std::move(missing_marker), "right-region offset");
+  auto undefined_parent = planned.closures;
+  undefined_parent.instructions[0u].payload1 = 0u;
+  reject_mutation(std::move(undefined_parent), "undefined parent weight");
 
-  auto overlapping_intervals = planned.closures;
-  overlapping_intervals.instructions[1u].payload1 = 0u;
-  overlapping_intervals.instructions[3u].payload0 = 0u;
-  reject_mutation(std::move(overlapping_intervals), "already live");
+  auto undefined_leaf = planned.closures;
+  undefined_leaf.instructions[2u].payload1 =
+      planned.closures.mix_slots;
+  reject_mutation(std::move(undefined_leaf), "undefined incoming weight");
 
-  auto shortened_tail = planned.closures;
-  shortened_tail.instructions[3u].payload1 = 1u;
+  auto aliased_outputs = planned.closures;
+  aliased_outputs.instructions[0u].payload2 = 0u;
+  reject_mutation(std::move(aliased_outputs), "aliased result weights");
+
+  auto out_of_range_output = planned.closures;
+  out_of_range_output.instructions[0u].payload2 =
+      planned.closures.mix_slots |
+      (surface_closure_mix_right_weight_slot(
+           planned.closures.instructions[0u])
+       << 16u);
+  reject_mutation(std::move(out_of_range_output), "invalid or aliased");
+
+  auto malformed_unary = planned.closures;
+  malformed_unary.instructions[0u].control =
+      make_surface_closure_instruction_kind(
+          SurfaceClosureInstructionKind::mix_left);
+  reject_mutation(std::move(malformed_unary), "unary Mix");
+
+  auto reserved_leaf_payload = planned.closures;
+  reserved_leaf_payload.instructions[2u].payload2 = 1u;
   reject_mutation(
-      std::move(shortened_tail), "does not consume its enclosing branch tail");
-
-  auto false_restoration = planned.closures;
-  false_restoration.instructions[3u].payload1 = 1u;
-  false_restoration.instructions[3u].payload2 =
-      surface_closure_mix_right_restores_parent;
-  reject_mutation(std::move(false_restoration), "exact end marker");
-
-  const auto restoring = plan_program(
-      compile_graph(make_add_after_mix_graph()));
-  auto mismatched_end = restoring.closures;
-  mismatched_end.instructions[4u].payload0 = 1u;
-  reject_mutation(std::move(mismatched_end), "exact end marker");
+      std::move(reserved_leaf_payload), "nonzero reserved payload");
 
   auto inexact_coloring = planned.closures;
   inexact_coloring.mix_slots += 1u;
-  reject_mutation(std::move(inexact_coloring), "not exact");
+  reject_mutation(std::move(inexact_coloring), "not dense");
 
   auto semantic_control = planned.closures;
   semantic_control.instructions[0u].control |=
@@ -677,28 +691,29 @@ void test_executable_scene_relocation() {
   const auto &scene = executable.values;
   require(scene.programs.size() == 2u &&
               scene.programs[0u].closure_begin == 0u &&
-              scene.programs[0u].closure_count == 4u &&
-              scene.programs[1u].closure_begin == 4u &&
-              scene.programs[1u].closure_count == 4u,
+              scene.programs[0u].closure_count == 3u &&
+              scene.programs[1u].closure_begin == 3u &&
+              scene.programs[1u].closure_count == 3u,
           "closure ranges are not published in program descriptors");
-  require(scene.closure_instructions.size() == 8u &&
-              scene.closure_principled_features.size() == 8u &&
+  require(scene.closure_instructions.size() == 6u &&
+              scene.closure_principled_features.size() == 6u &&
               scene.closure_operands.size() == 10u,
           "parallel closure streams changed size during aggregation");
   require(surface_closure_leaf_operand_begin(
-                  scene.closure_instructions[5u]) == 5u &&
-              surface_closure_mix_right_offset(
-                  scene.closure_instructions[4u]) == 2u &&
-              surface_closure_mix_end_offset(
-                  scene.closure_instructions[6u]) == 2u &&
-              !surface_closure_mix_restores_parent(
-                  scene.closure_instructions[6u]) &&
+                  scene.closure_instructions[4u]) == 5u &&
               surface_closure_instruction_kind(
-                  scene.closure_instructions[7u]) ==
+                  scene.closure_instructions[3u]) ==
+                  SurfaceClosureInstructionKind::mix_both &&
+              surface_closure_mix_factor_address(
+                  scene.closure_instructions[3u]) ==
+                  surface_closure_mix_factor_address(
+                      planned.closures.instructions[0u]) &&
+              surface_closure_instruction_kind(
+                  scene.closure_instructions[5u]) ==
                   SurfaceClosureInstructionKind::leaf,
           "the second closure program was not relocated exactly once");
   require(scene.maximum_closure_mix_depth == 1u &&
-              scene.maximum_closure_mix_slots == 1u &&
+              scene.maximum_closure_mix_slots == 2u &&
               scene.used_closure_operations ==
                   ((1u << static_cast<std::uint32_t>(
                         ClosureOperation::diffuse)) |
@@ -727,15 +742,15 @@ void test_executable_scene_relocation() {
 
 int main() {
   try {
-    test_mixed_endpoint_structured_control();
+    test_mixed_endpoint_linear_weight_program();
     test_endpoint_projection();
     test_emission_shading_normal_observation();
-    test_nested_mix_structured_recurrence();
-    test_mix_region_restores_weight_before_add_sibling();
+    test_nested_mix_linear_recurrence();
+    test_add_sibling_retains_root_weight();
     test_statically_pruned_mix();
     test_principled_static_contract();
     test_missing_live_address_rejected();
-    test_malformed_structured_control_rejected();
+    test_malformed_linear_weight_program_rejected();
     test_executable_scene_relocation();
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
