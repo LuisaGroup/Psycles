@@ -23,12 +23,12 @@ The remaining gap to Cycles is split across two independent boundaries:
    not the domain of the packed hot consumer.
 
 The second difference remains a measured performance boundary. On the newest
-interleaved 640x480, 64-spp Barbershop HIP traces, the typed-family consumer
-with population-owned runtime flags costs a median 27.640 ns per launched
-item. The retained Cycles 5.2 trace costs 10.778 ns per item, so the current
-normalized gap is approximately 2.56x. Psycles still reaches 256 VGPRs and
-3,136 B private storage; Cycles uses 192 VGPRs and 6,976 B private storage. The
-result cannot be explained by private bytes alone.
+interleaved 640x480, 64-spp Barbershop HIP traces, after single-pass transparent
+population, the surface continuation costs 27.130 ns per launched item. The
+retained Cycles 5.2 trace costs 10.778 ns per item, so the current normalized
+gap is approximately 2.52x. Psycles still reaches 256 VGPRs; its full-scene
+private allocation is 3,296 B while Cycles uses 192 VGPRs and 6,976 B private
+storage. The result cannot be explained by private bytes alone.
 
 The first part of this audit introduced the checked physical-closure access
 boundary. The follow-up documented below implements consumer-directed family
@@ -777,10 +777,12 @@ handlers; the universal-record adapter has been removed from the hot path.
 Population additionally owns the retained-sequence runtime-flag fold, so
 selection is a pure measure/inversion projection. The next representation
 question is no longer "SVM or expanded graphs" or "universal or typed
-payload": both have controlled answers. It is whether the Cycles single-
-closure fast path and individual handler implementations remove enough
-executed mixture/control work without enlarging the coroutine frame or main
-entry.
+payload": both have controlled answers. The Cycles-style runtime single-
+closure categorical branch has now been rejected twice, including after the
+latest population rewrite: despite covering 55.14% of Barbershop surface
+events, its exact specialized form regressed normalized surface time by
+0.111%. The remaining question is which individual handler or full-mixture
+operation accounts for the executed gap.
 
 No callable should receive blanket `noinline` or `alwaysinline`. Cycles leaves
 ordinary profitability decisions to the backend, and the accepted Luisa HIP
@@ -789,22 +791,18 @@ IR, object, register/private metadata, and HIP time rather than source size.
 
 ## Priorities
 
-1. Measure the runtime closure-count distribution and implement the Cycles
-   single-closure sampling fast path as a separate, proven experiment. The
-   zero- and multi-closure paths must retain the exact finite-measure and MIS
-   laws; no host material special case is permitted.
-2. Compare each typed family handler against Cycles' corresponding
+1. Compare each typed family handler against Cycles' corresponding
    `bsdf_eval`/`bsdf_sample` device path with constant-input probes and final
    HIP ISA/resource checks before changing more control flow.
-3. Add the missing high-use closure semantics: Principled/Glossy anisotropy
+2. Add the missing high-use closure semantics: Principled/Glossy anisotropy
    and tangent, thin film, standalone Metallic/Sheen, then Hair families.
-4. Add typed multi-result SVM instructions where a Cycles handler performs one
+3. Add typed multi-result SVM instructions where a Cycles handler performs one
    expensive operation and writes multiple live outputs. Barbershop currently
    has no exact fusable Image or Vector Math pairs, so this is a general
    completeness/other-scene task rather than its present hotspot.
-5. Implement the remaining ray-tracing value nodes through backend-neutral
+4. Implement the remaining ray-tracing value nodes through backend-neutral
    RayQuery semantics and keep HIP traversal optimization in the HIP backend.
-6. Regenerate a Blender 5.2 coverage baseline and run the release gate, then
+5. Regenerate a Blender 5.2 coverage baseline and run the release gate, then
    repeat complex-scene fallback/HIP/native-XIR Vulkan correctness and HIP
    per-stage profiling.
 

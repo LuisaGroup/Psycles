@@ -1,0 +1,66 @@
+{
+  "schema": "psycles.singleton-categorical-bypass-recheck.v1",
+  "retained_commit": "9e20e1adfb105c5e75820f9881b2f4fe07707766",
+  "cycles_source_commit": "9e2066aef7ef7e20c142ad7bd3303138a4304c93",
+  "scene": "Blender 5.2 Barbershop",
+  "configuration": {
+    "backend": "hip",
+    "width": 640,
+    "height": 480,
+    "samples": 64,
+    "adaptive_sampling": false,
+    "scheduler": "wavefront-staged"
+  },
+  "closure_count_histogram": {
+    "exact": true,
+    "surface_events": 53653581,
+    "bins": {
+      "0": 834160,
+      "1": 29582674,
+      "2": 21627974,
+      "3": 1607963,
+      "4": 810
+    }
+  },
+  "surface_kernel": {
+    "calls": 293,
+    "scheduled_work_items": 53663616,
+    "private_bytes": 3296,
+    "vgpr_count": 256,
+    "retained_hash": "942e724ac7531a59",
+    "candidate_hash": "4426c828c2129651",
+    "retained_ns_per_item": [
+      27.153786226407107,
+      27.186139394706462
+    ],
+    "candidate_ns_per_item": [
+      27.188214916415621,
+      27.211803338038198
+    ],
+    "retained_mean_ns_per_item": 27.169962810556785,
+    "candidate_mean_ns_per_item": 27.20000912722691,
+    "candidate_change_percent": 0.11058652115067957
+  },
+  "render_only_seconds": {
+    "retained": [2.52964, 2.53529],
+    "candidate": [2.53257, 2.53259],
+    "retained_mean": 2.532465,
+    "candidate_mean": 2.53258,
+    "candidate_change_percent": 0.0045410301820592025
+  },
+  "visual_validation": {
+    "pass_count": 15,
+    "all_pixels_finite": true,
+    "combined_relative_rmse": 0.00035557948653202367,
+    "normal_relative_rmse": 2.7933895471196395e-08,
+    "largest_relative_rmse_pass": "GlossDir",
+    "largest_relative_rmse": 0.0004358984831048307,
+    "inspected_at_original_resolution": [
+      "Combined",
+      "Normal",
+      "GlossInd"
+    ],
+    "structured_difference_found": false
+  },
+  "decision": "rejected"
+}

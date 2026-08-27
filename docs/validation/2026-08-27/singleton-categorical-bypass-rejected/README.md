@@ -6,8 +6,15 @@ Do not add a runtime `retained_count == 1` branch around surface-closure
 inverse-CDF traversal. The transformation is semantically exact, but it is not
 profitable on the production HIP renderer. Three complex Blender 5.2 scenes
 show noise-level changes or a small regression, and a matched Barbershop kernel
-trace measures `shade_surface` 0.248% slower. The experimental source changes
-were therefore removed; the retained source is commit `f196ecf`.
+trace measures `shade_surface` 0.248% slower. The original experimental source
+changes were therefore removed at commit `f196ecf`.
+
+The decision was re-tested after the single-pass transparent population change
+at retained commit `9e20e1a`. The narrower, algebraically specialized form was
+again slower: `shade_surface` regressed by 0.111% while render-only time changed
+by +0.005%. It was removed as well. This independent re-check rules out the
+possibility that the earlier result was an artifact of the old population
+shape.
 
 This result complements the runtime closure-count measurement in
 `../surface-closure-count-histogram/`: the singleton population is real, but
@@ -109,6 +116,54 @@ HIPRT build kernels, copies, and output are excluded from the mapped-kernel
 sum. All three measurements agree that this is not the missing Cycles surface
 performance optimization.
 
+### Post-transparent-population re-check
+
+The current production histogram was measured again over the complete
+640x480, 64-spp Barbershop run. It was exact and contained 53,653,581 surface
+events: 1.5547% with zero closures, 55.1364% with one, 40.3104% with two,
+2.9969% with three, and 0.0015% with four. Thus 56.6912% of events satisfy
+`N <= 1`; the rejected result is not explained by a rare predicate.
+
+For a positive-mass singleton, the general inversion recurrence reduces to
+
+```text
+u = clamp(random_lobe, 0, nextafter(1, 0))
+target = u * W
+selected = W > 0 and target < W
+selected_index = 0
+selected_lobe = u.
+```
+
+The candidate retained `target < W` rather than replacing it with a finite-
+number assumption, so NaN, infinity, zero-mass, and the upper clamp boundary
+preserved the general state machine's observable invalid-measure behavior. It
+added no result fields and did not change the sampler or mixture evaluator.
+
+The interleaved A/B/B/A HIP trace used identical 640x480, 64-spp fixed-sample
+Barbershop commands. Both variants issued 293 surface continuations over
+53,663,616 scheduled work-items and used 3,296 B private storage and 256 VGPRs.
+
+| Run | Render-only | `shade_surface` ns/item |
+|---|---:|---:|
+| retained A | 2.52964 s | 27.153786 |
+| candidate A | 2.53257 s | 27.188215 |
+| candidate B | 2.53259 s | 27.211803 |
+| retained B | 2.53529 s | 27.186139 |
+| retained mean | 2.532465 s | 27.169963 |
+| candidate mean | 2.532580 s | 27.200009 |
+| candidate change | **+0.005%** | **+0.111%** |
+
+All three focused surface-population tests passed on fallback, HIP, and strict
+native XIR-to-SPIR-V Vulkan before the source was reverted. A fresh 15-pass
+comparison found no invalid pixels; Combined relative RMSE was 0.000356,
+Normal relative RMSE was 2.79e-8, and the largest pass-relative RMSE was
+0.000436 in Glossy Direct. I inspected Combined, Normal, and Glossy Indirect
+at original resolution. Geometry, normals, UVs, materials, lighting, and
+silhouettes coincide; amplified differences are sparse floating-point and
+atomic-accumulation variation. The already checked-in triptychs below remain
+representative of this same rejected transformation. Machine-readable re-check
+data are in `post-transparent-recheck.json`.
+
 ## Numerical and visual validation
 
 The profiler pair produced finite values for every exported pass. Selected
@@ -169,8 +224,10 @@ build/bin/psycles_luisa_sample_dispatch_film_tests vk
 ```
 
 Equivalent film tests passed on fallback and HIP, and
-`psycles_luisa_compile_tests` passed. The retained tree is byte-for-byte the
-already validated `f196ecf` source plus this rejection record.
+`psycles_luisa_compile_tests` passed. The original retained tree was byte-for-
+byte the already validated `f196ecf` source plus this rejection record. The
+post-transparent re-check likewise left the current `9e20e1a` source byte-for-
+byte unchanged.
 
 ## Next optimization target
 
