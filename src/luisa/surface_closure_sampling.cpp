@@ -17,6 +17,7 @@ template<typename Consumer>
 void for_each_surface_closure_selection(
     const SurfaceClosureSet &closures,
     const SurfaceClosureSelectionContext &context,
+    SurfaceClosureReachability reachability,
     bool include_runtime_flags,
     Consumer &&consumer) noexcept {
     UInt index = 0u;
@@ -31,7 +32,8 @@ void for_each_surface_closure_selection(
                 surface_closure_selection(
                     context,
                     make_surface_closure_selection_input(common),
-                    include_runtime_flags));
+                    include_runtime_flags,
+                    reachability));
             index += 1u;
         };
     } else {
@@ -43,7 +45,8 @@ void for_each_surface_closure_selection(
                 surface_closure_selection(
                     context,
                     make_surface_closure_selection_input(closure),
-                    include_runtime_flags));
+                    include_runtime_flags,
+                    reachability));
             index += 1u;
         };
     }
@@ -59,6 +62,7 @@ void with_selected_surface_closure(
     const SurfaceClosureSet &closures,
     UInt selected_index,
     const SurfaceClosureSelectionContext &context,
+    SurfaceClosureReachability reachability,
     bool include_runtime_flags,
     Consumer &&consumer) noexcept {
     if (closures.profile() ==
@@ -72,7 +76,8 @@ void with_selected_surface_closure(
             surface_closure_selection(
                 context,
                 make_surface_closure_selection_input(common),
-                include_runtime_flags));
+                include_runtime_flags,
+                reachability));
     } else {
         const auto closure =
             static_cast<SurfaceClosurePhysicalRecord>(
@@ -81,7 +86,8 @@ void with_selected_surface_closure(
             surface_closure_selection(
                 context,
                 make_surface_closure_selection_input(closure),
-                include_runtime_flags));
+                include_runtime_flags,
+                reachability));
     }
 }
 
@@ -109,6 +115,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     for_each_surface_closure_selection(
         _closures,
         selection_context,
+        _reachability,
         !use_populated_runtime_flags,
         [&](UInt,
             const luisa::compute::Var<
@@ -125,6 +132,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     for_each_surface_closure_selection(
         _closures,
         selection_context,
+        _reachability,
         !use_populated_runtime_flags,
         [&](UInt index,
             const luisa::compute::Var<
@@ -146,7 +154,8 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
             const auto selection = surface_closure_selection(
                 selection_context,
                 make_surface_closure_selection_input(common),
-                !use_populated_runtime_flags);
+                !use_populated_runtime_flags,
+                _reachability);
             const auto sample =
                 surface_closure_conditional_sample_from_physical_common(
                     services,
@@ -179,6 +188,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
                 _closures,
                 selected_index,
                 selection_context,
+                _reachability,
                 !use_populated_runtime_flags,
                 [&](const SurfaceClosurePhysicalRecord &closure,
                     const luisa::compute::Var<

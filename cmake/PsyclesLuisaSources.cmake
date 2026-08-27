@@ -22,6 +22,8 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/microfacet_anisotropy.cpp
     src/luisa/metallic_closure_component.cpp
     src/luisa/sheen_closure_component.cpp
+    src/luisa/hair_closure_component.cpp
+    src/luisa/hair_closure_scattering.cpp
     src/luisa/microfacet_glass_component.cpp
     src/luisa/principled_base_component.cpp
     src/luisa/principled_diffuse_component.cpp

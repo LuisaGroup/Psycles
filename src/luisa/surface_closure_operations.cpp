@@ -79,6 +79,13 @@ aov_contribution(
                              SurfaceClosureKind::metallic_f82)) |
         (closure.kind == static_cast<std::uint32_t>(
                              SurfaceClosureKind::metallic_conductor));
+    const auto is_hair_reflection =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::hair_reflection);
+    const auto is_hair_transmission =
+        closure.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::hair_transmission);
+    const auto is_hair = is_hair_reflection | is_hair_transmission;
     const auto is_glass =
         closure.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::glass);
@@ -113,7 +120,7 @@ aov_contribution(
         corrected_glossy_normal,
         closure.normal,
         is_sheen | is_ashikhmin | is_rough_translucent |
-            is_thin_glass_transmission);
+            is_thin_glass_transmission | is_hair);
 
     const auto diffuse_family =
         is_diffuse | is_translucent | is_rough_translucent | is_bssrdf;
@@ -140,7 +147,7 @@ aov_contribution(
     const auto glossy_weight = select(
         0.0f,
         closure_pass_weight,
-        is_dielectric_family | generic_glossy);
+        is_dielectric_family | generic_glossy | is_hair);
 
     luisa::compute::Var<SurfaceAovContributionCall> result;
     result.albedo = diffuse_albedo;
@@ -148,7 +155,7 @@ aov_contribution(
         select(
             make_float3(0.0f),
             closure.reflection_albedo,
-            is_dielectric_family) +
+            is_dielectric_family | is_hair_reflection) +
         select(
             make_float3(0.0f),
             closure.albedo,
@@ -156,7 +163,7 @@ aov_contribution(
     result.transmission_albedo = select(
         make_float3(0.0f),
         closure.transmission_albedo,
-        is_dielectric_family);
+        is_dielectric_family | is_hair_transmission);
     result.transparency = select(
         make_float3(0.0f),
         closure.weight,
@@ -172,7 +179,7 @@ aov_contribution(
         diffuse_weight + glossy_weight;
     result.roughness_weight = glossy_weight;
     result.roughness = glossy_weight * select(
-        closure.roughness, 1.0f, is_ashikhmin);
+        closure.roughness, 1.0f, is_ashikhmin | is_hair);
     return result;
 }
 

@@ -54,6 +54,7 @@ _ALL_PROBES = (
     "glossy_bsdf_matrix",
     "gradient_matrix",
     "gradient_spherical",
+    "hair_bsdf_matrix",
     "hosek_wilkie_diffuse_transport",
     "hue_saturation_value",
     "image_texture_srgb",
@@ -586,12 +587,33 @@ _PROBE_NORMALIZED_P99_RMSE_GATES = {
         "GlossDir": 0.0001,
         "Normal": 0.0001,
     },
+    "hair_bsdf_matrix": {
+        # Cycles CPU versus HIP itself reaches 7.04e-4 relative RMSE in the
+        # narrow Hair Reflection peak on this matrix. Keep a 1e-3 normalized
+        # p99 envelope: it covers backend trig/triangle-edge rounding while
+        # rejecting the former wrong dPdv contract by three orders of
+        # magnitude (0.93 Combined, 2.09 GlossDir, 2.67 TransDir).
+        "Combined": 0.001,
+        "GlossCol": 0.001,
+        "GlossDir": 0.001,
+        "TransCol": 0.001,
+        "TransDir": 0.001,
+        "Normal": 0.001,
+    },
 }
 
 # A non-finite Cycles reference sample is retained as oracle evidence but must
 # never excuse a Psycles NaN/Inf. This is intentionally per probe: older
 # reports predate the source-attributed counters and remain readable.
 _PROBE_ACTUAL_INVALID_PIXEL_GATES = {
+    "hair_bsdf_matrix": {
+        "Combined": 0,
+        "GlossCol": 0,
+        "GlossDir": 0,
+        "TransCol": 0,
+        "TransDir": 0,
+        "Normal": 0,
+    },
     "sheen_bsdf_matrix": {
         "Combined": 0,
         "DiffCol": 0,

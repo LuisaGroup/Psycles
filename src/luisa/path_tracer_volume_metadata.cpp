@@ -261,6 +261,8 @@ cycles_program_closure_allocation_count(
             case compiler::ClosureOperation::refraction:
             case compiler::ClosureOperation::sheen_microfiber:
             case compiler::ClosureOperation::sheen_ashikhmin:
+            case compiler::ClosureOperation::hair_reflection:
+            case compiler::ClosureOperation::hair_transmission:
             case compiler::ClosureOperation::emission:
             case compiler::ClosureOperation::transparent:
                 add(1u);

@@ -109,6 +109,14 @@ public:
 
 } // namespace
 
+CyclesTriangleSurfaceDerivatives cycles_triangle_surface_derivatives(
+    const CyclesTriangleSurface &surface) noexcept {
+  const auto facing_sign = select(1.0f, -1.0f, surface.back_facing);
+  return {
+      .dpdu = (surface.world_p1 - surface.world_p0) * facing_sign,
+      .dpdv = (surface.world_p2 - surface.world_p0) * facing_sign};
+}
+
 std::shared_ptr<const CyclesTriangleSurfaceComponent>
 make_cycles_triangle_surface_component() {
   return std::make_shared<FinalSupportTriangleSurfaceComponent>();

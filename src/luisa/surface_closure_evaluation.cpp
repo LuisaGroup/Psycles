@@ -1,6 +1,7 @@
 #include <psycles/luisa/surface_closure_evaluation.h>
 
 #include "graph_surface_internal.h"
+#include "hair_closure_scattering.h"
 #include "microfacet_glass_component.h"
 #include "thin_glass_component.h"
 
@@ -58,11 +59,19 @@ inline constexpr auto evaluation_dielectric_payload_reachability =
         .thin_film_kinds =
             surface_closure_kind_bit(SurfaceClosureKind::glass)};
 
+inline constexpr auto evaluation_hair_payload_reachability =
+    SurfaceClosureReachability{
+        .kinds =
+            surface_closure_kind_bit(SurfaceClosureKind::hair_reflection) |
+            surface_closure_kind_bit(SurfaceClosureKind::hair_transmission),
+        .principled_lobes = 0u};
+
 inline constexpr auto evaluation_common_only_reachability =
     all_surface_closure_reachability &
     SurfaceClosureReachability{
         .kinds = all_surface_closure_kinds &
                  ~evaluation_general_payload_reachability.kinds &
+                 ~evaluation_hair_payload_reachability.kinds &
                  ~evaluation_dielectric_payload_reachability.kinds,
         .principled_lobes = 0u};
 
@@ -637,6 +646,92 @@ evaluate_dielectric_closure(
     return result;
 }
 
+[[nodiscard]] luisa::compute::Var<SurfaceClosureEvaluationContributionCall>
+evaluate_hair_closure(
+    const SurfaceClosurePoint &point,
+    Float3 shading_normal,
+    const SurfaceClosurePhysicalHairRecord &closure,
+    Float3 incoming,
+    Float3 outgoing,
+    const SurfaceQuery &query,
+    const SurfaceClosureEvaluationPolicy &policy,
+    Bool selected_sample,
+    SurfaceClosureReachability reachability) noexcept {
+    const auto reflection =
+        reachability.contains(SurfaceClosureKind::hair_reflection)
+            ? has_kind(closure.common, SurfaceClosureKind::hair_reflection)
+            : Bool{false};
+    const auto glossy_enabled =
+        (query.lobe_mask &
+         static_cast<std::uint32_t>(event_glossy)) != 0u;
+    const auto transmission_enabled =
+        (query.lobe_mask &
+         static_cast<std::uint32_t>(event_transmission)) != 0u;
+    const auto allowed =
+        glossy_enabled &
+        select(transmission_enabled, Bool{true}, reflection) &
+        closure.common.setup_valid;
+    auto result = zero_surface_closure_evaluation_contribution();
+    $if(allowed) {
+        Float intensity = 0.0f;
+        Float pdf = 0.0f;
+        $if(reflection) {
+            if (reachability.contains(SurfaceClosureKind::hair_reflection)) {
+                const auto evaluation = detail::evaluate_hair_reflection(
+                    closure, incoming, outgoing);
+                intensity = evaluation.intensity;
+                pdf = evaluation.pdf;
+            }
+        }
+        $else {
+            if (reachability.contains(SurfaceClosureKind::hair_transmission)) {
+                const auto evaluation = detail::evaluate_hair_transmission(
+                    closure, incoming, outgoing);
+                intensity = evaluation.intensity;
+                pdf = evaluation.pdf;
+            }
+        };
+        const auto bump_shadowing = detail::bump_shadowing_term(
+            point,
+            shading_normal,
+            closure.common.normal,
+            false,
+            outgoing,
+            !selected_sample);
+        const auto bump_pdf_valid =
+            (bump_shadowing != 0.0f) | selected_sample;
+        pdf = select(0.0f, pdf, bump_pdf_valid);
+        const auto value = closure.common.weight * intensity * bump_shadowing;
+        const auto contributes = select(
+            policy.transmission_included,
+            policy.glossy_included,
+            reflection);
+        const auto eligible_value = select(
+            make_float3(0.0f), value, contributes);
+        const auto weight = detail::closure_sample_weight(closure.common);
+        const auto weighted_pdf = weight * pdf;
+        const auto nonzero = detail::sample_weight(value) > 0.0f;
+        result.f = eligible_value;
+        result.glossy_f = select(
+            make_float3(0.0f), eligible_value, reflection);
+        result.total_sample_weight = weight;
+        result.weighted_pdf = weighted_pdf;
+        // Legacy Hair is neither singular nor microfacet; Cycles' generic
+        // roughness classifier therefore returns exactly one.
+        result.weighted_roughness_squared = weighted_pdf;
+        result.events = select(
+            0u,
+            select(
+                static_cast<std::uint32_t>(
+                    event_glossy | event_transmission),
+                static_cast<std::uint32_t>(
+                    event_glossy | event_reflection),
+                reflection),
+            contributes & nonzero);
+    };
+    return result;
+}
+
 }// namespace
 
 luisa::compute::Var<SurfaceClosureEvaluationContributionCall>
@@ -670,6 +765,11 @@ surface_closure_evaluation_contribution(
                             SurfaceClosureKind::glass)) |
         (common.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::refraction));
+    const auto is_hair =
+        (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::hair_reflection)) |
+        (common.kind == static_cast<std::uint32_t>(
+                            SurfaceClosureKind::hair_transmission));
     auto result = zero_surface_closure_evaluation_contribution();
     $if(is_dielectric) {
         result = evaluate_dielectric_closure(
@@ -683,6 +783,18 @@ surface_closure_evaluation_contribution(
             policy,
             Bool{selected_sample_expression},
             reachability & evaluation_dielectric_payload_reachability);
+    }
+    $elif(is_hair) {
+        result = evaluate_hair_closure(
+            point,
+            Float3{shading_normal_expression},
+            project_surface_closure_physical_hair(closure),
+            Float3{incoming_expression},
+            Float3{outgoing_expression},
+            query,
+            policy,
+            Bool{selected_sample_expression},
+            reachability & evaluation_hair_payload_reachability);
     }
     $elif(is_general) {
         result = evaluate_general_closure(
@@ -742,6 +854,9 @@ surface_closure_evaluation_contribution_from_physical_common(
     const auto is_dielectric_payload =
         reachable_kind(SurfaceClosureKind::glass) |
         reachable_kind(SurfaceClosureKind::refraction);
+    const auto is_hair_payload =
+        reachable_kind(SurfaceClosureKind::hair_reflection) |
+        reachable_kind(SurfaceClosureKind::hair_transmission);
 
     auto result = zero_surface_closure_evaluation_contribution();
     // The three reachability meets are a proof obligation as well as a
@@ -763,6 +878,20 @@ surface_closure_evaluation_contribution_from_physical_common(
             policy,
             Bool{selected_sample},
             reachability & evaluation_dielectric_payload_reachability);
+    }
+    $elif(is_hair_payload) {
+        const auto closure =
+            unpack_surface_closure_physical_hair(common, load_payload());
+        result = evaluate_hair_closure(
+            point,
+            Float3{shading_normal},
+            closure,
+            Float3{incoming},
+            Float3{outgoing},
+            query,
+            policy,
+            Bool{selected_sample},
+            reachability & evaluation_hair_payload_reachability);
     }
     $elif(is_general_payload) {
         const auto closure =

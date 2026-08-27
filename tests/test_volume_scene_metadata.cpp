@@ -91,6 +91,26 @@ int main() {
             }
         };
 
+    ShaderGraph hair_graph;
+    const auto hair = hair_graph.add_node(
+        compiler::node_type::hair_bsdf,
+        "Legacy Hair allocation");
+    hair_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = hair, .socket = "Closure"});
+    compiler::ShaderCompiler shader_compiler{
+        compiler::make_core_node_registry()};
+    const auto hair_shader = shader_compiler.compile(hair_graph);
+    const auto hair_program =
+        hair_shader.ok()
+            ? compiler::compile_surface_program(*hair_shader.program)
+            : compiler::SurfaceProgramCompilation{};
+    require(
+        hair_program.ok() &&
+            cycles_program_closure_allocation_count(
+                *hair_program.program) == 1u,
+        "legacy Hair was omitted from the Cycles closure budget");
+
     ShaderGraph closure_graph;
     const auto diffuse =
         closure_graph.add_node(
@@ -110,8 +130,6 @@ int main() {
         OutputRef{
             .node = scatter,
             .socket = "Volume"});
-    compiler::ShaderCompiler shader_compiler{
-        compiler::make_core_node_registry()};
     const auto one_volume_shader =
         shader_compiler.compile(
             closure_graph);

@@ -370,6 +370,15 @@ struct sheen {
   static constexpr std::size_t count = 3u;
 };
 
+struct hair {
+  static constexpr std::size_t color = 0u;
+  static constexpr std::size_t offset = 1u;
+  static constexpr std::size_t roughness_u = 2u;
+  static constexpr std::size_t roughness_v = 3u;
+  static constexpr std::size_t tangent = 4u;
+  static constexpr std::size_t count = 5u;
+};
+
 struct glass {
   static constexpr std::size_t color = 0u;
   static constexpr std::size_t normal = 1u;
@@ -433,6 +442,9 @@ surface_closure_operand_count(ClosureOperation operation) noexcept {
   case ClosureOperation::sheen_microfiber:
   case ClosureOperation::sheen_ashikhmin:
     return surface_closure_operand::sheen::count;
+  case ClosureOperation::hair_reflection:
+  case ClosureOperation::hair_transmission:
+    return surface_closure_operand::hair::count;
   case ClosureOperation::glass:
     return surface_closure_operand::glass::count;
   case ClosureOperation::emission:
@@ -509,13 +521,15 @@ inline constexpr std::uint32_t surface_closure_instruction_kind_mask =
 inline constexpr std::uint32_t surface_closure_microfacet_anisotropy =
     1u << 18u;
 inline constexpr std::uint32_t surface_closure_thin_film = 1u << 19u;
+inline constexpr std::uint32_t surface_closure_hair_tangent_linked = 1u << 20u;
 inline constexpr std::uint32_t surface_closure_control_mask =
     surface_closure_opcode_mask | surface_closure_endpoint_mask |
     surface_closure_bssrdf_method_mask | surface_closure_normal_uses_bump |
     surface_closure_coat_normal_linked |
     surface_closure_preserve_ggx_energy | surface_closure_beckmann |
     surface_closure_instruction_kind_mask |
-    surface_closure_microfacet_anisotropy | surface_closure_thin_film;
+    surface_closure_microfacet_anisotropy | surface_closure_thin_film |
+    surface_closure_hair_tangent_linked;
 
 [[nodiscard]] constexpr std::uint32_t make_surface_closure_instruction_kind(
     SurfaceClosureInstructionKind kind) noexcept {
@@ -586,7 +600,8 @@ inline constexpr std::uint32_t surface_closure_static_variant_mask =
     surface_closure_opcode_mask | surface_closure_bssrdf_method_mask |
     surface_closure_coat_normal_linked |
     surface_closure_preserve_ggx_energy | surface_closure_beckmann |
-    surface_closure_microfacet_anisotropy | surface_closure_thin_film;
+    surface_closure_microfacet_anisotropy | surface_closure_thin_film |
+    surface_closure_hair_tangent_linked;
 
 // Emission projection never observes BSSRDF, microfacet-energy, or Beckmann
 // configuration. Coat-normal linkage alone changes its Principled layer
@@ -616,7 +631,10 @@ inline constexpr std::uint32_t surface_closure_emission_static_variant_mask =
          (microfacet_anisotropy
               ? surface_closure_microfacet_anisotropy
               : 0u) |
-         (thin_film ? surface_closure_thin_film : 0u);
+         (thin_film ? surface_closure_thin_film : 0u) |
+         (instruction.hair_tangent_linked
+              ? surface_closure_hair_tangent_linked
+              : 0u);
 }
 
 [[nodiscard]] constexpr ClosureOperation surface_closure_operation(

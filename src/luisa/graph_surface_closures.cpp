@@ -116,6 +116,28 @@ void GraphSurfaceImplementation::for_each_closure(
                     .specular_tint = make_float3(1.0f)});
                 return;
             }
+            case compiler::ClosureOperation::hair_reflection:
+            case compiler::ClosureOperation::hair_transmission: {
+                const auto color = vector(closure.color, values);
+                function(TracedClosure{
+                    .operation = closure.operation,
+                    .weight = bsdf_allocated_weight(color * mix_weight),
+                    .color = color,
+                    .normal = values.shading_normal,
+                    .roughness = scalar(closure.roughness, values),
+                    .diffuse_roughness = scalar(
+                        closure.diffuse_roughness, values),
+                    .metallic = 0.0f,
+                    .ior = 1.0f,
+                    .specular_ior_level = 0.0f,
+                    .specular_tint = make_float3(1.0f),
+                    .tangent = closure.hair_tangent_linked
+                                   ? vector(closure.tangent, values)
+                                   : make_float3(0.0f),
+                    .hair_tangent_linked = closure.hair_tangent_linked,
+                    .hair_offset = scalar(closure.hair_offset, values)});
+                return;
+            }
             case compiler::ClosureOperation::metallic_f82:
             case compiler::ClosureOperation::metallic_conductor: {
                 const auto f82 = closure.operation ==

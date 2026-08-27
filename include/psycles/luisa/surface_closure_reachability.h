@@ -32,6 +32,8 @@ inline constexpr auto all_surface_closure_kinds =
     surface_closure_kind_bit(SurfaceClosureKind::metallic_conductor) |
     surface_closure_kind_bit(SurfaceClosureKind::sheen_microfiber) |
     surface_closure_kind_bit(SurfaceClosureKind::sheen_ashikhmin) |
+    surface_closure_kind_bit(SurfaceClosureKind::hair_reflection) |
+    surface_closure_kind_bit(SurfaceClosureKind::hair_transmission) |
     surface_closure_kind_bit(SurfaceClosureKind::glass) |
     surface_closure_kind_bit(SurfaceClosureKind::transparent) |
     surface_closure_kind_bit(SurfaceClosureKind::refraction) |

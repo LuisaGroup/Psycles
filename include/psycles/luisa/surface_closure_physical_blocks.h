@@ -75,7 +75,7 @@ struct SurfaceClosurePhysicalCommonRecord {
 // possible payloads. These types make that distinction explicit at the C++
 // staging boundary:
 //
-//   Physical = Common x (Unit + General + Dielectric + Bssrdf).
+//   Physical = Common x (Unit + General + Hair + Dielectric + Bssrdf).
 //
 // A family consumer receives exactly one of the records below. It therefore
 // cannot name a field owned by another family, even accidentally. These are
@@ -105,6 +105,18 @@ struct SurfaceClosurePhysicalGeneralPayload {
 struct SurfaceClosurePhysicalGeneralRecord {
     SurfaceClosurePhysicalCommonRecord common;
     SurfaceClosurePhysicalGeneralPayload payload;
+};
+
+struct SurfaceClosurePhysicalHairPayload {
+    Float3 tangent;
+    Float roughness_u;
+    Float roughness_v;
+    Float offset;
+};
+
+struct SurfaceClosurePhysicalHairRecord {
+    SurfaceClosurePhysicalCommonRecord common;
+    SurfaceClosurePhysicalHairPayload payload;
 };
 
 struct SurfaceClosurePhysicalDielectricPayload {
@@ -153,6 +165,10 @@ project_surface_closure_physical_common_only(
 project_surface_closure_physical_general(
     const SurfaceClosurePhysicalRecord &closure) noexcept;
 
+[[nodiscard]] SurfaceClosurePhysicalHairRecord
+project_surface_closure_physical_hair(
+    const SurfaceClosurePhysicalRecord &closure) noexcept;
+
 [[nodiscard]] SurfaceClosurePhysicalDielectricRecord
 project_surface_closure_physical_dielectric(
     const SurfaceClosurePhysicalRecord &closure) noexcept;
@@ -186,6 +202,11 @@ unpack_surface_closure_physical_common_only(
 
 [[nodiscard]] SurfaceClosurePhysicalGeneralRecord
 unpack_surface_closure_physical_general(
+    const SurfaceClosurePhysicalCommonRecord &common,
+    Expr<luisa::float4x4> block_1) noexcept;
+
+[[nodiscard]] SurfaceClosurePhysicalHairRecord
+unpack_surface_closure_physical_hair(
     const SurfaceClosurePhysicalCommonRecord &common,
     Expr<luisa::float4x4> block_1) noexcept;
 

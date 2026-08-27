@@ -175,6 +175,18 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
         .outputs = {{"BSDF", "Closure"}},
         .properties = {{"distribution", "Distribution"}}});
     add({
+        .cycles_type = "hair_bsdf",
+        .cycles_variant = {},
+        .psycles_type = node_type::hair_bsdf,
+        .inputs = {
+            {"Color", "Color"},
+            {"Offset", "Offset"},
+            {"RoughnessU", "RoughnessU"},
+            {"RoughnessV", "RoughnessV"},
+            {"Tangent", "Tangent"}},
+        .outputs = {{"BSDF", "Closure"}},
+        .properties = {{"component", "Component"}}});
+    add({
         .cycles_type = "principled_bsdf",
         .cycles_variant = {},
         .psycles_type = node_type::principled_bsdf,

@@ -106,6 +106,16 @@ include_physical_leaf(ValueDependencyMask &dependencies,
     dependencies.include(closure.normal);
     dependencies.include(closure.roughness);
     return true;
+  case ClosureOperation::hair_reflection:
+  case ClosureOperation::hair_transmission:
+    dependencies.include(closure.color);
+    dependencies.include(closure.hair_offset);
+    dependencies.include(closure.roughness);
+    dependencies.include(closure.diffuse_roughness);
+    if (closure.hair_tangent_linked) {
+      dependencies.include(closure.tangent);
+    }
+    return true;
   case ClosureOperation::glossy:
     dependencies.include(closure.color);
     dependencies.include(closure.normal);
@@ -340,6 +350,8 @@ template <typename LeafFunction>
   case ClosureOperation::metallic_conductor:
   case ClosureOperation::sheen_microfiber:
   case ClosureOperation::sheen_ashikhmin:
+  case ClosureOperation::hair_reflection:
+  case ClosureOperation::hair_transmission:
   case ClosureOperation::glass:
   case ClosureOperation::emission:
   case ClosureOperation::transparent:

@@ -1007,6 +1007,11 @@ enum class ClosureOperation : std::uint8_t {
   // and let the Luisa JIT erase the unused implementation exactly.
   sheen_microfiber,
   sheen_ashikhmin,
+  // Blender's legacy Hair node has two statically selected scattering laws.
+  // They share a payload but differ in support, labels, light-pass routing,
+  // and azimuthal distribution, so the graph/SVM IR keeps a disjoint tag.
+  hair_reflection,
+  hair_transmission,
   glass,
   emission,
   transparent,
@@ -1068,6 +1073,12 @@ struct ClosureInstruction {
   ValueExpressionId microfacet_anisotropy;
   ValueExpressionId microfacet_rotation;
   ValueExpressionId tangent;
+  // Legacy Hair uses the same typed tangent value but has a distinct scalar
+  // offset. Tangent linkage is topology, not a numerical predicate: an
+  // unlinked zero selects dPdu/dPdv while a linked zero is normalized as an
+  // authored vector by Cycles.
+  ValueExpressionId hair_offset;
+  bool hair_tangent_linked{};
   ValueExpressionId alpha;
   // Keep Thin Wall in the parameter stream. Cycles treats only an unlinked
   // direct true value as statically thin; linked values remain conservative.
@@ -1125,6 +1136,7 @@ inline constexpr auto closure_value_dependency_members = std::array{
     &ClosureInstruction::microfacet_anisotropy,
     &ClosureInstruction::microfacet_rotation,
     &ClosureInstruction::tangent,
+    &ClosureInstruction::hair_offset,
     &ClosureInstruction::alpha,
     &ClosureInstruction::thin_wall,
     &ClosureInstruction::sheen_weight,

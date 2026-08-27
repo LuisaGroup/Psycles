@@ -77,6 +77,8 @@ public:
     Float3 object_tangent = make_float3(1.0f, 0.0f, 0.0f);
     Float tangent_sign = 1.0f;
     Float3 tangent = make_float3(1.0f, 0.0f, 0.0f);
+    Float3 surface_dpdu = make_float3(1.0f, 0.0f, 0.0f);
+    Float3 surface_dpdv = make_float3(0.0f, 1.0f, 0.0f);
     Float3 generated = make_float3(0.0f);
     Float3 generated0 = make_float3(0.0f);
     Float3 generated1 = make_float3(0.0f);
@@ -129,6 +131,8 @@ public:
       geometric_normal = curve.geometric_normal;
       object_tangent = normalize(curve.object_dpdu);
       tangent = normalize(curve.dpdu);
+      surface_dpdu = curve.dpdu;
+      surface_dpdv = curve.dpdv;
       barycentric = make_float2(curve.intersection.u, curve.intersection.v);
       curve_intercept = curve.intercept;
       curve_length = curve.length;
@@ -197,6 +201,10 @@ public:
       wp0 = surface.world_p0;
       wp1 = surface.world_p1;
       wp2 = surface.world_p2;
+      const auto derivatives =
+          cycles_triangle_surface_derivatives(surface);
+      surface_dpdu = derivatives.dpdu;
+      surface_dpdv = derivatives.dpdv;
       object_position = surface.object_position;
       hit_position = surface.position;
       object_shading_normal = surface.object_shading_normal;
@@ -387,8 +395,8 @@ public:
             (normal_to_world * make_float4(0.0f, 1.0f, 0.0f, 0.0f)).xyz(),
         .normal_to_world_z =
             (normal_to_world * make_float4(0.0f, 0.0f, 1.0f, 0.0f)).xyz(),
-        .dpdu = tangent,
-        .dpdv = cross(shading_normal, tangent),
+        .dpdu = surface_dpdu,
+        .dpdv = surface_dpdv,
         .dPdx = dPdx,
         .dPdy = dPdy,
         .object_dPdx = object_dPdx,

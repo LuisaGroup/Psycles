@@ -55,6 +55,12 @@ canonical_surface_closure_identity(
         case compiler::ClosureOperation::sheen_ashikhmin:
             result.kind = SurfaceClosureKind::sheen_ashikhmin;
             break;
+        case compiler::ClosureOperation::hair_reflection:
+            result.kind = SurfaceClosureKind::hair_reflection;
+            break;
+        case compiler::ClosureOperation::hair_transmission:
+            result.kind = SurfaceClosureKind::hair_transmission;
+            break;
         case compiler::ClosureOperation::glass:
             result.kind = SurfaceClosureKind::glass;
             break;
@@ -128,6 +134,18 @@ SurfaceClosureRecord canonical_surface_closure(
         result.microfacet_alpha_x = state.alpha_x;
         result.microfacet_alpha_y = state.alpha_y;
     }
+    const auto hair =
+        identity.kind == SurfaceClosureKind::hair_reflection ||
+        identity.kind == SurfaceClosureKind::hair_transmission;
+    if (hair) {
+        // Hair owns a distinct semantic view of these disjoint-tag lanes.
+        // Scattering receives SurfaceClosurePhysicalHairRecord and cannot
+        // observe their legacy general-payload names.
+        result.microfacet_tangent = closure.tangent;
+        result.microfacet_alpha_x = closure.roughness;
+        result.microfacet_alpha_y = closure.diffuse_roughness;
+        result.sheen_transform_a = closure.hair_offset;
+    }
     result.ior = closure.ior;
     result.thin_film_thickness = closure.thin_film_thickness;
     result.thin_film_ior = closure.thin_film_ior;
@@ -152,7 +170,9 @@ SurfaceClosureRecord canonical_surface_closure(
         result.sheen_transform_b = closure.sheen_transform_b;
     }
     if (closure.operation == compiler::ClosureOperation::glass ||
-        closure.operation == compiler::ClosureOperation::refraction) {
+        closure.operation == compiler::ClosureOperation::refraction ||
+        closure.operation == compiler::ClosureOperation::hair_reflection ||
+        closure.operation == compiler::ClosureOperation::hair_transmission) {
         result.reflection_albedo = closure.reflection_albedo;
         result.transmission_albedo = closure.transmission_albedo;
         result.fresnel_f0 = closure.fresnel_f0;

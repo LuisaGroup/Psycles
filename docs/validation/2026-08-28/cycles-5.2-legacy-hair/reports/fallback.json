@@ -1,0 +1,392 @@
+{
+  "actual_label": "Psycles",
+  "build_identity": {
+    "actual_metadata": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/export/scene.json",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "reference_metadata": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-cycles.json",
+    "verified": true
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Depth.Z",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.Diffuse Direct.R",
+    "ViewLayer.Diffuse Direct.G",
+    "ViewLayer.Diffuse Direct.B",
+    "ViewLayer.Diffuse Indirect.R",
+    "ViewLayer.Diffuse Indirect.G",
+    "ViewLayer.Diffuse Indirect.B",
+    "ViewLayer.Diffuse Color.R",
+    "ViewLayer.Diffuse Color.G",
+    "ViewLayer.Diffuse Color.B",
+    "ViewLayer.Glossy Direct.R",
+    "ViewLayer.Glossy Direct.G",
+    "ViewLayer.Glossy Direct.B",
+    "ViewLayer.Glossy Indirect.R",
+    "ViewLayer.Glossy Indirect.G",
+    "ViewLayer.Glossy Indirect.B",
+    "ViewLayer.Glossy Color.R",
+    "ViewLayer.Glossy Color.G",
+    "ViewLayer.Glossy Color.B",
+    "ViewLayer.Transmission Direct.R",
+    "ViewLayer.Transmission Direct.G",
+    "ViewLayer.Transmission Direct.B",
+    "ViewLayer.Transmission Indirect.R",
+    "ViewLayer.Transmission Indirect.G",
+    "ViewLayer.Transmission Indirect.B",
+    "ViewLayer.Transmission Color.R",
+    "ViewLayer.Transmission Color.G",
+    "ViewLayer.Transmission Color.B",
+    "ViewLayer.Volume Direct.R",
+    "ViewLayer.Volume Direct.G",
+    "ViewLayer.Volume Direct.B",
+    "ViewLayer.Volume Indirect.R",
+    "ViewLayer.Volume Indirect.G",
+    "ViewLayer.Volume Indirect.B",
+    "ViewLayer.Emission.R",
+    "ViewLayer.Emission.G",
+    "ViewLayer.Emission.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B",
+    "ViewLayer.Debug Sample Count.X"
+  ],
+  "passes": {
+    "Combined": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9992448091506958,
+        0.9999806880950928,
+        1.0000016689300537
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.04053720459342003,
+        0.03322388976812363,
+        0.07341677695512772
+      ],
+      "cycles_luminance_mean": 0.037679050117731094,
+      "cycles_rms": 0.09704452008008957,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999540259113918,
+      "maximum_absolute_error": 0.002719305455684662,
+      "mean_absolute_error": 3.4183915431640344e-06,
+      "orientation_rmse": {
+        "flip_x": 0.1256953775882721,
+        "flip_xy": 0.13120801746845245,
+        "flip_y": 0.12233912199735641,
+        "identity": 1.0171555913984776e-05
+      },
+      "p95_pixel_rmse": 1.509283174527809e-05,
+      "p99_pixel_rmse": 1.6066422176663764e-05,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.04050659015774727,
+        0.03322324901819229,
+        0.07341689616441727
+      ],
+      "psycles_luminance_mean": 0.03767731785774231,
+      "psycles_rms": 0.09703954519912371,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.00010481329502779058,
+      "rmse": 1.0171555913984776e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 34811.51446685879,
+        "display_scale": 1.9589258395899973,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/cycles-5.2-legacy-hair/triptychs/fallback/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.000000238418579,
+        1.0,
+        0.9999998807907104
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.18504224717617035,
+        0.2456531524658203,
+        0.32330071926116943
+      ],
+      "cycles_luminance_mean": 0.23849588632583618,
+      "cycles_rms": 0.44446614384651184,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0032812803983688354,
+      "mean_absolute_error": 3.043290064397297e-08,
+      "orientation_rmse": {
+        "flip_x": 0.34965065121650696,
+        "flip_xy": 0.628570020198822,
+        "flip_y": 0.628570020198822,
+        "identity": 8.790985702944454e-06
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.18504229187965393,
+        0.2456531524658203,
+        0.32330068945884705
+      ],
+      "psycles_luminance_mean": 0.23849588632583618,
+      "psycles_rms": 0.44446615469909123,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 1.977875216066009e-05,
+      "rmse": 8.790985702944454e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 0.7258064460307826,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/cycles-5.2-legacy-hair/triptychs/fallback/glosscol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossDir": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999881386756897,
+        0.9999843835830688,
+        0.999872624874115
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.03330705687403679,
+        0.059836458414793015,
+        0.08305353671312332
+      ],
+      "cycles_luminance_mean": 0.05586566776037216,
+      "cycles_rms": 0.14953120052814484,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.999938118176412,
+      "maximum_absolute_error": 0.03371801972389221,
+      "mean_absolute_error": 4.107608674530638e-06,
+      "orientation_rmse": {
+        "flip_x": 0.20617805421352386,
+        "flip_xy": 0.21146176755428314,
+        "flip_y": 0.21146176755428314,
+        "identity": 6.407126784324646e-05
+      },
+      "p95_pixel_rmse": 2.3052323740557767e-05,
+      "p99_pixel_rmse": 6.016674160491675e-05,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.03330666199326515,
+        0.0598355233669281,
+        0.08304295688867569
+      ],
+      "psycles_luminance_mean": 0.05586221069097519,
+      "psycles_rms": 0.14952089815969746,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.00042848092984572095,
+      "rmse": 6.407126784324646e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 11193.10185322461,
+        "display_scale": 1.4887807640718158,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/cycles-5.2-legacy-hair/triptychs/fallback/glossdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "cycles_luminance_mean": 0.0722000002861023,
+      "cycles_rms": 0.5773502588272095,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 5.960464477539063e-08,
+      "mean_absolute_error": 3.311369178859991e-09,
+      "orientation_rmse": {
+        "flip_x": 1.4048949559253288e-08,
+        "flip_xy": 1.4048949559253288e-08,
+        "flip_y": 1.4048949559253288e-08,
+        "identity": 1.4048949559253288e-08
+      },
+      "p95_pixel_rmse": 3.4412757088375656e-08,
+      "p99_pixel_rmse": 3.4412757088375656e-08,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "psycles_luminance_mean": 0.0722000002861023,
+      "psycles_rms": 0.5773502777928151,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 2.433349486634228e-08,
+      "rmse": 1.4048949559253288e-08,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/cycles-5.2-legacy-hair/triptychs/fallback/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "TransCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0000001192092896,
+        1.0,
+        0.9999998807907104
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.28521373867988586,
+        0.23900878429412842,
+        0.23412542045116425
+      ],
+      "cycles_luminance_mean": 0.24855002760887146,
+      "cycles_rms": 0.45033323764801025,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.004843711853027344,
+      "mean_absolute_error": 1.0935425009961364e-08,
+      "orientation_rmse": {
+        "flip_x": 0.4015522301197052,
+        "flip_xy": 0.6368674039840698,
+        "flip_y": 0.6368674039840698,
+        "identity": 6.857669632154284e-06
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.28521376848220825,
+        0.23900878429412842,
+        0.23412539064884186
+      ],
+      "psycles_luminance_mean": 0.24855002760887146,
+      "psycles_rms": 0.45033326590187156,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 1.5227989095298314e-05,
+      "rmse": 6.857669632154284e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 0.7258064460307826,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/cycles-5.2-legacy-hair/triptychs/fallback/transcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "TransDir": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9997887015342712,
+        0.9998589754104614,
+        0.9999722242355347
+      ],
+      "cycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-cycles.exr",
+      "cycles_channel_mean": [
+        0.03553808480501175,
+        0.0666615441441536,
+        0.09261838346719742
+      ],
+      "cycles_luminance_mean": 0.06193628907203674,
+      "cycles_rms": 0.13650722801685333,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999671596646581,
+      "maximum_absolute_error": 0.000787392258644104,
+      "mean_absolute_error": 6.029878022673074e-06,
+      "orientation_rmse": {
+        "flip_x": 0.1614331752061844,
+        "flip_xy": 0.19304390251636505,
+        "flip_y": 0.19304390251636505,
+        "identity": 1.5566478396067396e-05
+      },
+      "p95_pixel_rmse": 3.2842144719325006e-05,
+      "p99_pixel_rmse": 6.305508577497676e-05,
+      "psycles": "/home/mike/Projects/Psycles-surface-svm/build/validation/hair-cycles-5.2.1-fallback-final/hair_bsdf_matrix/hair_bsdf_matrix-psycles.exr",
+      "psycles_channel_mean": [
+        0.03553057461977005,
+        0.06665214151144028,
+        0.09261581301689148
+      ],
+      "psycles_luminance_mean": 0.06193425506353378,
+      "psycles_rms": 0.13649806877052104,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.00011403409637873198,
+      "rmse": 1.5566478396067396e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 10573.875630252101,
+        "display_scale": 1.2402018229113194,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/cycles-5.2-legacy-hair/triptychs/fallback/transdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Cycles",
+  "schema": "psycles.cycles-differential.v2"
+}

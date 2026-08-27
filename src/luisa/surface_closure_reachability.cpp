@@ -21,6 +21,8 @@ operation_bit(compiler::ClosureOperation operation) noexcept {
            operation_bit(ClosureOperation::metallic_conductor) |
            operation_bit(ClosureOperation::sheen_microfiber) |
            operation_bit(ClosureOperation::sheen_ashikhmin) |
+           operation_bit(ClosureOperation::hair_reflection) |
+           operation_bit(ClosureOperation::hair_transmission) |
            operation_bit(ClosureOperation::glass) |
            operation_bit(ClosureOperation::emission) |
            operation_bit(ClosureOperation::transparent) |
@@ -177,6 +179,12 @@ reachable_surface_closures(std::uint32_t closure_operations,
     }
     if (has_operation(ClosureOperation::sheen_ashikhmin)) {
         add_kind(SurfaceClosureKind::sheen_ashikhmin);
+    }
+    if (has_operation(ClosureOperation::hair_reflection)) {
+        add_kind(SurfaceClosureKind::hair_reflection);
+    }
+    if (has_operation(ClosureOperation::hair_transmission)) {
+        add_kind(SurfaceClosureKind::hair_transmission);
     }
     if (has_operation(ClosureOperation::glass)) {
         add_kind(SurfaceClosureKind::glass);
