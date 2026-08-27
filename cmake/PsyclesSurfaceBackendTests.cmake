@@ -26,6 +26,9 @@ psycles_add_luisa_backend_test(
     SOURCE tests/test_luisa_microfacet_anisotropy.cpp
     TEST_STEM luisa_microfacet_anisotropy
     LIBRARIES Psycles::luisa)
+target_include_directories(
+    psycles_luisa_microfacet_anisotropy_tests
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
 if(TEST psycles.luisa_microfacet_anisotropy_vk)
     set_tests_properties(
         psycles.luisa_microfacet_anisotropy_vk

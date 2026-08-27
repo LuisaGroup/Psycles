@@ -5,6 +5,7 @@
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_set.h>
 
+#include "graph_surface_internal.h"
 #include "luisa_shader_shape_test_support.h"
 #include "luisa_surface_test_support.h"
 
@@ -59,7 +60,10 @@ constexpr std::uint32_t beckmann_sample = 14u;
 constexpr std::uint32_t rotated_beckmann_sample = 15u;
 constexpr std::uint32_t beckmann_evaluation = 16u;
 constexpr std::uint32_t rotated_beckmann_evaluation = 17u;
-constexpr std::uint32_t count = 18u;
+constexpr std::uint32_t sampled_fresnel_direction = 18u;
+constexpr std::uint32_t sampled_fresnel_values = 19u;
+constexpr std::uint32_t sampled_fresnel_witness = 20u;
+constexpr std::uint32_t count = 21u;
 } // namespace record
 
 [[nodiscard]] ShaderGraph
@@ -283,6 +287,58 @@ int main(int argc, char **argv) {
                              rotated_sample.sample.evaluation.pdf));
   };
 
+  Kernel1D test_sampled_fresnel = [&](BufferFloat4 output) noexcept {
+    const auto point = anisotropic_point();
+    const auto closure_point = SurfaceClosurePoint{point};
+    const SurfaceClosurePhysicalGeneralRecord closure{
+        .common =
+            {.kind = static_cast<std::uint32_t>(SurfaceClosureKind::principled),
+             .lobe = static_cast<std::uint32_t>(SurfaceClosureLobe::metallic),
+             .weight = make_float3(1.0f),
+             .allocation_weight = 1.0f,
+             .sample_weight = 1.0f,
+             .setup_valid = true,
+             .color_or_evaluation_scale = make_float3(0.0f),
+             .normal = point.shading_normal,
+             .roughness = roughness,
+             .preserve_ggx_energy = false,
+             .beckmann = false,
+             .bssrdf_method =
+                 static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk)},
+        .payload = {.diffuse_roughness = 0.0f,
+                    .metallic = 1.0f,
+                    .ior = 1.5f,
+                    .specular_tint = make_float3(0.0f),
+                    .sheen_transform_a = 0.0f,
+                    .sheen_transform_b = 0.0f,
+                    .evaluation_scale = make_float3(1.0f),
+                    .microfacet_tangent = make_float3(1.0f, 0.0f, 0.0f),
+                    .microfacet_alpha_x = roughness * roughness,
+                    .microfacet_alpha_y = roughness * roughness}};
+    const auto sample =
+        psycles::luisa_backend::detail::sample_microfacet_reflection(
+            closure_point, point.shading_normal, closure, point.incoming,
+            make_float2(sample_random), point.shading_normal, 0.0f, false);
+    const auto sampled_half_vector =
+        normalize(point.incoming + sample.direction);
+    const auto normal_cosine = dot(point.shading_normal, point.incoming);
+    const auto half_cosine = dot(sampled_half_vector, point.incoming);
+    const auto normal_fresnel =
+        psycles::luisa_backend::detail::microfacet_reflection_fresnel(
+            closure, normal_cosine);
+    const auto half_fresnel =
+        psycles::luisa_backend::detail::microfacet_reflection_fresnel(
+            closure, half_cosine);
+    output.write(record::sampled_fresnel_direction,
+                 make_float4(sample.direction, cast<float>(sample.valid)));
+    output.write(record::sampled_fresnel_values,
+                 make_float4(normal_fresnel.x, half_fresnel.x,
+                             sample.singular_evaluation.x * 1.0e-6f,
+                             cast<float>(sample.singular)));
+    output.write(record::sampled_fresnel_witness,
+                 make_float4(normal_cosine, half_cosine, sample.roughness));
+  };
+
   Kernel1D test_beckmann = [&](BufferFloat4 beckmann_parameters,
                                BufferFloat4 rotated_parameters,
                                BufferFloat4 output) noexcept {
@@ -343,6 +399,8 @@ int main(int argc, char **argv) {
 
   if (backend == "fallback") {
     auto bounded = require_bounded_xir("microfacet_anisotropy", test, 90000u);
+    bounded &= require_bounded_xir("microfacet_sampled_fresnel",
+                                   test_sampled_fresnel, 12000u);
     bounded &= require_bounded_xir("microfacet_beckmann_anisotropy",
                                    test_beckmann, 90000u);
     if (!bounded) {
@@ -365,6 +423,8 @@ int main(int argc, char **argv) {
       device.create_buffer<luisa::float4>(rotated_beckmann.parameters.size());
   auto output_buffer = device.create_buffer<luisa::float4>(record::count);
   auto shader = compile_named_kernel(device, "microfacet_anisotropy", test);
+  auto sampled_fresnel_shader = compile_named_kernel(
+      device, "microfacet_sampled_fresnel", test_sampled_fresnel);
   auto beckmann_shader = compile_named_kernel(
       device, "microfacet_beckmann_anisotropy", test_beckmann);
   std::array<luisa::float4, record::count> actual{};
@@ -377,6 +437,7 @@ int main(int argc, char **argv) {
          << shader(glossy_buffer, rotated_buffer, principled_buffer,
                    output_buffer)
                 .dispatch(1u)
+         << sampled_fresnel_shader(output_buffer).dispatch(1u)
          << beckmann_shader(beckmann_buffer, rotated_beckmann_buffer,
                             output_buffer)
                 .dispatch(1u)
@@ -433,6 +494,28 @@ int main(int argc, char **argv) {
       approximately_equal(actual[record::glossy_evaluation],
                           actual[record::rotated_evaluation], 8.0e-5f);
 
+  // For the black metallic F82 witness, F(N.I) is exactly zero at normal
+  // incidence. A non-degenerate VNDF sample has H.I < 1 and positive Fresnel.
+  // The conditional sampler must use that sampled H.I witness; using N.I
+  // incorrectly rejects the otherwise valid sample.
+  const auto sampled_fresnel_values = actual[record::sampled_fresnel_values];
+  const auto sampled_fresnel_witness = actual[record::sampled_fresnel_witness];
+  const auto sampled_fresnel_matches =
+      finite(actual[record::sampled_fresnel_direction]) &&
+      finite(sampled_fresnel_values) && finite(sampled_fresnel_witness) &&
+      approximately_equal(actual[record::sampled_fresnel_direction].w, 1.0f) &&
+      approximately_equal(sampled_fresnel_values.x, 0.0f, 1.0e-8f) &&
+      sampled_fresnel_values.y > 0.0f &&
+      approximately_equal(sampled_fresnel_values.z, sampled_fresnel_values.y,
+                          2.0e-6f) &&
+      approximately_equal(sampled_fresnel_values.w, 0.0f) &&
+      approximately_equal(sampled_fresnel_witness.x, 1.0f, 2.0e-6f) &&
+      sampled_fresnel_witness.y > 0.0f && sampled_fresnel_witness.y < 0.9999f &&
+      approximately_equal(sampled_fresnel_witness.z, roughness * roughness,
+                          2.0e-6f) &&
+      approximately_equal(sampled_fresnel_witness.w, roughness * roughness,
+                          2.0e-6f);
+
   constexpr auto negative_denominator = 1.0f - anisotropy;
   constexpr auto beckmann_alpha_x = base_alpha / negative_denominator;
   constexpr auto beckmann_alpha_y = base_alpha * negative_denominator;
@@ -473,8 +556,8 @@ int main(int argc, char **argv) {
       approximately_equal(actual[record::beckmann_evaluation],
                           actual[record::rotated_beckmann_evaluation], 8.0e-5f);
 
-  if (!state_matches || !transport_matches || !beckmann_state_matches ||
-      !beckmann_transport_matches) {
+  if (!state_matches || !transport_matches || !sampled_fresnel_matches ||
+      !beckmann_state_matches || !beckmann_transport_matches) {
     std::cerr << "microfacet anisotropy regression failed on " << backend
               << '\n';
     for (auto index = 0u; index < actual.size(); ++index) {

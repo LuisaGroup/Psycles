@@ -910,6 +910,7 @@ microfacet_reflection_distribution_terms(
                           cycles_closure::microfacet_singular_alpha_product;
     Float3 direction =
         2.0f * dot(glossy_normal, incoming) * glossy_normal - incoming;
+    Float fresnel_cosine = max(dot(glossy_normal, incoming), 0.0f);
     // The delta and regular domains are disjoint by definition. In the delta
     // domain H=N, so evaluating either VNDF is dead work. Within the regular
     // domain the distribution tag selects exactly one VNDF; a value select
@@ -952,9 +953,12 @@ microfacet_reflection_distribution_terms(
         };
         direction =
             2.0f * dot(incoming, half_vector) * half_vector - incoming;
+        // Cycles evaluates the sampled microfacet Fresnel at I.H. In the
+        // singular domain H=N, so the initialized I.N value remains exact.
+        fresnel_cosine = max(dot(half_vector, incoming), 0.0f);
     };
     const auto fresnel = microfacet_reflection_fresnel(
-        closure, max(dot(glossy_normal, incoming), 0.0f));
+        closure, fresnel_cosine);
     const auto bump_shadowing = bump_shadowing_term(
         point,
         smooth_normal,
