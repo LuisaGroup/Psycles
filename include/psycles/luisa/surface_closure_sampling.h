@@ -10,6 +10,8 @@
 
 namespace psycles::luisa_backend {
 
+struct SurfaceClosurePhysicalCommonRecord;
+
 // Strongly typed, expression-only projection of the closure fields used by
 // categorical selection. This is intentionally smaller than the conditional
 // BSDF record: graph expansion retains the original socket types and only
@@ -112,6 +114,14 @@ inline constexpr std::uint32_t bssrdf = 1u << 6u;
 [[nodiscard]] SurfaceClosureSelectionInput
 make_surface_closure_selection_input(
     const SurfaceClosurePhysicalRecord &closure) noexcept;
+
+// The categorical p(i) projection is a function of the tagged-union header
+// alone. Keeping this overload independent of the physical payload prevents
+// selection from extending mutually exclusive family values across both
+// inverse-CDF passes.
+[[nodiscard]] SurfaceClosureSelectionInput
+make_surface_closure_selection_input(
+    const SurfaceClosurePhysicalCommonRecord &closure) noexcept;
 
 [[nodiscard]] SurfaceClosureSelectionInput
 make_surface_closure_selection_input(

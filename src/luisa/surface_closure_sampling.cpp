@@ -7,6 +7,74 @@
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend {
+namespace {
+
+// Host-stage specialization over the storage profile keeps one source-level
+// categorical algorithm while recording exactly one device loop. The
+// physical specialization observes block_0 only; the complete specialization
+// remains the diagnostic oracle for round-trip tests.
+template<typename Consumer>
+void for_each_surface_closure_selection(
+    const SurfaceClosureSet &closures,
+    const SurfaceClosureSelectionContext &context,
+    Consumer &&consumer) noexcept {
+    UInt index = 0u;
+    if (closures.profile() ==
+        SurfaceClosureStorageProfile::physical) {
+        $while(index < closures.count()) {
+            const auto common =
+                closures.physical_common_entry_unchecked(index);
+            consumer(index,
+                surface_closure_selection(
+                    context,
+                    make_surface_closure_selection_input(common)));
+            index += 1u;
+        };
+    } else {
+        $while(index < closures.count()) {
+            const auto closure =
+                static_cast<SurfaceClosurePhysicalRecord>(
+                    closures.entry(index));
+            consumer(index,
+                surface_closure_selection(
+                    context,
+                    make_surface_closure_selection_input(closure)));
+            index += 1u;
+        };
+    }
+}
+
+// Payload elimination is deliberately delayed until after categorical
+// inversion. Thus at most one block_1 value is introduced, and it is scoped
+// by the selected predicate rather than carried by either p(i) loop.
+template<typename Consumer>
+void with_selected_surface_closure(
+    const SurfaceClosureSet &closures,
+    UInt selected_index,
+    const SurfaceClosureSelectionContext &context,
+    Consumer &&consumer) noexcept {
+    if (closures.profile() ==
+        SurfaceClosureStorageProfile::physical) {
+        const auto common =
+            closures.physical_common_entry_unchecked(selected_index);
+        consumer(
+            closures.physical_payload_entry_unchecked(
+                selected_index, common),
+            surface_closure_selection(
+                context,
+                make_surface_closure_selection_input(common)));
+    } else {
+        const auto closure =
+            static_cast<SurfaceClosurePhysicalRecord>(
+                closures.entry(selected_index));
+        consumer(closure,
+            surface_closure_selection(
+                context,
+                make_surface_closure_selection_input(closure)));
+    }
+}
+
+}// namespace
 
 SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     const ShaderServices &services,
@@ -25,15 +93,14 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     // all selection and conditional BSDF algebra is shared with the
     // branch-local visitor.
     SurfaceClosureSelectionMeasure measure{_point.back_facing};
-    UInt index = 0u;
-    $while(index < _closures.count()) {
-        measure.add(surface_closure_selection(
-            selection_context,
-            make_surface_closure_selection_input(
-                static_cast<SurfaceClosurePhysicalRecord>(
-                    _closures.entry(index)))));
-        index += 1u;
-    };
+    for_each_surface_closure_selection(
+        _closures,
+        selection_context,
+        [&](UInt,
+            const luisa::compute::Var<
+                SurfaceClosureSelectionCall> &selection) noexcept {
+            measure.add(selection);
+        });
 
     // Pass two performs inverse-CDF selection without any conditional BSDF
     // sampler in the loop-carried state.
@@ -41,48 +108,51 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
         Expr<float>{u_lobe.expression()}, measure};
     UInt selected_index = ~std::uint32_t{0u};
     Float selected_rescaled = 0.0f;
-    index = 0u;
-    $while(index < _closures.count()) {
-        const auto selection = surface_closure_selection(
-            selection_context,
-            make_surface_closure_selection_input(
-                static_cast<SurfaceClosurePhysicalRecord>(
-                    _closures.entry(index))));
-        const auto choice = inversion.consider(selection);
-        selected_index = select(
-            selected_index, index, choice.choose);
-        selected_rescaled = select(
-            selected_rescaled, choice.rescaled, choice.choose);
-        index += 1u;
-    };
+    for_each_surface_closure_selection(
+        _closures,
+        selection_context,
+        [&](UInt index,
+            const luisa::compute::Var<
+                SurfaceClosureSelectionCall> &selection) noexcept {
+            const auto choice = inversion.consider(selection);
+            selected_index = select(
+                selected_index, index, choice.choose);
+            selected_rescaled = select(
+                selected_rescaled, choice.rescaled, choice.choose);
+        });
 
     // Exactly one p(w_i | i) executes. Keeping the runtime-indexed load under
     // this predicate also makes invalid empty measures observationally zero.
     SurfaceClosureSelectedSample selected;
     $if(inversion.selected()) {
-        const auto closure = _closures.entry(selected_index);
-        const auto selection = surface_closure_selection(
+        with_selected_surface_closure(
+            _closures,
+            selected_index,
             selection_context,
-            make_surface_closure_selection_input(
-                static_cast<SurfaceClosurePhysicalRecord>(closure)));
-        const auto sample = surface_closure_conditional_sample(
-            services,
-            closure_point,
-            Expr<luisa::float3>{_shading_normal.expression()},
-            closure,
-            Expr<luisa::float3>{incoming.expression()},
-            Expr<luisa::float3>{
-                selection.glossy_normal.expression()},
-            Expr<luisa::float2>{u_direction.expression()},
-            Expr<float>{selected_rescaled.expression()},
-            query, _reachability);
-        selected.accept(
-            Expr<std::uint32_t>{selected_index.expression()},
-            Expr<luisa::float3>{closure.weight.expression()},
-            Expr<luisa::float3>{closure.normal.expression()},
-            Expr<float>{selected_rescaled.expression()},
-            selection,
-            sample);
+            [&](const SurfaceClosurePhysicalRecord &closure,
+                const luisa::compute::Var<
+                    SurfaceClosureSelectionCall> &selection) noexcept {
+                const auto sample = surface_closure_conditional_sample(
+                    services,
+                    closure_point,
+                    Expr<luisa::float3>{
+                        _shading_normal.expression()},
+                    closure,
+                    Expr<luisa::float3>{incoming.expression()},
+                    Expr<luisa::float3>{
+                        selection.glossy_normal.expression()},
+                    Expr<luisa::float2>{u_direction.expression()},
+                    Expr<float>{selected_rescaled.expression()},
+                    query, _reachability);
+                selected.accept(
+                    Expr<std::uint32_t>{
+                        selected_index.expression()},
+                    Expr<luisa::float3>{closure.weight.expression()},
+                    Expr<luisa::float3>{closure.normal.expression()},
+                    Expr<float>{selected_rescaled.expression()},
+                    selection,
+                    sample);
+            });
     };
 
     const auto mixture = evaluate_impl(
