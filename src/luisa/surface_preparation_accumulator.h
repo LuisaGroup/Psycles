@@ -35,6 +35,8 @@ class SurfacePreparationAccumulator {
     Float _aov_roughness;
     Float3 _aov_normal;
 
+    void fold_runtime_identity(
+        const SurfaceClosureRecord &closure) noexcept;
     void fold_retained(
         const SurfaceClosureRecord &closure) noexcept;
 
@@ -65,6 +67,17 @@ class SurfacePreparationAccumulator {
     // and advance together, preserving their count-equality invariant.
     void add_retained(
         const SurfaceClosureRecord &closure) noexcept;
+
+    // Cycles observes an above-cutoff transparent setup before closure_alloc:
+    // runtime identity and extinction therefore survive exhausted closure
+    // capacity, while retained count advances only if the first slot is
+    // actually allocated. The caller emits exactly one begin/finalize pair and
+    // conditionally commits the slot between them.
+    void begin_transparent_setup(
+        const SurfaceClosureRecord &closure) noexcept;
+    void retain_transparent_slot() noexcept;
+    void finalize_transparent_setup(
+        Expr<luisa::float3> weight) noexcept;
 
     void finish() noexcept;
 

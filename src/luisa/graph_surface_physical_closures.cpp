@@ -194,6 +194,8 @@ GraphSurfaceImplementation::collect_traced_closures(
     Expr<bool> refractive_caustics_expression,
     SurfaceClosureCollector &collector) const noexcept {
     collector.begin(values.shading_normal);
+    const auto deferred_transparent =
+        collector.supports_transparent_closure_finalization();
     for_each_physical_closure(
         services,
         point,
@@ -201,7 +203,24 @@ GraphSurfaceImplementation::collect_traced_closures(
         Bool{reflective_caustics_expression},
         Bool{refractive_caustics_expression},
         [&](const TracedClosure &closure) noexcept {
-            collector.add(canonical_surface_closure(closure));
+            const auto canonical =
+                canonical_surface_closure(closure);
+            if (deferred_transparent &&
+                closure.operation ==
+                    compiler::ClosureOperation::transparent) {
+                // The expanded graph has already projected every allocated
+                // contribution into one source-positioned record. Zero-weight
+                // records represent later transparent nodes and are identity.
+                $if(canonical.allocation_weight >=
+                    cycles_closure::closure_weight_cutoff) {
+                    collector.begin_transparent_closure(canonical);
+                    collector.finalize_transparent_closure(
+                        canonical.weight,
+                        canonical.sample_weight);
+                };
+            } else {
+                collector.add(canonical);
+            }
         });
     collector.finish();
     return {.shading_normal = values.shading_normal};
@@ -243,8 +262,13 @@ void GraphSurfaceImplementation::for_each_physical_closure(
     for (const auto &closure : physical_closures) {
         if (closure.operation ==
             compiler::ClosureOperation::transparent) {
-            transparent_weight += closure.weight;
-            transparent_sample_weight += closure.sample_weight;
+            const auto allocated =
+                closure.sample_weight >=
+                cycles_closure::closure_weight_cutoff;
+            $if(allocated) {
+                transparent_weight += closure.weight;
+                transparent_sample_weight += closure.sample_weight;
+            };
         }
     }
     Bool transparent_allocated = false;

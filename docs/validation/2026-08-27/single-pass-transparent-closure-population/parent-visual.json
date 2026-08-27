@@ -1,0 +1,163 @@
+{
+  "actual_label": "single-pass transparent",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999985694885254,
+        0.999998152256012,
+        0.9999972581863403
+      ],
+      "cycles": "/var/tmp/psycles-transparent-single-pass-20260827/fresh-visual/baseline.exr",
+      "cycles_channel_mean": [
+        0.09004433453083038,
+        0.06402453035116196,
+        0.04894743487238884
+      ],
+      "cycles_luminance_mean": 0.06846987456083298,
+      "cycles_rms": 0.16210654377937317,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999981501372543,
+      "maximum_absolute_error": 0.034661915153265,
+      "mean_absolute_error": 1.2946627236942732e-07,
+      "orientation_rmse": {
+        "flip_x": 0.18639352917671204,
+        "flip_xy": 0.19610537588596344,
+        "flip_y": 0.18821923434734344,
+        "identity": 5.8413763326825574e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 4.301594636046957e-09,
+      "psycles": "/var/tmp/psycles-transparent-single-pass-20260827/fresh-visual/final-candidate.exr",
+      "psycles_channel_mean": [
+        0.09004420787096024,
+        0.0640244111418724,
+        0.048947300761938095
+      ],
+      "psycles_luminance_mean": 0.06846974790096283,
+      "psycles_rms": 0.16210647373590686,
+      "relative_rmse": 0.0003603417972215029,
+      "rmse": 5.8413763326825574e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 241591910.4,
+        "display_scale": 1.0753940115640777,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/single-pass-transparent-closure-population/triptychs/parent/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        1.0000001192092896,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-transparent-single-pass-20260827/fresh-visual/baseline.exr",
+      "cycles_channel_mean": [
+        0.10977770388126373,
+        0.3143404424190521,
+        -0.05709315091371536
+      ],
+      "cycles_luminance_mean": 0.24400009214878082,
+      "cycles_rms": 0.5515428781509399,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0004173172637820244,
+      "mean_absolute_error": 2.0737951356153417e-09,
+      "orientation_rmse": {
+        "flip_x": 0.6507164239883423,
+        "flip_xy": 0.8734652996063232,
+        "flip_y": 0.7784237861633301,
+        "identity": 4.664335904180916e-07
+      },
+      "p95_pixel_rmse": 1.7208478197972e-08,
+      "p99_pixel_rmse": 3.847463148076713e-08,
+      "psycles": "/var/tmp/psycles-transparent-single-pass-20260827/fresh-visual/final-candidate.exr",
+      "psycles_channel_mean": [
+        0.10977771878242493,
+        0.3143404424190521,
+        -0.05709315091371536
+      ],
+      "psycles_luminance_mean": 0.24400009214878082,
+      "psycles_rms": 0.5515428512574738,
+      "relative_rmse": 8.456887195820947e-07,
+      "rmse": 4.664335904180916e-07,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/single-pass-transparent-closure-population/triptychs/parent/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "691178b",
+  "schema": "psycles.cycles-differential.v2"
+}

@@ -317,6 +317,33 @@ void SurfaceClosureSet::append(
     append_impl(closure, &on_retained);
 }
 
+void SurfaceClosureSet::finalize_physical_transparent(
+    UInt index,
+    Expr<luisa::float3> weight,
+    Expr<float> sample_weight,
+    Expr<luisa::float3> normal) noexcept {
+    LUISA_ASSERT(
+        _profile == SurfaceClosureStorageProfile::physical,
+        "Transparent closure finalization requires the physical profile.");
+    // Transparent is a common-only member of the physical tagged union. Its
+    // payload block was initialized by the first append and is unobservable;
+    // overwrite only the common block once the additive reduction is final.
+    luisa::compute::UInt4 identity = luisa::make_uint4(
+        static_cast<std::uint32_t>(
+            SurfaceClosureKind::transparent),
+        static_cast<std::uint32_t>(
+            SurfaceClosureLobe::none),
+        setup_valid_bit,
+        0u);
+    _physical_0.write(
+        index,
+        make_float4x4(
+            identity.bitcast<luisa::float4>(),
+            make_float4(weight, sample_weight),
+            make_float4(make_float3(1.0f), sample_weight),
+            make_float4(normal, 0.0f)));
+}
+
 std::size_t SurfaceClosureSet::capacity() const noexcept {
     return _capacity;
 }

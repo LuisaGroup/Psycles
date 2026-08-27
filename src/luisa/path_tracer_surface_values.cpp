@@ -679,7 +679,9 @@ void accumulate_surface_emission(
         .evaluation_scale = make_float3(1.0f)});
 }
 
-template<typename PhysicalClosureSink>
+template<bool StreamTransparentContributions,
+         typename PhysicalClosureSink,
+         typename TransparentClosureFinalizer>
 [[nodiscard]] SurfacePopulation execute_surface_closure_program(
     const SurfaceValueRuntime &runtime,
     SurfaceClosureProgramDomain domain,
@@ -690,7 +692,8 @@ template<typename PhysicalClosureSink>
     Expr<bool> emission_reflective_caustics,
     Expr<bool> reflective_caustics,
     Expr<bool> refractive_caustics,
-    PhysicalClosureSink &&emit_physical) noexcept {
+    PhysicalClosureSink &&emit_physical,
+    TransparentClosureFinalizer &&finalize_transparent) noexcept {
     const auto range = surface_value_runtime_buffer<luisa::uint4>(
                            runtime,
                            SurfaceValueRuntimeBufferSlot::program)
@@ -700,81 +703,17 @@ template<typename PhysicalClosureSink>
     const auto domain_view = surface_closure_program_domain(runtime, domain);
     const PrincipledLayerComponent principled_layers{services, point};
     Float3 emission = make_float3(0.0f);
-    Float3 transparent_weight = make_float3(0.0f);
-    Float transparent_sample_weight = 0.0f;
-    Bool transparent_pending = false;
-    UInt replay_begin = closure_end;
-
-    emit_surface_closure_program(
-        runtime,
-        domain_view,
-        services,
-        point,
-        locals,
-        closure_begin,
-        closure_end,
-        closure_begin,
-        [&](const TracedClosure &raw,
-            UInt endpoints,
-            UInt instruction_index) noexcept {
-            accumulate_surface_emission(
-                domain_view.principled_features,
-                principled_layers,
-                raw,
-                endpoints,
-                emission_reflective_caustics,
-                emission);
-
-            const auto physical_endpoint =
-                (endpoints & compiler::surface_closure_endpoint_bit(
-                                 compiler::SurfaceClosureEndpoint::physical)) !=
-                0u;
-            $if(physical_endpoint) {
-                expand_physical_surface_closure(
-                    services,
-                    point,
-                    raw,
-                    reflective_caustics,
-                    refractive_caustics,
-                    [&](const TracedClosure &physical) noexcept {
-                        if (physical.operation ==
-                            compiler::ClosureOperation::transparent) {
-                            transparent_weight += physical.weight;
-                            transparent_sample_weight +=
-                                physical.sample_weight;
-                            const auto allocated =
-                                physical.sample_weight >=
-                                cycles_closure::closure_weight_cutoff;
-                            $if(!transparent_pending & allocated) {
-                                replay_begin = instruction_index;
-                            };
-                            transparent_pending |= allocated;
-                            return;
-                        }
-                        $if(!transparent_pending) {
-                            emit_physical(
-                                canonical_surface_closure(physical));
-                        };
-                    });
-            };
-        });
-
-    $if(transparent_pending) {
-        emit_physical(merged_transparent_closure(
-            point,
-            transparent_weight,
-            transparent_sample_weight));
-    };
-
-    // The first pass has already evaluated values and found the exact raw
-    // instruction containing the first allocated transparent output. Replaying
-    // only from that leaf reconstructs the non-transparent suffix in source
-    // order without retaining a per-thread physical closure arena. Pure setup
-    // is deterministic, so the retained sequence and left-fold order are
-    // identical to the expanded route.
-    Bool reached_first_transparent = false;
-    $if(transparent_pending) {
-        emit_surface_closure_program<true>(
+    if constexpr (StreamTransparentContributions) {
+        // Cycles allocates the first retained transparent closure at its source
+        // position, then folds later retained transparent setup calls into the
+        // same slot. Keep that fold in this lexical interpreter scope so only
+        // its additive monoid element remains live; the collector performs one
+        // write-only finalization after the single program traversal. Every
+        // retained contribution has sample_weight >= cutoff > 0, so the fourth
+        // component is also an exact seen/not-seen witness without a separate
+        // live Boolean.
+        Float4 transparent_sum = make_float4(0.0f);
+        emit_surface_closure_program(
             runtime,
             domain_view,
             services,
@@ -782,10 +721,17 @@ template<typename PhysicalClosureSink>
             locals,
             closure_begin,
             closure_end,
-            replay_begin,
+            closure_begin,
             [&](const TracedClosure &raw,
                 UInt endpoints,
                 UInt) noexcept {
+                accumulate_surface_emission(
+                    domain_view.principled_features,
+                    principled_layers,
+                    raw,
+                    endpoints,
+                    emission_reflective_caustics,
+                    emission);
                 const auto physical_endpoint =
                     (endpoints & compiler::surface_closure_endpoint_bit(
                                      compiler::SurfaceClosureEndpoint::physical)) !=
@@ -800,19 +746,148 @@ template<typename PhysicalClosureSink>
                         [&](const TracedClosure &physical) noexcept {
                             if (physical.operation ==
                                 compiler::ClosureOperation::transparent) {
-                                reached_first_transparent |=
+                                const auto allocated =
                                     physical.sample_weight >=
                                     cycles_closure::closure_weight_cutoff;
+                                $if(allocated) {
+                                    $if(transparent_sum.w == 0.0f) {
+                                        emit_physical(
+                                            canonical_surface_closure(physical),
+                                            true);
+                                    };
+                                    transparent_sum += make_float4(
+                                        physical.weight,
+                                        physical.sample_weight);
+                                };
                                 return;
                             }
-                            $if(reached_first_transparent) {
+                            emit_physical(
+                                canonical_surface_closure(physical),
+                                false);
+                        });
+                };
+            });
+        $if(transparent_sum.w > 0.0f) {
+            finalize_transparent(
+                transparent_sum.xyz(),
+                transparent_sum.w);
+        };
+    } else {
+        Float3 transparent_weight = make_float3(0.0f);
+        Float transparent_sample_weight = 0.0f;
+        Bool transparent_pending = false;
+        UInt replay_begin = closure_end;
+
+        emit_surface_closure_program(
+            runtime,
+            domain_view,
+            services,
+            point,
+            locals,
+            closure_begin,
+            closure_end,
+            closure_begin,
+            [&](const TracedClosure &raw,
+                UInt endpoints,
+                UInt instruction_index) noexcept {
+                accumulate_surface_emission(
+                    domain_view.principled_features,
+                    principled_layers,
+                    raw,
+                    endpoints,
+                    emission_reflective_caustics,
+                    emission);
+
+                const auto physical_endpoint =
+                    (endpoints & compiler::surface_closure_endpoint_bit(
+                                     compiler::SurfaceClosureEndpoint::physical)) !=
+                    0u;
+                $if(physical_endpoint) {
+                    expand_physical_surface_closure(
+                        services,
+                        point,
+                        raw,
+                        reflective_caustics,
+                        refractive_caustics,
+                        [&](const TracedClosure &physical) noexcept {
+                            if (physical.operation ==
+                                compiler::ClosureOperation::transparent) {
+                                const auto allocated =
+                                    physical.sample_weight >=
+                                    cycles_closure::closure_weight_cutoff;
+                                $if(allocated) {
+                                    transparent_weight += physical.weight;
+                                    transparent_sample_weight +=
+                                        physical.sample_weight;
+                                    $if(!transparent_pending) {
+                                        replay_begin = instruction_index;
+                                    };
+                                    transparent_pending = true;
+                                };
+                                return;
+                            }
+                            $if(!transparent_pending) {
                                 emit_physical(
                                     canonical_surface_closure(physical));
                             };
                         });
                 };
             });
-    };
+
+        $if(transparent_pending) {
+            emit_physical(merged_transparent_closure(
+                point,
+                transparent_weight,
+                transparent_sample_weight));
+        };
+
+        // Collectors without mutable retained storage still receive the
+        // canonical pre-merged sequence. Replay begins at the first retained
+        // transparent instruction and reconstructs only its non-transparent
+        // suffix; rejected transparent contributions neither merge nor move
+        // the source-order insertion point.
+        Bool reached_first_transparent = false;
+        $if(transparent_pending) {
+            emit_surface_closure_program<true>(
+                runtime,
+                domain_view,
+                services,
+                point,
+                locals,
+                closure_begin,
+                closure_end,
+                replay_begin,
+                [&](const TracedClosure &raw,
+                    UInt endpoints,
+                    UInt) noexcept {
+                    const auto physical_endpoint =
+                        (endpoints & compiler::surface_closure_endpoint_bit(
+                                         compiler::SurfaceClosureEndpoint::physical)) !=
+                        0u;
+                    $if(physical_endpoint) {
+                        expand_physical_surface_closure(
+                            services,
+                            point,
+                            raw,
+                            reflective_caustics,
+                            refractive_caustics,
+                            [&](const TracedClosure &physical) noexcept {
+                                if (physical.operation ==
+                                    compiler::ClosureOperation::transparent) {
+                                    reached_first_transparent |=
+                                        physical.sample_weight >=
+                                        cycles_closure::closure_weight_cutoff;
+                                    return;
+                                }
+                                $if(reached_first_transparent) {
+                                    emit_physical(
+                                        canonical_surface_closure(physical));
+                                };
+                            });
+                    };
+                });
+        };
+    }
     return {
         .emission = std::move(emission),
         .shading_normal = point.shading_normal};
@@ -962,7 +1037,7 @@ template<typename PhysicalClosureSink>
         query.include_aov,
         identity,
         aov_operation};
-    const auto population = execute_surface_closure_program(
+    const auto population = execute_surface_closure_program<false>(
         runtime,
         SurfaceClosureProgramDomain::population,
         services,
@@ -974,7 +1049,8 @@ template<typename PhysicalClosureSink>
         query.refractive_caustics,
         [&](const SurfaceClosureRecord &closure) noexcept {
             accumulator.add(closure);
-        });
+        },
+        [](Float3, Float) noexcept {});
     accumulator.finish();
     return accumulator.preparation(population.emission);
 }
@@ -1077,8 +1153,34 @@ class CompactSurfacePopulationProgramImpl final
                 const SurfaceValueLocalsView &locals,
                 UInt preparation_program) noexcept {
                 collector.begin(evaluated_point.shading_normal);
-                const auto population =
-                    execute_surface_closure_program(
+                SurfacePopulation population;
+                if (collector
+                        .supports_transparent_closure_finalization()) {
+                    population = execute_surface_closure_program<true>(
+                        *_scene->surface_values,
+                        SurfaceClosureProgramDomain::population,
+                        services,
+                        evaluated_point,
+                        locals,
+                        preparation_program,
+                        query.emission_reflective_caustics,
+                        query.reflective_caustics,
+                        query.refractive_caustics,
+                        [&](const SurfaceClosureRecord &closure,
+                            bool transparent) noexcept {
+                            if (transparent) {
+                                collector.begin_transparent_closure(closure);
+                            } else {
+                                collector.add(closure);
+                            }
+                        },
+                        [&](Float3 weight,
+                            Float sample_weight) noexcept {
+                            collector.finalize_transparent_closure(
+                                weight, sample_weight);
+                        });
+                } else {
+                    population = execute_surface_closure_program<false>(
                         *_scene->surface_values,
                         SurfaceClosureProgramDomain::population,
                         services,
@@ -1090,7 +1192,9 @@ class CompactSurfacePopulationProgramImpl final
                         query.refractive_caustics,
                         [&](const SurfaceClosureRecord &closure) noexcept {
                             collector.add(closure);
-                        });
+                        },
+                        [](Float3, Float) noexcept {});
+                }
                 result.emission = population.emission;
                 result.shading_normal = population.shading_normal;
             });
@@ -1392,7 +1496,7 @@ SurfaceBssrdfNormalCallable make_compact_surface_bssrdf_normal_callable(
                             SurfaceBssrdfNormalAccumulator accumulator{
                                 evaluated_point.shading_normal,
                                 scene->volume_metadata.closure_allocation_budget};
-                            static_cast<void>(execute_surface_closure_program(
+                            static_cast<void>(execute_surface_closure_program<false>(
                                 *scene->surface_values,
                                 SurfaceClosureProgramDomain::bssrdf,
                                 services, evaluated_point, locals,
@@ -1402,7 +1506,8 @@ SurfaceBssrdfNormalCallable make_compact_surface_bssrdf_normal_callable(
                                     accumulator.add(closure.kind, closure.weight,
                                                     closure.allocation_weight,
                                                     closure.normal);
-                                }));
+                                },
+                                [](Float3, Float) noexcept {}));
                             result = accumulator.result();
                         });
                 };

@@ -840,6 +840,25 @@ class SurfaceClosureCollector {
         Expr<luisa::float3>) noexcept {}
     virtual void add(
         const SurfaceClosureRecord &closure) noexcept = 0;
+
+    // Cycles allocates the first retained transparent closure at its source
+    // position and merges every later transparent contribution into that same
+    // record. A collector with write-only finalization may opt into receiving
+    // the first record at its source position and the final additive state at
+    // the end of traversal. Other collectors keep the canonical pre-merged
+    // sequence produced by the surface implementation, so this protocol is an
+    // implementation capability rather than a change to add()'s contract.
+    [[nodiscard]] virtual bool
+    supports_transparent_closure_finalization() const noexcept {
+        return false;
+    }
+    virtual void begin_transparent_closure(
+        const SurfaceClosureRecord &closure) noexcept {
+        add(closure);
+    }
+    virtual void finalize_transparent_closure(
+        Expr<luisa::float3>,
+        Expr<float>) noexcept {}
     virtual void finish() noexcept {}
 };
 

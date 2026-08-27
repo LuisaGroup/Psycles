@@ -126,6 +126,16 @@ class SurfaceClosureSet final : public SurfaceClosureCollector {
         const SurfaceClosureRecord &closure,
         const std::function<void()> &on_retained) noexcept;
 
+    // Finalizes the common block of a retained transparent record after all
+    // source-order contributions have been reduced. This is a write-only
+    // transaction: keeping the physical Local free of dynamic read/modify/
+    // write aliases is essential for backend scalar replacement.
+    void finalize_physical_transparent(
+        UInt index,
+        Expr<luisa::float3> weight,
+        Expr<float> sample_weight,
+        Expr<luisa::float3> normal) noexcept;
+
     [[nodiscard]] std::size_t capacity() const noexcept;
     [[nodiscard]] SurfaceClosureStorageProfile profile() const noexcept;
     [[nodiscard]] UInt count() const noexcept;

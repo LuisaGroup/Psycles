@@ -1,0 +1,140 @@
+{
+  "schema": "psycles.single-pass-transparent-closure-population.v1",
+  "date": "2026-08-27",
+  "reference": {
+    "psycles_parent": "691178b",
+    "psycles_parent_binary_sha256": "9e370e3256d5dfc7da5c1fed0e2023543c649aaefd6813cdacd00f08bc089e34",
+    "psycles_candidate_binary_sha256": "e71be2af0075b5b153a7a99006441a046ab3aa6c28353cfd334c62fc2e012243",
+    "cycles_source": "9e2066aef7ef7e20c142ad7bd3303138a4304c93",
+    "cycles_version": "5.2.1",
+    "device": "AMD Radeon RX 9070 XT",
+    "hip_arch": "gfx1201",
+    "hip_driver": "7.2.53211"
+  },
+  "tests": {
+    "backend_matrix": [
+      "fallback",
+      "hip",
+      "vk-native-xir-spirv"
+    ],
+    "passed": 12,
+    "failed": 0,
+    "elapsed_seconds": 43.63,
+    "vulkan_environment": {
+      "LUISA_VULKAN_DISABLE_DXC": "1",
+      "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1",
+      "LUISA_VULKAN_USE_XIR": "1"
+    },
+    "broad_surface_closure_regression": {
+      "passed": 24,
+      "failed": 0,
+      "elapsed_seconds": 4.83,
+      "warm_shader_cache": true,
+      "groups": [
+        "cycles_closure",
+        "surface_closure_collection",
+        "surface_closure_reachability",
+        "surface_population",
+        "compact_surface_preparation",
+        "compact_surface_tail",
+        "surface_closure_point",
+        "surface_closure_physical"
+      ]
+    }
+  },
+  "hip_performance": {
+    "constant_closure_inputs_640x480_64": {
+      "parent": {
+        "shader_hash": "070c005968d9d9e7",
+        "calls": 128,
+        "work_items": 56088896,
+        "ns_per_item_runs": [
+          13.065975679,
+          13.106557918
+        ],
+        "ns_per_item_mean": 13.0862667985,
+        "private_bytes": 2424,
+        "vgpr": 256
+      },
+      "candidate": {
+        "shader_hash": "078bd8aa6ed45a88",
+        "calls": 128,
+        "work_items": 56088704,
+        "ns_per_item_runs": [
+          12.286384849,
+          12.403657624
+        ],
+        "ns_per_item_mean": 12.3450212365,
+        "private_bytes": 2256,
+        "vgpr": 256
+      },
+      "ns_per_item_delta_percent": -5.664301159,
+      "private_bytes_delta": -168,
+      "private_bytes_delta_percent": -6.930693069
+    },
+    "barbershop_640x480_64": {
+      "parent": {
+        "shader_hash": "a7c2ab062cb9c498",
+        "calls": 293,
+        "work_items": 53663488,
+        "gpu_milliseconds": 1493.087813,
+        "ns_per_item": 27.823160004,
+        "private_bytes": 3152,
+        "vgpr": 256,
+        "render_only_seconds": 2.57533
+      },
+      "candidate": {
+        "shader_hash": "76ef5978047101e1",
+        "calls": 293,
+        "work_items": 53663488,
+        "gpu_milliseconds": 1455.905924,
+        "ns_per_item": 27.130288736,
+        "private_bytes": 3296,
+        "vgpr": 256,
+        "render_only_seconds": 2.53931
+      },
+      "gpu_delta_percent": -2.490268066,
+      "render_only_delta_percent": -1.398655706,
+      "private_bytes_delta": 144
+    },
+    "barbershop_fresh_assets_render_only": {
+      "parent_seconds": 2.55667,
+      "candidate_seconds": 2.5181,
+      "delta_percent": -1.508602987
+    },
+    "rejected_dynamic_local_read_modify_write": {
+      "shader_hash": "81d83a987ed0c659",
+      "ns_per_item_range": [
+        33.93,
+        34.03
+      ],
+      "private_bytes": 4192,
+      "vgpr": 256,
+      "status": "rejected-not-committed"
+    }
+  },
+  "image_validation": {
+    "resolution": [
+      640,
+      480
+    ],
+    "samples": 64,
+    "passes_compared": 15,
+    "parent_vs_candidate": {
+      "combined_rmse": 0.000058413763,
+      "combined_relative_rmse": 0.0003603418,
+      "combined_luminance_mean_ratio": 0.9999982,
+      "normal_rmse": 0.00000046643359,
+      "normal_relative_rmse": 0.00000084568872
+    },
+    "cycles_5_2_hip_vs_candidate": {
+      "build_identity_verified": true,
+      "combined_rmse": 0.016831117,
+      "combined_relative_rmse": 0.10401351,
+      "combined_luminance_mean_ratio": 0.999433,
+      "normal_rmse": 0.010049746,
+      "normal_relative_rmse": 0.018289696
+    },
+    "visual_inspection": "Combined and Normal are structurally aligned; parent differences are sparse path changes, and Cycles differences are dominated by finite-spp noise rather than a coherent material, UV, transform, or lighting mismatch."
+  }
+}
