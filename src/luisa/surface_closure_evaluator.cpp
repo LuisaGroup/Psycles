@@ -6,6 +6,8 @@
 #include <psycles/luisa/surface_closure_evaluation.h>
 #include <psycles/luisa/surface_closure_operations.h>
 
+#include <utility>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend {
@@ -38,6 +40,19 @@ SurfaceClosureEvaluator::SurfaceClosureEvaluator(
       _closures{closures},
       _shading_normal{shading_normal},
       _reachability{reachability} {}
+
+SurfaceClosureEvaluator::SurfaceClosureEvaluator(
+    const SurfacePoint &point,
+    const SurfaceClosureSet &closures,
+    Float3 shading_normal,
+    SurfaceClosurePopulationState populated_runtime_state,
+    SurfaceClosureReachability reachability) noexcept
+    : _point{point},
+      _closures{closures},
+      _shading_normal{shading_normal},
+      _reachability{reachability},
+      _populated_runtime_state{
+          std::move(populated_runtime_state)} {}
 
 UInt SurfaceClosureEvaluator::runtime_flags(
     Float glossy_filter_roughness) const noexcept {

@@ -118,7 +118,11 @@ class PopulatedSurfaceShaderImpl final
                 ? _scene->surface_values->physical_closure_reachability
                 : all_surface_closure_reachability;
         _evaluator = std::make_unique<SurfaceClosureEvaluator>(
-            _point, _population.closures(), _shading_normal, reachability);
+            _point,
+            _population.closures(),
+            _shading_normal,
+            _population.runtime_state(),
+            reachability);
     }
 
     [[nodiscard]] SurfacePreparation preparation()
