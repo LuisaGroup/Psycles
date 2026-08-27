@@ -439,23 +439,97 @@ make_static_variant_key(const SurfaceProgram &program,
   return key;
 }
 
-[[nodiscard]] std::vector<bool> transitive_value_mask(
-    const SurfaceProgram &program, ValueExpressionId root) {
-  std::vector<bool> active(program.value_instructions().size(), false);
-  std::vector<ValueExpressionId> pending;
-  pending.emplace_back(root);
-  while (!pending.empty()) {
-    const auto id = pending.back();
-    pending.pop_back();
-    if (!id.valid() || id.value >= active.size() || active[id.value]) {
+[[nodiscard]] std::string populate_surface_value_operand_routes(
+    SurfaceValueExecutableScene &scene) {
+  constexpr auto local_route_bit = std::uint8_t{1u};
+  constexpr auto parameter_route_bit = std::uint8_t{2u};
+  constexpr auto dynamic_route_bits =
+      static_cast<std::uint8_t>(local_route_bit | parameter_route_bit);
+
+  if (scene.instruction_variants.size() != scene.values.instructions.size()) {
+    return "the immutable-variant stream is not parallel to the instructions";
+  }
+
+  // For each (exact evaluator variant, operand position), compute the join of
+  // every concrete storage class observed in the complete immutable scene.
+  // Each coordinate has the finite domain P({local, parameter}) ordered by
+  // subset inclusion. A singleton admits a direct read; the two-element top
+  // is precisely the existing dynamic read. Arity and typed bank are
+  // invariant inside a variant by construction, so this product abstraction
+  // loses no execution information.
+  std::vector<std::vector<std::uint8_t>> domains;
+  domains.reserve(scene.variants.size());
+  for (const auto &variant : scene.variants) {
+    domains.emplace_back(variant.operand_types.size(), std::uint8_t{});
+  }
+
+  for (auto instruction_index = std::size_t{};
+       instruction_index < scene.values.instructions.size();
+       ++instruction_index) {
+    const auto &instruction = scene.values.instructions[instruction_index];
+    if (is_surface_value_surface_normal_transition(instruction)) {
+      if (scene.instruction_variants[instruction_index] !=
+          SurfaceValueAddress::invalid_value) {
+        return "a surface-normal transition has an evaluator variant";
+      }
       continue;
     }
-    active[id.value] = true;
-    for (const auto operand : program.value_instructions()[id.value].operands) {
-      pending.emplace_back(operand);
+
+    const auto variant_index = scene.instruction_variants[instruction_index];
+    if (variant_index >= scene.variants.size()) {
+      return "a value instruction has an invalid evaluator variant";
+    }
+    const auto operand_count = surface_value_operand_count(instruction);
+    auto &variant_domains = domains[variant_index];
+    if (operand_count != variant_domains.size()) {
+      return "an evaluator variant changed operand arity";
+    }
+
+    for (auto operand_index = std::size_t{};
+         operand_index < operand_count; ++operand_index) {
+      const auto word_index = operand_index / surface_value_operands_per_word;
+      const auto lane = operand_index % surface_value_operands_per_word;
+      auto word = instruction.operand_payload;
+      if (operand_count > surface_value_inline_operand_capacity) {
+        if (instruction.operand_payload >= scene.values.operands.size() ||
+            word_index >= scene.values.operands.size() -
+                              instruction.operand_payload) {
+          return "an evaluator operand range exceeds the scene image";
+        }
+        word = scene.values.operands[instruction.operand_payload + word_index];
+      }
+      const auto operand = surface_value_operand_from_word(word, lane);
+      if (!operand.valid()) {
+        return "an evaluator variant observes an invalid operand";
+      }
+      const auto atom = operand.parameter() ? parameter_route_bit
+                                            : local_route_bit;
+      variant_domains[operand_index] = static_cast<std::uint8_t>(
+          variant_domains[operand_index] | atom);
     }
   }
-  return active;
+
+  for (auto variant_index = std::size_t{};
+       variant_index < scene.variants.size(); ++variant_index) {
+    auto &variant = scene.variants[variant_index];
+    const auto &variant_domains = domains[variant_index];
+    variant.operand_routes.clear();
+    variant.operand_routes.reserve(variant_domains.size());
+    for (const auto domain : variant_domains) {
+      if (domain == local_route_bit) {
+        variant.operand_routes.emplace_back(SurfaceValueOperandRoute::local);
+      } else if (domain == parameter_route_bit) {
+        variant.operand_routes.emplace_back(
+            SurfaceValueOperandRoute::parameter);
+      } else if (domain == dynamic_route_bits) {
+        variant.operand_routes.emplace_back(
+            SurfaceValueOperandRoute::dynamic);
+      } else {
+        return "an evaluator variant has an unobserved operand position";
+      }
+    }
+  }
+  return {};
 }
 
 [[nodiscard]] std::uint32_t value_stack_words(
@@ -1307,7 +1381,8 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
               .svm_immediates = {static_cast<std::uint16_t>(
                   make_surface_value_svm_immediate(instruction.operation,
                                                    instruction.static_u0,
-                                                   instruction.static_u1))}});
+                                                   instruction.static_u1))},
+              .operand_routes = {}});
         } else {
           auto &immediates = result.variants[iter->second].svm_immediates;
           const auto immediate =
@@ -1335,9 +1410,9 @@ SurfaceValueExecutableScene build_surface_value_executable_scene(
   if (!result.values.valid) {
     return reject_executable_scene(result.values.diagnostic);
   }
-  if (result.instruction_variants.size() != result.values.instructions.size()) {
-    return reject_executable_scene(
-        "the immutable-variant stream is not parallel to the instructions");
+  if (auto diagnostic = populate_surface_value_operand_routes(result);
+      !diagnostic.empty()) {
+    return reject_executable_scene(std::move(diagnostic));
   }
   result.valid = true;
   return result;

@@ -444,8 +444,17 @@ void test_surface_value_storage_plan() {
                                           SocketType::floating} &&
               executable_scene.variants[0u].instruction.operands ==
                   std::vector<ValueExpressionId>{ValueExpressionId{0u},
-                                                 ValueExpressionId{1u}},
-          "an immutable variant lost its typed normalized operands");
+                                                 ValueExpressionId{1u}} &&
+              executable_scene.variants[0u].operand_routes ==
+                  std::vector<SurfaceValueOperandRoute>{
+                      SurfaceValueOperandRoute::dynamic,
+                      SurfaceValueOperandRoute::parameter} &&
+              executable_scene.variants[1u].operand_routes ==
+                  std::vector<SurfaceValueOperandRoute>{
+                      SurfaceValueOperandRoute::local} &&
+              executable_scene.variants[2u].operand_routes.empty(),
+          "an immutable variant lost its typed operands or exact scene-wide "
+          "storage-class join");
 
   const auto make_passthrough_program = [](std::uint32_t tag, SocketType type,
                                            SocketValue value) {
@@ -518,9 +527,18 @@ void test_surface_value_storage_plan() {
               passthrough_scene.variants[2u].instruction.result_type ==
                   SocketType::unsigned_integer &&
               passthrough_scene.variants[2u].operand_types ==
-                  std::vector<SocketType>{SocketType::unsigned_integer},
+                  std::vector<SocketType>{SocketType::unsigned_integer} &&
+              passthrough_scene.variants[0u].operand_routes ==
+                  std::vector<SurfaceValueOperandRoute>{
+                      SurfaceValueOperandRoute::parameter} &&
+              passthrough_scene.variants[1u].operand_routes ==
+                  std::vector<SurfaceValueOperandRoute>{
+                      SurfaceValueOperandRoute::parameter} &&
+              passthrough_scene.variants[2u].operand_routes ==
+                  std::vector<SurfaceValueOperandRoute>{
+                      SurfaceValueOperandRoute::parameter},
           "nominal socket spellings did not quotient to the three exact SVM "
-          "execution banks");
+          "execution banks or preserve direct parameter routing");
 
   const SurfaceProgram transaction_program{
       35u,
