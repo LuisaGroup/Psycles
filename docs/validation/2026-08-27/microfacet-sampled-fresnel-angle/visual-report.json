@@ -1,0 +1,214 @@
+{
+  "actual_label": "sampled I.H fix",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0000011920928955,
+        1.0000016689300537,
+        1.0000016689300537
+      ],
+      "cycles": "/var/tmp/psycles-half-base-structure/e2e-base-3.exr",
+      "cycles_channel_mean": [
+        0.09004287421703339,
+        0.06402408331632614,
+        0.04894699901342392
+      ],
+      "cycles_luminance_mean": 0.06846906989812851,
+      "cycles_rms": 0.1621040254831314,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000016322510168,
+      "maximum_absolute_error": 0.035103023052215576,
+      "mean_absolute_error": 1.0642421699458282e-07,
+      "orientation_rmse": {
+        "flip_x": 0.1863919347524643,
+        "flip_xy": 0.19609864056110382,
+        "flip_y": 0.18821744620800018,
+        "identity": 5.761292050010525e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 4.301594636046957e-09,
+      "psycles": "/var/tmp/psycles-sampled-fresnel-20260827/barbershop-repeat.exr",
+      "psycles_channel_mean": [
+        0.09004298597574234,
+        0.0640241876244545,
+        0.048947080969810486
+      ],
+      "psycles_luminance_mean": 0.06846918165683746,
+      "psycles_rms": 0.16210404927341354,
+      "relative_rmse": 0.0003554070932439643,
+      "rmse": 5.761292050010525e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 241591910.4,
+        "display_scale": 1.0755444556284235,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/microfacet-sampled-fresnel-angle/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-half-base-structure/e2e-base-3.exr",
+      "cycles_channel_mean": [
+        0.08373936265707016,
+        0.06145411357283592,
+        0.05019694194197655
+      ],
+      "cycles_luminance_mean": 0.06538926810026169,
+      "cycles_rms": 0.31237342953681946,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 1.9073486328125e-06,
+      "mean_absolute_error": 3.0422167562882407e-10,
+      "orientation_rmse": {
+        "flip_x": 0.42918556928634644,
+        "flip_xy": 0.42874452471733093,
+        "flip_y": 0.4291098117828369,
+        "identity": 5.67158142672497e-09
+      },
+      "p95_pixel_rmse": 5.376993295058696e-10,
+      "p99_pixel_rmse": 9.618657870191782e-09,
+      "psycles": "/var/tmp/psycles-sampled-fresnel-20260827/barbershop-repeat.exr",
+      "psycles_channel_mean": [
+        0.08373936265707016,
+        0.06145411357283592,
+        0.05019694194197655
+      ],
+      "psycles_luminance_mean": 0.06538926810026169,
+      "psycles_rms": 0.3123734337087001,
+      "relative_rmse": 1.8156414376007163e-08,
+      "rmse": 5.67158142672497e-09,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 60397977.6,
+        "display_scale": 0.8316550633131009,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/microfacet-sampled-fresnel-angle/triptychs/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-half-base-structure/e2e-base-3.exr",
+      "cycles_channel_mean": [
+        0.10977768898010254,
+        0.3143402934074402,
+        -0.0570933073759079
+      ],
+      "cycles_luminance_mean": 0.2440001368522644,
+      "cycles_rms": 0.5515429377555847,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.00042008922901004553,
+      "mean_absolute_error": 2.011074418106773e-09,
+      "orientation_rmse": {
+        "flip_x": 0.6507166624069214,
+        "flip_xy": 0.8734654784202576,
+        "flip_y": 0.7784239649772644,
+        "identity": 4.684858083692234e-07
+      },
+      "p95_pixel_rmse": 1.7206378544187828e-08,
+      "p99_pixel_rmse": 3.847463148076713e-08,
+      "psycles": "/var/tmp/psycles-sampled-fresnel-20260827/barbershop-repeat.exr",
+      "psycles_channel_mean": [
+        0.10977768898010254,
+        0.3143402934074402,
+        -0.0570933073759079
+      ],
+      "psycles_luminance_mean": 0.2440001368522644,
+      "psycles_rms": 0.5515429593263914,
+      "relative_rmse": 8.494094952528103e-07,
+      "rmse": 4.684858083692234e-07,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/microfacet-sampled-fresnel-angle/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "0fa3830 baseline",
+  "schema": "psycles.cycles-differential.v2"
+}

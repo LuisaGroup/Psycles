@@ -69,6 +69,20 @@ Regular GGX is still 47.6% slower than Cycles because Psycles' generic path
 samples and then reconstructs the selected closure's expensive intermediates
 in a separate evaluator.
 
+The subsequent sampled-half-vector audit separated a semantic defect from a
+performance hypothesis. Psycles used `I.N` for the sampled Fresnel validity
+test in both microfacet domains; Cycles uses `I.H`, with `H=N` only in the
+singular domain. A black-metallic boundary regression proves that the old path
+discarded a valid regular sample and now passes on fallback, HIP, and strict
+native-XIR Vulkan. The broader proposal to carry `H` through the selected
+sample ABI was rejected: it speeds the isolated regular probe by 10--13%, but
+regresses the singular probe by 5.1%, grows the full surface object by 384 B,
+and changes normalized Barbershop `shade_surface` time by only -0.079%. The
+formal proof and complete A/B evidence are in
+[microfacet-sampled-fresnel-angle](../microfacet-sampled-fresnel-angle/README.md)
+and
+[selected-microfacet-half-vector-reuse-rejected](../selected-microfacet-half-vector-reuse-rejected/README.md).
+
 ## Reference identity
 
 - Original audit Psycles point: `717176eebc7b47e7d1b55db6dcc9e00f7285ff3b`.

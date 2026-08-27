@@ -1,0 +1,214 @@
+{
+  "actual_label": "rejected H transport",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.0000234842300415,
+        1.0000067949295044,
+        1.0000022649765015
+      ],
+      "cycles": "/var/tmp/psycles-half-base-structure/e2e-base-3.exr",
+      "cycles_channel_mean": [
+        0.09004287421703339,
+        0.06402408331632614,
+        0.04894699901342392
+      ],
+      "cycles_luminance_mean": 0.06846906989812851,
+      "cycles_rms": 0.1621040254831314,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.000011208123648,
+      "maximum_absolute_error": 0.15637806057929993,
+      "mean_absolute_error": 3.107645625277655e-06,
+      "orientation_rmse": {
+        "flip_x": 0.1863935887813568,
+        "flip_xy": 0.19610048830509186,
+        "flip_y": 0.1882193237543106,
+        "identity": 0.0003814937954302877
+      },
+      "p95_pixel_rmse": 8.867964140790718e-09,
+      "p99_pixel_rmse": 4.4712007252201147e-07,
+      "psycles": "/var/tmp/psycles-half-opt-structure/e2e-opt-3.exr",
+      "psycles_channel_mean": [
+        0.09004499018192291,
+        0.06402451545000076,
+        0.048947107046842575
+      ],
+      "psycles_luminance_mean": 0.06846983730792999,
+      "psycles_rms": 0.1621064450102602,
+      "relative_rmse": 0.0023533887841050934,
+      "rmse": 0.0003814937954302877,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 468201.37674418604,
+        "display_scale": 1.0755444556284235,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/selected-microfacet-half-vector-reuse-rejected/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        1.0002506971359253,
+        1.000117301940918,
+        1.0001033544540405
+      ],
+      "cycles": "/var/tmp/psycles-half-base-structure/e2e-base-3.exr",
+      "cycles_channel_mean": [
+        0.08373936265707016,
+        0.06145411357283592,
+        0.05019694194197655
+      ],
+      "cycles_luminance_mean": 0.06538926810026169,
+      "cycles_rms": 0.31237342953681946,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.000152568268603,
+      "maximum_absolute_error": 2.8563289642333984,
+      "mean_absolute_error": 3.199061393388547e-05,
+      "orientation_rmse": {
+        "flip_x": 0.4292503595352173,
+        "flip_xy": 0.4288089871406555,
+        "flip_y": 0.42917919158935547,
+        "identity": 0.004928118083626032
+      },
+      "p95_pixel_rmse": 1.2680587246904906e-07,
+      "p99_pixel_rmse": 6.4242526605085e-06,
+      "psycles": "/var/tmp/psycles-half-opt-structure/e2e-opt-3.exr",
+      "psycles_channel_mean": [
+        0.0837603509426117,
+        0.061461322009563446,
+        0.050202131271362305
+      ],
+      "psycles_luminance_mean": 0.06539924442768097,
+      "psycles_rms": 0.31246877752731816,
+      "relative_rmse": 0.015776367698537415,
+      "rmse": 0.004928118083626032,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 34200.246468600526,
+        "display_scale": 0.8316550633131009,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/selected-microfacet-half-vector-reuse-rejected/triptychs/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-half-base-structure/e2e-base-3.exr",
+      "cycles_channel_mean": [
+        0.10977768898010254,
+        0.3143402934074402,
+        -0.0570933073759079
+      ],
+      "cycles_luminance_mean": 0.2440001368522644,
+      "cycles_rms": 0.5515429377555847,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 7.3462724685668945e-06,
+      "mean_absolute_error": 1.3776975116286394e-09,
+      "orientation_rmse": {
+        "flip_x": 0.6507166624069214,
+        "flip_xy": 0.8734654784202576,
+        "flip_y": 0.7784239649772644,
+        "identity": 1.4351009269830683e-08
+      },
+      "p95_pixel_rmse": 1.7206378544187828e-08,
+      "p99_pixel_rmse": 3.847463148076713e-08,
+      "psycles": "/var/tmp/psycles-half-opt-structure/e2e-opt-3.exr",
+      "psycles_channel_mean": [
+        0.10977768898010254,
+        0.3143402934074402,
+        -0.0570933073759079
+      ],
+      "psycles_luminance_mean": 0.2440001368522644,
+      "psycles_rms": 0.5515429593263914,
+      "relative_rmse": 2.60197498461857e-08,
+      "rmse": 1.4351009269830683e-08,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/selected-microfacet-half-vector-reuse-rejected/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "0fa3830 baseline",
+  "schema": "psycles.cycles-differential.v2"
+}
