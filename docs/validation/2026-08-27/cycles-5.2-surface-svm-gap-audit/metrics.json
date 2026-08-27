@@ -72,5 +72,23 @@
     "final_llvm_lines": 64358,
     "render_seconds_range": [5.09675, 5.10569],
     "expression_only_reproduced_regression": true
+  },
+  "rejected_common_only_projection": {
+    "commit": "b9419920e0a2575b9f8e4b199fe60cec5cef2546",
+    "calls": 293,
+    "work_items": 53659296,
+    "gpu_ms": 3960.005276,
+    "ns_per_item": 73.799,
+    "vgpr": 256,
+    "private_bytes": 7040,
+    "object_bytes": 418464,
+    "entry_symbol_bytes": 359060,
+    "scratch_loads": 2624,
+    "scratch_stores": 2446,
+    "final_llvm_bytes": 4029923,
+    "final_llvm_lines": 64290,
+    "phi_occurrences": 4942,
+    "select_occurrences": 2593,
+    "result": "rejected_and_removed"
   }
 }

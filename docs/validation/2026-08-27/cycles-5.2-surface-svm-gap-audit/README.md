@@ -297,11 +297,32 @@ Several superficially plausible rewrites were measured and rejected:
 | immutable direct record construction | 418,208 B | 5.097 s | reject |
 | expression-view facade | 418,208 B | 5.106 s | reject |
 | explicit `Expression*` matrix references | 418,208 B | 5.099 s | reject |
+| common-only selection loops, payload after inversion | 418,464 B | 5.107 s | reject |
 
 The failed final IR grew from 57,932 to 64,358 lines; `phi` occurrences grew
 from about 2.8k to about 4.9k, and loads/stores grew correspondingly. Mutable
 `Var<T>` construction was therefore not the root cause: an expression-only
 view and explicit matrix-expression references produced the same final object.
+
+Commit `b941992` supplied a second controlled counterexample. Its two
+categorical passes decoded only physical block 0 and delayed the single block
+1 load until after inverse-CDF selection. The semantic premise was valid and
+the nine fallback/HIP/native-XIR-Vulkan closure tests passed, but the final
+main entry acquired exactly 2,100 additional `phi` instructions while every
+shared callable remained byte-for-byte structurally unchanged. Final LLVM
+grew from 57,932 lines / 3,373,035 B to 64,290 lines / 4,029,923 B; the HIP
+entry grew from 297,436 B to 359,060 B, private storage from 3,152 B to
+7,040 B, scratch loads/stores from 846/647 to 2,624/2,446, and the VGPR limit
+remained saturated at 256. On the same 293 calls and 53,659,296 work items,
+`shade_surface` rose from 1,547.762 ms / 28.844 ns per item to 3,960.005 ms /
+73.799 ns per item. The implementation was therefore removed while retaining
+the invalid-index canonicalization regression.
+
+This rules out payload-load volume as the immediate cause of that experiment:
+the regression is a control/SSA-shape failure in the inlined main kernel. A
+renderer rewrite that changes the staged consumer boundary without proving a
+bounded merge can reproduce the same 4.9k-phi fixed point even when it reads
+strictly fewer payload lanes.
 
 The regression came from recording payload decoders separately inside every
 family branch at every closure-loop consumption site. Branch-local payloads

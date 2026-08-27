@@ -712,10 +712,10 @@ int main(int argc, char **argv) {
     }
 
     // Scenario 6 requests closure index 6, which is outside both retained
-    // physical closure arrays. This is a focused regression for staged
-    // block_0 access: an unchecked safe-index load may provide expressions,
-    // but the public trace must project every invalid field to the canonical
-    // zero closure rather than leak slot 0 through the validity predicate.
+    // physical closure arrays. The public trace contract must project every
+    // invalid field to the canonical zero closure rather than leak the safe
+    // fallback slot through the validity predicate. This contract also guards
+    // future staged decoders without prescribing their implementation.
     constexpr auto invalid_requested_scenario = 6u;
     for (auto material = 0u; material < material_count; ++material) {
         const auto invocation =
