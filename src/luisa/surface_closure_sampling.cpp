@@ -130,34 +130,70 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     // this predicate also makes invalid empty measures observationally zero.
     SurfaceClosureSelectedSample selected;
     $if(inversion.selected()) {
-        with_selected_surface_closure(
-            _closures,
-            selected_index,
-            selection_context,
-            [&](const SurfaceClosurePhysicalRecord &closure,
-                const luisa::compute::Var<
-                    SurfaceClosureSelectionCall> &selection) noexcept {
-                const auto sample = surface_closure_conditional_sample(
+        if (_closures.profile() == SurfaceClosureStorageProfile::physical) {
+            const auto access = _closures.physical_access(selected_index);
+            const auto common = _closures.physical_common_entry(access);
+            const auto selection = surface_closure_selection(
+                selection_context,
+                make_surface_closure_selection_input(common));
+            const auto sample =
+                surface_closure_conditional_sample_from_physical_common(
                     services,
                     closure_point,
-                    Expr<luisa::float3>{
-                        _shading_normal.expression()},
-                    closure,
+                    Expr<luisa::float3>{_shading_normal.expression()},
+                    common,
+                    [&] {
+                        // Build the proof witness in the family block which
+                        // performs the payload read. See the evaluation path:
+                        // transporting a mutable count snapshot across this
+                        // branch is intentionally outside the prefix proof.
+                        return _closures.physical_payload_block(
+                            _closures.physical_access(selected_index));
+                    },
                     Expr<luisa::float3>{incoming.expression()},
-                    Expr<luisa::float3>{
-                        selection.glossy_normal.expression()},
+                    Expr<luisa::float3>{selection.glossy_normal.expression()},
                     Expr<luisa::float2>{u_direction.expression()},
                     Expr<float>{selected_rescaled.expression()},
-                    query, _reachability);
-                selected.accept(
-                    Expr<std::uint32_t>{
-                        selected_index.expression()},
-                    Expr<luisa::float3>{closure.weight.expression()},
-                    Expr<luisa::float3>{closure.normal.expression()},
-                    Expr<float>{selected_rescaled.expression()},
-                    selection,
-                    sample);
-            });
+                    query,
+                    _reachability);
+            selected.accept(
+                Expr<std::uint32_t>{selected_index.expression()},
+                Expr<luisa::float3>{common.weight.expression()},
+                Expr<luisa::float3>{common.normal.expression()},
+                Expr<float>{selected_rescaled.expression()},
+                selection,
+                sample);
+        } else {
+            with_selected_surface_closure(
+                _closures,
+                selected_index,
+                selection_context,
+                [&](const SurfaceClosurePhysicalRecord &closure,
+                    const luisa::compute::Var<
+                        SurfaceClosureSelectionCall> &selection) noexcept {
+                    const auto sample = surface_closure_conditional_sample(
+                        services,
+                        closure_point,
+                        Expr<luisa::float3>{
+                            _shading_normal.expression()},
+                        closure,
+                        Expr<luisa::float3>{incoming.expression()},
+                        Expr<luisa::float3>{
+                            selection.glossy_normal.expression()},
+                        Expr<luisa::float2>{u_direction.expression()},
+                        Expr<float>{selected_rescaled.expression()},
+                        query,
+                        _reachability);
+                    selected.accept(
+                        Expr<std::uint32_t>{
+                            selected_index.expression()},
+                        Expr<luisa::float3>{closure.weight.expression()},
+                        Expr<luisa::float3>{closure.normal.expression()},
+                        Expr<float>{selected_rescaled.expression()},
+                        selection,
+                        sample);
+                });
+        }
     };
 
     const auto mixture = evaluate_impl(

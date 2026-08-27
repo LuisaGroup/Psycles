@@ -14,30 +14,36 @@ The remaining gap to Cycles is split across two independent boundaries:
    constructible Cycles shader-node types, 67 have a source route in the
    Blender adapter or are structural output roots and 26 do not. Several of
    the routed nodes are intentionally partial.
-2. Post-population physical closures are stored as a tagged sum, but the hot
-   evaluation and sampling path reconstructs a Cartesian-product record before
-   eliminating the tag. Cycles keeps the tag through consumption and loads a
-   derived closure payload only after dispatch.
+2. Post-population physical closures are stored as a tagged sum. The hot
+   evaluation and sampling path now keeps the tag through a family dispatch,
+   loads the payload only in the selected family block, and merges only the
+   consumer result. Each family still adapts to the existing universal record
+   API inside that block; Cycles consumes a compact derived closure directly.
 
-The second difference is a measured performance boundary. On the retained
-640x480, 64-spp Barbershop HIP traces, baseline Psycles `shade_surface` costs
-28.844 ns per launched item and Cycles costs 10.778 ns per item: Psycles is
-2.676x the normalized cost. The baseline Psycles entry uses 256 VGPRs and
-3,152 B private storage; Cycles uses 192 VGPRs and 6,976 B private storage.
-The result cannot be explained by private bytes alone.
+The second difference remains a measured performance boundary. On the newest
+interleaved 640x480, 64-spp Barbershop HIP traces, the branch-local tagged
+consumer costs a median 28.024 ns per launched item. The retained Cycles 5.2
+trace costs 10.778 ns per item, so the current normalized gap is approximately
+2.60x. Psycles still reaches 256 VGPRs and 3,136 B private storage; Cycles uses
+192 VGPRs and 6,976 B private storage. The result cannot be explained by
+private bytes alone.
 
-This change introduces a checked, staged physical-closure access boundary for
-categorical scans, runtime flags, and closure tracing. It preserves the
-accepted 864 B coroutine frame and HIP object size: the checked candidate
-costs 28.856 ns/item, a 0.04% difference from baseline and therefore noise,
-not a claimed speedup. Its purpose is to make the initialized-prefix proof
-explicit before attempting family-specific payload elimination. The renderer
-change is covered by fallback/HIP/native-XIR-Vulkan regressions and an EXR
-comparison/triptych below.
+The first part of this audit introduced the checked physical-closure access
+boundary. The follow-up documented below implements consumer-directed family
+elimination without returning a product of mutually exclusive payloads. A
+first version accidentally transported the counted-prefix witness across a
+runtime CFG edge and enlarged the coroutine frame from 880 B / 178 fields to
+1,584 B / 189 fields. Reconstructing the witness inside the dominated family
+block restores 880 B / 178 fields. The accepted result is performance-neutral:
+`shade_surface` changes by -0.145% and render-only time by +0.238% in an A/B/B/A
+profile. This is a formal staging and representation result, not a speedup
+claim. It is covered by fallback/HIP/native-XIR-Vulkan regressions, complete
+46-channel EXR comparison, and Combined/Normal triptychs.
 
 ## Reference identity
 
-- Psycles: `717176eebc7b47e7d1b55db6dcc9e00f7285ff3b`.
+- Original audit Psycles point: `717176eebc7b47e7d1b55db6dcc9e00f7285ff3b`.
+- Branch-local consumer baseline: `d54120a`.
 - LuisaCompute: `eeda4b154fcf43e8709d1b42478e958677b9c6ae`.
 - Cycles source: `blender-v5.2-release` at
   `9e2066aef7ef7e20c142ad7bd3303138a4304c93`.
@@ -47,6 +53,150 @@ comparison/triptych below.
 The source checkout is newer than the exact release binary. Source structure
 claims below use the checkout; render and profiler claims use the release
 binary and its recorded build identity.
+
+## Branch-local tagged-consumer follow-up
+
+### Formal decomposition
+
+Let `K` be the finite set of reachable physical closure kinds, `C` the common
+record decoded from physical block 0, `P_f` the payload of family `f`, and
+`R_j` the compact result of consumer `j`. Evaluation uses the disjoint cover
+
+```text
+G = {Principled, Glossy, ThinGlassTransmission}
+D = {Glass, Refraction}
+C0 = K - G - D
+```
+
+and conditional sampling additionally splits
+
+```text
+B = {BSSRDF}
+C1 = K - G - D - B.
+```
+
+The implementation records the following eliminator:
+
+```text
+consume_j(common, load_payload) =
+  if tag in D: consume_j(decode_D(common, load_payload()), K intersect D)
+  if tag in B: consume_j(decode_B(common, load_payload()), K intersect B)
+  if tag in G: consume_j(decode_G(common, load_payload()), K intersect G)
+  otherwise:   consume_j(decode_C(common),                 K intersect Cn)
+```
+
+`B` is absent from evaluation because its directional evaluation needs only
+common fields. The family sets are pairwise disjoint and their union is `K`.
+The reachability meet is part of the proof: the canonical inner consumer cannot
+reintroduce a kind or Principled lobe excluded by the predicate which dominates
+it. Only `SurfaceClosureEvaluationContributionCall` or
+`SurfaceClosureConditionalSampleCall` crosses the merge. No union of mutually
+exclusive payloads is returned to the closure loop.
+
+`SurfaceClosurePhysicalPayloadLoader` is a host/JIT thunk, not a device
+callable or a new IR entity. Invoking it while recording a family `$if` places
+the Local read in that device CFG block. A device-side counter regression runs
+all ten represented closure kinds and proves exact payload-read multiplicity:
+zero for common-only kinds, two for General/Dielectric (evaluation plus
+sampling), and one for BSSRDF (sampling only). It also compares the original
+product decoder, the raw two-block eliminator, and the lazy storage-aware
+eliminator for both consumer result tuples.
+
+### Counted-prefix witness and the rejected 1,584-byte frame
+
+For a physical arena with mutable count `n`, slot zero is initialized
+unconditionally and every append initializes slot `n` before incrementing it.
+For requested index `i`, `physical_access()` constructs
+
+```text
+valid = i < n
+safe  = valid ? i : 0
+safe < max(n, 1).
+```
+
+The existing coroutine Local analysis intentionally proves this relation from
+the mutable `n` snapshot in the block containing the access. It does not guess
+that a snapshot transported across arbitrary CFG edges is equal to the value
+observed after the edge. The first lazy implementation captured an access
+witness before the runtime family branch and reused it inside the branch. The
+analysis therefore failed closed and retained the eleven otherwise dormant
+payload matrices `_physical_1[1..11]` across the coroutine transitions:
+
+```text
+11 entries * 64 B/float4x4 = 704 B
+880 B + 704 B = 1,584 B.
+```
+
+The cold layout contained 189 fields instead of 178. This was not padding and
+was not fixed by adding a compiler special case. The accepted source rebuilds
+`physical_access(i)` inside the family block which performs the payload read,
+so the initialized-prefix proof and the read share one dominance region. A
+permanent coroutine regression in `test_luisa_surface_population.cpp` exercises
+this exact tag-then-payload shape and requires the physical arena to contribute
+zero frame fields.
+
+### Rejected alternatives and accepted fixed point
+
+| Form | Frame | Final LLVM | HIP object | Private | `shade_surface` |
+|---|---:|---:|---:|---:|---:|
+| exact `d54120a` product baseline | 880 B / 178 | 57,966 lines | 356,640 B | 3,136 B | 28.064 ns/item median |
+| nested family callable | 880 B | 63,922 lines | about 395 KB | 3,320 B | 30.148 ns/item |
+| direct branch-local eliminator | 880 B | 58,014 lines | 356,384 B | 3,136 B | no repeatable gain |
+| lazy loader with cross-CFG witness | 1,584 B / 189 | not retained | not retained | not retained | rejected before profiling |
+| lazy loader with local witness | 880 B / 178 | 58,028 lines | 356,512 B | 3,136 B | 28.024 ns/item median |
+
+The nested callable moved source code but enlarged the optimized program and
+slowed the stage by 8.57%; it was removed. The direct form and accepted lazy
+form show that branch placement alone does not make the backend execute less
+work. The accepted code object is 128 B smaller than the exact baseline, while
+final LLVM changes from 3,382,894 B / 57,966 lines to 3,386,673 B / 58,028
+lines. Textual `phi` changes 2,806 to 2,831, `select` 2,596 to 2,567, and the
+number of definitions/calls remains 13 / 3,342. VGPR stays at 256; private
+storage stays 3,136 B; VGPR spills change from 383 to 382. The production cold
+build reports 9 subroutines, 178 fields, 880 B, and stage hash
+`24ec46cc4e919e42`.
+
+The retained A/B/B/A HIP sequence used identical 640x480, 64-spp fixed-sample
+Barbershop commands:
+
+| Run | Render-only | `shade_surface` ns/item |
+|---|---:|---:|
+| baseline A | 2.57619 s | 27.973704 |
+| candidate A | 2.58499 s | 27.965865 |
+| candidate B | 2.59003 s | 28.081830 |
+| baseline B | 2.58654 s | 28.155292 |
+| baseline median | 2.581365 s | 28.064498 |
+| candidate median | 2.587510 s | 28.023847 |
+
+The candidate is -0.145% in normalized stage time and +0.238% in render-only
+time. Both are noise; no runtime speedup is claimed. The structural result is
+still useful because it establishes a correct lazy tagged-consumer boundary
+without a coroutine-frame or code-object regression. The next performance step
+must replace the universal per-family adapter with compact tagged closure
+storage/handlers (or equivalently typed closure-SVM payloads), then measure
+individual family kernels. Adding more renderer-side branches is not supported
+by this evidence.
+
+### Backend and image validation
+
+The focused matrix passes 15/15: reachability-lattice meet laws, physical
+consumer equivalence, physical Local lifetime, compact surface preparation,
+and surface mix-SVM on fallback, HIP, and Vulkan. All five Vulkan tests set
+`LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`; no DXC route is accepted.
+
+The retained full outputs are 640x480, 64-spp, 46-channel EXRs. `idiff -v -a`
+reports mean error `1.19979e-7`, RMS `1.83019e-4`, PSNR `123.631 dB`, and 74
+pixels (`0.0241%`) over `1e-6`. Atomic film accumulation is not cross-process
+order-deterministic. Combined has MAE `1.17235e-7`, RMSE `5.79532e-5`, and
+mean-luminance ratio `1.00000141`; Normal has MAE `1.43088e-9` and RMSE
+`2.40594e-8`. I inspected both triptychs at their original resolution: geometry,
+UV placement, material response, lighting, normals, floor, ceiling, brick wall,
+and the left cabinet are structurally identical. Amplified differences are
+sparse Monte Carlo/atomic-order samples rather than a coherent image region.
+
+![Exact baseline, branch-local tagged consumer, and amplified Combined difference](triptychs/combined.png)
+
+![Exact baseline, branch-local tagged consumer, and amplified Normal difference](triptychs/normal.png)
 
 ## What is already aligned
 
@@ -404,11 +554,11 @@ the semantic oracle.
 
 ![Baseline, checked staging, and amplified difference](triptychs/checked-physical-access.png)
 
-## Required next invariant
+## Achieved invariant and next representation
 
 Let `A(k)` be the payload fields observable for runtime closure kind `k`, and
 let `R_j` be the result tuple of consumer `j` (evaluation, selection, sampling,
-roughness, or BSSRDF transport). The next representation must satisfy:
+roughness, or BSSRDF transport). The consumer boundary must satisfy:
 
 ```text
 semantic adequacy:
@@ -425,11 +575,15 @@ bounded construction:
   not O(number_of_sites * number_of_families * loop_state_width)
 ```
 
-The tagged eliminator must pass common fields and a family-specific block view
-directly to a family-specific consumer. It must merge only `R_j`, never return
-a universal closure record. If Luisa's structured AST cannot preserve that
-scope through the closure loop, the fix belongs in XIR aggregate/liveness or
-control-flow lowering rather than in another renderer-side ad hoc branch.
+The branch-local tagged consumer now proves demand loading, inactive-family
+non-liveness, and a bounded merge for evaluation and sampling. Its remaining
+adapter constructs the existing universal `SurfaceClosurePhysicalRecord`
+inside the selected family block. The next representation should instead pass
+common fields and a compact family payload directly to a family-specific
+handler or typed closure-SVM instruction. If Luisa's structured AST cannot
+preserve that scope through the closure loop, the fix belongs in XIR
+aggregate/liveness or control-flow lowering rather than another renderer-side
+ad hoc branch.
 
 No callable should receive blanket `noinline` or `alwaysinline`. Cycles leaves
 ordinary profitability decisions to the backend, and the accepted Luisa HIP
@@ -438,9 +592,10 @@ IR, object, register/private metadata, and HIP time rather than source size.
 
 ## Priorities
 
-1. Implement the non-product tagged eliminator or the compiler scope/liveness
-   support required to express it without cloning loop state. Add a structural
-   regression proving inactive payloads do not enter the merged SSA state.
+1. Replace the branch-local universal-record adapter with compact typed family
+   payload handlers, keeping the proven tag partition, lazy Local read, and
+   result-only merge. Compare each family against Cycles' corresponding
+   `bsdf_eval`/`bsdf_sample` device path before changing more control flow.
 2. Add the missing high-use closure semantics: Principled/Glossy anisotropy
    and tangent, thin film, standalone Metallic/Sheen, then Hair families.
 3. Add typed multi-result SVM instructions where a Cycles handler performs one
@@ -455,6 +610,27 @@ IR, object, register/private metadata, and HIP time rather than source size.
 
 ## Reproduction snippets
 
+Build and focused backend matrix:
+
+```sh
+cmake --build build --parallel "$(nproc)"
+
+ctest --test-dir build --output-on-failure -j1 \
+  -R '^psycles\.(luisa_surface_closure_reachability|luisa_surface_closure_physical|luisa_surface_population|luisa_compact_surface_preparation|luisa_surface_mix_svm)_(fallback|hip|vk)$'
+```
+
+Cold production frame check (the one-sample run changes execution work, not
+the recorded shader AST):
+
+```sh
+PSYCLES_DISABLE_SHADER_CACHE=1 \
+LUISA_CORO_SHADER_MAP=1 \
+LUISA_CORO_DUMP_FRAME_LAYOUT=1 \
+build/bin/psycles_render_blender_scene SCENE out.exr hip \
+  640 480 1 1 - 0 0 0 0 1 - 1 0 wavefront-staged \
+  32 32768 32 1 1 0 4 2 4096 0 0 0 1 1048576
+```
+
 Current Barbershop executable-image census:
 
 ```sh
@@ -467,18 +643,18 @@ Psycles trace aggregation:
 ```sql
 select name,
        count(*) as calls,
-       sum(duration) / 1000.0 as milliseconds,
+       sum(duration) / 1000000.0 as milliseconds,
        sum(grid_x * grid_y * grid_z) as work,
        sum(duration) * 1.0 / sum(grid_x * grid_y * grid_z) as ns_per_work
 from kernels
-where name = 'kernel_23a343c4e8b2218d'
+where name = 'kernel_24ec46cc4e919e42'
 group by name;
 ```
 
 The stage/hash association is printed by the renderer as:
 
 ```text
-wavefront_resume_5/shade_surface -> 23a343c4e8b2218d
+wavefront_resume_5/shade_surface -> 24ec46cc4e919e42
 ```
 
 Static object inspection used `llvm-readelf`, `llvm-nm`, and `llvm-objdump` on

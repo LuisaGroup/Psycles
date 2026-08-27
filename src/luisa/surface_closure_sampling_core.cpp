@@ -34,6 +34,55 @@ template<typename Closure>
     return (properties & property) != 0u;
 }
 
+inline constexpr auto sampling_general_payload_reachability =
+    SurfaceClosureReachability{
+        .kinds = surface_closure_kind_bit(SurfaceClosureKind::principled) |
+                 surface_closure_kind_bit(SurfaceClosureKind::glossy) |
+                 surface_closure_kind_bit(
+                     SurfaceClosureKind::thin_glass_transmission),
+        .principled_lobes = all_surface_closure_lobes};
+
+inline constexpr auto sampling_dielectric_payload_reachability =
+    SurfaceClosureReachability{
+        .kinds = surface_closure_kind_bit(SurfaceClosureKind::glass) |
+                 surface_closure_kind_bit(SurfaceClosureKind::refraction),
+        .principled_lobes = 0u};
+
+inline constexpr auto sampling_bssrdf_payload_reachability =
+    SurfaceClosureReachability{
+        .kinds = surface_closure_kind_bit(SurfaceClosureKind::bssrdf),
+        .principled_lobes = 0u};
+
+inline constexpr auto sampling_common_only_reachability =
+    all_surface_closure_reachability &
+    SurfaceClosureReachability{
+        .kinds = all_surface_closure_kinds &
+                 ~sampling_general_payload_reachability.kinds &
+                 ~sampling_dielectric_payload_reachability.kinds &
+                 ~sampling_bssrdf_payload_reachability.kinds,
+        .principled_lobes = 0u};
+
+[[nodiscard]] luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+zero_surface_closure_conditional_sample() noexcept {
+    luisa::compute::Var<SurfaceClosureConditionalSampleCall> result;
+    result.direction = make_float3(0.0f, 0.0f, 1.0f);
+    result.roughness = make_float2(1.0f);
+    result.singular_evaluation = make_float3(0.0f);
+    result.singular_pdf = 0.0f;
+    result.eta = 1.0f;
+    result.properties = 0u;
+    result.bssrdf_method =
+        static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk);
+    result.bssrdf_radius = make_float3(0.0f);
+    result.bssrdf_albedo = make_float3(0.0f);
+    result.bssrdf_normal = make_float3(0.0f, 0.0f, 1.0f);
+    result.bssrdf_ior = 1.4f;
+    result.bssrdf_roughness = 1.0f;
+    result.bssrdf_anisotropy = 0.0f;
+    result.valid = false;
+    return result;
+}
+
 }// namespace
 
 Float3 make_surface_closure_sampling_incoming(
@@ -405,6 +454,91 @@ surface_closure_conditional_sample(
     result.bssrdf_anisotropy = closure.bssrdf_anisotropy;
     result.valid = valid;
     return result;
+}
+
+luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+surface_closure_conditional_sample_from_physical_common(
+    const ShaderServices &services,
+    const SurfaceClosurePoint &point,
+    Expr<luisa::float3> shading_normal,
+    const SurfaceClosurePhysicalCommonRecord &common,
+    const SurfaceClosurePhysicalPayloadLoader &load_payload,
+    Expr<luisa::float3> incoming,
+    Expr<luisa::float3> glossy_normal,
+    Expr<luisa::float2> random_direction,
+    Expr<float> rescaled_lobe,
+    const SurfaceQuery &query,
+    SurfaceClosureReachability reachability) noexcept {
+    const auto reachable_kind = [&common, reachability](
+                                    SurfaceClosureKind kind) noexcept {
+        if (!reachability.contains(kind)) {
+            return Bool{false};
+        }
+        return has_kind(common, kind);
+    };
+    const auto is_general_payload =
+        reachable_kind(SurfaceClosureKind::principled) |
+        reachable_kind(SurfaceClosureKind::glossy) |
+        reachable_kind(SurfaceClosureKind::thin_glass_transmission);
+    const auto is_dielectric_payload =
+        reachable_kind(SurfaceClosureKind::glass) |
+        reachable_kind(SurfaceClosureKind::refraction);
+    const auto is_bssrdf_payload = reachable_kind(SurfaceClosureKind::bssrdf);
+
+    auto result = zero_surface_closure_conditional_sample();
+    $if(is_dielectric_payload) {
+        const auto closure =
+            unpack_surface_closure_physical_dielectric(common, load_payload());
+        result = surface_closure_conditional_sample(
+            services, point, shading_normal, closure, incoming, glossy_normal,
+            random_direction, rescaled_lobe, query,
+            reachability & sampling_dielectric_payload_reachability);
+    }
+    $elif(is_bssrdf_payload) {
+        const auto closure =
+            unpack_surface_closure_physical_bssrdf(common, load_payload());
+        result = surface_closure_conditional_sample(
+            services, point, shading_normal, closure, incoming, glossy_normal,
+            random_direction, rescaled_lobe, query,
+            reachability & sampling_bssrdf_payload_reachability);
+    }
+    $elif(is_general_payload) {
+        const auto closure =
+            unpack_surface_closure_physical_general(common, load_payload());
+        result = surface_closure_conditional_sample(
+            services, point, shading_normal, closure, incoming, glossy_normal,
+            random_direction, rescaled_lobe, query,
+            reachability & sampling_general_payload_reachability);
+    }
+    $else {
+        const auto closure = unpack_surface_closure_physical_common_only(common);
+        result = surface_closure_conditional_sample(
+            services, point, shading_normal, closure, incoming, glossy_normal,
+            random_direction, rescaled_lobe, query,
+            reachability & sampling_common_only_reachability);
+    };
+    return result;
+}
+
+luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+surface_closure_conditional_sample_from_physical_blocks(
+    const ShaderServices &services,
+    const SurfaceClosurePoint &point,
+    Expr<luisa::float3> shading_normal,
+    Expr<luisa::float4x4> block_0,
+    Expr<luisa::float4x4> block_1,
+    Expr<luisa::float3> incoming,
+    Expr<luisa::float3> glossy_normal,
+    Expr<luisa::float2> random_direction,
+    Expr<float> rescaled_lobe,
+    const SurfaceQuery &query,
+    SurfaceClosureReachability reachability) noexcept {
+    const auto common = unpack_surface_closure_physical_common(block_0);
+    return surface_closure_conditional_sample_from_physical_common(
+        services, point, shading_normal, common,
+        [block_1] { return luisa::compute::Float4x4{block_1}; },
+        incoming, glossy_normal, random_direction, rescaled_lobe, query,
+        reachability);
 }
 
 SurfaceClosureSelectionMeasure::SurfaceClosureSelectionMeasure(

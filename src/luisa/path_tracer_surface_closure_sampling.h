@@ -76,6 +76,14 @@ public:
                        Expr<luisa::float3> glossy_normal,
                        Expr<luisa::float2> random_direction,
                        Expr<float> rescaled_lobe) const noexcept override;
+
+    [[nodiscard]] luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+    conditional_sample_physical(
+        Expr<luisa::float3> shading_normal,
+        const SurfaceClosurePhysicalBlocks &closure,
+        Expr<luisa::float3> glossy_normal,
+        Expr<luisa::float2> random_direction,
+        Expr<float> rescaled_lobe) const noexcept;
 };
 
 [[nodiscard]] SurfaceSampleTrace sample_surface_closures(

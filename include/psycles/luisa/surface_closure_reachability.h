@@ -45,7 +45,9 @@ inline constexpr auto all_surface_closure_lobes =
 // Abstract domain for host/JIT physical-closure reachability. The first
 // component is a set of canonical SurfaceClosureKind values. The second
 // refines the only kind whose directional algorithm also depends on its lobe
-// tag. The partial order and join are component-wise subset and union.
+// tag. The partial order, join, and meet are component-wise subset, union, and
+// intersection, reduced by the invariant that no Principled kind implies no
+// Principled lobe.
 struct SurfaceClosureReachability {
     SurfaceClosureKindMask kinds{};
     SurfaceClosureLobeMask principled_lobes{};
@@ -72,6 +74,25 @@ struct SurfaceClosureReachability {
     operator|(SurfaceClosureReachability lhs,
               SurfaceClosureReachability rhs) noexcept {
         return lhs |= rhs;
+    }
+
+    constexpr SurfaceClosureReachability &
+    operator&=(SurfaceClosureReachability rhs) noexcept {
+        kinds &= rhs.kinds;
+        principled_lobes &= rhs.principled_lobes;
+        if (!contains(SurfaceClosureKind::principled)) {
+            principled_lobes = 0u;
+        }
+        return *this;
+    }
+
+    // Meet in the finite reachability lattice. Consumer-directed closure
+    // elimination uses this to prove that a family handler cannot observe a
+    // kind or Principled lobe outside the tag branch which dominates it.
+    [[nodiscard]] friend constexpr SurfaceClosureReachability
+    operator&(SurfaceClosureReachability lhs,
+              SurfaceClosureReachability rhs) noexcept {
+        return lhs &= rhs;
     }
 
     constexpr bool

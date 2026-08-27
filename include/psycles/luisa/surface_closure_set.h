@@ -146,6 +146,9 @@ class SurfaceClosureSet final : public SurfaceClosureCollector {
         const SurfaceClosurePhysicalAccess &access,
         const SurfaceClosurePhysicalCommonRecord &common) const noexcept;
 
+    [[nodiscard]] luisa::compute::Float4x4 physical_payload_block(
+        const SurfaceClosurePhysicalAccess &access) const noexcept;
+
     [[nodiscard]] SurfaceClosureRecord entry(
         UInt index) const noexcept;
 };

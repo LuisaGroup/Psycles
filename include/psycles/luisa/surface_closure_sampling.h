@@ -155,6 +155,41 @@ surface_closure_conditional_sample(
     SurfaceClosureReachability reachability =
         all_surface_closure_reachability) noexcept;
 
+// Conditional-sampling eliminator for the encoded physical tagged union.
+// Like the evaluation counterpart, this merges only the compact sample call;
+// inactive family payloads never enter the merged SSA state.
+[[nodiscard]] luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+surface_closure_conditional_sample_from_physical_blocks(
+    const ShaderServices &services,
+    const SurfaceClosurePoint &point,
+    Expr<luisa::float3> shading_normal,
+    Expr<luisa::float4x4> block_0,
+    Expr<luisa::float4x4> block_1,
+    Expr<luisa::float3> incoming,
+    Expr<luisa::float3> glossy_normal,
+    Expr<luisa::float2> random_direction,
+    Expr<float> rescaled_lobe,
+    const SurfaceQuery &query,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
+
+// Storage-aware conditional-sampling eliminator. The loader is evaluated in
+// exactly one payload family branch and never for a common-only closure.
+[[nodiscard]] luisa::compute::Var<SurfaceClosureConditionalSampleCall>
+surface_closure_conditional_sample_from_physical_common(
+    const ShaderServices &services,
+    const SurfaceClosurePoint &point,
+    Expr<luisa::float3> shading_normal,
+    const SurfaceClosurePhysicalCommonRecord &common,
+    const SurfaceClosurePhysicalPayloadLoader &load_payload,
+    Expr<luisa::float3> incoming,
+    Expr<luisa::float3> glossy_normal,
+    Expr<luisa::float2> random_direction,
+    Expr<float> rescaled_lobe,
+    const SurfaceQuery &query,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
+
 // First pass: construct the finite categorical measure over the retained
 // Cycles allocation sequence. Retained count includes setup-invalid entries,
 // exactly like ShaderData::num_closure; their selection weight remains zero.

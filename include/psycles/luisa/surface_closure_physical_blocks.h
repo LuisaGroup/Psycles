@@ -7,6 +7,7 @@
 #include <psycles/luisa/surface.h>
 
 #include <cstddef>
+#include <functional>
 
 namespace psycles::luisa_backend {
 
@@ -33,6 +34,13 @@ struct SurfaceClosurePhysicalBlocks {
     luisa::compute::Float4x4 block_0;
     luisa::compute::Float4x4 block_1;
 };
+
+// Host/JIT thunk for a physical payload read. Consumers invoke this only
+// while recording the matching runtime family branch, so a Local read (or any
+// equivalent storage operation) is dominated by the tag test in the emitted
+// device CFG. This is deliberately not a device callable or an IR entity.
+using SurfaceClosurePhysicalPayloadLoader =
+    std::function<luisa::compute::Float4x4()>;
 
 // Decoded discriminant and fields shared by every member of the physical
 // closure tagged union. The last vector is intentionally named after its

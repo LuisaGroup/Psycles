@@ -34,9 +34,6 @@ make_surface_closure_evaluation_callable(
             scene->nishita_texture_bindings,
             scene->shader_color_space};
         const auto point = unpack_surface_closure_point(packed_point);
-        const auto closure = unpack_surface_closure_physical(
-            Expr<luisa::float4x4>{block_0.expression()},
-            Expr<luisa::float4x4>{block_1.expression()});
         const auto query = SurfaceQuery{
             .lobe_mask = packed_query.lobe_mask,
             .transport_mode = packed_query.transport_mode,
@@ -57,11 +54,12 @@ make_surface_closure_evaluation_callable(
                 packed_query.transmission_included != 0u,
             // PDF gating is applied once by the outer accumulator.
             .preserve_pdf = true};
-        return surface_closure_evaluation_contribution(
+        return surface_closure_evaluation_contribution_from_physical_blocks(
             services,
             point,
             Expr<luisa::float3>{shading_normal.expression()},
-            closure,
+            Expr<luisa::float4x4>{block_0.expression()},
+            Expr<luisa::float4x4>{block_1.expression()},
             Expr<luisa::float3>{packed_query.incoming.expression()},
             Expr<luisa::float3>{packed_query.outgoing.expression()},
             query,
@@ -126,6 +124,14 @@ CallableSurfaceClosureEvaluationOperation::evaluate(
     Expr<bool> selected_sample) const noexcept {
     const auto blocks = pack_surface_closure_physical(
         closure.reference());
+    return evaluate_physical(shading_normal, blocks, selected_sample);
+}
+
+luisa::compute::Var<SurfaceClosureEvaluationContributionCall>
+CallableSurfaceClosureEvaluationOperation::evaluate_physical(
+    Expr<luisa::float3> shading_normal,
+    const SurfaceClosurePhysicalBlocks &closure,
+    Expr<bool> selected_sample) const noexcept {
     return _callable(
         _scalar_parameters,
         _vector_parameters,
@@ -136,8 +142,8 @@ CallableSurfaceClosureEvaluationOperation::evaluate(
         _query,
         shading_normal,
         selected_sample,
-        blocks.block_0,
-        blocks.block_1);
+        closure.block_0,
+        closure.block_1);
 }
 
 }// namespace psycles::luisa_backend::detail

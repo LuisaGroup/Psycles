@@ -1,7 +1,8 @@
 {
-  "schema": "psycles.cycles-5.2-surface-svm-gap-audit.v2",
+  "schema": "psycles.cycles-5.2-surface-svm-gap-audit.v3",
   "reference": {
     "psycles": "717176eebc7b47e7d1b55db6dcc9e00f7285ff3b",
+    "branch_local_consumer_base": "d54120a",
     "luisa_compute": "eeda4b154fcf43e8709d1b42478e958677b9c6ae",
     "cycles_source": "9e2066aef7ef7e20c142ad7bd3303138a4304c93",
     "blender_build": "fbe6228777e7",
@@ -121,6 +122,149 @@
       "hip": "pass",
       "vulkan_native_xir_spirv": "pass",
       "tests": 9
+    }
+  },
+  "branch_local_tagged_consumer": {
+    "formal_partition": {
+      "evaluation_general": ["principled", "glossy", "thin_glass_transmission"],
+      "evaluation_dielectric": ["glass", "refraction"],
+      "evaluation_common_only": "reachable minus general minus dielectric",
+      "sampling_bssrdf": ["bssrdf"],
+      "sampling_common_only": "reachable minus general minus dielectric minus bssrdf",
+      "merged_values": [
+        "SurfaceClosureEvaluationContributionCall",
+        "SurfaceClosureConditionalSampleCall"
+      ]
+    },
+    "exact_baseline": {
+      "commit": "d54120a",
+      "stage_hash": "ddf59d968ea1cb4d",
+      "coroutine_frame_bytes": 880,
+      "coroutine_frame_fields": 178,
+      "object_bytes": 356640,
+      "final_llvm_bytes": 3382894,
+      "final_llvm_lines": 57966,
+      "phi_occurrences": 2806,
+      "select_occurrences": 2596,
+      "define_occurrences": 13,
+      "call_occurrences": 3342,
+      "private_bytes": 3136,
+      "vgpr": 256,
+      "vgpr_spills": 383
+    },
+    "rejected_nested_family_callable": {
+      "coroutine_frame_bytes": 880,
+      "final_llvm_lines": 63922,
+      "object_bytes_approximate": 395000,
+      "private_bytes": 3320,
+      "ns_per_item": 30.148,
+      "stage_regression_percent": 8.57,
+      "result": "rejected_and_removed"
+    },
+    "rejected_direct_eliminator": {
+      "coroutine_frame_bytes": 880,
+      "final_llvm_bytes": 3386000,
+      "final_llvm_lines": 58014,
+      "object_bytes": 356384,
+      "private_bytes": 3136,
+      "single_profile_ns_per_item": 28.247,
+      "result": "no_repeatable_gain"
+    },
+    "rejected_cross_cfg_access_witness": {
+      "coroutine_frame_bytes": 1584,
+      "coroutine_frame_fields": 189,
+      "extra_payload_matrices": 11,
+      "extra_payload_bytes": 704,
+      "root_cause": "mutable counted-prefix witness transported across runtime CFG edge",
+      "result": "rejected_before_profiling"
+    },
+    "accepted_local_access_witness": {
+      "stage_hash": "24ec46cc4e919e42",
+      "coroutine_subroutines": 9,
+      "coroutine_frame_bytes": 880,
+      "coroutine_frame_fields": 178,
+      "object_bytes": 356512,
+      "text_bytes": 352896,
+      "entry_symbol_bytes": 296872,
+      "final_llvm_bytes": 3386673,
+      "final_llvm_lines": 58028,
+      "phi_occurrences": 2831,
+      "select_occurrences": 2567,
+      "define_occurrences": 13,
+      "call_occurrences": 3342,
+      "private_bytes": 3136,
+      "vgpr": 256,
+      "vgpr_spills": 382,
+      "semantic_result": "pass",
+      "performance_result": "neutral_within_noise"
+    },
+    "interleaved_hip_profile": {
+      "resolution": [640, 480],
+      "samples": 64,
+      "adaptive_sampling": false,
+      "sequence": ["baseline_a", "candidate_a", "candidate_b", "baseline_b"],
+      "baseline_a": {
+        "render_seconds": 2.57619,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659296,
+        "shade_surface_gpu_ms": 1501.049239,
+        "shade_surface_ns_per_item": 27.97370355
+      },
+      "candidate_a": {
+        "render_seconds": 2.58499,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659296,
+        "shade_surface_gpu_ms": 1500.628605,
+        "shade_surface_ns_per_item": 27.965864573
+      },
+      "candidate_b": {
+        "render_seconds": 2.59003,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659264,
+        "shade_surface_gpu_ms": 1506.850323,
+        "shade_surface_ns_per_item": 28.081829878
+      },
+      "baseline_b": {
+        "render_seconds": 2.58654,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659296,
+        "shade_surface_gpu_ms": 1510.79315,
+        "shade_surface_ns_per_item": 28.155292049
+      },
+      "baseline_median": {
+        "render_seconds": 2.581365,
+        "shade_surface_ns_per_item": 28.064497799
+      },
+      "candidate_median": {
+        "render_seconds": 2.58751,
+        "shade_surface_ns_per_item": 28.023847225
+      },
+      "shade_surface_delta_percent": -0.144847,
+      "render_delta_percent": 0.238052
+    },
+    "exr_comparison": {
+      "channels": 46,
+      "mean_absolute_error": 1.19979e-7,
+      "rms_error": 1.83019e-4,
+      "psnr_db": 123.631,
+      "pixels_over_1e-6": 74,
+      "fraction_over_1e-6": 0.000241,
+      "combined": {
+        "mean_absolute_error": 1.1723502524318974e-7,
+        "rms_error": 5.7953169743996114e-5,
+        "luminance_mean_ratio": 1.0000014142654343
+      },
+      "normal": {
+        "mean_absolute_error": 1.4308805251772583e-9,
+        "rms_error": 2.4059358949557463e-8
+      },
+      "visual_result": "no_structural_difference"
+    },
+    "focused_backend_matrix": {
+      "fallback": "pass",
+      "hip": "pass",
+      "vulkan_native_xir_spirv": "pass",
+      "tests": 15
     }
   }
 }

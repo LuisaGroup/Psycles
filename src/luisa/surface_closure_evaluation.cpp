@@ -11,16 +11,53 @@
 namespace psycles::luisa_backend {
 namespace {
 
+template<typename Closure>
 [[nodiscard]] Bool has_kind(
-    const SurfaceClosurePhysicalRecord &closure,
+    const Closure &closure,
     SurfaceClosureKind kind) noexcept {
     return closure.kind == static_cast<std::uint32_t>(kind);
 }
 
+template<typename Closure>
 [[nodiscard]] Bool has_lobe(
-    const SurfaceClosurePhysicalRecord &closure,
+    const Closure &closure,
     SurfaceClosureLobe lobe) noexcept {
     return closure.lobe == static_cast<std::uint32_t>(lobe);
+}
+
+inline constexpr auto evaluation_general_payload_reachability =
+    SurfaceClosureReachability{
+        .kinds = surface_closure_kind_bit(SurfaceClosureKind::principled) |
+                 surface_closure_kind_bit(SurfaceClosureKind::glossy) |
+                 surface_closure_kind_bit(
+                     SurfaceClosureKind::thin_glass_transmission),
+        .principled_lobes = all_surface_closure_lobes};
+
+inline constexpr auto evaluation_dielectric_payload_reachability =
+    SurfaceClosureReachability{
+        .kinds = surface_closure_kind_bit(SurfaceClosureKind::glass) |
+                 surface_closure_kind_bit(SurfaceClosureKind::refraction),
+        .principled_lobes = 0u};
+
+inline constexpr auto evaluation_common_only_reachability =
+    all_surface_closure_reachability &
+    SurfaceClosureReachability{
+        .kinds = all_surface_closure_kinds &
+                 ~evaluation_general_payload_reachability.kinds &
+                 ~evaluation_dielectric_payload_reachability.kinds,
+        .principled_lobes = 0u};
+
+[[nodiscard]] luisa::compute::Var<SurfaceClosureEvaluationContributionCall>
+zero_surface_closure_evaluation_contribution() noexcept {
+    luisa::compute::Var<SurfaceClosureEvaluationContributionCall> result;
+    result.f = make_float3(0.0f);
+    result.diffuse_f = make_float3(0.0f);
+    result.glossy_f = make_float3(0.0f);
+    result.total_sample_weight = 0.0f;
+    result.weighted_pdf = 0.0f;
+    result.weighted_roughness_squared = 0.0f;
+    result.events = static_cast<std::uint32_t>(event_none);
+    return result;
 }
 
 }// namespace
@@ -154,16 +191,7 @@ surface_closure_evaluation_contribution(
     const auto transmission_enabled =
         (query.lobe_mask &
          static_cast<std::uint32_t>(event_transmission)) != 0u;
-    luisa::compute::Var<
-        SurfaceClosureEvaluationContributionCall>
-        result;
-    result.f = make_float3(0.0f);
-    result.diffuse_f = make_float3(0.0f);
-    result.glossy_f = make_float3(0.0f);
-    result.total_sample_weight = 0.0f;
-    result.weighted_pdf = 0.0f;
-    result.weighted_roughness_squared = 0.0f;
-    result.events = static_cast<std::uint32_t>(event_none);
+    auto result = zero_surface_closure_evaluation_contribution();
 
     // A closure record has exactly one physical kind. Keep that algebraic
     // partition explicit in the generated device program: evaluating a
@@ -498,6 +526,86 @@ surface_closure_evaluation_contribution(
         }
     };
     return result;
+}
+
+luisa::compute::Var<SurfaceClosureEvaluationContributionCall>
+surface_closure_evaluation_contribution_from_physical_common(
+    const ShaderServices &services,
+    const SurfaceClosurePoint &point,
+    Expr<luisa::float3> shading_normal,
+    const SurfaceClosurePhysicalCommonRecord &common,
+    const SurfaceClosurePhysicalPayloadLoader &load_payload,
+    Expr<luisa::float3> incoming,
+    Expr<luisa::float3> outgoing,
+    const SurfaceQuery &query,
+    const SurfaceClosureEvaluationPolicy &policy,
+    Expr<bool> selected_sample,
+    SurfaceClosureReachability reachability) noexcept {
+    const auto reachable_kind = [&common, reachability](
+                                    SurfaceClosureKind kind) noexcept {
+        if (!reachability.contains(kind)) {
+            return Bool{false};
+        }
+        return has_kind(common, kind);
+    };
+    const auto is_general_payload =
+        reachable_kind(SurfaceClosureKind::principled) |
+        reachable_kind(SurfaceClosureKind::glossy) |
+        reachable_kind(SurfaceClosureKind::thin_glass_transmission);
+    const auto is_dielectric_payload =
+        reachable_kind(SurfaceClosureKind::glass) |
+        reachable_kind(SurfaceClosureKind::refraction);
+
+    auto result = zero_surface_closure_evaluation_contribution();
+    // The three reachability meets are a proof obligation as well as a
+    // specialization: the inner canonical consumer cannot re-introduce a tag
+    // excluded by the dominating family predicate. Only `result` crosses the
+    // branch merge, so mutually exclusive payload fields never coexist in the
+    // caller's loop-carried state.
+    $if(is_dielectric_payload) {
+        const auto closure =
+            unpack_surface_closure_physical_dielectric(common, load_payload());
+        result = surface_closure_evaluation_contribution(
+            services, point, shading_normal, closure, incoming, outgoing, query,
+            policy, selected_sample,
+            reachability & evaluation_dielectric_payload_reachability);
+    }
+    $elif(is_general_payload) {
+        const auto closure =
+            unpack_surface_closure_physical_general(common, load_payload());
+        result = surface_closure_evaluation_contribution(
+            services, point, shading_normal, closure, incoming, outgoing, query,
+            policy, selected_sample,
+            reachability & evaluation_general_payload_reachability);
+    }
+    $else {
+        const auto closure = unpack_surface_closure_physical_common_only(common);
+        result = surface_closure_evaluation_contribution(
+            services, point, shading_normal, closure, incoming, outgoing, query,
+            policy, selected_sample,
+            reachability & evaluation_common_only_reachability);
+    };
+    return result;
+}
+
+luisa::compute::Var<SurfaceClosureEvaluationContributionCall>
+surface_closure_evaluation_contribution_from_physical_blocks(
+    const ShaderServices &services,
+    const SurfaceClosurePoint &point,
+    Expr<luisa::float3> shading_normal,
+    Expr<luisa::float4x4> block_0,
+    Expr<luisa::float4x4> block_1,
+    Expr<luisa::float3> incoming,
+    Expr<luisa::float3> outgoing,
+    const SurfaceQuery &query,
+    const SurfaceClosureEvaluationPolicy &policy,
+    Expr<bool> selected_sample,
+    SurfaceClosureReachability reachability) noexcept {
+    const auto common = unpack_surface_closure_physical_common(block_0);
+    return surface_closure_evaluation_contribution_from_physical_common(
+        services, point, shading_normal, common,
+        [block_1] { return luisa::compute::Float4x4{block_1}; },
+        incoming, outgoing, query, policy, selected_sample, reachability);
 }
 
 SurfaceClosureEvaluationAccumulator::
