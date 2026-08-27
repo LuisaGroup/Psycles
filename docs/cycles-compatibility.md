@@ -1,5 +1,12 @@
 # Cycles compatibility status
 
+The [Blender 5.2 surface/SVM gap audit](validation/2026-08-27/cycles-5.2-surface-svm-gap-audit/README.md)
+separates the already data-driven typed SVM from the remaining node/closure
+coverage and post-population tagged-sum consumption gaps. It records the exact
+5.2 inventory, current Barbershop program census, source-level Cycles
+comparison, rejected family-decoder experiments, and the normalized 2.676x HIP
+`shade_surface` gap.
+
 The [packed typed surface-operand checkpoint](validation/2026-08-27/surface-value-packed-operands/README.md)
 encodes two complete typed graph edges per 32-bit word and embeds operands for
 zero-, one-, and two-input nodes. It formally preserves the topological typed
