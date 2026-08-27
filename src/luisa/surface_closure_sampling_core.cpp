@@ -356,7 +356,7 @@ sample_general_closure(
                 random_direction,
                 query.glossy_filter_roughness);
             direction = thin.direction;
-            roughness = make_float2(thin.alpha);
+            roughness = thin.roughness;
             singular_evaluation = thin.singular_evaluation;
             singular_pdf = thin.singular_pdf;
             singular = thin.singular;
@@ -388,7 +388,7 @@ sample_general_closure(
                 glossy_normal,
                 query.glossy_filter_roughness);
             direction = glossy.direction;
-            roughness = make_float2(glossy.alpha);
+            roughness = glossy.roughness;
             singular_evaluation = glossy.singular_evaluation;
             singular_pdf = glossy.singular_pdf;
             singular = glossy.singular;

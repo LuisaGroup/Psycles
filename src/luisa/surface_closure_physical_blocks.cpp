@@ -45,8 +45,10 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
         closure.sheen_transform_a,
         closure.sheen_transform_b,
         closure.ior,
-        0.0f);
-    Float4 payload_3 = make_float4(0.0f);
+        closure.microfacet_alpha_x);
+    Float4 payload_3 = make_float4(
+        closure.microfacet_tangent,
+        closure.microfacet_alpha_y);
 
     payload_0 = select(
         payload_0,
@@ -179,7 +181,10 @@ project_surface_closure_physical_general(
             .specular_tint = closure.specular_tint,
             .sheen_transform_a = closure.sheen_transform_a,
             .sheen_transform_b = closure.sheen_transform_b,
-            .evaluation_scale = closure.evaluation_scale}};
+            .evaluation_scale = closure.evaluation_scale,
+            .microfacet_tangent = closure.microfacet_tangent,
+            .microfacet_alpha_x = closure.microfacet_alpha_x,
+            .microfacet_alpha_y = closure.microfacet_alpha_y}};
 }
 
 SurfaceClosurePhysicalDielectricRecord
@@ -230,7 +235,10 @@ unpack_surface_closure_physical_general(
             .specular_tint = block_1[0u].xyz(),
             .sheen_transform_a = block_1[2u].x,
             .sheen_transform_b = block_1[2u].y,
-            .evaluation_scale = block_1[1u].xyz()}};
+            .evaluation_scale = block_1[1u].xyz(),
+            .microfacet_tangent = block_1[3u].xyz(),
+            .microfacet_alpha_x = block_1[2u].w,
+            .microfacet_alpha_y = block_1[3u].w}};
 }
 
 SurfaceClosurePhysicalDielectricRecord
@@ -305,6 +313,12 @@ unpack_surface_closure_physical_payload(
             glass_payload),
         .normal = common.normal,
         .roughness = common.roughness,
+        .microfacet_tangent = select(
+            block_1[3u].xyz(), zero3, specialized_payload),
+        .microfacet_alpha_x = select(
+            block_1[2u].w, 0.0f, specialized_payload),
+        .microfacet_alpha_y = select(
+            block_1[3u].w, 0.0f, specialized_payload),
         .diffuse_roughness = select(
             block_1[0u].w, 0.0f, specialized_payload),
         .metallic = select(

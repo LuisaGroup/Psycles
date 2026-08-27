@@ -1,5 +1,16 @@
 # Cycles compatibility status
 
+The [microfacet anisotropy checkpoint](validation/2026-08-27/microfacet-anisotropy/README.md)
+implements Blender 5.2/Cycles anisotropy for standalone Glossy and the
+Principled metallic/dielectric lobes without baking the shader graph. Authored
+anisotropy, rotation, and tangent remain typed SVM operands; closure setup
+projects them once to `(T, alpha_x, alpha_y)`, and GGX/Beckmann evaluation and
+visible-normal sampling consume that physical state. Complete, physical, and
+branch-local closure transports now have field-complete round-trip regressions.
+The analytic rotation-covariance and ABI suite passes on fallback, HIP, and
+strict native XIR-to-SPIR-V Vulkan. Full-scene image/performance promotion is
+recorded separately and is not implied by this checkpoint.
+
 The [Blender 5.2 surface/SVM gap audit](validation/2026-08-27/cycles-5.2-surface-svm-gap-audit/README.md)
 separates the already data-driven typed SVM from the remaining node/closure
 coverage and post-population tagged-sum consumption gaps. It records the exact

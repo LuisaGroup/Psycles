@@ -73,6 +73,9 @@ namespace {
         std::optional<ValueExpressionId> ior;
         std::optional<ValueExpressionId> specular_ior_level;
         std::optional<ValueExpressionId> specular_tint;
+        std::optional<ValueExpressionId> microfacet_anisotropy;
+        std::optional<ValueExpressionId> microfacet_rotation;
+        std::optional<ValueExpressionId> tangent;
         std::optional<ValueExpressionId> alpha;
         std::optional<ValueExpressionId> thin_wall;
         std::optional<ValueExpressionId> sheen_weight;
@@ -111,6 +114,11 @@ namespace {
                 lower_value_input(node, "SpecularIORLevel");
             specular_tint =
                 lower_value_input(node, "SpecularTint");
+            microfacet_anisotropy =
+                lower_value_input(node, "Anisotropic");
+            microfacet_rotation =
+                lower_value_input(node, "AnisotropicRotation");
+            tangent = lower_value_input(node, "Tangent");
             alpha = lower_value_input(node, "Alpha");
             thin_wall = lower_value_input(node, "ThinWall");
             sheen_weight = lower_value_input(node, "SheenWeight");
@@ -136,6 +144,12 @@ namespace {
             subsurface_ior = lower_value_input(node, "IOR");
             subsurface_anisotropy =
                 lower_value_input(node, "Anisotropy");
+        } else if (node.type == node_type::glossy_bsdf) {
+            microfacet_anisotropy =
+                lower_value_input(node, "Anisotropy");
+            microfacet_rotation =
+                lower_value_input(node, "Rotation");
+            tangent = lower_value_input(node, "Tangent");
         }
         if (color && roughness && normal &&
             (node.type != node_type::principled_bsdf ||
@@ -144,6 +158,7 @@ namespace {
               subsurface_ior && subsurface_anisotropy &&
               transmission_weight && ior &&
               specular_ior_level && specular_tint && alpha && thin_wall &&
+              microfacet_anisotropy && microfacet_rotation && tangent &&
               sheen_weight && sheen_roughness && sheen_tint &&
               coat_weight && coat_roughness && coat_ior && coat_tint &&
               coat_normal &&
@@ -151,6 +166,8 @@ namespace {
             (node.type != node_type::subsurface_scattering ||
                 (subsurface_radius && subsurface_scale &&
                  subsurface_ior && subsurface_anisotropy)) &&
+            (node.type != node_type::glossy_bsdf ||
+             (microfacet_anisotropy && microfacet_rotation && tangent)) &&
             ((node.type != node_type::glass_bsdf &&
                  node.type != node_type::refraction_bsdf) ||
                 ior)) {
@@ -211,6 +228,13 @@ namespace {
                     .specular_tint =
                         specular_tint.value_or(
                             ValueExpressionId{}),
+                    .microfacet_anisotropy =
+                        microfacet_anisotropy.value_or(
+                            ValueExpressionId{}),
+                    .microfacet_rotation =
+                        microfacet_rotation.value_or(
+                            ValueExpressionId{}),
+                    .tangent = tangent.value_or(ValueExpressionId{}),
                     .alpha = alpha.value_or(ValueExpressionId{}),
                     .thin_wall =
                         thin_wall.value_or(ValueExpressionId{}),

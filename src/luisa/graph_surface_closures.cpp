@@ -215,6 +215,22 @@ void GraphSurfaceImplementation::for_each_closure(
                                     make_float3(0.0f))
                               : make_float3(1.0f)
                         : make_float3(1.0f);
+                const auto anisotropy_enabled =
+                    _closure_plan.entry(id).microfacet_anisotropy &&
+                    active(closure.microfacet_anisotropy);
+                auto anisotropy = anisotropy_enabled
+                                      ? scalar(
+                                            closure.microfacet_anisotropy,
+                                            values)
+                                      : Float{0.0f};
+                auto anisotropic_rotation = anisotropy_enabled
+                                                ? scalar(
+                                                      closure.microfacet_rotation,
+                                                      values)
+                                                : Float{0.0f};
+                auto tangent = anisotropy_enabled
+                                   ? vector(closure.tangent, values)
+                                   : make_float3(0.0f);
                 auto alpha =
                     principled
                         ? active(closure.alpha)
@@ -323,6 +339,10 @@ void GraphSurfaceImplementation::for_each_closure(
                     .specular_ior_level =
                         specular_ior_level,
                     .specular_tint = specular_tint,
+                    .anisotropy_enabled = anisotropy_enabled,
+                    .anisotropy = anisotropy,
+                    .anisotropic_rotation = anisotropic_rotation,
+                    .tangent = tangent,
                     .alpha = alpha,
                     .thin_wall = thin_wall,
                     .sheen_weight = sheen_weight,

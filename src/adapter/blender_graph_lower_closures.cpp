@@ -111,6 +111,37 @@ public:
                 "Specular Tint",
                 SocketType::color));
             static_cast<void>(context.bind(
+                id,
+                "Anisotropic",
+                node,
+                "Anisotropic",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "AnisotropicRotation",
+                node,
+                "Anisotropic Rotation",
+                SocketType::floating));
+            if (context.input_source(node, "Tangent")) {
+                static_cast<void>(context.bind(
+                    id,
+                    "Tangent",
+                    node,
+                    "Tangent",
+                    SocketType::vector));
+            } else {
+                // Cycles' ShaderGraph::default_inputs() resolves every
+                // unlinked LINK_TANGENT socket to Geometry.Tangent before
+                // SVM compilation. Preserve that graph edge; the closure
+                // plan removes it again when anisotropy is statically zero.
+                static_cast<void>(context.graph().connect(
+                    context.geometry_output(
+                        "Tangent", SocketType::vector)
+                        .ref,
+                    id,
+                    "Tangent"));
+            }
+            static_cast<void>(context.bind(
                 id, "Alpha", node, "Alpha", SocketType::floating));
             static_cast<void>(context.bind(
                 id,
@@ -255,6 +286,33 @@ public:
                 node,
                 "Roughness",
                 SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "Anisotropy",
+                node,
+                "Anisotropy",
+                SocketType::floating));
+            static_cast<void>(context.bind(
+                id,
+                "Rotation",
+                node,
+                "Rotation",
+                SocketType::floating));
+            if (context.input_source(node, "Tangent")) {
+                static_cast<void>(context.bind(
+                    id,
+                    "Tangent",
+                    node,
+                    "Tangent",
+                    SocketType::vector));
+            } else {
+                static_cast<void>(context.graph().connect(
+                    context.geometry_output(
+                        "Tangent", SocketType::vector)
+                        .ref,
+                    id,
+                    "Tangent"));
+            }
             if (context.raw_input(node, "Normal") != nullptr) {
                 static_cast<void>(context.bind(
                     id,

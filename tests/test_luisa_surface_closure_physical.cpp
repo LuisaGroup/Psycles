@@ -46,6 +46,13 @@ concept HasGeneralMetallic = requires(T value) {
 };
 
 template<typename T>
+concept HasGeneralMicrofacetState = requires(T value) {
+    value.payload.microfacet_tangent;
+    value.payload.microfacet_alpha_x;
+    value.payload.microfacet_alpha_y;
+};
+
+template<typename T>
 concept HasDielectricFresnel = requires(T value) {
     value.payload.fresnel_f0;
 };
@@ -66,14 +73,17 @@ static_assert(!HasReflectionAlbedo<SurfaceClosurePhysicalRecord>);
 static_assert(!HasTransmissionAlbedo<SurfaceClosurePhysicalRecord>);
 static_assert(!HasSpecularIorLevel<SurfaceClosurePhysicalRecord>);
 static_assert(HasGeneralMetallic<SurfaceClosurePhysicalGeneralRecord>);
+static_assert(HasGeneralMicrofacetState<SurfaceClosurePhysicalGeneralRecord>);
 static_assert(!HasDielectricFresnel<SurfaceClosurePhysicalGeneralRecord>);
 static_assert(!HasBssrdfRadius<SurfaceClosurePhysicalGeneralRecord>);
 static_assert(!HasBssrdfIor<SurfaceClosurePhysicalGeneralRecord>);
 static_assert(!HasGeneralMetallic<SurfaceClosurePhysicalDielectricRecord>);
+static_assert(!HasGeneralMicrofacetState<SurfaceClosurePhysicalDielectricRecord>);
 static_assert(HasDielectricFresnel<SurfaceClosurePhysicalDielectricRecord>);
 static_assert(!HasBssrdfRadius<SurfaceClosurePhysicalDielectricRecord>);
 static_assert(!HasBssrdfIor<SurfaceClosurePhysicalDielectricRecord>);
 static_assert(!HasGeneralMetallic<SurfaceClosurePhysicalBssrdfRecord>);
+static_assert(!HasGeneralMicrofacetState<SurfaceClosurePhysicalBssrdfRecord>);
 static_assert(!HasDielectricFresnel<SurfaceClosurePhysicalBssrdfRecord>);
 static_assert(HasBssrdfRadius<SurfaceClosurePhysicalBssrdfRecord>);
 static_assert(HasBssrdfIor<SurfaceClosurePhysicalBssrdfRecord>);
@@ -91,7 +101,7 @@ constexpr std::array closure_kinds{
     SurfaceClosureKind::transparent};
 constexpr auto case_count =
     static_cast<std::uint32_t>(closure_kinds.size());
-constexpr std::uint32_t logical_row_count = 12u;
+constexpr std::uint32_t logical_row_count = 14u;
 constexpr std::uint32_t invariant_row_count = 5u;
 constexpr std::uint32_t rows_per_case =
     logical_row_count + invariant_row_count;
@@ -228,6 +238,17 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
                                       11.3f + offset,
                                       11.4f + offset}
                        : luisa::float4{0.0f, 0.0f, 0.0f, 1.0f};
+        case 12u:
+            return general
+                       ? luisa::float4{12.1f + offset,
+                                      12.2f + offset,
+                                      12.3f + offset,
+                                      12.4f + offset}
+                       : luisa::float4{0.0f};
+        case 13u:
+            return general
+                       ? luisa::float4{13.1f + offset, 0.0f, 0.0f, 0.0f}
+                       : luisa::float4{0.0f};
         default:
             return luisa::float4{1.0f};
     }
@@ -273,7 +294,10 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
            all(lhs.specular_tint == rhs.payload.specular_tint) &
            (lhs.sheen_transform_a == rhs.payload.sheen_transform_a) &
            (lhs.sheen_transform_b == rhs.payload.sheen_transform_b) &
-           all(lhs.evaluation_scale == rhs.payload.evaluation_scale);
+           all(lhs.evaluation_scale == rhs.payload.evaluation_scale) &
+           all(lhs.microfacet_tangent == rhs.payload.microfacet_tangent) &
+           (lhs.microfacet_alpha_x == rhs.payload.microfacet_alpha_x) &
+           (lhs.microfacet_alpha_y == rhs.payload.microfacet_alpha_y);
 }
 
 [[nodiscard]] Bool same_payload_projection(
@@ -325,11 +349,20 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
            (lhs.events == rhs.events);
 }
 
-[[nodiscard]] Bool same_conditional_sample(
+// The production shader option enables fast math. Two algebraically
+// equivalent inlined projections may therefore receive different FMA/rsqrt
+// schedules even when their decoded inputs compare bit-for-bit. Bound sample
+// directions independently: 5e-4 per component is below 0.05 degrees for
+// unit vectors, while all transported scalar state keeps the tighter bound.
+[[nodiscard]] Bool close_sample_direction(
+    Float3 lhs, Float3 rhs) noexcept {
+    return all(abs(lhs - rhs) <= make_float3(5.0e-4f));
+}
+
+[[nodiscard]] Bool same_conditional_sample_state(
     const Var<SurfaceClosureConditionalSampleCall> &lhs,
     const Var<SurfaceClosureConditionalSampleCall> &rhs) noexcept {
-    return close(lhs.direction, rhs.direction) &
-           close(lhs.roughness, rhs.roughness) &
+    return close(lhs.roughness, rhs.roughness) &
            close(lhs.singular_evaluation, rhs.singular_evaluation) &
            close(lhs.singular_pdf, rhs.singular_pdf) &
            close(lhs.eta, rhs.eta) &
@@ -418,6 +451,10 @@ int main(int argc, char **argv) {
         closure.bssrdf_albedo = make_float3(
             11.1f + offset, 11.2f + offset, 11.3f + offset);
         closure.bssrdf_roughness = 11.4f + offset;
+        closure.microfacet_tangent = make_float3(
+            12.1f + offset, 12.2f + offset, 12.3f + offset);
+        closure.microfacet_alpha_x = 12.4f + offset;
+        closure.microfacet_alpha_y = 13.1f + offset;
         closure.preserve_ggx_energy = (case_index & 2u) != 0u;
         closure.beckmann = (case_index & 4u) != 0u;
         closure.bssrdf_method = 17u + case_index;
@@ -466,7 +503,11 @@ int main(int argc, char **argv) {
                 canonical.bssrdf_anisotropy),
             make_float4(
                 canonical.bssrdf_albedo,
-                canonical.bssrdf_roughness)};
+                canonical.bssrdf_roughness),
+            make_float4(
+                canonical.microfacet_tangent,
+                canonical.microfacet_alpha_x),
+            make_float4(canonical.microfacet_alpha_y, 0.0f, 0.0f, 0.0f)};
         for (auto row = 0u; row < logical_row_count; ++row) {
             output->write(
                 case_index * rows_per_case + row,
@@ -562,6 +603,10 @@ int main(int argc, char **argv) {
         consumer_source.color = make_float3(0.62f, 0.48f, 0.31f);
         consumer_source.normal = normalize(make_float3(0.13f, -0.09f, 0.98f));
         consumer_source.roughness = 0.36f;
+        consumer_source.microfacet_tangent = normalize(
+            make_float3(0.93f, 0.31f, 0.07f));
+        consumer_source.microfacet_alpha_x = 0.08f;
+        consumer_source.microfacet_alpha_y = 0.31f;
         consumer_source.diffuse_roughness = 0.27f;
         consumer_source.metallic = 0.22f;
         consumer_source.ior = 1.43f;
@@ -656,10 +701,20 @@ int main(int argc, char **argv) {
                 random_direction, 0.42f, query);
         output->write(
             case_index * rows_per_case + logical_row_count + 3u,
-            make_float4(select(
-                0.0f, 1.0f,
-                same_conditional_sample(product_sample, tagged_sample) &
-                    same_conditional_sample(
+            make_float4(
+                select(0.0f, 1.0f,
+                    close_sample_direction(
+                        product_sample.direction,
+                        tagged_sample.direction)),
+                select(0.0f, 1.0f,
+                    same_conditional_sample_state(
+                        product_sample, tagged_sample)),
+                select(0.0f, 1.0f,
+                    close_sample_direction(
+                        raw_tagged_sample.direction,
+                        tagged_sample.direction)),
+                select(0.0f, 1.0f,
+                    same_conditional_sample_state(
                         raw_tagged_sample, tagged_sample))));
 
         const auto general_payload =

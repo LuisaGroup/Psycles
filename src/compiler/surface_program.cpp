@@ -465,11 +465,44 @@ namespace {
             case ClosureOperation::principled:
                 entry.principled_features = principled_feature_mask(
                     program, parameters, closure);
+                if ((entry.principled_features &
+                     (principled_closure_feature_bit(
+                          PrincipledClosureFeature::metallic) |
+                      principled_closure_feature_bit(
+                          PrincipledClosureFeature::dielectric))) != 0u) {
+                    const auto *anisotropic = direct_float(
+                        program,
+                        parameters,
+                        closure.microfacet_anisotropy,
+                        closure.source_node);
+                    // PrincipledBsdfNode::has_nonzero_weight() retains a
+                    // linked/non-finite value and direct values at Cycles'
+                    // closure cutoff. Runtime setup saturates the value and
+                    // therefore a direct negative finite value is inert.
+                    entry.microfacet_anisotropy =
+                        unknown_float(anisotropic) ||
+                        *anisotropic >= 1.0e-5f;
+                }
                 return;
             case ClosureOperation::null_closure:
             case ClosureOperation::diffuse:
             case ClosureOperation::translucent:
-            case ClosureOperation::glossy:
+                return;
+            case ClosureOperation::glossy: {
+                const auto *anisotropy = direct_float(
+                    program,
+                    parameters,
+                    closure.microfacet_anisotropy,
+                    closure.source_node);
+                // Keep this in sync with GlossyBsdfNode::is_isotropic() and
+                // svm_node_closure_bsdf: linked/non-finite values remain
+                // dynamic; direct values in the closed threshold interval
+                // are observationally isotropic.
+                entry.microfacet_anisotropy =
+                    unknown_float(anisotropy) ||
+                    std::abs(*anisotropy) > 1.0e-4f;
+                return;
+            }
             case ClosureOperation::glass:
             case ClosureOperation::emission:
             case ClosureOperation::transparent:
@@ -568,6 +601,8 @@ void SurfaceClosurePlan::merge(
             other._entries[index].reachable;
         _entries[index].principled_features |=
             other._entries[index].principled_features;
+        _entries[index].microfacet_anisotropy |=
+            other._entries[index].microfacet_anisotropy;
     }
 }
 

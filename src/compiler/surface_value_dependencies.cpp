@@ -96,10 +96,19 @@ include_physical_leaf(ValueDependencyMask &dependencies,
     dependencies.include(closure.normal);
     return true;
   case ClosureOperation::diffuse:
+    dependencies.include(closure.color);
+    dependencies.include(closure.normal);
+    dependencies.include(closure.roughness);
+    return true;
   case ClosureOperation::glossy:
     dependencies.include(closure.color);
     dependencies.include(closure.normal);
     dependencies.include(closure.roughness);
+    if (entry.microfacet_anisotropy) {
+      dependencies.include(closure.microfacet_anisotropy);
+      dependencies.include(closure.microfacet_rotation);
+      dependencies.include(closure.tangent);
+    }
     return true;
   case ClosureOperation::glass:
   case ClosureOperation::refraction:
@@ -168,6 +177,11 @@ include_physical_leaf(ValueDependencyMask &dependencies,
     dependencies.include(closure.specular_ior_level);
     dependencies.include(closure.specular_tint);
     present = true;
+  }
+  if (entry.microfacet_anisotropy) {
+    dependencies.include(closure.microfacet_anisotropy);
+    dependencies.include(closure.microfacet_rotation);
+    dependencies.include(closure.tangent);
   }
   const auto subsurface =
       has_feature(entry, PrincipledClosureFeature::thick_subsurface) ||

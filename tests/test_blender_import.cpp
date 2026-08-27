@@ -3,6 +3,7 @@
 #include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_program.h>
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -13,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -1586,6 +1588,155 @@ void test_cycles_float_to_boolean_conversion() {
          "linked float Thin Wall emitted no conversion instruction");
 }
 
+void test_cycles_default_microfacet_tangent_import() {
+  TemporaryDirectory temporary;
+  {
+    std::ofstream geometry{temporary.path() / "geometry.bin",
+                           std::ios::binary};
+    geometry.write("PSYGEO1\0", 8);
+  }
+  {
+    std::ofstream scene{temporary.path() / "scene.json"};
+    scene << R"JSON({
+  "schema":"psycles.blender-scene.v1",
+  "images":[],
+  "node_groups":[],
+  "materials":[
+    {
+      "name":"Default Principled Tangent",
+      "cycles_sync":{"shader_index":8},
+      "node_tree":{
+        "name":"Default Principled Tangent",
+        "surface_root":{"node":"Principled","socket":"BSDF"},
+        "volume_root":null,
+        "displacement_root":null,
+        "links":[],
+        "nodes":[{
+          "name":"Principled","type":"BSDF_PRINCIPLED","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Metallic","name":"Metallic",
+             "type":"NodeSocketFloat","linked":false,"default":1.0},
+            {"identifier":"Roughness","name":"Roughness",
+             "type":"NodeSocketFloat","linked":false,"default":0.5},
+            {"identifier":"Anisotropic","name":"Anisotropic",
+             "type":"NodeSocketFloat","linked":false,"default":0.6},
+            {"identifier":"Anisotropic Rotation",
+             "name":"Anisotropic Rotation","type":"NodeSocketFloat",
+             "linked":false,"default":0.25},
+            {"identifier":"Tangent","name":"Tangent",
+             "type":"NodeSocketVector","linked":false,
+             "default":[0.0,0.0,0.0]}
+          ],
+          "outputs":[{"identifier":"BSDF","name":"BSDF",
+            "type":"NodeSocketShader","linked":true}],
+          "properties":{"distribution":"GGX",
+                        "subsurface_method":"RANDOM_WALK"},
+          "special":{}
+        }]
+      }
+    },
+    {
+      "name":"Default Glossy Tangent",
+      "cycles_sync":{"shader_index":9},
+      "node_tree":{
+        "name":"Default Glossy Tangent",
+        "surface_root":{"node":"Glossy","socket":"BSDF"},
+        "volume_root":null,
+        "displacement_root":null,
+        "links":[],
+        "nodes":[{
+          "name":"Glossy","type":"BSDF_GLOSSY","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Roughness","name":"Roughness",
+             "type":"NodeSocketFloat","linked":false,"default":0.5},
+            {"identifier":"Anisotropy","name":"Anisotropy",
+             "type":"NodeSocketFloat","linked":false,"default":0.6},
+            {"identifier":"Rotation","name":"Rotation",
+             "type":"NodeSocketFloat","linked":false,"default":0.25},
+            {"identifier":"Tangent","name":"Tangent",
+             "type":"NodeSocketVector","linked":false,
+             "default":[0.0,0.0,0.0]}
+          ],
+          "outputs":[{"identifier":"BSDF","name":"BSDF",
+            "type":"NodeSocketShader","linked":true}],
+          "properties":{"distribution":"GGX"},
+          "special":{}
+        }]
+      }
+    }
+  ],
+  "render":{"width":16,"height":16,"percentage":100,"cycles":{}},
+  "camera":{"name":"Camera","type":"PERSP",
+    "transform":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+    "clip_start":0.01,"clip_end":100.0},
+  "geometries":[],"curve_geometries":[],"instances":[],"lights":[],
+  "world":null,"world_environment":null
+})JSON";
+  }
+
+  const auto imported = load_blender_scene_bundle(temporary.path());
+  expect(imported.ok(), "unlinked microfacet tangent scene did not import");
+  for (const auto &[material_name, expected_type] :
+       std::array{
+           std::pair{"Default Principled Tangent",
+                     std::string_view{
+                         psycles::compiler::node_type::principled_bsdf}},
+           std::pair{"Default Glossy Tangent",
+                     std::string_view{
+                         psycles::compiler::node_type::glossy_bsdf}}}) {
+    const psycles::contract::MaterialDesc *material = nullptr;
+    for (const auto &[id, candidate] : imported.scene->materials) {
+      static_cast<void>(id);
+      if (candidate.name == material_name) {
+        material = &candidate;
+        break;
+      }
+    }
+    expect(material != nullptr,
+           std::string{material_name} + " material is missing");
+    const psycles::contract::ShaderNode *closure_node = nullptr;
+    for (const auto &node : material->shader.nodes()) {
+      if (node.type == expected_type) {
+        closure_node = &node;
+        break;
+      }
+    }
+    expect(closure_node != nullptr,
+           std::string{material_name} + " closure is missing");
+    const auto tangent = closure_node->inputs.find("Tangent");
+    expect(tangent != closure_node->inputs.end() &&
+               tangent->second.source.has_value(),
+           std::string{material_name} +
+               " did not materialize Cycles' default tangent edge");
+    const auto *geometry_node = material->shader.find(
+        tangent->second.source->node);
+    expect(geometry_node != nullptr &&
+               geometry_node->type == psycles::compiler::node_type::geometry &&
+               tangent->second.source->socket == "Tangent",
+           std::string{material_name} +
+               " default tangent is not Geometry.Tangent");
+
+    psycles::compiler::ShaderCompiler compiler{
+        psycles::compiler::make_core_node_registry()};
+    const auto shader = compiler.compile(material->shader);
+    expect(shader.ok(),
+           std::string{material_name} + " graph did not validate");
+    const auto surface =
+        psycles::compiler::compile_surface_program(*shader.program);
+    expect(surface.ok() &&
+               surface.program->closure_instructions().size() == 1u,
+           std::string{material_name} + " graph did not lower");
+    const auto &closure = surface.program->closure_instructions().front();
+    expect(closure.microfacet_anisotropy.valid() &&
+               closure.microfacet_rotation.valid() &&
+               closure.tangent.valid(),
+           std::string{material_name} +
+               " lost anisotropy, rotation, or tangent during lowering");
+  }
+}
+
 void test_light_path_portal_depth_import() {
   TemporaryDirectory temporary;
   {
@@ -1683,6 +1834,7 @@ int main() {
   try {
     test_integrator_settings_round_trip();
     test_cycles_float_to_boolean_conversion();
+    test_cycles_default_microfacet_tangent_import();
     test_light_path_portal_depth_import();
   } catch (const std::exception &exception) {
     std::cerr << "test failure: " << exception.what() << '\n';

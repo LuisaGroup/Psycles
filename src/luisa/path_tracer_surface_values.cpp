@@ -102,6 +102,9 @@ namespace {
          compiler::surface_closure_preserve_ggx_energy) != 0u;
     const auto beckmann =
         (static_variant & compiler::surface_closure_beckmann) != 0u;
+    const auto anisotropy_enabled =
+        (static_variant &
+         compiler::surface_closure_microfacet_anisotropy) != 0u;
 
     switch (operation) {
         case compiler::ClosureOperation::diffuse:
@@ -144,6 +147,37 @@ namespace {
                 .ior = 1.5f,
                 .specular_ior_level = 0.5f,
                 .specular_tint = make_float3(1.0f),
+                .anisotropy_enabled = glossy && anisotropy_enabled,
+                .anisotropy = glossy && anisotropy_enabled
+                                  ? read_closure_scalar_or(
+                                        runtime,
+                                        services,
+                                        point,
+                                        locals,
+                                        instruction,
+                                        operand::glossy::anisotropy,
+                                        0.0f)
+                                  : Float{0.0f},
+                .anisotropic_rotation = glossy && anisotropy_enabled
+                                            ? read_closure_scalar_or(
+                                                  runtime,
+                                                  services,
+                                                  point,
+                                                  locals,
+                                                  instruction,
+                                                  operand::glossy::rotation,
+                                                  0.0f)
+                                            : Float{0.0f},
+                .tangent = glossy && anisotropy_enabled
+                               ? read_closure_vector_or(
+                                     runtime,
+                                     services,
+                                     point,
+                                     locals,
+                                     instruction,
+                                     operand::glossy::tangent,
+                                     make_float3(0.0f))
+                               : make_float3(0.0f),
                 .preserve_ggx_energy =
                     glossy && preserve_ggx_energy,
                 .beckmann = glossy && beckmann};
@@ -252,6 +286,22 @@ namespace {
                         operand::principled::specular_tint,
                         luisa::make_float3(1.0f)),
                     make_float3(0.0f)),
+                .anisotropy_enabled = anisotropy_enabled,
+                .anisotropy = anisotropy_enabled
+                                  ? scalar(
+                                        operand::principled::anisotropic,
+                                        0.0f)
+                                  : Float{0.0f},
+                .anisotropic_rotation = anisotropy_enabled
+                                            ? scalar(
+                                                  operand::principled::anisotropic_rotation,
+                                                  0.0f)
+                                            : Float{0.0f},
+                .tangent = anisotropy_enabled
+                               ? vector(
+                                     operand::principled::tangent,
+                                     luisa::make_float3(0.0f))
+                               : make_float3(0.0f),
                 .alpha = scalar(operand::principled::alpha, 1.0f),
                 .thin_wall =
                     scalar(operand::principled::thin_wall, 0.0f) != 0.0f,

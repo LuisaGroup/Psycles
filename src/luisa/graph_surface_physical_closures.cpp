@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "microfacet_anisotropy.h"
 
 #include <psycles/luisa/cycles_closure.h>
 
@@ -97,6 +98,21 @@ SurfaceClosureRecord canonical_surface_closure(
     result.color = closure.color;
     result.normal = closure.normal;
     result.roughness = closure.roughness;
+    const auto general_payload =
+        identity.kind == SurfaceClosureKind::principled ||
+        identity.kind == SurfaceClosureKind::glossy ||
+        identity.kind == SurfaceClosureKind::thin_glass_transmission;
+    if (general_payload) {
+        const auto state = closure.microfacet_state_configured
+                               ? MicrofacetAnisotropyState{
+                                     .tangent = closure.microfacet_tangent,
+                                     .alpha_x = closure.microfacet_alpha_x,
+                                     .alpha_y = closure.microfacet_alpha_y}
+                               : isotropic_microfacet_state(closure.roughness);
+        result.microfacet_tangent = state.tangent;
+        result.microfacet_alpha_x = state.alpha_x;
+        result.microfacet_alpha_y = state.alpha_y;
+    }
     result.ior = closure.ior;
     result.evaluation_scale = closure.evaluation_scale;
 

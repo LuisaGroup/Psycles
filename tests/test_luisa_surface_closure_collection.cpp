@@ -37,7 +37,7 @@ using psycles::test_support::ParameterShaderServices;
 
 constexpr auto closure_slots = 8u;
 constexpr auto records_per_slot = 6u;
-constexpr auto storage_records_per_slot = 17u;
+constexpr auto storage_records_per_slot = 18u;
 constexpr auto evaluator_records_per_slot = 10u;
 constexpr auto scattering_records_per_slot = 6u;
 constexpr auto sampling_records_per_slot = 8u;
@@ -124,6 +124,18 @@ public:
                 _selected.normal, closure.normal, match);
             _selected.roughness = select(
                 _selected.roughness, closure.roughness, match);
+            _selected.microfacet_tangent = select(
+                _selected.microfacet_tangent,
+                closure.microfacet_tangent,
+                match);
+            _selected.microfacet_alpha_x = select(
+                _selected.microfacet_alpha_x,
+                closure.microfacet_alpha_x,
+                match);
+            _selected.microfacet_alpha_y = select(
+                _selected.microfacet_alpha_y,
+                closure.microfacet_alpha_y,
+                match);
             _selected.diffuse_roughness = select(
                 _selected.diffuse_roughness,
                 closure.diffuse_roughness,
@@ -539,6 +551,10 @@ int main(int argc, char **argv) {
         glass_record.color = make_float3(13.0f, 14.0f, 15.0f);
         glass_record.normal = make_float3(16.0f, 17.0f, 18.0f);
         glass_record.roughness = 0.19f;
+        glass_record.microfacet_tangent =
+            make_float3(53.0f, 54.0f, 55.0f);
+        glass_record.microfacet_alpha_x = 0.56f;
+        glass_record.microfacet_alpha_y = 0.57f;
         glass_record.diffuse_roughness = 0.20f;
         glass_record.metallic = 0.21f;
         glass_record.ior = 1.37f;
@@ -645,18 +661,24 @@ int main(int argc, char **argv) {
                     closure.fresnel_f90,
                     cast<float>(flags)));
             output.write(base + 11u,
-                make_float4(closure.reflection_tint, 0.0f));
+                make_float4(
+                    closure.reflection_tint,
+                    closure.microfacet_alpha_x));
             output.write(base + 12u,
-                make_float4(closure.transmission_tint, 0.0f));
-            output.write(base + 14u,
+                make_float4(
+                    closure.transmission_tint,
+                    closure.microfacet_alpha_y));
+            output.write(base + 13u,
+                make_float4(closure.microfacet_tangent, 0.0f));
+            output.write(base + 15u,
                 make_float4(
                     closure.bssrdf_radius,
                     closure.bssrdf_anisotropy));
-            output.write(base + 15u,
+            output.write(base + 16u,
                 make_float4(
                     closure.bssrdf_albedo,
                     closure.bssrdf_roughness));
-            output.write(base + 16u,
+            output.write(base + 17u,
                 make_float4(
                     cast<float>(closure.bssrdf_method),
                     closure.bssrdf_ior,
@@ -674,7 +696,7 @@ int main(int argc, char **argv) {
             point.shading_normal};
         const auto invalid_trace =
             invalid_evaluator.closure_trace(requested);
-        output.write(base + 13u,
+        output.write(base + 14u,
             make_float4(
                 cast<float>(invalid_trace.count),
                 cast<float>(invalid_trace.type),
@@ -703,7 +725,7 @@ int main(int argc, char **argv) {
                 true,
                 round_trip);
             output.write(
-                round_trip_base + 13u,
+                round_trip_base + 14u,
                 make_float4(0.0f));
             constexpr auto physical_base =
                 4u * storage_records_per_slot;
@@ -713,7 +735,7 @@ int main(int argc, char **argv) {
                 true,
                 physical_closures.entry(0u));
             output.write(
-                physical_base + 13u,
+                physical_base + 14u,
                 make_float4(
                     cast<float>(physical_fold_mask),
                     cast<float>(physical_closures.count()),
@@ -1793,8 +1815,9 @@ int main(int argc, char **argv) {
         luisa::float4{28.0f, 29.0f, 30.0f, 0.26f},
         luisa::float4{31.0f, 32.0f, 33.0f, 0.27f},
         luisa::float4{34.0f, 35.0f, 36.0f, 7.0f},
-        luisa::float4{37.0f, 38.0f, 39.0f, 0.0f},
-        luisa::float4{40.0f, 41.0f, 42.0f, 0.0f}};
+        luisa::float4{37.0f, 38.0f, 39.0f, 0.56f},
+        luisa::float4{40.0f, 41.0f, 42.0f, 0.57f},
+        luisa::float4{53.0f, 54.0f, 55.0f, 0.0f}};
     const auto invalid_setup_retained =
         approximately_equal(stored[0u],
             luisa::float4{2.0f,
@@ -1808,7 +1831,7 @@ int main(int argc, char **argv) {
         approximately_equal(stored[6u],
             luisa::float4{0.0f, 1.0f, 0.0f, 1.2f}) &&
         approximately_equal(stored[10u].w, 0.0f) &&
-        approximately_equal(stored[13u],
+        approximately_equal(stored[14u],
             luisa::float4{1.0f,
                 static_cast<float>(cycles_closure::type_none),
                 1.0f,
@@ -1836,7 +1859,7 @@ int main(int argc, char **argv) {
     for (auto record = 0u;
          record < bssrdf_storage_expected.size();
          ++record) {
-        const auto offset = 14u + record;
+        const auto offset = 15u + record;
         glass_round_trip &= approximately_equal(
             stored[storage_records_per_slot + offset],
             bssrdf_storage_expected[record]);
@@ -1860,7 +1883,8 @@ int main(int argc, char **argv) {
         luisa::float4{31.0f, 32.0f, 33.0f, 0.0f},
         luisa::float4{34.0f, 35.0f, 36.0f, 7.0f},
         luisa::float4{37.0f, 38.0f, 39.0f, 0.0f},
-        luisa::float4{40.0f, 41.0f, 42.0f, 0.0f}};
+        luisa::float4{40.0f, 41.0f, 42.0f, 0.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f}};
     auto physical_round_trip = true;
     for (auto record = 0u;
          record < physical_storage_expected.size();
@@ -1881,11 +1905,11 @@ int main(int argc, char **argv) {
          record < physical_bssrdf_storage_expected.size();
          ++record) {
         physical_round_trip &= approximately_equal(
-            stored[4u * storage_records_per_slot + 14u + record],
+            stored[4u * storage_records_per_slot + 15u + record],
             physical_bssrdf_storage_expected[record]);
     }
     physical_round_trip &= approximately_equal(
-        stored[4u * storage_records_per_slot + 13u],
+        stored[4u * storage_records_per_slot + 14u],
         luisa::float4{1.0f, 1.0f, 0.0f, 0.0f});
     const auto overflow_truncated =
         approximately_equal(

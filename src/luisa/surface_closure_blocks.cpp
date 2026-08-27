@@ -20,7 +20,6 @@ SurfaceClosureBlocks pack_surface_closure(
         preserve_ggx_energy_bit,
         closure.preserve_ggx_energy);
     flags |= select(0u, beckmann_bit, closure.beckmann);
-    const auto zero = make_float4(0.0f);
     return {
         .block_0 = make_float4x4(
             make_uint4(
@@ -60,10 +59,10 @@ SurfaceClosureBlocks pack_surface_closure(
                 closure.sheen_transform_b),
             make_float4(
                 closure.fresnel_f90,
-                0.0f),
+                closure.microfacet_alpha_x),
             make_float4(
                 closure.reflection_tint,
-                0.0f)),
+                closure.microfacet_alpha_y)),
         .block_3 = make_float4x4(
             make_float4(
                 closure.transmission_tint,
@@ -74,10 +73,66 @@ SurfaceClosureBlocks pack_surface_closure(
             make_float4(
                 closure.bssrdf_albedo,
                 closure.bssrdf_roughness),
-            zero)};
+            make_float4(
+                closure.microfacet_tangent,
+                0.0f))};
 }
 
 SurfaceClosureRecord unpack_surface_closure(
+    Expr<luisa::float4x4> block_0_expression,
+    Expr<luisa::float4x4> block_1_expression,
+    Expr<luisa::float4x4> block_2_expression,
+    Expr<luisa::float4x4> block_3_expression) noexcept {
+    const auto rows = unpack_surface_closure_block_rows(
+        block_0_expression,
+        block_1_expression,
+        block_2_expression,
+        block_3_expression);
+    const auto flags = rows.identity.z;
+    return {
+        .kind = rows.identity.x,
+        .lobe = rows.identity.y,
+        .weight = rows.weight_allocation_weight.xyz(),
+        .allocation_weight = rows.weight_allocation_weight.w,
+        .sample_weight = rows.albedo_sample_weight.w,
+        .setup_valid =
+            (flags & setup_valid_bit) != 0u,
+        .albedo = rows.albedo_sample_weight.xyz(),
+        .reflection_albedo = rows.reflection_albedo_roughness.xyz(),
+        .transmission_albedo =
+            rows.transmission_albedo_diffuse_roughness.xyz(),
+        .color = rows.color_metallic.xyz(),
+        .normal = rows.normal_ior.xyz(),
+        .roughness = rows.reflection_albedo_roughness.w,
+        .microfacet_tangent = rows.microfacet_tangent_reserved.xyz(),
+        .microfacet_alpha_x = rows.fresnel_f90_microfacet_alpha_x.w,
+        .microfacet_alpha_y = rows.reflection_tint_microfacet_alpha_y.w,
+        .diffuse_roughness =
+            rows.transmission_albedo_diffuse_roughness.w,
+        .metallic = rows.color_metallic.w,
+        .ior = rows.normal_ior.w,
+        .specular_ior_level = rows.specular_tint_ior_level.w,
+        .specular_tint = rows.specular_tint_ior_level.xyz(),
+        .sheen_transform_a = rows.evaluation_scale_sheen_transform_a.w,
+        .sheen_transform_b = rows.fresnel_f0_sheen_transform_b.w,
+        .evaluation_scale = rows.evaluation_scale_sheen_transform_a.xyz(),
+        .fresnel_f0 = rows.fresnel_f0_sheen_transform_b.xyz(),
+        .fresnel_f90 = rows.fresnel_f90_microfacet_alpha_x.xyz(),
+        .reflection_tint = rows.reflection_tint_microfacet_alpha_y.xyz(),
+        .transmission_tint = rows.transmission_tint_bssrdf_ior.xyz(),
+        .preserve_ggx_energy =
+            (flags & preserve_ggx_energy_bit) != 0u,
+        .beckmann =
+            (flags & beckmann_bit) != 0u,
+        .bssrdf_method = rows.identity.w,
+        .bssrdf_radius = rows.bssrdf_radius_anisotropy.xyz(),
+        .bssrdf_albedo = rows.bssrdf_albedo_roughness.xyz(),
+        .bssrdf_ior = rows.transmission_tint_bssrdf_ior.w,
+        .bssrdf_roughness = rows.bssrdf_albedo_roughness.w,
+        .bssrdf_anisotropy = rows.bssrdf_radius_anisotropy.w};
+}
+
+SurfaceClosureBlockRows unpack_surface_closure_block_rows(
     Expr<luisa::float4x4> block_0_expression,
     Expr<luisa::float4x4> block_1_expression,
     Expr<luisa::float4x4> block_2_expression,
@@ -90,45 +145,23 @@ SurfaceClosureRecord unpack_surface_closure(
         luisa::compute::Float4x4{block_2_expression};
     const auto block_3 =
         luisa::compute::Float4x4{block_3_expression};
-    const auto identity =
-        block_0[0u].bitcast<luisa::uint4>();
-    const auto flags = identity.z;
     return {
-        .kind = identity.x,
-        .lobe = identity.y,
-        .weight = block_0[1u].xyz(),
-        .allocation_weight = block_0[1u].w,
-        .sample_weight = block_0[2u].w,
-        .setup_valid =
-            (flags & setup_valid_bit) != 0u,
-        .albedo = block_0[2u].xyz(),
-        .reflection_albedo = block_0[3u].xyz(),
-        .transmission_albedo = block_1[0u].xyz(),
-        .color = block_1[1u].xyz(),
-        .normal = block_1[2u].xyz(),
-        .roughness = block_0[3u].w,
-        .diffuse_roughness = block_1[0u].w,
-        .metallic = block_1[1u].w,
-        .ior = block_1[2u].w,
-        .specular_ior_level = block_1[3u].w,
-        .specular_tint = block_1[3u].xyz(),
-        .sheen_transform_a = block_2[0u].w,
-        .sheen_transform_b = block_2[1u].w,
-        .evaluation_scale = block_2[0u].xyz(),
-        .fresnel_f0 = block_2[1u].xyz(),
-        .fresnel_f90 = block_2[2u].xyz(),
-        .reflection_tint = block_2[3u].xyz(),
-        .transmission_tint = block_3[0u].xyz(),
-        .preserve_ggx_energy =
-            (flags & preserve_ggx_energy_bit) != 0u,
-        .beckmann =
-            (flags & beckmann_bit) != 0u,
-        .bssrdf_method = identity.w,
-        .bssrdf_radius = block_3[1u].xyz(),
-        .bssrdf_albedo = block_3[2u].xyz(),
-        .bssrdf_ior = block_3[0u].w,
-        .bssrdf_roughness = block_3[2u].w,
-        .bssrdf_anisotropy = block_3[1u].w};
+        .identity = block_0[0u].bitcast<luisa::uint4>(),
+        .weight_allocation_weight = block_0[1u],
+        .albedo_sample_weight = block_0[2u],
+        .reflection_albedo_roughness = block_0[3u],
+        .transmission_albedo_diffuse_roughness = block_1[0u],
+        .color_metallic = block_1[1u],
+        .normal_ior = block_1[2u],
+        .specular_tint_ior_level = block_1[3u],
+        .evaluation_scale_sheen_transform_a = block_2[0u],
+        .fresnel_f0_sheen_transform_b = block_2[1u],
+        .fresnel_f90_microfacet_alpha_x = block_2[2u],
+        .reflection_tint_microfacet_alpha_y = block_2[3u],
+        .transmission_tint_bssrdf_ior = block_3[0u],
+        .bssrdf_radius_anisotropy = block_3[1u],
+        .bssrdf_albedo_roughness = block_3[2u],
+        .microfacet_tangent_reserved = block_3[3u]};
 }
 
 }// namespace psycles::luisa_backend
