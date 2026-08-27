@@ -1,0 +1,76 @@
+{
+  "schema": "psycles.cycles-5.2-surface-svm-gap-audit.v1",
+  "reference": {
+    "psycles": "717176eebc7b47e7d1b55db6dcc9e00f7285ff3b",
+    "luisa_compute": "eeda4b154fcf43e8709d1b42478e958677b9c6ae",
+    "cycles_source": "9e2066aef7ef7e20c142ad7bd3303138a4304c93",
+    "blender_build": "fbe6228777e7",
+    "blender_version": "5.2.0 LTS",
+    "device": "AMD Radeon RX 9070 XT",
+    "architecture": "gfx1201"
+  },
+  "node_coverage": {
+    "cycles_constructible": 93,
+    "older_focused_probe_registry": 42,
+    "explicitly_partial": 13,
+    "source_routed_registry_pending": 9,
+    "structural_output_roots": 3,
+    "no_psycles_route": 26,
+    "probe_baseline_version": "4.5.10"
+  },
+  "barbershop_runtime": {
+    "programs": 378,
+    "instructions": 10301,
+    "packed_operand_words": 9628,
+    "metadata_records": 4209,
+    "semantic_variants": 67,
+    "typed_slots": {
+      "scalar": 8,
+      "vector": 9,
+      "uint": 0
+    },
+    "unique_topologies": 189,
+    "preparation_instructions": 6272
+  },
+  "hip_surface": {
+    "resolution": [640, 480],
+    "samples": 64,
+    "adaptive_sampling": false,
+    "psycles": {
+      "calls": 293,
+      "work_items": 53659296,
+      "gpu_ms": 1547.761976,
+      "ns_per_item": 28.844,
+      "vgpr": 256,
+      "private_bytes": 3152,
+      "object_bytes": 356760,
+      "text_bytes": 353152,
+      "entry_symbol_bytes": 297436,
+      "scratch_loads": 846,
+      "scratch_stores": 647
+    },
+    "cycles": {
+      "calls": 296,
+      "work_items": 54061056,
+      "gpu_ms": 582.670705,
+      "ns_per_item": 10.778,
+      "vgpr": 192,
+      "private_bytes": 6976,
+      "entry_symbol_bytes": 2552
+    },
+    "psycles_over_cycles": 2.676
+  },
+  "accepted_llvm": {
+    "bytes": 3373035,
+    "lines": 57932,
+    "alloca_occurrences": 46,
+    "phi_occurrences": 2842,
+    "select_occurrences": 2609
+  },
+  "rejected_family_elimination": {
+    "object_bytes": 418208,
+    "final_llvm_lines": 64358,
+    "render_seconds_range": [5.09675, 5.10569],
+    "expression_only_reproduced_regression": true
+  }
+}
