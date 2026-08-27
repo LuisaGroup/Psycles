@@ -102,6 +102,20 @@ zero_surface_closure_conditional_sample() noexcept {
     return result;
 }
 
+[[nodiscard]] SurfaceClosurePoint make_closure_sampling_point(
+    const SurfaceClosurePoint &point,
+    Expr<luisa::float3> closure_normal) noexcept {
+    auto result = point;
+    // This is exactly Cycles' `Ng = curve ? sc->N : sd->Ng` projection. It
+    // belongs after categorical selection because sc->N is a property of the
+    // selected tagged-union member, not of the shader-wide shading point.
+    result.geometric_normal = select(
+        point.geometric_normal,
+        Float3{closure_normal},
+        point.is_curve);
+    return result;
+}
+
 }// namespace
 
 Float3 make_surface_closure_sampling_incoming(
@@ -571,6 +585,9 @@ surface_closure_conditional_sample(
     const SurfaceQuery &query,
     SurfaceClosureReachability reachability) noexcept {
     const auto common = project_surface_closure_physical_common(closure);
+    const auto sampling_point = make_closure_sampling_point(
+        point,
+        Expr<luisa::float3>{common.normal.expression()});
     const auto is_general =
         (common.kind == static_cast<std::uint32_t>(
                             SurfaceClosureKind::principled)) |
@@ -596,7 +613,7 @@ surface_closure_conditional_sample(
     $if(is_dielectric) {
         result = sample_dielectric_closure(
             services,
-            point,
+            sampling_point,
             project_surface_closure_physical_dielectric(closure),
             Float3{incoming_expression},
             Float3{glossy_normal_expression},
@@ -612,7 +629,7 @@ surface_closure_conditional_sample(
     $elif(is_general) {
         result = sample_general_closure(
             services,
-            point,
+            sampling_point,
             Float3{shading_normal_expression},
             project_surface_closure_physical_general(closure),
             Float3{incoming_expression},
@@ -623,7 +640,7 @@ surface_closure_conditional_sample(
     }
     $else {
         result = sample_common_closure(
-            point,
+            sampling_point,
             project_surface_closure_physical_common_only(closure),
             Float3{glossy_normal_expression},
             Float2{random_direction_expression},
@@ -663,6 +680,9 @@ surface_closure_conditional_sample_from_physical_common(
         reachable_kind(SurfaceClosureKind::glass) |
         reachable_kind(SurfaceClosureKind::refraction);
     const auto is_bssrdf_payload = reachable_kind(SurfaceClosureKind::bssrdf);
+    const auto sampling_point = make_closure_sampling_point(
+        point,
+        Expr<luisa::float3>{common.normal.expression()});
 
     auto result = zero_surface_closure_conditional_sample();
     $if(is_dielectric_payload) {
@@ -670,7 +690,7 @@ surface_closure_conditional_sample_from_physical_common(
             unpack_surface_closure_physical_dielectric(common, load_payload());
         result = sample_dielectric_closure(
             services,
-            point,
+            sampling_point,
             closure,
             Float3{incoming},
             Float3{glossy_normal},
@@ -689,7 +709,7 @@ surface_closure_conditional_sample_from_physical_common(
             unpack_surface_closure_physical_general(common, load_payload());
         result = sample_general_closure(
             services,
-            point,
+            sampling_point,
             Float3{shading_normal},
             closure,
             Float3{incoming},
@@ -701,7 +721,7 @@ surface_closure_conditional_sample_from_physical_common(
     $else {
         const auto closure = unpack_surface_closure_physical_common_only(common);
         result = sample_common_closure(
-            point,
+            sampling_point,
             closure,
             Float3{glossy_normal},
             Float2{random_direction},
@@ -886,10 +906,17 @@ SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
             _properties,
             surface_closure_sample_property::bssrdf);
 
+    // Conditional samplers already receive the same projected Ng, but keep
+    // the aggregate validity law explicit here for common-only closures and
+    // as a proof boundary against future sampler implementations.
+    const auto sampling_geometric_normal = select(
+        point.geometric_normal,
+        _closure_normal,
+        point.is_curve);
     const auto reflection_geometric_valid =
-        dot(point.geometric_normal, _direction) > 0.0f;
+        dot(sampling_geometric_normal, _direction) > 0.0f;
     const auto transmission_geometric_valid =
-        dot(point.geometric_normal, _direction) < 0.0f;
+        dot(sampling_geometric_normal, _direction) < 0.0f;
     const auto geometric_valid = select(
         reflection_geometric_valid,
         transmission_geometric_valid,

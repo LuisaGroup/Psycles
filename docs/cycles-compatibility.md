@@ -1170,6 +1170,18 @@ Ashikhmin energy loss caused by diffuse terminator softening. Formal relations,
 reports, timings, and inspected triptychs are in
 [`validation/2026-08-28/cycles-5.2-standalone-sheen`](validation/2026-08-28/cycles-5.2-standalone-sheen/README.md).
 
+Curve/ribbon primitives now retain their primitive-kind predicate through the
+post-population closure projection. Sampling uses the selected closure normal
+as geometric support, curve bump shadowing is the identity, and specular setup
+preserves the authored closure normal, exactly at the three boundaries where
+Cycles 5.2 defines those laws. The predicate occupies an existing flags word:
+the closure-point callable ABI remains 48 bytes and neither closure payload nor
+coroutine frame grows. A separating Diffuse/GGX counterexample passes on
+fallback, HIP, and strict native-XIR Vulkan; the broader curve and hair matrix
+passes `14/14`. The formal relations, pre-fix failure, and full-suite result are
+in
+[`validation/2026-08-28/curve-closure-semantics`](validation/2026-08-28/curve-closure-semantics/README.md).
+
 The following integrator work remains explicit and is not considered Cycles
 compatible yet:
 

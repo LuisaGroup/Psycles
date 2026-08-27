@@ -218,7 +218,13 @@ constexpr std::array probe_specs{
             -0.21f + seed.y * 0.1f,
             0.968f));
         const SurfaceClosurePoint point{
-            normal, normal, incoming, 0xffffffffu, false, false};
+            normal,
+            normal,
+            incoming,
+            0xffffffffu,
+            false,
+            false,
+            false};
         BenchmarkShaderServices services{input};
 
         auto closure_record = SurfaceClosureRecord::zero();
