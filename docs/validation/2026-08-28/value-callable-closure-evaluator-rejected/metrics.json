@@ -1,0 +1,71 @@
+{
+  "schema": "psycles.value-callable-closure-evaluator-rejected.v1",
+  "baseline": {
+    "commit": "eab23be",
+    "shade_surface_kernel": "kernel_fd1f1c5285842623",
+    "coroutine_frame_fields": 177,
+    "coroutine_frame_bytes": 864,
+    "private_segment_bytes": 3096,
+    "code_object_bytes": 340184,
+    "shade_surface_ns_per_item_samples": [
+      26.7558394,
+      26.7644853,
+      26.845705987887186
+    ],
+    "shade_surface_ns_per_item_median": 26.7644853,
+    "render_only_seconds_samples": [2.52027, 2.52529],
+    "render_only_seconds_mean": 2.52278
+  },
+  "candidate": {
+    "shade_surface_kernel": "kernel_82d26abe671aec86",
+    "coroutine_frame_fields": 177,
+    "coroutine_frame_bytes": 864,
+    "private_segment_bytes": 3104,
+    "code_object_bytes": 347056,
+    "shade_surface_calls": [293, 293],
+    "shade_surface_work_items": [53660896, 53660864],
+    "shade_surface_ns_per_item_samples": [
+      26.818985970715062,
+      26.8153509774
+    ],
+    "shade_surface_ns_per_item_median": 26.81716847405753,
+    "render_only_seconds_samples": [2.52335, 2.52564],
+    "render_only_seconds_mean": 2.524495,
+    "final_llvm_lines": 54865,
+    "final_llvm_bytes": 3040081,
+    "retained_luisa_callables": 4,
+    "value_evaluator_callable_retained": false
+  },
+  "change": {
+    "coroutine_frame_bytes": 0,
+    "private_segment_bytes": 8,
+    "private_segment_percent": 0.25839793281654533,
+    "code_object_bytes": 6872,
+    "code_object_percent": 2.0200832490652187,
+    "shade_surface_ns_per_item_percent": 0.19683985500567047,
+    "render_only_mean_percent": 0.06798056112700124
+  },
+  "llvm_witness": {
+    "root_kernel": "kernel_82d26abe671aec86",
+    "retained_callable_symbols": [
+      "callable.6",
+      "callable.14",
+      "callable.115",
+      "callable.120"
+    ],
+    "physical_value_evaluator_signature_present": false,
+    "inference": "LLVM O3 fully inlined the value evaluator at its consumers"
+  },
+  "image_comparison": {
+    "width": 640,
+    "height": 480,
+    "samples": 64,
+    "named_passes": 15,
+    "invalid_pixels": 0,
+    "combined_rmse": 0.0008580077555961907,
+    "combined_relative_rmse": 0.005290299911260112,
+    "combined_luminance_mean_ratio": 0.9999990207498749,
+    "normal_rmse": 0.00006858292181277648,
+    "normal_relative_rmse": 0.000124347344300746
+  }
+}
