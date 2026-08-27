@@ -20,16 +20,20 @@ The remaining gap to Cycles is split across two independent boundaries:
    derived closure payload only after dispatch.
 
 The second difference is a measured performance boundary. On the retained
-640x480, 64-spp Barbershop HIP traces, Psycles `shade_surface` costs 28.844 ns
-per launched item and Cycles costs 10.778 ns per item: Psycles is 2.676x the
-normalized cost. The current Psycles entry uses 256 VGPRs and 3,152 B private
-storage; Cycles uses 192 VGPRs and 6,976 B private storage. The result cannot
-be explained by private bytes alone.
+640x480, 64-spp Barbershop HIP traces, baseline Psycles `shade_surface` costs
+28.844 ns per launched item and Cycles costs 10.778 ns per item: Psycles is
+2.676x the normalized cost. The baseline Psycles entry uses 256 VGPRs and
+3,152 B private storage; Cycles uses 192 VGPRs and 6,976 B private storage.
+The result cannot be explained by private bytes alone.
 
-This audit does not change rendering and therefore does not create a new image
-comparison or triptych. It identifies the semantic and compiler obligations
-for the next change. Existing renderer changes remain subject to all-pass EXR,
-visual, fallback/HIP, and native-XIR Vulkan validation.
+This change introduces a checked, staged physical-closure access boundary for
+categorical scans, runtime flags, and closure tracing. It preserves the
+accepted 864 B coroutine frame and HIP object size: the checked candidate
+costs 28.856 ns/item, a 0.04% difference from baseline and therefore noise,
+not a claimed speedup. Its purpose is to make the initialized-prefix proof
+explicit before attempting family-specific payload elimination. The renderer
+change is covered by fallback/HIP/native-XIR-Vulkan regressions and an EXR
+comparison/triptych below.
 
 ## Reference identity
 
@@ -228,14 +232,20 @@ consume(C) = case tag(C) of
   bssrdf     -> consume_bssrdf(common, bssrdf_payload)
 ```
 
-### Psycles today
+### Psycles baseline and accepted staging boundary
 
 `pack_surface_closure_physical` stores the same logical sum in two
-`float4x4` blocks. However,
-`unpack_surface_closure_physical_payload` reads payload lanes for all three
-families and selects canonical defaults into one
-`SurfaceClosurePhysicalRecord`. Evaluation and sampling then derive family
-predicates from that wide record.
+`float4x4` blocks. The complete evaluation path and the selected-closure
+payload path still use `unpack_surface_closure_physical_payload`, which reads
+payload lanes for all three families and selects canonical defaults into one
+`SurfaceClosurePhysicalRecord`. Consumption then derives family predicates
+from that wide record.
+
+The accepted staging boundary does not pretend to finish family elimination.
+Its two categorical selection passes, runtime-flag reduction, and closure
+trace read only the common block. The payload block is first read after
+inverse-CDF selection. That separates a semantically valid dependency cut
+from the still-open family-specific consumer problem.
 
 The effective form is:
 
@@ -329,6 +339,70 @@ family branch at every closure-loop consumption site. Branch-local payloads
 were narrower, but the surrounding Luisa/LLVM loop state was cloned across
 families and merged. A correct implementation cannot merely spell the current
 decoder with more `$if` statements.
+
+## Accepted checked staging
+
+The rejected implementation exposed a second, independent invariant. A
+single-variable experiment changed only the selected closure from `entry()`
+to raw staged reads and reproduced the complete 2,272 B frame / 418,464 B
+object fixed point. Restoring one canonical bound projection restored the
+864 B frame and 356,768 B object:
+
+```text
+valid = requested_index < count
+safe_index = select(0, requested_index, valid)
+common = physical_0[safe_index]
+payload = physical_1[safe_index]
+```
+
+This is not a renderer-specific compiler hint. Let physical slot zero be
+initialized unconditionally and let each append initialize slot `count`
+before incrementing `count`. The initialized prefix is therefore
+`[0, max(count, 1))`. The projection above proves
+`safe_index < max(count, 1)` for every request, while `valid` preserves the
+observable meaning of the original index. By contrast, the business-level
+predicate `inversion.selected()` does not syntactically prove
+`selected_index < count` to coroutine alloca-scope analysis and must fail
+closed.
+
+`SurfaceClosurePhysicalAccess` now carries that pair, cannot be constructed
+outside `SurfaceClosureSet`, and is host-checked against its owning set; raw
+Local reads are private. Categorical scans, runtime flags, closure tracing,
+and the post-inversion payload load must pass this token. The API therefore
+makes the storage-safety proof a construction invariant rather than a
+convention at each call site.
+
+The fixed points isolate the effect:
+
+| Form | Prefix proofs | Coroutine frame | HIP object | Final LLVM | `phi` | HIP ns/item |
+|---|---:|---:|---:|---:|---:|---:|
+| accepted product baseline | not recorded | 864 B | 356,760 B | 57,932 lines / 3,373,035 B | 2,842 | 28.844 |
+| unchecked staged access | 0 | 2,272 B | 418,464 B | 64,290 lines / 4,029,923 B | 4,942 | 73.799 |
+| selected access checked, scan access unchecked | 1 | 1,568 B | 388,640 B | not retained | not retained | not profiled |
+| all staged access checked | 2 | 864 B | 356,768 B | 57,906 lines / 3,373,150 B | 2,842 | 28.856 |
+
+The 1,408 B unsafe-frame excess is exact for this kernel: each of the two
+12-entry `float4x4` physical arrays has slot zero independently initialized,
+so the remaining 11 entries contribute `2 * 11 * 64 = 1,408` B. The checked
+candidate also has 2,594 textual `select` occurrences versus 2,609 in the
+baseline. This is a structural preservation result; the 0.04% timing delta is
+measurement noise and no speedup is claimed.
+
+The permanent coroutine regression exercises both staged blocks with an
+arbitrary runtime request and requires the physical arena to contribute zero
+frame fields. The final focused matrix passed all nine combinations of
+closure collection, surface population, and compact preparation on fallback,
+HIP, and strict native XIR-to-SPIR-V Vulkan.
+
+The retained Barbershop EXRs compare at mean absolute error
+`1.03032e-07`, RMS `1.78531e-04`, PSNR `123.846 dB`, with 12 pixels
+(`0.00391%`) above `1e-5`. Visual inspection found no structural difference;
+the amplified panel contains only sparse scheduling-sensitive Monte Carlo
+outliers. Independent repeated candidate runs varied more because atomic film
+accumulation is not order-deterministic, so exact backend unit tests remain
+the semantic oracle.
+
+![Baseline, checked staging, and amplified difference](triptychs/checked-physical-access.png)
 
 ## Required next invariant
 

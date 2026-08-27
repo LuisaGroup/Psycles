@@ -30,6 +30,36 @@ enum class SurfaceClosureStorageProfile : std::uint32_t {
     aov,
 };
 
+class SurfaceClosureSet;
+
+// Proof-carrying index for the initialized physical-closure prefix. `index`
+// is always a valid backing-storage location; `valid` records whether the
+// original request denoted a retained closure. Keeping this projection in the
+// storage owner gives coroutine lifetime analysis the same canonical
+// `select(0, requested, requested < count)` witness at every staged read.
+class SurfaceClosurePhysicalAccess final {
+    friend class SurfaceClosureSet;
+
+  private:
+    const SurfaceClosureSet *_owner;
+    UInt _index;
+    Bool _valid;
+
+    SurfaceClosurePhysicalAccess(
+        const SurfaceClosureSet *owner,
+        UInt index,
+        Bool valid) noexcept
+        : _owner{owner}, _index{index}, _valid{valid} {}
+
+  public:
+    SurfaceClosurePhysicalAccess(
+        const SurfaceClosurePhysicalAccess &) noexcept = default;
+    SurfaceClosurePhysicalAccess(
+        SurfaceClosurePhysicalAccess &&) noexcept = default;
+
+    [[nodiscard]] const Bool &valid() const noexcept { return _valid; }
+};
+
 // Device-local counterpart of Cycles' ShaderData closure array. GraphSurface
 // emits records through the host-stage SurfaceClosureCollector interface;
 // this class alone owns allocation-budget truncation and runtime indexing.
@@ -67,6 +97,13 @@ class SurfaceClosureSet final : public SurfaceClosureCollector {
         const SurfaceClosureRecord &closure,
         const std::function<void()> *on_retained) noexcept;
 
+    [[nodiscard]] SurfaceClosurePhysicalCommonRecord
+    physical_common_entry_unchecked(UInt index) const noexcept;
+    [[nodiscard]] SurfaceClosurePhysicalRecord
+    physical_payload_entry_unchecked(
+        UInt index,
+        const SurfaceClosurePhysicalCommonRecord &common) const noexcept;
+
   public:
     explicit SurfaceClosureSet(
         std::size_t capacity,
@@ -93,17 +130,20 @@ class SurfaceClosureSet final : public SurfaceClosureCollector {
     [[nodiscard]] SurfaceClosureStorageProfile profile() const noexcept;
     [[nodiscard]] UInt count() const noexcept;
 
-    // Staged access to the physical tagged union. Both methods require the
-    // physical profile and index < count(); keeping them unchecked prevents a
-    // redundant validity select in the two loops which already establish that
-    // invariant. Reading common never touches the payload Local. Reading the
-    // payload is deliberately a separate operation so callers can record it
-    // under a runtime family branch.
+    // Staged access to the physical tagged union. Reading common never touches
+    // the payload Local. Reading the payload remains a separate operation so a
+    // caller can place it after categorical selection or under a family
+    // branch. All reads require a physical_access() witness; raw Local indices
+    // stay private so a source-level guard cannot accidentally be mistaken for
+    // an initialized-prefix proof by the renderer.
+    [[nodiscard]] SurfaceClosurePhysicalAccess
+    physical_access(UInt requested_index) const noexcept;
     [[nodiscard]] SurfaceClosurePhysicalCommonRecord
-    physical_common_entry_unchecked(UInt index) const noexcept;
+    physical_common_entry(
+        const SurfaceClosurePhysicalAccess &access) const noexcept;
     [[nodiscard]] SurfaceClosurePhysicalRecord
-    physical_payload_entry_unchecked(
-        UInt index,
+    physical_payload_entry(
+        const SurfaceClosurePhysicalAccess &access,
         const SurfaceClosurePhysicalCommonRecord &common) const noexcept;
 
     [[nodiscard]] SurfaceClosureRecord entry(

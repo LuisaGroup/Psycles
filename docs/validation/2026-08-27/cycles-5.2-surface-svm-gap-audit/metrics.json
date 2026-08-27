@@ -1,5 +1,5 @@
 {
-  "schema": "psycles.cycles-5.2-surface-svm-gap-audit.v1",
+  "schema": "psycles.cycles-5.2-surface-svm-gap-audit.v2",
   "reference": {
     "psycles": "717176eebc7b47e7d1b55db6dcc9e00f7285ff3b",
     "luisa_compute": "eeda4b154fcf43e8709d1b42478e958677b9c6ae",
@@ -90,5 +90,37 @@
     "phi_occurrences": 4942,
     "select_occurrences": 2593,
     "result": "rejected_and_removed"
+  },
+  "accepted_checked_physical_access": {
+    "calls": 293,
+    "work_items": 53659264,
+    "gpu_ms": 1548.387,
+    "ns_per_item": 28.856,
+    "coroutine_frame_bytes": 864,
+    "coroutine_frame_fields": 182,
+    "initialized_prefix_proofs": 2,
+    "object_bytes": 356768,
+    "final_llvm_bytes": 3373150,
+    "final_llvm_lines": 57906,
+    "alloca_occurrences": 46,
+    "phi_occurrences": 2842,
+    "select_occurrences": 2594,
+    "stage_hash": "2c13ad1718d2ee38",
+    "baseline_delta_percent": 0.04,
+    "performance_result": "neutral_within_noise",
+    "exr_comparison": {
+      "mean_absolute_error": 1.03032e-7,
+      "rms_error": 1.78531e-4,
+      "psnr_db": 123.846,
+      "pixels_over_1e-5": 12,
+      "fraction_over_1e-5": 0.0000391,
+      "visual_result": "no_structural_difference"
+    },
+    "focused_backend_matrix": {
+      "fallback": "pass",
+      "hip": "pass",
+      "vulkan_native_xir_spirv": "pass",
+      "tests": 9
+    }
   }
 }
