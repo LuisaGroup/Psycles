@@ -147,8 +147,10 @@ SurfaceClosureSet::SurfaceClosureSet(
         // Keep the empty-set fallback at slot zero. append_impl writes every
         // field of slot count before publishing count + 1, and every consumer
         // indexes only [0, count) (or selects slot zero for an invalid index).
-        // Thus [0, count) is the exact initialized prefix; clearing the unused
-        // suffix would add stores without changing any observable value.
+        // Thus [0, max(count, 1)) is the initialized prefix; clearing the
+        // unused suffix would add stores without changing any observable
+        // value. physical_access() maps every invalid request to the always
+        // initialized slot zero and separately retains its validity bit.
         _physical_0.write(0u, packed.block_0);
         _physical_1.write(0u, packed.block_1);
         return;
@@ -327,6 +329,17 @@ UInt SurfaceClosureSet::count() const noexcept {
     return _count;
 }
 
+SurfaceClosurePhysicalAccess
+SurfaceClosureSet::physical_access(
+    UInt requested_index) const noexcept {
+    LUISA_ASSERT(
+        _profile == SurfaceClosureStorageProfile::physical,
+        "Staged physical closure access requires the physical profile.");
+    const auto valid = requested_index < _count;
+    return SurfaceClosurePhysicalAccess{
+        this, select(0u, requested_index, valid), valid};
+}
+
 SurfaceClosurePhysicalCommonRecord
 SurfaceClosureSet::physical_common_entry_unchecked(
     UInt index) const noexcept {
@@ -336,6 +349,15 @@ SurfaceClosureSet::physical_common_entry_unchecked(
     return unpack_surface_closure_physical_common(
         Expr<luisa::float4x4>{
             _physical_0.read(index).expression()});
+}
+
+SurfaceClosurePhysicalCommonRecord
+SurfaceClosureSet::physical_common_entry(
+    const SurfaceClosurePhysicalAccess &access) const noexcept {
+    LUISA_ASSERT(
+        access._owner == this,
+        "Physical closure access belongs to a different set.");
+    return physical_common_entry_unchecked(access._index);
 }
 
 SurfaceClosurePhysicalRecord
@@ -349,6 +371,16 @@ SurfaceClosureSet::physical_payload_entry_unchecked(
         common,
         Expr<luisa::float4x4>{
             _physical_1.read(index).expression()});
+}
+
+SurfaceClosurePhysicalRecord
+SurfaceClosureSet::physical_payload_entry(
+    const SurfaceClosurePhysicalAccess &access,
+    const SurfaceClosurePhysicalCommonRecord &common) const noexcept {
+    LUISA_ASSERT(
+        access._owner == this,
+        "Physical closure access belongs to a different set.");
+    return physical_payload_entry_unchecked(access._index, common);
 }
 
 SurfaceClosureRecord SurfaceClosureSet::entry(

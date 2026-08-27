@@ -445,6 +445,25 @@ void write_results(
                         0.0f, 1.0f, closure.preserve_ggx_energy) +
                     select(0.0f, 1.0f, closure.beckmann));
             };
+
+            // Exercise the production staged path with a runtime request that
+            // is not syntactically guarded by requested < count. The access
+            // witness must make both physical blocks prefix-safe; otherwise
+            // the two Local arenas reappear in the coroutine frame.
+            const auto requested = cast<std::uint32_t>(
+                abs(values.read(0u).w));
+            const auto access =
+                closures.physical_access(requested);
+            const auto common =
+                closures.physical_common_entry(access);
+            const auto physical =
+                closures.physical_payload_entry(access, common);
+            weight_sum += select(
+                make_float3(0.0f),
+                physical.weight + physical.color +
+                    physical.evaluation_scale +
+                    physical.transmission_tint,
+                access.valid());
             values.write(
                 closure_capacity,
                 make_float4(
@@ -456,11 +475,12 @@ void write_results(
         }};
 
     // The physical arena is created, populated, and consumed entirely in
-    // the shade-surface continuation. Its runtime-indexed slots must not
-    // become payload fields merely because Luisa records Local declarations
-    // at function scope. Before the bounded arena was fully initialized, the
-    // conservative incoming-value model leaked 33 float4x4 elements into the
-    // frame here.
+    // the shade-surface continuation. Its ordinary and staged runtime-indexed
+    // slots must not become payload fields merely because Luisa records Local
+    // declarations at function scope. Before the bounded arena was fully
+    // initialized, the conservative incoming-value model leaked 33 float4x4
+    // elements into the frame here; bypassing physical_access() leaks the two
+    // 12-element physical blocks for the same formal reason.
     if (coroutine.frame().field_count() != 0u) {
         std::cerr
             << "physical closure arena escaped its synchronous coroutine "

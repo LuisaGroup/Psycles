@@ -1,4 +1,5 @@
 #include <psycles/luisa/surface_closure_sampling.h>
+#include <psycles/luisa/surface_closure_physical_blocks.h>
 
 #include "graph_surface_internal.h"
 #include "microfacet_glass_component.h"
@@ -44,6 +45,27 @@ Float3 make_surface_closure_sampling_incoming(
 SurfaceClosureSelectionInput
 make_surface_closure_selection_input(
     const SurfaceClosurePhysicalRecord &closure) noexcept {
+    return {
+        .kind = Expr<std::uint32_t>{closure.kind.expression()},
+        .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
+        .bssrdf_method = Expr<std::uint32_t>{
+            closure.bssrdf_method.expression()},
+        .allocation_weight =
+            Expr<float>{closure.allocation_weight.expression()},
+        .sample_weight =
+            Expr<float>{closure.sample_weight.expression()},
+        .setup_valid =
+            Expr<bool>{closure.setup_valid.expression()},
+        .normal = Expr<luisa::float3>{closure.normal.expression()},
+        .roughness = Expr<float>{closure.roughness.expression()},
+        .preserve_ggx_energy = Expr<bool>{
+            closure.preserve_ggx_energy.expression()},
+        .beckmann = Expr<bool>{closure.beckmann.expression()}};
+}
+
+SurfaceClosureSelectionInput
+make_surface_closure_selection_input(
+    const SurfaceClosurePhysicalCommonRecord &closure) noexcept {
     return {
         .kind = Expr<std::uint32_t>{closure.kind.expression()},
         .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
