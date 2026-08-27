@@ -1,0 +1,52 @@
+{
+  "schema": "psycles.private-reference-closure-evaluator-rejected.v1",
+  "baseline": {
+    "commit": "eab23be",
+    "shade_surface_kernel": "kernel_fd1f1c5285842623",
+    "calls": 293,
+    "logical_items": 53660864,
+    "coroutine_frame_bytes": 864,
+    "private_segment_bytes": 3096,
+    "code_object_bytes": 340184,
+    "shade_surface_device_ms": 1440.563778,
+    "shade_surface_ns_per_item": 26.845705987887186,
+    "render_only_seconds": 2.52529
+  },
+  "candidate": {
+    "shade_surface_kernel": "kernel_ac3f02d4515ad373",
+    "calls": 293,
+    "logical_items": 53660896,
+    "coroutine_frame_bytes": 2272,
+    "private_segment_bytes": 7072,
+    "code_object_bytes": 413616,
+    "shade_surface_device_ms": 3910.914755,
+    "shade_surface_ns_per_item": 72.88202483611157,
+    "render_only_seconds": 5.06264
+  },
+  "change": {
+    "coroutine_frame_bytes": 1408,
+    "private_segment_percent": 128.42377260981914,
+    "code_object_percent": 21.585965242339444,
+    "shade_surface_ns_per_item_percent": 171.48485075786803,
+    "render_only_percent": 100.47756891287732
+  },
+  "formal_witness": {
+    "physical_arrays": 2,
+    "closure_capacity": 11,
+    "bytes_per_float4x4": 64,
+    "address_taken_arena_bytes": 1408,
+    "equals_measured_frame_increase": true
+  },
+  "image_comparison": {
+    "width": 640,
+    "height": 480,
+    "samples": 64,
+    "named_passes": 15,
+    "invalid_pixels": 0,
+    "combined_rmse": 0.0008580077555961907,
+    "combined_relative_rmse": 0.005290299911260112,
+    "combined_luminance_mean_ratio": 0.9999990207498749,
+    "normal_rmse": 0.00006858291453681886,
+    "normal_relative_rmse": 0.00012434733110874453
+  }
+}
