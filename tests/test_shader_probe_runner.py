@@ -362,6 +362,43 @@ class ShaderProbeRunnerContract(unittest.TestCase):
             any("relative RMSE" in failure for failure in failures)
         )
 
+    def test_thin_film_gate_rejects_a_structural_cell_error(self) -> None:
+        pass_names = (
+            "Combined",
+            "GlossCol",
+            "GlossDir",
+            "TransCol",
+            "Normal",
+        )
+        report = {
+            "passes": {
+                pass_name: {
+                    "luminance_mean_ratio": 1.0,
+                    # Sparse ray/triangle boundary disagreements may dominate
+                    # whole-frame RMSE but leave more than 99% of pixels at
+                    # the deterministic direct-evaluation result.
+                    "relative_rmse": 0.01,
+                    "p99_pixel_rmse": 0.00001,
+                    "cycles_rms": 1.0,
+                }
+                for pass_name in pass_names
+            }
+        }
+        self.assertEqual(
+            self.runner._probe_gate_failures("thin_film_surface", report),
+            [],
+        )
+
+        # Each closure occupies 1/16 of the matrix. An incorrect closure thus
+        # changes more than 1% of all pixels and must cross the p99 gate even
+        # if positive and negative cell errors preserve global energy.
+        report["passes"]["GlossDir"]["p99_pixel_rmse"] = 0.01
+        failures = self.runner._probe_gate_failures(
+            "thin_film_surface", report
+        )
+        self.assertEqual(len(failures), 1)
+        self.assertIn("normalized p99 pixel RMSE", failures[0])
+
 
 if __name__ == "__main__":
     # unittest would otherwise treat the runner path as a test selector.

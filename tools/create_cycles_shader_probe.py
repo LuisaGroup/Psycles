@@ -37,6 +37,7 @@ from cycles_shader_probe import (  # noqa: E402
     subsurface_closures,
     support,
     texture_inputs,
+    thin_film_closures,
     values,
     volume_closures,
     voronoi_inputs,
@@ -165,6 +166,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
         closures._principled_thin_wall_surface
     ),
     "principled_transmission_surface": closures._principled_transmission_surface,
+    "thin_film_surface": thin_film_closures._thin_film_surface,
     "refraction_bsdf_matrix": refraction_closures._refraction_bsdf_matrix,
     "random_walk_transport": (
         subsurface_closures._random_walk_transport
