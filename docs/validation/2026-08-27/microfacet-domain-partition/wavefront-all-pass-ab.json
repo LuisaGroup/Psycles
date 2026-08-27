@@ -1,0 +1,706 @@
+{
+  "actual_label": "domain-partition",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9999939799308777,
+        0.9999959468841553,
+        0.9999982714653015
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.09004352986812592,
+        0.06402445584535599,
+        0.04894717037677765
+      ],
+      "cycles_luminance_mean": 0.06846950203180313,
+      "cycles_rms": 0.16210409998893738,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.999995429725998,
+      "maximum_absolute_error": 0.05452835559844971,
+      "mean_absolute_error": 2.3556808628200088e-06,
+      "orientation_rmse": {
+        "flip_x": 0.1863917112350464,
+        "flip_xy": 0.19609840214252472,
+        "flip_y": 0.18821750581264496,
+        "identity": 0.00016195554053410888
+      },
+      "p95_pixel_rmse": 1.3091673167764384e-07,
+      "p99_pixel_rmse": 5.280543973640306e-06,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.09004298597574234,
+        0.0640241950750351,
+        0.048947084695100784
+      ],
+      "psycles_luminance_mean": 0.06846918910741806,
+      "psycles_rms": 0.1621040550186282,
+      "relative_rmse": 0.000999083555228778,
+      "rmse": 0.00016195554053410888,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        0.9999999403953552,
+        0.9999998807907104,
+        0.9999998211860657
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.2334563136100769,
+        0.207730233669281,
+        0.18235737085342407
+      ],
+      "cycles_luminance_mean": 0.21133951842784882,
+      "cycles_rms": 0.2613082528114319,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999998589836742,
+      "maximum_absolute_error": 0.005006283521652222,
+      "mean_absolute_error": 2.222540729235334e-08,
+      "orientation_rmse": {
+        "flip_x": 0.22229188680648804,
+        "flip_xy": 0.22446930408477783,
+        "flip_y": 0.21722495555877686,
+        "identity": 9.049968866747804e-06
+      },
+      "p95_pixel_rmse": 8.603189272093914e-09,
+      "p99_pixel_rmse": 3.4412757088375656e-08,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.2334562987089157,
+        0.20773020386695862,
+        0.18235734105110168
+      ],
+      "psycles_luminance_mean": 0.21133948862552643,
+      "psycles_rms": 0.2613082199612935,
+      "relative_rmse": 3.4633306714880306e-05,
+      "rmse": 9.049968866747804e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "DiffDir": {
+      "channel_mean_ratio": [
+        1.0000001192092896,
+        1.0000001192092896,
+        1.0000001192092896
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.23455746471881866,
+        0.19746556878089905,
+        0.1879761517047882
+      ],
+      "cycles_luminance_mean": 0.20466792583465576,
+      "cycles_rms": 0.4761165678501129,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000001456130572,
+      "maximum_absolute_error": 0.006791088730096817,
+      "mean_absolute_error": 2.086302153259112e-08,
+      "orientation_rmse": {
+        "flip_x": 0.49565985798835754,
+        "flip_xy": 0.5038896203041077,
+        "flip_y": 0.4842929542064667,
+        "identity": 8.559254638385028e-06
+      },
+      "p95_pixel_rmse": 8.603189272093914e-09,
+      "p99_pixel_rmse": 6.882551417675131e-08,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.23455749452114105,
+        0.19746559858322144,
+        0.1879761815071106
+      ],
+      "psycles_luminance_mean": 0.20466795563697815,
+      "psycles_rms": 0.4761165658750107,
+      "relative_rmse": 1.7977224941013987e-05,
+      "rmse": 8.559254638385028e-06,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "DiffInd": {
+      "channel_mean_ratio": [
+        0.9999808669090271,
+        0.9999880194664001,
+        0.9999958872795105
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.07751268893480301,
+        0.056273091584444046,
+        0.0449647456407547
+      ],
+      "cycles_luminance_mean": 0.0599733404815197,
+      "cycles_rms": 0.11339090019464493,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999863345303249,
+      "maximum_absolute_error": 0.31977757811546326,
+      "mean_absolute_error": 1.5281034393410664e-06,
+      "orientation_rmse": {
+        "flip_x": 0.12528841197490692,
+        "flip_xy": 0.12874823808670044,
+        "flip_y": 0.12185325473546982,
+        "identity": 0.00038926408160477877
+      },
+      "p95_pixel_rmse": 7.21078663445951e-08,
+      "p99_pixel_rmse": 1.2716105857180082e-06,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.07751120626926422,
+        0.056272417306900024,
+        0.04496455937623978
+      ],
+      "psycles_luminance_mean": 0.05997252091765404,
+      "psycles_rms": 0.11338855741759718,
+      "relative_rmse": 0.0034329393358424223,
+      "rmse": 0.00038926408160477877,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "Emit": {
+      "channel_mean_ratio": [
+        0.9999999403953552,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.01319270022213459,
+        0.008194769732654095,
+        0.0038855907041579485
+      ],
+      "cycles_luminance_mean": 0.008946343325078487,
+      "cycles_rms": 0.06143861636519432,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 3.5762786865234375e-07,
+      "mean_absolute_error": 3.903399825588849e-11,
+      "orientation_rmse": {
+        "flip_x": 0.08417942374944687,
+        "flip_xy": 0.08591235429048538,
+        "flip_y": 0.0832207202911377,
+        "identity": 1.6898421550948228e-09
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.013192699290812016,
+        0.008194769732654095,
+        0.0038855907041579485
+      ],
+      "psycles_luminance_mean": 0.008946343325078487,
+      "psycles_rms": 0.06143861744158906,
+      "relative_rmse": 2.7504560731809347e-08,
+      "rmse": 1.6898421550948228e-09,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "Env": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.00015926190826576203,
+        0.00015926190826576203,
+        0.00015926190826576203
+      ],
+      "cycles_luminance_mean": 0.00015926201012916863,
+      "cycles_rms": 0.008149487897753716,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.011525115929543972,
+        "flip_xy": 0.011525116860866547,
+        "flip_y": 0.011525116860866547,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.00015926190826576203,
+        0.00015926190826576203,
+        0.00015926190826576203
+      ],
+      "psycles_luminance_mean": 0.00015926201012916863,
+      "psycles_rms": 0.008149488039063802,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.06911947578191757,
+        0.06739150732755661,
+        0.06610863655805588
+      ],
+      "cycles_luminance_mean": 0.06767366081476212,
+      "cycles_rms": 0.18124370276927948,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 1.0274350643157959e-05,
+      "mean_absolute_error": 7.186410355686235e-10,
+      "orientation_rmse": {
+        "flip_x": 0.23592855036258698,
+        "flip_xy": 0.23566651344299316,
+        "flip_y": 0.23837746679782867,
+        "identity": 1.556362150267887e-08
+      },
+      "p95_pixel_rmse": 5.376993295058696e-10,
+      "p99_pixel_rmse": 2.9802322387695312e-08,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.06911947578191757,
+        0.06739150732755661,
+        0.06610863655805588
+      ],
+      "psycles_luminance_mean": 0.06767366081476212,
+      "psycles_rms": 0.18124370892886432,
+      "relative_rmse": 8.587124002035605e-08,
+      "rmse": 1.556362150267887e-08,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        0.9999998807907104,
+        0.9999995231628418,
+        0.9999996423721313
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.13920781016349792,
+        0.14768405258655548,
+        0.16298440098762512
+      ],
+      "cycles_luminance_mean": 0.1470072865486145,
+      "cycles_rms": 1.5931881666183472,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999995945463237,
+      "maximum_absolute_error": 0.009031414985656738,
+      "mean_absolute_error": 7.668226942314504e-08,
+      "orientation_rmse": {
+        "flip_x": 2.2211999893188477,
+        "flip_xy": 2.2335219383239746,
+        "flip_y": 2.2277042865753174,
+        "identity": 1.7076763469958678e-05
+      },
+      "p95_pixel_rmse": 3.8169314930946996e-10,
+      "p99_pixel_rmse": 3.4412757088375656e-08,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.13920779526233673,
+        0.1476839780807495,
+        0.16298434138298035
+      ],
+      "psycles_luminance_mean": 0.14700722694396973,
+      "psycles_rms": 1.5931880184503613,
+      "relative_rmse": 1.0718610536886736e-05,
+      "rmse": 1.7076763469958678e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        0.9998681545257568,
+        0.9999379515647888,
+        1.0000044107437134
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.08375042676925659,
+        0.061457958072423935,
+        0.050196774303913116
+      ],
+      "cycles_luminance_mean": 0.065394327044487,
+      "cycles_rms": 0.31238389015197754,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999229812017165,
+      "maximum_absolute_error": 2.2074339389801025,
+      "mean_absolute_error": 1.779366357368417e-05,
+      "orientation_rmse": {
+        "flip_x": 0.42919400334358215,
+        "flip_xy": 0.4287511110305786,
+        "flip_y": 0.4291166067123413,
+        "identity": 0.003068365855142474
+      },
+      "p95_pixel_rmse": 7.702112725382904e-07,
+      "p99_pixel_rmse": 2.295295416843146e-05,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.08373938500881195,
+        0.06145414337515831,
+        0.050196994096040726
+      ],
+      "psycles_luminance_mean": 0.06538929045200348,
+      "psycles_rms": 0.3123734456344589,
+      "relative_rmse": 0.009822420271575743,
+      "rmse": 0.003068365855142474,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.10977768898010254,
+        0.3143402934074402,
+        -0.0570933073759079
+      ],
+      "cycles_luminance_mean": 0.2440001368522644,
+      "cycles_rms": 0.5515429377555847,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 8.44523310661316e-06,
+      "mean_absolute_error": 1.4096446232514381e-09,
+      "orientation_rmse": {
+        "flip_x": 0.6507166624069214,
+        "flip_xy": 0.8734654784202576,
+        "flip_y": 0.7784239649772644,
+        "identity": 1.7960942955141945e-08
+      },
+      "p95_pixel_rmse": 1.7206378544187828e-08,
+      "p99_pixel_rmse": 3.847463148076713e-08,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.10977768898010254,
+        0.3143402934074402,
+        -0.0570933073759079
+      ],
+      "psycles_luminance_mean": 0.2440001368522644,
+      "psycles_rms": 0.5515429593263914,
+      "relative_rmse": 3.2564904245227245e-08,
+      "rmse": 1.7960942955141945e-08,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "TransCol": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        0.9999999403953552
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.0061767809092998505,
+        0.006367118563503027,
+        0.006003119051456451
+      ],
+      "cycles_luminance_mean": 0.00630037859082222,
+      "cycles_rms": 0.04956011101603508,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 1.7881393432617188e-07,
+      "mean_absolute_error": 6.139897618107071e-11,
+      "orientation_rmse": {
+        "flip_x": 0.07008858025074005,
+        "flip_xy": 0.06547345966100693,
+        "flip_y": 0.07008858025074005,
+        "identity": 1.8861228134881003e-09
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.0061767809092998505,
+        0.006367118563503027,
+        0.006003118585795164
+      ],
+      "psycles_luminance_mean": 0.00630037859082222,
+      "psycles_rms": 0.049560112317063976,
+      "relative_rmse": 3.805727579742202e-08,
+      "rmse": 1.8861228134881003e-09,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "TransDir": {
+      "channel_mean_ratio": [
+        0.9999992847442627,
+        0.9999998211860657,
+        0.9999995231628418
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        5.779268576588947e-06,
+        5.524109838006552e-06,
+        4.5413439693220425e-06
+      ],
+      "cycles_luminance_mean": 5.507422429218423e-06,
+      "cycles_rms": 0.00024355121422559023,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999997522902827,
+      "maximum_absolute_error": 1.1297322544123745e-06,
+      "mean_absolute_error": 3.20781248785984e-12,
+      "orientation_rmse": {
+        "flip_x": 0.00034443344338797033,
+        "flip_xy": 0.00034443344338797033,
+        "flip_y": 0.00034443344338797033,
+        "identity": 1.4881813559242119e-09
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        5.779264483862789e-06,
+        5.5241089285118505e-06,
+        4.541341695585288e-06
+      ],
+      "psycles_luminance_mean": 5.50742106497637e-06,
+      "psycles_rms": 0.00024355121578764266,
+      "relative_rmse": 6.110342585053911e-06,
+      "rmse": 1.4881813559242119e-09,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "TransInd": {
+      "channel_mean_ratio": [
+        1.0000001192092896,
+        1.0000001192092896,
+        0.9999998211860657
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.0006660349317826331,
+        0.0004743823956232518,
+        0.0003632180450949818
+      ],
+      "cycles_luminance_mean": 0.0005071008927188814,
+      "cycles_rms": 0.01485520787537098,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000001147851676,
+      "maximum_absolute_error": 6.082653999328613e-05,
+      "mean_absolute_error": 4.842632961299387e-10,
+      "orientation_rmse": {
+        "flip_x": 0.021008437499403954,
+        "flip_xy": 0.021006936207413673,
+        "flip_y": 0.021008437499403954,
+        "identity": 1.2814365391022875e-07
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.000666034989990294,
+        0.0004743824538309127,
+        0.0003632179868873209
+      ],
+      "psycles_luminance_mean": 0.0005071009509265423,
+      "psycles_rms": 0.014855208961879435,
+      "relative_rmse": 8.626177094612256e-06,
+      "rmse": 1.2814365391022875e-07,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "Volume Direct": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    },
+    "Volume Indirect": {
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-branch-20260827/baseline-b1.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-microfacet-branch-20260827/candidate-final-c3.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "baseline-3e7ca5e",
+  "schema": "psycles.cycles-differential.v2"
+}

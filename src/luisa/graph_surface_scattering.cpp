@@ -816,66 +816,77 @@ microfacet_reflection_distribution_terms(
     Float glossy_filter_roughness,
     bool may_be_anisotropic) noexcept {
     static_cast<void>(services);
-    auto n_dot_v = max(dot(glossy_normal, incoming), 0.0f);
-    auto n_dot_l = max(dot(glossy_normal, outgoing), 0.0f);
-    auto half_vector =
-        safe_normalize(incoming + outgoing, glossy_normal);
-    auto v_dot_h = max(dot(incoming, half_vector), 0.0f);
-    Bool singular;
-    Float roughness_squared;
-    MicrofacetDistributionTerms terms;
+    Float2 setup_alpha;
     if (may_be_anisotropic) {
-        const auto setup_alpha = microfacet_alpha(
+        setup_alpha = microfacet_alpha(
             closure, glossy_filter_roughness);
-        const auto alpha_product = setup_alpha.x * setup_alpha.y;
-        singular = alpha_product <=
-                   cycles_closure::microfacet_singular_alpha_product;
-        roughness_squared = select(
-            alpha_product, 0.0f, singular);
-        const auto alpha = max(
-            setup_alpha,
-            make_float2(1.0e-10f));
-        terms = microfacet_reflection_distribution_terms(
-            closure,
-            half_vector,
-            incoming,
-            outgoing,
-            glossy_normal,
-            alpha);
     } else {
-        const auto setup_alpha = microfacet_alpha(
-            closure.common, glossy_filter_roughness);
-        const auto alpha_squared = setup_alpha * setup_alpha;
-        singular = alpha_squared <=
-                   cycles_closure::microfacet_singular_alpha_product;
-        roughness_squared = select(
-            alpha_squared, 0.0f, singular);
-        const auto scalar_alpha = max(setup_alpha, 1.0e-10f);
-        terms = microfacet_distribution_terms(
-            closure.common,
-            max(dot(glossy_normal, half_vector), 0.0f),
-            n_dot_v,
-            n_dot_l,
-            scalar_alpha);
+        setup_alpha = make_float2(microfacet_alpha(
+            closure.common, glossy_filter_roughness));
     }
-    auto geometry = 1.0f /
-                    (1.0f + terms.lambda_incoming +
-                        terms.lambda_outgoing);
-    const auto fresnel = microfacet_reflection_fresnel(
-        closure, v_dot_h);
-    auto intensity = fresnel * terms.distribution * geometry /
-                     max(4.0f * n_dot_v, 1.0e-20f);
-    auto pdf = terms.distribution /
-               max(4.0f * n_dot_v, 1.0e-20f) /
-               (1.0f + terms.lambda_incoming);
-    const auto valid =
-        (n_dot_v > 0.0f) & (n_dot_l > 0.0f) &
-        (dot(glossy_normal, half_vector) > 0.0f) &
-        (v_dot_h > 0.0f) & !singular;
-    return {
-        .intensity = select(make_float3(0.0f), intensity, valid),
-        .pdf = select(0.0f, pdf, valid),
-        .roughness_squared = roughness_squared};
+    const auto alpha_product = setup_alpha.x * setup_alpha.y;
+    const auto singular =
+        alpha_product <=
+        cycles_closure::microfacet_singular_alpha_product;
+    MicrofacetEvaluation result{
+        .intensity = make_float3(0.0f),
+        .pdf = 0.0f,
+        .roughness_squared = select(alpha_product, 0.0f, singular)};
+    // A delta closure has zero density in the finite-direction measure. The
+    // complete regular evaluator is therefore unreachable in that domain,
+    // matching Cycles' SD_BSDF_HAS_EVAL classification.
+    $if(!singular) {
+        const auto n_dot_v =
+            max(dot(glossy_normal, incoming), 0.0f);
+        const auto n_dot_l =
+            max(dot(glossy_normal, outgoing), 0.0f);
+        const auto half_vector =
+            safe_normalize(incoming + outgoing, glossy_normal);
+        const auto v_dot_h =
+            max(dot(incoming, half_vector), 0.0f);
+        MicrofacetDistributionTerms terms;
+        if (may_be_anisotropic) {
+            const auto alpha = max(
+                setup_alpha,
+                make_float2(1.0e-10f));
+            terms = microfacet_reflection_distribution_terms(
+                closure,
+                half_vector,
+                incoming,
+                outgoing,
+                glossy_normal,
+                alpha);
+        } else {
+            const auto scalar_alpha =
+                max(setup_alpha.x, 1.0e-10f);
+            terms = microfacet_distribution_terms(
+                closure.common,
+                max(dot(glossy_normal, half_vector), 0.0f),
+                n_dot_v,
+                n_dot_l,
+                scalar_alpha);
+        }
+        const auto geometry =
+            1.0f / (1.0f + terms.lambda_incoming +
+                    terms.lambda_outgoing);
+        const auto fresnel = microfacet_reflection_fresnel(
+            closure, v_dot_h);
+        const auto intensity =
+            fresnel * terms.distribution * geometry /
+            max(4.0f * n_dot_v, 1.0e-20f);
+        const auto pdf =
+            terms.distribution /
+            max(4.0f * n_dot_v, 1.0e-20f) /
+            (1.0f + terms.lambda_incoming);
+        const auto valid =
+            (n_dot_v > 0.0f) & (n_dot_l > 0.0f) &
+            (dot(glossy_normal, half_vector) > 0.0f) &
+            (v_dot_h > 0.0f);
+        result.intensity = select(
+            make_float3(0.0f), intensity, valid);
+        result.pdf = select(0.0f, pdf, valid);
+    };
+    return result;
 }
 
 [[nodiscard]] MicrofacetReflectionSample sample_microfacet_reflection(
@@ -895,42 +906,53 @@ microfacet_reflection_distribution_terms(
         alpha = make_float2(microfacet_alpha(
             closure.common, glossy_filter_roughness));
     }
-    const auto sampling_alpha = max(alpha, make_float2(1.0e-10f));
-    auto basis = cycles_sample_mapping::make_orthonormals(glossy_normal);
-    if (may_be_anisotropic) {
-        $if(sampling_alpha.x != sampling_alpha.y) {
-            const auto anisotropic_basis =
-                cycles_sample_mapping::make_orthonormals_tangent(
-                    glossy_normal, closure.payload.microfacet_tangent);
-            basis.tangent = anisotropic_basis.tangent;
-            basis.bitangent = anisotropic_basis.bitangent;
-        };
-    }
-    const auto ggx_half =
-        cycles_sample_mapping::sample_ggx_visible_normal(
-            glossy_normal,
-            basis,
-            incoming,
-            sampling_alpha.x,
-            sampling_alpha.y,
-            random);
-    const auto beckmann_half =
-        cycles_sample_mapping::sample_beckmann_visible_normal(
-            glossy_normal,
-            basis,
-            incoming,
-            sampling_alpha.x,
-            sampling_alpha.y,
-            random);
-    const auto half_vector = select(
-        ggx_half, beckmann_half, closure.common.beckmann);
-    const auto regular =
-        2.0f * dot(incoming, half_vector) * half_vector - incoming;
-    const auto singular_direction =
-        2.0f * dot(glossy_normal, incoming) * glossy_normal - incoming;
     const auto singular = alpha.x * alpha.y <=
                           cycles_closure::microfacet_singular_alpha_product;
-    const auto direction = select(regular, singular_direction, singular);
+    Float3 direction =
+        2.0f * dot(glossy_normal, incoming) * glossy_normal - incoming;
+    // The delta and regular domains are disjoint by definition. In the delta
+    // domain H=N, so evaluating either VNDF is dead work. Within the regular
+    // domain the distribution tag selects exactly one VNDF; a value select
+    // would eagerly evaluate both in the Luisa DSL.
+    $if(!singular) {
+        const auto sampling_alpha =
+            max(alpha, make_float2(1.0e-10f));
+        auto basis =
+            cycles_sample_mapping::make_orthonormals(glossy_normal);
+        if (may_be_anisotropic) {
+            $if(sampling_alpha.x != sampling_alpha.y) {
+                const auto anisotropic_basis =
+                    cycles_sample_mapping::make_orthonormals_tangent(
+                        glossy_normal,
+                        closure.payload.microfacet_tangent);
+                basis.tangent = anisotropic_basis.tangent;
+                basis.bitangent = anisotropic_basis.bitangent;
+            };
+        }
+        Float3 half_vector;
+        $if(closure.common.beckmann) {
+            half_vector =
+                cycles_sample_mapping::sample_beckmann_visible_normal(
+                    glossy_normal,
+                    basis,
+                    incoming,
+                    sampling_alpha.x,
+                    sampling_alpha.y,
+                    random);
+        }
+        $else {
+            half_vector =
+                cycles_sample_mapping::sample_ggx_visible_normal(
+                    glossy_normal,
+                    basis,
+                    incoming,
+                    sampling_alpha.x,
+                    sampling_alpha.y,
+                    random);
+        };
+        direction =
+            2.0f * dot(incoming, half_vector) * half_vector - incoming;
+    };
     const auto fresnel = microfacet_reflection_fresnel(
         closure, max(dot(glossy_normal, incoming), 0.0f));
     const auto bump_shadowing = bump_shadowing_term(

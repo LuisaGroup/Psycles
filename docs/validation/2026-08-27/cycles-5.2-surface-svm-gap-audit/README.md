@@ -57,6 +57,18 @@ The gain is small but repeatable in both samples and follows from removing
 executed duplicate work rather than changing closure semantics or control-flow
 shape.
 
+The per-handler oracle has now isolated the first large closure-local defect.
+Psycles eagerly evaluated both GGX and Beckmann VNDFs and evaluated a VNDF plus
+the finite-direction evaluator even in the disjoint delta domain. The formal
+domain partition in
+[microfacet-domain-partition](../microfacet-domain-partition/README.md) reduces
+the singular GGX probe from `3.35..3.60 ms` to a `0.822905 ms` median, slightly
+faster than the corresponding Cycles 5.2 probe. It does not measurably change
+Barbershop: the 64-spp render and `shade_surface` stage remain noise-level.
+Regular GGX is still 47.6% slower than Cycles because Psycles' generic path
+samples and then reconstructs the selected closure's expensive intermediates
+in a separate evaluator.
+
 ## Reference identity
 
 - Original audit Psycles point: `717176eebc7b47e7d1b55db6dcc9e00f7285ff3b`.
@@ -791,9 +803,11 @@ IR, object, register/private metadata, and HIP time rather than source size.
 
 ## Priorities
 
-1. Compare each typed family handler against Cycles' corresponding
-   `bsdf_eval`/`bsdf_sample` device path with constant-input probes and final
-   HIP ISA/resource checks before changing more control flow.
+1. Fuse the selected regular microfacet sample and its contribution while
+   sampled `H/I/O`, distribution, Lambda, Fresnel, and Jacobian are live. Keep
+   this local to the chosen handler/consumer so it does not repeat the rejected
+   global selected-contribution ABI expansion; prove the singleton and mixture
+   estimators separately, then gate it on final HIP object/resource/time data.
 2. Add the missing high-use closure semantics: Principled/Glossy anisotropy
    and tangent, thin film, standalone Metallic/Sheen, then Hair families.
 3. Add typed multi-result SVM instructions where a Cycles handler performs one
