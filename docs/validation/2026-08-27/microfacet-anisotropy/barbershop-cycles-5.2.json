@@ -1,0 +1,321 @@
+{
+  "actual_label": "Psycles HIP def08ab, Blender 5.2 export",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "RenderLayer.Ambient Occlusion.R",
+    "RenderLayer.Ambient Occlusion.G",
+    "RenderLayer.Ambient Occlusion.B",
+    "RenderLayer.Combined.R",
+    "RenderLayer.Combined.G",
+    "RenderLayer.Combined.B",
+    "RenderLayer.Combined.A",
+    "RenderLayer.Debug Sample Count.X",
+    "RenderLayer.Depth.Z",
+    "RenderLayer.Diffuse Color.R",
+    "RenderLayer.Diffuse Color.G",
+    "RenderLayer.Diffuse Color.B",
+    "RenderLayer.Diffuse Direct.R",
+    "RenderLayer.Diffuse Direct.G",
+    "RenderLayer.Diffuse Direct.B",
+    "RenderLayer.Diffuse Indirect.R",
+    "RenderLayer.Diffuse Indirect.G",
+    "RenderLayer.Diffuse Indirect.B",
+    "RenderLayer.Emission.R",
+    "RenderLayer.Emission.G",
+    "RenderLayer.Emission.B",
+    "RenderLayer.Environment.R",
+    "RenderLayer.Environment.G",
+    "RenderLayer.Environment.B",
+    "RenderLayer.Glossy Color.R",
+    "RenderLayer.Glossy Color.G",
+    "RenderLayer.Glossy Color.B",
+    "RenderLayer.Glossy Direct.R",
+    "RenderLayer.Glossy Direct.G",
+    "RenderLayer.Glossy Direct.B",
+    "RenderLayer.Glossy Indirect.R",
+    "RenderLayer.Glossy Indirect.G",
+    "RenderLayer.Glossy Indirect.B",
+    "RenderLayer.Normal.X",
+    "RenderLayer.Normal.Y",
+    "RenderLayer.Normal.Z",
+    "RenderLayer.Transmission Color.R",
+    "RenderLayer.Transmission Color.G",
+    "RenderLayer.Transmission Color.B",
+    "RenderLayer.Transmission Direct.R",
+    "RenderLayer.Transmission Direct.G",
+    "RenderLayer.Transmission Direct.B",
+    "RenderLayer.Transmission Indirect.R",
+    "RenderLayer.Transmission Indirect.G",
+    "RenderLayer.Transmission Indirect.B",
+    "RenderLayer.Volume Direct.R",
+    "RenderLayer.Volume Direct.G",
+    "RenderLayer.Volume Direct.B",
+    "RenderLayer.Volume Indirect.R",
+    "RenderLayer.Volume Indirect.G",
+    "RenderLayer.Volume Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        0.9992169141769409,
+        0.9994582533836365,
+        1.0000377893447876
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-anisotropy.o8umph/cycles-5.2-hip.exr",
+      "cycles_channel_mean": [
+        0.09011398255825043,
+        0.0640590563416481,
+        0.048945240676403046
+      ],
+      "cycles_luminance_mean": 0.0685085728764534,
+      "cycles_rms": 0.16181662678718567,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9994281715246167,
+      "maximum_absolute_error": 1.3019434213638306,
+      "mean_absolute_error": 0.005384222604334354,
+      "orientation_rmse": {
+        "flip_x": 0.18616965413093567,
+        "flip_xy": 0.1958809643983841,
+        "flip_y": 0.18800145387649536,
+        "identity": 0.016837412491440773
+      },
+      "p95_pixel_rmse": 0.02588113769888878,
+      "p99_pixel_rmse": 0.07097823917865753,
+      "psycles": "/var/tmp/psycles-microfacet-anisotropy.o8umph/barbershop-5.2-export.exr",
+      "psycles_channel_mean": [
+        0.09004341810941696,
+        0.06402435153722763,
+        0.04894708842039108
+      ],
+      "psycles_luminance_mean": 0.06846939772367477,
+      "psycles_rms": 0.16210408948991178,
+      "relative_rmse": 0.10405242542587802,
+      "rmse": 0.016837412491440773,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 9.06930057584479,
+        "display_scale": 1.0750793182344898,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/microfacet-anisotropy/triptychs/cycles-5.2/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffCol": {
+      "channel_mean_ratio": [
+        0.9971855878829956,
+        0.9972016215324402,
+        0.9975765943527222
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-anisotropy.o8umph/cycles-5.2-hip.exr",
+      "cycles_channel_mean": [
+        0.23411519825458527,
+        0.20831316709518433,
+        0.18280033767223358
+      ],
+      "cycles_luminance_mean": 0.211929589509964,
+      "cycles_rms": 0.26223087310791016,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9972156507987355,
+      "maximum_absolute_error": 0.6817843914031982,
+      "mean_absolute_error": 0.0030053635127842426,
+      "orientation_rmse": {
+        "flip_x": 0.22326721251010895,
+        "flip_xy": 0.22493353486061096,
+        "flip_y": 0.21746261417865753,
+        "identity": 0.021140938624739647
+      },
+      "p95_pixel_rmse": 0.0025154121685773134,
+      "p99_pixel_rmse": 0.10757502913475037,
+      "psycles": "/var/tmp/psycles-microfacet-anisotropy.o8umph/barbershop-5.2-export.exr",
+      "psycles_channel_mean": [
+        0.2334562987089157,
+        0.207730233669281,
+        0.18235734105110168
+      ],
+      "psycles_luminance_mean": 0.21133950352668762,
+      "psycles_rms": 0.26130824847390666,
+      "relative_rmse": 0.08061956387583691,
+      "rmse": 0.021140938624739647,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 5.5076638060507905,
+        "display_scale": 1.072840675977625,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/microfacet-anisotropy/triptychs/cycles-5.2/diffcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossCol": {
+      "channel_mean_ratio": [
+        1.0005403757095337,
+        1.0005301237106323,
+        1.0005428791046143
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-anisotropy.o8umph/cycles-5.2-hip.exr",
+      "cycles_channel_mean": [
+        0.06908214837312698,
+        0.06735579669475555,
+        0.06607276946306229
+      ],
+      "cycles_luminance_mean": 0.0676368847489357,
+      "cycles_rms": 0.18122461438179016,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0005437279668177,
+      "maximum_absolute_error": 0.04600111022591591,
+      "mean_absolute_error": 0.00010594046034384519,
+      "orientation_rmse": {
+        "flip_x": 0.2359182983636856,
+        "flip_xy": 0.23567011952400208,
+        "flip_y": 0.23838555812835693,
+        "identity": 0.0007963311509229243
+      },
+      "p95_pixel_rmse": 0.00034150166902691126,
+      "p99_pixel_rmse": 0.0014066006988286972,
+      "psycles": "/var/tmp/psycles-microfacet-anisotropy.o8umph/barbershop-5.2-export.exr",
+      "psycles_channel_mean": [
+        0.06911947578191757,
+        0.06739150732755661,
+        0.06610863655805588
+      ],
+      "psycles_luminance_mean": 0.06767366081476212,
+      "psycles_rms": 0.18124370892886432,
+      "relative_rmse": 0.004394166618256804,
+      "rmse": 0.0007963311509229243,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 359.13766968931174,
+        "display_scale": 0.9007275199068939,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/microfacet-anisotropy/triptychs/cycles-5.2/glosscol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossDir": {
+      "channel_mean_ratio": [
+        0.9988154768943787,
+        0.9958358407020569,
+        0.9925761222839355
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-anisotropy.o8umph/cycles-5.2-hip.exr",
+      "cycles_channel_mean": [
+        0.13937179744243622,
+        0.14830033481121063,
+        0.16420207917690277
+      ],
+      "cycles_luminance_mean": 0.1475706845521927,
+      "cycles_rms": 1.57110595703125,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9961738010386638,
+      "maximum_absolute_error": 122.17282104492188,
+      "mean_absolute_error": 0.012900742702186108,
+      "orientation_rmse": {
+        "flip_x": 2.205368757247925,
+        "flip_xy": 2.2176523208618164,
+        "flip_y": 2.2120018005371094,
+        "identity": 0.2766236364841461
+      },
+      "p95_pixel_rmse": 0.046397384256124496,
+      "p99_pixel_rmse": 0.20546357333660126,
+      "psycles": "/var/tmp/psycles-microfacet-anisotropy.o8umph/barbershop-5.2-export.exr",
+      "psycles_channel_mean": [
+        0.13920670747756958,
+        0.147682785987854,
+        0.16298305988311768
+      ],
+      "psycles_luminance_mean": 0.1470060497522354,
+      "psycles_rms": 1.5931880184503613,
+      "relative_rmse": 0.17606937027140554,
+      "rmse": 0.2766236364841461,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 2.8950859351632423,
+        "display_scale": 0.29540588170848137,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/microfacet-anisotropy/triptychs/cycles-5.2/glossdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.998916745185852,
+        1.005183458328247,
+        1.0461244583129883
+      ],
+      "cycles": "/var/tmp/psycles-microfacet-anisotropy.o8umph/cycles-5.2-hip.exr",
+      "cycles_channel_mean": [
+        0.10989673435688019,
+        0.31271931529045105,
+        -0.05457602068781853
+      ],
+      "cycles_luminance_mean": 0.2430618554353714,
+      "cycles_rms": 0.5494758486747742,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.00386025777353,
+      "maximum_absolute_error": 0.19934922456741333,
+      "mean_absolute_error": 0.003226812230423093,
+      "orientation_rmse": {
+        "flip_x": 0.6501364707946777,
+        "flip_xy": 0.8720998167991638,
+        "flip_y": 0.7767422795295715,
+        "identity": 0.010049829259514809
+      },
+      "p95_pixel_rmse": 0.013445342890918255,
+      "p99_pixel_rmse": 0.056341078132390976,
+      "psycles": "/var/tmp/psycles-microfacet-anisotropy.o8umph/barbershop-5.2-export.exr",
+      "psycles_channel_mean": [
+        0.10977768898010254,
+        0.3143402934074402,
+        -0.0570933073759079
+      ],
+      "psycles_luminance_mean": 0.2440001368522644,
+      "psycles_rms": 0.5515429593263914,
+      "relative_rmse": 0.018289847103840844,
+      "rmse": 0.010049829259514809,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 13.475913029256875,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/microfacet-anisotropy/triptychs/cycles-5.2/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Cycles 5.2 HIP",
+  "schema": "psycles.cycles-differential.v2"
+}
