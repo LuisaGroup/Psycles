@@ -20,7 +20,7 @@ using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
 
 constexpr std::uint32_t case_count = 8u;
-constexpr std::uint32_t records_per_case = 3u;
+constexpr std::uint32_t records_per_case = 4u;
 
 static_assert(sizeof(SurfaceClosurePointCall) == 48u);
 static_assert(offsetof(
@@ -53,11 +53,18 @@ using SurfaceClosurePointRoundTripCallable =
             -0.67f - 3.0f * value,
             (case_index & 2u) != 0u ? 1.0f : 0.0f};
     }
+    if (record == 2u) {
+        return {
+            0.71f + 4.0f * value,
+            -0.83f - 5.0f * value,
+            0.97f + 6.0f * value,
+            static_cast<float>(3u + 17u * case_index)};
+    }
     return {
-        0.71f + 4.0f * value,
-        -0.83f - 5.0f * value,
-        0.97f + 6.0f * value,
-        static_cast<float>(3u + 17u * case_index)};
+        (case_index & 4u) != 0u ? 1.0f : 0.0f,
+        0.0f,
+        0.0f,
+        0.0f};
 }
 
 }// namespace
@@ -90,6 +97,7 @@ int main(int argc, char **argv) {
             -0.83f - 5.0f * value,
             0.97f + 6.0f * value);
         point.ray_visibility = 3u + 17u * case_index;
+        point.is_curve = (case_index & 4u) != 0u;
         point.use_bump_map_correction = (case_index & 1u) == 0u;
         point.back_facing = (case_index & 2u) != 0u;
 
@@ -120,6 +128,13 @@ int main(int argc, char **argv) {
             make_float4(
                 unpacked.incoming,
                 cast<float>(unpacked.ray_visibility)));
+        output->write(
+            base + 3u,
+            make_float4(
+                select(0.0f, 1.0f, unpacked.is_curve),
+                0.0f,
+                0.0f,
+                0.0f));
     };
 
     if (test.function()->function().custom_callables().size() != 1u) {

@@ -39,6 +39,8 @@ inline constexpr std::uint32_t
     surface_closure_point_use_bump_map_correction = 1u << 0u;
 inline constexpr std::uint32_t
     surface_closure_point_back_facing = 1u << 1u;
+inline constexpr std::uint32_t
+    surface_closure_point_is_curve = 1u << 2u;
 
 [[nodiscard]] inline luisa::compute::Var<SurfaceClosurePointCall>
 pack_surface_closure_point(
@@ -63,7 +65,11 @@ pack_surface_closure_point(
         0u,
         surface_closure_point_back_facing,
         point.back_facing);
-    result.flags = bump_flag | facing_flag;
+    const auto curve_flag = luisa::compute::select(
+        0u,
+        surface_closure_point_is_curve,
+        point.is_curve);
+    result.flags = bump_flag | facing_flag | curve_flag;
     return result;
 }
 
@@ -85,6 +91,7 @@ unpack_surface_closure_point(
             shading_yz_and_incoming_xy.w,
             point.incoming_z),
         point.ray_visibility,
+        (point.flags & surface_closure_point_is_curve) != 0u,
         (point.flags &
          surface_closure_point_use_bump_map_correction) != 0u,
         (point.flags & surface_closure_point_back_facing) != 0u};

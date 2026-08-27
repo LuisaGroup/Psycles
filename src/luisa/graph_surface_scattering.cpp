@@ -216,6 +216,7 @@ template<typename Closure>
     Float3 shading_normal) noexcept {
     const auto correction_enabled =
         point.use_bump_map_correction &
+        !point.is_curve &
         !all(point.geometric_normal == shading_normal);
     return select(shading_normal,
         ensure_valid_specular_reflection(
@@ -338,8 +339,10 @@ template<typename Closure>
         smoothing_domain & !grazing_reject);
     result = select(result, 0.0f, reject | grazing_reject);
     // Cycles exits before all other predicates when the two normals compare
-    // exactly equal. Retain that ordering even at degenerate dot products.
-    return select(result, 1.0f, normals_equal);
+    // exactly equal, then independently returns one for every curve. The
+    // disjunction is observationally identical to those ordered returns even
+    // at degenerate dot products because both branches have the same value.
+    return select(result, 1.0f, normals_equal | point.is_curve);
 }
 
 [[nodiscard]] UInt cycles_runtime_flags(

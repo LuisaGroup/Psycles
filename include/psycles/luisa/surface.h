@@ -154,6 +154,11 @@ struct SurfaceClosurePoint {
     Float3 shading_normal;
     Float3 incoming;
     UInt ray_visibility;
+    // Cycles changes two closure laws for curve primitives: bsdf_sample uses
+    // the selected ShaderClosure::N as Ng, and all bump-normal correction is
+    // disabled. Keep the primitive predicate in this exact post-population
+    // projection; reconstructing it from either normal is not possible.
+    Bool is_curve;
     Bool use_bump_map_correction;
     Bool back_facing;
 
@@ -163,6 +168,7 @@ struct SurfaceClosurePoint {
           shading_normal{point.shading_normal},
           incoming{point.incoming},
           ray_visibility{point.ray_visibility},
+          is_curve{point.is_curve},
           use_bump_map_correction{
               point.use_bump_map_correction},
           back_facing{point.back_facing} {}
@@ -172,12 +178,14 @@ struct SurfaceClosurePoint {
         Float3 shading_normal_value,
         Float3 incoming_value,
         UInt ray_visibility_value,
+        Bool is_curve_value,
         Bool use_bump_map_correction_value,
         Bool back_facing_value) noexcept
         : geometric_normal{std::move(geometric_normal_value)},
           shading_normal{std::move(shading_normal_value)},
           incoming{std::move(incoming_value)},
           ray_visibility{std::move(ray_visibility_value)},
+          is_curve{std::move(is_curve_value)},
           use_bump_map_correction{
               std::move(use_bump_map_correction_value)},
           back_facing{std::move(back_facing_value)} {}
