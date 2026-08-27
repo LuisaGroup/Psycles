@@ -138,6 +138,9 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
         .inputs = {
             {"Color", "Color"},
             {"Roughness", "Roughness"},
+            {"Anisotropy", "Anisotropy"},
+            {"Rotation", "Rotation"},
+            {"Tangent", "Tangent"},
             {"Normal", "Normal"}},
         .outputs = {{"BSDF", "Closure"}},
         .properties = {{"distribution", "Distribution"}}});
@@ -159,6 +162,9 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
             {"IOR", "IOR"},
             {"Specular IOR Level", "SpecularIORLevel"},
             {"Specular Tint", "SpecularTint"},
+            {"Anisotropic", "Anisotropic"},
+            {"Anisotropic Rotation", "AnisotropicRotation"},
+            {"Tangent", "Tangent"},
             {"Alpha", "Alpha"},
             {"Thin Wall", "ThinWall"},
             {"Sheen Weight", "SheenWeight"},

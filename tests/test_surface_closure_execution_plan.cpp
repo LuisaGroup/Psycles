@@ -530,6 +530,131 @@ void test_statically_pruned_mix() {
   return graph;
 }
 
+[[nodiscard]] ShaderGraph make_glossy_anisotropy_graph(
+    float anisotropy,
+    bool linked_anisotropy = false) {
+  ShaderGraph graph;
+  const auto glossy = graph.add_node(
+      node_type::glossy_bsdf, "Anisotropic Glossy closure");
+  const auto geometry = graph.add_node(
+      node_type::geometry, "Glossy tangent source");
+  require(
+      graph.set_input(
+          glossy,
+          "Anisotropy",
+          SocketValue::floating(anisotropy)) &&
+          graph.set_input(
+              glossy,
+              "Rotation",
+              SocketValue::floating(0.125f)) &&
+          graph.connect(
+              {.node = geometry, .socket = "Tangent"},
+              glossy,
+              "Tangent"),
+      "failed to configure Glossy anisotropy inputs");
+  if (linked_anisotropy) {
+    const auto value = graph.add_node(
+        node_type::constant_float, "Linked Glossy anisotropy");
+    require(
+        graph.set_input(
+            value,
+            "Value",
+            SocketValue::floating(anisotropy)) &&
+            graph.connect(
+                {.node = value, .socket = "Value"},
+                glossy,
+                "Anisotropy"),
+        "failed to link Glossy anisotropy");
+  }
+  graph.set_root(
+      ShaderDomain::surface,
+      OutputRef{.node = glossy, .socket = "Closure"});
+  return graph;
+}
+
+void test_microfacet_anisotropy_specialization() {
+  const auto isotropic = compile_graph(
+      make_glossy_anisotropy_graph(1.0e-4f));
+  const auto isotropic_plan = plan_program(isotropic);
+  const auto isotropic_root = isotropic.program->root();
+  const auto &isotropic_closure =
+      isotropic.program->closure_instructions()[isotropic_root.value];
+  const auto isotropic_begin = surface_closure_leaf_operand_begin(
+      isotropic_plan.closures.instructions.front());
+  require(
+      !isotropic_plan.closure_plan.entry(isotropic_root)
+           .microfacet_anisotropy &&
+          !isotropic_plan.dependencies.physical[
+              isotropic_closure.microfacet_anisotropy.value] &&
+          !isotropic_plan.dependencies.physical[
+              isotropic_closure.microfacet_rotation.value] &&
+          !isotropic_plan.dependencies.physical[
+              isotropic_closure.tangent.value] &&
+          (isotropic_plan.closures.instructions.front().control &
+           surface_closure_microfacet_anisotropy) == 0u &&
+          isotropic_plan.closures.operands[
+              isotropic_begin +
+              surface_closure_operand::glossy::anisotropy] ==
+              SurfaceValueAddress::invalid_value &&
+          isotropic_plan.closures.operands[
+              isotropic_begin +
+              surface_closure_operand::glossy::rotation] ==
+              SurfaceValueAddress::invalid_value &&
+          isotropic_plan.closures.operands[
+              isotropic_begin +
+              surface_closure_operand::glossy::tangent] ==
+              SurfaceValueAddress::invalid_value,
+      "static Glossy isotropy did not erase its complete operand slice");
+
+  const auto anisotropic = compile_graph(
+      make_glossy_anisotropy_graph(-0.71f));
+  const auto anisotropic_plan = plan_program(anisotropic);
+  const auto anisotropic_root = anisotropic.program->root();
+  const auto &anisotropic_closure =
+      anisotropic.program->closure_instructions()[anisotropic_root.value];
+  const auto anisotropic_begin = surface_closure_leaf_operand_begin(
+      anisotropic_plan.closures.instructions.front());
+  require(
+      anisotropic_plan.closure_plan.entry(anisotropic_root)
+          .microfacet_anisotropy &&
+          anisotropic_plan.dependencies.physical[
+              anisotropic_closure.microfacet_anisotropy.value] &&
+          anisotropic_plan.dependencies.physical[
+              anisotropic_closure.microfacet_rotation.value] &&
+          anisotropic_plan.dependencies.physical[
+              anisotropic_closure.tangent.value] &&
+          (anisotropic_plan.closures.instructions.front().control &
+           surface_closure_microfacet_anisotropy) != 0u &&
+          anisotropic_plan.closures.operands[
+              anisotropic_begin +
+              surface_closure_operand::glossy::anisotropy] !=
+              SurfaceValueAddress::invalid_value &&
+          anisotropic_plan.closures.operands[
+              anisotropic_begin +
+              surface_closure_operand::glossy::rotation] !=
+              SurfaceValueAddress::invalid_value &&
+          anisotropic_plan.closures.operands[
+              anisotropic_begin +
+              surface_closure_operand::glossy::tangent] !=
+              SurfaceValueAddress::invalid_value,
+      "live Glossy anisotropy was not retained as one typed operand slice");
+
+  const auto linked_zero = compile_graph(
+      make_glossy_anisotropy_graph(0.0f, true));
+  const auto linked_plan = analyze_surface_closure_plan(
+      *linked_zero.program, linked_zero.parameters);
+  require(
+      linked_plan.entry(linked_zero.program->root())
+          .microfacet_anisotropy,
+      "linked Glossy anisotropy was incorrectly host-folded by value");
+
+  auto merged = isotropic_plan.closure_plan;
+  merged.merge(anisotropic_plan.closure_plan);
+  require(
+      merged.entry(isotropic_root).microfacet_anisotropy,
+      "material-plan union lost a topology peer's anisotropy capability");
+}
+
 void test_principled_static_contract() {
   const auto compiled = compile_graph(make_principled_graph());
   const auto planned = plan_program(compiled);
@@ -749,6 +874,7 @@ int main() {
     test_add_sibling_retains_root_weight();
     test_statically_pruned_mix();
     test_principled_static_contract();
+    test_microfacet_anisotropy_specialization();
     test_missing_live_address_rejected();
     test_malformed_linear_weight_program_rejected();
     test_executable_scene_relocation();

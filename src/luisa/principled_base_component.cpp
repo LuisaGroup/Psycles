@@ -1,4 +1,5 @@
 #include "principled_base_component.h"
+#include "microfacet_anisotropy.h"
 #include "principled_metallic_component.h"
 #include "principled_specular_state.h"
 
@@ -151,6 +152,14 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
     const auto specular_tint = max(closure.specular_tint, make_float3(0.0f));
     const auto incoming_cosine = clamp(dot(glossy_normal, incoming), 0.0f, 1.0f);
     const auto roughness = clamp(closure.roughness, 0.0f, 1.0f);
+    std::optional<MicrofacetAnisotropyState> microfacet_state;
+    if (enabled(compiler::PrincipledClosureFeature::metallic) ||
+        enabled(compiler::PrincipledClosureFeature::dielectric)) {
+        // Cycles rotates the authored tangent around the uncorrected shader
+        // normal, then stores it beside the corrected physical normal.
+        microfacet_state.emplace(
+            principled_microfacet_state(closure, closure.normal));
+    }
     const PrincipledMetallicComponent metallic_component{_services};
     auto lower_weight = closure.weight;
     std::optional<TracedClosure> metallic;
@@ -203,6 +212,7 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
         physical.ior = 1.0f;
         physical.specular_tint = setup.specular_tint;
         physical.evaluation_scale = setup.evaluation_scale;
+        configure_microfacet_state(physical, *microfacet_state);
         metallic.emplace(std::move(physical));
         lower_weight = setup.lower_weight;
     }
@@ -306,6 +316,7 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
         physical.normal = setup.normal;
         physical.ior = setup.ior;
         physical.evaluation_scale = setup.evaluation_scale;
+        configure_microfacet_state(physical, *microfacet_state);
         lower_weight = setup.lower_weight;
         dielectric.emplace(std::move(physical));
     }

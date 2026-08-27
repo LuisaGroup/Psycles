@@ -271,11 +271,11 @@ MicrofacetReflectionSample ThinGlassComponent::sample(
     const auto transformed_incoming =
         mirror(incoming, closure.common.normal);
     const auto alpha = microfacet_alpha(
-        closure.common, glossy_filter_roughness);
+        closure, glossy_filter_roughness);
     const auto singular =
-        alpha * alpha <=
+        alpha.x * alpha.y <=
         cycles_closure::microfacet_singular_alpha_product;
-    const auto sampling_alpha = max(alpha, 1.0e-10f);
+    const auto sampling_alpha = max(alpha.x, 1.0e-10f);
     const auto half_vector =
         cycles_sample_mapping::sample_ggx_visible_normal(
             closure.common.normal,
@@ -295,7 +295,7 @@ MicrofacetReflectionSample ThinGlassComponent::sample(
         .direction = direction,
         .singular_evaluation = closure.common.weight * 1.0e6f,
         .singular_pdf = 1.0e6f,
-        .alpha = select(alpha, 0.0f, singular),
+        .roughness = select(alpha, make_float2(0.0f), singular),
         .singular = singular,
         .valid = valid};
 }

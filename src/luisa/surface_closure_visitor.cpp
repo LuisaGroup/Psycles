@@ -20,6 +20,9 @@ SurfaceClosureExpression::SurfaceClosureExpression(
       color{closure.color.expression()},
       normal{closure.normal.expression()},
       roughness{closure.roughness.expression()},
+      microfacet_tangent{closure.microfacet_tangent.expression()},
+      microfacet_alpha_x{closure.microfacet_alpha_x.expression()},
+      microfacet_alpha_y{closure.microfacet_alpha_y.expression()},
       diffuse_roughness{closure.diffuse_roughness.expression()},
       metallic{closure.metallic.expression()},
       ior{closure.ior.expression()},
@@ -55,6 +58,12 @@ SurfaceClosureRecord SurfaceClosureExpression::reference() const noexcept {
         .color = Float3{color.expression()},
         .normal = Float3{normal.expression()},
         .roughness = Float{roughness.expression()},
+        .microfacet_tangent =
+            Float3{microfacet_tangent.expression()},
+        .microfacet_alpha_x =
+            Float{microfacet_alpha_x.expression()},
+        .microfacet_alpha_y =
+            Float{microfacet_alpha_y.expression()},
         .diffuse_roughness = Float{diffuse_roughness.expression()},
         .metallic = Float{metallic.expression()},
         .ior = Float{ior.expression()},

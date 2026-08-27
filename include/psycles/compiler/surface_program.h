@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdlib>
 #include <compare>
 #include <cstddef>
@@ -1041,6 +1042,13 @@ struct ClosureInstruction {
   ValueExpressionId ior;
   ValueExpressionId specular_ior_level;
   ValueExpressionId specular_tint;
+  // Authored microfacet anisotropy is shared by Principled and standalone
+  // Glossy, but their socket spellings and alpha parameterizations differ.
+  // Keep the graph inputs in the typed IR; physical setup later projects
+  // them to the common (tangent, alpha_x, alpha_y) scattering state.
+  ValueExpressionId microfacet_anisotropy;
+  ValueExpressionId microfacet_rotation;
+  ValueExpressionId tangent;
   ValueExpressionId alpha;
   // Keep Thin Wall in the parameter stream. Cycles treats only an unlinked
   // direct true value as statically thin; linked values remain conservative.
@@ -1067,6 +1075,44 @@ struct ClosureInstruction {
   ClosureExpressionId a;
   ClosureExpressionId b;
 };
+
+// Closed member set for transformations which rebuild the value SSA stream.
+// Bump expansion and program compaction must apply the same total renaming to
+// every ValueExpressionId stored by a closure. Keeping the member relation in
+// one declaration prevents the two transformations from silently assigning a
+// newly added field to an unrelated typed bank.
+inline constexpr auto closure_value_dependency_members = std::array{
+    &ClosureInstruction::color,
+    &ClosureInstruction::normal,
+    &ClosureInstruction::roughness,
+    &ClosureInstruction::diffuse_roughness,
+    &ClosureInstruction::subsurface_weight,
+    &ClosureInstruction::subsurface_radius,
+    &ClosureInstruction::subsurface_scale,
+    &ClosureInstruction::subsurface_ior,
+    &ClosureInstruction::subsurface_anisotropy,
+    &ClosureInstruction::transmission_weight,
+    &ClosureInstruction::metallic,
+    &ClosureInstruction::ior,
+    &ClosureInstruction::specular_ior_level,
+    &ClosureInstruction::specular_tint,
+    &ClosureInstruction::microfacet_anisotropy,
+    &ClosureInstruction::microfacet_rotation,
+    &ClosureInstruction::tangent,
+    &ClosureInstruction::alpha,
+    &ClosureInstruction::thin_wall,
+    &ClosureInstruction::sheen_weight,
+    &ClosureInstruction::sheen_roughness,
+    &ClosureInstruction::sheen_tint,
+    &ClosureInstruction::coat_weight,
+    &ClosureInstruction::coat_roughness,
+    &ClosureInstruction::coat_ior,
+    &ClosureInstruction::coat_tint,
+    &ClosureInstruction::coat_normal,
+    &ClosureInstruction::emission_color,
+    &ClosureInstruction::emission_strength,
+    &ClosureInstruction::strength,
+    &ClosureInstruction::factor};
 
 enum class VolumePhase : std::uint8_t {
   henyey_greenstein,
@@ -1218,6 +1264,11 @@ principled_closure_feature_bit(PrincipledClosureFeature feature) noexcept {
 struct SurfaceClosurePlanEntry {
   bool reachable{};
   PrincipledClosureFeatureMask principled_features{};
+  // Host/JIT proof that this leaf can observe its anisotropy, rotation and
+  // tangent operands for at least one material block sharing the topology.
+  // False is a semantic specialization: those values must not be scheduled,
+  // serialized, or recorded into the shader AST.
+  bool microfacet_anisotropy{};
 };
 
 // One entry per ClosureInstruction. Plans for material instances with the

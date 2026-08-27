@@ -1,6 +1,7 @@
 #include "graph_surface_internal.h"
 
 #include "bssrdf_closure_component.h"
+#include "microfacet_anisotropy.h"
 #include "microfacet_glass_component.h"
 #include "principled_base_component.h"
 #include "principled_diffuse_component.h"
@@ -294,6 +295,9 @@ void expand_physical_surface_closure(
             0.0f, allocation_weight, allocated);
         closure.normal = maybe_ensure_valid_specular_reflection(
             closure_point, incoming, graph_closure.normal);
+        configure_microfacet_state(
+            closure,
+            glossy_microfacet_state(closure, closure.normal));
         const auto incoming_cosine = clamp(
             dot(closure.normal, incoming), 0.0f, 1.0f);
         const auto energy = ggx_energy(

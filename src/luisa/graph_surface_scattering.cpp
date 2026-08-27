@@ -551,6 +551,53 @@ namespace {
     return 0.5f * (sqrt(1.0f + squared_alpha_tangent) - 1.0f);
 }
 
+[[nodiscard]] Float microfacet_ggx_anisotropic_distribution(
+    Float3 local_half, Float alpha_x, Float alpha_y) noexcept {
+    const auto scaled_half = local_half /
+                             make_float3(alpha_x, alpha_y, 1.0f);
+    const auto alpha_product = alpha_x * alpha_y;
+    const auto length_squared = dot(scaled_half, scaled_half);
+    return inverse_pi /
+           (alpha_product * length_squared * length_squared);
+}
+
+[[nodiscard]] Float microfacet_beckmann_anisotropic_distribution(
+    Float3 local_half, Float alpha_x, Float alpha_y) noexcept {
+    const auto scaled_half = local_half /
+                             make_float3(alpha_x, alpha_y, 1.0f);
+    const auto cosine_squared = scaled_half.z * scaled_half.z;
+    const auto exponent = -(scaled_half.x * scaled_half.x +
+                            scaled_half.y * scaled_half.y) /
+                          cosine_squared;
+    return exp(exponent) /
+           (pi * alpha_x * alpha_y * cosine_squared * cosine_squared);
+}
+
+[[nodiscard]] Float microfacet_ggx_anisotropic_lambda(
+    Float3 local_direction, Float alpha_x, Float alpha_y) noexcept {
+    const auto scaled_x = alpha_x * local_direction.x;
+    const auto scaled_y = alpha_y * local_direction.y;
+    const auto squared_alpha_tangent =
+        (scaled_x * scaled_x + scaled_y * scaled_y) /
+        (local_direction.z * local_direction.z);
+    return 0.5f * (sqrt(1.0f + squared_alpha_tangent) - 1.0f);
+}
+
+[[nodiscard]] Float microfacet_beckmann_anisotropic_lambda(
+    Float3 local_direction, Float alpha_x, Float alpha_y) noexcept {
+    const auto scaled_x = alpha_x * local_direction.x;
+    const auto scaled_y = alpha_y * local_direction.y;
+    const auto squared_alpha_tangent =
+        (scaled_x * scaled_x + scaled_y * scaled_y) /
+        (local_direction.z * local_direction.z);
+    const auto a = rsqrt(squared_alpha_tangent);
+    const auto approximation =
+        ((0.396f * a - 1.259f) * a + 1.0f) /
+        ((2.181f * a + 3.535f) * a);
+    return select(
+        approximation, 0.0f, squared_alpha_tangent < 0.39f);
+}
+
 [[nodiscard]] Float microfacet_beckmann_lambda(
     Float n_dot_v, Float alpha) noexcept {
     const auto cosine2 = n_dot_v * n_dot_v;
@@ -608,12 +655,31 @@ namespace {
     return max(setup_alpha, glossy_filter_roughness);
 }
 
+[[nodiscard]] Float2 microfacet_alpha(
+    const SurfaceClosurePhysicalGeneralRecord &closure,
+    Float glossy_filter_roughness) noexcept {
+    return max(
+        make_float2(
+            closure.payload.microfacet_alpha_x,
+            closure.payload.microfacet_alpha_y),
+        make_float2(glossy_filter_roughness));
+}
+
 [[nodiscard]] Bool microfacet_is_singular(
     const SurfaceClosurePhysicalCommonRecord &closure,
     Float glossy_filter_roughness) noexcept {
     const auto alpha = microfacet_alpha(
         closure, glossy_filter_roughness);
     return alpha * alpha <=
+           cycles_closure::microfacet_singular_alpha_product;
+}
+
+[[nodiscard]] Bool microfacet_is_singular(
+    const SurfaceClosurePhysicalGeneralRecord &closure,
+    Float glossy_filter_roughness) noexcept {
+    const auto alpha = microfacet_alpha(
+        closure, glossy_filter_roughness);
+    return alpha.x * alpha.y <=
            cycles_closure::microfacet_singular_alpha_product;
 }
 
@@ -627,6 +693,83 @@ namespace {
         0.0f,
         microfacet_is_singular(
             closure, glossy_filter_roughness));
+}
+
+[[nodiscard]] Float microfacet_specular_roughness_squared(
+    const SurfaceClosurePhysicalGeneralRecord &closure,
+    Float glossy_filter_roughness) noexcept {
+    const auto alpha = microfacet_alpha(
+        closure, glossy_filter_roughness);
+    const auto alpha_product = alpha.x * alpha.y;
+    return select(
+        alpha_product,
+        0.0f,
+        alpha_product <=
+            cycles_closure::microfacet_singular_alpha_product);
+}
+
+[[nodiscard]] MicrofacetDistributionTerms
+microfacet_reflection_distribution_terms(
+    const SurfaceClosurePhysicalGeneralRecord &closure,
+    Float3 half_vector,
+    Float3 incoming,
+    Float3 outgoing,
+    Float3 normal,
+    Float2 alpha) noexcept {
+    const auto n_dot_h = max(dot(normal, half_vector), 0.0f);
+    const auto n_dot_incoming = max(dot(normal, incoming), 0.0f);
+    const auto n_dot_outgoing = max(dot(normal, outgoing), 0.0f);
+    Float distribution = 0.0f;
+    Float lambda_incoming = 0.0f;
+    Float lambda_outgoing = 0.0f;
+    $if(alpha.x == alpha.y) {
+        const auto terms = microfacet_distribution_terms(
+            closure.common,
+            n_dot_h,
+            n_dot_incoming,
+            n_dot_outgoing,
+            alpha.x);
+        distribution = terms.distribution;
+        lambda_incoming = terms.lambda_incoming;
+        lambda_outgoing = terms.lambda_outgoing;
+    }
+    $else {
+        const auto basis =
+            cycles_sample_mapping::make_orthonormals_tangent(
+                normal, closure.payload.microfacet_tangent);
+        const auto local_half = make_float3(
+            dot(basis.tangent, half_vector),
+            dot(basis.bitangent, half_vector),
+            n_dot_h);
+        const auto local_incoming = make_float3(
+            dot(basis.tangent, incoming),
+            dot(basis.bitangent, incoming),
+            n_dot_incoming);
+        const auto local_outgoing = make_float3(
+            dot(basis.tangent, outgoing),
+            dot(basis.bitangent, outgoing),
+            n_dot_outgoing);
+        $if(closure.common.beckmann) {
+            distribution = microfacet_beckmann_anisotropic_distribution(
+                local_half, alpha.x, alpha.y);
+            lambda_incoming = microfacet_beckmann_anisotropic_lambda(
+                local_incoming, alpha.x, alpha.y);
+            lambda_outgoing = microfacet_beckmann_anisotropic_lambda(
+                local_outgoing, alpha.x, alpha.y);
+        }
+        $else {
+            distribution = microfacet_ggx_anisotropic_distribution(
+                local_half, alpha.x, alpha.y);
+            lambda_incoming = microfacet_ggx_anisotropic_lambda(
+                local_incoming, alpha.x, alpha.y);
+            lambda_outgoing = microfacet_ggx_anisotropic_lambda(
+                local_outgoing, alpha.x, alpha.y);
+        };
+    };
+    return {
+        .distribution = distribution,
+        .lambda_incoming = lambda_incoming,
+        .lambda_outgoing = lambda_outgoing};
 }
 
 [[nodiscard]] Float3 specular_f0(
@@ -689,14 +832,19 @@ namespace {
     auto n_dot_l = max(dot(glossy_normal, outgoing), 0.0f);
     auto half_vector =
         safe_normalize(incoming + outgoing, glossy_normal);
-    auto n_dot_h = max(dot(glossy_normal, half_vector), 0.0f);
     auto v_dot_h = max(dot(incoming, half_vector), 0.0f);
     const auto singular = microfacet_is_singular(
-        closure.common, glossy_filter_roughness);
+        closure, glossy_filter_roughness);
     auto alpha = max(
-        microfacet_alpha(closure.common, glossy_filter_roughness), 1.0e-10f);
-    const auto terms = microfacet_distribution_terms(
-        closure.common, n_dot_h, n_dot_v, n_dot_l, alpha);
+        microfacet_alpha(closure, glossy_filter_roughness),
+        make_float2(1.0e-10f));
+    const auto terms = microfacet_reflection_distribution_terms(
+        closure,
+        half_vector,
+        incoming,
+        outgoing,
+        glossy_normal,
+        alpha);
     auto geometry = 1.0f /
                     (1.0f + terms.lambda_incoming +
                         terms.lambda_outgoing);
@@ -708,7 +856,8 @@ namespace {
                max(4.0f * n_dot_v, 1.0e-20f) /
                (1.0f + terms.lambda_incoming);
     const auto valid =
-        (n_dot_v > 0.0f) & (n_dot_l > 0.0f) & (n_dot_h > 0.0f) &
+        (n_dot_v > 0.0f) & (n_dot_l > 0.0f) &
+        (dot(glossy_normal, half_vector) > 0.0f) &
         (v_dot_h > 0.0f) & !singular;
     return {
         .intensity = select(make_float3(0.0f), intensity, valid),
@@ -724,21 +873,39 @@ namespace {
     Float3 glossy_normal,
     Float glossy_filter_roughness) noexcept {
     const auto alpha = microfacet_alpha(
-        closure.common, glossy_filter_roughness);
-    const auto sampling_alpha = max(alpha, 1.0e-10f);
+        closure, glossy_filter_roughness);
+    const auto sampling_alpha = max(alpha, make_float2(1.0e-10f));
+    auto basis = cycles_sample_mapping::make_orthonormals(glossy_normal);
+    $if(sampling_alpha.x != sampling_alpha.y) {
+        const auto anisotropic_basis =
+            cycles_sample_mapping::make_orthonormals_tangent(
+                glossy_normal, closure.payload.microfacet_tangent);
+        basis.tangent = anisotropic_basis.tangent;
+        basis.bitangent = anisotropic_basis.bitangent;
+    };
     const auto ggx_half =
         cycles_sample_mapping::sample_ggx_visible_normal(
-            glossy_normal, incoming, sampling_alpha, random);
+            glossy_normal,
+            basis,
+            incoming,
+            sampling_alpha.x,
+            sampling_alpha.y,
+            random);
     const auto beckmann_half =
         cycles_sample_mapping::sample_beckmann_visible_normal(
-            glossy_normal, incoming, sampling_alpha, random);
+            glossy_normal,
+            basis,
+            incoming,
+            sampling_alpha.x,
+            sampling_alpha.y,
+            random);
     const auto half_vector = select(
         ggx_half, beckmann_half, closure.common.beckmann);
     const auto regular =
         2.0f * dot(incoming, half_vector) * half_vector - incoming;
     const auto singular_direction =
         2.0f * dot(glossy_normal, incoming) * glossy_normal - incoming;
-    const auto singular = alpha * alpha <=
+    const auto singular = alpha.x * alpha.y <=
                           cycles_closure::microfacet_singular_alpha_product;
     const auto direction = select(regular, singular_direction, singular);
     const auto fresnel = microfacet_reflection_fresnel(
@@ -758,7 +925,7 @@ namespace {
         .singular_evaluation =
             closure.common.weight * fresnel * bump_shadowing * 1.0e6f,
         .singular_pdf = 1.0e6f,
-        .alpha = alpha,
+        .roughness = alpha,
         .singular = singular,
         .valid = valid};
 }

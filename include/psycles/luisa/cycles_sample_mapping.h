@@ -105,6 +105,20 @@ one_minus_cosine_from_angle(float angle) noexcept {
             fallback.bitangent, candidate.bitangent, valid)};
 }
 
+// Cycles' anisotropic microfacet path deliberately uses the unsafe tangent
+// basis: a linked degenerate tangent is material data, not an instruction to
+// substitute an unrelated azimuth. Setup makes this basis observable only
+// when alpha_x != alpha_y.
+[[nodiscard]] inline OrthonormalBasis make_orthonormals_tangent(
+    luisa::compute::Float3 normal,
+    luisa::compute::Float3 tangent) noexcept {
+    using namespace luisa::compute;
+    const auto bitangent = normalize(cross(normal, tangent));
+    return {
+        .tangent = cross(bitangent, normal),
+        .bitangent = bitangent};
+}
+
 // The disk map, basis orientation, and lack of a final renormalization
 // are one deterministic sampling invariant. The input normal is
 // expected to be unit length, matching the Cycles closure contract.
@@ -129,12 +143,13 @@ one_minus_cosine_from_angle(float angle) noexcept {
 // perceptual roughness.
 [[nodiscard]] inline luisa::compute::Float3
 sample_ggx_visible_normal(luisa::compute::Float3 normal,
+    const OrthonormalBasis &world_basis,
     luisa::compute::Float3 incoming,
-    luisa::compute::Float alpha,
+    luisa::compute::Float alpha_x,
+    luisa::compute::Float alpha_y,
     luisa::compute::Float2 random) noexcept {
     using namespace luisa::compute;
 
-    const auto world_basis = make_orthonormals(normal);
     const auto local_incoming =
         make_float3(dot(world_basis.tangent, incoming),
             dot(world_basis.bitangent, incoming),
@@ -142,8 +157,8 @@ sample_ggx_visible_normal(luisa::compute::Float3 normal,
 
     // Heitz 2018, sections 3.2 and 4.1.
     const auto stretched_incoming =
-        normalize(make_float3(alpha * local_incoming.x,
-            alpha * local_incoming.y,
+        normalize(make_float3(alpha_x * local_incoming.x,
+            alpha_y * local_incoming.y,
             local_incoming.z));
     const auto projected_length_squared =
         stretched_incoming.x * stretched_incoming.x +
@@ -171,13 +186,27 @@ sample_ggx_visible_normal(luisa::compute::Float3 normal,
     // to world space. Cycles does not add a final world-space
     // normalization.
     const auto local_half =
-        normalize(make_float3(alpha * stretched_half.x,
-            alpha * stretched_half.y,
+        normalize(make_float3(alpha_x * stretched_half.x,
+            alpha_y * stretched_half.y,
             max(stretched_half.z, 0.0f)));
     const auto half_vector = world_basis.tangent * local_half.x +
                              world_basis.bitangent * local_half.y +
                              normal * local_half.z;
     return half_vector;
+}
+
+[[nodiscard]] inline luisa::compute::Float3
+sample_ggx_visible_normal(luisa::compute::Float3 normal,
+    luisa::compute::Float3 incoming,
+    luisa::compute::Float alpha,
+    luisa::compute::Float2 random) noexcept {
+    return sample_ggx_visible_normal(
+        normal,
+        make_orthonormals(normal),
+        incoming,
+        alpha,
+        alpha,
+        random);
 }
 
 // Cycles' Beckmann sampler draws the distribution of visible normals, not
@@ -237,19 +266,20 @@ sample_ggx_visible_normal(luisa::compute::Float3 normal,
 
 [[nodiscard]] inline luisa::compute::Float3
 sample_beckmann_visible_normal(luisa::compute::Float3 normal,
+    const OrthonormalBasis &world_basis,
     luisa::compute::Float3 incoming,
-    luisa::compute::Float alpha,
+    luisa::compute::Float alpha_x,
+    luisa::compute::Float alpha_y,
     luisa::compute::Float2 random) noexcept {
     using namespace luisa::compute;
 
-    const auto world_basis = make_orthonormals(normal);
     const auto local_incoming =
         make_float3(dot(world_basis.tangent, incoming),
             dot(world_basis.bitangent, incoming),
             dot(normal, incoming));
     const auto stretched_incoming =
-        normalize(make_float3(alpha * local_incoming.x,
-            alpha * local_incoming.y,
+        normalize(make_float3(alpha_x * local_incoming.x,
+            alpha_y * local_incoming.y,
             local_incoming.z));
 
     const auto normal_radius = sqrt(-log(random.x));
@@ -310,11 +340,25 @@ sample_beckmann_visible_normal(luisa::compute::Float3 normal,
     const auto rotated_slope =
         make_float2(cosine_phi * slope.x - sine_phi * slope.y,
                     sine_phi * slope.x + cosine_phi * slope.y) *
-        alpha;
+        make_float2(alpha_x, alpha_y);
     const auto local_half =
         normalize(make_float3(-rotated_slope.x, -rotated_slope.y, 1.0f));
     return world_basis.tangent * local_half.x +
            world_basis.bitangent * local_half.y + normal * local_half.z;
+}
+
+[[nodiscard]] inline luisa::compute::Float3
+sample_beckmann_visible_normal(luisa::compute::Float3 normal,
+    luisa::compute::Float3 incoming,
+    luisa::compute::Float alpha,
+    luisa::compute::Float2 random) noexcept {
+    return sample_beckmann_visible_normal(
+        normal,
+        make_orthonormals(normal),
+        incoming,
+        alpha,
+        alpha,
+        random);
 }
 
 [[nodiscard]] inline luisa::compute::Float3

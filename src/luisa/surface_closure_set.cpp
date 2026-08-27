@@ -413,6 +413,9 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
         zero.transmission_albedo, zero.diffuse_roughness);
     auto color = make_float4(zero.color, zero.metallic);
     auto normal = make_float4(zero.normal, zero.ior);
+    auto microfacet_tangent = zero.microfacet_tangent;
+    auto microfacet_alpha_x = zero.microfacet_alpha_x;
+    auto microfacet_alpha_y = zero.microfacet_alpha_y;
     auto specular_tint = make_float4(
         zero.specular_tint, zero.specular_ior_level);
     auto evaluation_scale = make_float4(
@@ -429,25 +432,43 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
     auto bssrdf_albedo = make_float4(
         zero.bssrdf_albedo, zero.bssrdf_roughness);
     if (_profile == SurfaceClosureStorageProfile::complete) {
-        const auto block_0 = _complete_0.read(safe_index);
-        const auto block_1 = _complete_1.read(safe_index);
-        const auto block_2 = _complete_2.read(safe_index);
-        const auto block_3 = _complete_3.read(safe_index);
-        identity = block_0[0u].bitcast<luisa::uint4>();
-        weight = block_0[1u];
-        albedo = block_0[2u];
-        reflection_albedo = block_0[3u];
-        transmission_albedo = block_1[0u];
-        color = block_1[1u];
-        normal = block_1[2u];
-        specular_tint = block_1[3u];
-        evaluation_scale = block_2[0u];
-        fresnel_f0 = block_2[1u];
-        fresnel_f90 = block_2[2u];
-        reflection_tint = block_2[3u];
-        transmission_tint = block_3[0u];
-        bssrdf_radius = block_3[1u];
-        bssrdf_albedo = block_3[2u];
+        // Decode through the ABI's sole semantic row projection. Going
+        // through SurfaceClosureRecord here would immediately repack every
+        // field into rows again and needlessly inflate the pre-optimization
+        // shader AST.
+        const auto complete = unpack_surface_closure_block_rows(
+            Expr<luisa::float4x4>{
+                _complete_0.read(safe_index).expression()},
+            Expr<luisa::float4x4>{
+                _complete_1.read(safe_index).expression()},
+            Expr<luisa::float4x4>{
+                _complete_2.read(safe_index).expression()},
+            Expr<luisa::float4x4>{
+                _complete_3.read(safe_index).expression()});
+        identity = complete.identity;
+        weight = complete.weight_allocation_weight;
+        albedo = complete.albedo_sample_weight;
+        reflection_albedo = complete.reflection_albedo_roughness;
+        transmission_albedo =
+            complete.transmission_albedo_diffuse_roughness;
+        color = complete.color_metallic;
+        normal = complete.normal_ior;
+        microfacet_tangent =
+            complete.microfacet_tangent_reserved.xyz();
+        microfacet_alpha_x =
+            complete.fresnel_f90_microfacet_alpha_x.w;
+        microfacet_alpha_y =
+            complete.reflection_tint_microfacet_alpha_y.w;
+        specular_tint = complete.specular_tint_ior_level;
+        evaluation_scale =
+            complete.evaluation_scale_sheen_transform_a;
+        fresnel_f0 = complete.fresnel_f0_sheen_transform_b;
+        fresnel_f90 = complete.fresnel_f90_microfacet_alpha_x;
+        reflection_tint =
+            complete.reflection_tint_microfacet_alpha_y;
+        transmission_tint = complete.transmission_tint_bssrdf_ior;
+        bssrdf_radius = complete.bssrdf_radius_anisotropy;
+        bssrdf_albedo = complete.bssrdf_albedo_roughness;
     } else if (
         _profile == SurfaceClosureStorageProfile::physical) {
         const auto physical = unpack_surface_closure_physical(
@@ -478,6 +499,9 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
             zero.transmission_albedo, physical.diffuse_roughness);
         color = make_float4(physical.color, physical.metallic);
         normal = make_float4(physical.normal, physical.ior);
+        microfacet_tangent = physical.microfacet_tangent;
+        microfacet_alpha_x = physical.microfacet_alpha_x;
+        microfacet_alpha_y = physical.microfacet_alpha_y;
         specular_tint = make_float4(
             physical.specular_tint, zero.specular_ior_level);
         evaluation_scale = make_float4(
@@ -572,6 +596,12 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
             normal.xyz(),
             valid),
         .roughness = scalar_or_zero(reflection_albedo.w),
+        .microfacet_tangent =
+            vector_or_zero(microfacet_tangent),
+        .microfacet_alpha_x =
+            scalar_or_zero(microfacet_alpha_x),
+        .microfacet_alpha_y =
+            scalar_or_zero(microfacet_alpha_y),
         .diffuse_roughness =
             scalar_or_zero(transmission_albedo.w),
         .metallic = scalar_or_zero(color.w),

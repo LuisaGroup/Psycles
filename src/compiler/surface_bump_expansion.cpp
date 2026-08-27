@@ -16,36 +16,6 @@
 namespace psycles::compiler {
 namespace {
 
-constexpr auto closure_value_dependencies = std::array{
-    &ClosureInstruction::color,
-    &ClosureInstruction::normal,
-    &ClosureInstruction::roughness,
-    &ClosureInstruction::diffuse_roughness,
-    &ClosureInstruction::subsurface_weight,
-    &ClosureInstruction::subsurface_radius,
-    &ClosureInstruction::subsurface_scale,
-    &ClosureInstruction::subsurface_ior,
-    &ClosureInstruction::subsurface_anisotropy,
-    &ClosureInstruction::transmission_weight,
-    &ClosureInstruction::metallic,
-    &ClosureInstruction::ior,
-    &ClosureInstruction::specular_ior_level,
-    &ClosureInstruction::specular_tint,
-    &ClosureInstruction::alpha,
-    &ClosureInstruction::thin_wall,
-    &ClosureInstruction::sheen_weight,
-    &ClosureInstruction::sheen_roughness,
-    &ClosureInstruction::sheen_tint,
-    &ClosureInstruction::coat_weight,
-    &ClosureInstruction::coat_roughness,
-    &ClosureInstruction::coat_ior,
-    &ClosureInstruction::coat_tint,
-    &ClosureInstruction::coat_normal,
-    &ClosureInstruction::emission_color,
-    &ClosureInstruction::emission_strength,
-    &ClosureInstruction::strength,
-    &ClosureInstruction::factor};
-
 constexpr auto volume_value_dependencies = std::array{
     &VolumeInstruction::color,
     &VolumeInstruction::density,
@@ -386,7 +356,7 @@ public:
 
     auto closures = _source.closure_instructions();
     for (auto &closure : closures) {
-      for (const auto field : closure_value_dependencies) {
+      for (const auto field : closure_value_dependency_members) {
         closure.*field = remap_root(closure.*field);
       }
     }

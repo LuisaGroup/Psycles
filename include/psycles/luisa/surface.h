@@ -333,6 +333,13 @@ struct SurfaceClosurePhysicalRecord {
     Float3 color;
     Float3 normal;
     Float roughness;
+    // Canonical reflection-microfacet state produced by closure setup.
+    // alpha_x/alpha_y are the post-setup distribution roughnesses; tangent
+    // is observable only when they differ. Keeping this state physical avoids
+    // reinterpreting node-specific anisotropy conventions during sampling.
+    Float3 microfacet_tangent;
+    Float microfacet_alpha_x;
+    Float microfacet_alpha_y;
     Float diffuse_roughness;
     Float metallic;
     Float ior;
@@ -374,6 +381,9 @@ struct SurfaceClosureRecord {
     Float3 color;
     Float3 normal;
     Float roughness;
+    Float3 microfacet_tangent;
+    Float microfacet_alpha_x;
+    Float microfacet_alpha_y;
     Float diffuse_roughness;
     Float metallic;
     Float ior;
@@ -409,6 +419,9 @@ struct SurfaceClosureRecord {
             .color = color,
             .normal = normal,
             .roughness = roughness,
+            .microfacet_tangent = microfacet_tangent,
+            .microfacet_alpha_x = microfacet_alpha_x,
+            .microfacet_alpha_y = microfacet_alpha_y,
             .diffuse_roughness = diffuse_roughness,
             .metallic = metallic,
             .ior = ior,
@@ -446,6 +459,9 @@ struct SurfaceClosureRecord {
             .color = make_float3(0.0f),
             .normal = make_float3(0.0f, 0.0f, 1.0f),
             .roughness = 0.0f,
+            .microfacet_tangent = make_float3(0.0f),
+            .microfacet_alpha_x = 0.0f,
+            .microfacet_alpha_y = 0.0f,
             .diffuse_roughness = 0.0f,
             .metallic = 0.0f,
             .ior = 1.0f,
@@ -778,6 +794,9 @@ struct SurfaceClosureExpression {
     Expr<luisa::float3> color;
     Expr<luisa::float3> normal;
     Expr<float> roughness;
+    Expr<luisa::float3> microfacet_tangent;
+    Expr<float> microfacet_alpha_x;
+    Expr<float> microfacet_alpha_y;
     Expr<float> diffuse_roughness;
     Expr<float> metallic;
     Expr<float> ior;

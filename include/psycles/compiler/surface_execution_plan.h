@@ -332,14 +332,20 @@ struct principled {
   static constexpr std::size_t coat_normal = 23u;
   static constexpr std::size_t emission_color = 24u;
   static constexpr std::size_t emission_strength = 25u;
-  static constexpr std::size_t count = 26u;
+  static constexpr std::size_t anisotropic = 26u;
+  static constexpr std::size_t anisotropic_rotation = 27u;
+  static constexpr std::size_t tangent = 28u;
+  static constexpr std::size_t count = 29u;
 };
 
 struct glossy {
   static constexpr std::size_t color = 0u;
   static constexpr std::size_t normal = 1u;
   static constexpr std::size_t roughness = 2u;
-  static constexpr std::size_t count = 3u;
+  static constexpr std::size_t anisotropy = 3u;
+  static constexpr std::size_t rotation = 4u;
+  static constexpr std::size_t tangent = 5u;
+  static constexpr std::size_t count = 6u;
 };
 
 struct glass {
@@ -464,12 +470,15 @@ inline constexpr std::uint32_t surface_closure_beckmann = 1u << 15u;
 inline constexpr std::uint32_t surface_closure_instruction_kind_shift = 16u;
 inline constexpr std::uint32_t surface_closure_instruction_kind_mask =
     0x3u << surface_closure_instruction_kind_shift;
+inline constexpr std::uint32_t surface_closure_microfacet_anisotropy =
+    1u << 18u;
 inline constexpr std::uint32_t surface_closure_control_mask =
     surface_closure_opcode_mask | surface_closure_endpoint_mask |
     surface_closure_bssrdf_method_mask | surface_closure_normal_uses_bump |
     surface_closure_coat_normal_linked |
     surface_closure_preserve_ggx_energy | surface_closure_beckmann |
-    surface_closure_instruction_kind_mask;
+    surface_closure_instruction_kind_mask |
+    surface_closure_microfacet_anisotropy;
 
 [[nodiscard]] constexpr std::uint32_t make_surface_closure_instruction_kind(
     SurfaceClosureInstructionKind kind) noexcept {
@@ -539,7 +548,8 @@ inline constexpr std::uint32_t surface_closure_invalid_packed_weight_slot =
 inline constexpr std::uint32_t surface_closure_static_variant_mask =
     surface_closure_opcode_mask | surface_closure_bssrdf_method_mask |
     surface_closure_coat_normal_linked |
-    surface_closure_preserve_ggx_energy | surface_closure_beckmann;
+    surface_closure_preserve_ggx_energy | surface_closure_beckmann |
+    surface_closure_microfacet_anisotropy;
 
 // Emission projection never observes BSSRDF, microfacet-energy, or Beckmann
 // configuration. Coat-normal linkage alone changes its Principled layer
@@ -550,7 +560,8 @@ inline constexpr std::uint32_t surface_closure_emission_static_variant_mask =
 
 [[nodiscard]] constexpr std::uint32_t make_surface_closure_control(
     const ClosureInstruction &instruction,
-    SurfaceClosureEndpointMask endpoints) noexcept {
+    SurfaceClosureEndpointMask endpoints,
+    bool microfacet_anisotropy = false) noexcept {
   return static_cast<std::uint32_t>(instruction.operation) |
          ((endpoints & 0x3u) << surface_closure_endpoint_shift) |
          (static_cast<std::uint32_t>(instruction.subsurface_method)
@@ -563,7 +574,10 @@ inline constexpr std::uint32_t surface_closure_emission_static_variant_mask =
          (instruction.preserve_ggx_energy
               ? surface_closure_preserve_ggx_energy
               : 0u) |
-         (instruction.beckmann ? surface_closure_beckmann : 0u);
+         (instruction.beckmann ? surface_closure_beckmann : 0u) |
+         (microfacet_anisotropy
+              ? surface_closure_microfacet_anisotropy
+              : 0u);
 }
 
 [[nodiscard]] constexpr ClosureOperation surface_closure_operation(

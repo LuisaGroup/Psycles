@@ -378,7 +378,7 @@ evaluate_general_closure(
                 result.weighted_roughness_squared =
                     weighted_pdf *
                     detail::microfacet_specular_roughness_squared(
-                        common, query.glossy_filter_roughness);
+                        closure, query.glossy_filter_roughness);
                 result.events = select(
                     0u,
                     static_cast<std::uint32_t>(
@@ -428,7 +428,7 @@ evaluate_general_closure(
                 result.weighted_roughness_squared =
                     weighted_pdf *
                     detail::microfacet_specular_roughness_squared(
-                        common, query.glossy_filter_roughness);
+                        closure, query.glossy_filter_roughness);
                 result.events = select(
                     0u,
                     static_cast<std::uint32_t>(

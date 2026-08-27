@@ -16,10 +16,10 @@ namespace psycles::luisa_backend {
 // fields outside that family are canonicalized to
 // SurfaceClosureRecord::zero(). Each family contains every field observable
 // by any of its member tags. The two matrices contain 32 scalar lanes. This
-// is sufficient because the widest member is glass/refraction:
+// is sufficient because the widest members are general and glass/refraction:
 //
 //   identity/flags 4 + weight/allocation 4 + sample weight 1 +
-//   normal/roughness 4 + color 3 + dielectric payload 16 = 32.
+//   normal/roughness 4 + color 3 + payload 16 = 32.
 //
 // For every tag k, pack is injective on the fields observable for k and
 // unpack(pack(x)) restricted to those fields equals x. Retaining an
@@ -91,6 +91,9 @@ struct SurfaceClosurePhysicalGeneralPayload {
     Float sheen_transform_a;
     Float sheen_transform_b;
     Float3 evaluation_scale;
+    Float3 microfacet_tangent;
+    Float microfacet_alpha_x;
+    Float microfacet_alpha_y;
 };
 
 struct SurfaceClosurePhysicalGeneralRecord {

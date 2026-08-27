@@ -22,6 +22,18 @@ psycles_add_luisa_backend_test(
     LIBRARIES Psycles::luisa)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_microfacet_anisotropy_tests
+    SOURCE tests/test_luisa_microfacet_anisotropy.cpp
+    TEST_STEM luisa_microfacet_anisotropy
+    LIBRARIES Psycles::luisa)
+if(TEST psycles.luisa_microfacet_anisotropy_vk)
+    set_tests_properties(
+        psycles.luisa_microfacet_anisotropy_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_ray_differential_tests
     SOURCE tests/test_luisa_ray_differential.cpp
     TEST_STEM luisa_ray_differential
@@ -68,6 +80,12 @@ psycles_add_luisa_backend_test(
     SOURCE tests/test_luisa_surface_closure_collection.cpp
     TEST_STEM luisa_surface_closure_collection
     LIBRARIES Psycles::luisa)
+if(TEST psycles.luisa_surface_closure_collection_vk)
+    set_tests_properties(
+        psycles.luisa_surface_closure_collection_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
 
 psycles_add_luisa_backend_test(
     TARGET psycles_luisa_surface_closure_reachability_tests
@@ -147,7 +165,7 @@ if(TEST psycles.luisa_surface_closure_physical_vk)
     set_tests_properties(
         psycles.luisa_surface_closure_physical_vk
         PROPERTIES ENVIRONMENT
-            "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1")
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
 endif()
 
 psycles_add_luisa_backend_test(

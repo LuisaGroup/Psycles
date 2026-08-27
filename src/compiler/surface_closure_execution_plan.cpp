@@ -106,9 +106,17 @@ inline constexpr auto emission_principled_features =
             closure.coat_tint,
             closure.coat_normal,
             closure.emission_color,
-            closure.emission_strength};
+            closure.emission_strength,
+            closure.microfacet_anisotropy,
+            closure.microfacet_rotation,
+            closure.tangent};
   case ClosureOperation::glossy:
-    return {closure.color, closure.normal, closure.roughness};
+    return {closure.color,
+            closure.normal,
+            closure.roughness,
+            closure.microfacet_anisotropy,
+            closure.microfacet_rotation,
+            closure.tangent};
   case ClosureOperation::glass:
   case ClosureOperation::refraction:
     return {closure.color, closure.normal, closure.roughness, closure.ior};
@@ -177,9 +185,14 @@ struct ClosureWeightReferences {
     ClosureOperation operation, std::size_t operand) noexcept {
   switch (operation) {
   case ClosureOperation::diffuse:
-  case ClosureOperation::glossy:
     return operand == surface_closure_operand::diffuse::color ||
                    operand == surface_closure_operand::diffuse::normal
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::glossy:
+    return operand == surface_closure_operand::glossy::color ||
+                   operand == surface_closure_operand::glossy::normal ||
+                   operand == surface_closure_operand::glossy::tangent
                ? SurfaceValueBank::vector
                : SurfaceValueBank::scalar;
   case ClosureOperation::translucent:
@@ -194,6 +207,7 @@ struct ClosureWeightReferences {
     case surface_closure_operand::principled::coat_tint:
     case surface_closure_operand::principled::coat_normal:
     case surface_closure_operand::principled::emission_color:
+    case surface_closure_operand::principled::tangent:
       return SurfaceValueBank::vector;
     default:
       return SurfaceValueBank::scalar;
@@ -379,7 +393,20 @@ all_principled_closure_features() noexcept {
       if (!address_fits_value_program(
               closures.operands[operand_begin + operand],
               closure_operand_bank(operation, operand), values, true)) {
-        return "a closure operand has the wrong type or exceeds its bank";
+        const auto encoded = closures.operands[operand_begin + operand];
+        const auto address = SurfaceValueAddress{encoded};
+        return "closure opcode " +
+               std::to_string(static_cast<std::uint32_t>(operation)) +
+               " operand " + std::to_string(operand) +
+               " has encoded address " + std::to_string(encoded) +
+               " in bank " +
+               (address.valid()
+                    ? std::to_string(
+                          static_cast<std::uint32_t>(address.bank()))
+                    : std::string{"invalid"}) +
+               ", expected bank " +
+               std::to_string(static_cast<std::uint32_t>(
+                   closure_operand_bank(operation, operand)));
       }
     }
     expected_operations |= 1u << static_cast<std::uint32_t>(operation);
@@ -390,6 +417,15 @@ all_principled_closure_features() noexcept {
       return "a closure leaf has an invalid Principled feature mask";
     }
     expected_features |= features;
+    const auto anisotropic =
+        (instruction.control & surface_closure_microfacet_anisotropy) != 0u;
+    if (anisotropic &&
+        ((endpoints & surface_closure_endpoint_bit(
+                          SurfaceClosureEndpoint::physical)) == 0u ||
+         (operation != ClosureOperation::principled &&
+          operation != ClosureOperation::glossy))) {
+      return "a closure leaf has anisotropy on an incompatible projection";
+    }
   }
   if (closures.mix_slots != maximum_weight_slot_extent) {
     return "the closure weight-slot allocation is not dense";
@@ -650,8 +686,13 @@ SurfaceClosureProgramImage lower_surface_closure_program(
                          SurfaceClosureEndpoint::physical)) == 0u) {
       features &= emission_principled_features;
     }
+    const auto microfacet_anisotropy =
+        (endpoints & surface_closure_endpoint_bit(
+                         SurfaceClosureEndpoint::physical)) != 0u &&
+        closure_plan.entry(current.id).microfacet_anisotropy;
     if (!append_instruction(SurfaceClosureBytecodeInstruction{
-            .control = make_surface_closure_control(closure, endpoints),
+            .control = make_surface_closure_control(
+                closure, endpoints, microfacet_anisotropy),
             .payload0 = operand_begin},
           ClosureWeightReferences{.leaf = current.weight},
           features)) {

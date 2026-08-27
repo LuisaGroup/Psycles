@@ -94,6 +94,20 @@ struct TracedClosure {
     Float ior;
     Float specular_ior_level;
     Float3 specular_tint;
+    // Authored anisotropy inputs. `anisotropy_enabled` is host/JIT topology
+    // metadata proven by SurfaceClosurePlan; when false none of these device
+    // expressions are read or recorded.
+    bool anisotropy_enabled{};
+    Float anisotropy;
+    Float anisotropic_rotation;
+    Float3 tangent;
+    // Physical microfacet state. Setup initializes this for every emitted
+    // closure; scattering observes only this common representation and never
+    // reinterprets the authored node parameterization.
+    Float3 microfacet_tangent;
+    Float microfacet_alpha_x;
+    Float microfacet_alpha_y;
+    bool microfacet_state_configured{};
     Float alpha;
     Bool thin_wall{false};
     Float sheen_weight;
@@ -188,7 +202,7 @@ struct MicrofacetReflectionSample {
     Float3 direction;
     Float3 singular_evaluation;
     Float singular_pdf;
-    Float alpha;
+    Float2 roughness;
     Bool singular;
     Bool valid;
 };
@@ -351,14 +365,23 @@ template <typename Id, typename Values>
 [[nodiscard]] Float microfacet_alpha(
     const SurfaceClosurePhysicalCommonRecord &closure,
     Float glossy_filter_roughness) noexcept;
+[[nodiscard]] Float2 microfacet_alpha(
+    const SurfaceClosurePhysicalGeneralRecord &closure,
+    Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Bool microfacet_is_singular(
     const SurfaceClosurePhysicalCommonRecord &closure,
+    Float glossy_filter_roughness) noexcept;
+[[nodiscard]] Bool microfacet_is_singular(
+    const SurfaceClosurePhysicalGeneralRecord &closure,
     Float glossy_filter_roughness) noexcept;
 // Exact microfacet branch of Cycles' bsdf_get_specular_roughness_squared.
 // The family eliminator owns the remaining classification, so this helper
 // cannot re-introduce runtime kind tests after the tagged-union dispatch.
 [[nodiscard]] Float microfacet_specular_roughness_squared(
     const SurfaceClosurePhysicalCommonRecord &closure,
+    Float glossy_filter_roughness) noexcept;
+[[nodiscard]] Float microfacet_specular_roughness_squared(
+    const SurfaceClosurePhysicalGeneralRecord &closure,
     Float glossy_filter_roughness) noexcept;
 [[nodiscard]] Float3 microfacet_reflection_fresnel(
     const SurfaceClosurePhysicalGeneralRecord &closure,
