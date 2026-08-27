@@ -1,0 +1,214 @@
+{
+  "actual_label": "rejected singleton bypass",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "channel_mean_ratio": [
+        1.000001311302185,
+        1.0000016689300537,
+        1.0000017881393433
+      ],
+      "cycles": "/var/tmp/psycles-singleton-benchmark/profiles/baseline/out.exr",
+      "cycles_channel_mean": [
+        0.0900515541434288,
+        0.06403109431266785,
+        0.04895256832242012
+      ],
+      "cycles_luminance_mean": 0.06847637891769409,
+      "cycles_rms": 0.16218331456184387,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000015232716741,
+      "maximum_absolute_error": 0.03513575345277786,
+      "mean_absolute_error": 1.0651758941548906e-07,
+      "orientation_rmse": {
+        "flip_x": 0.1865157186985016,
+        "flip_xy": 0.1962282806634903,
+        "flip_y": 0.18834218382835388,
+        "identity": 5.766586400568485e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 4.301594636046957e-09,
+      "psycles": "/var/tmp/psycles-singleton-benchmark/profiles/candidate/out.exr",
+      "psycles_channel_mean": [
+        0.09005167335271835,
+        0.0640311986207962,
+        0.048952654004096985
+      ],
+      "psycles_luminance_mean": 0.06847648322582245,
+      "psycles_rms": 0.16218333682742278,
+      "relative_rmse": 0.0003555597822222067,
+      "rmse": 5.766586400568485e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 241591910.4,
+        "display_scale": 1.075576939912485,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/singleton-categorical-bypass-rejected/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "GlossInd": {
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-singleton-benchmark/profiles/baseline/out.exr",
+      "cycles_channel_mean": [
+        0.08378063887357712,
+        0.06148059293627739,
+        0.05021372810006142
+      ],
+      "cycles_luminance_mean": 0.06541813910007477,
+      "cycles_rms": 0.31244906783103943,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 1.9073486328125e-06,
+      "mean_absolute_error": 3.153657335275284e-10,
+      "orientation_rmse": {
+        "flip_x": 0.42929986119270325,
+        "flip_xy": 0.4288352429866791,
+        "flip_y": 0.4292064905166626,
+        "identity": 5.853423079571485e-09
+      },
+      "p95_pixel_rmse": 5.376993295058696e-10,
+      "p99_pixel_rmse": 9.618657870191782e-09,
+      "psycles": "/var/tmp/psycles-singleton-benchmark/profiles/candidate/out.exr",
+      "psycles_channel_mean": [
+        0.08378063887357712,
+        0.06148059293627739,
+        0.05021372810006142
+      ],
+      "psycles_luminance_mean": 0.06541813910007477,
+      "psycles_rms": 0.3124490815641335,
+      "relative_rmse": 1.873400717820926e-08,
+      "rmse": 5.853423079571485e-09,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 60397977.6,
+        "display_scale": 0.8316265728457672,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/singleton-categorical-bypass-rejected/triptychs/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "channel_mean_ratio": [
+        0.9999999403953552,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-singleton-benchmark/profiles/baseline/out.exr",
+      "cycles_channel_mean": [
+        0.10977821052074432,
+        0.3143407702445984,
+        -0.0570940263569355
+      ],
+      "cycles_luminance_mean": 0.24400070309638977,
+      "cycles_rms": 0.551543116569519,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 9.335577487945557e-06,
+      "mean_absolute_error": 1.3906104046057521e-09,
+      "orientation_rmse": {
+        "flip_x": 0.6507176160812378,
+        "flip_xy": 0.8734650611877441,
+        "flip_y": 0.7784232497215271,
+        "identity": 1.4301094530821956e-08
+      },
+      "p95_pixel_rmse": 1.7206378544187828e-08,
+      "p99_pixel_rmse": 3.847463148076713e-08,
+      "psycles": "/var/tmp/psycles-singleton-benchmark/profiles/candidate/out.exr",
+      "psycles_channel_mean": [
+        0.10977820307016373,
+        0.3143407702445984,
+        -0.0570940263569355
+      ],
+      "psycles_luminance_mean": 0.24400070309638977,
+      "psycles_rms": 0.5515431214297281,
+      "relative_rmse": 2.592924125274507e-08,
+      "rmse": 1.4301094530821956e-08,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-27/singleton-categorical-bypass-rejected/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "f196ecf retained baseline",
+  "schema": "psycles.cycles-differential.v2"
+}
