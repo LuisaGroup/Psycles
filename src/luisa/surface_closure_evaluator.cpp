@@ -9,26 +9,6 @@
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend {
-namespace {
-
-[[nodiscard]] detail::SurfaceClosureIdentityExpression
-physical_common_identity(
-    const SurfaceClosurePhysicalCommonRecord &closure) noexcept {
-    return {
-        .kind = Expr<std::uint32_t>{closure.kind.expression()},
-        .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
-        .bssrdf_method = Expr<std::uint32_t>{
-            closure.bssrdf_method.expression()},
-        .allocation_weight =
-            Expr<float>{closure.allocation_weight.expression()},
-        .setup_valid = Expr<bool>{closure.setup_valid.expression()},
-        .roughness = Expr<float>{closure.roughness.expression()},
-        .preserve_ggx_energy = Expr<bool>{
-            closure.preserve_ggx_energy.expression()},
-        .beckmann = Expr<bool>{closure.beckmann.expression()}};
-}
-
-}// namespace
 
 SurfaceClosureEvaluator::SurfaceClosureEvaluator(
     const SurfacePoint &point,
@@ -45,53 +25,17 @@ UInt SurfaceClosureEvaluator::runtime_flags(
         cycles_closure::runtime_backfacing,
         _point.back_facing);
     UInt index = 0u;
-    if (_closures.profile() ==
-        SurfaceClosureStorageProfile::physical) {
-        $while(index < _closures.count()) {
-            result |= detail::cycles_runtime_flags(
-                physical_common_identity(
-                    _closures.physical_common_entry_unchecked(index)),
-                glossy_filter_roughness);
-            index += 1u;
-        };
-    } else {
-        $while(index < _closures.count()) {
-            result |= detail::cycles_runtime_flags(
-                _closures.entry(index),
-                glossy_filter_roughness);
-            index += 1u;
-        };
-    }
+    $while(index < _closures.count()) {
+        result |= detail::cycles_runtime_flags(
+            _closures.entry(index),
+            glossy_filter_roughness);
+        index += 1u;
+    };
     return result;
 }
 
 SurfaceClosureTrace SurfaceClosureEvaluator::closure_trace(
     UInt requested_index) const noexcept {
-    if (_closures.profile() ==
-        SurfaceClosureStorageProfile::physical) {
-        const auto valid = requested_index < _closures.count();
-        const auto safe_index = select(0u, requested_index, valid);
-        const auto closure =
-            _closures.physical_common_entry_unchecked(safe_index);
-        const auto identity = physical_common_identity(closure);
-        return {
-            .count = _closures.count(),
-            .runtime_flags = runtime_flags(),
-            .index = requested_index,
-            .type = select(
-                UInt{cycles_closure::type_none},
-                detail::cycles_closure_type(identity),
-                valid),
-            .sample_weight = select(
-                0.0f, closure.sample_weight, valid),
-            .weight = select(
-                make_float3(0.0f), closure.weight, valid),
-            .normal = select(
-                make_float3(0.0f, 0.0f, 1.0f),
-                closure.normal,
-                valid),
-            .valid = valid};
-    }
     const auto closure = _closures.entry(requested_index);
     const auto valid = requested_index < _closures.count();
     return {
