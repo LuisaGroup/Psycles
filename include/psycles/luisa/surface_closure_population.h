@@ -13,6 +13,28 @@ namespace psycles::luisa_backend {
 
 class SurfaceClosureSet;
 
+// ShaderData-equivalent state produced by one retained-closure transaction.
+// Its private constructor makes provenance part of the type boundary: a
+// consumer can copy this token, but cannot substitute an unrelated UInt.
+class SurfaceClosurePopulationState {
+
+  private:
+    friend class SurfaceClosurePopulationCollector;
+    friend class SurfaceClosureEvaluator;
+
+    Expr<std::uint32_t> _runtime_flags;
+
+    explicit SurfaceClosurePopulationState(
+        Expr<std::uint32_t> runtime_flags) noexcept
+        : _runtime_flags{runtime_flags} {}
+
+  public:
+    SurfaceClosurePopulationState(
+        const SurfaceClosurePopulationState &) noexcept = default;
+    SurfaceClosurePopulationState(
+        SurfaceClosurePopulationState &&) noexcept = default;
+};
+
 // One-pass product of Cycles-compatible closure allocation. For the retained
 // source-order subsequence S, this collector stores exactly physical(S), while
 // runtime flags and camera AOVs are folded over that same S before setup-only
@@ -45,6 +67,8 @@ class SurfaceClosurePopulationCollector final
     void finish() noexcept override;
 
     [[nodiscard]] const SurfaceClosureSet &closures() const noexcept;
+    [[nodiscard]] SurfaceClosurePopulationState
+    runtime_state() const noexcept;
     [[nodiscard]] SurfacePreparation preparation(
         Float3 emission) const noexcept;
 };

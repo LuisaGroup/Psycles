@@ -1,8 +1,9 @@
 {
-  "schema": "psycles.cycles-5.2-surface-svm-gap-audit.v4",
+  "schema": "psycles.cycles-5.2-surface-svm-gap-audit.v5",
   "reference": {
     "psycles": "717176eebc7b47e7d1b55db6dcc9e00f7285ff3b",
     "branch_local_consumer_base": "d54120a",
+    "population_owned_runtime_flags_base": "dc95f23",
     "luisa_compute": "eeda4b154fcf43e8709d1b42478e958677b9c6ae",
     "cycles_source": "9e2066aef7ef7e20c142ad7bd3303138a4304c93",
     "blender_build": "fbe6228777e7",
@@ -33,7 +34,58 @@
     "unique_topologies": 189,
     "preparation_instructions": 6272
   },
-  "hip_surface": {
+  "compact_svm_vs_topology_expansion": {
+    "resolution": [640, 480],
+    "samples": 64,
+    "adaptive_sampling": false,
+    "sequence": ["expanded_a", "compact_a", "compact_b", "expanded_b"],
+    "expanded_a": {
+      "render_seconds": 2.68987,
+      "shade_surface_calls": 293,
+      "shade_surface_work_items": 53659328,
+      "shade_surface_gpu_ms": 1609.938451,
+      "shade_surface_ns_per_item": 30.002955889,
+      "private_bytes": 3944
+    },
+    "compact_a": {
+      "render_seconds": 2.56901,
+      "shade_surface_calls": 293,
+      "shade_surface_work_items": 53659264,
+      "shade_surface_gpu_ms": 1487.182444,
+      "shade_surface_ns_per_item": 27.715297101,
+      "private_bytes": 3136
+    },
+    "compact_b": {
+      "render_seconds": 2.56493,
+      "shade_surface_calls": 293,
+      "shade_surface_work_items": 53659296,
+      "shade_surface_gpu_ms": 1485.011352,
+      "shade_surface_ns_per_item": 27.674819886,
+      "private_bytes": 3136
+    },
+    "expanded_b": {
+      "render_seconds": 2.68922,
+      "shade_surface_calls": 293,
+      "shade_surface_work_items": 53659328,
+      "shade_surface_gpu_ms": 1610.074042,
+      "shade_surface_ns_per_item": 30.005482775,
+      "private_bytes": 3944
+    },
+    "compact_median": {
+      "render_seconds": 2.56697,
+      "shade_surface_ns_per_item": 27.695058493
+    },
+    "expanded_median": {
+      "render_seconds": 2.689545,
+      "shade_surface_ns_per_item": 30.004219332
+    },
+    "compact_shade_surface_delta_percent": -7.69612,
+    "compact_render_delta_percent": -4.557462,
+    "expanded_shader_cache_payload_bytes": 1989501,
+    "expanded_profile_jit_seconds": [85.5967, 85.5041],
+    "conclusion": "compact_svm_is_not_the_current_surface_gap"
+  },
+  "original_hip_surface": {
     "resolution": [640, 480],
     "samples": 64,
     "adaptive_sampling": false,
@@ -61,7 +113,38 @@
     },
     "psycles_over_cycles": 2.676
   },
-  "accepted_llvm": {
+  "current_hip_surface": {
+    "resolution": [640, 480],
+    "samples": 64,
+    "adaptive_sampling": false,
+    "psycles": {
+      "calls": 293,
+      "work_items_median": 53659280,
+      "gpu_ms_median": 1483.157915,
+      "ns_per_item_median": 27.640295532,
+      "vgpr": 256,
+      "private_bytes": 3136,
+      "vgpr_spills": 381,
+      "object_bytes": 355360,
+      "text_bytes": 351744,
+      "entry_symbol_bytes": 295728,
+      "final_llvm_bytes": 3374620,
+      "final_llvm_lines": 57804,
+      "coroutine_frame_bytes": 880,
+      "coroutine_frame_fields": 178
+    },
+    "cycles": {
+      "calls": 296,
+      "work_items": 54061056,
+      "gpu_ms": 582.670705,
+      "ns_per_item": 10.778,
+      "vgpr": 192,
+      "private_bytes": 6976,
+      "entry_symbol_bytes": 2552
+    },
+    "psycles_over_cycles": 2.564511
+  },
+  "original_accepted_llvm": {
     "bytes": 3373035,
     "lines": 57932,
     "alloca_occurrences": 46,
@@ -363,6 +446,120 @@
       "hip": "pass",
       "vulkan_native_xir_spirv": "pass",
       "tests": 15
+    }
+  },
+  "population_owned_runtime_flags": {
+    "base": "dc95f23",
+    "formal_fold": "F_0=backfacing; F_(i+1)=F_i OR flags(c_i,r)",
+    "preparation_projection": "include_runtime_flags ? F_n : 0",
+    "sample_projection": "F_n",
+    "retention_contract": "closure storage and flag fold share one retained append transaction",
+    "provenance_token": "private_constructor_copyable_only_from_population_collector",
+    "cold_surface": {
+      "stage_hash": "bedcc364b19536f4",
+      "coroutine_subroutines": 9,
+      "coroutine_frame_bytes": 880,
+      "coroutine_frame_fields": 178,
+      "object_bytes": 355360,
+      "text_bytes": 351744,
+      "entry_symbol_bytes": 295728,
+      "final_llvm_bytes": 3374620,
+      "final_llvm_lines": 57804,
+      "define_occurrences": 13,
+      "private_bytes": 3136,
+      "vgpr": 256,
+      "vgpr_spills": 381
+    },
+    "cold_delta_from_base": {
+      "coroutine_frame_bytes": 0,
+      "coroutine_frame_fields": 0,
+      "object_bytes": -128,
+      "text_bytes": -128,
+      "entry_symbol_bytes": -152,
+      "final_llvm_bytes": -2087,
+      "final_llvm_lines": -30,
+      "vgpr_spills": -3
+    },
+    "interleaved_hip_profile": {
+      "resolution": [640, 480],
+      "samples": 64,
+      "adaptive_sampling": false,
+      "sequence": ["baseline_a", "candidate_a", "candidate_b", "baseline_b"],
+      "baseline_a": {
+        "render_seconds": 2.57333,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659296,
+        "shade_surface_gpu_ms": 1487.845773,
+        "shade_surface_ns_per_item": 27.727642439
+      },
+      "candidate_a": {
+        "render_seconds": 2.56853,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659264,
+        "shade_surface_gpu_ms": 1483.510457,
+        "shade_surface_ns_per_item": 27.646865544
+      },
+      "candidate_b": {
+        "render_seconds": 2.56392,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659264,
+        "shade_surface_gpu_ms": 1482.805373,
+        "shade_surface_ns_per_item": 27.63372552
+      },
+      "baseline_b": {
+        "render_seconds": 2.57265,
+        "shade_surface_calls": 293,
+        "shade_surface_work_items": 53659264,
+        "shade_surface_gpu_ms": 1489.453022,
+        "shade_surface_ns_per_item": 27.757611845
+      },
+      "baseline_median": {
+        "render_seconds": 2.57299,
+        "shade_surface_ns_per_item": 27.742627142
+      },
+      "candidate_median": {
+        "render_seconds": 2.566225,
+        "shade_surface_ns_per_item": 27.640295532
+      },
+      "shade_surface_delta_percent": -0.368861,
+      "render_delta_percent": -0.262924,
+      "performance_result": "small_repeatable_improvement"
+    },
+    "exr_comparison": {
+      "channels": 46,
+      "mean_absolute_error": 2.24282e-9,
+      "rms_error": 2.10451e-6,
+      "psnr_db": 162.418,
+      "pixels_over_1e-6": 25,
+      "fraction_over_1e-6": 0.0000814,
+      "combined": {
+        "mean_absolute_error": 1.4619944144200758e-9,
+        "rms_error": 7.584426384710241e-7,
+        "relative_rmse": 4.67554437562936e-6,
+        "maximum_absolute_error": 0.0005448721349239349,
+        "luminance_mean_ratio": 1.0
+      },
+      "normal": {
+        "mean_absolute_error": 1.3885800287383177e-9,
+        "rms_error": 2.1551519679974263e-8,
+        "maximum_absolute_error": 1.531839370727539e-5
+      },
+      "baseline_repeat_rms_error": 7.73006e-6,
+      "baseline_repeat_pixels_over_1e-6": 36,
+      "visual_result": "no_structural_difference"
+    },
+    "focused_backend_matrix": {
+      "fallback": "pass",
+      "hip": "pass",
+      "vulkan_native_xir_spirv": "pass",
+      "tests": 15,
+      "masked_preparation_nonzero_sample_regression": "pass"
+    },
+    "profiler_limitations": {
+      "gfx1201_pc_sampling_configuration": "unavailable",
+      "att_trace_decoder_library": "missing",
+      "pmc_collection": "rocprof_vector_assertion",
+      "kernel_trace": "reliable"
     }
   }
 }

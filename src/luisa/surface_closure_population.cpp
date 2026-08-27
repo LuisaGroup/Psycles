@@ -26,7 +26,8 @@ struct SurfaceClosurePopulationCollector::Impl {
               query.include_runtime_flags,
               query.include_aov,
               identity_value,
-              aov_operation_value} {}
+              aov_operation_value,
+              detail::RuntimeFlagReductionMode::retained_state} {}
 };
 
 SurfaceClosurePopulationCollector::SurfaceClosurePopulationCollector(
@@ -68,6 +69,12 @@ void SurfaceClosurePopulationCollector::finish() noexcept {
 const SurfaceClosureSet &
 SurfaceClosurePopulationCollector::closures() const noexcept {
     return _impl->closures;
+}
+
+SurfaceClosurePopulationState
+SurfaceClosurePopulationCollector::runtime_state() const noexcept {
+    return SurfaceClosurePopulationState{
+        _impl->preparation.runtime_flags()};
 }
 
 SurfacePreparation SurfaceClosurePopulationCollector::preparation(

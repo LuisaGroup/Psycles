@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <vector>
 
 #include <luisa/luisa-compute.h>
@@ -32,6 +33,12 @@ using psycles::test_support::approximately_equal;
 using psycles::test_support::make_surface_point;
 using psycles::test_support::parameter_data;
 using psycles::test_support::ParameterShaderServices;
+
+static_assert(std::is_copy_constructible_v<
+              SurfaceClosurePopulationState>);
+static_assert(!std::is_constructible_v<
+              SurfaceClosurePopulationState,
+              Expr<std::uint32_t>>);
 
 constexpr auto scenario_count = 8u;
 constexpr auto material_count = 2u;
@@ -660,7 +667,10 @@ int main(int argc, char **argv) {
         const auto preparation = closures.preparation(
             population.emission);
         const SurfaceClosureEvaluator evaluator{
-            point, closures.closures(), population.shading_normal};
+            point,
+            closures.closures(),
+            population.shading_normal,
+            closures.runtime_state()};
         const auto closure = evaluator.closure_trace(scenario);
         const auto regular = evaluator.evaluate(
             services, inputs.outgoing, inputs.query);
@@ -743,6 +753,31 @@ int main(int argc, char **argv) {
                 << actual.w << "}, legacy {" << expected.x
                 << ", " << expected.y << ", " << expected.z
                 << ", " << expected.w << "}\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    // Regression for the population-state ownership contract. Scenario 4
+    // masks runtime flags from the preparation/pass output, but the populated
+    // ShaderData-equivalent state must still retain them for the later sample
+    // consumer. This distinguishes output projection from state construction:
+    // a collector which simply stored the masked zero would fail here.
+    constexpr auto runtime_flags_omitted_scenario = 4u;
+    for (auto material = 0u; material < material_count; ++material) {
+        const auto invocation =
+            material * scenario_count + runtime_flags_omitted_scenario;
+        const auto base = invocation * ResultLayout::count;
+        const auto preparation_flags =
+            populated[base + ResultLayout::shading_normal].w;
+        const auto sample_flags =
+            populated[base + ResultLayout::sample_identity].z;
+        if (preparation_flags != 0.0f || sample_flags == 0.0f) {
+            std::cerr
+                << "population runtime-flag state was confused with its "
+                   "masked preparation projection on "
+                << backend << " for material " << material
+                << ": preparation flags " << preparation_flags
+                << ", sample flags " << sample_flags << '\n';
             return EXIT_FAILURE;
         }
     }

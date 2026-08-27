@@ -17,6 +17,7 @@ template<typename Consumer>
 void for_each_surface_closure_selection(
     const SurfaceClosureSet &closures,
     const SurfaceClosureSelectionContext &context,
+    bool include_runtime_flags,
     Consumer &&consumer) noexcept {
     UInt index = 0u;
     if (closures.profile() ==
@@ -29,7 +30,8 @@ void for_each_surface_closure_selection(
             consumer(index,
                 surface_closure_selection(
                     context,
-                    make_surface_closure_selection_input(common)));
+                    make_surface_closure_selection_input(common),
+                    include_runtime_flags));
             index += 1u;
         };
     } else {
@@ -40,7 +42,8 @@ void for_each_surface_closure_selection(
             consumer(index,
                 surface_closure_selection(
                     context,
-                    make_surface_closure_selection_input(closure)));
+                    make_surface_closure_selection_input(closure),
+                    include_runtime_flags));
             index += 1u;
         };
     }
@@ -56,6 +59,7 @@ void with_selected_surface_closure(
     const SurfaceClosureSet &closures,
     UInt selected_index,
     const SurfaceClosureSelectionContext &context,
+    bool include_runtime_flags,
     Consumer &&consumer) noexcept {
     if (closures.profile() ==
         SurfaceClosureStorageProfile::physical) {
@@ -67,7 +71,8 @@ void with_selected_surface_closure(
             closures.physical_payload_entry(access, common),
             surface_closure_selection(
                 context,
-                make_surface_closure_selection_input(common)));
+                make_surface_closure_selection_input(common),
+                include_runtime_flags));
     } else {
         const auto closure =
             static_cast<SurfaceClosurePhysicalRecord>(
@@ -75,7 +80,8 @@ void with_selected_surface_closure(
         consumer(closure,
             surface_closure_selection(
                 context,
-                make_surface_closure_selection_input(closure)));
+                make_surface_closure_selection_input(closure),
+                include_runtime_flags));
     }
 }
 
@@ -92,6 +98,8 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
         _point.incoming, _point.shading_normal);
     const auto selection_context =
         make_surface_closure_selection_context(query);
+    const auto use_populated_runtime_flags =
+        _populated_runtime_state.has_value();
 
     // Pass one constructs exactly the finite Cycles closure-selection
     // measure. The Local evaluator remains only as a storage-form regression;
@@ -101,6 +109,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     for_each_surface_closure_selection(
         _closures,
         selection_context,
+        !use_populated_runtime_flags,
         [&](UInt,
             const luisa::compute::Var<
                 SurfaceClosureSelectionCall> &selection) noexcept {
@@ -116,6 +125,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
     for_each_surface_closure_selection(
         _closures,
         selection_context,
+        !use_populated_runtime_flags,
         [&](UInt index,
             const luisa::compute::Var<
                 SurfaceClosureSelectionCall> &selection) noexcept {
@@ -135,7 +145,8 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
             const auto common = _closures.physical_common_entry(access);
             const auto selection = surface_closure_selection(
                 selection_context,
-                make_surface_closure_selection_input(common));
+                make_surface_closure_selection_input(common),
+                !use_populated_runtime_flags);
             const auto sample =
                 surface_closure_conditional_sample_from_physical_common(
                     services,
@@ -168,6 +179,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
                 _closures,
                 selected_index,
                 selection_context,
+                !use_populated_runtime_flags,
                 [&](const SurfaceClosurePhysicalRecord &closure,
                     const luisa::compute::Var<
                         SurfaceClosureSelectionCall> &selection) noexcept {
@@ -203,8 +215,15 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
         EvaluationMode::sampled_bsdf,
         0u,
         UInt{selected.closure_index()});
+    const auto runtime_flags = use_populated_runtime_flags
+                                   ? _populated_runtime_state->_runtime_flags
+                                   : measure.runtime_flags();
     return selected.finish(
-        closure_point, measure, mixture, trace_selection);
+        closure_point,
+        measure,
+        runtime_flags,
+        mixture,
+        trace_selection);
 }
 
 SurfaceSample SurfaceClosureEvaluator::sample(

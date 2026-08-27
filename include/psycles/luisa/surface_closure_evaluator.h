@@ -5,7 +5,10 @@
 #endif
 
 #include <psycles/luisa/surface_closure_reachability.h>
+#include <psycles/luisa/surface_closure_population.h>
 #include <psycles/luisa/surface_closure_set.h>
+
+#include <optional>
 
 namespace psycles::luisa_backend {
 
@@ -26,6 +29,8 @@ class SurfaceClosureEvaluator {
     const SurfaceClosureSet &_closures;
     Float3 _shading_normal;
     SurfaceClosureReachability _reachability;
+    std::optional<SurfaceClosurePopulationState>
+        _populated_runtime_state;
 
     [[nodiscard]] SurfaceEvaluation evaluate_impl(
         const ShaderServices &services,
@@ -47,6 +52,17 @@ class SurfaceClosureEvaluator {
         const SurfacePoint &point,
         const SurfaceClosureSet &closures,
         Float3 shading_normal,
+        SurfaceClosureReachability reachability =
+            all_surface_closure_reachability) noexcept;
+
+    // Production constructor: runtime flags were folded over the exact same
+    // retained closure sequence while it was populated. Only the owning
+    // collector can construct this provenance token.
+    SurfaceClosureEvaluator(
+        const SurfacePoint &point,
+        const SurfaceClosureSet &closures,
+        Float3 shading_normal,
+        SurfaceClosurePopulationState populated_runtime_state,
         SurfaceClosureReachability reachability =
             all_surface_closure_reachability) noexcept;
 

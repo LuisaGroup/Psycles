@@ -18,7 +18,8 @@ SurfacePreparationAccumulator::SurfacePreparationAccumulator(
     Expr<bool> include_runtime_flags,
     Expr<bool> include_aov,
     const SurfaceClosureIdentityCallable &identity,
-    const SurfaceClosureAovCallable &aov_operation) noexcept
+    const SurfaceClosureAovCallable &aov_operation,
+    RuntimeFlagReductionMode runtime_flag_mode) noexcept
     : _point{point},
       _capacity{std::clamp(
           capacity,
@@ -28,13 +29,16 @@ SurfacePreparationAccumulator::SurfacePreparationAccumulator(
       _glossy_filter_roughness{glossy_filter_roughness},
       _include_runtime_flags{include_runtime_flags},
       _include_aov{include_aov},
+      _runtime_flag_mode{runtime_flag_mode},
       _identity{identity},
       _aov_operation{aov_operation},
       _retained_count{0u},
       _runtime_flags{select(
           0u,
           cycles_closure::runtime_backfacing,
-          _include_runtime_flags & point.back_facing)},
+          runtime_flag_mode == RuntimeFlagReductionMode::retained_state
+              ? Bool{point.back_facing}
+              : _include_runtime_flags & point.back_facing)},
       _aov{SurfacePreparation::zero(point).aov},
       _aov_total_weight{0.0f},
       _aov_roughness_weight{0.0f},
@@ -49,7 +53,7 @@ void SurfacePreparationAccumulator::set_shading_normal(
 
 void SurfacePreparationAccumulator::fold_retained(
     const SurfaceClosureRecord &closure) noexcept {
-    $if(_include_runtime_flags) {
+    const auto fold_runtime_flags = [&] noexcept {
         _runtime_flags |= _identity(
             closure.kind,
             closure.lobe,
@@ -62,6 +66,14 @@ void SurfacePreparationAccumulator::fold_retained(
             _glossy_filter_roughness)
                               .x;
     };
+    if (_runtime_flag_mode ==
+        RuntimeFlagReductionMode::retained_state) {
+        fold_runtime_flags();
+    } else {
+        $if(_include_runtime_flags) {
+            fold_runtime_flags();
+        };
+    }
     $if(_include_aov) {
         const auto contribution = _aov_operation(
             _point.incoming,
@@ -128,12 +140,23 @@ void SurfacePreparationAccumulator::finish() noexcept {
         _point.shading_normal);
 }
 
+Expr<std::uint32_t>
+SurfacePreparationAccumulator::runtime_flags() const noexcept {
+    return Expr<std::uint32_t>{_runtime_flags.expression()};
+}
+
 SurfacePreparation SurfacePreparationAccumulator::preparation(
     Float3 emission) const noexcept {
+    UInt exposed_runtime_flags{_runtime_flags};
+    if (_runtime_flag_mode ==
+        RuntimeFlagReductionMode::retained_state) {
+        exposed_runtime_flags = select(
+            0u, _runtime_flags, _include_runtime_flags);
+    }
     return {
         .emission = std::move(emission),
         .shading_normal = _point.shading_normal,
-        .runtime_flags = _runtime_flags,
+        .runtime_flags = std::move(exposed_runtime_flags),
         .aov = _aov};
 }
 

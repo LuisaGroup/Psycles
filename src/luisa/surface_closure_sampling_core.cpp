@@ -162,7 +162,8 @@ make_surface_closure_selection_context(
 luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
     const SurfaceClosureSelectionContext &context,
-    const SurfaceClosureSelectionInput &closure) noexcept {
+    const SurfaceClosureSelectionInput &closure,
+    bool include_runtime_flags) noexcept {
     const auto identity = detail::SurfaceClosureIdentityExpression{
         .kind = closure.kind,
         .lobe = closure.lobe,
@@ -242,8 +243,12 @@ surface_closure_selection(
         Float{closure.sample_weight},
         eligible);
     result.glossy_normal = closure.normal;
-    result.runtime_flags = detail::cycles_runtime_flags(
-        identity, Float{context.glossy_filter_roughness});
+    if (include_runtime_flags) {
+        result.runtime_flags = detail::cycles_runtime_flags(
+            identity, Float{context.glossy_filter_roughness});
+    } else {
+        result.runtime_flags = 0u;
+    }
     result.closure_type = detail::cycles_closure_type(identity);
     result.closure_sample_weight = Float{closure.sample_weight};
     return result;
@@ -766,6 +771,7 @@ SurfaceClosureSelectedSample::direction() const noexcept {
 SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
     const SurfaceClosurePoint &point,
     const SurfaceClosureSelectionMeasure &measure,
+    Expr<std::uint32_t> runtime_flags,
     const SurfaceEvaluation &mixture_evaluation,
     bool trace_selection) const noexcept {
     using namespace surface_closure_sample_property;
@@ -854,7 +860,7 @@ SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
     auto trace = SurfaceSampleTrace::zero();
     auto &result = trace.sample;
     result.wi = _direction;
-    result.runtime_flags = measure.runtime_flags();
+    result.runtime_flags = runtime_flags;
     result.valid = sample_valid;
     const auto bssrdf_transport_weight = select(
         make_float3(0.0f),
@@ -1123,7 +1129,11 @@ void SurfaceClosureSamplingVisitor::visit(
     }
     const auto mixture = evaluation.finish(true);
     const auto result = selected.finish(
-        _point, measure, mixture, _trace_selection);
+        _point,
+        measure,
+        measure.runtime_flags(),
+        mixture,
+        _trace_selection);
 
     _result.sample.evaluation.f = result.sample.evaluation.f;
     _result.sample.evaluation.pdf = result.sample.evaluation.pdf;

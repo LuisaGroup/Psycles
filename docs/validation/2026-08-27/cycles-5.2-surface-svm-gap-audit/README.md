@@ -24,11 +24,11 @@ The remaining gap to Cycles is split across two independent boundaries:
 
 The second difference remains a measured performance boundary. On the newest
 interleaved 640x480, 64-spp Barbershop HIP traces, the typed-family consumer
-costs a median 27.813 ns per launched item. The retained Cycles 5.2 trace costs
-10.778 ns per item, so the current normalized gap is approximately 2.58x.
-Psycles still reaches 256 VGPRs and 3,136 B private storage; Cycles uses
-192 VGPRs and 6,976 B private storage. The result cannot be explained by
-private bytes alone.
+with population-owned runtime flags costs a median 27.640 ns per launched
+item. The retained Cycles 5.2 trace costs 10.778 ns per item, so the current
+normalized gap is approximately 2.56x. Psycles still reaches 256 VGPRs and
+3,136 B private storage; Cycles uses 192 VGPRs and 6,976 B private storage. The
+result cannot be explained by private bytes alone.
 
 The first part of this audit introduced the checked physical-closure access
 boundary. The follow-up documented below implements consumer-directed family
@@ -48,10 +48,20 @@ the frame fixed at 880 B / 178 fields. Its interleaved HIP result is -0.072% in
 normalized `shade_surface` time and -0.084% render-only, both noise. This is an
 enforced non-interference and maintainability result, not a speedup claim.
 
+The latest follow-up makes the populated closure sequence the single owner of
+the ShaderData-equivalent runtime flags. Sampling no longer re-derives those
+flags in both categorical scans and again for the chosen closure. It preserves
+the 880 B / 178-field frame, reduces the main object by another 128 B, and
+improves normalized `shade_surface` by 0.369% in an interleaved A/B/B/A trace.
+The gain is small but repeatable in both samples and follows from removing
+executed duplicate work rather than changing closure semantics or control-flow
+shape.
+
 ## Reference identity
 
 - Original audit Psycles point: `717176eebc7b47e7d1b55db6dcc9e00f7285ff3b`.
 - Branch-local consumer baseline: `d54120a`.
+- Population-owned runtime-flag baseline: `dc95f23`.
 - LuisaCompute: `eeda4b154fcf43e8709d1b42478e958677b9c6ae`.
 - Cycles source: `blender-v5.2-release` at
   `9e2066aef7ef7e20c142ad7bd3303138a4304c93`.
@@ -250,7 +260,8 @@ sampling disabled:
 Normalized `shade_surface` changes by -0.072%; render-only changes by -0.084%.
 Both are noise. The result proves that the stronger type boundary is safe and
 slightly reduces generated structure, but it does not yet remove enough
-executed scattering work to explain the remaining 2.58x Cycles gap.
+executed scattering work to explain the 2.58x Cycles gap measured at that
+checkpoint.
 
 The 46-channel baseline/typed EXRs have mean absolute error `9.5861e-8`, RMS
 `1.784e-4`, PSNR `123.853 dB`, and 55 pixels (`0.0179%`) over `1e-6`.
@@ -264,11 +275,108 @@ difference is sparse sampling/atomic-order noise rather than a coherent region.
 
 ![Exact 31e2ab5 baseline, typed family handlers, and amplified Normal difference](triptychs/typed-family/normal.png)
 
+### Compact SVM versus topology expansion
+
+The compact surface route was also tested against the retained diagnostic
+oracle which expands every deduplicated material topology into the shader AST.
+This isolates the representation choice while keeping the same scene,
+physical closure consumers, scheduler, samples, and HIP backend. It is not a
+comparison against a simplified CPU implementation.
+
+| Run | Render-only | `shade_surface` ns/item | Private bytes |
+|---|---:|---:|---:|
+| expanded A | 2.68987 s | 30.002956 | 3,944 |
+| compact A | 2.56901 s | 27.715297 | 3,136 |
+| compact B | 2.56493 s | 27.674820 | 3,136 |
+| expanded B | 2.68922 s | 30.005483 | 3,944 |
+| compact median | 2.566970 s | 27.695058 | 3,136 |
+| expanded median | 2.689545 s | 30.004219 | 3,944 |
+
+The compact SVM is 7.696% faster in normalized `shade_surface` time and 4.557%
+faster render-only. The expanded surface shader cache payload is 1,989,501 B
+versus roughly 357 KB for the compact route, and loading/constructing the
+expanded shader set takes about 85.5 s in each retained profiled process. This
+controlled result rejects the hypothesis that the SVM interpreter is the
+source of the present surface gap. Expanding 189 topologies makes both code
+size and execution worse; the remaining work is inside the post-population
+consumer and individual node/closure algorithms.
+
+### Population-owned runtime flags
+
+Let the retained physical closure sequence be
+`S = (c_0, ..., c_(n-1))`, let `b` be the back-facing bit, and let
+`flags(c_i, r)` be the Cycles identity/setup flags for closure `c_i` at glossy
+filter roughness `r`. Population now owns the fold
+
+```text
+F_0     = b
+F_(i+1) = F_i OR flags(c_i, r)
+F       = F_n.
+```
+
+The public preparation/pass projection is independently
+`preparation_flags(q) = q ? F : 0`, while every later sample consumer observes
+`sample_flags = F`. Therefore disabling a pass output cannot erase internal
+ShaderData state. Capacity truncation cannot make the two views disagree:
+storage and the fold occur in the same retained-append transaction. The
+production evaluator accepts `F` only from that transaction; the standalone
+diagnostic evaluator keeps the old recomputation oracle. Population and sample
+use the same `r` by construction at a path hit.
+
+Previously, `surface_closure_selection` computed `flags(c_i, r)` in both
+categorical scans and once more for the chosen closure, then the selected
+sample overwrote the already available population result. The accepted route
+turns those projections into flag-free selection records and supplies `F` to
+the final sample directly. This is common-subexpression ownership across
+consumer phases, not a closure-specific shortcut.
+
+Cold Barbershop structure relative to exact `dc95f23` is:
+
+| Form | Frame | Final LLVM | HIP object | Entry | Private / VGPR / spills |
+|---|---:|---:|---:|---:|---:|
+| recomputed flags | 880 B / 178 | 57,834 lines / 3,376,707 B | 355,488 B | 295,880 B | 3,136 B / 256 / 384 |
+| population-owned flags | 880 B / 178 | 57,804 lines / 3,374,620 B | 355,360 B | 295,728 B | 3,136 B / 256 / 381 |
+
+The same-machine A/B/B/A HIP trace used fixed 640x480, 64 spp, Tabulated
+Sobol, adaptive sampling disabled, and the staged wavefront scheduler:
+
+| Run | Render-only | `shade_surface` ns/item |
+|---|---:|---:|
+| baseline A | 2.57333 s | 27.727642 |
+| candidate A | 2.56853 s | 27.646866 |
+| candidate B | 2.56392 s | 27.633726 |
+| baseline B | 2.57265 s | 27.757612 |
+| baseline median | 2.572990 s | 27.742627 |
+| candidate median | 2.566225 s | 27.640296 |
+
+Normalized `shade_surface` improves by 0.369%; render-only improves by 0.263%.
+Both candidate samples are below both baseline samples. Calls stay at 293,
+work stays at 53,659,264-53,659,296 items, and VGPR/private allocation do not
+regress.
+
+The full 46-channel EXRs differ only because concurrent film atomics are not
+cross-process order-deterministic. `idiff -v -a` reports mean error
+`2.24282e-9`, RMS `2.10451e-6`, PSNR `162.418 dB`, and 25 pixels (`0.00814%`)
+over `1e-6`; an independent baseline/baseline pair is noisier at RMS
+`7.73006e-6` and 36 pixels. Combined has MAE `1.46199e-9`, RMSE
+`7.58443e-7`, and luminance ratio exactly 1 at reported precision. Normal has
+MAE `1.38858e-9` and RMSE `2.15515e-8`. I inspected both triptychs at original
+resolution. Geometry, UVs, material response, floor, ceiling, brick wall,
+cabinet, lighting, and normals coincide; the amplified panels contain only
+sparse order-sensitive samples and edge noise, with no coherent region.
+
+![Recomputed flags, population-owned flags, and amplified Combined difference](triptychs/runtime-flags/combined.png)
+
+![Recomputed flags, population-owned flags, and amplified Normal difference](triptychs/runtime-flags/normal.png)
+
 ### Backend and image validation
 
 The focused matrix passes 15/15: reachability-lattice meet laws, physical
 consumer equivalence, physical Local lifetime, compact surface preparation,
-and surface mix-SVM on fallback, HIP, and Vulkan. All five Vulkan tests set
+surface population, and surface mix-SVM on fallback, HIP, and Vulkan. The
+population regression compares the cached flags against the independent replay
+oracle for every fixture scenario and separately requires a masked preparation
+output to coexist with nonzero internal sample flags. All five Vulkan tests set
 `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`; no DXC route is accepted.
 
 The retained full outputs are 640x480, 64-spp, 46-channel EXRs. `idiff -v -a`
@@ -469,41 +577,39 @@ consume(C) = case tag(C) of
   bssrdf     -> consume_bssrdf(common, bssrdf_payload)
 ```
 
-### Psycles baseline and accepted staging boundary
+### Psycles accepted representation
 
-`pack_surface_closure_physical` stores the same logical sum in two
-`float4x4` blocks. The complete evaluation path and the selected-closure
-payload path still use `unpack_surface_closure_physical_payload`, which reads
-payload lanes for all three families and selects canonical defaults into one
-`SurfaceClosurePhysicalRecord`. Consumption then derives family predicates
-from that wide record.
+`pack_surface_closure_physical` stores the logical tagged sum in two
+`float4x4` blocks. The first block is the common base; the second is interpreted
+only after the runtime tag has selected General, Dielectric, or BSSRDF. The
+hot evaluation and sampling consumers do not reconstruct the former universal
+`SurfaceClosurePhysicalRecord`. Each family branch decodes its compact typed
+record, calls a handler whose C++ type cannot name another family's payload,
+and merges only the compact result tuple.
 
-The accepted staging boundary does not pretend to finish family elimination.
-Its two categorical selection passes, runtime-flag reduction, and closure
-trace read only the common block. The payload block is first read after
-inverse-CDF selection. That separates a semantically valid dependency cut
-from the still-open family-specific consumer problem.
-
-The effective form is:
+The two categorical selection scans and closure tracing read only the common
+block. Runtime flags are no longer a scan responsibility: population folds
+them exactly once over the retained sequence. The payload block is first read
+inside the dominated family block after tag classification (and after
+inverse-CDF selection for conditional sampling). The effective form is now
 
 ```text
-C' = Common x General x Dielectric x BSSRDF
+C = Common x (Unit + General + Dielectric + BSSRDF)
 
-product = materialize_all_payloads(blocks, tag)
-result  = consume_after_tag_tests(product)
+result = case tag of
+  common_only -> handler_common(Common)
+  general     -> handler_general(Common, decode_G(payload))
+  dielectric  -> handler_dielectric(Common, decode_D(payload))
+  bssrdf      -> handler_bssrdf(Common, decode_B(payload)).
 ```
 
-The two representations are semantically equivalent under the documented
-pack/unpack laws, but they are not equivalent for liveness. `C'` exposes every
-family field to SSA construction before the family is known. It increases the
-number of simultaneously available values and the optimizer's select/phi
-problem even when only one family is dynamically observable.
-
-The accepted Barbershop final LLVM module is 57,932 lines / 3,373,035 B and
-contains 2,842 textual `phi` occurrences and 2,609 `select` occurrences. The
-surface code object is 356,760 B, of which `.text` is 353,152 B. Its entry
-symbol alone is 297,436 B. Disassembly contains 846 scratch loads and 647
-scratch stores.
+The pack/direct-projection commuting laws, runtime payload-read counters, and
+compile-time non-interference concepts are permanent regressions. The current
+Barbershop final LLVM module is 57,804 lines / 3,374,620 B. The surface object
+is 355,360 B, of which `.text` is 351,744 B; its entry is 295,728 B. The
+coroutine frame remains 880 B / 178 fields. The universal record remains only
+a producer/packing and diagnostic compatibility API, not the domain of the
+hot consumer.
 
 Cycles' complete HIP object is 7.24 MB because it contains the whole kernel
 set and shared helpers, so whole-object size is not comparable. Its
@@ -519,10 +625,10 @@ off, and the Radeon RX 9070 XT. Work is the sum of
 
 | Renderer/stage | Calls | Work items | GPU time | ns/item | VGPR | Private bytes |
 |---|---:|---:|---:|---:|---:|---:|
-| Psycles `shade_surface` | 293 | 53,659,296 | 1,547.762 ms | 28.844 | 256 | 3,152 |
+| Psycles `shade_surface` | 293 | 53,659,280 median | 1,483.158 ms | 27.640 | 256 | 3,136 |
 | Cycles `integrator_shade_surface` | 296 | 54,061,056 | 582.671 ms | 10.778 | 192 | 6,976 |
 
-The work counts differ by less than 0.75%, so the 2.676x normalized ratio is
+The work counts differ by less than 0.75%, so the 2.565x normalized ratio is
 not a queue-count illusion. Cycles spills a larger private object yet runs much
 faster; Psycles' 256-VGPR ceiling, large inlined entry, scratch instruction
 traffic, and wider dynamic control/data flow are the relevant evidence.
@@ -604,10 +710,12 @@ closed.
 
 `SurfaceClosurePhysicalAccess` now carries that pair, cannot be constructed
 outside `SurfaceClosureSet`, and is host-checked against its owning set; raw
-Local reads are private. Categorical scans, runtime flags, closure tracing,
-and the post-inversion payload load must pass this token. The API therefore
-makes the storage-safety proof a construction invariant rather than a
-convention at each call site.
+Local reads are private. Categorical scans, closure tracing, diagnostic
+runtime-flag recomputation, and the post-inversion payload load must pass this
+token. Production runtime flags have since moved into the retained-append
+transaction and therefore do not reload the physical arena. The API makes the
+storage-safety proof a construction invariant rather than a convention at
+each call site.
 
 The fixed points isolate the effect:
 
@@ -663,14 +771,16 @@ bounded construction:
 ```
 
 The branch-local tagged consumer now proves demand loading, inactive-family
-non-liveness, and a bounded merge for evaluation and sampling. Its remaining
-adapter constructs the existing universal `SurfaceClosurePhysicalRecord`
-inside the selected family block. The next representation should instead pass
-common fields and a compact family payload directly to a family-specific
-handler or typed closure-SVM instruction. If Luisa's structured AST cannot
-preserve that scope through the closure loop, the fix belongs in XIR
-aggregate/liveness or control-flow lowering rather than another renderer-side
-ad hoc branch.
+non-liveness, and a bounded merge for evaluation and sampling. Compact family
+records pass common fields plus exactly one family payload directly to typed
+handlers; the universal-record adapter has been removed from the hot path.
+Population additionally owns the retained-sequence runtime-flag fold, so
+selection is a pure measure/inversion projection. The next representation
+question is no longer "SVM or expanded graphs" or "universal or typed
+payload": both have controlled answers. It is whether the Cycles single-
+closure fast path and individual handler implementations remove enough
+executed mixture/control work without enlarging the coroutine frame or main
+entry.
 
 No callable should receive blanket `noinline` or `alwaysinline`. Cycles leaves
 ordinary profitability decisions to the backend, and the accepted Luisa HIP
@@ -679,19 +789,22 @@ IR, object, register/private metadata, and HIP time rather than source size.
 
 ## Priorities
 
-1. Replace the branch-local universal-record adapter with compact typed family
-   payload handlers, keeping the proven tag partition, lazy Local read, and
-   result-only merge. Compare each family against Cycles' corresponding
-   `bsdf_eval`/`bsdf_sample` device path before changing more control flow.
-2. Add the missing high-use closure semantics: Principled/Glossy anisotropy
+1. Measure the runtime closure-count distribution and implement the Cycles
+   single-closure sampling fast path as a separate, proven experiment. The
+   zero- and multi-closure paths must retain the exact finite-measure and MIS
+   laws; no host material special case is permitted.
+2. Compare each typed family handler against Cycles' corresponding
+   `bsdf_eval`/`bsdf_sample` device path with constant-input probes and final
+   HIP ISA/resource checks before changing more control flow.
+3. Add the missing high-use closure semantics: Principled/Glossy anisotropy
    and tangent, thin film, standalone Metallic/Sheen, then Hair families.
-3. Add typed multi-result SVM instructions where a Cycles handler performs one
+4. Add typed multi-result SVM instructions where a Cycles handler performs one
    expensive operation and writes multiple live outputs. Barbershop currently
    has no exact fusable Image or Vector Math pairs, so this is a general
    completeness/other-scene task rather than its present hotspot.
-4. Implement the remaining ray-tracing value nodes through backend-neutral
+5. Implement the remaining ray-tracing value nodes through backend-neutral
    RayQuery semantics and keep HIP traversal optimization in the HIP backend.
-5. Regenerate a Blender 5.2 coverage baseline and run the release gate, then
+6. Regenerate a Blender 5.2 coverage baseline and run the release gate, then
    repeat complex-scene fallback/HIP/native-XIR Vulkan correctness and HIP
    per-stage profiling.
 
@@ -711,8 +824,12 @@ the recorded shader AST):
 
 ```sh
 PSYCLES_DISABLE_SHADER_CACHE=1 \
+PSYCLES_COMPACT_SURFACE_VALUES=1 \
+PSYCLES_POPULATE_SURFACE_ONCE=1 \
 LUISA_CORO_SHADER_MAP=1 \
 LUISA_CORO_DUMP_FRAME_LAYOUT=1 \
+LUISA_DUMP_LLVM_IR=1 \
+LUISA_DUMP_HIP_ISA=ISA_DIRECTORY \
 build/bin/psycles_render_blender_scene SCENE out.exr hip \
   640 480 1 1 - 0 0 0 0 1 - 1 0 wavefront-staged \
   32 32768 32 1 1 0 4 2 4096 0 0 0 1 1048576
@@ -734,17 +851,20 @@ select name,
        sum(grid_x * grid_y * grid_z) as work,
        sum(duration) * 1.0 / sum(grid_x * grid_y * grid_z) as ns_per_work
 from kernels
-where name = 'kernel_24ec46cc4e919e42'
+where name = 'kernel_bedcc364b19536f4'
 group by name;
 ```
 
 The stage/hash association is printed by the renderer as:
 
 ```text
-wavefront_resume_5/shade_surface -> 24ec46cc4e919e42
+wavefront_resume_5/shade_surface -> bedcc364b19536f4
 ```
 
 Static object inspection used `llvm-readelf`, `llvm-nm`, and `llvm-objdump` on
-the dumped HIP code objects. No profiler counter result is claimed: rocprof's
-PMC collection on this host currently aborts in its vector assertion, while
-ordinary kernel tracing is reliable.
+the dumped HIP code objects. No instruction-level profiler claim is made:
+`rocprofv3 --list-avail true` reports no PC-sampling configuration for
+`gfx1201`; ATT cannot start because this ROCm installation does not contain the
+trace-decoder library; and PMC collection currently aborts in rocprof's vector
+assertion. Ordinary timestamped kernel tracing is reliable and is the source
+of every stage timing in this document.

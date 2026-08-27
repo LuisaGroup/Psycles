@@ -1,10 +1,16 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 #include <psycles/luisa/surface_closure_operations.h>
 
 namespace psycles::luisa_backend::detail {
+
+enum class RuntimeFlagReductionMode : std::uint8_t {
+    projected_output,
+    retained_state,
+};
 
 // Device-stage left fold over the retained source-order closure sequence.
 // Unlike SurfaceClosureExpressionVisitor, this remains valid inside a runtime
@@ -18,6 +24,7 @@ class SurfacePreparationAccumulator {
     Float _glossy_filter_roughness;
     Bool _include_runtime_flags;
     Bool _include_aov;
+    RuntimeFlagReductionMode _runtime_flag_mode;
     SurfaceClosureIdentityCallable _identity;
     SurfaceClosureAovCallable _aov_operation;
     UInt _retained_count;
@@ -39,7 +46,9 @@ class SurfacePreparationAccumulator {
         Expr<bool> include_runtime_flags,
         Expr<bool> include_aov,
         const SurfaceClosureIdentityCallable &identity,
-        const SurfaceClosureAovCallable &aov_operation) noexcept;
+        const SurfaceClosureAovCallable &aov_operation,
+        RuntimeFlagReductionMode runtime_flag_mode =
+            RuntimeFlagReductionMode::projected_output) noexcept;
 
     // SurfaceClosureCollector::begin supplies the final shader normal after
     // automatic bump evaluation. Updating the fold state here makes that
@@ -58,6 +67,13 @@ class SurfacePreparationAccumulator {
         const SurfaceClosureRecord &closure) noexcept;
 
     void finish() noexcept;
+
+    // Raw ShaderData::flag-equivalent state over the retained sequence. A
+    // population transaction may keep this state even when preparation()
+    // masks the public pass output, because later closure consumers still
+    // observe the same populated ShaderData.
+    [[nodiscard]] Expr<std::uint32_t>
+    runtime_flags() const noexcept;
 
     [[nodiscard]] SurfacePreparation preparation(
         Float3 emission) const noexcept;

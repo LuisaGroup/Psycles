@@ -135,7 +135,8 @@ make_surface_closure_selection_context(
 [[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
     const SurfaceClosureSelectionContext &context,
-    const SurfaceClosureSelectionInput &closure) noexcept;
+    const SurfaceClosureSelectionInput &closure,
+    bool include_runtime_flags = true) noexcept;
 
 // Canonical conditional sampler p(w_i | i). It must only be invoked under the
 // categorical `choose` predicate. In particular, this function never decides
@@ -306,6 +307,7 @@ class SurfaceClosureSelectedSample {
     [[nodiscard]] SurfaceSampleTrace finish(
         const SurfaceClosurePoint &point,
         const SurfaceClosureSelectionMeasure &measure,
+        Expr<std::uint32_t> runtime_flags,
         const SurfaceEvaluation &mixture_evaluation,
         bool trace_selection) const noexcept;
 };

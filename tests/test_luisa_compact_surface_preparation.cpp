@@ -672,7 +672,10 @@ void write_population_results(
     const auto preparation = closures.preparation(
         population.emission);
     const SurfaceClosureEvaluator evaluator{
-        point, closures.closures(), population.shading_normal};
+        point,
+        closures.closures(),
+        population.shading_normal,
+        closures.runtime_state()};
     preparation_output.write(
         invocation,
         pack_surface_preparation(preparation));
