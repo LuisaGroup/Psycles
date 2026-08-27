@@ -433,6 +433,28 @@ public:
                 .ref = {.node = id, .socket = "Closure"},
                 .type = SocketType::closure});
         }
+        if (type == "BSDF_HAIR") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::hair_bsdf,
+                node_name);
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Component",
+                SocketValue::string(context.node_property_text(
+                    node, "component", "REFLECTION"))));
+            for (const auto &[target, source, socket_type] : {
+                     std::tuple{"Color", "Color", SocketType::color},
+                     std::tuple{"Offset", "Offset", SocketType::floating},
+                     std::tuple{"RoughnessU", "RoughnessU", SocketType::floating},
+                     std::tuple{"RoughnessV", "RoughnessV", SocketType::floating},
+                     std::tuple{"Tangent", "Tangent", SocketType::vector}}) {
+                static_cast<void>(context.bind(
+                    id, target, node, source, socket_type));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
         if (type == "BSDF_GLASS" || type == "BSDF_REFRACTION") {
             const auto id = context.graph().add_node(
                 type == "BSDF_GLASS"

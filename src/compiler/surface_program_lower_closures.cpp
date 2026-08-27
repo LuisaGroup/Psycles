@@ -70,18 +70,23 @@ namespace {
         node.type == node_type::glossy_bsdf ||
         node.type == node_type::metallic_bsdf ||
         node.type == node_type::sheen_bsdf ||
+        node.type == node_type::hair_bsdf ||
         node.type == node_type::glass_bsdf ||
         node.type == node_type::refraction_bsdf) {
         const auto standalone_metallic =
             node.type == node_type::metallic_bsdf;
         const auto standalone_sheen =
             node.type == node_type::sheen_bsdf;
+        const auto standalone_hair =
+            node.type == node_type::hair_bsdf;
         const auto distribution = property_string(
             node,
             "Distribution",
             standalone_sheen ? "MICROFIBER" : "GGX");
         const auto fresnel_type = property_string(
             node, "FresnelType", "F82");
+        const auto hair_component = property_string(
+            node, "Component", "REFLECTION");
         const auto physical_conductor =
             standalone_metallic &&
             enum_token_is(fresnel_type, "physical_conductor");
@@ -100,9 +105,11 @@ namespace {
                     ? "BaseColor"
                     : "Color");
         }
-        auto roughness =
-            lower_value_input(node, "Roughness");
-        auto normal = lower_value_input(node, "Normal");
+        auto roughness = lower_value_input(
+            node, standalone_hair ? "RoughnessU" : "Roughness");
+        auto normal = standalone_hair
+                          ? std::optional<ValueExpressionId>{}
+                          : lower_value_input(node, "Normal");
         std::optional<ValueExpressionId> metallic;
         std::optional<ValueExpressionId> diffuse_roughness;
         std::optional<ValueExpressionId> subsurface_weight;
@@ -117,6 +124,8 @@ namespace {
         std::optional<ValueExpressionId> microfacet_anisotropy;
         std::optional<ValueExpressionId> microfacet_rotation;
         std::optional<ValueExpressionId> tangent;
+        std::optional<ValueExpressionId> hair_offset;
+        bool hair_tangent_linked = false;
         std::optional<ValueExpressionId> alpha;
         std::optional<ValueExpressionId> thin_wall;
         std::optional<ValueExpressionId> sheen_weight;
@@ -208,11 +217,19 @@ namespace {
                     lower_value_input(node, "ThinFilmThickness");
                 thin_film_ior = lower_value_input(node, "ThinFilmIOR");
             }
+        } else if (standalone_hair) {
+            diffuse_roughness = lower_value_input(node, "RoughnessV");
+            hair_offset = lower_value_input(node, "Offset");
+            const auto tangent_binding = node.inputs.find("Tangent");
+            hair_tangent_linked =
+                tangent_binding != node.inputs.end() &&
+                tangent_binding->second.source.has_value();
+            tangent = lower_value_input(node, "Tangent");
         }
         if ((standalone_metallic
                  ? metallic_base_ior && metallic_edge_tint_k
                  : color.has_value()) &&
-            roughness && normal &&
+            roughness && (standalone_hair || normal.has_value()) &&
             (node.type != node_type::principled_bsdf ||
              (metallic && diffuse_roughness && subsurface_weight &&
               subsurface_radius && subsurface_scale &&
@@ -233,6 +250,8 @@ namespace {
             (node.type != node_type::metallic_bsdf ||
              (microfacet_anisotropy && microfacet_rotation && tangent &&
               thin_film_thickness && thin_film_ior)) &&
+            (!standalone_hair ||
+             (diffuse_roughness && hair_offset && tangent)) &&
             ((node.type != node_type::glass_bsdf &&
                  node.type != node_type::refraction_bsdf) ||
                 ior) &&
@@ -257,6 +276,10 @@ namespace {
                 operation = enum_token_is(distribution, "ashikhmin")
                                 ? ClosureOperation::sheen_ashikhmin
                                 : ClosureOperation::sheen_microfiber;
+            } else if (standalone_hair) {
+                operation = enum_token_is(hair_component, "transmission")
+                                ? ClosureOperation::hair_transmission
+                                : ClosureOperation::hair_reflection;
             }
             publish(
                 node.id,
@@ -265,8 +288,9 @@ namespace {
                     .operation = operation,
                     .source_node = node.id,
                     .color = color.value_or(ValueExpressionId{}),
-                    .normal = *normal,
-                    .normal_uses_bump = normal_uses_bump(_shader, node),
+                    .normal = normal.value_or(ValueExpressionId{}),
+                    .normal_uses_bump =
+                        !standalone_hair && normal_uses_bump(_shader, node),
                     .roughness = *roughness,
                     .diffuse_roughness =
                         diffuse_roughness.value_or(
@@ -316,6 +340,9 @@ namespace {
                         microfacet_rotation.value_or(
                             ValueExpressionId{}),
                     .tangent = tangent.value_or(ValueExpressionId{}),
+                    .hair_offset =
+                        hair_offset.value_or(ValueExpressionId{}),
+                    .hair_tangent_linked = hair_tangent_linked,
                     .alpha = alpha.value_or(ValueExpressionId{}),
                     .thin_wall =
                         thin_wall.value_or(ValueExpressionId{}),

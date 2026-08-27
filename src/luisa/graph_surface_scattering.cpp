@@ -347,85 +347,117 @@ template<typename Closure>
 
 [[nodiscard]] UInt cycles_runtime_flags(
     const SurfaceClosurePhysicalRecord &closure,
-    Float glossy_filter_roughness) noexcept {
+    Float glossy_filter_roughness,
+    SurfaceClosureReachability reachability) noexcept {
     return cycles_runtime_flags(
         closure_identity(closure),
-        std::move(glossy_filter_roughness));
+        std::move(glossy_filter_roughness),
+        reachability);
 }
 
 [[nodiscard]] UInt cycles_runtime_flags(
     const SurfaceClosureIdentityExpression &closure,
-    Float glossy_filter_roughness) noexcept {
-    const auto is_diffuse = has_kind(
-        closure, SurfaceClosureKind::diffuse);
-    const auto is_translucent = has_kind(
-        closure, SurfaceClosureKind::translucent);
-    const auto is_rough_translucent = has_kind(
-        closure, SurfaceClosureKind::rough_translucent);
-    const auto is_principled = has_kind(
-        closure, SurfaceClosureKind::principled);
-    const auto is_sheen =
-        (is_principled &
-         has_lobe(closure, SurfaceClosureLobe::sheen)) |
-        has_kind(closure, SurfaceClosureKind::sheen_microfiber);
-    const auto is_ashikhmin = has_kind(
-        closure, SurfaceClosureKind::sheen_ashikhmin);
-    const auto is_glossy = has_kind(
-        closure, SurfaceClosureKind::glossy);
-    const auto is_metallic =
-        has_kind(closure, SurfaceClosureKind::metallic_f82) |
-        has_kind(closure, SurfaceClosureKind::metallic_conductor);
-    const auto is_glass = has_kind(
-        closure, SurfaceClosureKind::glass);
-    const auto is_refraction = has_kind(
-        closure, SurfaceClosureKind::refraction);
-    const auto is_thin_glass_transmission = has_kind(
-        closure, SurfaceClosureKind::thin_glass_transmission);
-    const auto is_transparent = has_kind(
-        closure, SurfaceClosureKind::transparent);
-    const auto is_bssrdf = has_kind(
-        closure, SurfaceClosureKind::bssrdf);
-
+    Float glossy_filter_roughness,
+    SurfaceClosureReachability reachability) noexcept {
     const auto bsdf = cycles_closure::runtime_bsdf;
     const auto has_eval =
         cycles_closure::runtime_bsdf_has_eval;
     UInt flags = 0u;
-    flags = select(flags, bsdf | has_eval, is_diffuse);
-    flags = select(flags,
+    const auto select_kind_flags =
+        [&](SurfaceClosureKind kind, std::uint32_t value) noexcept {
+            // Reachability is a host/JIT abstract value. An absent tag is
+            // impossible by construction, so do not record either its tag
+            // comparison or its select in the shader AST.
+            if (reachability.contains(kind)) {
+                flags = select(flags, UInt{value}, has_kind(closure, kind));
+            }
+        };
+    select_kind_flags(
+        SurfaceClosureKind::diffuse, bsdf | has_eval);
+    const auto transmission_flags =
         bsdf | has_eval |
-            cycles_closure::runtime_bsdf_has_transmission,
-        is_translucent | is_rough_translucent);
-    flags = select(flags, bsdf | has_eval, is_sheen | is_ashikhmin);
+        cycles_closure::runtime_bsdf_has_transmission;
+    select_kind_flags(
+        SurfaceClosureKind::translucent, transmission_flags);
+    select_kind_flags(
+        SurfaceClosureKind::rough_translucent, transmission_flags);
+    select_kind_flags(
+        SurfaceClosureKind::sheen_microfiber, bsdf | has_eval);
+    select_kind_flags(
+        SurfaceClosureKind::sheen_ashikhmin, bsdf | has_eval);
+    select_kind_flags(
+        SurfaceClosureKind::hair_reflection, bsdf | has_eval);
+    select_kind_flags(
+        SurfaceClosureKind::hair_transmission, transmission_flags);
 
-    auto alpha = clamp(closure.roughness, 0.0f, 1.0f);
-    alpha *= alpha;
-    alpha = max(alpha, glossy_filter_roughness);
-    const auto regular_microfacet =
-        alpha * alpha >
-        cycles_closure::microfacet_singular_alpha_product;
-    const auto microfacet_flags =
-        bsdf | select(0u, has_eval, regular_microfacet);
-    flags = select(flags,
-        microfacet_flags,
-        (is_principled & !is_sheen) | is_glossy | is_metallic);
-    flags = select(flags,
-        microfacet_flags |
-            cycles_closure::runtime_bsdf_has_transmission,
-        is_glass);
-    flags = select(flags,
-        microfacet_flags |
-            cycles_closure::runtime_bsdf_has_transmission,
-        is_refraction);
-    flags = select(flags,
-        microfacet_flags |
-            cycles_closure::runtime_bsdf_has_transmission,
-        is_thin_glass_transmission);
-    flags = select(flags,
-        bsdf | cycles_closure::runtime_transparent,
-        is_transparent);
-    flags = select(flags,
-        UInt{cycles_closure::runtime_bssrdf},
-        is_bssrdf);
+    const auto sheen_lobe_reachable =
+        reachability.contains_principled_lobe(
+            SurfaceClosureLobe::sheen);
+    if (sheen_lobe_reachable) {
+        flags = select(flags,
+            UInt{bsdf | has_eval},
+            has_kind(closure, SurfaceClosureKind::principled) &
+                has_lobe(closure, SurfaceClosureLobe::sheen));
+    }
+
+    constexpr auto sheen_lobe_bit =
+        surface_closure_lobe_bit(SurfaceClosureLobe::sheen);
+    const auto principled_microfacet_reachable =
+        reachability.contains(SurfaceClosureKind::principled) &&
+        (reachability.principled_lobes & ~sheen_lobe_bit) != 0u;
+    const auto standalone_microfacet_reachable =
+        reachability.contains(SurfaceClosureKind::glossy) ||
+        reachability.contains(SurfaceClosureKind::metallic_f82) ||
+        reachability.contains(SurfaceClosureKind::metallic_conductor) ||
+        reachability.contains(SurfaceClosureKind::glass) ||
+        reachability.contains(SurfaceClosureKind::refraction) ||
+        reachability.contains(
+            SurfaceClosureKind::thin_glass_transmission);
+    if (principled_microfacet_reachable ||
+        standalone_microfacet_reachable) {
+        auto alpha = clamp(closure.roughness, 0.0f, 1.0f);
+        alpha *= alpha;
+        alpha = max(alpha, glossy_filter_roughness);
+        const auto regular_microfacet =
+            alpha * alpha >
+            cycles_closure::microfacet_singular_alpha_product;
+        const auto microfacet_flags =
+            bsdf | select(0u, has_eval, regular_microfacet);
+        if (principled_microfacet_reachable) {
+            auto predicate = has_kind(
+                closure, SurfaceClosureKind::principled);
+            if (sheen_lobe_reachable) {
+                predicate &=
+                    !has_lobe(closure, SurfaceClosureLobe::sheen);
+            }
+            flags = select(flags, microfacet_flags, predicate);
+        }
+        const auto select_microfacet_kind =
+            [&](SurfaceClosureKind kind, bool transmission) noexcept {
+                if (reachability.contains(kind)) {
+                    auto value = microfacet_flags;
+                    if (transmission) {
+                        value |= cycles_closure::runtime_bsdf_has_transmission;
+                    }
+                    flags = select(
+                        flags, value, has_kind(closure, kind));
+                }
+            };
+        select_microfacet_kind(SurfaceClosureKind::glossy, false);
+        select_microfacet_kind(SurfaceClosureKind::metallic_f82, false);
+        select_microfacet_kind(
+            SurfaceClosureKind::metallic_conductor, false);
+        select_microfacet_kind(SurfaceClosureKind::glass, true);
+        select_microfacet_kind(SurfaceClosureKind::refraction, true);
+        select_microfacet_kind(
+            SurfaceClosureKind::thin_glass_transmission, true);
+    }
+    select_kind_flags(
+        SurfaceClosureKind::transparent,
+        bsdf | cycles_closure::runtime_transparent);
+    select_kind_flags(
+        SurfaceClosureKind::bssrdf,
+        cycles_closure::runtime_bssrdf);
     flags |= select(0u,
         has_eval,
         glossy_filter_roughness * glossy_filter_roughness >
@@ -436,104 +468,137 @@ template<typename Closure>
 }
 
 [[nodiscard]] UInt cycles_closure_type(
-    const SurfaceClosurePhysicalRecord &closure) noexcept {
-    return cycles_closure_type(closure_identity(closure));
+    const SurfaceClosurePhysicalRecord &closure,
+    SurfaceClosureReachability reachability) noexcept {
+    return cycles_closure_type(
+        closure_identity(closure), reachability);
 }
 
 [[nodiscard]] UInt cycles_closure_type(
-    const SurfaceClosureIdentityExpression &closure) noexcept {
-    const auto is_diffuse = has_kind(
-        closure, SurfaceClosureKind::diffuse);
-    const auto is_translucent = has_kind(
-        closure, SurfaceClosureKind::translucent);
-    const auto is_rough_translucent = has_kind(
-        closure, SurfaceClosureKind::rough_translucent);
-    const auto is_principled = has_kind(
-        closure, SurfaceClosureKind::principled);
-    const auto is_sheen =
-        (is_principled &
-         has_lobe(closure, SurfaceClosureLobe::sheen)) |
-        has_kind(closure, SurfaceClosureKind::sheen_microfiber);
-    const auto is_ashikhmin = has_kind(
-        closure, SurfaceClosureKind::sheen_ashikhmin);
-    const auto is_glossy = has_kind(
-        closure, SurfaceClosureKind::glossy);
-    const auto is_metallic =
-        has_kind(closure, SurfaceClosureKind::metallic_f82) |
-        has_kind(closure, SurfaceClosureKind::metallic_conductor);
-    const auto is_glass = has_kind(
-        closure, SurfaceClosureKind::glass);
-    const auto is_refraction = has_kind(
-        closure, SurfaceClosureKind::refraction);
-    const auto is_thin_glass_transmission = has_kind(
-        closure, SurfaceClosureKind::thin_glass_transmission);
-    const auto is_transparent = has_kind(
-        closure, SurfaceClosureKind::transparent);
-    const auto is_bssrdf = has_kind(
-        closure, SurfaceClosureKind::bssrdf);
-
+    const SurfaceClosureIdentityExpression &closure,
+    SurfaceClosureReachability reachability) noexcept {
     UInt type = cycles_closure::type_none;
-    type = select(type,
-        select(
-            UInt{cycles_closure::type_oren_nayar},
-            UInt{cycles_closure::type_diffuse},
-            closure.roughness < 1.0e-5f),
-        is_diffuse);
-    type = select(type,
-        UInt{cycles_closure::type_translucent},
-        is_translucent);
-    type = select(type,
-        UInt{cycles_closure::type_rough_translucent},
-        is_rough_translucent);
-    const auto reflection = select(
-        UInt{cycles_closure::type_microfacet_ggx},
-        UInt{cycles_closure::type_microfacet_beckmann},
-        (is_glossy | is_metallic) & closure.beckmann);
-    type = select(type,
-        reflection,
-        is_glossy | is_metallic | (is_principled & !is_sheen));
-    const auto single_glass = select(
-        UInt{cycles_closure::type_microfacet_ggx_glass},
-        UInt{cycles_closure::type_microfacet_beckmann_glass},
-        closure.beckmann);
-    const auto glass = select(single_glass,
-        UInt{cycles_closure::type_microfacet_multi_ggx_glass},
-        closure.preserve_ggx_energy);
-    type = select(type, glass, is_glass);
-    const auto refraction = select(
-        UInt{cycles_closure::type_microfacet_ggx_refraction},
-        UInt{cycles_closure::type_microfacet_beckmann_refraction},
-        closure.beckmann);
-    type = select(type, refraction, is_refraction);
-    type = select(type,
-        UInt{cycles_closure::type_thin_glass_transmission},
-        is_thin_glass_transmission);
-    type = select(type,
-        UInt{cycles_closure::type_transparent},
-        is_transparent);
-    type = select(type,
-        UInt{cycles_closure::type_sheen},
-        is_sheen);
-    type = select(type,
-        UInt{cycles_closure::type_ashikhmin_velvet},
-        is_ashikhmin);
-    auto bssrdf_type = UInt{cycles_closure::type_bssrdf_random_walk};
-    bssrdf_type = select(
-        bssrdf_type,
-        UInt{cycles_closure::type_bssrdf_burley},
-        closure.bssrdf_method == static_cast<std::uint32_t>(
-            SurfaceBssrdfMethod::burley));
-    bssrdf_type = select(
-        bssrdf_type,
-        UInt{cycles_closure::type_bssrdf_random_walk_legacy},
-        closure.bssrdf_method == static_cast<std::uint32_t>(
-            SurfaceBssrdfMethod::random_walk_legacy));
-    bssrdf_type = select(
-        bssrdf_type,
-        UInt{cycles_closure::type_bssrdf_random_walk_skin},
-        closure.bssrdf_method == static_cast<std::uint32_t>(
-            SurfaceBssrdfMethod::random_walk_skin));
-    type = select(type, bssrdf_type, is_bssrdf);
+    if (reachability.contains(SurfaceClosureKind::diffuse)) {
+        type = select(type,
+            select(
+                UInt{cycles_closure::type_oren_nayar},
+                UInt{cycles_closure::type_diffuse},
+                closure.roughness < 1.0e-5f),
+            has_kind(closure, SurfaceClosureKind::diffuse));
+    }
+    const auto select_kind_type =
+        [&](SurfaceClosureKind kind, std::uint32_t value) noexcept {
+            if (reachability.contains(kind)) {
+                type = select(type, UInt{value}, has_kind(closure, kind));
+            }
+        };
+    select_kind_type(
+        SurfaceClosureKind::translucent,
+        cycles_closure::type_translucent);
+    select_kind_type(
+        SurfaceClosureKind::rough_translucent,
+        cycles_closure::type_rough_translucent);
+
+    constexpr auto sheen_lobe_bit =
+        surface_closure_lobe_bit(SurfaceClosureLobe::sheen);
+    const auto sheen_lobe_reachable =
+        reachability.contains_principled_lobe(
+            SurfaceClosureLobe::sheen);
+    const auto principled_microfacet_reachable =
+        reachability.contains(SurfaceClosureKind::principled) &&
+        (reachability.principled_lobes & ~sheen_lobe_bit) != 0u;
+    if (principled_microfacet_reachable) {
+        auto predicate = has_kind(
+            closure, SurfaceClosureKind::principled);
+        if (sheen_lobe_reachable) {
+            predicate &=
+                !has_lobe(closure, SurfaceClosureLobe::sheen);
+        }
+        type = select(type,
+            UInt{cycles_closure::type_microfacet_ggx},
+            predicate);
+    }
+    const auto select_reflection_kind =
+        [&](SurfaceClosureKind kind) noexcept {
+            if (reachability.contains(kind)) {
+                const auto reflection = select(
+                    UInt{cycles_closure::type_microfacet_ggx},
+                    UInt{cycles_closure::type_microfacet_beckmann},
+                    closure.beckmann);
+                type = select(
+                    type, reflection, has_kind(closure, kind));
+            }
+        };
+    select_reflection_kind(SurfaceClosureKind::glossy);
+    select_reflection_kind(SurfaceClosureKind::metallic_f82);
+    select_reflection_kind(SurfaceClosureKind::metallic_conductor);
+    if (reachability.contains(SurfaceClosureKind::glass)) {
+        const auto single_glass = select(
+            UInt{cycles_closure::type_microfacet_ggx_glass},
+            UInt{cycles_closure::type_microfacet_beckmann_glass},
+            closure.beckmann);
+        const auto glass = select(single_glass,
+            UInt{cycles_closure::type_microfacet_multi_ggx_glass},
+            closure.preserve_ggx_energy);
+        type = select(type,
+            glass,
+            has_kind(closure, SurfaceClosureKind::glass));
+    }
+    if (reachability.contains(SurfaceClosureKind::refraction)) {
+        const auto refraction = select(
+            UInt{cycles_closure::type_microfacet_ggx_refraction},
+            UInt{cycles_closure::type_microfacet_beckmann_refraction},
+            closure.beckmann);
+        type = select(type,
+            refraction,
+            has_kind(closure, SurfaceClosureKind::refraction));
+    }
+    select_kind_type(
+        SurfaceClosureKind::thin_glass_transmission,
+        cycles_closure::type_thin_glass_transmission);
+    select_kind_type(
+        SurfaceClosureKind::transparent,
+        cycles_closure::type_transparent);
+    if (sheen_lobe_reachable) {
+        type = select(type,
+            UInt{cycles_closure::type_sheen},
+            has_kind(closure, SurfaceClosureKind::principled) &
+                has_lobe(closure, SurfaceClosureLobe::sheen));
+    }
+    select_kind_type(
+        SurfaceClosureKind::sheen_microfiber,
+        cycles_closure::type_sheen);
+    select_kind_type(
+        SurfaceClosureKind::sheen_ashikhmin,
+        cycles_closure::type_ashikhmin_velvet);
+    select_kind_type(
+        SurfaceClosureKind::hair_reflection,
+        cycles_closure::type_hair_reflection);
+    select_kind_type(
+        SurfaceClosureKind::hair_transmission,
+        cycles_closure::type_hair_transmission);
+    if (reachability.contains(SurfaceClosureKind::bssrdf)) {
+        auto bssrdf_type = UInt{
+            cycles_closure::type_bssrdf_random_walk};
+        bssrdf_type = select(
+            bssrdf_type,
+            UInt{cycles_closure::type_bssrdf_burley},
+            closure.bssrdf_method == static_cast<std::uint32_t>(
+                SurfaceBssrdfMethod::burley));
+        bssrdf_type = select(
+            bssrdf_type,
+            UInt{cycles_closure::type_bssrdf_random_walk_legacy},
+            closure.bssrdf_method == static_cast<std::uint32_t>(
+                SurfaceBssrdfMethod::random_walk_legacy));
+        bssrdf_type = select(
+            bssrdf_type,
+            UInt{cycles_closure::type_bssrdf_random_walk_skin},
+            closure.bssrdf_method == static_cast<std::uint32_t>(
+                SurfaceBssrdfMethod::random_walk_skin));
+        type = select(type,
+            bssrdf_type,
+            has_kind(closure, SurfaceClosureKind::bssrdf));
+    }
     return select(UInt{cycles_closure::type_none},
         type,
         closure.setup_valid);

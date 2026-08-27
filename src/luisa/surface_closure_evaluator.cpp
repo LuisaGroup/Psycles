@@ -68,14 +68,16 @@ UInt SurfaceClosureEvaluator::runtime_flags(
             result |= detail::cycles_runtime_flags(
                 physical_common_identity(
                     _closures.physical_common_entry(access)),
-                glossy_filter_roughness);
+                glossy_filter_roughness,
+                _reachability);
             index += 1u;
         };
     } else {
         $while(index < _closures.count()) {
             result |= detail::cycles_runtime_flags(
                 _closures.entry(index),
-                glossy_filter_roughness);
+                glossy_filter_roughness,
+                _reachability);
             index += 1u;
         };
     }
@@ -97,7 +99,7 @@ SurfaceClosureTrace SurfaceClosureEvaluator::closure_trace(
             .index = requested_index,
             .type = select(
                 UInt{cycles_closure::type_none},
-                detail::cycles_closure_type(identity),
+                detail::cycles_closure_type(identity, _reachability),
                 access.valid()),
             .sample_weight = select(
                 0.0f, closure.sample_weight, access.valid()),
@@ -115,7 +117,7 @@ SurfaceClosureTrace SurfaceClosureEvaluator::closure_trace(
         .count = _closures.count(),
         .runtime_flags = runtime_flags(),
         .index = requested_index,
-        .type = detail::cycles_closure_type(closure),
+        .type = detail::cycles_closure_type(closure, _reachability),
         .sample_weight = closure.sample_weight,
         .weight = closure.weight,
         .normal = closure.normal,

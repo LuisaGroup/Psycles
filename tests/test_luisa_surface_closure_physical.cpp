@@ -61,6 +61,14 @@ concept HasGeneralMicrofacetState = requires(T value) {
 };
 
 template<typename T>
+concept HasHairState = requires(T value) {
+    value.payload.tangent;
+    value.payload.roughness_u;
+    value.payload.roughness_v;
+    value.payload.offset;
+};
+
+template<typename T>
 concept HasDielectricFresnel = requires(T value) {
     value.payload.fresnel_f0;
 };
@@ -83,9 +91,16 @@ static_assert(!HasSpecularIorLevel<SurfaceClosurePhysicalRecord>);
 static_assert(!HasGeneralMetallic<SurfaceClosurePhysicalGeneralRecord>);
 static_assert(HasThinFilm<SurfaceClosurePhysicalGeneralRecord>);
 static_assert(HasGeneralMicrofacetState<SurfaceClosurePhysicalGeneralRecord>);
+static_assert(!HasHairState<SurfaceClosurePhysicalGeneralRecord>);
 static_assert(!HasDielectricFresnel<SurfaceClosurePhysicalGeneralRecord>);
 static_assert(!HasBssrdfRadius<SurfaceClosurePhysicalGeneralRecord>);
 static_assert(!HasBssrdfIor<SurfaceClosurePhysicalGeneralRecord>);
+static_assert(HasHairState<SurfaceClosurePhysicalHairRecord>);
+static_assert(!HasGeneralMicrofacetState<SurfaceClosurePhysicalHairRecord>);
+static_assert(!HasThinFilm<SurfaceClosurePhysicalHairRecord>);
+static_assert(!HasDielectricFresnel<SurfaceClosurePhysicalHairRecord>);
+static_assert(!HasBssrdfRadius<SurfaceClosurePhysicalHairRecord>);
+static_assert(!HasBssrdfIor<SurfaceClosurePhysicalHairRecord>);
 static_assert(!HasGeneralMetallic<SurfaceClosurePhysicalDielectricRecord>);
 static_assert(HasThinFilm<SurfaceClosurePhysicalDielectricRecord>);
 static_assert(!HasGeneralMicrofacetState<SurfaceClosurePhysicalDielectricRecord>);
@@ -115,12 +130,18 @@ constexpr std::array closure_cases{
     ClosureCase{SurfaceClosureKind::metallic_conductor},
     ClosureCase{SurfaceClosureKind::sheen_microfiber},
     ClosureCase{SurfaceClosureKind::sheen_ashikhmin},
+    ClosureCase{SurfaceClosureKind::hair_reflection},
+    ClosureCase{SurfaceClosureKind::hair_transmission},
     ClosureCase{SurfaceClosureKind::glass},
     ClosureCase{SurfaceClosureKind::refraction},
     ClosureCase{SurfaceClosureKind::bssrdf},
     ClosureCase{SurfaceClosureKind::rough_translucent},
     ClosureCase{SurfaceClosureKind::thin_glass_transmission},
     ClosureCase{SurfaceClosureKind::transparent}};
+static_assert(
+    closure_cases.size() ==
+    static_cast<std::size_t>(SurfaceClosureKind::thin_glass_transmission) +
+        2u);
 constexpr auto case_count =
     static_cast<std::uint32_t>(closure_cases.size());
 constexpr std::uint32_t logical_row_count = 14u;
@@ -341,6 +362,17 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
            all(lhs.microfacet_tangent == rhs.payload.microfacet_tangent) &
            (lhs.microfacet_alpha_x == rhs.payload.microfacet_alpha_x) &
            (lhs.microfacet_alpha_y == rhs.payload.microfacet_alpha_y);
+}
+
+[[nodiscard]] Bool same_payload_projection(
+    const SurfaceClosurePhysicalRecord &lhs,
+    const SurfaceClosurePhysicalHairRecord &rhs) noexcept {
+    return same_common_projection(
+               lhs, rhs.common, lhs.color) &
+           all(lhs.microfacet_tangent == rhs.payload.tangent) &
+           (lhs.microfacet_alpha_x == rhs.payload.roughness_u) &
+           (lhs.microfacet_alpha_y == rhs.payload.roughness_v) &
+           (lhs.sheen_transform_a == rhs.payload.offset);
 }
 
 [[nodiscard]] Bool same_payload_projection(
@@ -626,6 +658,11 @@ int main(int argc, char **argv) {
         const auto bssrdf =
             canonical.kind == static_cast<std::uint32_t>(
                                   SurfaceClosureKind::bssrdf);
+        const auto hair =
+            (canonical.kind == static_cast<std::uint32_t>(
+                                   SurfaceClosureKind::hair_reflection)) |
+            (canonical.kind == static_cast<std::uint32_t>(
+                                   SurfaceClosureKind::hair_transmission));
         const auto general =
             (canonical.kind == static_cast<std::uint32_t>(
                                    SurfaceClosureKind::principled)) |
@@ -651,6 +688,14 @@ int main(int argc, char **argv) {
         $elif(bssrdf) {
             const auto projected =
                 unpack_surface_closure_physical_bssrdf(
+                common,
+                Expr<luisa::float4x4>{round_trip_1.expression()});
+            projection_equal =
+                same_payload_projection(canonical, projected);
+        }
+        $elif(hair) {
+            const auto projected =
+                unpack_surface_closure_physical_hair(
                 common,
                 Expr<luisa::float4x4>{round_trip_1.expression()});
             projection_equal =
@@ -854,8 +899,13 @@ int main(int argc, char **argv) {
             (consumer_source.kind ==
              static_cast<std::uint32_t>(
                  SurfaceClosureKind::thin_glass_transmission));
+        const auto hair_payload =
+            (consumer_source.kind == static_cast<std::uint32_t>(
+                 SurfaceClosureKind::hair_reflection)) |
+            (consumer_source.kind == static_cast<std::uint32_t>(
+                 SurfaceClosureKind::hair_transmission));
         const auto expected_payload_reads =
-            select(0u, 2u, glass | general_payload) +
+            select(0u, 2u, glass | general_payload | hair_payload) +
             select(0u, 1u, bssrdf);
         output->write(
             case_index * rows_per_case + logical_row_count +

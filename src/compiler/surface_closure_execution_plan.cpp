@@ -81,6 +81,13 @@ inline constexpr auto emission_principled_features =
   case ClosureOperation::sheen_microfiber:
   case ClosureOperation::sheen_ashikhmin:
     return {closure.color, closure.normal, closure.roughness};
+  case ClosureOperation::hair_reflection:
+  case ClosureOperation::hair_transmission:
+    return {closure.color,
+            closure.hair_offset,
+            closure.roughness,
+            closure.diffuse_roughness,
+            closure.tangent};
   case ClosureOperation::translucent:
     return {closure.color, closure.normal};
   case ClosureOperation::principled:
@@ -193,6 +200,8 @@ struct ClosureWeightReferences {
   case ClosureOperation::metallic_conductor:
   case ClosureOperation::sheen_microfiber:
   case ClosureOperation::sheen_ashikhmin:
+  case ClosureOperation::hair_reflection:
+  case ClosureOperation::hair_transmission:
   case ClosureOperation::glass:
   case ClosureOperation::emission:
   case ClosureOperation::transparent:
@@ -233,6 +242,12 @@ struct ClosureWeightReferences {
   case ClosureOperation::sheen_ashikhmin:
     return operand == surface_closure_operand::sheen::color ||
                    operand == surface_closure_operand::sheen::normal
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::hair_reflection:
+  case ClosureOperation::hair_transmission:
+    return operand == surface_closure_operand::hair::color ||
+                   operand == surface_closure_operand::hair::tangent
                ? SurfaceValueBank::vector
                : SurfaceValueBank::scalar;
   case ClosureOperation::translucent:
@@ -478,6 +493,13 @@ all_principled_closure_features() noexcept {
           operation != ClosureOperation::metallic_f82 &&
           operation != ClosureOperation::metallic_conductor))) {
       return "a closure leaf has thin film on an incompatible projection";
+    }
+    const auto hair_tangent_linked =
+        (instruction.control & surface_closure_hair_tangent_linked) != 0u;
+    if (hair_tangent_linked &&
+        operation != ClosureOperation::hair_reflection &&
+        operation != ClosureOperation::hair_transmission) {
+      return "a non-Hair closure leaf has Hair tangent linkage";
     }
   }
   if (closures.mix_slots != maximum_weight_slot_extent) {

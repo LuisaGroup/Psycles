@@ -102,6 +102,10 @@ struct TracedClosure {
     Float anisotropy;
     Float anisotropic_rotation;
     Float3 tangent;
+    bool hair_tangent_linked{};
+    // Cycles legacy Hair's signed longitudinal shift after setup. Tangent
+    // linkage stays host/JIT metadata; this field is a device expression.
+    Float hair_offset;
     // Physical microfacet state. Setup initializes this for every emitted
     // closure; scattering observes only this common representation and never
     // reinterprets the authored node parameterization.
@@ -351,14 +355,22 @@ template <typename Id, typename Values>
     Float3 direction,
     Bool is_evaluation) noexcept;
 [[nodiscard]] UInt cycles_runtime_flags(const SurfaceClosurePhysicalRecord &closure,
-    Float glossy_filter_roughness = 0.0f) noexcept;
+    Float glossy_filter_roughness = 0.0f,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
 [[nodiscard]] UInt cycles_runtime_flags(
     const SurfaceClosureIdentityExpression &closure,
-    Float glossy_filter_roughness) noexcept;
+    Float glossy_filter_roughness,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
 [[nodiscard]] UInt cycles_closure_type(
-    const SurfaceClosurePhysicalRecord &closure) noexcept;
+    const SurfaceClosurePhysicalRecord &closure,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
 [[nodiscard]] UInt cycles_closure_type(
-    const SurfaceClosureIdentityExpression &closure) noexcept;
+    const SurfaceClosureIdentityExpression &closure,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
 [[nodiscard]] Float oren_nayar_g(Float cosine) noexcept;
 [[nodiscard]] Float3 diffuse_intensity(
     const SurfaceClosurePhysicalCommonRecord &closure,

@@ -29,6 +29,7 @@ from cycles_shader_probe import (  # noqa: E402
     closures,
     environment_inputs,
     geometry_inputs,
+    hair_closures,
     lights_camera,
     magic_inputs,
     metallic_closures,
@@ -105,6 +106,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
         closures._hosek_wilkie_diffuse_transport
     ),
     "hue_saturation_value": values._hue_saturation_value,
+    "hair_bsdf_matrix": hair_closures._hair_bsdf_matrix,
     "image_texture_srgb": texture_inputs._image_texture_srgb,
     "image_texture_node_mapping": (
         texture_inputs._image_texture_node_mapping

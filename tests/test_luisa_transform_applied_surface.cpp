@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
   auto device = context.create_device(backend);
   auto stream = device.create_stream();
   auto output_bits = device.create_buffer<luisa::uint4>(3u);
-  auto output_values = device.create_buffer<luisa::float4>(3u);
+  auto output_values = device.create_buffer<luisa::float4>(7u);
 
   const auto component = make_cycles_triangle_surface_component();
   Kernel1D evaluate = [component](BufferUInt4 bits,
@@ -82,12 +82,24 @@ int main(int argc, char **argv) {
         .n1 = object_ng,
         .n2 = object_ng};
     const auto applied = component->resolve(input, safe_normalize);
+    const auto applied_derivatives =
+        cycles_triangle_surface_derivatives(applied);
     bits.write(0u, make_uint4(as<uint>(applied.position.x),
                               as<uint>(applied.position.y),
                               as<uint>(applied.position.z),
                               as<uint>(applied.p0.x)));
     values.write(0u, make_float4(applied.geometric_normal,
                                  select(0.0f, 1.0f, applied.back_facing)));
+    values.write(3u, make_float4(applied_derivatives.dpdu, 0.0f));
+    values.write(4u, make_float4(applied_derivatives.dpdv, 0.0f));
+
+    auto back_input = input;
+    back_input.ray_direction = -input.ray_direction;
+    const auto back = component->resolve(back_input, safe_normalize);
+    const auto back_derivatives =
+        cycles_triangle_surface_derivatives(back);
+    values.write(5u, make_float4(back_derivatives.dpdu, 0.0f));
+    values.write(6u, make_float4(back_derivatives.dpdv, 0.0f));
 
     auto ordinary_input = input;
     ordinary_input.transform_applied = false;
@@ -148,7 +160,7 @@ int main(int argc, char **argv) {
   auto shader = device.compile(evaluate);
 
   std::array<luisa::uint4, 3u> actual_bits{};
-  std::array<luisa::float4, 3u> actual_values{};
+  std::array<luisa::float4, 7u> actual_values{};
   stream << shader(output_bits, output_values).dispatch(1u)
          << output_bits.copy_to(luisa::span{actual_bits})
          << output_values.copy_to(luisa::span{actual_values}) << synchronize();
@@ -173,6 +185,38 @@ int main(int argc, char **argv) {
       actual_bits[1u].w == applied_p0_x) {
     std::cerr << "ordinary object-space path collapsed into final support on "
               << backend << "\n";
+    return EXIT_FAILURE;
+  }
+  const auto expected_dpdu =
+      luisa::float3{0.6452279090881348f, 4.068269729614258f,
+                    0.9608959555625916f} -
+      luisa::float3{0.6452279090881348f, 3.6809914112091064f,
+                    0.9608958959579468f};
+  const auto expected_dpdv =
+      luisa::float3{0.6452279686927795f, 4.068269729614258f,
+                    0.9833250641822815f} -
+      luisa::float3{0.6452279090881348f, 3.6809914112091064f,
+                    0.9608958959579468f};
+  const auto near_vector = [](luisa::float4 actual,
+                              luisa::float3 expected) noexcept {
+    return near(actual.x, expected.x, 1.0e-7f) &&
+           near(actual.y, expected.y, 1.0e-7f) &&
+           near(actual.z, expected.z, 1.0e-7f) && actual.w == 0.0f;
+  };
+  if (!near_vector(actual_values[3u], expected_dpdu) ||
+      !near_vector(actual_values[4u], expected_dpdv) ||
+      !near_vector(actual_values[5u], -expected_dpdu) ||
+      !near_vector(actual_values[6u], -expected_dpdv)) {
+    std::cerr << "Cycles triangle dPdu/dPdv contract failed on " << backend
+              << ": front {" << actual_values[3u].x << ", "
+              << actual_values[3u].y << ", " << actual_values[3u].z
+              << "}, {" << actual_values[4u].x << ", "
+              << actual_values[4u].y << ", " << actual_values[4u].z
+              << "}; back {" << actual_values[5u].x << ", "
+              << actual_values[5u].y << ", " << actual_values[5u].z
+              << "}, {" << actual_values[6u].x << ", "
+              << actual_values[6u].y << ", " << actual_values[6u].z
+              << "}\n";
     return EXIT_FAILURE;
   }
   constexpr auto cupboard_world_x = std::uint32_t{0x3f24212bu};

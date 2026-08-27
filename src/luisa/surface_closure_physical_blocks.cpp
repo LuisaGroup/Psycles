@@ -222,6 +222,18 @@ project_surface_closure_physical_general(
             .microfacet_alpha_y = closure.microfacet_alpha_y}};
 }
 
+SurfaceClosurePhysicalHairRecord
+project_surface_closure_physical_hair(
+    const SurfaceClosurePhysicalRecord &closure) noexcept {
+    return {
+        .common = project_surface_closure_physical_common(closure),
+        .payload = {
+            .tangent = closure.microfacet_tangent,
+            .roughness_u = closure.microfacet_alpha_x,
+            .roughness_v = closure.microfacet_alpha_y,
+            .offset = closure.sheen_transform_a}};
+}
+
 SurfaceClosurePhysicalDielectricRecord
 project_surface_closure_physical_dielectric(
     const SurfaceClosurePhysicalRecord &closure) noexcept {
@@ -280,6 +292,21 @@ unpack_surface_closure_physical_general(
             .microfacet_tangent = block_1[3u].xyz(),
             .microfacet_alpha_x = block_1[2u].w,
             .microfacet_alpha_y = block_1[3u].w}};
+}
+
+SurfaceClosurePhysicalHairRecord
+unpack_surface_closure_physical_hair(
+    const SurfaceClosurePhysicalCommonRecord &common,
+    Expr<luisa::float4x4> block_1_expression) noexcept {
+    const auto block_1 =
+        luisa::compute::Float4x4{block_1_expression};
+    return {
+        .common = common,
+        .payload = {
+            .tangent = block_1[3u].xyz(),
+            .roughness_u = block_1[2u].w,
+            .roughness_v = block_1[3u].w,
+            .offset = block_1[2u].x}};
 }
 
 SurfaceClosurePhysicalDielectricRecord

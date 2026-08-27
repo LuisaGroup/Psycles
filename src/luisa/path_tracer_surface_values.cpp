@@ -107,6 +107,9 @@ namespace {
          compiler::surface_closure_microfacet_anisotropy) != 0u;
     const auto thin_film_enabled =
         (static_variant & compiler::surface_closure_thin_film) != 0u;
+    const auto hair_tangent_linked =
+        (static_variant &
+         compiler::surface_closure_hair_tangent_linked) != 0u;
 
     switch (operation) {
         case compiler::ClosureOperation::diffuse:
@@ -303,6 +306,46 @@ namespace {
                 .ior = 1.0f,
                 .specular_ior_level = 0.0f,
                 .specular_tint = make_float3(1.0f)};
+        }
+        case compiler::ClosureOperation::hair_reflection:
+        case compiler::ClosureOperation::hair_transmission: {
+            const auto color = read_closure_vector_or(
+                runtime,
+                services,
+                point,
+                locals,
+                instruction,
+                operand::hair::color,
+                make_float3(0.0f));
+            return TracedClosure{
+                .operation = operation,
+                .weight = bsdf_allocated_weight(color * mix_weight),
+                .color = color,
+                .normal = point.shading_normal,
+                .roughness = read_closure_scalar_or(
+                    runtime, services, point, locals, instruction,
+                    operand::hair::roughness_u, 0.1f),
+                .diffuse_roughness = read_closure_scalar_or(
+                    runtime, services, point, locals, instruction,
+                    operand::hair::roughness_v, 1.0f),
+                .metallic = 0.0f,
+                .ior = 1.0f,
+                .specular_ior_level = 0.0f,
+                .specular_tint = make_float3(1.0f),
+                .tangent = hair_tangent_linked
+                               ? read_closure_vector_or(
+                                     runtime,
+                                     services,
+                                     point,
+                                     locals,
+                                     instruction,
+                                     operand::hair::tangent,
+                                     make_float3(0.0f))
+                               : make_float3(0.0f),
+                .hair_tangent_linked = hair_tangent_linked,
+                .hair_offset = read_closure_scalar_or(
+                    runtime, services, point, locals, instruction,
+                    operand::hair::offset, 0.0f)};
         }
         case compiler::ClosureOperation::translucent: {
             const auto color = read_closure_vector_or(

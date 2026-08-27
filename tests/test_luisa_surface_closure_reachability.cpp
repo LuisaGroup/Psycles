@@ -151,6 +151,12 @@ thin_film_principled_lobe(SurfaceClosureLobe lobe) noexcept {
         ReachabilityBasis{
             operation_bit(ClosureOperation::sheen_ashikhmin),
             kinds({SurfaceClosureKind::sheen_ashikhmin})},
+        ReachabilityBasis{
+            operation_bit(ClosureOperation::hair_reflection),
+            kinds({SurfaceClosureKind::hair_reflection})},
+        ReachabilityBasis{
+            operation_bit(ClosureOperation::hair_transmission),
+            kinds({SurfaceClosureKind::hair_transmission})},
         ReachabilityBasis{operation_bit(ClosureOperation::glass),
                           kinds({SurfaceClosureKind::glass})},
         ReachabilityBasis{operation_bit(ClosureOperation::emission), {}},
@@ -163,6 +169,9 @@ thin_film_principled_lobe(SurfaceClosureLobe lobe) noexcept {
         ReachabilityBasis{operation_bit(ClosureOperation::mix), {}},
         ReachabilityBasis{operation_bit(ClosureOperation::refraction),
                           kinds({SurfaceClosureKind::refraction})}};
+    static_assert(
+        operation_basis.size() ==
+        static_cast<std::size_t>(ClosureOperation::refraction) + 1u);
     const std::array feature_basis{
         ReachabilityBasis{
             principled_closure_feature_bit(PrincipledClosureFeature::alpha),
@@ -450,6 +459,8 @@ template <typename Kernel>
         closure_record.color = make_float3(0.8f, 0.6f, 0.4f);
         closure_record.normal = make_float3(0.0f, 0.0f, 1.0f);
         closure_record.roughness = 0.37f;
+        closure_record.microfacet_tangent =
+            make_float3(0.6f, 0.8f, 0.0f);
         closure_record.microfacet_alpha_x =
             closure_record.roughness * closure_record.roughness;
         closure_record.microfacet_alpha_y =
@@ -632,6 +643,8 @@ int main(int argc, char **argv) {
         operation_bit(ClosureOperation::metallic_conductor) |
         operation_bit(ClosureOperation::sheen_microfiber) |
         operation_bit(ClosureOperation::sheen_ashikhmin) |
+        operation_bit(ClosureOperation::hair_reflection) |
+        operation_bit(ClosureOperation::hair_transmission) |
         operation_bit(ClosureOperation::glass) |
         operation_bit(ClosureOperation::transparent) |
         operation_bit(ClosureOperation::subsurface) |
@@ -659,6 +672,8 @@ int main(int argc, char **argv) {
         static_cast<std::uint32_t>(SurfaceClosureKind::metallic_conductor),
         static_cast<std::uint32_t>(SurfaceClosureKind::sheen_microfiber),
         static_cast<std::uint32_t>(SurfaceClosureKind::sheen_ashikhmin),
+        static_cast<std::uint32_t>(SurfaceClosureKind::hair_reflection),
+        static_cast<std::uint32_t>(SurfaceClosureKind::hair_transmission),
         static_cast<std::uint32_t>(SurfaceClosureKind::glass),
         static_cast<std::uint32_t>(SurfaceClosureKind::transparent),
         static_cast<std::uint32_t>(SurfaceClosureKind::bssrdf),
@@ -668,6 +683,8 @@ int main(int argc, char **argv) {
         static_cast<std::uint32_t>(SurfaceClosureKind::principled),
         static_cast<std::uint32_t>(SurfaceClosureKind::principled)};
     constexpr std::array closure_lobes{
+        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
+        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
         static_cast<std::uint32_t>(SurfaceClosureLobe::none),
         static_cast<std::uint32_t>(SurfaceClosureLobe::none),
         static_cast<std::uint32_t>(SurfaceClosureLobe::none),

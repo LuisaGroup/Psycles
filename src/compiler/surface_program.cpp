@@ -59,6 +59,8 @@ struct EmissionProof {
             case ClosureOperation::metallic_conductor:
             case ClosureOperation::sheen_microfiber:
             case ClosureOperation::sheen_ashikhmin:
+            case ClosureOperation::hair_reflection:
+            case ClosureOperation::hair_transmission:
             case ClosureOperation::glass:
             case ClosureOperation::refraction:
             case ClosureOperation::transparent:
@@ -512,6 +514,8 @@ namespace {
             case ClosureOperation::translucent:
             case ClosureOperation::sheen_microfiber:
             case ClosureOperation::sheen_ashikhmin:
+            case ClosureOperation::hair_reflection:
+            case ClosureOperation::hair_transmission:
                 return;
             case ClosureOperation::glossy: {
                 const auto *anisotropy = direct_float(
@@ -751,6 +755,8 @@ Vec3f estimate_surface_emission(
             case ClosureOperation::metallic_conductor:
             case ClosureOperation::sheen_microfiber:
             case ClosureOperation::sheen_ashikhmin:
+            case ClosureOperation::hair_reflection:
+            case ClosureOperation::hair_transmission:
             case ClosureOperation::glass:
             case ClosureOperation::refraction:
             case ClosureOperation::transparent:

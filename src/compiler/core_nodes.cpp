@@ -1083,6 +1083,24 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::hair_bsdf,
+                 .inputs = {input("Color", SocketType::color,
+                                  SocketValue::color({0.8f, 0.8f, 0.8f})),
+                            input("Offset", SocketType::floating,
+                                  SocketValue::floating(0.0f)),
+                            input("RoughnessU", SocketType::floating,
+                                  SocketValue::floating(0.1f)),
+                            input("RoughnessV", SocketType::floating,
+                                  SocketValue::floating(1.0f)),
+                            input("Tangent", SocketType::vector,
+                                  SocketValue::vector({0.0f, 0.0f, 0.0f}))},
+                 .outputs = {output("Closure", SocketType::closure)},
+                 .properties = {property(
+                     "Component", SocketType::string,
+                     SocketValue::string("REFLECTION"))},
+                 .required_features = feature_bit(ShaderFeature::surface)}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::glass_bsdf,
                  .inputs = {input("Color", SocketType::color,
                                   SocketValue::color({1.0f, 1.0f, 1.0f})),

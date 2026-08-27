@@ -332,11 +332,15 @@ GraphSurfaceImplementation::closure_trace(
         [&](const TracedClosure &closure) noexcept {
             const auto physical =
                 canonical_surface_closure(closure);
-            runtime_flags |= cycles_runtime_flags(physical);
+            runtime_flags |= cycles_runtime_flags(
+                physical, 0.0f, _physical_closure_reachability);
             auto allocated = closure_allocated(physical);
             auto match = allocated & (closure_count == requested_index);
             result.type = select(
-                result.type, cycles_closure_type(physical), match);
+                result.type,
+                cycles_closure_type(
+                    physical, _physical_closure_reachability),
+                match);
             result.sample_weight = select(result.sample_weight,
                 physical.sample_weight,
                 match);

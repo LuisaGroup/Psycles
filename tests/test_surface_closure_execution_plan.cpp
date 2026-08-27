@@ -865,6 +865,102 @@ void test_standalone_sheen_static_contract() {
   verify("ASHIKHMIN", ClosureOperation::sheen_ashikhmin);
 }
 
+[[nodiscard]] ShaderGraph make_hair_graph(
+    std::string component, bool tangent_linked) {
+  ShaderGraph graph;
+  const auto hair = graph.add_node(
+      node_type::hair_bsdf, "Legacy Hair static contract");
+  require(
+      graph.set_property(
+          hair, "Component", SocketValue::string(std::move(component))) &&
+          graph.set_input(
+              hair,
+              "Color",
+              SocketValue::color({0.7f, 0.3f, 0.1f})) &&
+          graph.set_input(
+              hair, "Offset", SocketValue::floating(0.12f)) &&
+          graph.set_input(
+              hair, "RoughnessU", SocketValue::floating(0.21f)) &&
+          graph.set_input(
+              hair, "RoughnessV", SocketValue::floating(0.43f)),
+      "failed to configure legacy Hair graph");
+  if (tangent_linked) {
+    const auto geometry = graph.add_node(
+        node_type::geometry, "Legacy Hair linked tangent");
+    require(
+        graph.connect(
+            {.node = geometry, .socket = "Tangent"}, hair, "Tangent"),
+        "failed to link legacy Hair tangent");
+  } else {
+    require(
+        graph.set_input(
+            hair,
+            "Tangent",
+            SocketValue::vector({0.0f, 1.0f, 0.0f})),
+        "failed to configure unlinked legacy Hair tangent");
+  }
+  graph.set_root(
+      ShaderDomain::surface,
+      OutputRef{.node = hair, .socket = "Closure"});
+  return graph;
+}
+
+void test_legacy_hair_static_contract() {
+  const auto verify = [](std::string component,
+                          ClosureOperation expected_operation,
+                          bool tangent_linked) {
+    const auto compiled = compile_graph(
+        make_hair_graph(std::move(component), tangent_linked));
+    const auto planned = plan_program(compiled);
+    const auto root = compiled.program->root();
+    const auto &closure =
+        compiled.program->closure_instructions()[root.value];
+    const auto &instruction = planned.closures.instructions.front();
+    const auto begin = surface_closure_leaf_operand_begin(instruction);
+    const auto address = [&](std::size_t operand) noexcept {
+      return planned.closures.operands[begin + operand];
+    };
+    require(
+        closure.operation == expected_operation &&
+            surface_closure_operation(instruction) == expected_operation &&
+            closure.hair_tangent_linked == tangent_linked &&
+            planned.closures.operands.size() ==
+                surface_closure_operand::hair::count &&
+            address(surface_closure_operand::hair::color) ==
+                planned.values.value_addresses[closure.color.value] &&
+            address(surface_closure_operand::hair::offset) ==
+                planned.values.value_addresses[closure.hair_offset.value] &&
+            address(surface_closure_operand::hair::roughness_u) ==
+                planned.values.value_addresses[closure.roughness.value] &&
+            address(surface_closure_operand::hair::roughness_v) ==
+                planned.values.value_addresses[
+                    closure.diffuse_roughness.value] &&
+            (tangent_linked
+                 ? address(surface_closure_operand::hair::tangent) ==
+                       planned.values.value_addresses[
+                           closure.tangent.value]
+                 : address(surface_closure_operand::hair::tangent) ==
+                       SurfaceValueAddress::invalid_value) &&
+            ((instruction.control &
+              surface_closure_hair_tangent_linked) != 0u) ==
+                tangent_linked &&
+            surface_closure_endpoints(instruction) ==
+                surface_closure_endpoint_bit(
+                    SurfaceClosureEndpoint::physical),
+        "legacy Hair did not preserve its exact static typed slice");
+    for (const auto &parameter : compiled.program->parameters()) {
+      require(
+          parameter.socket != "Component" &&
+              parameter.socket != "Weight",
+          "legacy Hair static/internal metadata leaked into the runtime ABI");
+    }
+  };
+  verify(
+      "REFLECTION", ClosureOperation::hair_reflection, false);
+  verify(
+      "TRANSMISSION", ClosureOperation::hair_transmission, true);
+}
+
 void test_microfacet_anisotropy_specialization() {
   const auto isotropic = compile_graph(
       make_glossy_anisotropy_graph(1.0e-4f));
@@ -1252,6 +1348,7 @@ int main() {
     test_principled_static_contract();
     test_standalone_metallic_static_contract();
     test_standalone_sheen_static_contract();
+    test_legacy_hair_static_contract();
     test_thin_film_static_contract();
     test_microfacet_anisotropy_specialization();
     test_missing_live_address_rejected();

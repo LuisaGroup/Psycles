@@ -25,10 +25,18 @@ SurfaceClosureSamplingCallables make_surface_closure_sampling_callables(
             ? scene->surface_values->physical_closure_reachability
             : all_surface_closure_reachability;
     SurfaceClosureSelectionCallable selection =
-        [](UInt lobe_mask, Float glossy_filter_roughness, UInt kind, UInt lobe,
-           UInt bssrdf_method, Float allocation_weight, Float sample_weight,
-           Bool setup_valid, Float3 normal, Float roughness,
-           Bool preserve_ggx_energy, Bool beckmann) noexcept {
+        [reachability](UInt lobe_mask,
+            Float glossy_filter_roughness,
+            UInt kind,
+            UInt lobe,
+            UInt bssrdf_method,
+            Float allocation_weight,
+            Float sample_weight,
+            Bool setup_valid,
+            Float3 normal,
+            Float roughness,
+            Bool preserve_ggx_energy,
+            Bool beckmann) noexcept {
             const auto context = SurfaceClosureSelectionContext{
                 .lobe_mask = Expr<std::uint32_t>{lobe_mask.expression()},
                 .glossy_filter_roughness =
@@ -44,7 +52,8 @@ SurfaceClosureSamplingCallables make_surface_closure_sampling_callables(
                 .roughness = Expr<float>{roughness.expression()},
                 .preserve_ggx_energy = Expr<bool>{preserve_ggx_energy.expression()},
                 .beckmann = Expr<bool>{beckmann.expression()}};
-            return surface_closure_selection(context, closure);
+            return surface_closure_selection(
+                context, closure, true, reachability);
         };
     selection.set_name("surface_closure_selection");
 

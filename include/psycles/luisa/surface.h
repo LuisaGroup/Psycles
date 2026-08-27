@@ -302,6 +302,8 @@ enum class SurfaceClosureKind : std::uint32_t {
     // payload, but also in sampling measure and Cycles pass classification.
     sheen_microfiber,
     sheen_ashikhmin,
+    hair_reflection,
+    hair_transmission,
     glass,
     transparent,
     refraction,

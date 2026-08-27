@@ -48,6 +48,24 @@ struct CyclesTriangleSurface {
   Bool back_facing;
 };
 
+struct CyclesTriangleSurfaceDerivatives {
+  Float3 dpdu;
+  Float3 dpdv;
+};
+
+// Cycles names these derivatives dPdu/dPdv, but for triangles u and v are
+// barycentric coordinates rather than a texture map. Therefore
+//
+//   dPdu = p1 - p0, dPdv = p2 - p0,
+//
+// in the same final world-space support used for hit reconstruction. Both
+// vectors change sign on a back face. Keeping this projection beside the
+// support resolver prevents an unrelated UV tangent frame from being
+// substituted for the geometric derivative contract.
+[[nodiscard]] CyclesTriangleSurfaceDerivatives
+cycles_triangle_surface_derivatives(
+    const CyclesTriangleSurface &surface) noexcept;
+
 class CyclesTriangleSurfaceComponent {
 
 public:

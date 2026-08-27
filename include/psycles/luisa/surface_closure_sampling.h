@@ -136,7 +136,9 @@ make_surface_closure_selection_context(
 surface_closure_selection(
     const SurfaceClosureSelectionContext &context,
     const SurfaceClosureSelectionInput &closure,
-    bool include_runtime_flags = true) noexcept;
+    bool include_runtime_flags = true,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
 
 // Canonical conditional sampler p(w_i | i). It must only be invoked under the
 // categorical `choose` predicate. In particular, this function never decides

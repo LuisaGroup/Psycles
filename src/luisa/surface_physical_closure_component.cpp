@@ -1,6 +1,7 @@
 #include "graph_surface_internal.h"
 
 #include "bssrdf_closure_component.h"
+#include "hair_closure_component.h"
 #include "microfacet_anisotropy.h"
 #include "microfacet_glass_component.h"
 #include "metallic_closure_component.h"
@@ -92,6 +93,7 @@ void expand_physical_surface_closure(
     const MetallicClosureComponent metallic_closure{
         services, closure_point};
     const SheenClosureComponent sheen_closure{services, point};
+    const HairClosureComponent hair_closure{point};
     const BssrdfClosureComponent bssrdf_closure{point};
     const ThinSubsurfaceComponent thin_subsurface;
 
@@ -353,6 +355,10 @@ void expand_physical_surface_closure(
     case compiler::ClosureOperation::sheen_microfiber:
     case compiler::ClosureOperation::sheen_ashikhmin:
         checked_emit(sheen_closure.setup(graph_closure));
+        return;
+    case compiler::ClosureOperation::hair_reflection:
+    case compiler::ClosureOperation::hair_transmission:
+        checked_emit(hair_closure.setup(graph_closure));
         return;
     case compiler::ClosureOperation::glass: {
         const auto color =
