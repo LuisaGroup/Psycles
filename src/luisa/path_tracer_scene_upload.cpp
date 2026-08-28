@@ -271,6 +271,9 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
     if (scene->subsurface_accel) {
         stream << scene->subsurface_accel->build();
     }
+    if (scene->ambient_occlusion_local_accel) {
+        stream << scene->ambient_occlusion_local_accel->build();
+    }
     stream << synchronize();
     return {};
 }

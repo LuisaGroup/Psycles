@@ -176,7 +176,11 @@ SurfaceValueForwardingPlan plan_surface_value_forwarding(
     const auto &target =
         image.instructions[program.instruction_begin + target_offset];
     if (is_surface_value_surface_normal_transition(source) ||
-        is_surface_value_surface_normal_transition(target)) {
+        is_surface_value_surface_normal_transition(target) ||
+        surface_value_operation_is_external_query(
+            surface_value_operation(source)) ||
+        surface_value_operation_is_external_query(
+            surface_value_operation(target))) {
       continue;
     }
     const auto definition = SurfaceValueAddress{source.result};

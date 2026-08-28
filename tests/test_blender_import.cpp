@@ -602,6 +602,7 @@ void test_integrator_settings_round_trip() {
       "sample_clamp_direct": 1.25,
       "sample_clamp_indirect": 2.5,
       "blur_glossy": 0.75,
+      "ao_distance": 4.25,
       "film_exposure": 0.75,
       "light_sampling_threshold": 0.125,
       "caustics_reflective": false,
@@ -826,6 +827,8 @@ void test_integrator_settings_round_trip() {
   expect_near(integrator.sample_clamp_indirect, 2.5f,
               "indirect clamp mismatch");
   expect_near(integrator.filter_glossy, 0.75f, "filter glossy mismatch");
+  expect_near(imported.scene->ambient_occlusion_distance, 4.25f,
+              "world ambient-occlusion distance mismatch");
   expect_near(integrator.film_exposure, 0.75f, "film exposure mismatch");
   expect_near(integrator.light_sampling_threshold, 0.125f,
               "light sampling threshold mismatch");

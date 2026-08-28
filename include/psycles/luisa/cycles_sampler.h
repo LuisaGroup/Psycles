@@ -19,7 +19,6 @@ static_assert(
     sampling::tabulated_sobol::pattern_count == 256u,
     "The device Sobol shuffle specializes Cycles' 256-pattern table.");
 
-using luisa::compute::BufferFloat4;
 using luisa::compute::Float;
 using luisa::compute::Float2;
 using luisa::compute::Float3;
@@ -27,6 +26,9 @@ using luisa::compute::Float4;
 using luisa::compute::UInt;
 using luisa::compute::make_float2;
 using luisa::compute::make_float3;
+
+using SobolTableExpr = luisa::compute::Expr<
+    luisa::compute::Buffer<luisa::float4>>;
 
 // Luisa DSL lowering of Cycles' TABULATED_SOBOL path for
 // scrambling_distance == 1.0, verified through Blender main@4fe17ef6.
@@ -258,7 +260,7 @@ inline constexpr std::array<std::uint32_t, 64u>
 }
 
 [[nodiscard]] inline Float4 sample_4d(
-    const BufferFloat4 &table,
+    SobolTableExpr table,
     UInt sequence_size,
     UInt sample,
     UInt rng_hash,
@@ -271,7 +273,7 @@ inline constexpr std::array<std::uint32_t, 64u>
 }
 
 [[nodiscard]] inline Float sample_1d(
-    const BufferFloat4 &table,
+    SobolTableExpr table,
     UInt sequence_size,
     UInt sample,
     UInt rng_hash,
@@ -291,7 +293,7 @@ inline constexpr std::array<std::uint32_t, 64u>
 // transmittance call sites from accidentally decorrelating the geometric
 // expansion order across pixels and desynchronizing GPU work.
 [[nodiscard]] inline Float sample_volume_expansion_order(
-    const BufferFloat4 &table,
+    SobolTableExpr table,
     UInt sequence_size,
     UInt sample,
     UInt rng_offset) noexcept {
@@ -307,7 +309,7 @@ inline constexpr std::array<std::uint32_t, 64u>
 }
 
 [[nodiscard]] inline Float2 sample_2d(
-    const BufferFloat4 &table,
+    SobolTableExpr table,
     UInt sequence_size,
     UInt sample,
     UInt rng_hash,
@@ -321,8 +323,31 @@ inline constexpr std::array<std::uint32_t, 64u>
         .xy();
 }
 
+// Exact lowering of Cycles path_branched_rng_2D. A branch does not consume or
+// mutate the enclosing path state: it addresses the same Sobol sequence with
+// sample' = sample * branch_count + branch and the caller-selected path
+// dimension. Keeping this arithmetic in one named primitive prevents shader
+// nodes with internal sampling loops from accidentally using the outer sample
+// for every branch.
+[[nodiscard]] inline Float2 sample_branched_2d(
+    SobolTableExpr table,
+    UInt sequence_size,
+    UInt sample,
+    UInt rng_hash,
+    UInt rng_offset,
+    UInt branch,
+    UInt branch_count,
+    std::uint32_t dimension) noexcept {
+    return sample_2d(
+        table,
+        sequence_size,
+        sample * branch_count + branch,
+        rng_hash,
+        path_state_dimension(rng_offset, dimension));
+}
+
 [[nodiscard]] inline Float3 sample_3d(
-    const BufferFloat4 &table,
+    SobolTableExpr table,
     UInt sequence_size,
     UInt sample,
     UInt rng_hash,

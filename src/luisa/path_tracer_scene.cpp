@@ -12,6 +12,7 @@
 #include "path_tracer_scene_upload.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_subsurface_scene.h"
+#include "path_tracer_ambient_occlusion_scene.h"
 #include "path_tracer_surface_route_policy.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_surface_values.h"
@@ -148,6 +149,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     const SubsurfaceSceneComponent subsurface_scene;
     const auto subsurface_scene_plan = subsurface_scene.plan(
         snapshot, surface_bssrdf_materials);
+    const AmbientOcclusionSceneComponent ambient_occlusion_scene{
+        snapshot, data->materials, reachable_surface_materials};
+    ambient_occlusion_scene.initialize(data);
     auto cycles_instance_intersection_plan =
         build_cycles_instance_intersection_plan(
             snapshot, surface_bssrdf_materials);
@@ -591,6 +595,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                   luisa::span{cycles_bsdf_values})
            << data->volume_surface_flag_buffer.copy_from(
                   luisa::span{volume_surface_flags});
+    ambient_occlusion_scene.upload_distance(
+        stream, data, snapshot.ambient_occlusion_distance);
     if (data->surface_values) {
         upload_surface_value_runtime(
             stream, *data->surface_values);
@@ -1439,22 +1445,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         diagnose(result.diagnostics, displacement.diagnostic);
         return result;
     }
-    std::map<contract::MaterialId, bool> material_may_emit;
-    for (const auto &[material_id, material] :
-         data->materials.materials()) {
-        static_cast<void>(material);
-        const auto binding =
-            data->material_bindings.find(
-                material_id);
-        material_may_emit.emplace(
-            material_id,
-            binding !=
-                    data->material_bindings.end() &&
-                binding->second.emission_sampling !=
-                    contract::EmissionSampling::none &&
-                (binding->second.flags &
-                 material_flag_may_emit) != 0u);
-    }
+    const auto material_may_emit =
+        collect_emission_sampling_materials(*data);
 
     luisa::vector<InstanceGpu> instances;
     luisa::vector<MaterialBindingGpu> override_materials;
@@ -1586,7 +1578,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                                     1u)];
                 }
                 if (!material_id ||
-                    !material_may_emit[*material_id]) {
+                    !material_may_emit.contains(*material_id)) {
                     continue;
                 }
                 const auto &triangle =
@@ -1688,6 +1680,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             instance_index);
         subsurface_scene.append_triangle_instance(
             data, subsurface_scene_plan, instance_index,
+            geometry_iter->second, instance.transform);
+        ambient_occlusion_scene.append_triangle_instance(
+            data, instance_index,
             geometry_iter->second, instance.transform);
     }
     if (!result.diagnostics.empty()) {

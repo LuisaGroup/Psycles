@@ -1,5 +1,6 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_emissive_triangle.h"
+#include "path_tracer_ambient_occlusion.h"
 #include "subsurface_exit_closure_component.h"
 
 #include <psycles/luisa/cycles_sampler.h>
@@ -136,6 +137,20 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
           sample.record_surface_program_execution(surface_tag);
         }
         if (config.surfaces.population) {
+            std::optional<PathSurfaceAmbientOcclusionContext>
+                ambient_occlusion;
+            if (scene->has_ambient_occlusion) {
+                ambient_occlusion.emplace(
+                    PathSurfaceAmbientOcclusionContext{
+                        .sobol_table = invocation.sobol_table,
+                        .sobol_sequence_size =
+                            kernel_parameters.sobol_sequence_size,
+                        .sample_index = sample.sample_index,
+                        .rng_hash = sample.rng_hash,
+                        .rng_offset = sample.cycles_rng_offset,
+                        .source_object = cycles_object_index,
+                        .source_primitive = cycles_primitive_index});
+            }
             populated_surface = config.surfaces.population->populate(
                 surface_tag,
                 point,
@@ -150,7 +165,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                  .include_runtime_flags =
                      preparation_query.include_runtime_flags,
                  .include_aov =
-                     preparation_query.include_aov});
+                     preparation_query.include_aov},
+                ambient_occlusion ? &*ambient_occlusion : nullptr);
         }
         const auto preparation = populated_surface
                                      ? populated_surface->preparation()

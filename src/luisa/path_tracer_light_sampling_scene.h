@@ -3,6 +3,7 @@
 #include "path_tracer_internal.h"
 
 #include <span>
+#include <set>
 #include <string>
 
 namespace psycles::luisa_backend::detail {
@@ -33,6 +34,13 @@ struct LightSamplingSceneUpload {
                tree_emitter_mappings.size() == tree_emitters.size();
     }
 };
+
+// Exact host capability used while extracting emissive triangles. A material
+// participates only when its authored sampling mode allows it and its compiled
+// surface program can emit; neither condition is inferred from sampled color.
+[[nodiscard]] std::set<contract::MaterialId>
+collect_emission_sampling_materials(
+    const LuisaSceneData &scene);
 
 // Builds selection metadata after displacement has finalized GeometryUpload.
 // This ordering is required: Cycles constructs emitter bounds and areas from

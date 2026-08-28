@@ -50,6 +50,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/graph_surface_value_expression.cpp
     src/luisa/graph_surface_values.cpp
     src/luisa/graph_surface_value_context.cpp
+    src/luisa/graph_surface_value_ambient_occlusion.cpp
     src/luisa/graph_surface_value_bump_expanded.cpp
     src/luisa/graph_surface_value_image.cpp
     src/luisa/graph_surface_value_math.cpp
@@ -111,6 +112,8 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_normal_maps.cpp
     src/luisa/path_tracer_shader_tables.cpp
     src/luisa/path_tracer_subsurface_scene.cpp
+    src/luisa/path_tracer_ambient_occlusion_scene.cpp
+    src/luisa/path_tracer_ambient_occlusion.cpp
     src/luisa/path_tracer_vector_mapping.cpp
     src/luisa/path_tracer_common.cpp
     src/luisa/path_tracer_curve_scene.cpp

@@ -72,6 +72,8 @@ private:
     const CallableTexture2DSamplingProvider *_texture_sampling_provider{};
     const CallableSurfaceAttributeLookupProvider
         *_attribute_lookup_provider{};
+    const SurfaceAmbientOcclusionProvider
+        *_ambient_occlusion_provider{};
     CallableSurfaceBumpProvider _bump_provider;
     CallableSurfaceColorTransformProvider _color_transform_provider;
     CallableSurfaceVectorMappingProvider _vector_mapping_provider;
@@ -97,7 +99,9 @@ public:
         const CallableTexture2DSamplingProvider
             *texture_sampling_provider = nullptr,
         const CallableSurfaceAttributeLookupProvider
-            *attribute_lookup_provider = nullptr) noexcept
+            *attribute_lookup_provider = nullptr,
+        const SurfaceAmbientOcclusionProvider
+            *ambient_occlusion_provider = nullptr) noexcept
         : _scalar_parameters{scalar_parameters},
           _vector_parameters{vector_parameters},
           _cycles_bsdf_tables{cycles_bsdf_tables},
@@ -115,6 +119,8 @@ public:
               texture_sampling_provider},
           _attribute_lookup_provider{
               attribute_lookup_provider},
+          _ambient_occlusion_provider{
+              ambient_occlusion_provider},
           _shader_table_provider{scalar_parameters} {}
 
     [[nodiscard]] const SurfaceClosureSetupProvider *
@@ -125,6 +131,11 @@ public:
     [[nodiscard]] const SurfaceBumpProvider *
     surface_bump_provider() const noexcept override {
         return &_bump_provider;
+    }
+
+    [[nodiscard]] const SurfaceAmbientOcclusionProvider *
+    surface_ambient_occlusion_provider() const noexcept override {
+        return _ambient_occlusion_provider;
     }
 
     [[nodiscard]] const SurfaceColorTransformProvider *

@@ -115,6 +115,25 @@ void append_flat_distribution(
 
 }// namespace
 
+std::set<contract::MaterialId>
+collect_emission_sampling_materials(
+    const LuisaSceneData &scene) {
+    std::set<contract::MaterialId> result;
+    for (const auto &[material_id, material] :
+         scene.materials.materials()) {
+        static_cast<void>(material);
+        const auto binding =
+            scene.material_bindings.find(material_id);
+        if (binding != scene.material_bindings.end() &&
+            binding->second.emission_sampling !=
+                contract::EmissionSampling::none &&
+            (binding->second.flags & material_flag_may_emit) != 0u) {
+            result.emplace(material_id);
+        }
+    }
+    return result;
+}
+
 LightSamplingSceneUpload build_light_sampling_scene_upload(
     const contract::SceneSnapshot &snapshot,
     const LuisaSceneData &scene,

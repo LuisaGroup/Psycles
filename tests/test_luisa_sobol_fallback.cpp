@@ -19,7 +19,7 @@ namespace cycles_sampler =
 namespace tabulated_sobol =
     psycles::sampling::tabulated_sobol;
 
-constexpr auto probe_count = std::size_t{5u};
+constexpr auto probe_count = std::size_t{7u};
 constexpr auto metadata_count = std::size_t{11u};
 
 void expect(bool condition, const std::string &message) {
@@ -155,6 +155,34 @@ int main(int argc, char **argv) {
                         zero_hash_expansion,
                         pixel_hash_expansion,
                         0.0f)));
+            output_bits.write(
+                5u,
+                as<luisa::uint4>(make_float4(
+                    cycles_sampler::sample_branched_2d(
+                        samples,
+                        sequence_size,
+                        path_sample,
+                        rng_hash,
+                        16u,
+                        0u,
+                        4u,
+                        tabulated_sobol::surface_ao_dimension),
+                    0.0f,
+                    0.0f)));
+            output_bits.write(
+                6u,
+                as<luisa::uint4>(make_float4(
+                    cycles_sampler::sample_branched_2d(
+                        samples,
+                        sequence_size,
+                        path_sample,
+                        rng_hash,
+                        16u,
+                        3u,
+                        4u,
+                        tabulated_sobol::surface_ao_dimension),
+                    0.0f,
+                    0.0f)));
 
             output_metadata.write(0u, rng_hash);
             output_metadata.write(1u, camera_dimension);
@@ -263,6 +291,22 @@ int main(int argc, char **argv) {
             actual_bits[4u].x != actual_bits[4u].z,
             "volume expansion-order regression probe does not distinguish "
             "zero-hash and pixel-hash samples");
+        constexpr std::array branched_expected{
+            std::array{0x3f28d790u, 0x3f779a43u, 0u, 0u},
+            std::array{0x3f7d953bu, 0x3e9147a8u, 0u, 0u}};
+        for (auto branch = std::size_t{0u}; branch < 2u; ++branch) {
+            const auto actual = lanes(actual_bits[5u + branch]);
+            if (actual != branched_expected[branch]) {
+                std::cerr << "branched Sobol fixture " << branch << " got {"
+                          << std::hex << actual[0u] << ", " << actual[1u]
+                          << ", " << actual[2u] << ", " << actual[3u]
+                          << std::dec << "}\n";
+            }
+            expect(
+                actual == branched_expected[branch],
+                "fallback branched Sobol sample bits changed at probe " +
+                    std::to_string(branch));
+        }
 
         constexpr std::array<std::uint32_t, metadata_count>
             expected_metadata{

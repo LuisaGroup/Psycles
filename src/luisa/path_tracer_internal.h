@@ -456,6 +456,17 @@ struct LuisaSceneData {
     // rewrites, bakes, or approximates a material closure.
     bool has_subsurface{};
     std::uint32_t subsurface_instance_count{};
+    // Exact scene-level shader-raytrace capabilities. They are derived from
+    // reachable SurfaceProgram instructions before kernel construction, so a
+    // scene without AO neither builds its secondary local TLAS nor records AO
+    // traversal callables.
+    bool has_ambient_occlusion{};
+    bool has_local_ambient_occlusion{};
+    // One-element material-like scene data, allocated only when an AO node is
+    // reachable. Keeping it out of RenderKernelParameters preserves the exact
+    // no-AO kernel ABI and prevents the authored distance from specializing
+    // shader cache identity.
+    std::optional<Buffer<float>> ambient_occlusion_distance_buffer;
     std::map<contract::MaterialId, MaterialBinding>
         material_bindings;
     std::optional<MaterialBinding> world_surface;
@@ -540,6 +551,11 @@ struct LuisaSceneData {
     // TLAS resources after their referenced meshes so reverse member
     // destruction releases acceleration structures first.
     std::optional<Accel> subsurface_accel;
+    // Cycles Only Local AO traverses the complete current triangle object and
+    // ignores ordinary ray visibility. This secondary TLAS preserves primary
+    // instance ids as user ids, while its all-visible masks make that semantic
+    // distinction explicit. Curves are intentionally absent.
+    std::optional<Accel> ambient_occlusion_local_accel;
     Accel accel;
     CameraDesc camera;
     VolumeSceneMetadata volume_metadata;

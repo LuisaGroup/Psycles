@@ -1263,7 +1263,7 @@ template<typename Continuation>
 void emit_compact_surface_values(
     const SurfaceValueRuntime &runtime,
     SurfaceValueProgramDomain domain,
-    const SurfaceValueProgramCallable &value_program,
+    const SurfaceValueProgram &value_program,
     UInt surface_tag,
     SurfacePoint point,
     Expr<Buffer<float>> scalar_parameters,
@@ -1272,6 +1272,7 @@ void emit_compact_surface_values(
     Expr<BindlessArray> textures,
     Expr<BindlessArray> geometry_heap,
     SurfaceValueBankDefinition bank_definition,
+    const PathSurfaceAmbientOcclusionContext *ambient_occlusion,
     Continuation &&continuation) noexcept {
     const auto domain_view = surface_value_program_domain(runtime, domain);
     $if(surface_tag <
@@ -1292,7 +1293,8 @@ void emit_compact_surface_values(
             packed_point,
             locals_view.scalars.storage,
             locals_view.vectors.storage,
-            locals_view.unsigned_integers.storage);
+            locals_view.unsigned_integers.storage,
+            ambient_occlusion);
 
         const auto program =
             surface_tag * SurfaceValueRuntime::programs_per_topology +
@@ -1311,12 +1313,12 @@ class CompactSurfacePopulationProgramImpl final
 
   private:
     std::shared_ptr<LuisaSceneData> _scene;
-    SurfaceValueProgramCallable _value_program;
+    SurfaceValueProgram _value_program;
 
   public:
     CompactSurfacePopulationProgramImpl(
         std::shared_ptr<LuisaSceneData> scene,
-        SurfaceValueProgramCallable value_program) noexcept
+        SurfaceValueProgram value_program) noexcept
         : _scene{std::move(scene)},
           _value_program{std::move(value_program)} {}
 
@@ -1325,7 +1327,9 @@ class CompactSurfacePopulationProgramImpl final
         const ShaderServices &services,
         const SurfacePoint &point,
         const SurfacePopulationQuery &query,
-        SurfaceClosureCollector &collector) const noexcept override {
+        SurfaceClosureCollector &collector,
+        const PathSurfaceAmbientOcclusionContext
+            *ambient_occlusion) const noexcept override {
         SurfacePopulation result{
             .emission = make_float3(0.0f),
             .shading_normal = point.shading_normal};
@@ -1347,6 +1351,7 @@ class CompactSurfacePopulationProgramImpl final
             Expr<BindlessArray>{_scene->texture_heap},
             Expr<BindlessArray>{_scene->heap},
             SurfaceValueBankDefinition::full_bank,
+            ambient_occlusion,
             [&](const SurfacePoint &evaluated_point,
                 const SurfaceValueLocalsView &locals,
                 UInt preparation_program) noexcept {
@@ -1421,7 +1426,8 @@ make_compact_surface_population_program(
         scene,
         texture_sampling,
         attribute_lookup,
-        SurfaceValueProgramDomain::preparation);
+        SurfaceValueProgramDomain::preparation,
+        true);
     return std::make_shared<
         CompactSurfacePopulationProgramImpl>(
         scene, std::move(value_program));
@@ -1493,6 +1499,7 @@ SurfaceEmissionCallable make_compact_surface_emission_callable(
                 textures,
                 geometry_heap,
                 SurfaceValueBankDefinition::program_prefix,
+                nullptr,
                 [&](const SurfacePoint &evaluated_point,
                     const SurfaceValueLocalsView &locals,
                     UInt emission_program) noexcept {
@@ -1588,6 +1595,7 @@ make_compact_surface_preparation_callable(
                 textures,
                 geometry_heap,
                 SurfaceValueBankDefinition::program_prefix,
+                nullptr,
                 [&](const SurfacePoint &evaluated_point,
                     const SurfaceValueLocalsView &locals,
                     UInt preparation_program) noexcept {
@@ -1688,6 +1696,7 @@ SurfaceBssrdfNormalCallable make_compact_surface_bssrdf_normal_callable(
                         vector_parameters,
                         cycles_bsdf_tables, textures, geometry_heap,
                         SurfaceValueBankDefinition::program_prefix,
+                        nullptr,
                         [&](const SurfacePoint &evaluated_point,
                             const SurfaceValueLocalsView &locals,
                             UInt preparation_program) noexcept {

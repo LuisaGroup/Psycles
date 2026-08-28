@@ -139,6 +139,8 @@ void test_ambient_occlusion_import() {
 
   const auto imported = load_blender_scene_bundle(temporary.path());
   require(imported.ok(), "Ambient Occlusion scene did not import");
+  require(imported.scene->ambient_occlusion_distance == 10.0f,
+          "old scene bundles did not retain Cycles' AO-distance default");
   const psycles::contract::MaterialDesc *material = nullptr;
   for (const auto &[id, candidate] : imported.scene->materials) {
     static_cast<void>(id);

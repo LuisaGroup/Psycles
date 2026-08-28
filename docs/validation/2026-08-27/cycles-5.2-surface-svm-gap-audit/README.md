@@ -11,8 +11,8 @@ only the semantic handler variants reachable by the loaded scene.
 The remaining gap to Cycles is split across two independent boundaries:
 
 1. Blender 5.2 node and closure semantics are not complete. Of the 93
-   constructible Cycles shader-node types, 67 have a source route in the
-   Blender adapter or are structural output roots and 26 do not. Several of
+   constructible Cycles shader-node types, 68 have a source route in the
+   Blender adapter or are structural output roots and 25 do not. Several of
    the routed nodes are intentionally partial.
 2. Post-population physical closures are stored as a tagged sum. The hot
    evaluation and sampling path now keeps the tag through a family dispatch,
@@ -82,6 +82,15 @@ formal proof and complete A/B evidence are in
 [microfacet-sampled-fresnel-angle](../microfacet-sampled-fresnel-angle/README.md)
 and
 [selected-microfacet-half-vector-reuse-rejected](../selected-microfacet-half-vector-reuse-rejected/README.md).
+
+The latest node follow-up implements Ambient Occlusion as an actual external
+query in the compact surface SVM. Cycles 5.2 CPU and Luisa fallback, HIP, and
+strict native XIR-to-SPIR-V Vulkan agree to `1.106e-8` relative Combined RMSE
+on a six-mode spatial probe. No-AO domains retain the original callable ABI;
+Only Local uses a secondary all-visible triangle TLAS with an explicit local
+ordinal to primary-instance mapping. The formal contract, regressions, EXR
+metrics, and inspected triptych are in
+[cycles-ambient-occlusion-svm](../../2026-08-29/cycles-ambient-occlusion-svm/README.md).
 
 ## Reference identity
 
@@ -553,11 +562,11 @@ the standalone Sheen BSDF node. Similarly, Principled metallic does not
 implement Blender 5.2's standalone Metallic BSDF and its conductor/Fresnel
 inputs.
 
-The other 19 missing Cycles node routes are:
+The other 18 missing Cycles node routes are:
 
 ```text
-AMBIENT_OCCLUSION, BEVEL, CAMERA, CURVE_FLOAT, CURVE_VEC,
-MATERIAL_RAYCAST, NORMAL, OUTPUT_AOV, POINT_INFO, SQUEEZE,
+BEVEL, CAMERA, CURVE_FLOAT, CURVE_VEC, MATERIAL_RAYCAST, NORMAL,
+OUTPUT_AOV, POINT_INFO, SQUEEZE,
 ShaderNodeRadialTiling, TANGENT, TEX_GABOR, TEX_IES,
 VECTOR_DISPLACEMENT, VECTOR_ROTATE, VECT_TRANSFORM, VOLUME_INFO,
 WIREFRAME

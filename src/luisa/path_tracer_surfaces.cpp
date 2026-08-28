@@ -1,6 +1,7 @@
 #include "path_tracer_surfaces.h"
 
 #include "path_tracer_shader_services.h"
+#include "path_tracer_ambient_occlusion.h"
 #include "path_tracer_surface_closure_evaluation.h"
 #include "path_tracer_surface_closure_sampling.h"
 #include "path_tracer_surface_closure_setup.h"
@@ -37,7 +38,8 @@ class ExpandedSurfacePopulationProgram final
         const ShaderServices &services,
         const SurfacePoint &point,
         const SurfacePopulationQuery &query,
-        SurfaceClosureCollector &collector) const noexcept override {
+        SurfaceClosureCollector &collector,
+        const PathSurfaceAmbientOcclusionContext *) const noexcept override {
         return _scene->surfaces.populate(
             surface_tag, services, point, query, collector);
     }
@@ -56,6 +58,8 @@ class PopulatedSurfaceShaderImpl final
     CallableSurfaceClosureSetupProvider _setup_provider;
     CallableTexture2DSamplingProvider _texture_provider;
     CallableSurfaceAttributeLookupProvider _attribute_provider;
+    std::shared_ptr<PathSurfaceAmbientOcclusionProvider>
+        _ambient_occlusion_provider;
     SceneSurfaceShaderServices _services;
     SurfaceClosurePopulationCollector _population;
     SurfacePreparation _preparation;
@@ -73,7 +77,11 @@ class PopulatedSurfaceShaderImpl final
         const SurfacePoint &point,
         const SurfacePopulationQuery &query,
         const SurfaceClosureIdentityCallable &identity,
-        const SurfaceClosureAovCallable &aov_operation) noexcept
+        const SurfaceClosureAovCallable &aov_operation,
+        std::shared_ptr<const SceneTraversalComponent>
+            ambient_occlusion_traversal,
+        const PathSurfaceAmbientOcclusionContext
+            *ambient_occlusion) noexcept
         : _scene{std::move(scene)},
           _program{std::move(program)},
           _point{point},
@@ -89,6 +97,13 @@ class PopulatedSurfaceShaderImpl final
           _attribute_provider{
               _scene->heap,
               _attribute_lookup},
+          _ambient_occlusion_provider{
+              ambient_occlusion != nullptr
+                  ? std::make_shared<PathSurfaceAmbientOcclusionProvider>(
+                        _scene,
+                        std::move(ambient_occlusion_traversal),
+                        *ambient_occlusion)
+                  : nullptr},
           _services{
               _scene->scalar_parameter_buffer,
               _scene->vector_parameter_buffer,
@@ -101,7 +116,8 @@ class PopulatedSurfaceShaderImpl final
               _scene->shader_color_space,
               &_setup_provider,
               &_texture_provider,
-              &_attribute_provider},
+              &_attribute_provider,
+              _ambient_occlusion_provider.get()},
           _population{
               _point,
               _scene->volume_metadata.closure_allocation_budget,
@@ -110,7 +126,8 @@ class PopulatedSurfaceShaderImpl final
               aov_operation},
           _preparation{SurfacePreparation::zero(_point)} {
         const auto population = _program->populate(
-            surface_tag, _services, _point, query, _population);
+            surface_tag, _services, _point, query, _population,
+            ambient_occlusion);
         _preparation = _population.preparation(population.emission);
         _shading_normal = population.shading_normal;
         const auto reachability =
@@ -197,6 +214,8 @@ class SurfacePopulationComponentImpl final
     SurfaceClosureSetupCallables _closure_setup;
     Texture2DSamplingCallables _texture_sampling;
     SurfaceAttributeLookupCallable _attribute_lookup;
+    std::shared_ptr<const SceneTraversalComponent>
+        _ambient_occlusion_traversal;
 
   public:
     explicit SurfacePopulationComponentImpl(
@@ -213,12 +232,25 @@ class SurfacePopulationComponentImpl final
           _aov_operation{aov_operation},
           _closure_setup{closure_setup},
           _texture_sampling{texture_sampling},
-          _attribute_lookup{attribute_lookup} {}
+          _attribute_lookup{attribute_lookup},
+          _ambient_occlusion_traversal{
+              _scene->has_ambient_occlusion
+                  ? make_scene_traversal_component(
+                        make_scene_traversal_stage_plan(
+                            _scene->geometries.size(),
+                            _scene->curve_geometries.size()))
+                  : nullptr} {}
 
     [[nodiscard]] std::shared_ptr<PopulatedSurfaceShader> populate(
         Expr<std::uint32_t> surface_tag,
         const SurfacePoint &point,
-        const SurfacePopulationQuery &query) const noexcept override {
+        const SurfacePopulationQuery &query,
+        const PathSurfaceAmbientOcclusionContext
+            *ambient_occlusion) const noexcept override {
+        if (_scene->has_ambient_occlusion &&
+            ambient_occlusion == nullptr) {
+            std::abort();
+        }
         return std::make_shared<PopulatedSurfaceShaderImpl>(
             _scene,
             _program,
@@ -229,7 +261,9 @@ class SurfacePopulationComponentImpl final
             point,
             query,
             _identity,
-            _aov_operation);
+            _aov_operation,
+            _ambient_occlusion_traversal,
+            ambient_occlusion);
     }
 };
 

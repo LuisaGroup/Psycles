@@ -73,17 +73,45 @@ struct ResultLayout {
     static constexpr auto count = 32u;
 };
 
+class FixtureAmbientOcclusionProvider final
+    : public SurfaceAmbientOcclusionProvider {
+
+public:
+    [[nodiscard]] Float evaluate(
+        const SurfacePoint &,
+        const SurfaceAmbientOcclusionInput &input) const noexcept override {
+        // Keep every input observable in one scalar. The coefficients are
+        // disjoint powers of two except for the normalized normal projection;
+        // the host fixture checks the complete value with a float tolerance.
+        return dot(input.normal, make_float3(1.0f, 2.0f, 4.0f)) +
+               8.0f * input.distance +
+               16.0f * cast<float>(input.samples) +
+               select(0.0f, 32.0f, input.only_local) +
+               select(0.0f, 64.0f, input.inside) +
+               select(0.0f, 128.0f, input.global_radius);
+    }
+};
+
 class FixtureShaderServices final : public ParameterShaderServices {
 
 private:
     std::size_t *_texture_recordings;
+    const SurfaceAmbientOcclusionProvider *_ambient_occlusion_provider;
 
 public:
     FixtureShaderServices(
         const BufferFloat4 &parameters,
-        std::size_t *texture_recordings = nullptr) noexcept
+        std::size_t *texture_recordings = nullptr,
+        const SurfaceAmbientOcclusionProvider
+            *ambient_occlusion_provider = nullptr) noexcept
         : ParameterShaderServices{parameters},
-          _texture_recordings{texture_recordings} {}
+          _texture_recordings{texture_recordings},
+          _ambient_occlusion_provider{ambient_occlusion_provider} {}
+
+    [[nodiscard]] const SurfaceAmbientOcclusionProvider *
+    surface_ambient_occlusion_provider() const noexcept override {
+        return _ambient_occlusion_provider;
+    }
 
     [[nodiscard]] Float4 texture_2d(
         Expr<std::uint32_t>,
@@ -187,6 +215,61 @@ public:
     graph.set_root(
         ShaderDomain::surface,
         OutputRef{.node = glass, .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph make_ambient_occlusion_graph() {
+    ShaderGraph graph;
+    const auto ambient_occlusion = graph.add_node(
+        node_type::ambient_occlusion,
+        "Population Ambient Occlusion");
+    const auto emission = graph.add_node(
+        node_type::emission,
+        "Ambient Occlusion emission probe");
+    const auto configured =
+        graph.set_input(
+            ambient_occlusion,
+            "Distance",
+            SocketValue::floating(0.25f)) &&
+        graph.set_input(
+            ambient_occlusion,
+            "Normal",
+            SocketValue::normal({0.0f, 3.0f, 4.0f})) &&
+        graph.set_property(
+            ambient_occlusion,
+            "Samples",
+            SocketValue::unsigned_integer(7u)) &&
+        graph.set_property(
+            ambient_occlusion,
+            "NormalLinked",
+            SocketValue::boolean(true)) &&
+        graph.set_property(
+            ambient_occlusion,
+            "Inside",
+            SocketValue::boolean(true)) &&
+        graph.set_property(
+            ambient_occlusion,
+            "OnlyLocal",
+            SocketValue::boolean(true)) &&
+        graph.set_property(
+            ambient_occlusion,
+            "GlobalRadius",
+            SocketValue::boolean(true)) &&
+        graph.set_input(
+            emission,
+            "Color",
+            SocketValue::color({1.0f, 1.0f, 1.0f})) &&
+        graph.connect(
+            {.node = ambient_occlusion, .socket = "AO"},
+            emission,
+            "Strength");
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure Ambient Occlusion population graph"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
     return graph;
 }
 
@@ -531,6 +614,10 @@ int main(int argc, char **argv) {
     const auto principled = compile(
         make_shared_image_principled_graph());
     const auto glass = compile(make_glass_graph());
+    const auto ambient_occlusion = compile(
+        make_ambient_occlusion_graph());
+    const auto ambient_occlusion_surface =
+        std::make_shared<GraphSurface>(ambient_occlusion);
 
     SurfaceDispatch surfaces;
     const auto principled_tag =
@@ -544,6 +631,14 @@ int main(int argc, char **argv) {
         parameters.end(),
         glass_parameters.begin(),
         glass_parameters.end());
+    const auto ambient_occlusion_parameter_base =
+        static_cast<std::uint32_t>(parameters.size());
+    const auto ambient_occlusion_parameters =
+        parameter_data(*ambient_occlusion);
+    parameters.insert(
+        parameters.end(),
+        ambient_occlusion_parameters.begin(),
+        ambient_occlusion_parameters.end());
     const auto closure_identity =
         make_surface_closure_identity_callable();
     const auto closure_aov = make_surface_closure_aov_callable();
@@ -700,6 +795,47 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    Kernel1D write_ambient_occlusion =
+        [ambient_occlusion_surface,
+         ambient_occlusion_parameter_base,
+         closure_identity,
+         closure_aov](BufferFloat4 parameter_buffer,
+                      BufferFloat4 output) noexcept {
+            auto point = make_surface_point();
+            point.parameter_block = ambient_occlusion_parameter_base;
+            const auto query = SurfacePopulationQuery{
+                .emission_reflective_caustics = true,
+                .reflective_caustics = true,
+                .refractive_caustics = true,
+                .glossy_filter_roughness = 0.0f,
+                .include_runtime_flags = true,
+                .include_aov = true};
+            const auto populate = [&](const ShaderServices &services) noexcept {
+                SurfaceClosurePopulationCollector closures{
+                    point,
+                    closure_capacity,
+                    query,
+                    closure_identity,
+                    closure_aov};
+                return ambient_occlusion_surface->populate(
+                    services, point, query, closures);
+            };
+            const FixtureAmbientOcclusionProvider provider;
+            const FixtureShaderServices queried_services{
+                parameter_buffer, nullptr, &provider};
+            const FixtureShaderServices masked_services{parameter_buffer};
+            output.write(
+                0u,
+                make_float4(
+                    populate(queried_services).emission,
+                    1.0f));
+            output.write(
+                1u,
+                make_float4(
+                    populate(masked_services).emission,
+                    1.0f));
+        };
+
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
@@ -711,10 +847,15 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(output_record_count);
     auto populated_buffer =
         device.create_buffer<luisa::float4>(output_record_count);
+    auto ambient_occlusion_buffer =
+        device.create_buffer<luisa::float4>(2u);
     auto legacy_kernel = device.compile(write_legacy);
     auto populated_kernel = device.compile(write_populated);
+    auto ambient_occlusion_kernel =
+        device.compile(write_ambient_occlusion);
     std::array<luisa::float4, output_record_count> legacy{};
     std::array<luisa::float4, output_record_count> populated{};
+    std::array<luisa::float4, 2u> ambient_occlusion_results{};
     stream << parameter_buffer.copy_from(luisa::span{parameters})
            << legacy_kernel(parameter_buffer, legacy_buffer)
                   .dispatch(invocation_count)
@@ -722,7 +863,38 @@ int main(int argc, char **argv) {
            << populated_kernel(parameter_buffer, populated_buffer)
                   .dispatch(invocation_count)
            << populated_buffer.copy_to(luisa::span{populated})
+           << ambient_occlusion_kernel(
+                  parameter_buffer,
+                  ambient_occlusion_buffer)
+                  .dispatch(1u)
+           << ambient_occlusion_buffer.copy_to(
+                  luisa::span{ambient_occlusion_results})
            << synchronize();
+
+    constexpr auto ambient_occlusion_encoded = 342.4f;
+    const auto queried = ambient_occlusion_results[0u];
+    const auto masked = ambient_occlusion_results[1u];
+    if (!approximately_equal(
+            queried,
+            luisa::float4{
+                ambient_occlusion_encoded,
+                ambient_occlusion_encoded,
+                ambient_occlusion_encoded,
+                1.0f},
+            1.0e-4f) ||
+        !approximately_equal(
+            masked,
+            luisa::float4{1.0f, 1.0f, 1.0f, 1.0f},
+            1.0e-6f)) {
+        std::cerr
+            << "Ambient Occlusion provider boundary mismatch on "
+            << backend << ": queried {" << queried.x << ", "
+            << queried.y << ", " << queried.z << ", "
+            << queried.w << "}, masked {" << masked.x << ", "
+            << masked.y << ", " << masked.z << ", "
+            << masked.w << "}\n";
+        return EXIT_FAILURE;
+    }
 
     for (auto record = std::size_t{};
          record < output_record_count;
