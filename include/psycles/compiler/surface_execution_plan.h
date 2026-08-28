@@ -702,8 +702,12 @@ struct SurfaceClosureProgramImage {
 // field exactly and the serialized-image validator proves the two copies
 // agree.
 struct SurfaceValueBytecodeInstruction {
-  // Packed as [opcode-owned immediate:14 | result bank:2 |
-  // reserved-zero:8 | opcode:8].
+  // Serialized as [opcode-owned immediate:14 | result bank:2 |
+  // reserved-zero:8 | opcode:8]. After the serialized image has been
+  // validated, the runtime may use the reserved byte as a one-based region
+  // specialization tag. Keeping this dispatch hint in the instruction that
+  // the interpreter already fetches avoids a second global read on every
+  // ordinary instruction.
   std::uint32_t control{};
   std::uint32_t result{};
   std::uint32_t operand_payload{surface_value_invalid_operand_word};
@@ -719,6 +723,38 @@ inline constexpr std::uint32_t surface_value_svm_immediate_value_mask =
     (1u << 14u) - 1u;
 inline constexpr std::uint32_t surface_value_svm_immediate_mask =
     surface_value_svm_immediate_value_mask << surface_value_svm_immediate_shift;
+inline constexpr std::uint32_t
+    surface_value_region_specialization_tag_shift = 8u;
+inline constexpr std::uint32_t
+    surface_value_region_specialization_tag_value_mask = 0xffu;
+inline constexpr std::uint32_t surface_value_region_specialization_tag_mask =
+    surface_value_region_specialization_tag_value_mask
+    << surface_value_region_specialization_tag_shift;
+inline constexpr std::uint32_t
+    surface_value_region_specialization_tag_capacity =
+        surface_value_region_specialization_tag_value_mask;
+
+[[nodiscard]] constexpr bool
+surface_value_region_specialization_has_inline_tag(
+    std::uint32_t specialization_index) noexcept {
+  return specialization_index <
+         surface_value_region_specialization_tag_capacity;
+}
+
+// Zero means ordinary interpretation; specialization i is represented by
+// i + 1. The caller must first prove has_inline_tag(i).
+[[nodiscard]] constexpr std::uint32_t
+make_surface_value_region_specialization_tag(
+    std::uint32_t specialization_index) noexcept {
+  return (specialization_index + 1u)
+         << surface_value_region_specialization_tag_shift;
+}
+
+[[nodiscard]] constexpr std::uint32_t
+surface_value_region_specialization_tag(std::uint32_t control) noexcept {
+  return (control & surface_value_region_specialization_tag_mask) >>
+         surface_value_region_specialization_tag_shift;
+}
 
 // Reserved internal opcode separating the automatic-normal prefix from the
 // endpoint root in one transaction stream. It is not a ValueOperation: the
@@ -965,6 +1001,8 @@ static_assert(surface_value_image_sampling_quotient_contract_holds());
 inline constexpr std::uint32_t surface_value_control_mask =
     surface_value_opcode_mask | surface_value_result_bank_mask |
     surface_value_svm_immediate_mask;
+inline constexpr std::uint32_t surface_value_runtime_control_mask =
+    surface_value_control_mask | surface_value_region_specialization_tag_mask;
 
 // Primary interpreter dispatch is derived from the instruction itself. The
 // opcode and result bank select the typed handler. Image BOX is the sole
@@ -975,6 +1013,23 @@ inline constexpr std::uint32_t surface_value_handler_image_box_bit = 1u << 18u;
 static_assert(
     (surface_value_handler_image_box_bit &
      (surface_value_opcode_mask | surface_value_result_bank_mask)) == 0u);
+static_assert(
+    (surface_value_region_specialization_tag_mask &
+     (surface_value_opcode_mask | surface_value_result_bank_mask |
+      surface_value_handler_image_box_bit)) == 0u,
+    "region tags and ordinary handler keys must occupy disjoint bit fields");
+
+// For a tagged region beginning, the exact region identity and the ordinary
+// first-instruction family form a direct product. The disjoint-field proof
+// above makes bitwise union injective, while tag zero remains precisely the
+// ordinary-interpreter key space.
+[[nodiscard]] constexpr std::uint32_t
+make_surface_value_region_handler_key(
+    std::uint32_t ordinary_handler_key,
+    std::uint32_t specialization_index) noexcept {
+  return ordinary_handler_key |
+         make_surface_value_region_specialization_tag(specialization_index);
+}
 
 // Graph-expanded Bump operations retain the immutable contract of the source
 // evaluator. Canonicalizing only for metadata/immediate validation keeps their
@@ -1609,6 +1664,53 @@ struct SurfaceValueRegionPlan {
 [[nodiscard]] SurfaceValueRegionPlan plan_surface_value_regions(
     const SurfaceValueSceneImage &image,
     const SurfaceValueProgramDescriptor &program);
+
+// Canonical device-AST identity of a maximal typed region. Material parameter
+// indices and colored local slots are deliberately absent: they remain
+// bytecode data loaded by a specialization. Exact static variants carry every
+// semantic field that is not represented by that bytecode, while symbolic
+// operand sources describe the complete internal SSA graph.
+struct SurfaceValueRegionShape {
+  std::vector<std::uint32_t> variant_indices;
+  std::vector<std::vector<SurfaceValueRegionOperandSource>> operand_sources;
+  std::vector<SurfaceValueBank> live_input_banks;
+  std::vector<std::uint32_t> live_output_instruction_offsets;
+
+  auto operator<=>(const SurfaceValueRegionShape &) const noexcept = default;
+};
+
+struct SurfaceValueRegionSpecialization {
+  SurfaceValueRegionShape shape;
+  std::uint32_t static_occurrences{};
+  // Exact number of local-bank accesses removed over the serialized scene:
+  // one producer write plus one read for every forwarded successor operand.
+  std::uint64_t eliminated_bank_accesses{};
+  // Number of statically instantiated value-handler sites. This is the exact
+  // optimization budget; object bytes remain a backend measurement rather
+  // than an assumed opcode-independent cost model.
+  std::uint32_t handler_site_cost{};
+};
+
+// A deterministic, globally budgeted hybrid-lowering plan. Maximal regions
+// partition each program, so selecting a shape selects disjoint occurrences
+// and turns code selection into exact 0/1 knapsack: maximize eliminated bank
+// accesses subject to the handler-site budget. The side stream is parallel to
+// the scene instruction image and names a specialization only at an
+// occurrence's first instruction.
+struct SurfaceValueRegionSpecializationPlan {
+  bool valid{};
+  std::string diagnostic;
+  std::vector<SurfaceValueRegionSpecialization> specializations;
+  std::vector<std::uint32_t> instruction_specialization_indices;
+  std::uint32_t handler_site_budget{};
+  std::uint32_t selected_handler_sites{};
+  std::uint64_t eliminated_bank_accesses{};
+};
+
+[[nodiscard]] SurfaceValueRegionSpecializationPlan
+plan_surface_value_region_specializations(
+    const SurfaceValueExecutableScene &scene,
+    std::uint32_t handler_site_budget);
 
 // `active` must be transitively closed over ValueInstruction operands.
 // `outputs` names values consumed after the stream (normally closure roots),

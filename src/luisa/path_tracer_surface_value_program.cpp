@@ -107,6 +107,14 @@ using SurfaceValueHandlerCallable = Callable<void(
 using SurfaceValueHandlers =
     std::vector<std::optional<SurfaceValueHandlerCallable>>;
 
+using SurfaceValueRegionCallable = Callable<void(
+    Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
+    BindlessArray, SurfacePointCall &, luisa::float3, bool, luisa::uint,
+    SurfaceValueScalarBank &, SurfaceValueVectorBank &, luisa::ulong &)>;
+
+using SurfaceValueRegionCallables =
+    std::vector<std::optional<SurfaceValueRegionCallable>>;
+
 struct SurfaceValueHandlerGroup {
     std::uint32_t key{};
     std::vector<std::uint32_t> variants;
@@ -323,6 +331,45 @@ void write_dynamic_value(
     std::abort();
 }
 
+[[nodiscard]] UInt expand_compact_surface_value_operand(UInt compact) noexcept {
+    return (compact & static_cast<std::uint32_t>(
+                          compiler::SurfaceValueOperandAddress::index_mask)) |
+           ((compact &
+             (static_cast<std::uint32_t>(
+                  compiler::SurfaceValueOperandAddress::parameter_bit) |
+              static_cast<std::uint32_t>(
+                  compiler::SurfaceValueOperandAddress::bank_mask)))
+            << (compiler::SurfaceValueAddress::bank_shift -
+                compiler::SurfaceValueOperandAddress::bank_shift));
+}
+
+[[nodiscard]] UInt load_variant_operand_address(
+    const compiler::SurfaceValueStaticVariant &variant,
+    const SurfaceValueRuntime &runtime,
+    Var<luisa::uint4> instruction,
+    std::size_t operand_index) noexcept {
+    if (operand_index >= variant.operand_types.size()) {
+        std::abort();
+    }
+    const auto word_index =
+        operand_index / compiler::surface_value_operands_per_word;
+    const auto lane = operand_index % compiler::surface_value_operands_per_word;
+    const auto inline_operands =
+        variant.operand_types.size() <=
+        compiler::surface_value_inline_operand_capacity;
+    auto word = inline_operands
+                    ? UInt{instruction.z.expression()}
+                    : surface_value_runtime_buffer<luisa::uint>(
+                          runtime, SurfaceValueRuntimeBufferSlot::operand)
+                          .read(instruction.z +
+                                static_cast<std::uint32_t>(word_index));
+    const auto compact =
+        (word >> static_cast<std::uint32_t>(
+                     compiler::surface_value_operand_lane_bits * lane)) &
+        0xffffu;
+    return expand_compact_surface_value_operand(std::move(compact));
+}
+
 [[nodiscard]] TracedValues load_variant_operands(
     const compiler::SurfaceValueStaticVariant &variant,
     const SurfaceValueRuntime &runtime,
@@ -368,16 +415,7 @@ void write_dynamic_value(
                              compiler::surface_value_operand_lane_bits * lane)) &
                 0xffffu;
             auto address =
-                (compact & static_cast<std::uint32_t>(
-                               compiler::SurfaceValueOperandAddress::
-                                   index_mask)) |
-                ((compact &
-                  (static_cast<std::uint32_t>(
-                       compiler::SurfaceValueOperandAddress::parameter_bit) |
-                   static_cast<std::uint32_t>(
-                       compiler::SurfaceValueOperandAddress::bank_mask)))
-                 << (compiler::SurfaceValueAddress::bank_shift -
-                     compiler::SurfaceValueOperandAddress::bank_shift));
+                expand_compact_surface_value_operand(std::move(compact));
             operands.values.emplace_back(read_routed_value(
                 variant.operand_types[operand_index],
                 variant.operand_routes[operand_index],
@@ -588,9 +626,275 @@ make_surface_value_handler_callable(
     return handlers;
 }
 
+[[nodiscard]] bool valid_surface_value_region_lowering_shape(
+    const SurfaceValueRuntime &runtime,
+    const compiler::SurfaceValueRegionShape &shape) noexcept {
+    if (shape.variant_indices.empty() ||
+        shape.operand_sources.size() != shape.variant_indices.size()) {
+        return false;
+    }
+    std::vector<bool> observed_live_inputs(shape.live_input_banks.size(), false);
+    for (auto member = std::size_t{}; member < shape.variant_indices.size();
+         ++member) {
+        const auto variant_index = shape.variant_indices[member];
+        if (variant_index >= runtime.executable.variants.size()) {
+            return false;
+        }
+        const auto &variant = runtime.executable.variants[variant_index];
+        const auto &sources = shape.operand_sources[member];
+        if (sources.size() != variant.operand_types.size()) {
+            return false;
+        }
+        for (auto operand = std::size_t{}; operand < sources.size(); ++operand) {
+            const auto &source = sources[operand];
+            compiler::SurfaceValueBank operand_bank{};
+            if (!compiler::classify_surface_value_type(
+                    variant.operand_types[operand], operand_bank)) {
+                return false;
+            }
+            switch (source.kind) {
+                case compiler::SurfaceValueRegionOperandSourceKind::parameter:
+                    // Parameter identity is deliberately normalized out of a
+                    // shape; the concrete bytecode address remains runtime data.
+                    if (source.index != 0u) {
+                        return false;
+                    }
+                    break;
+                case compiler::SurfaceValueRegionOperandSourceKind::live_input:
+                    if (source.index >= shape.live_input_banks.size() ||
+                        shape.live_input_banks[source.index] != operand_bank) {
+                        return false;
+                    }
+                    observed_live_inputs[source.index] = true;
+                    break;
+                case compiler::SurfaceValueRegionOperandSourceKind::
+                    instruction_result: {
+                    if (source.index >= member) {
+                        return false;
+                    }
+                    const auto producer_variant =
+                        shape.variant_indices[source.index];
+                    if (producer_variant >= runtime.executable.variants.size() ||
+                        runtime.executable.variants[producer_variant]
+                                .instruction.result_type !=
+                            variant.operand_types[operand]) {
+                        return false;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    if (std::find(observed_live_inputs.begin(), observed_live_inputs.end(),
+                  false) != observed_live_inputs.end()) {
+        return false;
+    }
+    for (auto index = std::size_t{};
+         index < shape.live_output_instruction_offsets.size(); ++index) {
+        const auto offset = shape.live_output_instruction_offsets[index];
+        if (offset >= shape.variant_indices.size() ||
+            (index != 0u &&
+             shape.live_output_instruction_offsets[index - 1u] >= offset)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] SurfaceValueRegionCallable
+make_surface_value_region_callable(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const std::shared_ptr<SurfaceValueNodes> &nodes,
+    const Texture2DSamplingCallables &texture_sampling,
+    const SurfaceAttributeLookupCallable &attribute_lookup,
+    std::uint32_t specialization_index) noexcept {
+    if (!scene->surface_values ||
+        specialization_index >=
+            scene->surface_values->region_specializations.specializations
+                .size()) {
+        std::abort();
+    }
+    const auto *runtime = scene->surface_values.get();
+    const auto &shape = runtime->region_specializations
+                            .specializations[specialization_index]
+                            .shape;
+    if (!valid_surface_value_region_lowering_shape(*runtime, shape) ||
+        nodes->size() != runtime->executable.variants.size()) {
+        std::abort();
+    }
+    SurfaceValueRegionCallable region_callable =
+        [scene, nodes, texture_sampling, attribute_lookup,
+         specialization_index, runtime](
+            BufferFloat scalar_parameters,
+            BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables,
+            BindlessVar textures,
+            BindlessVar geometry_heap,
+            Var<SurfacePointCall> &packed_base_point,
+            Float3 transaction_shading_normal,
+            Bool use_undisplaced_geometry,
+            UInt instruction_begin,
+            Var<SurfaceValueScalarBank> &scalar_bank,
+            Var<SurfaceValueVectorBank> &vector_bank,
+            ULong &unsigned_integer_bank) noexcept {
+            CallableTexture2DSamplingProvider texture_provider{
+                textures, texture_sampling};
+            CallableSurfaceAttributeLookupProvider attribute_provider{
+                geometry_heap, attribute_lookup};
+            BufferShaderServices services{
+                scalar_parameters,
+                vector_parameters,
+                cycles_bsdf_tables,
+                textures,
+                geometry_heap,
+                scene->attribute_binding_slot,
+                scene->attribute_range_slot,
+                scene->nishita_texture_bindings,
+                scene->shader_color_space,
+                nullptr,
+                &texture_provider,
+                &attribute_provider};
+            SurfaceValueLocalsView locals{
+                .scalars = {
+                    luisa::compute::detail::Ref<SurfaceValueScalarBank>{
+                        scalar_bank.expression()}},
+                .vectors = {
+                    luisa::compute::detail::Ref<SurfaceValueVectorBank>{
+                        vector_bank.expression()}},
+                .unsigned_integers = {
+                    luisa::compute::detail::Ref<luisa::ulong>{
+                        unsigned_integer_bank.expression()}}};
+            const auto point = surface_value_point(
+                packed_base_point,
+                transaction_shading_normal,
+                use_undisplaced_geometry);
+            const auto &shape =
+                runtime->region_specializations
+                    .specializations[specialization_index]
+                    .shape;
+            std::vector<std::optional<SurfaceValueExpression>> live_inputs(
+                shape.live_input_banks.size());
+            std::vector<std::optional<SurfaceValueExpression>> results(
+                shape.variant_indices.size());
+            for (auto member = std::size_t{};
+                 member < shape.variant_indices.size(); ++member) {
+                const auto variant_index = shape.variant_indices[member];
+                if (variant_index >= runtime->executable.variants.size() ||
+                    variant_index >= nodes->size() ||
+                    member >= shape.operand_sources.size()) {
+                    std::abort();
+                }
+                const auto &variant =
+                    runtime->executable.variants[variant_index];
+                const auto &sources = shape.operand_sources[member];
+                if (sources.size() != variant.operand_types.size()) {
+                    std::abort();
+                }
+                Var<luisa::uint4> instruction =
+                    surface_value_runtime_buffer<luisa::uint4>(
+                        *runtime, SurfaceValueRuntimeBufferSlot::instruction)
+                        .read(instruction_begin +
+                              static_cast<std::uint32_t>(member));
+                TracedValues operands;
+                operands.shading_normal = point.shading_normal;
+                operands.values.reserve(sources.size());
+                for (auto operand_index = std::size_t{};
+                     operand_index < sources.size(); ++operand_index) {
+                    const auto &source = sources[operand_index];
+                    switch (source.kind) {
+                        case compiler::SurfaceValueRegionOperandSourceKind::
+                            parameter: {
+                            const auto address = load_variant_operand_address(
+                                variant, *runtime, instruction, operand_index);
+                            operands.values.emplace_back(read_routed_value(
+                                variant.operand_types[operand_index],
+                                compiler::SurfaceValueOperandRoute::parameter,
+                                services, point, locals, address));
+                            break;
+                        }
+                        case compiler::SurfaceValueRegionOperandSourceKind::
+                            live_input: {
+                            if (source.index >= live_inputs.size()) {
+                                std::abort();
+                            }
+                            auto &input = live_inputs[source.index];
+                            if (!input.has_value()) {
+                                const auto address =
+                                    load_variant_operand_address(
+                                        variant, *runtime, instruction,
+                                        operand_index);
+                                input.emplace(read_routed_value(
+                                    variant.operand_types[operand_index],
+                                    compiler::SurfaceValueOperandRoute::local,
+                                    services, point, locals, address));
+                            }
+                            operands.values.emplace_back(*input);
+                            break;
+                        }
+                        case compiler::SurfaceValueRegionOperandSourceKind::
+                            instruction_result:
+                            if (source.index >= member ||
+                                source.index >= results.size() ||
+                                !results[source.index].has_value()) {
+                                std::abort();
+                            }
+                            operands.values.emplace_back(
+                                *results[source.index]);
+                            break;
+                    }
+                }
+                results[member].emplace(evaluate_non_bump_variant(
+                    variant, *(*nodes)[variant_index], *runtime, services,
+                    point, operands, instruction));
+                if (std::binary_search(
+                        shape.live_output_instruction_offsets.begin(),
+                        shape.live_output_instruction_offsets.end(),
+                        static_cast<std::uint32_t>(member))) {
+                    write_dynamic_value(
+                        variant.instruction.result_type, locals,
+                        instruction.y, *results[member]);
+                }
+            }
+        };
+    region_callable.set_name(luisa::format(
+        "surface_value_region_{}", specialization_index));
+    return region_callable;
+}
+
+[[nodiscard]] SurfaceValueRegionCallables make_surface_value_region_callables(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const std::shared_ptr<SurfaceValueNodes> &nodes,
+    const Texture2DSamplingCallables &texture_sampling,
+    const SurfaceAttributeLookupCallable &attribute_lookup,
+    std::span<const std::uint32_t> active_variants) noexcept {
+    if (!std::is_sorted(active_variants.begin(), active_variants.end())) {
+        std::abort();
+    }
+    SurfaceValueRegionCallables callables(
+        scene->surface_values->region_specializations.specializations.size());
+    for (auto index = std::size_t{}; index < callables.size(); ++index) {
+        const auto &shape = scene->surface_values->region_specializations
+                                .specializations[index]
+                                .shape;
+        const auto active = std::all_of(
+            shape.variant_indices.begin(), shape.variant_indices.end(),
+            [&](std::uint32_t variant) noexcept {
+                return std::binary_search(
+                    active_variants.begin(), active_variants.end(), variant);
+            });
+        if (active) {
+            callables[index].emplace(make_surface_value_region_callable(
+                scene, nodes, texture_sampling, attribute_lookup,
+                static_cast<std::uint32_t>(index)));
+        }
+    }
+    return callables;
+}
+
 [[nodiscard]] Float3 emit_surface_value_program(
     const SurfaceValueRuntime &runtime,
     const SurfaceValueHandlers &handlers,
+    const SurfaceValueRegionCallables &region_callables,
     std::span<const std::uint32_t> active_variants,
     const ShaderServices &services,
     const BufferFloat &scalar_parameters,
@@ -605,6 +909,13 @@ make_surface_value_handler_callable(
     ULong &unsigned_integer_bank,
     const SurfaceValueLocalsView &locals) noexcept {
     const auto handler_groups = make_handler_groups(runtime, active_variants);
+    std::vector<std::size_t> active_region_indices;
+    active_region_indices.reserve(region_callables.size());
+    for (auto index = std::size_t{}; index < region_callables.size(); ++index) {
+        if (region_callables[index].has_value()) {
+            active_region_indices.emplace_back(index);
+        }
+    }
     auto range = surface_value_runtime_buffer<luisa::uint4>(
                      runtime, SurfaceValueRuntimeBufferSlot::program)
                      .read(program);
@@ -625,6 +936,7 @@ make_surface_value_handler_callable(
     UInt instruction_index = range.x;
     const auto instruction_end = range.x + range.y;
     $while(instruction_index < instruction_end) {
+        UInt instruction_advance = 1u;
         Var<luisa::uint4> instruction =
             surface_value_runtime_buffer<luisa::uint4>(
                 runtime, SurfaceValueRuntimeBufferSlot::instruction)
@@ -662,8 +974,7 @@ make_surface_value_handler_callable(
                     vector_bank,
                     unsigned_integer_bank);
             };
-            const auto primary_key = device_handler_key(instruction.x);
-            luisa::compute::detail::SwitchStmtBuilder{primary_key} % [&] {
+            const auto emit_handler_cases = [&] noexcept {
                 for (const auto &group : handler_groups) {
                     luisa::compute::detail::SwitchCaseStmtBuilder{group.key} %
                         [&] {
@@ -679,35 +990,117 @@ make_surface_value_handler_callable(
                             // immutable-buffer read.
                             const auto variant_index =
                                 surface_value_runtime_buffer<luisa::uint>(
-                                    runtime, SurfaceValueRuntimeBufferSlot::
-                                                 instruction_variant)
+                                    runtime,
+                                    SurfaceValueRuntimeBufferSlot::
+                                        instruction_variant)
                                     .read(instruction_index);
                             luisa::compute::detail::SwitchStmtBuilder{
-                                variant_index} %
-                                [&] {
-                                    for (const auto index : group.variants) {
-                                        luisa::compute::detail::
-                                                SwitchCaseStmtBuilder{index} %
-                                            [&, index] { emit_variant(index); };
-                                    }
-                                    luisa::compute::detail::
-                                            SwitchDefaultStmtBuilder{} %
-                                        [] {
-                                            luisa::compute::dsl::unreachable(
-                                                "invalid compact surface "
-                                                "evaluator "
-                                                "fiber");
-                                        };
+                                variant_index} % [&] {
+                                for (const auto index : group.variants) {
+                                    luisa::compute::detail::SwitchCaseStmtBuilder{
+                                        index} %
+                                        [&, index] { emit_variant(index); };
+                                }
+                                luisa::compute::detail::
+                                        SwitchDefaultStmtBuilder{} % [] {
+                                    luisa::compute::dsl::unreachable(
+                                        "invalid compact surface evaluator "
+                                        "fiber");
                                 };
+                            };
                         };
                 }
-                luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
-                    luisa::compute::dsl::unreachable(
-                        "invalid compact surface value handler");
+            };
+            const auto emit_instruction = [&] noexcept {
+                const auto primary_key = device_handler_key(instruction.x);
+                luisa::compute::detail::SwitchStmtBuilder{primary_key} % [&] {
+                    emit_handler_cases();
+                    luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+                        luisa::compute::dsl::unreachable(
+                            "invalid compact surface value handler");
+                    };
                 };
             };
+            if (active_region_indices.empty()) {
+                emit_instruction();
+            } else {
+                const auto emit_region = [&](std::size_t index) noexcept {
+                    (*region_callables[index])(
+                        scalar_parameters,
+                        vector_parameters,
+                        cycles_bsdf_tables,
+                        textures,
+                        geometry_heap,
+                        packed_base_point,
+                        transaction_shading_normal,
+                        use_undisplaced_geometry,
+                        instruction_index,
+                        scalar_bank,
+                        vector_bank,
+                        unsigned_integer_bank);
+                    instruction_advance = static_cast<std::uint32_t>(
+                        runtime.region_specializations
+                            .specializations[index]
+                            .shape.variant_indices.size());
+                };
+                if (runtime.region_specializations_use_inline_tags) {
+                    // Ordinary handlers inhabit tag zero. A region beginning
+                    // inhabits (first-handler-key, one-based-region-tag), so one
+                    // switch is a complete dispatch over their disjoint union.
+                    // This avoids imposing a preceding region switch on every
+                    // ordinary instruction.
+                    const auto dispatch_key =
+                        device_handler_key(instruction.x) |
+                        (instruction.x &
+                         compiler::surface_value_region_specialization_tag_mask);
+                    luisa::compute::detail::SwitchStmtBuilder{dispatch_key} % [&] {
+                        emit_handler_cases();
+                        for (const auto index : active_region_indices) {
+                            const auto &shape = runtime.region_specializations
+                                                    .specializations[index]
+                                                    .shape;
+                            if (shape.variant_indices.empty()) {
+                                std::abort();
+                            }
+                            const auto first_variant = shape.variant_indices.front();
+                            if (first_variant >= runtime.executable.variants.size()) {
+                                std::abort();
+                            }
+                            const auto key = compiler::
+                                make_surface_value_region_handler_key(
+                                    handler_key(runtime.executable
+                                                    .variants[first_variant]),
+                                    static_cast<std::uint32_t>(index));
+                            luisa::compute::detail::SwitchCaseStmtBuilder{key} %
+                                [&, index] { emit_region(index); };
+                        }
+                        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+                            luisa::compute::dsl::unreachable(
+                                "invalid compact surface value or region "
+                                "handler");
+                        };
+                    };
+                } else {
+                    const auto region_specialization =
+                        surface_value_runtime_buffer<luisa::uint>(
+                            runtime,
+                            SurfaceValueRuntimeBufferSlot::
+                                instruction_region_specialization)
+                            .read(instruction_index);
+                    luisa::compute::detail::SwitchStmtBuilder{
+                        region_specialization} % [&] {
+                        for (const auto index : active_region_indices) {
+                            luisa::compute::detail::SwitchCaseStmtBuilder{
+                                static_cast<std::uint32_t>(index)} %
+                                [&, index] { emit_region(index); };
+                        }
+                        luisa::compute::detail::SwitchDefaultStmtBuilder{} %
+                            [&] { emit_instruction(); };
+                    };
+                }
+            }
         };
-        instruction_index += 1u;
+        instruction_index += instruction_advance;
     };
     return transaction_shading_normal;
 }
@@ -735,11 +1128,14 @@ make_surface_value_program_callable_impl(
         domain_view.value_variants.begin(), domain_view.value_variants.end()};
     auto handlers = make_surface_value_handlers(
         scene, nodes, texture_sampling, attribute_lookup, value_variants);
+    auto region_callables = make_surface_value_region_callables(
+        scene, nodes, texture_sampling, attribute_lookup, value_variants);
     const auto program_offset = domain_view.program_offset;
 
     SurfaceValueProgramCallable value_program =
         [scene, texture_sampling, attribute_lookup,
          handlers = std::move(handlers),
+         region_callables = std::move(region_callables),
          value_variants = std::move(value_variants), program_offset](
             BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables, BindlessVar textures,
@@ -777,6 +1173,7 @@ make_surface_value_program_callable_impl(
             return emit_surface_value_program(
                 *scene->surface_values,
                 handlers,
+                region_callables,
                 value_variants,
                 services,
                 scalar_parameters,

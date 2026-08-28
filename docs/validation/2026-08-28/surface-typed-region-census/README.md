@@ -195,3 +195,8 @@ shared, and measure actual AST/object/private-storage deltas before any timing
 claim. A segment is useful only if it removes the corresponding bank
 store/load; merely replacing the dispatch pair is the already rejected
 superinstruction overlay.
+
+The follow-up [typed-region lowering report](../typed-surface-region-lowering/README.md)
+implements that bounded dictionary and the exact typed-SSA lowering. It passes
+the cross-backend and image gates, but its four-site Barbershop candidate is
+performance-neutral/slightly slower, so the production budget remains zero.

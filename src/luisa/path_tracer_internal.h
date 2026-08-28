@@ -330,6 +330,7 @@ enum class SurfaceValueRuntimeBufferSlot : std::uint32_t {
     closure_instruction,
     closure_operand,
     program_flag,
+    instruction_region_specialization,
     count,
 };
 
@@ -358,6 +359,11 @@ struct SurfaceValueRuntime {
         storage_capacity.unsigned_integer_slots;
 
     compiler::SurfaceValueExecutableScene executable;
+    compiler::SurfaceValueRegionSpecializationPlan region_specializations;
+    // True when every selected specialization fits in the instruction's
+    // one-byte runtime tag. Larger diagnostic plans retain the exact parallel
+    // side stream instead of truncating an identity.
+    bool region_specializations_use_inline_tags{};
     std::vector<SurfaceValueRuntimeTopology> topologies;
     // Sorted unique host/JIT semantic keys. The device switches on the same
     // masked control word, so AST size is bounded by closure algorithms used
@@ -401,6 +407,7 @@ struct SurfaceValueRuntime {
     luisa::vector<luisa::uint4> instructions;
     luisa::vector<luisa::uint> operands;
     luisa::vector<luisa::uint> instruction_variants;
+    luisa::vector<luisa::uint> instruction_region_specializations;
     luisa::vector<luisa::uint> metadata_parameters;
     luisa::vector<luisa::uint2> metadata_static_ranges;
     luisa::vector<float> static_data;
@@ -412,6 +419,7 @@ struct SurfaceValueRuntime {
     Buffer<luisa::uint4> instruction_buffer;
     Buffer<luisa::uint> operand_buffer;
     Buffer<luisa::uint> instruction_variant_buffer;
+    Buffer<luisa::uint> instruction_region_specialization_buffer;
     Buffer<luisa::uint> metadata_parameter_buffer;
     Buffer<luisa::uint2> metadata_static_range_buffer;
     Buffer<float> static_data_buffer;

@@ -1,0 +1,220 @@
+{
+  "actual_label": "Typed region budget 4",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-typed-region-final-fallback-b0.UkTHh4/out.exr",
+      "cycles_channel_mean": [
+        0.051710549741983414,
+        0.03534077852964401,
+        0.02634369768202305
+      ],
+      "cycles_luminance_mean": 0.03817141428589821,
+      "cycles_rms": 0.35315489768981934,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.49460405111312866,
+        "flip_xy": 0.49406278133392334,
+        "flip_y": 0.4904457628726959,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-typed-region-final-fallback-b4.iWYFLr/out.exr",
+      "psycles_channel_mean": [
+        0.051710549741983414,
+        0.03534077852964401,
+        0.02634369768202305
+      ],
+      "psycles_luminance_mean": 0.03817141428589821,
+      "psycles_rms": 0.35315490992647697,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        120,
+        160,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 0.7032222068429258,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/typed-surface-region-lowering/triptychs/combined.png",
+        "pixel_scale": 3
+      },
+      "valid_pixels": 19200
+    },
+    "DiffCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-typed-region-final-fallback-b0.UkTHh4/out.exr",
+      "cycles_channel_mean": [
+        0.23240168392658234,
+        0.20699858665466309,
+        0.1816132515668869
+      ],
+      "cycles_luminance_mean": 0.21056480705738068,
+      "cycles_rms": 0.2712249159812927,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.24765315651893616,
+        "flip_xy": 0.24760854244232178,
+        "flip_y": 0.24120371043682098,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-typed-region-final-fallback-b4.iWYFLr/out.exr",
+      "psycles_channel_mean": [
+        0.23240168392658234,
+        0.20699858665466309,
+        0.1816132515668869
+      ],
+      "psycles_luminance_mean": 0.21056480705738068,
+      "psycles_rms": 0.2712249064814269,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        120,
+        160,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0445260677817736,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/typed-surface-region-lowering/triptychs/diffcol.png",
+        "pixel_scale": 3
+      },
+      "valid_pixels": 19200
+    },
+    "Normal": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-typed-region-final-fallback-b0.UkTHh4/out.exr",
+      "cycles_channel_mean": [
+        0.10953354835510254,
+        0.31313201785087585,
+        -0.05949489027261734
+      ],
+      "cycles_luminance_mean": 0.2429414838552475,
+      "cycles_rms": 0.573306679725647,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.6857308149337769,
+        "flip_xy": 0.9027127027511597,
+        "flip_y": 0.8085497617721558,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-typed-region-final-fallback-b4.iWYFLr/out.exr",
+      "psycles_channel_mean": [
+        0.10953354835510254,
+        0.31313201785087585,
+        -0.05949489027261734
+      ],
+      "psycles_luminance_mean": 0.2429414838552475,
+      "psycles_rms": 0.5733066763012873,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        120,
+        160,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/typed-surface-region-lowering/triptychs/normal.png",
+        "pixel_scale": 3
+      },
+      "valid_pixels": 19200
+    }
+  },
+  "reference_label": "SVM budget 0",
+  "schema": "psycles.cycles-differential.v2"
+}
