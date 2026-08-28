@@ -57,7 +57,8 @@ struct PathKernelDispatch {
     RenderKernelParameters parameters{};
     // Logical launch shape for a contiguous row band. Per-sample execution
     // uses (width, height, samples), with samples mapped exclusively through
-    // dispatch.z; the serial megakernel dispatches pixel_count invocations.
+    // dispatch.z; the serial megakernel uses the same 2D pixel topology and
+    // loops its sample count inside each invocation.
     std::uint32_t width{};
     std::uint32_t height{};
     std::uint32_t pixel_count{};

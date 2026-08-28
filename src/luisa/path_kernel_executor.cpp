@@ -217,7 +217,8 @@ public:
   void dispatch(luisa::compute::Stream &stream,
         const PathKernelDispatch &dispatch) noexcept override {
     stream
-        << bind_path_program(_shader, dispatch).dispatch(dispatch.pixel_count);
+        << bind_path_program(_shader, dispatch)
+               .dispatch(dispatch.width, dispatch.height);
     }
 };
 
@@ -340,13 +341,19 @@ build_path_kernel_executor(luisa::compute::Device &device,
     switch (config.scheduler) {
         case LuisaPathScheduler::megakernel: {
             auto kernel = build_path_serial_kernel(path);
-    auto shader = device.compile(kernel, config.shader_option);
+            auto shader = luisa::compute::coro::detail::
+                coro_scheduler_label_shader(
+                    device.compile(kernel, config.shader_option),
+                    "path_megakernel");
             return PathKernelExecutor{
         std::make_unique<SerialMegakernelExecutor>(std::move(shader))};
         }
         case LuisaPathScheduler::megakernel_per_sample: {
             auto kernel = build_path_sample_kernel(path);
-    auto shader = device.compile(kernel, config.shader_option);
+            auto shader = luisa::compute::coro::detail::
+                coro_scheduler_label_shader(
+                    device.compile(kernel, config.shader_option),
+                    "path_megakernel_per_sample");
             return PathKernelExecutor{
         std::make_unique<SampleMegakernelExecutor>(std::move(shader))};
         }

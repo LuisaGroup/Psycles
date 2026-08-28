@@ -426,8 +426,11 @@ void emit_serial_path_program(
     const UInt &sample_first, const UInt &samples,
     const BufferFloat4 &sobol_table, const BufferFloat &filter_table,
     const Var<RenderKernelParameters> &parameters) noexcept {
+  const auto pixel =
+      luisa::compute::dispatch_y() * luisa::compute::dispatch_size().x +
+      dispatch_x();
   auto invocation = make_path_invocation(
-      config, PathFilmAccumulation::serial, dispatch_x(), combined, normal,
+      config, PathFilmAccumulation::serial, pixel, combined, normal,
       albedo, light_passes, sample_count, volume_guiding_raw,
       volume_guiding_denoised, path_trace, sample_first, sobol_table,
       filter_table, parameters);
@@ -473,6 +476,10 @@ build_path_serial_kernel(const PathKernelConfig &config) noexcept {
           BufferFloat4 path_trace, UInt sample_first, UInt samples,
           BufferFloat4 sobol_table, BufferFloat filter_table,
           Var<RenderKernelParameters> parameters) noexcept {
+        // Keep neighboring image rows in the same SIMD groups. This matches
+        // the spatially coherent per-sample topology while preserving the
+        // serial film path and its deterministic accumulation order.
+        set_block_size(8u, 8u, 1u);
         emit_serial_path_program(config, pipeline, combined, normal, albedo,
                                  light_passes, sample_count, volume_guiding_raw,
                                  volume_guiding_denoised, path_trace,
