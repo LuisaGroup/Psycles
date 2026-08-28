@@ -110,7 +110,8 @@ namespace {
 }
 
 [[nodiscard]] std::string
-validate_surface_value_program_image(const SurfaceValueProgramImage &program) {
+validate_surface_value_program_image_impl(
+    const SurfaceValueProgramImage &program) {
   if (!program.valid) {
     return "source value program is invalid: " + program.diagnostic;
   }
@@ -304,11 +305,11 @@ make_surface_normal_transaction_image(const SurfaceValueProgramImage &normal,
                                       const SurfaceValueProgramImage &root,
                                       std::uint32_t normal_output,
                                       bool uses_undisplaced_geometry) {
-  if (const auto diagnostic = validate_surface_value_program_image(normal);
+  if (const auto diagnostic = validate_surface_value_program_image_impl(normal);
       !diagnostic.empty()) {
     return reject_image("automatic-normal prefix: " + diagnostic);
   }
-  if (const auto diagnostic = validate_surface_value_program_image(root);
+  if (const auto diagnostic = validate_surface_value_program_image_impl(root);
       !diagnostic.empty()) {
     return reject_image("endpoint root: " + diagnostic);
   }
@@ -384,7 +385,7 @@ make_surface_normal_transaction_image(const SurfaceValueProgramImage &normal,
       .metadata_index = SurfaceValueAddress::invalid_value});
   append(root);
   result.valid = true;
-  if (const auto diagnostic = validate_surface_value_program_image(result);
+  if (const auto diagnostic = validate_surface_value_program_image_impl(result);
       !diagnostic.empty()) {
     return reject_image("composed surface-normal transaction: " + diagnostic);
   }
@@ -933,6 +934,11 @@ struct SurfaceValueSchedulePressure {
 }
 
 } // namespace
+
+std::string validate_surface_value_program_image(
+    const SurfaceValueProgramImage &program) {
+  return validate_surface_value_program_image_impl(program);
+}
 
 bool SurfaceValueStoragePlan::compatible(
     const SurfaceProgram &program) const noexcept {

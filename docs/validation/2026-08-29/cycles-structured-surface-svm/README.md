@@ -104,6 +104,48 @@ particular, complementary outputs are not rewritten from
 produces NaN and the rewrite would incorrectly produce `w`. The permanent
 regression exercises both finite and NaN factors.
 
+## Unified bytecode image
+
+`lower_surface_svm_program` now serializes the proven schedule as one 16-byte
+instruction stream. Existing value instructions retain their exact control,
+result, packed-operand and metadata fields. Six opcodes above the closed
+`ValueOperation` range encode `MixClosure`, `AddClosureWeight`, the two guards,
+`ClosureLeaf` and `End`; opcode `0xff` remains reserved by the established
+automatic-normal transaction.
+
+The three payload words are statically typed by opcode:
+
+```text
+Mix:  factor address | parent weight slot | packed left/right slots
+Add:  input weight A | input weight B     | result weight slot
+Jump: factor address | absolute target PC | invalid
+Leaf: operand begin  | incoming weight    | Principled feature mask
+End:  invalid        | invalid            | invalid
+```
+
+The leaf's existing closure control word is shifted above the unified opcode,
+so closure identity, endpoint projection, BSSRDF method, anisotropy, thin-film
+and tangent capabilities are preserved without another dispatch side table.
+Value overflow operands remain packed pairs of 16-bit addresses, while
+closure operands remain full 32-bit addresses in a distinct side stream. This
+is an intentional physical distinction rather than a weakly typed common
+array.
+
+Passthrough quotient members emit no bytecode. Lowering first constructs a
+semantic-PC to bytecode-PC boundary map, then rewrites every forward guard
+target through that map. Permanent regression places two erased aliases under
+a guard and proves the target lands exactly on the following guard.
+
+The serialized validator projects ordinary records through the single
+established value-image validator and closure leaves through the single
+established closure-image validator. It additionally solves forward
+must-initialization on the real unified CFG. Scalar slots have two disjoint
+logical states, value and weight: defining one kills the other. This rejects
+both treating a value slot as a closure weight and treating a weight slot as a
+Mix factor, while still permitting proven read-before-write slot donation.
+Closure operands and side tables must be dense, jumps strictly forward, Mix
+outputs non-aliased, aggregate masks exact, and `End` unique and final.
+
 ## CFG liveness and optimal typed storage
 
 The emitted CFG is acyclic because every ordinary successor and jump target
@@ -170,12 +212,13 @@ ctest --test-dir build --output-on-failure \
   -R 'psycles\.(surface_svm_schedule|surface_closure_execution_plan)'
 ```
 
-Both focused tests pass. Virtual closure weights are now assigned and colored
-in the scalar bank together with ordinary scalar values. The next stage is to
-lower this semantic CFG into the final compact bytecode and execute it through
-one Luisa interpreter.
+Both focused tests pass. Virtual closure weights are assigned and colored in
+the scalar bank together with ordinary scalar values, and the semantic CFG is
+lowered transactionally into the final compact bytecode. The next stage is to
+aggregate per-topology images and execute this stream through one Luisa
+interpreter, replacing the old value/closure dual-stream runtime.
 
-The all-thread repository run executed all 317 registered tests in 12.11 s:
+The all-thread repository run executed all 317 registered tests in 12.19 s:
 311 passed and the same six pre-existing exact numeric fixtures failed
 (`luisa_stacked_volume_fallback`, `luisa_homogeneous_volume_fallback`,
 `luisa_area_light_forward_vk`, `luisa_volume_path_fallback`,

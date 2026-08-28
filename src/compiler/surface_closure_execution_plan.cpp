@@ -63,12 +63,6 @@ namespace {
           dependencies.emission[id.value]);
 }
 
-inline constexpr auto emission_principled_features =
-    principled_closure_feature_bit(PrincipledClosureFeature::alpha) |
-    principled_closure_feature_bit(PrincipledClosureFeature::sheen) |
-    principled_closure_feature_bit(PrincipledClosureFeature::coat) |
-    principled_closure_feature_bit(PrincipledClosureFeature::emission);
-
 [[nodiscard]] std::vector<ValueExpressionId> make_surface_closure_operands(
     const ClosureInstruction &closure) {
   switch (closure.operation) {
@@ -189,110 +183,6 @@ struct ClosureWeightReferences {
   std::uint32_t leaf{surface_closure_root_weight_slot};
 };
 
-[[nodiscard]] bool closure_leaf_operation(
-    ClosureOperation operation) noexcept {
-  switch (operation) {
-  case ClosureOperation::diffuse:
-  case ClosureOperation::translucent:
-  case ClosureOperation::principled:
-  case ClosureOperation::glossy:
-  case ClosureOperation::metallic_f82:
-  case ClosureOperation::metallic_conductor:
-  case ClosureOperation::sheen_microfiber:
-  case ClosureOperation::sheen_ashikhmin:
-  case ClosureOperation::hair_reflection:
-  case ClosureOperation::hair_transmission:
-  case ClosureOperation::glass:
-  case ClosureOperation::emission:
-  case ClosureOperation::transparent:
-  case ClosureOperation::subsurface:
-  case ClosureOperation::refraction:
-    return true;
-  case ClosureOperation::null_closure:
-  case ClosureOperation::add:
-  case ClosureOperation::mix:
-    return false;
-  }
-  return false;
-}
-
-[[nodiscard]] SurfaceValueBank closure_operand_bank(
-    ClosureOperation operation, std::size_t operand) noexcept {
-  switch (operation) {
-  case ClosureOperation::diffuse:
-    return operand == surface_closure_operand::diffuse::color ||
-                   operand == surface_closure_operand::diffuse::normal
-               ? SurfaceValueBank::vector
-               : SurfaceValueBank::scalar;
-  case ClosureOperation::glossy:
-    return operand == surface_closure_operand::glossy::color ||
-                   operand == surface_closure_operand::glossy::normal ||
-                   operand == surface_closure_operand::glossy::tangent
-               ? SurfaceValueBank::vector
-               : SurfaceValueBank::scalar;
-  case ClosureOperation::metallic_f82:
-  case ClosureOperation::metallic_conductor:
-    return operand == surface_closure_operand::metallic::base_ior ||
-                   operand == surface_closure_operand::metallic::edge_tint_k ||
-                   operand == surface_closure_operand::metallic::normal ||
-                   operand == surface_closure_operand::metallic::tangent
-               ? SurfaceValueBank::vector
-               : SurfaceValueBank::scalar;
-  case ClosureOperation::sheen_microfiber:
-  case ClosureOperation::sheen_ashikhmin:
-    return operand == surface_closure_operand::sheen::color ||
-                   operand == surface_closure_operand::sheen::normal
-               ? SurfaceValueBank::vector
-               : SurfaceValueBank::scalar;
-  case ClosureOperation::hair_reflection:
-  case ClosureOperation::hair_transmission:
-    return operand == surface_closure_operand::hair::color ||
-                   operand == surface_closure_operand::hair::tangent
-               ? SurfaceValueBank::vector
-               : SurfaceValueBank::scalar;
-  case ClosureOperation::translucent:
-    return SurfaceValueBank::vector;
-  case ClosureOperation::principled:
-    switch (operand) {
-    case surface_closure_operand::principled::color:
-    case surface_closure_operand::principled::normal:
-    case surface_closure_operand::principled::subsurface_radius:
-    case surface_closure_operand::principled::specular_tint:
-    case surface_closure_operand::principled::sheen_tint:
-    case surface_closure_operand::principled::coat_tint:
-    case surface_closure_operand::principled::coat_normal:
-    case surface_closure_operand::principled::emission_color:
-    case surface_closure_operand::principled::tangent:
-      return SurfaceValueBank::vector;
-    default:
-      return SurfaceValueBank::scalar;
-    }
-  case ClosureOperation::glass:
-  case ClosureOperation::refraction:
-    return operand == surface_closure_operand::glass::color ||
-                   operand == surface_closure_operand::glass::normal
-               ? SurfaceValueBank::vector
-               : SurfaceValueBank::scalar;
-  case ClosureOperation::emission:
-    return operand == surface_closure_operand::emission::color
-               ? SurfaceValueBank::vector
-               : SurfaceValueBank::scalar;
-  case ClosureOperation::transparent:
-    return SurfaceValueBank::vector;
-  case ClosureOperation::subsurface:
-    return operand == surface_closure_operand::subsurface::color ||
-                   operand == surface_closure_operand::subsurface::normal ||
-                   operand == surface_closure_operand::subsurface::radius
-               ? SurfaceValueBank::vector
-               : SurfaceValueBank::scalar;
-  case ClosureOperation::null_closure:
-  case ClosureOperation::add:
-  case ClosureOperation::mix:
-    return SurfaceValueBank::scalar;
-  }
-  return SurfaceValueBank::scalar;
-}
-
 [[nodiscard]] bool address_fits_value_program(
     std::uint32_t encoded, SurfaceValueBank expected,
     const SurfaceValueProgramImage &values, bool allow_invalid) noexcept {
@@ -317,26 +207,7 @@ struct ClosureWeightReferences {
   return false;
 }
 
-[[nodiscard]] constexpr PrincipledClosureFeatureMask
-all_principled_closure_features() noexcept {
-  return principled_closure_feature_bit(PrincipledClosureFeature::alpha) |
-         principled_closure_feature_bit(PrincipledClosureFeature::sheen) |
-         principled_closure_feature_bit(PrincipledClosureFeature::coat) |
-         principled_closure_feature_bit(PrincipledClosureFeature::metallic) |
-         principled_closure_feature_bit(
-             PrincipledClosureFeature::thick_transmission) |
-         principled_closure_feature_bit(
-             PrincipledClosureFeature::thin_transmission) |
-         principled_closure_feature_bit(PrincipledClosureFeature::dielectric) |
-         principled_closure_feature_bit(
-             PrincipledClosureFeature::thick_subsurface) |
-         principled_closure_feature_bit(
-             PrincipledClosureFeature::thin_subsurface) |
-         principled_closure_feature_bit(PrincipledClosureFeature::diffuse) |
-         principled_closure_feature_bit(PrincipledClosureFeature::emission);
-}
-
-[[nodiscard]] std::string validate_surface_closure_program_image(
+[[nodiscard]] std::string validate_surface_closure_program_image_impl(
     const SurfaceClosureProgramImage &closures,
     const SurfaceValueProgramImage &values) {
   if (!closures.valid) {
@@ -419,7 +290,7 @@ all_principled_closure_features() noexcept {
       return "a closure leaf reads an undefined incoming weight";
     }
     const auto operation = surface_closure_operation(instruction);
-    if (!closure_leaf_operation(operation)) {
+    if (!surface_closure_is_leaf_operation(operation)) {
       return "the closure stream contains a non-leaf or unknown opcode";
     }
     const auto endpoints = surface_closure_endpoints(instruction);
@@ -447,7 +318,8 @@ all_principled_closure_features() noexcept {
          ++operand) {
       if (!address_fits_value_program(
               closures.operands[operand_begin + operand],
-              closure_operand_bank(operation, operand), values, true)) {
+              surface_closure_operand_bank(operation, operand), values,
+              true)) {
         const auto encoded = closures.operands[operand_begin + operand];
         const auto address = SurfaceValueAddress{encoded};
         return "closure opcode " +
@@ -461,13 +333,13 @@ all_principled_closure_features() noexcept {
                     : std::string{"invalid"}) +
                ", expected bank " +
                std::to_string(static_cast<std::uint32_t>(
-                   closure_operand_bank(operation, operand)));
+                   surface_closure_operand_bank(operation, operand)));
       }
     }
     expected_operations |= 1u << static_cast<std::uint32_t>(operation);
 
     const auto features = closures.principled_features[instruction_index];
-    if ((features & ~all_principled_closure_features()) != 0u ||
+    if ((features & ~surface_all_principled_closure_features()) != 0u ||
         (operation != ClosureOperation::principled && features != 0u)) {
       return "a closure leaf has an invalid Principled feature mask";
     }
@@ -533,6 +405,135 @@ all_principled_closure_features() noexcept {
 }
 
 } // namespace
+
+std::string validate_surface_closure_program_image(
+    const SurfaceClosureProgramImage &closures,
+    const SurfaceValueProgramImage &values) {
+  return validate_surface_closure_program_image_impl(closures, values);
+}
+
+bool surface_closure_is_leaf_operation(
+    ClosureOperation operation) noexcept {
+  switch (operation) {
+  case ClosureOperation::diffuse:
+  case ClosureOperation::translucent:
+  case ClosureOperation::principled:
+  case ClosureOperation::glossy:
+  case ClosureOperation::metallic_f82:
+  case ClosureOperation::metallic_conductor:
+  case ClosureOperation::sheen_microfiber:
+  case ClosureOperation::sheen_ashikhmin:
+  case ClosureOperation::hair_reflection:
+  case ClosureOperation::hair_transmission:
+  case ClosureOperation::glass:
+  case ClosureOperation::emission:
+  case ClosureOperation::transparent:
+  case ClosureOperation::subsurface:
+  case ClosureOperation::refraction:
+    return true;
+  case ClosureOperation::null_closure:
+  case ClosureOperation::add:
+  case ClosureOperation::mix:
+    return false;
+  }
+  return false;
+}
+
+SurfaceValueBank surface_closure_operand_bank(
+    ClosureOperation operation, std::size_t operand) noexcept {
+  switch (operation) {
+  case ClosureOperation::diffuse:
+    return operand == surface_closure_operand::diffuse::color ||
+                   operand == surface_closure_operand::diffuse::normal
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::glossy:
+    return operand == surface_closure_operand::glossy::color ||
+                   operand == surface_closure_operand::glossy::normal ||
+                   operand == surface_closure_operand::glossy::tangent
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::metallic_f82:
+  case ClosureOperation::metallic_conductor:
+    return operand == surface_closure_operand::metallic::base_ior ||
+                   operand == surface_closure_operand::metallic::edge_tint_k ||
+                   operand == surface_closure_operand::metallic::normal ||
+                   operand == surface_closure_operand::metallic::tangent
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::sheen_microfiber:
+  case ClosureOperation::sheen_ashikhmin:
+    return operand == surface_closure_operand::sheen::color ||
+                   operand == surface_closure_operand::sheen::normal
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::hair_reflection:
+  case ClosureOperation::hair_transmission:
+    return operand == surface_closure_operand::hair::color ||
+                   operand == surface_closure_operand::hair::tangent
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::translucent:
+    return SurfaceValueBank::vector;
+  case ClosureOperation::principled:
+    switch (operand) {
+    case surface_closure_operand::principled::color:
+    case surface_closure_operand::principled::normal:
+    case surface_closure_operand::principled::subsurface_radius:
+    case surface_closure_operand::principled::specular_tint:
+    case surface_closure_operand::principled::sheen_tint:
+    case surface_closure_operand::principled::coat_tint:
+    case surface_closure_operand::principled::coat_normal:
+    case surface_closure_operand::principled::emission_color:
+    case surface_closure_operand::principled::tangent:
+      return SurfaceValueBank::vector;
+    default:
+      return SurfaceValueBank::scalar;
+    }
+  case ClosureOperation::glass:
+  case ClosureOperation::refraction:
+    return operand == surface_closure_operand::glass::color ||
+                   operand == surface_closure_operand::glass::normal
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::emission:
+    return operand == surface_closure_operand::emission::color
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::transparent:
+    return SurfaceValueBank::vector;
+  case ClosureOperation::subsurface:
+    return operand == surface_closure_operand::subsurface::color ||
+                   operand == surface_closure_operand::subsurface::normal ||
+                   operand == surface_closure_operand::subsurface::radius
+               ? SurfaceValueBank::vector
+               : SurfaceValueBank::scalar;
+  case ClosureOperation::null_closure:
+  case ClosureOperation::add:
+  case ClosureOperation::mix:
+    return SurfaceValueBank::scalar;
+  }
+  return SurfaceValueBank::scalar;
+}
+
+PrincipledClosureFeatureMask
+surface_all_principled_closure_features() noexcept {
+  return principled_closure_feature_bit(PrincipledClosureFeature::alpha) |
+         principled_closure_feature_bit(PrincipledClosureFeature::sheen) |
+         principled_closure_feature_bit(PrincipledClosureFeature::coat) |
+         principled_closure_feature_bit(PrincipledClosureFeature::metallic) |
+         principled_closure_feature_bit(
+             PrincipledClosureFeature::thick_transmission) |
+         principled_closure_feature_bit(
+             PrincipledClosureFeature::thin_transmission) |
+         principled_closure_feature_bit(PrincipledClosureFeature::dielectric) |
+         principled_closure_feature_bit(
+             PrincipledClosureFeature::thick_subsurface) |
+         principled_closure_feature_bit(
+             PrincipledClosureFeature::thin_subsurface) |
+         principled_closure_feature_bit(PrincipledClosureFeature::diffuse) |
+         principled_closure_feature_bit(PrincipledClosureFeature::emission);
+}
 
 std::vector<ValueExpressionId> surface_closure_operands(
     const ClosureInstruction &closure) {
@@ -764,7 +765,7 @@ SurfaceClosureProgramImage lower_surface_closure_program(
         : PrincipledClosureFeatureMask{};
     if ((endpoints & surface_closure_endpoint_bit(
                          SurfaceClosureEndpoint::physical)) == 0u) {
-      features &= emission_principled_features;
+      features &= surface_closure_emission_principled_features;
     }
     const auto microfacet_anisotropy =
         (endpoints & surface_closure_endpoint_bit(
