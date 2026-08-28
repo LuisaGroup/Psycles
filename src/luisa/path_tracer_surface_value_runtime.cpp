@@ -1,10 +1,12 @@
 #include "path_tracer_surface_values.h"
+#include "path_tracer_surface_route_policy.h"
 
 #include <psycles/compiler/surface_bump_expansion.h>
 
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -63,7 +65,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     std::span<const std::shared_ptr<const compiler::SurfaceProgram>> programs,
     std::span<const compiler::SurfaceClosurePlan> closure_plans,
     std::span<const std::uint32_t> bssrdf_bump_tags,
-    std::string &diagnostic) {
+    std::string &diagnostic,
+    std::uint32_t region_handler_site_budget) {
     diagnostic.clear();
     if (programs.empty() || programs.size() != closure_plans.size()) {
         diagnostic = "surface topology programs and closure plans do not form a "
@@ -267,6 +270,14 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     if (runtime->executable.values.programs.size() != roots.size()) {
         diagnostic = "one-stream compact surface executable does not preserve "
                      "the root-program bijection";
+        return nullptr;
+    }
+    runtime->region_specializations =
+        compiler::plan_surface_value_region_specializations(
+            runtime->executable, region_handler_site_budget);
+    if (!runtime->region_specializations.valid) {
+        diagnostic = "surface value region specialization: " +
+                     runtime->region_specializations.diagnostic;
         return nullptr;
     }
     const auto &image = runtime->executable.values;
@@ -487,17 +498,53 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                               image.programs[index].closure_count));
         runtime->program_flags.emplace_back(image.programs[index].flags);
     }
+    runtime->region_specializations_use_inline_tags =
+        !runtime->region_specializations.specializations.empty() &&
+        runtime->region_specializations.specializations.size() <=
+            compiler::surface_value_region_specialization_tag_capacity;
     runtime->instructions.reserve(image.instructions.size());
-    for (const auto &instruction : image.instructions) {
+    for (auto instruction_index = std::size_t{};
+         instruction_index < image.instructions.size(); ++instruction_index) {
+        const auto &instruction = image.instructions[instruction_index];
+        auto control = instruction.control;
+        if (runtime->region_specializations_use_inline_tags) {
+            const auto specialization = runtime->region_specializations
+                                            .instruction_specialization_indices[
+                                                instruction_index];
+            if (specialization != compiler::surface_value_no_region) {
+                if (specialization >=
+                        runtime->region_specializations.specializations.size() ||
+                    !compiler::
+                        surface_value_region_specialization_has_inline_tag(
+                            specialization)) {
+                    diagnostic =
+                        "surface value region specialization cannot be encoded "
+                        "in the validated runtime instruction";
+                    return nullptr;
+                }
+                control |= compiler::make_surface_value_region_specialization_tag(
+                    specialization);
+            }
+        }
         runtime->instructions.emplace_back(luisa::make_uint4(
-            instruction.control, instruction.result,
-            instruction.operand_payload,
+            control, instruction.result, instruction.operand_payload,
             instruction.metadata_index));
     }
     runtime->operands.assign(image.operands.begin(), image.operands.end());
     runtime->instruction_variants.assign(
         runtime->executable.instruction_variants.begin(),
         runtime->executable.instruction_variants.end());
+    // Inline-tag plans and the production budget-zero route never read the
+    // parallel side stream. Keep only the later dummy binding in those cases;
+    // copying and uploading one uint per instruction would be pure overhead.
+    if (!runtime->region_specializations.specializations.empty() &&
+        !runtime->region_specializations_use_inline_tags) {
+        runtime->instruction_region_specializations.assign(
+            runtime->region_specializations.instruction_specialization_indices
+                .begin(),
+            runtime->region_specializations.instruction_specialization_indices
+                .end());
+    }
     runtime->metadata_parameters.reserve(image.metadata.size());
     runtime->metadata_static_ranges.reserve(image.metadata.size());
     for (const auto &metadata : image.metadata) {
@@ -520,6 +567,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     provide_dummy_if_empty(runtime->instructions, luisa::make_uint4(0u));
     provide_dummy_if_empty(runtime->operands, 0u);
     provide_dummy_if_empty(runtime->instruction_variants, 0u);
+    provide_dummy_if_empty(runtime->instruction_region_specializations,
+                           compiler::surface_value_no_region);
     provide_dummy_if_empty(runtime->metadata_parameters,
                            compiler::SurfaceValueAddress::invalid_value);
     provide_dummy_if_empty(runtime->metadata_static_ranges,
@@ -564,6 +613,77 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         maximum_instruction_count, maximum_scalar_slots, maximum_vector_slots,
         maximum_unsigned_integer_slots,
         runtime->maximum_closure_mix_slots);
+    LUISA_INFO(
+        "Selected {} typed surface regions: {} static occurrences, {} "
+        "handler sites / {} budget, {} eliminated local-bank accesses, {} "
+        "dispatch.",
+        runtime->region_specializations.specializations.size(),
+        [&] {
+            auto count = std::uint64_t{};
+            for (const auto &specialization :
+                 runtime->region_specializations.specializations) {
+                count += specialization.static_occurrences;
+            }
+            return count;
+        }(),
+        runtime->region_specializations.selected_handler_sites,
+        runtime->region_specializations.handler_site_budget,
+        runtime->region_specializations.eliminated_bank_accesses,
+        runtime->region_specializations.specializations.empty()
+            ? "disabled"
+            : runtime->region_specializations_use_inline_tags
+                  ? "inline instruction-tag"
+                  : "side-stream");
+    if (surface_value_region_diagnostics_requested()) {
+        const auto list = [](const auto &values, const auto &project) {
+            std::string text;
+            for (const auto &value : values) {
+                if (!text.empty()) {
+                    text += ',';
+                }
+                text += std::to_string(project(value));
+            }
+            return text;
+        };
+        for (auto index = std::size_t{};
+             index < runtime->region_specializations.specializations.size();
+             ++index) {
+            const auto &specialization =
+                runtime->region_specializations.specializations[index];
+            const auto &shape = specialization.shape;
+            std::vector<std::uint32_t> operand_offsets{0u};
+            std::vector<std::uint32_t> source_kinds;
+            std::vector<std::uint32_t> source_indices;
+            for (const auto &operands : shape.operand_sources) {
+                for (const auto &source : operands) {
+                    source_kinds.emplace_back(
+                        static_cast<std::uint32_t>(source.kind));
+                    source_indices.emplace_back(source.index);
+                }
+                operand_offsets.emplace_back(
+                    static_cast<std::uint32_t>(source_kinds.size()));
+            }
+            LUISA_INFO(
+                "Typed surface region {}: static_occurrences={} "
+                "handler_sites={} eliminated_accesses={} variants=[{}] "
+                "operand_offsets=[{}] source_kinds=[{}] source_indices=[{}] "
+                "live_input_banks=[{}] live_outputs=[{}].",
+                index, specialization.static_occurrences,
+                specialization.handler_site_cost,
+                specialization.eliminated_bank_accesses,
+                list(shape.variant_indices,
+                     [](auto value) { return value; }),
+                list(operand_offsets, [](auto value) { return value; }),
+                list(source_kinds, [](auto value) { return value; }),
+                list(source_indices, [](auto value) { return value; }),
+                list(shape.live_input_banks,
+                     [](auto value) {
+                         return static_cast<std::uint32_t>(value);
+                     }),
+                list(shape.live_output_instruction_offsets,
+                     [](auto value) { return value; }));
+        }
+    }
 
     runtime->program_buffer =
         device.create_buffer<luisa::uint4>(runtime->program_ranges.size());
@@ -575,6 +695,9 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         device.create_buffer<luisa::uint>(runtime->operands.size());
     runtime->instruction_variant_buffer =
         device.create_buffer<luisa::uint>(runtime->instruction_variants.size());
+    runtime->instruction_region_specialization_buffer =
+        device.create_buffer<luisa::uint>(
+            runtime->instruction_region_specializations.size());
     runtime->metadata_parameter_buffer =
         device.create_buffer<luisa::uint>(runtime->metadata_parameters.size());
     runtime->metadata_static_range_buffer = device.create_buffer<luisa::uint2>(
@@ -600,6 +723,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     bind(SurfaceValueRuntimeBufferSlot::operand, runtime->operand_buffer);
     bind(SurfaceValueRuntimeBufferSlot::instruction_variant,
          runtime->instruction_variant_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::instruction_region_specialization,
+         runtime->instruction_region_specialization_buffer);
     bind(SurfaceValueRuntimeBufferSlot::metadata_parameter,
          runtime->metadata_parameter_buffer);
     bind(SurfaceValueRuntimeBufferSlot::metadata_static_range,
@@ -624,6 +749,8 @@ void upload_surface_value_runtime(Stream &stream,
            << runtime.operand_buffer.copy_from(luisa::span{runtime.operands})
            << runtime.instruction_variant_buffer.copy_from(
                   luisa::span{runtime.instruction_variants})
+           << runtime.instruction_region_specialization_buffer.copy_from(
+                  luisa::span{runtime.instruction_region_specializations})
            << runtime.metadata_parameter_buffer.copy_from(
                   luisa::span{runtime.metadata_parameters})
            << runtime.metadata_static_range_buffer.copy_from(

@@ -1,6 +1,8 @@
 #include <psycles/compiler/surface_execution_plan.h>
 
 #include <algorithm>
+#include <bit>
+#include <limits>
 #include <map>
 #include <utility>
 
@@ -381,6 +383,249 @@ SurfaceValueRegionPlan plan_surface_value_regions(
     }
   }
 
+  result.valid = true;
+  return result;
+}
+
+SurfaceValueRegionSpecializationPlan
+plan_surface_value_region_specializations(
+    const SurfaceValueExecutableScene &scene,
+    std::uint32_t handler_site_budget) {
+  SurfaceValueRegionSpecializationPlan result;
+  result.handler_site_budget = handler_site_budget;
+  const auto reject = [&](std::string diagnostic) {
+    result.diagnostic = std::move(diagnostic);
+    result.specializations.clear();
+    result.instruction_specialization_indices.clear();
+    result.selected_handler_sites = 0u;
+    result.eliminated_bank_accesses = 0u;
+    return result;
+  };
+  const auto &image = scene.values;
+  if (!scene.valid || !image.valid) {
+    return reject("the executable surface scene is invalid");
+  }
+  if (scene.instruction_variants.size() != image.instructions.size()) {
+    return reject("the instruction-variant stream is not parallel");
+  }
+  result.instruction_specialization_indices.assign(
+      image.instructions.size(), surface_value_no_region);
+  if (handler_site_budget == 0u) {
+    result.valid = true;
+    return result;
+  }
+
+  struct Candidate {
+    SurfaceValueRegionShape shape;
+    std::vector<std::uint32_t> instruction_begins;
+    std::uint64_t eliminated_bank_accesses{};
+  };
+  std::map<SurfaceValueRegionShape, Candidate> candidates;
+  for (const auto &program : image.programs) {
+    const auto regions = plan_surface_value_regions(image, program);
+    if (!regions.valid) {
+      return reject("region planning: " + regions.diagnostic);
+    }
+    for (const auto &region : regions.regions) {
+      if (region.instruction_count < 2u ||
+          region.instruction_begin_offset >= program.instruction_count ||
+          region.instruction_count >
+              program.instruction_count - region.instruction_begin_offset ||
+          region.operand_sources.size() != region.instruction_count) {
+        if (region.instruction_count < 2u) {
+          continue;
+        }
+        return reject("a candidate region has inconsistent extents");
+      }
+      SurfaceValueRegionShape shape;
+      shape.variant_indices.reserve(region.instruction_count);
+      shape.operand_sources = region.operand_sources;
+      for (auto &sources : shape.operand_sources) {
+        for (auto &source : sources) {
+          if (source.kind ==
+              SurfaceValueRegionOperandSourceKind::parameter) {
+            source.index = 0u;
+          }
+        }
+      }
+      shape.live_input_banks.reserve(
+          region.live_input_definition_offsets.size());
+      for (const auto definition_offset :
+           region.live_input_definition_offsets) {
+        if (definition_offset >= region.instruction_begin_offset ||
+            definition_offset >= program.instruction_count) {
+          return reject("a candidate live input is not before its region");
+        }
+        const auto &definition = image.instructions[
+            program.instruction_begin + definition_offset];
+        if (is_surface_value_surface_normal_transition(definition)) {
+          return reject("a candidate live input is a normal commit");
+        }
+        shape.live_input_banks.emplace_back(
+            surface_value_result_bank(definition));
+      }
+      shape.live_output_instruction_offsets.reserve(
+          region.live_output_definition_offsets.size());
+      for (const auto definition_offset :
+           region.live_output_definition_offsets) {
+        if (definition_offset < region.instruction_begin_offset ||
+            definition_offset >= region.instruction_begin_offset +
+                                     region.instruction_count) {
+          return reject("a candidate live output is outside its region");
+        }
+        shape.live_output_instruction_offsets.emplace_back(
+            definition_offset - region.instruction_begin_offset);
+      }
+
+      std::uint64_t occurrence_accesses = 0u;
+      for (auto member = std::uint32_t{};
+           member < region.instruction_count; ++member) {
+        const auto instruction_index = program.instruction_begin +
+                                       region.instruction_begin_offset + member;
+        if (instruction_index >= scene.instruction_variants.size() ||
+            is_surface_value_surface_normal_transition(
+                image.instructions[instruction_index])) {
+          return reject("a candidate contains an invalid ordinary instruction");
+        }
+        const auto variant = scene.instruction_variants[instruction_index];
+        if (variant >= scene.variants.size()) {
+          return reject("a candidate names an invalid static variant");
+        }
+        shape.variant_indices.emplace_back(variant);
+        if (member + 1u < region.instruction_count) {
+          const auto mask = regions.successor_operand_masks[
+              region.instruction_begin_offset + member];
+          if (mask == 0u) {
+            return reject("a candidate contains a non-forwarding edge");
+          }
+          occurrence_accesses +=
+              1u + static_cast<std::uint64_t>(std::popcount(mask));
+        }
+      }
+
+      const auto instruction_begin =
+          program.instruction_begin + region.instruction_begin_offset;
+      auto [candidate, inserted] = candidates.try_emplace(
+          shape,
+          Candidate{.shape = shape,
+                    .instruction_begins = {},
+                    .eliminated_bank_accesses = 0u});
+      auto &entry = candidate->second;
+      entry.instruction_begins.emplace_back(instruction_begin);
+      if (entry.eliminated_bank_accesses >
+          std::numeric_limits<std::uint64_t>::max() - occurrence_accesses) {
+        return reject("candidate benefit overflows uint64");
+      }
+      entry.eliminated_bank_accesses += occurrence_accesses;
+      static_cast<void>(inserted);
+    }
+  }
+
+  struct KnapsackState {
+    std::uint64_t benefit{};
+    std::uint32_t cost{};
+    std::vector<std::size_t> selected;
+  };
+  std::vector<const Candidate *> ordered_candidates;
+  ordered_candidates.reserve(candidates.size());
+  std::uint64_t total_cost = 0u;
+  for (const auto &[shape, candidate] : candidates) {
+    static_cast<void>(shape);
+    ordered_candidates.emplace_back(&candidate);
+    total_cost += candidate.shape.variant_indices.size();
+  }
+  const auto effective_budget = static_cast<std::uint32_t>(std::min<
+      std::uint64_t>(handler_site_budget, total_cost));
+  std::vector<KnapsackState> states(effective_budget + 1u);
+  const auto better = [](const KnapsackState &lhs,
+                         const KnapsackState &rhs) noexcept {
+    if (lhs.benefit != rhs.benefit) {
+      return lhs.benefit > rhs.benefit;
+    }
+    if (lhs.cost != rhs.cost) {
+      return lhs.cost < rhs.cost;
+    }
+    return lhs.selected < rhs.selected;
+  };
+  for (auto candidate_index = std::size_t{};
+       candidate_index < ordered_candidates.size(); ++candidate_index) {
+    const auto *candidate = ordered_candidates[candidate_index];
+    const auto cost = static_cast<std::uint32_t>(
+        candidate->shape.variant_indices.size());
+    for (auto capacity = effective_budget; capacity >= cost; --capacity) {
+      auto proposal = states[capacity - cost];
+      if (proposal.benefit >
+          std::numeric_limits<std::uint64_t>::max() -
+              candidate->eliminated_bank_accesses) {
+        return reject("knapsack benefit overflows uint64");
+      }
+      proposal.benefit += candidate->eliminated_bank_accesses;
+      proposal.cost += cost;
+      proposal.selected.emplace_back(candidate_index);
+      if (better(proposal, states[capacity])) {
+        states[capacity] = std::move(proposal);
+      }
+    }
+  }
+  auto optimum = KnapsackState{};
+  for (const auto &state : states) {
+    if (better(state, optimum)) {
+      optimum = state;
+    }
+  }
+
+  result.specializations.reserve(optimum.selected.size());
+  // The current maximal-region construction is a partition, but make that
+  // theorem an independently checked lowering precondition. The public side
+  // stream marks only beginnings; this full owner map prevents a future
+  // candidate-construction change from silently selecting overlapping
+  // interiors.
+  std::vector<std::uint32_t> selected_instruction_owners(
+      image.instructions.size(), surface_value_no_region);
+  for (const auto candidate_index : optimum.selected) {
+    const auto &candidate = *ordered_candidates[candidate_index];
+    if (candidate.instruction_begins.size() >
+        std::numeric_limits<std::uint32_t>::max()) {
+      return reject("candidate occurrence count exceeds uint32");
+    }
+    const auto specialization_index =
+        static_cast<std::uint32_t>(result.specializations.size());
+    result.specializations.emplace_back(SurfaceValueRegionSpecialization{
+        .shape = candidate.shape,
+        .static_occurrences = static_cast<std::uint32_t>(
+            candidate.instruction_begins.size()),
+        .eliminated_bank_accesses = candidate.eliminated_bank_accesses,
+        .handler_site_cost = static_cast<std::uint32_t>(
+            candidate.shape.variant_indices.size())});
+    for (const auto instruction_begin : candidate.instruction_begins) {
+      if (instruction_begin >=
+          result.instruction_specialization_indices.size()) {
+        return reject("selected region beginning is outside the instruction "
+                      "stream");
+      }
+      const auto instruction_count = static_cast<std::uint32_t>(
+          candidate.shape.variant_indices.size());
+      if (instruction_count > image.instructions.size() - instruction_begin) {
+        return reject("selected region extent is outside the instruction "
+                      "stream");
+      }
+      for (auto member = std::uint32_t{}; member < instruction_count; ++member) {
+        auto &owner = selected_instruction_owners[instruction_begin + member];
+        if (owner != surface_value_no_region) {
+          return reject("selected region occurrences overlap");
+        }
+        owner = specialization_index;
+      }
+      if (result.instruction_specialization_indices[instruction_begin] !=
+          surface_value_no_region) {
+        return reject("selected region occurrences overlap");
+      }
+      result.instruction_specialization_indices[instruction_begin] =
+          specialization_index;
+    }
+  }
+  result.selected_handler_sites = optimum.cost;
+  result.eliminated_bank_accesses = optimum.benefit;
   result.valid = true;
   return result;
 }

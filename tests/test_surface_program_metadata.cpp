@@ -690,6 +690,86 @@ void test_surface_value_storage_plan() {
           "an immutable variant lost its typed operands or exact scene-wide "
           "storage-class join");
 
+  const auto disabled_region_specializations =
+      plan_surface_value_region_specializations(executable_scene, 0u);
+  require(disabled_region_specializations.valid &&
+              disabled_region_specializations.specializations.empty() &&
+              disabled_region_specializations.selected_handler_sites == 0u &&
+              disabled_region_specializations.eliminated_bank_accesses == 0u &&
+              disabled_region_specializations
+                      .instruction_specialization_indices ==
+                  std::vector<std::uint32_t>(
+                      executable_scene.values.instructions.size(),
+                      surface_value_no_region),
+          "a zero region budget did not preserve the ordinary interpreter");
+  const auto insufficient_region_specializations =
+      plan_surface_value_region_specializations(executable_scene, 2u);
+  require(insufficient_region_specializations.valid &&
+              insufficient_region_specializations.specializations.empty(),
+          "the region selector exceeded its handler-site budget");
+  const auto selected_region_specializations =
+      plan_surface_value_region_specializations(executable_scene, 3u);
+  require(selected_region_specializations.valid &&
+              selected_region_specializations.specializations.size() == 1u &&
+              selected_region_specializations.selected_handler_sites == 3u &&
+              selected_region_specializations.eliminated_bank_accesses == 8u &&
+              selected_region_specializations.specializations[0u]
+                      .static_occurrences == 2u &&
+              selected_region_specializations.specializations[0u]
+                      .handler_site_cost == 3u &&
+              selected_region_specializations.specializations[0u]
+                      .eliminated_bank_accesses == 8u,
+          "the exact region knapsack did not select the repeated linear "
+          "shape");
+  require(surface_value_region_specialization_has_inline_tag(0u) &&
+              surface_value_region_specialization_has_inline_tag(254u) &&
+              !surface_value_region_specialization_has_inline_tag(255u) &&
+              make_surface_value_region_specialization_tag(0u) == (1u << 8u) &&
+              make_surface_value_region_specialization_tag(254u) ==
+                  (255u << 8u) &&
+              surface_value_region_specialization_tag(
+                  make_surface_value_region_specialization_tag(73u)) == 74u &&
+              (surface_value_region_specialization_tag_mask &
+               surface_value_control_mask) == 0u &&
+              surface_value_runtime_control_mask ==
+                  (surface_value_control_mask |
+                   surface_value_region_specialization_tag_mask) &&
+              make_surface_value_region_handler_key(0x30031u, 73u) ==
+                  (0x30031u | (74u << 8u)),
+          "the inline region dispatch tag is not an injective, disjoint "
+          "one-based encoding");
+  const auto &selected_shape =
+      selected_region_specializations.specializations[0u].shape;
+  require(selected_shape.variant_indices ==
+                  std::vector<std::uint32_t>{0u, 1u, 0u} &&
+              selected_shape.operand_sources[0u] ==
+                  std::vector<SurfaceValueRegionOperandSource>{
+                      {SurfaceValueRegionOperandSourceKind::parameter, 0u},
+                      {SurfaceValueRegionOperandSourceKind::parameter, 0u}} &&
+              selected_shape.live_input_banks.empty() &&
+              selected_shape.live_output_instruction_offsets.empty(),
+          "region specialization identity retained runtime parameter ids or "
+          "lost its exact typed graph");
+  auto expected_region_specialization_indices = std::vector<std::uint32_t>(
+      executable_scene.values.instructions.size(), surface_value_no_region);
+  expected_region_specialization_indices[0u] = 0u;
+  expected_region_specialization_indices[4u] = 0u;
+  require(selected_region_specializations
+                  .instruction_specialization_indices ==
+              expected_region_specialization_indices,
+          "region specialization occurrences are not mapped only at their "
+          "first instructions");
+  auto malformed_region_scene = executable_scene;
+  malformed_region_scene.instruction_variants.pop_back();
+  const auto malformed_region_specializations =
+      plan_surface_value_region_specializations(malformed_region_scene, 3u);
+  require(!malformed_region_specializations.valid &&
+              malformed_region_specializations.specializations.empty() &&
+              malformed_region_specializations
+                  .instruction_specialization_indices.empty(),
+          "region specialization did not fail transactionally on a malformed "
+          "variant stream");
+
   const auto make_passthrough_program = [](std::uint32_t tag, SocketType type,
                                            SocketValue value) {
     return SurfaceProgram{
