@@ -505,6 +505,46 @@ void test_surface_value_storage_plan() {
                   std::vector<std::uint32_t>{
                       1u, 2u, surface_value_definition_no_use},
           "definition liveness lost read-before-write slot epochs");
+  const auto linear_forwarding = plan_surface_value_forwarding(
+      scene_image, scene_image.programs[0u]);
+  require(linear_forwarding.valid &&
+              linear_forwarding.successor_operand_masks ==
+                  std::vector<std::uint32_t>{1u, 1u, 0u},
+          "adjacent last-use forwarding lost a linear in-place chain");
+
+  auto duplicate_successor_use_image = scene_image;
+  auto &duplicate_successor =
+      duplicate_successor_use_image.instructions[
+          duplicate_successor_use_image.programs[0u].instruction_begin + 2u];
+  duplicate_successor.operand_payload = replace_operand_lane(
+      duplicate_successor.operand_payload,
+      compact_operand_address(SurfaceValueAddress{
+          duplicate_successor_use_image.instructions[
+              duplicate_successor_use_image.programs[0u].instruction_begin +
+              1u]
+              .result}),
+      value_operand::binary::b);
+  const auto duplicate_successor_forwarding = plan_surface_value_forwarding(
+      duplicate_successor_use_image,
+      duplicate_successor_use_image.programs[0u]);
+  require(duplicate_successor_forwarding.valid &&
+              duplicate_successor_forwarding.successor_operand_masks ==
+                  std::vector<std::uint32_t>{1u, 3u, 0u},
+          "forwarding did not substitute every duplicate successor use");
+
+  auto nonfinal_successor_use_image = scene_image;
+  auto &nonfinal_program = nonfinal_successor_use_image.programs[0u];
+  nonfinal_program.scalar_slots = 2u;
+  nonfinal_successor_use_image
+      .instructions[nonfinal_program.instruction_begin + 1u]
+      .result = 1u;
+  const auto nonfinal_forwarding = plan_surface_value_forwarding(
+      nonfinal_successor_use_image, nonfinal_program);
+  require(nonfinal_forwarding.valid &&
+              nonfinal_forwarding.successor_operand_masks ==
+                  std::vector<std::uint32_t>{0u, 0u, 0u},
+          "forwarding erased a definition that remains live after its "
+          "successor");
   auto undefined_liveness_image = scene_image;
   auto &undefined_liveness_instruction =
       undefined_liveness_image.instructions[
@@ -522,6 +562,13 @@ void test_surface_value_storage_plan() {
               undefined_liveness.diagnostic.find("undefined local") !=
                   std::string::npos,
           "definition liveness accepted an ordinary read-before-definition");
+  const auto undefined_forwarding = plan_surface_value_forwarding(
+      undefined_liveness_image,
+      undefined_liveness_image.programs[0u]);
+  require(!undefined_forwarding.valid &&
+              undefined_forwarding.diagnostic.find("undefined local") !=
+                  std::string::npos,
+          "forwarding planning did not fail closed on undefined data flow");
 
   auto closure_terminal_image = scene_image;
   auto &closure_terminal_program = closure_terminal_image.programs[0u];
@@ -809,6 +856,12 @@ void test_surface_value_storage_plan() {
                   std::vector<std::uint32_t>{
                       1u, surface_value_definition_no_use},
           "definition liveness lost the normal commit's terminal prefix use");
+  const auto transaction_forwarding = plan_surface_value_forwarding(
+      raw_transaction_scene, raw_transaction_scene.programs.front());
+  require(transaction_forwarding.valid &&
+              transaction_forwarding.successor_operand_masks ==
+                  std::vector<std::uint32_t>{0u, 0u},
+          "forwarding crossed a surface-normal transaction boundary");
   auto post_commit_use_scene = raw_transaction_scene;
   auto post_commit_read = post_commit_use_scene.instructions.front();
   post_commit_read.operand_payload = replace_operand_lane(

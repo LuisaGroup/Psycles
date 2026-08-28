@@ -235,14 +235,14 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
       histogram.exact = false;
       continue;
     }
-    const auto definition_liveness =
-        compiler::analyze_surface_value_definition_liveness(image, program);
-    if (!definition_liveness.valid) {
+    const auto forwarding =
+        compiler::plan_surface_value_forwarding(image, program);
+    if (!forwarding.valid ||
+        forwarding.successor_operand_masks.size() !=
+            program.instruction_count) {
       histogram.exact = false;
       continue;
     }
-    const auto &definition_last_uses =
-        definition_liveness.last_use_offsets;
     const auto decode_operand =
         [&](const compiler::SurfaceValueBytecodeInstruction &instruction,
             std::size_t operand_index,
@@ -449,12 +449,22 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
                       compiler::surface_value_svm_immediate(instruction)}],
                   populations);
       if (previous_value_instruction) {
+        const auto source_forwarding_mask =
+            previous_value_instruction->offset <
+                    forwarding.successor_operand_masks.size()
+                ? forwarding.successor_operand_masks[
+                      previous_value_instruction->offset]
+                : 0u;
+        if (source_forwarding_mask != 0u &&
+            source_forwarding_mask != direct_operand_mask) {
+          // Both masks denote the complete set of target operands reading the
+          // immediately preceding definition. Any disagreement means the
+          // histogram and compiler relation ceased to describe one image.
+          histogram.exact = false;
+        }
         const auto source_last_used_by_target =
             direct_operand_mask != 0u &&
-            previous_value_instruction->offset <
-                definition_last_uses.size() &&
-            definition_last_uses[previous_value_instruction->offset] ==
-                offset;
+            source_forwarding_mask == direct_operand_mask;
         checked_add(
             value_transition_counts[ValueTransitionKey{
                 previous_value_instruction->variant,
