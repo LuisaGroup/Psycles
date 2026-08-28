@@ -146,6 +146,36 @@ Mix factor, while still permitting proven read-before-write slot donation.
 Closure operands and side tables must be dense, jumps strictly forward, Mix
 outputs non-aliased, aggregate masks exact, and `End` unique and final.
 
+## SetNormal transaction and scene image
+
+Cycles' authored automatic-normal evaluation is a sequencing boundary, not an
+ordinary graph dependency. The unified stream therefore retains `0xff` as an
+explicit `SetNormal` record:
+
+```text
+normal value prefix; SetNormal(vector); structured closure body; End
+```
+
+The prefix and body are independently colored. `SetNormal` reads its vector
+before killing every local definition, so the two allocations may overlap but
+the body cannot observe stale prefix storage. The verifier models this as a
+new must-initialization epoch; a permanent regression deliberately redirects a
+body read to a physically populated prefix slot and requires rejection.
+
+`build_surface_svm_scene_image` concatenates programs in runtime-tag order.
+Guard targets, overflow value-operand ranges, metadata indices, metadata
+static-table ranges and closure-operand begins become absolute scene offsets.
+Typed local addresses and material parameter ids remain invocation-relative.
+The compact 32-byte device descriptor contains only instruction range, typed
+slot bounds, flags and endpoint projection. Exact side-stream partitions live
+in a parallel host-only table and are not uploaded per invocation.
+
+The public scene verifier proves every descriptor and side range is a dense
+partition, de-relocates each program, and runs the complete program verifier
+again. It also recomputes the scene's maximum typed capacities and closure
+capability masks. This rejects missing relocation, cross-program references,
+unowned suffixes and stale aggregate metadata transactionally.
+
 ## CFG liveness and optimal typed storage
 
 The emitted CFG is acyclic because every ordinary successor and jump target
@@ -197,6 +227,10 @@ is rejected. Component-wise scalar/vector/uint64 capacity remains explicit.
 - chordal clique-optimal coloring of value and weight SSA with
   read-before-write slot donation.
 
+`psycles.surface_svm_scene` additionally covers the SetNormal lifetime epoch,
+all five relocation classes, a static 4x4 table, two-program tag order, and
+malformed cross-program guard/closure references.
+
 One independent-branch fixture requires at least two vector slots under the
 old split value/closure plan but exactly one slot after closure uses are
 interleaved in the structured stream. This is a compiler storage result, not a
@@ -205,21 +239,22 @@ renderer performance result.
 ```sh
 cmake --build build --target \
   psycles_surface_svm_schedule_tests \
+  psycles_surface_svm_scene_tests \
   psycles_surface_closure_execution_plan_tests \
   -j"$(nproc)"
 
 ctest --test-dir build --output-on-failure \
-  -R 'psycles\.(surface_svm_schedule|surface_closure_execution_plan)'
+  -R 'psycles\.(surface_svm_(schedule|scene)|surface_closure_execution_plan)'
 ```
 
-Both focused tests pass. Virtual closure weights are assigned and colored in
+All focused tests pass. Virtual closure weights are assigned and colored in
 the scalar bank together with ordinary scalar values, and the semantic CFG is
-lowered transactionally into the final compact bytecode. The next stage is to
-aggregate per-topology images and execute this stream through one Luisa
+lowered transactionally into the final compact bytecode and aggregated into a
+scene-wide image. The next stage is to execute this stream through one Luisa
 interpreter, replacing the old value/closure dual-stream runtime.
 
-The all-thread repository run executed all 317 registered tests in 12.19 s:
-311 passed and the same six pre-existing exact numeric fixtures failed
+The all-thread repository run executed all 318 registered tests in 12.54 s:
+312 passed and the same six pre-existing exact numeric fixtures failed
 (`luisa_stacked_volume_fallback`, `luisa_homogeneous_volume_fallback`,
 `luisa_area_light_forward_vk`, `luisa_volume_path_fallback`,
 `luisa_volume_path_vk`, and `luisa_volume_triangle_fallback`). The new compiler
