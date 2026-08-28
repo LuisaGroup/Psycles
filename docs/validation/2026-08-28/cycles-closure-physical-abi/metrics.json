@@ -1,0 +1,62 @@
+{
+  "schema": "psycles.exact-closure-physical-abi.v1",
+  "commits": {
+    "parent": "80ce864911fce24842cbff62b6c1d0067a2086c9",
+    "candidate": "0432c8f5e37510212b093e11d76264fc418435e9",
+    "luisa_compute": "9ae333d05ed028c20b369555c350fbfd6ac8ba43",
+    "cycles_reference": "9e2066aef7ef7e20c142ad7bd3303138a4304c93"
+  },
+  "device": {
+    "name": "AMD Radeon RX 9070 XT",
+    "architecture": "gfx1201",
+    "backend": "hip",
+    "runtime": "7.2.53211"
+  },
+  "tests": {
+    "full_build_steps": 173,
+    "host_build_threads": 32,
+    "focused_fallback": {"passed": 13, "failed": 0},
+    "focused_hip": {"passed": 13, "failed": 0},
+    "focused_vulkan_native_xir": {"passed": 13, "failed": 0}
+  },
+  "scene": {
+    "name": "barbershop-5.2",
+    "width": 640,
+    "height": 480,
+    "fixed_samples": 64,
+    "scheduler": "wavefront-staged",
+    "parent_seconds": [2.34337, 2.35198],
+    "candidate_seconds": [2.34642, 2.34739],
+    "parent_mean_seconds": 2.347675,
+    "candidate_mean_seconds": 2.346905,
+    "candidate_change_percent": -0.0328
+  },
+  "code": {
+    "parent_generated_amdgpu_bytes": 419200,
+    "candidate_generated_amdgpu_bytes": 417680,
+    "parent_linked_code_object_bytes": 336984,
+    "candidate_linked_code_object_bytes": 336984,
+    "coroutine_frame_fields": 177,
+    "coroutine_frame_bytes": 864
+  },
+  "microbench": {
+    "count": 4194304,
+    "iterations": 128,
+    "repeats": 9,
+    "contract": "selected_closure_sample",
+    "median_ms": {
+      "glossy_ggx_regular": {"parent": 6.94363, "candidate": 6.94547},
+      "glass_ggx": {"parent": 11.3449, "candidate": 11.3454},
+      "principled_dielectric": {"parent": 10.4158, "candidate": 10.4115}
+    }
+  },
+  "comparison": {
+    "passes": 15,
+    "invalid_pixels": 0,
+    "combined_relative_rmse": 0.00036016144726359065,
+    "combined_p99_pixel_rmse": 4.301594636046957e-9,
+    "normal_relative_rmse": 8.453816563990507e-7,
+    "diffuse_color_relative_rmse": 3.2228018258305665e-5,
+    "visual_inspection": "no structural difference"
+  }
+}
