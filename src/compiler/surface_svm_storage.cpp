@@ -54,7 +54,7 @@ void erase(ValueSet &set, std::uint32_t value) {
 }
 
 struct ProgramPoint {
-  std::uint32_t definition{invalid_index};
+  ValueSet definitions;
   ValueSet uses;
   std::vector<std::uint32_t> successors;
 };
@@ -85,11 +85,40 @@ struct Builder {
            schedule.value_regions[value] != surface_svm_invalid_region;
   }
 
+  [[nodiscard]] std::uint32_t weight_vertex(
+      SurfaceSvmWeightId weight) const noexcept {
+    return static_cast<std::uint32_t>(
+        program.value_instructions().size() + weight.value);
+  }
+
+  [[nodiscard]] bool active_weight(
+      SurfaceSvmWeightId weight) const noexcept {
+    return weight.valid() && weight.value < schedule.weight_regions.size() &&
+           schedule.weight_regions[weight.value] != surface_svm_invalid_region;
+  }
+
+  [[nodiscard]] bool vertex_bank(std::uint32_t vertex,
+                                 SurfaceValueBank &bank) const noexcept {
+    const auto value_count = program.value_instructions().size();
+    if (vertex >= value_count) {
+      const auto weight = vertex - value_count;
+      if (weight >= schedule.weight_expressions.size()) {
+        return false;
+      }
+      bank = SurfaceValueBank::scalar;
+      return true;
+    }
+    return classify_surface_value_type(
+        program.value_instructions()[vertex].result_type, bank);
+  }
+
   [[nodiscard]] bool initialize_quotient() {
     const auto &values = program.value_instructions();
     result.locations.resize(values.size());
     result.representatives.assign(values.size(), invalid_index);
-    adjacency.resize(values.size());
+    result.weight_locations.assign(schedule.weight_expressions.size(),
+                                   invalid_index);
+    adjacency.resize(values.size() + schedule.weight_expressions.size());
 
     for (auto index = std::size_t{}; index < values.size(); ++index) {
       if (!active(static_cast<std::uint32_t>(index))) {
@@ -175,6 +204,17 @@ struct Builder {
           static_cast<std::uint32_t>(index));
       ++result.local_values;
     }
+    for (auto index = std::size_t{};
+         index < schedule.weight_expressions.size(); ++index) {
+      const auto id =
+          SurfaceSvmWeightId{static_cast<std::uint32_t>(index)};
+      if (!active_weight(id)) {
+        continue;
+      }
+      vertices[bank_index(SurfaceValueBank::scalar)].emplace_back(
+          weight_vertex(id));
+      ++result.weight_values;
+    }
     return result.active_values ==
            result.parameter_values + result.local_values + result.alias_values;
   }
@@ -198,6 +238,38 @@ struct Builder {
     return true;
   }
 
+  [[nodiscard]] bool add_weight_use(ProgramPoint &point,
+                                    SurfaceSvmWeightId weight) {
+    if (!weight.valid()) {
+      return true;
+    }
+    if (!active_weight(weight)) {
+      result.diagnostic =
+          "a structured-SVM instruction references an inactive weight";
+      return false;
+    }
+    insert(point.uses, weight_vertex(weight));
+    return true;
+  }
+
+  [[nodiscard]] bool add_weight_definition(
+      ProgramPoint &point, SurfaceSvmWeightId weight,
+      std::vector<std::uint32_t> &definition_counts) {
+    if (!active_weight(weight)) {
+      result.diagnostic =
+          "a structured-SVM instruction defines an inactive weight";
+      return false;
+    }
+    const auto vertex = weight_vertex(weight);
+    insert(point.definitions, vertex);
+    if (++definition_counts[vertex] != 1u) {
+      result.diagnostic =
+          "a structured-SVM weight has multiple definitions";
+      return false;
+    }
+    return true;
+  }
+
   [[nodiscard]] bool add_closure_factor_use(ProgramPoint &point,
                                             std::uint32_t closure_index) {
     const auto &closures = program.closure_instructions();
@@ -213,7 +285,7 @@ struct Builder {
     const auto &values = program.value_instructions();
     const auto &closures = program.closure_instructions();
     points.resize(schedule.instructions.size());
-    std::vector<std::uint32_t> definition_counts(values.size(), 0u);
+    std::vector<std::uint32_t> definition_counts(adjacency.size(), 0u);
     auto end_count = std::uint32_t{};
 
     for (auto index = std::size_t{}; index < schedule.instructions.size();
@@ -231,7 +303,7 @@ struct Builder {
         }
         const auto representative = result.representatives[instruction.source];
         if (representative == instruction.source) {
-          point.definition = representative;
+          insert(point.definitions, representative);
           if (++definition_counts[representative] != 1u) {
             result.diagnostic =
                 "a structured-SVM local value has multiple definitions";
@@ -250,7 +322,77 @@ struct Builder {
         }
         break;
       }
-      case SurfaceSvmScheduleInstructionKind::mix_closure:
+      case SurfaceSvmScheduleInstructionKind::mix_closure: {
+        if (!instruction.weight.valid() ||
+            instruction.weight.value >= schedule.weight_expressions.size()) {
+          result.diagnostic =
+              "a structured-SVM Mix has no primary weight result";
+          return false;
+        }
+        const auto &primary =
+            schedule.weight_expressions[instruction.weight.value];
+        if ((primary.operation != SurfaceSvmWeightOperation::mix_left &&
+             primary.operation != SurfaceSvmWeightOperation::mix_right) ||
+            primary.source_mix.value != instruction.source ||
+            instruction.source >= closures.size() ||
+            closures[instruction.source].operation != ClosureOperation::mix ||
+            primary.factor != closures[instruction.source].factor ||
+            !add_closure_factor_use(point, instruction.source) ||
+            !add_weight_use(point, primary.a) ||
+            !add_weight_definition(point, instruction.weight,
+                                   definition_counts)) {
+          if (result.diagnostic.empty()) {
+            result.diagnostic =
+                "a structured-SVM Mix has an inconsistent primary result";
+          }
+          return false;
+        }
+        if (instruction.secondary_weight.valid()) {
+          if (instruction.secondary_weight.value >=
+              schedule.weight_expressions.size()) {
+            result.diagnostic =
+                "a structured-SVM Mix has an invalid secondary result";
+            return false;
+          }
+          const auto &secondary = schedule.weight_expressions[
+              instruction.secondary_weight.value];
+          if (secondary.source_mix != primary.source_mix ||
+              secondary.a != primary.a || secondary.factor != primary.factor ||
+              secondary.pair != instruction.weight ||
+              primary.pair != instruction.secondary_weight ||
+              secondary.operation == primary.operation ||
+              !add_weight_definition(point, instruction.secondary_weight,
+                                     definition_counts)) {
+            result.diagnostic =
+                "a structured-SVM Mix has an inconsistent paired result";
+            return false;
+          }
+        }
+        break;
+      }
+      case SurfaceSvmScheduleInstructionKind::add_closure_weight: {
+        if (!instruction.weight.valid() ||
+            instruction.weight.value >= schedule.weight_expressions.size()) {
+          result.diagnostic =
+              "a structured-SVM weight Add has no result";
+          return false;
+        }
+        const auto &expression =
+            schedule.weight_expressions[instruction.weight.value];
+        if (expression.operation != SurfaceSvmWeightOperation::add ||
+            instruction.source != instruction.weight.value ||
+            !add_weight_use(point, expression.a) ||
+            !add_weight_use(point, expression.b) ||
+            !add_weight_definition(point, instruction.weight,
+                                   definition_counts)) {
+          if (result.diagnostic.empty()) {
+            result.diagnostic =
+                "a structured-SVM weight Add has inconsistent operands";
+          }
+          return false;
+        }
+        break;
+      }
       case SurfaceSvmScheduleInstructionKind::jump_if_one:
       case SurfaceSvmScheduleInstructionKind::jump_if_zero:
         if (!add_closure_factor_use(point, instruction.source)) {
@@ -282,6 +424,9 @@ struct Builder {
               !add_use(point, operand)) {
             return false;
           }
+        }
+        if (!add_weight_use(point, instruction.weight)) {
+          return false;
         }
         break;
       }
@@ -326,8 +471,8 @@ struct Builder {
     for (const auto vertex_bank :
          {SurfaceValueBank::scalar, SurfaceValueBank::vector,
           SurfaceValueBank::unsigned_integer}) {
-      for (const auto value : vertices[bank_index(vertex_bank)]) {
-        if (definition_counts[value] != 1u) {
+      for (const auto vertex : vertices[bank_index(vertex_bank)]) {
+        if (definition_counts[vertex] != 1u) {
           result.diagnostic =
               "an active structured-SVM local has no unique definition";
           return false;
@@ -368,8 +513,7 @@ struct Builder {
           return false;
         }
       }
-      const auto definition = points[index].definition;
-      if (definition != invalid_index) {
+      for (const auto definition : points[index].definitions) {
         if (contains(defined, definition)) {
           result.diagnostic =
               "a structured-SVM local is redefined on one CFG path";
@@ -388,9 +532,7 @@ struct Builder {
     }
     auto bank_a = SurfaceValueBank::scalar;
     auto bank_b = SurfaceValueBank::scalar;
-    const auto &values = program.value_instructions();
-    if (!classify_surface_value_type(values[a].result_type, bank_a) ||
-        !classify_surface_value_type(values[b].result_type, bank_b) ||
+    if (!vertex_bank(a, bank_a) || !vertex_bank(b, bank_b) ||
         bank_a != bank_b) {
       return;
     }
@@ -399,8 +541,7 @@ struct Builder {
   }
 
   [[nodiscard]] bool solve_liveness() {
-    std::vector<std::uint32_t> use_counts(program.value_instructions().size(),
-                                          0u);
+    std::vector<std::uint32_t> use_counts(adjacency.size(), 0u);
     for (const auto &point : points) {
       for (const auto use : point.uses) {
         if (use_counts[use] == std::numeric_limits<std::uint32_t>::max()) {
@@ -425,8 +566,7 @@ struct Builder {
       for (const auto successor : points[index].successors) {
         live_out = set_union(live_out, live_in[successor]);
       }
-      const auto definition = points[index].definition;
-      if (definition != invalid_index) {
+      for (const auto definition : points[index].definitions) {
         if (!contains(live_out, definition)) {
           result.diagnostic =
               "a structured-SVM definition is not live after its write";
@@ -435,6 +575,8 @@ struct Builder {
         for (const auto live : live_out) {
           add_interference(definition, live);
         }
+      }
+      for (const auto definition : points[index].definitions) {
         erase(live_out, definition);
       }
       live_in[index] = set_union(live_out, points[index].uses);
@@ -471,9 +613,9 @@ struct Builder {
       return true;
     }
 
-    const auto value_count = result.locations.size();
-    std::vector<std::uint32_t> labels(value_count, 0u);
-    std::vector<bool> numbered(value_count, false);
+    const auto vertex_count = adjacency.size();
+    std::vector<std::uint32_t> labels(vertex_count, 0u);
+    std::vector<bool> numbered(vertex_count, false);
     std::vector<std::uint32_t> peo(bank_vertices.size());
     for (auto number = bank_vertices.size(); number-- > 0u;) {
       auto selected = invalid_index;
@@ -502,7 +644,7 @@ struct Builder {
       }
     }
 
-    std::vector<std::uint32_t> position(value_count, invalid_index);
+    std::vector<std::uint32_t> position(vertex_count, invalid_index);
     for (auto index = std::size_t{}; index < peo.size(); ++index) {
       position[peo[index]] = static_cast<std::uint32_t>(index);
     }
@@ -536,7 +678,7 @@ struct Builder {
       }
     }
 
-    std::vector<std::uint32_t> colors(value_count, invalid_index);
+    std::vector<std::uint32_t> colors(vertex_count, invalid_index);
     std::vector<bool> forbidden(bank_vertices.size(), false);
     auto used_colors = std::uint32_t{};
     for (auto order = peo.size(); order-- > 0u;) {
@@ -570,10 +712,15 @@ struct Builder {
       return false;
     }
     for (const auto vertex : bank_vertices) {
-      result.locations[vertex] = {.storage =
-                                      SurfaceValueStorageClass::local_slot,
-                                  .bank = bank,
-                                  .index = colors[vertex]};
+      if (vertex < result.locations.size()) {
+        result.locations[vertex] = {
+            .storage = SurfaceValueStorageClass::local_slot,
+            .bank = bank,
+            .index = colors[vertex]};
+      } else {
+        result.weight_locations[
+            vertex - result.locations.size()] = colors[vertex];
+      }
     }
     slot_count = used_colors;
     result.maximum_interference_clique[typed_index] = maximum_clique;
@@ -607,7 +754,9 @@ struct Builder {
 
   [[nodiscard]] SurfaceSvmStoragePlan build() {
     if (!schedule.valid ||
-        schedule.value_regions.size() != program.value_instructions().size()) {
+        schedule.value_regions.size() != program.value_instructions().size() ||
+        schedule.weight_regions.size() !=
+            schedule.weight_expressions.size()) {
       return reject("cannot color an incompatible structured-SVM schedule");
     }
     if (!initialize_quotient() || !make_program_points() ||
@@ -634,11 +783,28 @@ struct Builder {
 bool SurfaceSvmStoragePlan::compatible(
     const SurfaceProgram &program,
     const SurfaceSvmSchedulePlan &schedule) const noexcept {
-  return valid && schedule.valid &&
-         locations.size() == program.value_instructions().size() &&
-         representatives.size() == locations.size() &&
-         schedule.value_regions.size() == locations.size() &&
-         active_values == parameter_values + local_values + alias_values;
+  if (!valid || !schedule.valid ||
+      locations.size() != program.value_instructions().size() ||
+      representatives.size() != locations.size() ||
+      schedule.value_regions.size() != locations.size() ||
+      weight_locations.size() != schedule.weight_expressions.size() ||
+      schedule.weight_regions.size() != weight_locations.size() ||
+      active_values != parameter_values + local_values + alias_values) {
+    return false;
+  }
+  auto active_weight_count = std::uint32_t{};
+  for (auto index = std::size_t{}; index < schedule.weight_regions.size();
+       ++index) {
+    const auto active =
+        schedule.weight_regions[index] != surface_svm_invalid_region;
+    if (active) {
+      ++active_weight_count;
+    }
+    if ((weight_locations[index] != invalid_index) != active) {
+      return false;
+    }
+  }
+  return weight_values == active_weight_count;
 }
 
 std::size_t SurfaceSvmStoragePlan::payload_bytes() const noexcept {

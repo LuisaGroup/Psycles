@@ -20,10 +20,36 @@ namespace psycles::compiler {
 enum class SurfaceSvmScheduleInstructionKind : std::uint8_t {
   value,
   mix_closure,
+  add_closure_weight,
   jump_if_one,
   jump_if_zero,
   closure_leaf,
   end,
+};
+
+struct SurfaceSvmWeightTag;
+using SurfaceSvmWeightId = ProgramId<SurfaceSvmWeightTag>;
+
+// Root weight one is represented by an invalid SurfaceSvmWeightId. Every
+// stored expression is strict SSA and names only earlier expressions.
+enum class SurfaceSvmWeightOperation : std::uint8_t {
+  mix_left,
+  mix_right,
+  add,
+};
+
+struct SurfaceSvmWeightExpression {
+  SurfaceSvmWeightOperation operation{};
+  SurfaceSvmWeightId a;
+  SurfaceSvmWeightId b;
+  ValueExpressionId factor;
+  ClosureExpressionId source_mix;
+  // The sibling output of the same Mix transaction. Invalid for a one-sided
+  // endpoint projection and for Add expressions.
+  SurfaceSvmWeightId pair;
+
+  auto operator<=>(const SurfaceSvmWeightExpression &) const noexcept =
+      default;
 };
 
 struct SurfaceSvmScheduleInstruction {
@@ -33,6 +59,11 @@ struct SurfaceSvmScheduleInstruction {
   std::uint32_t source{~std::uint32_t{0u}};
   // Absolute forward target for jumps; zero for every other instruction.
   std::uint32_t target{};
+  // mix_closure: first and optional second result weight;
+  // add_closure_weight: result weight;
+  // closure_leaf: incoming accumulated weight (invalid means root one).
+  SurfaceSvmWeightId weight;
+  SurfaceSvmWeightId secondary_weight;
 
   auto
   operator<=>(const SurfaceSvmScheduleInstruction &) const noexcept = default;
@@ -51,15 +82,21 @@ inline constexpr std::uint32_t surface_svm_invalid_region = ~std::uint32_t{0u};
 struct SurfaceSvmSchedulePlan {
   bool valid{};
   std::string diagnostic;
+  SurfaceClosureEndpointMask endpoints{};
   std::vector<SurfaceSvmScheduleInstruction> instructions;
   // Parallel to SurfaceProgram::value_instructions(). Parameters receive a
   // region as semantic uses are propagated, but do not emit value records.
   // Inactive values retain surface_svm_invalid_region.
   std::vector<std::uint32_t> value_regions;
+  std::vector<SurfaceSvmWeightExpression> weight_expressions;
+  // Parallel to weight_expressions. Dead algebra removed by leaf
+  // accumulation retains the invalid region and emits no instruction.
+  std::vector<std::uint32_t> weight_regions;
   std::uint32_t region_count{};
   std::uint32_t value_instruction_count{};
   std::uint32_t closure_leaf_count{};
   std::uint32_t mix_instruction_count{};
+  std::uint32_t weight_add_instruction_count{};
   std::uint32_t conditional_branch_count{};
   // Computed value instructions placed strictly below at least one dynamic
   // Mix guard. These are the instructions the old dependency-union stream
@@ -89,6 +126,10 @@ struct SurfaceSvmStoragePlan {
   bool valid{};
   std::string diagnostic;
   std::vector<SurfaceValueLocation> locations;
+  // Parallel to schedule.weight_expressions. Active weights are colored into
+  // the scalar bank together with ordinary scalar values; inactive weights
+  // retain the invalid slot sentinel. Root weight one has no expression/slot.
+  std::vector<std::uint32_t> weight_locations;
   // Quotient representative for every active value. Inactive entries retain
   // the invalid sentinel; a representative always names itself or a strict
   // topological predecessor.
@@ -99,6 +140,7 @@ struct SurfaceSvmStoragePlan {
   std::uint32_t active_values{};
   std::uint32_t parameter_values{};
   std::uint32_t local_values{};
+  std::uint32_t weight_values{};
   std::uint32_t alias_values{};
   std::uint64_t interference_edges{};
   std::array<std::uint32_t, 3u> maximum_interference_clique{};
