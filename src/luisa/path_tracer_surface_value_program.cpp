@@ -18,24 +18,26 @@
 
 namespace psycles::luisa_backend::detail {
 
-SurfaceValueLocals::SurfaceValueLocals() noexcept {
+SurfaceValueLocals::SurfaceValueLocals(std::uint32_t capacity) noexcept
+    : stack{capacity} {
+    if (std::find(surface_value_stack_lane_buckets.begin(),
+                  surface_value_stack_lane_buckets.end(),
+                  capacity) == surface_value_stack_lane_buckets.end()) {
+        std::abort();
+    }
     // The host bytecode verifier proves read-before-write for every legal
     // operand. This one aggregate must-definition starts a fresh device-side
     // lifetime wherever the interpreter stack is instantiated. Encoding the
     // invariant in construction prevents a caller from accidentally exposing
     // the undefined root-scope contents to coroutine liveness.
-    auto storage = luisa::compute::detail::Ref<SurfaceValueStackBank>{
-        stack.expression()};
-    storage = luisa::compute::undefined<SurfaceValueStackBank>();
+    auto builder = luisa::compute::detail::FunctionBuilder::current();
+    const auto undefined = builder->call(
+        stack.type(), luisa::compute::CallOp::UNDEFINED, {});
+    builder->assign(stack.expression(), undefined);
 }
 
 SurfaceValueLocalsView SurfaceValueLocals::view() const noexcept {
-    const auto storage =
-        luisa::compute::detail::Ref<SurfaceValueStackBank>{stack.expression()};
-    return {
-        .scalars = {storage},
-        .vectors = {storage},
-        .unsigned_integers = {storage}};
+    return SurfaceValueLocalsView{stack.expression()};
 }
 
 Float read_scalar_dynamic(
@@ -87,22 +89,26 @@ using SurfaceValueNodes =
 // typed-bank addresses, while a handler owns only the temporaries needed to
 // evaluate one instruction. LLVM remains free to inline profitable handlers;
 // no inline/noinline policy is encoded here.
+template<std::size_t StackCapacity>
 using SurfaceValueHandlerCallable = Callable<void(
     Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
     BindlessArray, SurfacePointCall &, luisa::float3, bool, luisa::uint4,
-    SurfaceValueStackBank &)>;
+    SurfaceValueStackBankFor<StackCapacity> &)>;
 
-using SurfaceValueHandlers =
-    std::vector<std::optional<SurfaceValueHandlerCallable>>;
+template<std::size_t StackCapacity>
+using SurfaceValueHandlers = std::vector<std::optional<
+    SurfaceValueHandlerCallable<StackCapacity>>>;
 
+template<std::size_t StackCapacity>
 using SurfaceValueAmbientOcclusionHandlerCallable = Callable<void(
     Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
     BindlessArray, SurfacePointCall &, luisa::float3, bool, luisa::uint4,
-    SurfaceValueStackBank &, Buffer<luisa::float4>, luisa::uint4,
-    luisa::uint2)>;
+    SurfaceValueStackBankFor<StackCapacity> &, Buffer<luisa::float4>,
+    luisa::uint4, luisa::uint2)>;
 
-using SurfaceValueAmbientOcclusionHandlers =
-    std::vector<std::optional<SurfaceValueAmbientOcclusionHandlerCallable>>;
+template<std::size_t StackCapacity>
+using SurfaceValueAmbientOcclusionHandlers = std::vector<std::optional<
+    SurfaceValueAmbientOcclusionHandlerCallable<StackCapacity>>>;
 
 struct SurfaceValueHandlerGroup {
     std::uint32_t key{};
@@ -512,7 +518,8 @@ void write_dynamic_value(
     return point;
 }
 
-[[nodiscard]] SurfaceValueHandlerCallable
+template<std::size_t StackCapacity>
+[[nodiscard]] SurfaceValueHandlerCallable<StackCapacity>
 make_surface_value_handler_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
     const std::shared_ptr<SurfaceValueNodes> &nodes,
@@ -528,7 +535,7 @@ make_surface_value_handler_callable(
     const auto *runtime = scene->surface_values.get();
     const auto operation =
         runtime->value_variants[variant_index].instruction.operation;
-    SurfaceValueHandlerCallable handler =
+    SurfaceValueHandlerCallable<StackCapacity> handler =
         [scene, nodes, texture_sampling, attribute_lookup, bytecode_slots,
          variant_index, runtime](BufferFloat scalar_parameters,
                   BufferFloat3 vector_parameters,
@@ -539,7 +546,7 @@ make_surface_value_handler_callable(
                   Float3 transaction_shading_normal,
                   Bool use_undisplaced_geometry,
                   Var<luisa::uint4> instruction,
-                  Var<SurfaceValueStackBank> &stack) noexcept {
+                  Var<SurfaceValueStackBankFor<StackCapacity>> &stack) noexcept {
             CallableTexture2DSamplingProvider texture_provider{
                 textures, texture_sampling};
             CallableSurfaceAttributeLookupProvider attribute_provider{
@@ -557,13 +564,7 @@ make_surface_value_handler_callable(
                 nullptr,
                 &texture_provider,
                 &attribute_provider};
-            const auto storage =
-                luisa::compute::detail::Ref<SurfaceValueStackBank>{
-                    stack.expression()};
-            SurfaceValueLocalsView locals{
-                .scalars = {storage},
-                .vectors = {storage},
-                .unsigned_integers = {storage}};
+            SurfaceValueLocalsView locals{stack.expression()};
             const auto &variant =
                 runtime->value_variants[variant_index];
             const auto point = surface_value_point(
@@ -586,7 +587,8 @@ make_surface_value_handler_callable(
     return handler;
 }
 
-[[nodiscard]] SurfaceValueAmbientOcclusionHandlerCallable
+template<std::size_t StackCapacity>
+[[nodiscard]] SurfaceValueAmbientOcclusionHandlerCallable<StackCapacity>
 make_surface_ambient_occlusion_handler_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
     const std::shared_ptr<SurfaceValueNodes> &nodes,
@@ -605,7 +607,7 @@ make_surface_ambient_occlusion_handler_callable(
     const auto *runtime = scene->surface_values.get();
     const auto operation =
         runtime->value_variants[variant_index].instruction.operation;
-    SurfaceValueAmbientOcclusionHandlerCallable handler =
+    SurfaceValueAmbientOcclusionHandlerCallable<StackCapacity> handler =
         [scene, nodes, texture_sampling, attribute_lookup, traversal,
          bytecode_slots, variant_index, runtime](
             BufferFloat scalar_parameters,
@@ -617,7 +619,7 @@ make_surface_ambient_occlusion_handler_callable(
             Float3 transaction_shading_normal,
             Bool use_undisplaced_geometry,
             Var<luisa::uint4> instruction,
-            Var<SurfaceValueStackBank> &stack,
+            Var<SurfaceValueStackBankFor<StackCapacity>> &stack,
             BufferFloat4 sobol_table,
             Var<luisa::uint4> random_state,
             UInt2 source) noexcept {
@@ -649,13 +651,7 @@ make_surface_ambient_occlusion_handler_callable(
                 &texture_provider,
                 &attribute_provider,
                 &ambient_occlusion_provider};
-            const auto storage =
-                luisa::compute::detail::Ref<SurfaceValueStackBank>{
-                    stack.expression()};
-            SurfaceValueLocalsView locals{
-                .scalars = {storage},
-                .vectors = {storage},
-                .unsigned_integers = {storage}};
+            SurfaceValueLocalsView locals{stack.expression()};
             const auto &variant =
                 runtime->value_variants[variant_index];
             const auto point = surface_value_point(
@@ -678,7 +674,9 @@ make_surface_ambient_occlusion_handler_callable(
     return handler;
 }
 
-[[nodiscard]] SurfaceValueHandlers make_surface_value_handlers(
+template<std::size_t StackCapacity>
+[[nodiscard]] SurfaceValueHandlers<StackCapacity>
+make_surface_value_handlers(
     const std::shared_ptr<LuisaSceneData> &scene,
     const std::shared_ptr<SurfaceValueNodes> &nodes,
     const Texture2DSamplingCallables &texture_sampling,
@@ -686,7 +684,7 @@ make_surface_ambient_occlusion_handler_callable(
     std::span<const std::uint32_t> active_variants,
     SurfaceValueBytecodeSlots bytecode_slots,
     bool include_external_queries) noexcept {
-    SurfaceValueHandlers handlers(
+    SurfaceValueHandlers<StackCapacity> handlers(
         scene->surface_values->value_variants.size());
     for (const auto variant_index : active_variants) {
         if (surface_value_variant_is_external_query(
@@ -699,14 +697,15 @@ make_surface_ambient_occlusion_handler_callable(
             std::abort();
         }
         handlers[variant_index].emplace(
-            make_surface_value_handler_callable(
+            make_surface_value_handler_callable<StackCapacity>(
                 scene, nodes, texture_sampling, attribute_lookup,
                 bytecode_slots, variant_index));
     }
     return handlers;
 }
 
-[[nodiscard]] SurfaceValueAmbientOcclusionHandlers
+template<std::size_t StackCapacity>
+[[nodiscard]] SurfaceValueAmbientOcclusionHandlers<StackCapacity>
 make_surface_ambient_occlusion_handlers(
     const std::shared_ptr<LuisaSceneData> &scene,
     const std::shared_ptr<SurfaceValueNodes> &nodes,
@@ -714,7 +713,7 @@ make_surface_ambient_occlusion_handlers(
     const SurfaceAttributeLookupCallable &attribute_lookup,
     std::span<const std::uint32_t> active_variants,
     SurfaceValueBytecodeSlots bytecode_slots) noexcept {
-    SurfaceValueAmbientOcclusionHandlers handlers(
+    SurfaceValueAmbientOcclusionHandlers<StackCapacity> handlers(
         scene->surface_values->value_variants.size());
     const auto traversal = make_scene_traversal_component(
         make_scene_traversal_stage_plan(
@@ -729,7 +728,7 @@ make_surface_ambient_occlusion_handlers(
             std::abort();
         }
         handlers[variant_index].emplace(
-            make_surface_ambient_occlusion_handler_callable(
+            make_surface_ambient_occlusion_handler_callable<StackCapacity>(
                 scene, nodes, texture_sampling, attribute_lookup, traversal,
                 bytecode_slots, variant_index));
     }
@@ -761,11 +760,180 @@ make_surface_value_nodes(const SurfaceValueRuntime &runtime) noexcept {
 
 struct SurfaceValueInstructionDispatcher::Impl {
     const SurfaceValueRuntime *runtime{};
-    SurfaceValueHandlers handlers;
-    SurfaceValueAmbientOcclusionHandlers ambient_occlusion_handlers;
-    std::vector<SurfaceValueHandlerGroup> handler_groups;
     bool ambient_occlusion{};
+    std::uint32_t stack_capacity{};
+
+    Impl(const SurfaceValueRuntime *runtime, bool ambient_occlusion,
+         std::uint32_t stack_capacity) noexcept
+        : runtime{runtime}, ambient_occlusion{ambient_occlusion},
+          stack_capacity{stack_capacity} {}
+
+    virtual ~Impl() noexcept = default;
+
+    virtual void dispatch(
+        Expr<Buffer<float>> scalar_parameters,
+        Expr<Buffer<luisa::float3>> vector_parameters,
+        Expr<Buffer<float>> cycles_bsdf_tables,
+        Expr<BindlessArray> textures,
+        Expr<BindlessArray> geometry_heap,
+        Var<SurfacePointCall> &point,
+        Float3 transaction_shading_normal,
+        Bool use_undisplaced_geometry,
+        Var<luisa::uint4> instruction,
+        UInt instruction_index,
+        const SurfaceValueLocalsView &locals,
+        const PathSurfaceAmbientOcclusionContext
+            *ambient_occlusion_context) const noexcept = 0;
 };
+
+namespace {
+
+template<std::size_t StackCapacity>
+struct SurfaceValueInstructionDispatcherImpl final
+    : SurfaceValueInstructionDispatcher::Impl {
+    SurfaceValueHandlers<StackCapacity> handlers;
+    SurfaceValueAmbientOcclusionHandlers<StackCapacity>
+        ambient_occlusion_handlers;
+    std::vector<SurfaceValueHandlerGroup> handler_groups;
+
+    SurfaceValueInstructionDispatcherImpl(
+        const SurfaceValueRuntime *runtime,
+        SurfaceValueHandlers<StackCapacity> handlers,
+        SurfaceValueAmbientOcclusionHandlers<StackCapacity>
+            ambient_occlusion_handlers,
+        std::vector<SurfaceValueHandlerGroup> handler_groups,
+        bool ambient_occlusion) noexcept
+        : Impl{runtime, ambient_occlusion,
+               static_cast<std::uint32_t>(StackCapacity)},
+          handlers(std::move(handlers)),
+          ambient_occlusion_handlers(
+              std::move(ambient_occlusion_handlers)),
+          handler_groups(std::move(handler_groups)) {}
+
+    void dispatch(
+        Expr<Buffer<float>> scalar_parameters,
+        Expr<Buffer<luisa::float3>> vector_parameters,
+        Expr<Buffer<float>> cycles_bsdf_tables,
+        Expr<BindlessArray> textures,
+        Expr<BindlessArray> geometry_heap,
+        Var<SurfacePointCall> &point,
+        Float3 transaction_shading_normal,
+        Bool use_undisplaced_geometry,
+        Var<luisa::uint4> instruction,
+        UInt instruction_index,
+        const SurfaceValueLocalsView &locals,
+        const PathSurfaceAmbientOcclusionContext
+            *ambient_occlusion_context) const noexcept override {
+        using Stack = SurfaceValueStackBankFor<StackCapacity>;
+        if (locals.storage_expression() == nullptr ||
+            locals.storage_expression()->type() !=
+                luisa::compute::Type::of<Stack>()) {
+            std::abort();
+        }
+        auto stack = luisa::compute::detail::Ref<
+            Stack>{locals.storage_expression()};
+        const auto emit_variant = [&](std::uint32_t index) noexcept {
+            if (index >= handlers.size()) { std::abort(); }
+            if (handlers[index].has_value()) {
+                (*handlers[index])(
+                    scalar_parameters, vector_parameters,
+                    cycles_bsdf_tables, textures, geometry_heap, point,
+                    transaction_shading_normal, use_undisplaced_geometry,
+                    instruction, stack);
+                return;
+            }
+            if (!ambient_occlusion ||
+                ambient_occlusion_context == nullptr ||
+                index >= ambient_occlusion_handlers.size() ||
+                !ambient_occlusion_handlers[index].has_value()) {
+                std::abort();
+            }
+            auto random_state = luisa::compute::make_uint4(
+                ambient_occlusion_context->sobol_sequence_size,
+                ambient_occlusion_context->sample_index,
+                ambient_occlusion_context->rng_hash,
+                ambient_occlusion_context->rng_offset);
+            const auto source = make_uint2(
+                ambient_occlusion_context->source_object,
+                ambient_occlusion_context->source_primitive);
+            (*ambient_occlusion_handlers[index])(
+                scalar_parameters, vector_parameters, cycles_bsdf_tables,
+                textures, geometry_heap, point,
+                transaction_shading_normal, use_undisplaced_geometry,
+                instruction, stack,
+                ambient_occlusion_context->sobol_table,
+                random_state, source);
+        };
+        const auto primary_key = device_handler_key(instruction.x);
+        luisa::compute::detail::SwitchStmtBuilder{primary_key} % [&] {
+            for (const auto &group : handler_groups) {
+                luisa::compute::detail::SwitchCaseStmtBuilder{group.key} %
+                    [&] {
+                        if (group.variants.size() == 1u) {
+                            emit_variant(group.variants.front());
+                            return;
+                        }
+                        const auto variant =
+                            surface_value_runtime_buffer<luisa::uint>(
+                                *runtime,
+                                SurfaceValueRuntimeBufferSlot::
+                                    svm_instruction_variant)
+                                .read(instruction_index);
+                        luisa::compute::detail::SwitchStmtBuilder{variant} %
+                            [&] {
+                                for (const auto index : group.variants) {
+                                    luisa::compute::detail::
+                                        SwitchCaseStmtBuilder{index} %
+                                        [&, index] {
+                                            emit_variant(index);
+                                        };
+                                }
+                                luisa::compute::detail::
+                                    SwitchDefaultStmtBuilder{} % [] {
+                                    luisa::compute::dsl::unreachable(
+                                        "invalid unified surface evaluator "
+                                        "fiber");
+                                };
+                            };
+                    };
+            }
+            luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+                luisa::compute::dsl::unreachable(
+                    "invalid unified surface value handler");
+            };
+        };
+    }
+};
+
+template<std::size_t StackCapacity>
+[[nodiscard]] SurfaceValueInstructionDispatcher
+make_surface_value_instruction_dispatcher_with_capacity(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const std::shared_ptr<SurfaceValueNodes> &nodes,
+    const Texture2DSamplingCallables &texture_sampling,
+    const SurfaceAttributeLookupCallable &attribute_lookup,
+    std::span<const std::uint32_t> variants,
+    bool needs_ambient_occlusion) noexcept {
+    auto handlers = make_surface_value_handlers<StackCapacity>(
+        scene, nodes, texture_sampling, attribute_lookup, variants,
+        svm_value_bytecode_slots, !needs_ambient_occlusion);
+    SurfaceValueAmbientOcclusionHandlers<StackCapacity>
+        ambient_occlusion_handlers;
+    if (needs_ambient_occlusion) {
+        ambient_occlusion_handlers =
+            make_surface_ambient_occlusion_handlers<StackCapacity>(
+                scene, nodes, texture_sampling, attribute_lookup, variants,
+                svm_value_bytecode_slots);
+    }
+    auto groups = make_handler_groups(*scene->surface_values, variants);
+    return SurfaceValueInstructionDispatcher{std::make_shared<
+        SurfaceValueInstructionDispatcherImpl<StackCapacity>>(
+        scene->surface_values.get(), std::move(handlers),
+        std::move(ambient_occlusion_handlers), std::move(groups),
+        needs_ambient_occlusion)};
+}
+
+} // namespace
 
 SurfaceValueInstructionDispatcher::SurfaceValueInstructionDispatcher(
     std::shared_ptr<const Impl> impl) noexcept
@@ -780,6 +948,11 @@ bool SurfaceValueInstructionDispatcher::requires_ambient_occlusion()
     return _impl->ambient_occlusion;
 }
 
+std::uint32_t SurfaceValueInstructionDispatcher::stack_capacity()
+    const noexcept {
+    return _impl->stack_capacity;
+}
+
 void SurfaceValueInstructionDispatcher::operator()(
     Expr<Buffer<float>> scalar_parameters,
     Expr<Buffer<luisa::float3>> vector_parameters,
@@ -791,71 +964,14 @@ void SurfaceValueInstructionDispatcher::operator()(
     Bool use_undisplaced_geometry,
     Var<luisa::uint4> instruction,
     UInt instruction_index,
-    luisa::compute::detail::Ref<SurfaceValueStackBank> stack,
+    const SurfaceValueLocalsView &locals,
     const PathSurfaceAmbientOcclusionContext
         *ambient_occlusion) const noexcept {
-    const auto &impl = *_impl;
-    const auto emit_variant = [&](std::uint32_t index) noexcept {
-        if (index >= impl.handlers.size()) {
-            std::abort();
-        }
-        if (impl.handlers[index].has_value()) {
-            (*impl.handlers[index])(
-                scalar_parameters, vector_parameters, cycles_bsdf_tables,
-                textures, geometry_heap, point, transaction_shading_normal,
-                use_undisplaced_geometry, instruction, stack);
-            return;
-        }
-        if (!impl.ambient_occlusion || ambient_occlusion == nullptr ||
-            index >= impl.ambient_occlusion_handlers.size() ||
-            !impl.ambient_occlusion_handlers[index].has_value()) {
-            std::abort();
-        }
-        auto random_state = luisa::compute::make_uint4(
-            ambient_occlusion->sobol_sequence_size,
-            ambient_occlusion->sample_index,
-            ambient_occlusion->rng_hash,
-            ambient_occlusion->rng_offset);
-        const auto source = make_uint2(
-            ambient_occlusion->source_object,
-            ambient_occlusion->source_primitive);
-        (*impl.ambient_occlusion_handlers[index])(
-            scalar_parameters, vector_parameters, cycles_bsdf_tables,
-            textures, geometry_heap, point, transaction_shading_normal,
-            use_undisplaced_geometry, instruction, stack,
-            ambient_occlusion->sobol_table,
-            random_state, source);
-    };
-    const auto primary_key = device_handler_key(instruction.x);
-    luisa::compute::detail::SwitchStmtBuilder{primary_key} % [&] {
-        for (const auto &group : impl.handler_groups) {
-            luisa::compute::detail::SwitchCaseStmtBuilder{group.key} % [&] {
-                if (group.variants.size() == 1u) {
-                    emit_variant(group.variants.front());
-                    return;
-                }
-                const auto variant =
-                    surface_value_runtime_buffer<luisa::uint>(
-                        *impl.runtime,
-                        SurfaceValueRuntimeBufferSlot::svm_instruction_variant)
-                        .read(instruction_index);
-                luisa::compute::detail::SwitchStmtBuilder{variant} % [&] {
-                    for (const auto index : group.variants) {
-                        luisa::compute::detail::SwitchCaseStmtBuilder{index} %
-                            [&, index] { emit_variant(index); };
-                    }
-                    luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
-                        luisa::compute::dsl::unreachable(
-                            "invalid unified surface evaluator fiber");
-                    };
-                };
-            };
-        }
-        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
-            luisa::compute::dsl::unreachable(
-                "invalid unified surface value handler");
-        };
-    };
+    _impl->dispatch(
+        scalar_parameters, vector_parameters, cycles_bsdf_tables, textures,
+        geometry_heap, point, transaction_shading_normal,
+        use_undisplaced_geometry, instruction, instruction_index, locals,
+        ambient_occlusion);
 }
 
 SurfaceValueInstructionDispatcher make_surface_value_instruction_dispatcher(
@@ -882,25 +998,28 @@ SurfaceValueInstructionDispatcher make_surface_value_instruction_dispatcher(
          !scene->ambient_occlusion_distance_buffer)) {
         std::abort();
     }
-    auto handlers = make_surface_value_handlers(
-        scene, nodes, texture_sampling, attribute_lookup, variants,
-        svm_value_bytecode_slots, !needs_ambient_occlusion);
-    SurfaceValueAmbientOcclusionHandlers ambient_occlusion_handlers;
-    if (needs_ambient_occlusion) {
-        ambient_occlusion_handlers = make_surface_ambient_occlusion_handlers(
-            scene, nodes, texture_sampling, attribute_lookup, variants,
-            svm_value_bytecode_slots);
+    const auto stack_capacity = surface_value_stack_storage_lanes(
+        scene->surface_values->svm_scene.maximum_stack_lanes);
+    switch (stack_capacity) {
+        case 32u:
+            return make_surface_value_instruction_dispatcher_with_capacity<
+                32u>(scene, nodes, texture_sampling, attribute_lookup,
+                     variants, needs_ambient_occlusion);
+        case 64u:
+            return make_surface_value_instruction_dispatcher_with_capacity<
+                64u>(scene, nodes, texture_sampling, attribute_lookup,
+                     variants, needs_ambient_occlusion);
+        case 128u:
+            return make_surface_value_instruction_dispatcher_with_capacity<
+                128u>(scene, nodes, texture_sampling, attribute_lookup,
+                      variants, needs_ambient_occlusion);
+        case SurfaceValueRuntime::stack_capacity:
+            return make_surface_value_instruction_dispatcher_with_capacity<
+                SurfaceValueRuntime::stack_capacity>(
+                scene, nodes, texture_sampling, attribute_lookup, variants,
+                needs_ambient_occlusion);
+        default: std::abort();
     }
-    auto groups = make_handler_groups(*scene->surface_values, variants);
-    return SurfaceValueInstructionDispatcher{std::make_shared<
-        SurfaceValueInstructionDispatcher::Impl>(
-        SurfaceValueInstructionDispatcher::Impl{
-            .runtime = scene->surface_values.get(),
-            .handlers = std::move(handlers),
-            .ambient_occlusion_handlers =
-                std::move(ambient_occlusion_handlers),
-            .handler_groups = std::move(groups),
-            .ambient_occlusion = needs_ambient_occlusion})};
 }
 
 } // namespace psycles::luisa_backend::detail

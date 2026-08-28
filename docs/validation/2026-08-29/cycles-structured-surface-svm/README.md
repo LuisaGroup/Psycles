@@ -578,6 +578,88 @@ limit, scene topology, cache identity, or bytecode. A new HIP performance
 claim still requires an interleaved render/profile run; frame size alone is
 not treated as elapsed-time evidence.
 
+## Scene-bounded physical stack specialization
+
+The 255-lane Cycles limit is an address-domain bound, not a requirement that
+every scene materialize 1,020 bytes of private storage. For every verified
+program `p`, the bytecode/storage validators establish
+
+```text
+local_index + operand_width <= p.stack_lanes
+```
+
+and the scene descriptor establishes
+
+```text
+M = max(p.stack_lanes).
+```
+
+Production now chooses the smallest host/JIT-only callable ABI bucket
+`B in {32, 64, 128, 255}` with `M <= B`. Therefore every legal local access
+fits `B`; no device-side capacity branch or address remapping is introduced.
+The 32-lane floor bounds the number of generated callable types. Above that
+floor, `B < 2M`; the terminal 255 bucket preserves the complete Cycles domain.
+Boundary regressions cover `0/1/32/33/64/65/128/129/255/256`, and every bucket
+must retain exactly one whole-aggregate fresh-lifetime definition.
+
+Barbershop has `M = 33`, so it selects 64 physical lanes. A cold LLVM dump
+confirmed that both `[255 x float]` private allocations in `shade_surface`
+became `[64 x float]`, while the coroutine frame remained 176 fields / 848 B.
+The generated surface code object remained effectively unchanged
+(`390788 -> 390784` bytes), so this change is not presented as a code-size
+solution.
+
+Two warm HIP `rocprofv3 --kernel-trace --scratch-memory-trace --stats` runs at
+640x480, 64 fixed spp, staged wavefront, block size 64 gave:
+
+| measurement | 255 lanes | 64 lanes | change |
+|---|---:|---:|---:|
+| `shade_surface` static scratch | 4896 B | 3364 B | -31.3% |
+| `shade_surface` VGPR | 256 | 256 | unchanged |
+| `shade_surface` ns/item, mean of 2 | 25.7597 | 25.7386 | -0.08% |
+| render-only, mean of 2 | 2.43553 s | 2.44169 s | +0.25% |
+
+The elapsed differences are measurement noise: private storage fell
+substantially, but the unchanged 256-VGPR limit prevented a measurable
+occupancy or render-time gain. No speedup is claimed.
+
+The profile command shape was:
+
+```sh
+env PSYCLES_COMPACT_SURFACE_VALUES=1 \
+    PSYCLES_POPULATE_SURFACE_ONCE=1 \
+    LUISA_CORO_SHADER_MAP=1 \
+rocprofv3 --kernel-trace --scratch-memory-trace --stats -f rocpd -- \
+  build/bin/psycles_render_blender_scene \
+  /var/tmp/psycles-official-redownload-20260814/exports/barbershop-5.2 \
+  out.exr hip 640 480 64 64 - 320 240 0 0 64 - 1 0 \
+  wavefront-staged 64 32768 32 1 1 0 4 2 auto 0 0 0 1 1048576
+```
+
+A naive full-image A/B initially appeared to lose a rare glossy contribution.
+The raw single-path trace showed that the camera RNG and ray were bit-exact and
+that the first divergence was the HIPRT closest hit, before surface execution:
+primitive `6451795` versus `6438118`. Repeating the same 255-lane executable
+with the same ray alternated between those two hits, proving this is
+non-deterministic BVH/equidistant fine-geometry selection rather than a stack
+specialization effect. This is why production-image validation must locate the
+first pre-surface trace divergence before attributing an isolated firefly to a
+material change.
+
+The final all-thread build passed. The focused compiler/fallback, HIP, and
+strict native-XIR Vulkan matrices passed `8/8`, `3/3`, and `3/3`. Full CTest
+passed `312/318`; the unchanged failures are the six existing numerical
+volume/area-light regressions:
+
+```text
+psycles.luisa_stacked_volume_fallback
+psycles.luisa_homogeneous_volume_fallback
+psycles.luisa_area_light_forward_vk
+psycles.luisa_volume_path_fallback
+psycles.luisa_volume_path_vk
+psycles.luisa_volume_triangle_fallback
+```
+
 ## Cross-backend Barbershop smoke matrix
 
 The same 320x180, one-sample image and SVM histogram were produced on all

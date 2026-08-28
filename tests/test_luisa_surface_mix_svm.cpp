@@ -57,9 +57,9 @@ make_svm_bank_reference_kernel() {
             const auto storage =
                 luisa::compute::detail::Ref<SurfaceValueStackBank>{
                     stack.expression()};
-            SurfaceValueLocalScalarView scalars{storage};
-            SurfaceValueLocalVectorView vectors{storage};
-            SurfaceValueLocalUnsignedIntegerView unsigned_integers{storage};
+            SurfaceValueLocalScalarView scalars{stack.expression()};
+            SurfaceValueLocalVectorView vectors{scalars};
+            SurfaceValueLocalUnsignedIntegerView unsigned_integers{scalars};
             scalars.write(index, 3.25f);
             vectors.write(index + 1u, make_float3(1.0f, 2.0f, 3.0f));
             unsigned_integers.write(index + 4u,
@@ -69,9 +69,9 @@ make_svm_bank_reference_kernel() {
             luisa::compute::detail::Ref<SurfaceValueStackBank>{
                 stack.expression()};
         mutate(3u, storage);
-        const SurfaceValueLocalScalarView scalars{storage};
-        const SurfaceValueLocalVectorView vectors{storage};
-        const SurfaceValueLocalUnsignedIntegerView unsigned_integers{storage};
+        const SurfaceValueLocalScalarView scalars{stack.expression()};
+        const SurfaceValueLocalVectorView vectors{scalars};
+        const SurfaceValueLocalUnsignedIntegerView unsigned_integers{scalars};
         const auto vector = vectors.read(4u);
         output.write(
             0u,
