@@ -123,6 +123,19 @@ make_surface_closure_selection_input(
 make_surface_closure_selection_input(
     const SurfaceClosurePhysicalCommonRecord &closure) noexcept;
 
+// Cycles ShaderClosure selection over a retained physical slot. Unlike the
+// candidate-record overload, allocation is represented by membership in the
+// initialized prefix and setup failure by closure_type == type_none. The hot
+// path therefore consumes only closure_type and sample_weight; wider identity
+// fields are observed solely when diagnostic runtime flags are requested.
+[[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
+surface_closure_selection(
+    const SurfaceClosureSelectionContext &context,
+    const SurfaceClosurePhysicalCommonRecord &closure,
+    bool include_runtime_flags = true,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
+
 [[nodiscard]] SurfaceClosureSelectionInput
 make_surface_closure_selection_input(
     const SurfaceClosureExpression &closure) noexcept;

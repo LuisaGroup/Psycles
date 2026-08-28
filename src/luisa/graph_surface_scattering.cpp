@@ -22,22 +22,6 @@ template<typename Closure>
     return closure.lobe == static_cast<std::uint32_t>(lobe);
 }
 
-[[nodiscard]] SurfaceClosureIdentityExpression closure_identity(
-    const SurfaceClosurePhysicalRecord &closure) noexcept {
-    return {
-        .kind = Expr<std::uint32_t>{closure.kind.expression()},
-        .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
-        .bssrdf_method = Expr<std::uint32_t>{
-            closure.bssrdf_method.expression()},
-        .allocation_weight =
-            Expr<float>{closure.allocation_weight.expression()},
-        .setup_valid = Expr<bool>{closure.setup_valid.expression()},
-        .roughness = Expr<float>{closure.roughness.expression()},
-        .preserve_ggx_energy =
-            Expr<bool>{closure.preserve_ggx_energy.expression()},
-        .beckmann = Expr<bool>{closure.beckmann.expression()}};
-}
-
 }// namespace
 
 [[nodiscard]] Float fresnel_dielectric_cos(
@@ -275,7 +259,7 @@ template<typename Closure>
 
 [[nodiscard]] Bool closure_allocated(
     const SurfaceClosurePhysicalRecord &closure) noexcept {
-    return closure_allocated(closure_identity(closure));
+    return closure_allocated(surface_closure_identity(closure));
 }
 
 [[nodiscard]] Bool closure_allocated(
@@ -350,7 +334,7 @@ template<typename Closure>
     Float glossy_filter_roughness,
     SurfaceClosureReachability reachability) noexcept {
     return cycles_runtime_flags(
-        closure_identity(closure),
+        surface_closure_identity(closure),
         std::move(glossy_filter_roughness),
         reachability);
 }
@@ -471,7 +455,7 @@ template<typename Closure>
     const SurfaceClosurePhysicalRecord &closure,
     SurfaceClosureReachability reachability) noexcept {
     return cycles_closure_type(
-        closure_identity(closure), reachability);
+        surface_closure_identity(closure), reachability);
 }
 
 [[nodiscard]] UInt cycles_closure_type(

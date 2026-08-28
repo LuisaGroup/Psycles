@@ -14,6 +14,7 @@ namespace {
 inline constexpr std::uint32_t setup_valid_bit = 1u << 0u;
 inline constexpr std::uint32_t preserve_ggx_energy_bit = 1u << 1u;
 inline constexpr std::uint32_t beckmann_bit = 1u << 2u;
+inline constexpr std::uint32_t physical_setup_valid_bit = 1u << 29u;
 
 enum class StorageField : std::uint32_t {
     identity,
@@ -329,12 +330,12 @@ void SurfaceClosureSet::finalize_physical_transparent(
     // payload block was initialized by the first append and is unobservable;
     // overwrite only the common block once the additive reduction is final.
     luisa::compute::UInt4 identity = luisa::make_uint4(
+        cycles_closure::type_transparent,
         static_cast<std::uint32_t>(
             SurfaceClosureKind::transparent),
         static_cast<std::uint32_t>(
             SurfaceClosureLobe::none),
-        setup_valid_bit,
-        0u);
+        physical_setup_valid_bit);
     _physical_0.write(
         index,
         make_float4x4(

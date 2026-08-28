@@ -10,6 +10,7 @@
 
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/surface.h>
+#include <psycles/luisa/surface_closure_identity.h>
 #include <psycles/luisa/surface_closure_physical_blocks.h>
 #include <psycles/luisa/surface_closure_reachability.h>
 
@@ -219,20 +220,6 @@ struct MicrofacetReflectionSample {
     Bool valid;
 };
 
-// Minimal expression-only projection shared by closure classification
-// callables. It preserves the exact allocation/setup identity needed by
-// Cycles without materializing the complete scattering record.
-struct SurfaceClosureIdentityExpression {
-    Expr<std::uint32_t> kind;
-    Expr<std::uint32_t> lobe;
-    Expr<std::uint32_t> bssrdf_method;
-    Expr<float> allocation_weight;
-    Expr<bool> setup_valid;
-    Expr<float> roughness;
-    Expr<bool> preserve_ggx_energy;
-    Expr<bool> beckmann;
-};
-
 struct AdjustedIor {
     Float eta;
     Float f0;
@@ -337,10 +324,6 @@ template <typename Id, typename Values>
     Float3 fss) noexcept;
 [[nodiscard]] Float closure_sample_weight(
     const SurfaceClosurePhysicalCommonRecord &closure) noexcept;
-[[nodiscard]] Bool closure_allocated(
-    const SurfaceClosurePhysicalRecord &closure) noexcept;
-[[nodiscard]] Bool closure_allocated(
-    const SurfaceClosureIdentityExpression &closure) noexcept;
 // Exact Cycles bump_shadowing_term contract. `smooth_normal` is the final
 // shader-wide sd->N; closure.normal may be an independently linked socket.
 // A nonzero factor changes closure energy but never density. A zero factor
@@ -354,23 +337,6 @@ template <typename Id, typename Values>
     Bool diffuse_closure,
     Float3 direction,
     Bool is_evaluation) noexcept;
-[[nodiscard]] UInt cycles_runtime_flags(const SurfaceClosurePhysicalRecord &closure,
-    Float glossy_filter_roughness = 0.0f,
-    SurfaceClosureReachability reachability =
-        all_surface_closure_reachability) noexcept;
-[[nodiscard]] UInt cycles_runtime_flags(
-    const SurfaceClosureIdentityExpression &closure,
-    Float glossy_filter_roughness,
-    SurfaceClosureReachability reachability =
-        all_surface_closure_reachability) noexcept;
-[[nodiscard]] UInt cycles_closure_type(
-    const SurfaceClosurePhysicalRecord &closure,
-    SurfaceClosureReachability reachability =
-        all_surface_closure_reachability) noexcept;
-[[nodiscard]] UInt cycles_closure_type(
-    const SurfaceClosureIdentityExpression &closure,
-    SurfaceClosureReachability reachability =
-        all_surface_closure_reachability) noexcept;
 [[nodiscard]] Float oren_nayar_g(Float cosine) noexcept;
 [[nodiscard]] Float3 diffuse_intensity(
     const SurfaceClosurePhysicalCommonRecord &closure,

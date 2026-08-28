@@ -92,14 +92,13 @@ SurfaceClosureTrace SurfaceClosureEvaluator::closure_trace(
             _closures.physical_access(requested_index);
         const auto closure =
             _closures.physical_common_entry(access);
-        const auto identity = physical_common_identity(closure);
         return {
             .count = _closures.count(),
             .runtime_flags = runtime_flags(),
             .index = requested_index,
             .type = select(
                 UInt{cycles_closure::type_none},
-                detail::cycles_closure_type(identity, _reachability),
+                closure.closure_type,
                 access.valid()),
             .sample_weight = select(
                 0.0f, closure.sample_weight, access.valid()),

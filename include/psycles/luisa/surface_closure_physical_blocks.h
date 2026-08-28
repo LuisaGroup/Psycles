@@ -44,8 +44,13 @@ struct SurfaceClosurePhysicalBlocks {
 using SurfaceClosurePhysicalPayloadLoader =
     std::function<luisa::compute::Float4x4()>;
 
-// Decoded discriminant and fields shared by every member of the physical
-// closure tagged union. The last vector is intentionally named after its
+// Decoded discriminants and fields shared by every member of the physical
+// closure tagged union. `closure_type` is the post-setup Cycles ClosureType,
+// recorded once when the retained slot is written. It is deliberately
+// distinct from the authoring-oriented (kind, lobe) payload tag: categorical
+// selection consumes only closure_type and sample_weight, while payload
+// elimination may still use the richer tag until every family adopts the
+// Cycles ABI directly. The last vector is intentionally named after its
 // representation rather than either logical interpretation: block_0 stores
 // Color for ordinary/BSSRDF closures and evaluation_scale for the dielectric
 // family. Decoding that lane is independent of block_1; choosing its semantic
@@ -57,6 +62,7 @@ using SurfaceClosurePhysicalPayloadLoader =
 // runtime kind branch dominate the mutually exclusive payload loads, matching
 // the demand-loaded ShaderClosure representation used by Cycles.
 struct SurfaceClosurePhysicalCommonRecord {
+    UInt closure_type;
     UInt kind;
     UInt lobe;
     Float3 weight;
