@@ -176,6 +176,49 @@ again. It also recomputes the scene's maximum typed capacities and closure
 capability masks. This rejects missing relocation, cross-program references,
 unowned suffixes and stale aggregate metadata transactionally.
 
+## Runtime scene assembly and exact evaluator provenance
+
+`build_surface_value_runtime` now constructs the replacement preparation and
+emission programs for every real material topology, composes the applicable
+automatic-normal prefix, and aggregates the resulting programs in exactly the
+runtime tag order. The image is retained in `SurfaceValueRuntime::svm_scene`;
+it is no longer only a compiler-test artifact.
+
+Evaluator dispatch is not reconstructed from an opcode or a material tag. A
+temporary host-only relation records the original `ValueExpressionId` at each
+new value record. The established exact semantic interner supplies one variant
+for that source value, and runtime construction checks this commuting relation:
+
+```text
+ValueExpressionId -> old proven instruction -> exact evaluator variant
+        |                                        |
+        +-> structured SVM value record --------+
+```
+
+One source value may occur in both normal and root epochs, but both occurrences
+must select the same variant. Every value record must select an in-domain
+variant with the same operation, arity, and opcode-owned immediate; every Mix,
+guard, closure leaf, `SetNormal`, and `End` record must select the invalid
+sentinel. The relation is then concatenated in the same order as the scene
+image. Runtime construction rejects missing sources, duplicate source values
+with different variants, unowned old-stream suffixes, and any non-parallel
+scene relation.
+
+The cross-backend compact-surface fixture additionally compares the unique
+variant domain of each new program tag with the corresponding established
+transaction. It requires a real structured guard and closure leaf, matching
+endpoint projection and flags, matching `SetNormal` count, one final `End`, and
+the complete public scene verifier. All three available backends pass:
+
+```sh
+ctest --test-dir build --output-on-failure \
+  -R '^psycles\.luisa_compact_surface_preparation_(fallback|hip|vk)$'
+```
+
+Result: 3/3 passed in 0.88 s. This proves scene construction and evaluator
+selection on real material graphs; device execution still uses the old split
+interpreter at this milestone, so it is not yet an image or performance claim.
+
 ## CFG liveness and optimal typed storage
 
 The emitted CFG is acyclic because every ordinary successor and jump target
@@ -249,17 +292,20 @@ ctest --test-dir build --output-on-failure \
 
 All focused tests pass. Virtual closure weights are assigned and colored in
 the scalar bank together with ordinary scalar values, and the semantic CFG is
-lowered transactionally into the final compact bytecode and aggregated into a
-scene-wide image. The next stage is to execute this stream through one Luisa
-interpreter, replacing the old value/closure dual-stream runtime.
+lowered transactionally into the final compact bytecode, aggregated into a
+scene-wide image, and constructed for the actual runtime topology set with a
+total evaluator side relation. The next stage is to upload and execute this
+stream through one Luisa interpreter, replacing the old value/closure
+dual-stream runtime.
 
-The all-thread repository run executed all 318 registered tests in 12.54 s:
+The all-thread repository run after runtime scene assembly executed all 318
+registered tests in 13.42 s:
 312 passed and the same six pre-existing exact numeric fixtures failed
 (`luisa_stacked_volume_fallback`, `luisa_homogeneous_volume_fallback`,
 `luisa_area_light_forward_vk`, `luisa_volume_path_fallback`,
 `luisa_volume_path_vk`, and `luisa_volume_triangle_fallback`). The new compiler
-test passed, and this milestone is not connected to a runtime path that could
-change those images.
+and runtime-relation tests passed, and this milestone is not connected to a
+device execution path that could change those images.
 
 Only after the old split runtime has been removed will fallback, HIP, and
 strict native XIR-to-SPIR-V Vulkan image gates and complex-scene benchmarks be

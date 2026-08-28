@@ -943,6 +943,18 @@ int main(int argc, char **argv) {
                   << backend << '\n';
         return EXIT_FAILURE;
     }
+    if (!program_evidence.unified_scene_exact) {
+        std::cerr << "replacement surface SVM scene lost its exact structured "
+                     "program relation on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    if (!program_evidence.unified_variant_bijection) {
+        std::cerr << "replacement surface SVM did not preserve the exact "
+                     "instruction/evaluator relation on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
     const auto bump_variant = program_evidence.bump_variant;
     const auto contains_variant = [](const auto &domain,
                                      std::uint32_t variant) noexcept {
