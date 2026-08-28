@@ -206,6 +206,9 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
   // second hash identity for diagnostic aggregation.
   using ValueKey = std::array<std::uint32_t, 5u>;
   std::map<ValueKey, std::uint64_t> value_counts;
+  // source variant/key/op, target variant/key/op, direct dependency.
+  using ValueTransitionKey = std::array<std::uint32_t, 7u>;
+  std::map<ValueTransitionKey, std::uint64_t> value_transition_counts;
   std::map<std::uint32_t, std::uint64_t> closure_leaf_counts;
   const auto &runtime = *_scene->surface_values;
   const auto &image = runtime.executable.values;
@@ -244,6 +247,13 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
     };
     using ParameterAddress = std::pair<std::uint32_t, std::uint32_t>;
     std::map<ParameterAddress, ParameterUseInterval> parameter_intervals;
+    struct PreviousValueInstruction {
+      std::uint32_t variant{};
+      std::uint32_t handler_key{};
+      std::uint32_t operation{};
+      std::uint32_t result_address{};
+    };
+    std::optional<PreviousValueInstruction> previous_value_instruction;
     const auto flush_parameter_intervals = [&]() noexcept {
       for (const auto &[address, interval] : parameter_intervals) {
         if (address.first >= histogram.parameter_reuse_bins.size() ||
@@ -282,6 +292,7 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
         // assumed live across that reuse boundary, so it forms two exact
         // intervals when both segments consume it.
         flush_parameter_intervals();
+        previous_value_instruction.reset();
         checked_add(histogram.surface_normal_transition_executions,
                     populations);
         continue;
@@ -303,6 +314,7 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
         histogram.exact = false;
         continue;
       }
+      auto directly_depends_on_previous = false;
       for (auto operand_index = std::size_t{};
            operand_index < operand_count; ++operand_index) {
         const auto word_index =
@@ -325,6 +337,10 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
           histogram.exact = false;
           break;
         }
+        directly_depends_on_previous |=
+            previous_value_instruction.has_value() &&
+            operand.expanded().encoded() ==
+                previous_value_instruction->result_address;
         const auto concrete_parameter = operand.parameter();
         if (concrete_parameter) {
           switch (operand.bank()) {
@@ -389,14 +405,34 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
           break;
         }
       }
+      const auto handler_key =
+          compiler::surface_value_handler_key(instruction);
+      const auto operation = static_cast<std::uint32_t>(
+          compiler::surface_value_operation(instruction));
       checked_add(value_counts[ValueKey{
-                      variant, compiler::surface_value_handler_key(instruction),
-                      static_cast<std::uint32_t>(
-                          compiler::surface_value_operation(instruction)),
+                      variant, handler_key,
+                      operation,
                       static_cast<std::uint32_t>(
                           compiler::surface_value_result_bank(instruction)),
                       compiler::surface_value_svm_immediate(instruction)}],
                   populations);
+      if (previous_value_instruction) {
+        checked_add(
+            value_transition_counts[ValueTransitionKey{
+                previous_value_instruction->variant,
+                previous_value_instruction->handler_key,
+                previous_value_instruction->operation,
+                variant,
+                handler_key,
+                operation,
+                directly_depends_on_previous ? 1u : 0u}],
+            populations);
+      }
+      previous_value_instruction = PreviousValueInstruction{
+          .variant = variant,
+          .handler_key = handler_key,
+          .operation = operation,
+          .result_address = instruction.result};
     }
     flush_parameter_intervals();
     const auto accumulate_unique_parameters =
@@ -444,6 +480,20 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
                                                .result_bank = key[3u],
                                                .svm_immediate = key[4u],
                                                .executions = executions});
+  }
+  histogram.value_handler_transitions.reserve(
+      value_transition_counts.size());
+  for (const auto &[key, executions] : value_transition_counts) {
+    histogram.value_handler_transitions.emplace_back(
+        LuisaSurfaceValueHandlerTransitionExecutionCount{
+            .source_variant_index = key[0u],
+            .source_handler_key = key[1u],
+            .source_operation = key[2u],
+            .target_variant_index = key[3u],
+            .target_handler_key = key[4u],
+            .target_operation = key[5u],
+            .direct_dependency = key[6u] != 0u,
+            .executions = executions});
   }
   histogram.closure_leaf_variants.reserve(closure_leaf_counts.size());
   for (const auto &[static_variant, visits] : closure_leaf_counts) {

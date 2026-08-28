@@ -195,6 +195,28 @@ struct LuisaSurfaceValueHandlerExecutionCount {
       const LuisaSurfaceValueHandlerExecutionCount &) const noexcept = default;
 };
 
+// Hit-weighted adjacency in the compact preparation stream. A transition is
+// formed only between two ordinary value instructions in the same normal-
+// transaction segment; the explicit surface-normal commit terminates a
+// segment. `direct_dependency` is true exactly when the target reads the
+// source instruction's local result address. The pair therefore describes
+// both the interpreter dispatch trace and its immediate data-flow edge without
+// guessing from authored node identity.
+struct LuisaSurfaceValueHandlerTransitionExecutionCount {
+  std::uint32_t source_variant_index{};
+  std::uint32_t source_handler_key{};
+  std::uint32_t source_operation{};
+  std::uint32_t target_variant_index{};
+  std::uint32_t target_handler_key{};
+  std::uint32_t target_operation{};
+  bool direct_dependency{};
+  std::uint64_t executions{};
+
+  auto operator<=>(
+      const LuisaSurfaceValueHandlerTransitionExecutionCount &) const noexcept =
+      default;
+};
+
 struct LuisaSurfaceClosureLeafVisitCount {
   std::uint32_t static_variant{};
   std::uint32_t operation{};
@@ -258,6 +280,8 @@ struct LuisaSurfaceParameterReuseBin {
 struct LuisaSurfaceProgramExecutionHistogram {
   std::vector<std::uint64_t> topology_surface_populations;
   std::vector<LuisaSurfaceValueHandlerExecutionCount> value_handlers;
+  std::vector<LuisaSurfaceValueHandlerTransitionExecutionCount>
+      value_handler_transitions;
   std::uint64_t value_instruction_executions{};
   std::uint64_t surface_normal_transition_executions{};
   LuisaSurfaceValueOperandExecutionCounts value_operand_executions;
