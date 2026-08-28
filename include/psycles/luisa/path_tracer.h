@@ -198,18 +198,32 @@ struct LuisaSurfaceValueHandlerExecutionCount {
 // Hit-weighted adjacency in the compact preparation stream. A transition is
 // formed only between two ordinary value instructions in the same normal-
 // transaction segment; the explicit surface-normal commit terminates a
-// segment. `direct_dependency` is true exactly when the target reads the
-// source instruction's local result address. The pair therefore describes
-// both the interpreter dispatch trace and its immediate data-flow edge without
-// guessing from authored node identity.
+// segment. `direct_operand_mask` names every target operand that reads the
+// source instruction's local result address; its nonzero predicate is exactly
+// `direct_dependency`. `dynamic_direct_operand_mask` is the subset whose
+// scene-wide route is dynamic rather than proven-local. The finite operand
+// domain is small enough to encode without truncation.
+//
+// `source_last_used_by_target` is true exactly when the target contains the
+// final semantic use of this source definition. The analysis follows typed
+// slot definitions, not merely equal slot numbers: reads occur before the
+// target result write, a later definition starts a new lifetime, the normal
+// commit consumes its selected definition and resets the bank namespace, and
+// closure operands are terminal uses of the final segment. Thus the flag is a
+// proof obligation for removing both the source bank write and target bank
+// read, rather than a graph-topology guess.
 struct LuisaSurfaceValueHandlerTransitionExecutionCount {
   std::uint32_t source_variant_index{};
   std::uint32_t source_handler_key{};
   std::uint32_t source_operation{};
+  std::uint32_t source_result_bank{};
   std::uint32_t target_variant_index{};
   std::uint32_t target_handler_key{};
   std::uint32_t target_operation{};
+  std::uint32_t direct_operand_mask{};
+  std::uint32_t dynamic_direct_operand_mask{};
   bool direct_dependency{};
+  bool source_last_used_by_target{};
   std::uint64_t executions{};
 
   auto operator<=>(

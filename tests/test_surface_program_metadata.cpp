@@ -498,6 +498,54 @@ void test_surface_value_storage_plan() {
               scene_image.programs[1u].vector_slots == 1u,
           "scene value-program descriptors lost typed slot bounds");
 
+  const auto linear_liveness = analyze_surface_value_definition_liveness(
+      scene_image, scene_image.programs[0u]);
+  require(linear_liveness.valid &&
+              linear_liveness.last_use_offsets ==
+                  std::vector<std::uint32_t>{
+                      1u, 2u, surface_value_definition_no_use},
+          "definition liveness lost read-before-write slot epochs");
+  auto undefined_liveness_image = scene_image;
+  auto &undefined_liveness_instruction =
+      undefined_liveness_image.instructions[
+          undefined_liveness_image.programs[0u].instruction_begin];
+  undefined_liveness_instruction.operand_payload = replace_operand_lane(
+      undefined_liveness_instruction.operand_payload,
+      compact_operand_address(SurfaceValueAddress{
+          undefined_liveness_instruction.result}),
+      value_operand::binary::a);
+  const auto undefined_liveness =
+      analyze_surface_value_definition_liveness(
+          undefined_liveness_image,
+          undefined_liveness_image.programs[0u]);
+  require(!undefined_liveness.valid &&
+              undefined_liveness.diagnostic.find("undefined local") !=
+                  std::string::npos,
+          "definition liveness accepted an ordinary read-before-definition");
+
+  auto closure_terminal_image = scene_image;
+  auto &closure_terminal_program = closure_terminal_image.programs[0u];
+  closure_terminal_program.closure_begin = 0u;
+  closure_terminal_program.closure_count = 1u;
+  closure_terminal_image.closure_instructions = {
+      SurfaceClosureBytecodeInstruction{
+          .control = static_cast<std::uint32_t>(ClosureOperation::emission) |
+                     make_surface_closure_instruction_kind(
+                         SurfaceClosureInstructionKind::leaf),
+          .payload0 = 0u}};
+  closure_terminal_image.closure_operands = {
+      closure_terminal_image
+          .instructions[closure_terminal_program.instruction_begin + 2u]
+          .result,
+      SurfaceValueAddress::invalid_value};
+  const auto closure_terminal_liveness =
+      analyze_surface_value_definition_liveness(
+          closure_terminal_image, closure_terminal_program);
+  require(closure_terminal_liveness.valid &&
+              closure_terminal_liveness.last_use_offsets ==
+                  std::vector<std::uint32_t>{1u, 2u, 3u},
+          "definition liveness did not retain a closure-terminal value");
+
   const std::vector execution_inputs{
       SurfaceValueExecutionInput{.program = &program, .storage = &plan},
       SurfaceValueExecutionInput{.program = &metadata_program,
@@ -749,8 +797,35 @@ void test_surface_value_storage_plan() {
       .result = transaction_normal_image.instructions.front().result,
       .operand_payload = surface_value_invalid_operand_word,
       .metadata_index = SurfaceValueAddress::invalid_value});
-  require(build_surface_value_scene_image(std::vector{raw_transaction}).valid,
+  const auto raw_transaction_scene =
+      build_surface_value_scene_image(std::vector{raw_transaction});
+  require(raw_transaction_scene.valid,
           "the bytecode verifier rejected a well-formed normal commit");
+  const auto transaction_liveness =
+      analyze_surface_value_definition_liveness(
+          raw_transaction_scene, raw_transaction_scene.programs.front());
+  require(transaction_liveness.valid &&
+              transaction_liveness.last_use_offsets ==
+                  std::vector<std::uint32_t>{
+                      1u, surface_value_definition_no_use},
+          "definition liveness lost the normal commit's terminal prefix use");
+  auto post_commit_use_scene = raw_transaction_scene;
+  auto post_commit_read = post_commit_use_scene.instructions.front();
+  post_commit_read.operand_payload = replace_operand_lane(
+      post_commit_read.operand_payload,
+      compact_operand_address(
+          SurfaceValueAddress{post_commit_read.result}),
+      value_operand::unary::input);
+  post_commit_use_scene.instructions.emplace_back(post_commit_read);
+  ++post_commit_use_scene.programs.front().instruction_count;
+  const auto post_commit_liveness =
+      analyze_surface_value_definition_liveness(
+          post_commit_use_scene, post_commit_use_scene.programs.front());
+  require(!post_commit_liveness.valid &&
+              post_commit_liveness.diagnostic.find("undefined local") !=
+                  std::string::npos,
+          "definition liveness leaked a prefix definition across the normal "
+          "commit");
 
   auto uninitialized_instruction = transaction_normal_image;
   const auto uninitialized_result = SurfaceValueAddress{

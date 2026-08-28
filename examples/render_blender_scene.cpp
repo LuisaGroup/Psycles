@@ -197,7 +197,7 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
   auto *root = yyjson_mut_obj(document);
   yyjson_mut_doc_set_root(document, root);
   yyjson_mut_obj_add_str(document, root, "schema",
-                         "psycles.surface-program-execution-histogram.v4");
+                         "psycles.surface-program-execution-histogram.v5");
   yyjson_mut_obj_add_bool(document, root, "exact", histogram.exact);
 
   auto surface_populations = std::uint64_t{0u};
@@ -305,14 +305,23 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
                             transition.source_handler_key);
     yyjson_mut_obj_add_uint(document, entry, "source_operation",
                             transition.source_operation);
+    yyjson_mut_obj_add_uint(document, entry, "source_result_bank",
+                            transition.source_result_bank);
     yyjson_mut_obj_add_uint(document, entry, "target_variant_index",
                             transition.target_variant_index);
     yyjson_mut_obj_add_uint(document, entry, "target_handler_key",
                             transition.target_handler_key);
     yyjson_mut_obj_add_uint(document, entry, "target_operation",
                             transition.target_operation);
+    yyjson_mut_obj_add_uint(document, entry, "direct_operand_mask",
+                            transition.direct_operand_mask);
+    yyjson_mut_obj_add_uint(document, entry, "dynamic_direct_operand_mask",
+                            transition.dynamic_direct_operand_mask);
     yyjson_mut_obj_add_bool(document, entry, "direct_dependency",
                             transition.direct_dependency);
+    yyjson_mut_obj_add_bool(document, entry,
+                            "source_last_used_by_target",
+                            transition.source_last_used_by_target);
     yyjson_mut_obj_add_uint(document, entry, "executions",
                             transition.executions);
     yyjson_mut_arr_add_val(value_handler_transitions, entry);
