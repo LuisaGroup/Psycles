@@ -5,10 +5,12 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
 #include <psycles/compiler/surface_program.h>
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/surface.h>
 #include <psycles/luisa/surface_closure_identity.h>
 #include <psycles/luisa/surface_closure_physical_blocks.h>
@@ -49,6 +51,15 @@ enum class PrincipledLobe : std::uint8_t {
     dielectric
 };
 
+// Exact device identity produced by one successful Cycles-compatible setup
+// routine. This is host-stage ownership of Luisa expressions, not an
+// additional device aggregate. Keeping it optional distinguishes a raw graph
+// closure from a setup closure without manufacturing default device values.
+struct TracedCyclesClosureIdentity {
+    UInt closure_type;
+    UInt microfacet_fresnel;
+};
+
 struct TracedClosure {
     compiler::ClosureOperation operation{
         compiler::ClosureOperation::diffuse};
@@ -59,6 +70,9 @@ struct TracedClosure {
     SurfaceClosureKind physical_kind{SurfaceClosureKind::none};
     PrincipledLobe principled_lobe{PrincipledLobe::none};
     compiler::PrincipledClosureFeatureMask principled_features{};
+    // Empty for raw graph closures. Exactly one setup component must populate
+    // this before the closure crosses the physical retention boundary.
+    std::optional<TracedCyclesClosureIdentity> cycles_identity;
     Float3 weight;
     // Allocation and sampling are distinct in Cycles: Fresnel setup may
     // reduce sample_weight after a closure has already been allocated.
@@ -150,19 +164,44 @@ struct TracedClosure {
     bool beckmann{};
 };
 
+// Complete the setup transition once. `successful_type` and
+// `successful_fresnel` are chosen by the setup component which owns the
+// corresponding Cycles algorithm; a failed setup has the single canonical
+// identity (NONE, NONE). The single-assignment assertion prevents a later
+// layer from silently reclassifying an already-setup closure.
+inline void set_cycles_closure_identity_after_setup(
+    TracedClosure &closure,
+    UInt successful_type,
+    UInt successful_fresnel = static_cast<std::uint32_t>(
+        cycles_closure::MicrofacetFresnel::none)) noexcept {
+    LUISA_ASSERT(
+        !closure.cycles_identity.has_value(),
+        "Cycles closure identity may only be produced once per setup.");
+    closure.cycles_identity.emplace(TracedCyclesClosureIdentity{
+        .closure_type = luisa::compute::select(
+            UInt{cycles_closure::type_none},
+            successful_type,
+            closure.setup_valid),
+        .microfacet_fresnel = luisa::compute::select(
+            UInt{static_cast<std::uint32_t>(
+                cycles_closure::MicrofacetFresnel::none)},
+            successful_fresnel,
+            closure.setup_valid)});
+}
+
 using ClosureVisitor = std::function<void(const TracedClosure &)>;
 
-struct CanonicalSurfaceClosureIdentity {
+struct SurfaceClosureReachabilityIdentity {
     SurfaceClosureKind kind{SurfaceClosureKind::none};
     SurfaceClosureLobe lobe{SurfaceClosureLobe::none};
 };
 
-// Resolve only the immutable host-stage identity tags. This is shared by the
-// device-record projection and the reachability soundness check, so the latter
-// audits the exact identity consumed by scattering rather than a parallel
-// approximation of the canonicalization switch.
-[[nodiscard]] CanonicalSurfaceClosureIdentity
-canonical_surface_closure_identity(const TracedClosure &closure) noexcept;
+// Resolve only the immutable host-stage reachability tags. These tags decide
+// which family branches Luisa records, but never reconstruct the retained
+// ClosureType/Fresnel pair produced by setup.
+[[nodiscard]] SurfaceClosureReachabilityIdentity
+surface_closure_reachability_identity(
+    const TracedClosure &closure) noexcept;
 
 // Project a host-tagged setup closure into the canonical device-tagged
 // physical record consumed by every directional scattering component.

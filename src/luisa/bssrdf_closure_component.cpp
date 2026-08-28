@@ -7,6 +7,21 @@ namespace {
 
 inline constexpr float minimum_radius = 1.0e-8f;
 
+[[nodiscard]] constexpr std::uint32_t bssrdf_closure_type(
+    compiler::BssrdfMethod method) noexcept {
+    switch (method) {
+        case compiler::BssrdfMethod::burley:
+            return cycles_closure::type_bssrdf_burley;
+        case compiler::BssrdfMethod::random_walk:
+            return cycles_closure::type_bssrdf_random_walk;
+        case compiler::BssrdfMethod::random_walk_legacy:
+            return cycles_closure::type_bssrdf_random_walk_legacy;
+        case compiler::BssrdfMethod::random_walk_skin:
+            return cycles_closure::type_bssrdf_random_walk_skin;
+    }
+    return cycles_closure::type_none;
+}
+
 [[nodiscard]] Float dipole_alpha_prime(
     Float rd, Float fourthird_a) noexcept {
     Float x0 = 0.0f;
@@ -135,6 +150,8 @@ BssrdfSetupResult BssrdfClosureComponent::setup(
     } else {
         bssrdf.roughness = clamp(prototype.roughness, 0.0f, 1.0f);
     }
+    set_cycles_closure_identity_after_setup(
+        bssrdf, bssrdf_closure_type(prototype.subsurface_method));
 
     fallback_weight = bsdf_allocated_weight(fallback_weight);
     auto fallback = prototype;
@@ -150,6 +167,8 @@ BssrdfSetupResult BssrdfClosureComponent::setup(
     fallback.roughness = 0.0f;
     fallback.diffuse_roughness = 0.0f;
     fallback.evaluation_scale = make_float3(1.0f);
+    set_cycles_closure_identity_after_setup(
+        fallback, cycles_closure::type_diffuse);
     return {
         .bssrdf = bssrdf,
         .diffuse_fallback = fallback};

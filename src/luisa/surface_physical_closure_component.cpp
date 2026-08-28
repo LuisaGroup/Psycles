@@ -65,7 +65,12 @@ void expand_physical_surface_closure(
          source_reachability,
          source_operation,
          source_features](const TracedClosure &physical) noexcept {
-            const auto identity = canonical_surface_closure_identity(physical);
+            LUISA_ASSERT(
+                physical.cycles_identity.has_value(),
+                "Physical closure setup did not produce an exact Cycles "
+                "identity.");
+            const auto identity =
+                surface_closure_reachability_identity(physical);
             const auto kind_reachable =
                 identity.kind == SurfaceClosureKind::none ||
                 source_reachability.contains(identity.kind);
@@ -145,6 +150,8 @@ void expand_physical_surface_closure(
         transparent.roughness = 0.0f;
         transparent.ior = 1.0f;
         transparent.evaluation_scale = make_float3(1.0f);
+        set_cycles_closure_identity_after_setup(
+            transparent, cycles_closure::type_transparent);
         checked_emit(transparent);
     }
 
@@ -294,6 +301,12 @@ void expand_physical_surface_closure(
             diffuse.roughness =
                 graph_closure.diffuse_roughness;
             diffuse.evaluation_scale = make_float3(1.0f);
+            set_cycles_closure_identity_after_setup(
+                diffuse,
+                luisa::compute::select(
+                    UInt{cycles_closure::type_oren_nayar},
+                    UInt{cycles_closure::type_diffuse},
+                    diffuse.roughness < 1.0e-5f));
             checked_emit(diffuse);
         }
         return;
@@ -345,6 +358,11 @@ void expand_physical_surface_closure(
             allocation_weight * sample_weight(energy.darkening),
             allocated);
         closure.evaluation_scale = energy.energy_scale;
+        set_cycles_closure_identity_after_setup(
+            closure,
+            closure.beckmann
+                ? UInt{cycles_closure::type_microfacet_beckmann}
+                : UInt{cycles_closure::type_microfacet_ggx});
         break;
     }
     case compiler::ClosureOperation::metallic_f82:
@@ -430,6 +448,8 @@ void expand_physical_surface_closure(
         closure.albedo = closure.weight;
         closure.sample_weight = select(
             0.0f, closure.allocation_weight, allocated);
+        set_cycles_closure_identity_after_setup(
+            closure, cycles_closure::type_translucent);
         break;
     }
     case compiler::ClosureOperation::diffuse: {
@@ -445,6 +465,12 @@ void expand_physical_surface_closure(
         closure.albedo = closure.weight;
         closure.sample_weight = select(
             0.0f, closure.allocation_weight, allocated);
+        set_cycles_closure_identity_after_setup(
+            closure,
+            luisa::compute::select(
+                UInt{cycles_closure::type_oren_nayar},
+                UInt{cycles_closure::type_diffuse},
+                closure.roughness < 1.0e-5f));
         break;
     }
     case compiler::ClosureOperation::transparent:
@@ -456,6 +482,8 @@ void expand_physical_surface_closure(
         closure.allocation_weight = 0.0f;
         closure.albedo = make_float3(0.0f);
         closure.sample_weight = 0.0f;
+        set_cycles_closure_identity_after_setup(
+            closure, cycles_closure::type_none);
         break;
     }
     checked_emit(closure);

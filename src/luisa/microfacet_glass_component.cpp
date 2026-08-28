@@ -298,6 +298,26 @@ TracedClosure MicrofacetGlassComponent::setup(
                    sample_weight(energy.darkening),
                allocated);
     closure.evaluation_scale = energy.energy_scale;
+    const auto successful_type = parameters.refraction_only
+                                     ? (parameters.beckmann
+                                            ? cycles_closure::
+                                                  type_microfacet_beckmann_refraction
+                                            : cycles_closure::
+                                                  type_microfacet_ggx_refraction)
+                                     : (parameters.beckmann
+                                            ? cycles_closure::
+                                                  type_microfacet_beckmann_glass
+                                            : cycles_closure::
+                                                  type_microfacet_ggx_glass);
+    const auto successful_fresnel = parameters.refraction_only
+                                        ? cycles_closure::
+                                              MicrofacetFresnel::none
+                                        : cycles_closure::
+                                              MicrofacetFresnel::generalized_schlick;
+    set_cycles_closure_identity_after_setup(
+        closure,
+        successful_type,
+        static_cast<std::uint32_t>(successful_fresnel));
     return closure;
 }
 

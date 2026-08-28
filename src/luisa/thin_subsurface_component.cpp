@@ -9,6 +9,7 @@ namespace {
     const TracedClosure &prototype,
     compiler::ClosureOperation operation,
     SurfaceClosureKind physical_kind,
+    UInt successful_type,
     Float3 normal,
     Float3 weight,
     Float roughness,
@@ -38,6 +39,8 @@ namespace {
     closure.albedo = closure.weight;
     closure.reflection_albedo = make_float3(0.0f);
     closure.transmission_albedo = make_float3(0.0f);
+    set_cycles_closure_identity_after_setup(
+        closure, successful_type);
     return closure;
 }
 
@@ -60,6 +63,10 @@ ThinSubsurfaceResult ThinSubsurfaceComponent::setup(
         prototype,
         compiler::ClosureOperation::diffuse,
         SurfaceClosureKind::none,
+        luisa::compute::select(
+            UInt{cycles_closure::type_oren_nayar},
+            UInt{cycles_closure::type_diffuse},
+            roughness < 1.0e-5f),
         prototype.normal,
         weight * reflection_fraction,
         roughness,
@@ -68,6 +75,7 @@ ThinSubsurfaceResult ThinSubsurfaceComponent::setup(
         prototype,
         compiler::ClosureOperation::translucent,
         SurfaceClosureKind::none,
+        cycles_closure::type_translucent,
         prototype.normal,
         weight * transmission_fraction,
         0.0f,
@@ -76,6 +84,7 @@ ThinSubsurfaceResult ThinSubsurfaceComponent::setup(
         prototype,
         compiler::ClosureOperation::translucent,
         SurfaceClosureKind::rough_translucent,
+        cycles_closure::type_rough_translucent,
         -prototype.normal,
         weight * transmission_fraction,
         roughness,

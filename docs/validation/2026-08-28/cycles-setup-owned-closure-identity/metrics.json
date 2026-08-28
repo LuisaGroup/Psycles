@@ -1,0 +1,64 @@
+{
+  "schema": "psycles.validation.cycles-setup-owned-closure-identity.v1",
+  "cycles_source": {
+    "version": "5.2.1",
+    "commit": "9e2066aef7ef7e20c142ad7bd3303138a4304c93"
+  },
+  "parent": "0432c8f5e37510212b093e11d76264fc418435e9",
+  "candidate": "this commit",
+  "formal_contract": {
+    "raw_identity_absent": true,
+    "setup_identity_single_assignment": true,
+    "failed_setup_identity": [0, 0],
+    "retention_copies_identity": true,
+    "authoring_identity_reconstruction_removed": true
+  },
+  "tests": {
+    "fallback": {"passed": 13, "failed": 0},
+    "hip": {"passed": 13, "failed": 0},
+    "vulkan_native_xir_spirv": {"passed": 13, "failed": 0},
+    "vulkan_dxc_disabled": true
+  },
+  "hip_scene": {
+    "scene": "official Blender 5.2 Barbershop export",
+    "resolution": [640, 480],
+    "spp": 64,
+    "adaptive_sampling": false,
+    "mode": "wavefront-staged",
+    "parent_seconds": [2.34642, 2.34739],
+    "candidate_seconds": [2.35392, 2.33351],
+    "parent_mean_seconds": 2.346905,
+    "candidate_mean_seconds": 2.343715,
+    "candidate_delta_percent": -0.135924,
+    "frame_fields": 177,
+    "frame_bytes": 864,
+    "largest_generated_amdgpu_bytes": 417680,
+    "linked_code_object_bytes": 336984
+  },
+  "closure_benchmark": {
+    "count": 4194304,
+    "iterations": 128,
+    "repeats": 9,
+    "contract": "selected_closure_sample",
+    "median_ms": {
+      "glossy_ggx_regular": 6.93739,
+      "glass_ggx": 11.365,
+      "principled_dielectric": 10.459
+    },
+    "checksums_unchanged": true
+  },
+  "comparison": {
+    "all_pass_report": "all-pass-report.json",
+    "invalid_pixels": 0,
+    "combined_relative_rmse": 0.0003603517258817761,
+    "combined_p99_pixel_rmse": 4.301594636046957e-9,
+    "normal_relative_rmse": 8.475403529360674e-7,
+    "diffuse_color_relative_rmse": 0.00015279742999141713,
+    "visually_structural_difference": false,
+    "triptychs": [
+      "triptychs/combined.png",
+      "triptychs/normal.png",
+      "triptychs/diffcol.png"
+    ]
+  }
+}

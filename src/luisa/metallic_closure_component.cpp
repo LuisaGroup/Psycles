@@ -135,6 +135,15 @@ TracedClosure MetallicClosureComponent::setup(
     closure.transmission_albedo = make_float3(0.0f);
     closure.ior = 1.0f;
     closure.evaluation_scale = energy.energy_scale;
+    set_cycles_closure_identity_after_setup(
+        closure,
+        closure.beckmann
+            ? UInt{cycles_closure::type_microfacet_beckmann}
+            : UInt{cycles_closure::type_microfacet_ggx},
+        static_cast<std::uint32_t>(
+            f82_model
+                ? cycles_closure::MicrofacetFresnel::f82_tint
+                : cycles_closure::MicrofacetFresnel::conductor));
     return closure;
 }
 

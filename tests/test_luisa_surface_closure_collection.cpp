@@ -449,10 +449,11 @@ int main(int argc, char **argv) {
         glass_record.bssrdf_ior = 1.49f;
         glass_record.bssrdf_roughness = 0.51f;
         glass_record.bssrdf_anisotropy = 0.52f;
-        psycles::luisa_backend::detail::finalize_cycles_closure_identity(
-            glass_record,
-            SurfaceClosureKind::glass,
-            SurfaceClosureLobe::transmission);
+        glass_record.closure_type =
+            cycles_closure::type_microfacet_ggx_glass;
+        glass_record.microfacet_fresnel =
+            static_cast<std::uint32_t>(
+                cycles_closure::MicrofacetFresnel::generalized_schlick);
         closures.add(glass_record);
         SurfaceClosureSet physical_closures{
             1u, SurfaceClosureStorageProfile::physical};
@@ -465,8 +466,9 @@ int main(int argc, char **argv) {
         overflow.weight = make_float3(99.0f);
         overflow.allocation_weight = 0.9f;
         overflow.setup_valid = true;
-        psycles::luisa_backend::detail::finalize_cycles_closure_identity(
-            overflow, SurfaceClosureKind::diffuse);
+        overflow.closure_type = cycles_closure::type_diffuse;
+        overflow.microfacet_fresnel = static_cast<std::uint32_t>(
+            cycles_closure::MicrofacetFresnel::none);
         closures.add(overflow);
         physical_closures.append(overflow, [&] {
             physical_fold_mask |= 2u;

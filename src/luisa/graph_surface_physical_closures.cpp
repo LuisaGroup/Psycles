@@ -24,10 +24,10 @@ namespace {
 
 } // namespace
 
-CanonicalSurfaceClosureIdentity
-canonical_surface_closure_identity(
+SurfaceClosureReachabilityIdentity
+surface_closure_reachability_identity(
     const TracedClosure &closure) noexcept {
-    auto result = CanonicalSurfaceClosureIdentity{};
+    auto result = SurfaceClosureReachabilityIdentity{};
     if (closure.physical_kind != SurfaceClosureKind::none) {
         result.kind = closure.physical_kind;
     } else {
@@ -105,8 +105,15 @@ canonical_surface_closure_identity(
 
 SurfaceClosureRecord canonical_surface_closure(
     const TracedClosure &closure) noexcept {
+    LUISA_ASSERT(
+        closure.cycles_identity.has_value(),
+        "Physical closure reached retention without a setup-owned Cycles "
+        "identity.");
     auto result = SurfaceClosureRecord::zero();
-    const auto identity = canonical_surface_closure_identity(closure);
+    const auto identity = surface_closure_reachability_identity(closure);
+    result.closure_type = closure.cycles_identity->closure_type;
+    result.microfacet_fresnel =
+        closure.cycles_identity->microfacet_fresnel;
     result.weight = closure.weight;
     result.allocation_weight = closure.allocation_weight;
     result.sample_weight = closure.sample_weight;
@@ -203,10 +210,6 @@ SurfaceClosureRecord canonical_surface_closure(
         result.bssrdf_roughness = closure.roughness;
         result.bssrdf_anisotropy = closure.subsurface_anisotropy;
     }
-    // Retention consumes this exact post-setup identity. No downstream pack,
-    // selector, evaluator, or sampler may reconstruct it from kind/lobe.
-    finalize_cycles_closure_identity(
-        result, identity.kind, identity.lobe);
     return result;
 }
 

@@ -97,6 +97,8 @@ TracedClosure SheenClosureComponent::setup(
         closure.roughness = ltc.roughness;
         closure.sheen_transform_a = ltc.transform_a;
         closure.sheen_transform_b = ltc.transform_b;
+        set_cycles_closure_identity_after_setup(
+            closure, cycles_closure::type_sheen);
         return closure;
     }
 
@@ -115,6 +117,8 @@ TracedClosure SheenClosureComponent::setup(
     closure.albedo = closure.weight;
     closure.sheen_transform_a = 0.0f;
     closure.sheen_transform_b = 0.0f;
+    set_cycles_closure_identity_after_setup(
+        closure, cycles_closure::type_ashikhmin_velvet);
     return closure;
 }
 
