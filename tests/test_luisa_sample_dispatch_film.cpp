@@ -1,4 +1,5 @@
 #include <psycles/compiler/core_nodes.h>
+#include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/contract/scene.h>
 #include <psycles/io/image.h>
 #include <psycles/luisa/path_trace_schema.h>
@@ -585,14 +586,29 @@ validate_surface_program_histograms(const RenderResult &single_request,
   }
   auto value_handler_transition_executions = std::uint64_t{0u};
   auto directly_dependent_transition_executions = std::uint64_t{0u};
+  auto last_use_forwarding_transition_executions = std::uint64_t{0u};
+  constexpr auto valid_direct_operand_mask =
+      (std::uint32_t{1u} << surface_value_max_operand_count) - 1u;
   for (const auto &entry : expected.value_handler_transitions) {
     value_handler_transition_executions += entry.executions;
     directly_dependent_transition_executions +=
         entry.direct_dependency ? entry.executions : 0u;
+    last_use_forwarding_transition_executions +=
+        entry.source_last_used_by_target ? entry.executions : 0u;
     if (entry.executions == 0u ||
-        entry.executions % expected_surface_events != 0u) {
+        entry.executions % expected_surface_events != 0u ||
+        entry.direct_dependency != (entry.direct_operand_mask != 0u) ||
+        (entry.dynamic_direct_operand_mask &
+         ~entry.direct_operand_mask) != 0u ||
+        (entry.direct_operand_mask & ~valid_direct_operand_mask) != 0u ||
+        (entry.source_last_used_by_target &&
+         !entry.direct_dependency) ||
+        entry.source_result_bank >
+            static_cast<std::uint32_t>(
+                SurfaceValueBank::unsigned_integer)) {
       std::cerr << "one-topology value handler transition count is not an "
-                   "exact multiple of surface events\n";
+                   "exact multiple of surface events, or its exact data-flow "
+                   "classification is malformed\n";
       return false;
     }
   }
@@ -653,6 +669,9 @@ validate_surface_program_histograms(const RenderResult &single_request,
       interval_unique_parameters < unique_parameter_values ||
       value_handler_transition_executions == 0u ||
       directly_dependent_transition_executions == 0u ||
+      last_use_forwarding_transition_executions == 0u ||
+      last_use_forwarding_transition_executions >
+          directly_dependent_transition_executions ||
       value_handler_transition_executions >= value_handler_executions ||
       value_handler_executions +
               expected.surface_normal_transition_executions !=

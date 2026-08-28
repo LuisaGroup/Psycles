@@ -264,6 +264,8 @@ maximum_surface_value_operand_count() noexcept {
 inline constexpr std::size_t surface_value_max_operand_count =
     maximum_surface_value_operand_count();
 static_assert(surface_value_max_operand_count == value_operand::brick::count);
+static_assert(surface_value_max_operand_count <=
+              std::numeric_limits<std::uint32_t>::digits);
 
 [[nodiscard]] constexpr std::uint32_t surface_value_operand_word_count(
     std::size_t operand_count) noexcept {
@@ -1496,6 +1498,32 @@ struct SurfaceValueExecutableScene {
   std::vector<SurfaceValueStaticVariant> variants;
   std::vector<std::uint32_t> instruction_variants;
 };
+
+inline constexpr std::uint32_t surface_value_definition_no_use =
+    std::numeric_limits<std::uint32_t>::max();
+
+// Exact definition/use relation for one serialized value program. Entries are
+// parallel to the descriptor's instruction slice. Ordinary-definition entries
+// contain the offset of their final semantic use; the descriptor's
+// instruction_count denotes a closure-terminal use and
+// surface_value_definition_no_use denotes no serialized use. Normal commits
+// have no definition and therefore retain the no-use sentinel.
+//
+// The analysis tracks definition epochs of each typed slot: operands read the
+// old epoch before an instruction result redefines that slot, and a normal
+// commit clears the independently colored namespace. It consequently remains
+// correct when linear-scan coloring reuses one encoded address for an entire
+// chain.
+struct SurfaceValueDefinitionLiveness {
+  bool valid{};
+  std::string diagnostic;
+  std::vector<std::uint32_t> last_use_offsets;
+};
+
+[[nodiscard]] SurfaceValueDefinitionLiveness
+analyze_surface_value_definition_liveness(
+    const SurfaceValueSceneImage &image,
+    const SurfaceValueProgramDescriptor &program);
 
 // `active` must be transitively closed over ValueInstruction operands.
 // `outputs` names values consumed after the stream (normally closure roots),

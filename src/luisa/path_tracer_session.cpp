@@ -206,8 +206,9 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
   // second hash identity for diagnostic aggregation.
   using ValueKey = std::array<std::uint32_t, 5u>;
   std::map<ValueKey, std::uint64_t> value_counts;
-  // source variant/key/op, target variant/key/op, direct dependency.
-  using ValueTransitionKey = std::array<std::uint32_t, 7u>;
+  // source variant/key/op/bank, target variant/key/op, direct operand mask,
+  // dynamic-route subset, source-last-used-by-target.
+  using ValueTransitionKey = std::array<std::uint32_t, 10u>;
   std::map<ValueTransitionKey, std::uint64_t> value_transition_counts;
   std::map<std::uint32_t, std::uint64_t> closure_leaf_counts;
   const auto &runtime = *_scene->surface_values;
@@ -234,6 +235,40 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
       histogram.exact = false;
       continue;
     }
+    const auto definition_liveness =
+        compiler::analyze_surface_value_definition_liveness(image, program);
+    if (!definition_liveness.valid) {
+      histogram.exact = false;
+      continue;
+    }
+    const auto &definition_last_uses =
+        definition_liveness.last_use_offsets;
+    const auto decode_operand =
+        [&](const compiler::SurfaceValueBytecodeInstruction &instruction,
+            std::size_t operand_index,
+            compiler::SurfaceValueOperandAddress &operand) noexcept {
+          const auto operand_count =
+              compiler::surface_value_operand_count(instruction);
+          if (operand_index >= operand_count) {
+            return false;
+          }
+          const auto word_index =
+              operand_index / compiler::surface_value_operands_per_word;
+          const auto lane =
+              operand_index % compiler::surface_value_operands_per_word;
+          auto word = instruction.operand_payload;
+          if (operand_count >
+              compiler::surface_value_inline_operand_capacity) {
+            if (instruction.operand_payload >= image.operands.size() ||
+                word_index >=
+                    image.operands.size() - instruction.operand_payload) {
+              return false;
+            }
+            word = image.operands[instruction.operand_payload + word_index];
+          }
+          operand = compiler::surface_value_operand_from_word(word, lane);
+          return operand.valid();
+        };
     struct UniqueParameterAddresses {
       std::set<std::uint32_t> scalars;
       std::set<std::uint32_t> vectors;
@@ -248,9 +283,11 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
     using ParameterAddress = std::pair<std::uint32_t, std::uint32_t>;
     std::map<ParameterAddress, ParameterUseInterval> parameter_intervals;
     struct PreviousValueInstruction {
+      std::uint32_t offset{};
       std::uint32_t variant{};
       std::uint32_t handler_key{};
       std::uint32_t operation{};
+      std::uint32_t result_bank{};
       std::uint32_t result_address{};
     };
     std::optional<PreviousValueInstruction> previous_value_instruction;
@@ -314,33 +351,28 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
         histogram.exact = false;
         continue;
       }
-      auto directly_depends_on_previous = false;
+      auto direct_operand_mask = std::uint32_t{};
+      auto dynamic_direct_operand_mask = std::uint32_t{};
       for (auto operand_index = std::size_t{};
            operand_index < operand_count; ++operand_index) {
-        const auto word_index =
-            operand_index / compiler::surface_value_operands_per_word;
-        const auto lane =
-            operand_index % compiler::surface_value_operands_per_word;
-        auto word = instruction.operand_payload;
-        if (operand_count > compiler::surface_value_inline_operand_capacity) {
-          if (instruction.operand_payload >= image.operands.size() ||
-              word_index >=
-                  image.operands.size() - instruction.operand_payload) {
-            histogram.exact = false;
-            break;
-          }
-          word = image.operands[instruction.operand_payload + word_index];
-        }
-        const auto operand =
-            compiler::surface_value_operand_from_word(word, lane);
-        if (!operand.valid()) {
+        auto operand = compiler::SurfaceValueOperandAddress{};
+        if (!decode_operand(instruction, operand_index, operand)) {
           histogram.exact = false;
           break;
         }
-        directly_depends_on_previous |=
+        const auto directly_depends_on_previous =
             previous_value_instruction.has_value() &&
             operand.expanded().encoded() ==
                 previous_value_instruction->result_address;
+        if (directly_depends_on_previous) {
+          const auto operand_bit =
+              std::uint32_t{1u} << operand_index;
+          direct_operand_mask |= operand_bit;
+          if (static_variant.operand_routes[operand_index] ==
+              compiler::SurfaceValueOperandRoute::dynamic) {
+            dynamic_direct_operand_mask |= operand_bit;
+          }
+        }
         const auto concrete_parameter = operand.parameter();
         if (concrete_parameter) {
           switch (operand.bank()) {
@@ -417,21 +449,33 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
                       compiler::surface_value_svm_immediate(instruction)}],
                   populations);
       if (previous_value_instruction) {
+        const auto source_last_used_by_target =
+            direct_operand_mask != 0u &&
+            previous_value_instruction->offset <
+                definition_last_uses.size() &&
+            definition_last_uses[previous_value_instruction->offset] ==
+                offset;
         checked_add(
             value_transition_counts[ValueTransitionKey{
                 previous_value_instruction->variant,
                 previous_value_instruction->handler_key,
                 previous_value_instruction->operation,
+                previous_value_instruction->result_bank,
                 variant,
                 handler_key,
                 operation,
-                directly_depends_on_previous ? 1u : 0u}],
+                direct_operand_mask,
+                dynamic_direct_operand_mask,
+                source_last_used_by_target ? 1u : 0u}],
             populations);
       }
       previous_value_instruction = PreviousValueInstruction{
+          .offset = offset,
           .variant = variant,
           .handler_key = handler_key,
           .operation = operation,
+          .result_bank = static_cast<std::uint32_t>(
+              compiler::surface_value_result_bank(instruction)),
           .result_address = instruction.result};
     }
     flush_parameter_intervals();
@@ -489,10 +533,14 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
             .source_variant_index = key[0u],
             .source_handler_key = key[1u],
             .source_operation = key[2u],
-            .target_variant_index = key[3u],
-            .target_handler_key = key[4u],
-            .target_operation = key[5u],
-            .direct_dependency = key[6u] != 0u,
+            .source_result_bank = key[3u],
+            .target_variant_index = key[4u],
+            .target_handler_key = key[5u],
+            .target_operation = key[6u],
+            .direct_operand_mask = key[7u],
+            .dynamic_direct_operand_mask = key[8u],
+            .direct_dependency = key[7u] != 0u,
+            .source_last_used_by_target = key[9u] != 0u,
             .executions = executions});
   }
   histogram.closure_leaf_variants.reserve(closure_leaf_counts.size());
