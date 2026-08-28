@@ -17,6 +17,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <utility>
 
 namespace psycles::test_support {
 namespace {
@@ -186,21 +187,17 @@ SurfacePoint make_surface_value_transaction_test_point() noexcept {
     return point;
 }
 
-std::string validate_compact_surface_value_program_abi(
-    const std::shared_ptr<LuisaSceneData> &scene) {
-    const auto texture_sampling = make_texture_2d_sampling_callables();
-    const auto attribute_lookup =
-        make_surface_attribute_lookup_callable(0u, 1u);
-    const auto dispatcher = make_surface_value_instruction_dispatcher(
-        scene, texture_sampling, attribute_lookup,
-        SurfaceValueProgramDomain::preparation);
-    if (dispatcher.requires_ambient_occlusion()) {
-        return "AO-free unified value dispatcher changed callable ABI";
-    }
+namespace {
+
+template<std::size_t StackCapacity>
+[[nodiscard]] std::string validate_compact_surface_value_program_abi_for_stack(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const SurfaceValueInstructionDispatcher &dispatcher) {
+    using Stack = SurfaceValueStackBankFor<StackCapacity>;
     using ProbeCallable = Callable<void(
         Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
         BindlessArray, SurfacePointCall &, luisa::float3, bool, luisa::uint4,
-        luisa::uint, SurfaceValueStackBank &)>;
+        luisa::uint, Stack &)>;
     ProbeCallable probe{
         [dispatcher](BufferFloat scalar_parameters,
                      BufferFloat3 vector_parameters,
@@ -212,12 +209,13 @@ std::string validate_compact_surface_value_program_abi(
                      Bool use_undisplaced_geometry,
                      Var<luisa::uint4> instruction,
                      UInt instruction_index,
-                     Var<SurfaceValueStackBank> &stack) noexcept {
+                     Var<Stack> &stack) noexcept {
+            const SurfaceValueLocalsView locals{stack.expression()};
             dispatcher(
                 scalar_parameters, vector_parameters, cycles_bsdf_tables,
                 textures, geometry_heap, point, transaction_shading_normal,
                 use_undisplaced_geometry, instruction, instruction_index,
-                stack, nullptr);
+                locals, nullptr);
         }};
     const auto &function = probe.function();
     auto surface_point_arguments = std::size_t{0u};
@@ -247,30 +245,76 @@ std::string validate_compact_surface_value_program_abi(
     return {};
 }
 
+} // namespace
+
+std::string validate_compact_surface_value_program_abi(
+    const std::shared_ptr<LuisaSceneData> &scene) {
+    const auto texture_sampling = make_texture_2d_sampling_callables();
+    const auto attribute_lookup =
+        make_surface_attribute_lookup_callable(0u, 1u);
+    const auto dispatcher = make_surface_value_instruction_dispatcher(
+        scene, texture_sampling, attribute_lookup,
+        SurfaceValueProgramDomain::preparation);
+    if (dispatcher.requires_ambient_occlusion()) {
+        return "AO-free unified value dispatcher changed callable ABI";
+    }
+    switch (dispatcher.stack_capacity()) {
+        case 32u:
+            return validate_compact_surface_value_program_abi_for_stack<32u>(
+                scene, dispatcher);
+        case 64u:
+            return validate_compact_surface_value_program_abi_for_stack<64u>(
+                scene, dispatcher);
+        case 128u:
+            return validate_compact_surface_value_program_abi_for_stack<128u>(
+                scene, dispatcher);
+        case SurfaceValueRuntime::stack_capacity:
+            return validate_compact_surface_value_program_abi_for_stack<
+                SurfaceValueRuntime::stack_capacity>(scene, dispatcher);
+        default:
+            return "unified value dispatcher selected an invalid stack "
+                   "capacity";
+    }
+}
+
 std::string validate_surface_value_fresh_lifetime_seed() {
-    Callable<void()> seed_callable{[]() noexcept {
-        SurfaceValueLocals locals;
-    }};
-    auto stack_seeds = std::size_t{0u};
-    auto malformed_seeds = std::size_t{0u};
-    traverse_expressions<true>(
-        seed_callable.function().body(),
-        [&](const Expression *expression) noexcept {
-            if (expression->tag() != Expression::Tag::CALL) {
-                return;
-            }
-            const auto *call = static_cast<const CallExpr *>(expression);
-            if (call->op() != CallOp::UNDEFINED) {
-                return;
-            }
-            malformed_seeds += !call->arguments().empty();
-            stack_seeds += call->type() == Type::of<SurfaceValueStackBank>();
-        },
-        [](const Statement *) noexcept {},
-        [](const Statement *) noexcept {});
-    if (stack_seeds != 1u || malformed_seeds != 0u) {
-        return "compact surface stack root is not exactly one "
-               "argument-free fresh-lifetime seed";
+    constexpr std::array bucket_boundaries{
+        std::pair{0u, 32u}, std::pair{1u, 32u},
+        std::pair{32u, 32u}, std::pair{33u, 64u},
+        std::pair{64u, 64u}, std::pair{65u, 128u},
+        std::pair{128u, 128u},
+        std::pair{129u, SurfaceValueRuntime::stack_capacity},
+        std::pair{SurfaceValueRuntime::stack_capacity,
+                  SurfaceValueRuntime::stack_capacity},
+        std::pair{SurfaceValueRuntime::stack_capacity + 1u, 0u}};
+    for (const auto [required, expected] : bucket_boundaries) {
+        if (surface_value_stack_storage_lanes(required) != expected) {
+            return "compact surface stack bucket selection is not the "
+                   "smallest covering capacity";
+        }
+    }
+    for (const auto capacity : surface_value_stack_lane_buckets) {
+        Callable<void()> seed_callable{[capacity]() noexcept {
+            SurfaceValueLocals locals{capacity};
+        }};
+        auto stack_seeds = std::size_t{0u};
+        auto malformed_seeds = std::size_t{0u};
+        const auto expected_type = Type::array(Type::of<float>(), capacity);
+        traverse_expressions<true>(
+            seed_callable.function().body(),
+            [&](const Expression *expression) noexcept {
+                if (expression->tag() != Expression::Tag::CALL) { return; }
+                const auto *call = static_cast<const CallExpr *>(expression);
+                if (call->op() != CallOp::UNDEFINED) { return; }
+                malformed_seeds += !call->arguments().empty();
+                stack_seeds += call->type() == expected_type;
+            },
+            [](const Statement *) noexcept {},
+            [](const Statement *) noexcept {});
+        if (stack_seeds != 1u || malformed_seeds != 0u) {
+            return "compact surface stack bucket is not exactly one "
+                   "argument-free fresh-lifetime seed";
+        }
     }
     return {};
 }

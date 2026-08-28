@@ -105,7 +105,7 @@ Float3 SurfaceSvmInterpreter::execute(
         const auto descriptor0 = descriptors.read(program * 2u);
         const auto descriptor1 = descriptors.read(program * 2u + 1u);
 
-        SurfaceValueLocals locals;
+        SurfaceValueLocals locals{impl.values.stack_capacity()};
         const auto locals_view = locals.view();
         auto packed_base_point = pack_surface_point(base_point);
         Bool use_undisplaced_geometry =
@@ -154,7 +154,7 @@ Float3 SurfaceSvmInterpreter::execute(
                     use_undisplaced_geometry,
                     instruction,
                     instruction_index,
-                    locals_view.scalars.storage,
+                    locals_view,
                     ambient_occlusion);
             }
             $elif(opcode == compiler::surface_svm_mix_closure_opcode) {
