@@ -1,0 +1,220 @@
+{
+  "actual_label": "Scalar block candidate",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999986886978149,
+        0.9999983906745911,
+        0.999998152256012
+      ],
+      "cycles": "/var/tmp/psycles-dispatch-base-profile.11rKdn/out.exr",
+      "cycles_channel_mean": [
+        0.09005171060562134,
+        0.06403087079524994,
+        0.048951778560876846
+      ],
+      "cycles_luminance_mean": 0.06847620755434036,
+      "cycles_rms": 0.16218510270118713,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999984767245138,
+      "maximum_absolute_error": 0.03513575345277786,
+      "mean_absolute_error": 1.035518337744179e-07,
+      "orientation_rmse": {
+        "flip_x": 0.18651628494262695,
+        "flip_xy": 0.19623185694217682,
+        "flip_y": 0.18834622204303741,
+        "identity": 5.7634624681668356e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 4.301594636046957e-09,
+      "psycles": "/var/tmp/psycles-scalar-block-bank-profile-2.3EtQO5/out.exr",
+      "psycles_channel_mean": [
+        0.09005159139633179,
+        0.06403076648712158,
+        0.04895168915390968
+      ],
+      "psycles_luminance_mean": 0.068476103246212,
+      "psycles_rms": 0.16218508250946706,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.000355363246819626,
+      "rmse": 5.7634624681668356e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 241591910.4,
+        "display_scale": 1.0755364880848293,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/surface-scalar-block-bank-rejected/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999998211860657,
+        0.9999997615814209,
+        0.9999997615814209
+      ],
+      "cycles": "/var/tmp/psycles-dispatch-base-profile.11rKdn/out.exr",
+      "cycles_channel_mean": [
+        0.23345552384853363,
+        0.20772995054721832,
+        0.18235653638839722
+      ],
+      "cycles_luminance_mean": 0.2113390862941742,
+      "cycles_rms": 0.2613077163696289,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999997179667717,
+      "maximum_absolute_error": 0.006556853652000427,
+      "mean_absolute_error": 6.696750887158487e-08,
+      "orientation_rmse": {
+        "flip_x": 0.22229117155075073,
+        "flip_xy": 0.22446873784065247,
+        "flip_y": 0.2172250598669052,
+        "identity": 1.6471054550493136e-05
+      },
+      "p95_pixel_rmse": 8.603189272093914e-09,
+      "p99_pixel_rmse": 3.4412757088375656e-08,
+      "psycles": "/var/tmp/psycles-scalar-block-bank-profile-2.3EtQO5/out.exr",
+      "psycles_channel_mean": [
+        0.23345547914505005,
+        0.20772990584373474,
+        0.18235649168491364
+      ],
+      "psycles_luminance_mean": 0.21133902668952942,
+      "psycles_rms": 0.26130764970837705,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 6.303317322322871e-05,
+      "rmse": 1.6471054550493136e-05,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 30198988.8,
+        "display_scale": 1.0729935326169333,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/surface-scalar-block-bank-rejected/triptychs/diffcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999999403953552,
+        1.0,
+        1.0
+      ],
+      "cycles": "/var/tmp/psycles-dispatch-base-profile.11rKdn/out.exr",
+      "cycles_channel_mean": [
+        0.10977821052074432,
+        0.3143407702445984,
+        -0.0570940263569355
+      ],
+      "cycles_luminance_mean": 0.24400070309638977,
+      "cycles_rms": 0.551543116569519,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 9.335577487945557e-06,
+      "mean_absolute_error": 1.4108622048425445e-09,
+      "orientation_rmse": {
+        "flip_x": 0.6507176160812378,
+        "flip_xy": 0.8734650611877441,
+        "flip_y": 0.7784232497215271,
+        "identity": 1.4350406196683707e-08
+      },
+      "p95_pixel_rmse": 1.7214778935681352e-08,
+      "p99_pixel_rmse": 3.847463148076713e-08,
+      "psycles": "/var/tmp/psycles-scalar-block-bank-profile-2.3EtQO5/out.exr",
+      "psycles_channel_mean": [
+        0.10977820307016373,
+        0.3143407702445984,
+        -0.0570940263569355
+      ],
+      "psycles_luminance_mean": 0.24400070309638977,
+      "psycles_rms": 0.5515431214297281,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 2.6018647981576097e-08,
+      "rmse": 1.4350406196683707e-08,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 15099494.4,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/surface-scalar-block-bank-rejected/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Canonical scalar array",
+  "schema": "psycles.cycles-differential.v2"
+}
