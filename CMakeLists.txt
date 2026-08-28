@@ -51,10 +51,12 @@ add_library(psycles_core
     src/compiler/surface_bump_expansion.cpp
     src/compiler/surface_closure_execution_plan.cpp
     src/compiler/surface_svm_schedule.cpp
+    src/compiler/surface_svm_evaluator.cpp
     src/compiler/surface_svm_lowering.cpp
     src/compiler/surface_svm_scene.cpp
     src/compiler/surface_svm_storage.cpp
     src/compiler/surface_execution_plan.cpp
+    src/compiler/surface_value_variant_interner.cpp
     src/compiler/surface_program.cpp
     src/compiler/surface_program_builder.cpp
     src/compiler/surface_program_compaction.cpp

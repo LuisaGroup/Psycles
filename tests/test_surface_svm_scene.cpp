@@ -32,6 +32,12 @@ struct CompiledGraph {
   SurfaceParameterBlock parameters;
 };
 
+struct ProvenanceFixture {
+  SurfaceProgram program;
+  SurfaceSvmProgramImage image;
+  std::vector<std::uint32_t> instruction_sources;
+};
+
 [[nodiscard]] CompiledGraph compile_graph(ShaderGraph graph) {
   ShaderCompiler compiler{make_core_node_registry()};
   const auto shader = compiler.compile(graph);
@@ -224,6 +230,70 @@ struct CompiledGraph {
   return program;
 }
 
+[[nodiscard]] ProvenanceFixture
+make_provenance_fixture(SurfaceProgram program, std::vector<bool> outputs) {
+  require(outputs.size() == program.value_instructions().size(),
+          "provenance fixture output mask has the wrong extent");
+  auto active = std::vector<bool>(outputs.size(), true);
+  const auto storage =
+      plan_surface_value_storage(program, active, std::move(outputs));
+  require(storage.valid,
+          "provenance fixture storage failed: " + storage.diagnostic);
+  const auto values = lower_surface_value_program(program, storage);
+  require(values.valid,
+          "provenance fixture lowering failed: " + values.diagnostic);
+
+  SurfaceSvmProgramImage image;
+  image.valid = true;
+  image.endpoints =
+      surface_closure_endpoint_bit(SurfaceClosureEndpoint::physical);
+  image.value_operands = values.operands;
+  image.value_metadata = values.metadata;
+  image.static_data = values.static_data;
+  image.value_addresses = values.value_addresses;
+  image.scalar_slots = values.scalar_slots;
+  image.vector_slots = values.vector_slots;
+  image.unsigned_integer_slots = values.unsigned_integer_slots;
+  image.value_instruction_count =
+      static_cast<std::uint32_t>(values.instructions.size());
+  image.instructions.reserve(values.instructions.size() + 1u);
+  std::vector<std::uint32_t> sources;
+  sources.reserve(values.instructions.size() + 1u);
+  for (auto index = std::size_t{}; index < values.instructions.size();
+       ++index) {
+    image.instructions.emplace_back(
+        make_surface_svm_value_instruction(values.instructions[index]));
+    sources.emplace_back(storage.instructions[index].value);
+  }
+  image.instructions.emplace_back(
+      SurfaceSvmBytecodeInstruction{.control = surface_svm_end_opcode,
+                                    .payload0 = surface_svm_invalid_payload,
+                                    .payload1 = surface_svm_invalid_payload,
+                                    .payload2 = surface_svm_invalid_payload});
+  sources.emplace_back(SurfaceValueAddress::invalid_value);
+  require(validate_surface_svm_program_image(image).empty(),
+          "provenance fixture unified image is invalid");
+  return ProvenanceFixture{.program = std::move(program),
+                           .image = std::move(image),
+                           .instruction_sources = std::move(sources)};
+}
+
+[[nodiscard]] ParameterDesc make_float_parameter(std::uint32_t index) {
+  return ParameterDesc{.id = ParameterId{index},
+                       .node = NodeId{index + 1u},
+                       .socket = "Value",
+                       .type = SocketType::floating,
+                       .default_value = SocketValue::floating(0.0f),
+                       .source = ParameterSource::input};
+}
+
+[[nodiscard]] ValueInstruction make_float_parameter_value(std::uint32_t index) {
+  return ValueInstruction{.operation = ValueOperation::parameter,
+                          .source_node = NodeId{index + 1u},
+                          .result_type = SocketType::floating,
+                          .parameter = ParameterId{index}};
+}
+
 void test_set_normal_starts_a_new_local_lifetime_epoch() {
   const auto normal = make_normal_prefix();
   const auto root = make_epoch_root();
@@ -396,6 +466,246 @@ void test_scene_rebases_metadata_and_static_tables() {
           "static-table aggregate failed its public verifier");
 }
 
+void test_unified_evaluator_provenance_and_exact_interning() {
+  const SurfaceProgram parameter_normal_program{
+      100u,
+      {ParameterDesc{.id = ParameterId{0u},
+                     .node = NodeId{1u},
+                     .socket = "Normal",
+                     .type = SocketType::normal,
+                     .default_value = SocketValue::normal({0.0f, 0.0f, 1.0f}),
+                     .source = ParameterSource::input}},
+      {ValueInstruction{.operation = ValueOperation::parameter,
+                        .result_type = SocketType::normal,
+                        .parameter = ParameterId{0u}}},
+      {},
+      {}};
+  const auto parameter_normal_storage =
+      plan_surface_value_storage(parameter_normal_program, {true}, {true});
+  const auto parameter_normal_prefix = lower_surface_value_program(
+      parameter_normal_program, parameter_normal_storage);
+  SurfaceSvmProgramImage parameter_normal_root;
+  parameter_normal_root.valid = true;
+  parameter_normal_root.endpoints =
+      surface_closure_endpoint_bit(SurfaceClosureEndpoint::physical);
+  parameter_normal_root.instructions.emplace_back(
+      SurfaceSvmBytecodeInstruction{.control = surface_svm_end_opcode,
+                                    .payload0 = surface_svm_invalid_payload,
+                                    .payload1 = surface_svm_invalid_payload,
+                                    .payload2 = surface_svm_invalid_payload});
+  const auto parameter_normal_image = compose_surface_svm_normal_transaction(
+      parameter_normal_prefix, parameter_normal_prefix.value_addresses.front(),
+      parameter_normal_root, false);
+  const std::array parameter_normal_sources{SurfaceValueAddress::invalid_value,
+                                            SurfaceValueAddress::invalid_value};
+  const std::array parameter_normal_input{SurfaceSvmEvaluatorProgramInput{
+      .program = &parameter_normal_program,
+      .image = &parameter_normal_image,
+      .instruction_sources = parameter_normal_sources,
+      .surface_normal_output = ValueExpressionId{0u}}};
+  const auto parameter_normal_scene =
+      build_surface_svm_executable_scene(parameter_normal_input);
+  require(parameter_normal_scene.valid &&
+              parameter_normal_scene.value_variants.empty(),
+          "unified provenance rejected a parameter-backed SetNormal "
+          "transaction: " +
+              parameter_normal_scene.diagnostic);
+
+  const auto make_absolute_program = [](std::uint32_t signature,
+                                        bool parameter_source,
+                                        float static_f0 = 0.0f) {
+    std::vector<ParameterDesc> parameters;
+    std::vector<ValueInstruction> values;
+    if (parameter_source) {
+      parameters.emplace_back(make_float_parameter(0u));
+      values.emplace_back(make_float_parameter_value(0u));
+    } else {
+      values.emplace_back(
+          ValueInstruction{.operation = ValueOperation::path_ray_length,
+                           .result_type = SocketType::floating});
+    }
+    values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::absolute,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::unary>(
+            {{value_operand::unary::input, ValueExpressionId{0u}}}),
+        .static_f0 = static_f0});
+    return SurfaceProgram{
+        signature, std::move(parameters), std::move(values), {}, {}};
+  };
+
+  auto parameter_absolute =
+      make_provenance_fixture(make_absolute_program(101u, true), {false, true});
+  auto local_absolute = make_provenance_fixture(
+      make_absolute_program(102u, false), {false, true});
+  const std::array route_inputs{
+      SurfaceSvmEvaluatorProgramInput{
+          .program = &parameter_absolute.program,
+          .image = &parameter_absolute.image,
+          .instruction_sources = parameter_absolute.instruction_sources},
+      SurfaceSvmEvaluatorProgramInput{.program = &local_absolute.program,
+                                      .image = &local_absolute.image,
+                                      .instruction_sources =
+                                          local_absolute.instruction_sources}};
+  const auto route_scene = build_surface_svm_executable_scene(route_inputs);
+  require(route_scene.valid,
+          "unified evaluator scene failed: " + route_scene.diagnostic);
+  require(route_scene.image.programs.size() == 2u &&
+              route_scene.value_variants.size() == 2u &&
+              route_scene.instruction_variants.size() ==
+                  route_scene.image.instructions.size(),
+          "unified evaluator scene lost its exact parallel domains");
+  const auto parameter_absolute_pc =
+      route_scene.image.programs[0u].instruction_begin;
+  const auto local_absolute_pc =
+      route_scene.image.programs[1u].instruction_begin + 1u;
+  const auto absolute_variant =
+      route_scene.instruction_variants[parameter_absolute_pc];
+  require(
+      absolute_variant == route_scene.instruction_variants[local_absolute_pc] &&
+          route_scene.value_variants[absolute_variant].instruction.operation ==
+              ValueOperation::absolute &&
+          route_scene.value_variants[absolute_variant].operand_routes ==
+              std::vector{SurfaceValueOperandRoute::dynamic},
+      "independently constructed exact evaluators did not merge or lost "
+      "the local/parameter route join");
+  for (auto pc = std::size_t{}; pc < route_scene.image.instructions.size();
+       ++pc) {
+    const auto is_value =
+        surface_svm_bytecode_kind(route_scene.image.instructions[pc]) ==
+        SurfaceSvmBytecodeKind::value;
+    require(is_value == (route_scene.instruction_variants[pc] !=
+                         SurfaceValueAddress::invalid_value),
+            "unified evaluator relation is not total by bytecode kind");
+  }
+
+  const auto make_math_program = [](std::uint32_t signature,
+                                    MathOperation operation) {
+    std::vector<ParameterDesc> parameters;
+    std::vector<ValueInstruction> values;
+    for (auto index = std::uint32_t{}; index < 3u; ++index) {
+      parameters.emplace_back(make_float_parameter(index));
+      values.emplace_back(make_float_parameter_value(index));
+    }
+    values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::math,
+        .result_type = SocketType::floating,
+        .operands = make_value_operands<value_operand::ternary>(
+            {{value_operand::ternary::a, ValueExpressionId{0u}},
+             {value_operand::ternary::b, ValueExpressionId{1u}},
+             {value_operand::ternary::c, ValueExpressionId{2u}}}),
+        .static_u0 = static_cast<std::uint64_t>(operation)});
+    return SurfaceProgram{
+        signature, std::move(parameters), std::move(values), {}, {}};
+  };
+  auto math_add = make_provenance_fixture(
+      make_math_program(103u, MathOperation::add), {false, false, false, true});
+  auto math_subtract =
+      make_provenance_fixture(make_math_program(104u, MathOperation::subtract),
+                              {false, false, false, true});
+  const std::array immediate_inputs{
+      SurfaceSvmEvaluatorProgramInput{.program = &math_add.program,
+                                      .image = &math_add.image,
+                                      .instruction_sources =
+                                          math_add.instruction_sources},
+      SurfaceSvmEvaluatorProgramInput{.program = &math_subtract.program,
+                                      .image = &math_subtract.image,
+                                      .instruction_sources =
+                                          math_subtract.instruction_sources}};
+  const auto immediate_scene =
+      build_surface_svm_executable_scene(immediate_inputs);
+  require(immediate_scene.valid &&
+              immediate_scene.value_variants.size() == 1u &&
+              immediate_scene.value_variants.front().svm_immediates ==
+                  std::vector<std::uint16_t>{
+                      static_cast<std::uint16_t>(MathOperation::add),
+                      static_cast<std::uint16_t>(MathOperation::subtract)} &&
+              immediate_scene.value_variants.front().operand_routes ==
+                  std::vector(3u, SurfaceValueOperandRoute::parameter),
+          "opcode-owned immediates multiplied evaluator bodies or lost their "
+          "exact finite domain");
+
+  auto positive_zero = make_provenance_fixture(
+      make_absolute_program(105u, true, 0.0f), {false, true});
+  auto negative_zero = make_provenance_fixture(
+      make_absolute_program(106u, true, -0.0f), {false, true});
+  const std::array exact_bit_inputs{
+      SurfaceSvmEvaluatorProgramInput{.program = &positive_zero.program,
+                                      .image = &positive_zero.image,
+                                      .instruction_sources =
+                                          positive_zero.instruction_sources},
+      SurfaceSvmEvaluatorProgramInput{.program = &negative_zero.program,
+                                      .image = &negative_zero.image,
+                                      .instruction_sources =
+                                          negative_zero.instruction_sources}};
+  const auto exact_bit_scene =
+      build_surface_svm_executable_scene(exact_bit_inputs);
+  require(exact_bit_scene.valid &&
+              exact_bit_scene.value_variants.size() == 2u &&
+              std::bit_cast<std::uint32_t>(
+                  exact_bit_scene.value_variants[0u].instruction.static_f0) !=
+                  std::bit_cast<std::uint32_t>(
+                      exact_bit_scene.value_variants[1u].instruction.static_f0),
+          "exact evaluator interning erased signed-zero semantic bits");
+
+  auto mismatched_metadata = negative_zero.image;
+  require(mismatched_metadata.value_metadata.size() == 1u,
+          "signed-zero fixture lacks exact metadata");
+  mismatched_metadata.value_metadata.front().static_f0 = 0.0f;
+  require(validate_surface_svm_program_image(mismatched_metadata).empty(),
+          "metadata mutation unexpectedly broke structural bytecode");
+  const std::array mismatched_metadata_input{SurfaceSvmEvaluatorProgramInput{
+      .program = &negative_zero.program,
+      .image = &mismatched_metadata,
+      .instruction_sources = negative_zero.instruction_sources}};
+  const auto mismatched_metadata_scene =
+      build_surface_svm_executable_scene(mismatched_metadata_input);
+  require(!mismatched_metadata_scene.valid &&
+              mismatched_metadata_scene.diagnostic.find("metadata disagrees") !=
+                  std::string::npos,
+          "unified provenance accepted bytecode data from another exact "
+          "source value");
+
+  const SurfaceProgram ordered_sources{
+      107u,
+      {},
+      {ValueInstruction{.operation = ValueOperation::path_ray_length,
+                        .result_type = SocketType::floating},
+       ValueInstruction{.operation = ValueOperation::curve_length,
+                        .result_type = SocketType::floating},
+       ValueInstruction{
+           .operation = ValueOperation::subtract,
+           .result_type = SocketType::floating,
+           .operands = make_value_operands<value_operand::binary>(
+               {{value_operand::binary::a, ValueExpressionId{0u}},
+                {value_operand::binary::b, ValueExpressionId{1u}}})}},
+      {},
+      {}};
+  auto ordered = make_provenance_fixture(ordered_sources, {false, false, true});
+  auto swapped = ordered.image;
+  auto value = surface_svm_value_instruction(swapped.instructions[2u]);
+  const auto first = surface_value_operand_from_word(value.operand_payload,
+                                                     value_operand::binary::a);
+  const auto second = surface_value_operand_from_word(value.operand_payload,
+                                                      value_operand::binary::b);
+  value.operand_payload = static_cast<std::uint32_t>(second.encoded()) |
+                          (static_cast<std::uint32_t>(first.encoded())
+                           << surface_value_operand_lane_bits);
+  swapped.instructions[2u] = make_surface_svm_value_instruction(value);
+  require(validate_surface_svm_program_image(swapped).empty(),
+          "operand permutation unexpectedly broke structural bytecode");
+  const std::array swapped_input{SurfaceSvmEvaluatorProgramInput{
+      .program = &ordered.program,
+      .image = &swapped,
+      .instruction_sources = ordered.instruction_sources}};
+  const auto swapped_scene = build_surface_svm_executable_scene(swapped_input);
+  require(!swapped_scene.valid &&
+              swapped_scene.diagnostic.find("does not contain its source") !=
+                  std::string::npos,
+          "unified provenance accepted a type-correct but semantically "
+          "permuted local operand");
+}
+
 } // namespace
 
 int main() {
@@ -403,6 +713,7 @@ int main() {
     test_set_normal_starts_a_new_local_lifetime_epoch();
     test_scene_rebases_control_and_typed_side_streams();
     test_scene_rebases_metadata_and_static_tables();
+    test_unified_evaluator_provenance_and_exact_interning();
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;
