@@ -65,6 +65,11 @@ TracedClosure HairClosureComponent::setup(
     closure.microfacet_alpha_y = closure.diffuse_roughness;
     closure.sheen_transform_a = closure.hair_offset;
     closure.evaluation_scale = make_float3(1.0f);
+    set_cycles_closure_identity_after_setup(
+        closure,
+        closure.physical_kind == SurfaceClosureKind::hair_reflection
+            ? cycles_closure::type_hair_reflection
+            : cycles_closure::type_hair_transmission);
     return closure;
 }
 

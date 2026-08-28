@@ -246,6 +246,11 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
         physical.specular_tint = setup.specular_tint;
         physical.evaluation_scale = setup.evaluation_scale;
         configure_microfacet_state(physical, *microfacet_state);
+        set_cycles_closure_identity_after_setup(
+            physical,
+            cycles_closure::type_microfacet_ggx,
+            static_cast<std::uint32_t>(
+                cycles_closure::MicrofacetFresnel::f82_tint));
         metallic.emplace(std::move(physical));
         lower_weight = setup.lower_weight;
     }
@@ -362,6 +367,11 @@ PrincipledBaseResult PrincipledBaseComponent::evaluate(
         physical.ior = setup.ior;
         physical.evaluation_scale = setup.evaluation_scale;
         configure_microfacet_state(physical, *microfacet_state);
+        set_cycles_closure_identity_after_setup(
+            physical,
+            cycles_closure::type_microfacet_ggx,
+            static_cast<std::uint32_t>(
+                cycles_closure::MicrofacetFresnel::generalized_schlick));
         lower_weight = setup.lower_weight;
         dielectric.emplace(std::move(physical));
     }

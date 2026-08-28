@@ -1,3 +1,4 @@
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_evaluation.h>
 #include <psycles/luisa/surface_closure_identity.h>
@@ -88,6 +89,8 @@ struct ProbeSpec {
   std::string_view name;
   SurfaceClosureKind kind;
   SurfaceClosureLobe lobe;
+  std::uint32_t closure_type;
+  cycles_closure::MicrofacetFresnel microfacet_fresnel;
   SurfaceClosureReachability reachability;
   bool anisotropic;
   bool beckmann;
@@ -135,81 +138,121 @@ kind_reachability(SurfaceClosureKind kind,
 
 constexpr std::array probe_specs{
     ProbeSpec{"diffuse", SurfaceClosureKind::diffuse, SurfaceClosureLobe::none,
+              cycles_closure::type_diffuse,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::diffuse), false, false,
               false},
     ProbeSpec{
         "oren_nayar", SurfaceClosureKind::diffuse, SurfaceClosureLobe::none,
+        cycles_closure::type_oren_nayar,
+        cycles_closure::MicrofacetFresnel::none,
         kind_reachability(SurfaceClosureKind::diffuse), false, false, false},
     ProbeSpec{"translucent", SurfaceClosureKind::translucent,
               SurfaceClosureLobe::none,
+              cycles_closure::type_translucent,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::translucent), false, false,
               false},
     ProbeSpec{"rough_translucent", SurfaceClosureKind::rough_translucent,
               SurfaceClosureLobe::none,
+              cycles_closure::type_rough_translucent,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::rough_translucent), false,
               false, false},
     ProbeSpec{"transparent", SurfaceClosureKind::transparent,
               SurfaceClosureLobe::none,
+              cycles_closure::type_transparent,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::transparent), false, false,
               false},
     ProbeSpec{"glossy_ggx_regular", SurfaceClosureKind::glossy,
               SurfaceClosureLobe::none,
+              cycles_closure::type_microfacet_ggx,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::glossy), false, false,
               false},
     ProbeSpec{"glossy_ggx_singular", SurfaceClosureKind::glossy,
               SurfaceClosureLobe::none,
+              cycles_closure::type_microfacet_ggx,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::glossy), false, false,
               true},
     ProbeSpec{"glossy_ggx_anisotropic", SurfaceClosureKind::glossy,
               SurfaceClosureLobe::none,
+              cycles_closure::type_microfacet_ggx,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::glossy,
                                 SurfaceClosureLobe::none, true),
               true, false, false},
     ProbeSpec{
         "glossy_beckmann", SurfaceClosureKind::glossy, SurfaceClosureLobe::none,
+        cycles_closure::type_microfacet_beckmann,
+        cycles_closure::MicrofacetFresnel::none,
         kind_reachability(SurfaceClosureKind::glossy), false, true, false},
     ProbeSpec{"glossy_beckmann_singular", SurfaceClosureKind::glossy,
               SurfaceClosureLobe::none,
+              cycles_closure::type_microfacet_beckmann,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::glossy), false, true, true},
     ProbeSpec{"glass_ggx", SurfaceClosureKind::glass, SurfaceClosureLobe::none,
+              cycles_closure::type_microfacet_ggx_glass,
+              cycles_closure::MicrofacetFresnel::generalized_schlick,
               kind_reachability(SurfaceClosureKind::glass), false, false,
               false},
     ProbeSpec{"glass_ggx_singular", SurfaceClosureKind::glass,
               SurfaceClosureLobe::none,
+              cycles_closure::type_microfacet_ggx_glass,
+              cycles_closure::MicrofacetFresnel::generalized_schlick,
               kind_reachability(SurfaceClosureKind::glass), false, false, true},
     ProbeSpec{"refraction_ggx", SurfaceClosureKind::refraction,
               SurfaceClosureLobe::none,
+              cycles_closure::type_microfacet_ggx_refraction,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::refraction), false, false,
               false},
     ProbeSpec{"refraction_ggx_singular", SurfaceClosureKind::refraction,
               SurfaceClosureLobe::none,
+              cycles_closure::type_microfacet_ggx_refraction,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::refraction), false, false,
               true},
     ProbeSpec{"principled_sheen", SurfaceClosureKind::principled,
               SurfaceClosureLobe::sheen,
+              cycles_closure::type_sheen,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::principled,
                                 SurfaceClosureLobe::sheen),
               false, false, false},
     ProbeSpec{"principled_metallic", SurfaceClosureKind::principled,
               SurfaceClosureLobe::metallic,
+              cycles_closure::type_microfacet_ggx,
+              cycles_closure::MicrofacetFresnel::f82_tint,
               kind_reachability(SurfaceClosureKind::principled,
                                 SurfaceClosureLobe::metallic, true),
               true, false, false},
     ProbeSpec{"principled_dielectric", SurfaceClosureKind::principled,
               SurfaceClosureLobe::dielectric,
+              cycles_closure::type_microfacet_ggx,
+              cycles_closure::MicrofacetFresnel::generalized_schlick,
               kind_reachability(SurfaceClosureKind::principled,
                                 SurfaceClosureLobe::dielectric, true),
               true, false, false},
     ProbeSpec{"thin_glass", SurfaceClosureKind::thin_glass_transmission,
               SurfaceClosureLobe::transmission,
+              cycles_closure::type_thin_glass_transmission,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::thin_glass_transmission),
               false, false, false},
     ProbeSpec{"thin_glass_singular",
               SurfaceClosureKind::thin_glass_transmission,
               SurfaceClosureLobe::transmission,
+              cycles_closure::type_thin_glass_transmission,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::thin_glass_transmission),
               false, false, true},
     ProbeSpec{"bssrdf", SurfaceClosureKind::bssrdf, SurfaceClosureLobe::none,
+              cycles_closure::type_bssrdf_random_walk,
+              cycles_closure::MicrofacetFresnel::none,
               kind_reachability(SurfaceClosureKind::bssrdf), false, false,
               false}};
 
@@ -289,8 +332,9 @@ constexpr std::array probe_specs{
     closure_record.bssrdf_ior = 1.4f;
     closure_record.bssrdf_roughness = 0.35f;
     closure_record.bssrdf_anisotropy = 0.1f;
-    psycles::luisa_backend::detail::finalize_cycles_closure_identity(
-        closure_record, spec.kind, spec.lobe);
+    closure_record.closure_type = spec.closure_type;
+    closure_record.microfacet_fresnel =
+        static_cast<std::uint32_t>(spec.microfacet_fresnel);
     const auto closure =
         static_cast<SurfaceClosurePhysicalRecord>(closure_record);
 

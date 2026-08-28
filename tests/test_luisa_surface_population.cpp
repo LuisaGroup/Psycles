@@ -425,8 +425,12 @@ void write_results(
                 closure.bssrdf_ior = source.x;
                 closure.bssrdf_roughness = source.y;
                 closure.bssrdf_anisotropy = source.z;
-                psycles::luisa_backend::detail::finalize_cycles_closure_identity(
-                    closure, cycles_closure::type_diffuse);
+                closure.closure_type = select(
+                    UInt{cycles_closure::type_none},
+                    UInt{cycles_closure::type_diffuse},
+                    closure.setup_valid);
+                closure.microfacet_fresnel = static_cast<std::uint32_t>(
+                    cycles_closure::MicrofacetFresnel::none);
                 closures.add(closure);
             }
 

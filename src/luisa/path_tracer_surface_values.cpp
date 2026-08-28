@@ -860,7 +860,7 @@ void accumulate_surface_emission(
     const SurfacePoint &point,
     Float3 weight,
     Float sample_weight_value) noexcept {
-    return canonical_surface_closure(TracedClosure{
+    auto closure = TracedClosure{
         .operation = compiler::ClosureOperation::transparent,
         .weight = weight,
         .allocation_weight = sample_weight_value,
@@ -871,7 +871,10 @@ void accumulate_surface_emission(
         .normal = point.shading_normal,
         .roughness = 0.0f,
         .ior = 1.0f,
-        .evaluation_scale = make_float3(1.0f)});
+        .evaluation_scale = make_float3(1.0f)};
+    set_cycles_closure_identity_after_setup(
+        closure, cycles_closure::type_transparent);
+    return canonical_surface_closure(closure);
 }
 
 template<bool StreamTransparentContributions,

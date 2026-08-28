@@ -147,6 +147,8 @@ PrincipledLayerComponent::evaluate_sheen(
     physical.evaluation_scale = make_float3(1.0f);
     physical.preserve_ggx_energy = false;
     physical.beckmann = false;
+    set_cycles_closure_identity_after_setup(
+        physical, cycles_closure::type_sheen);
     return {.closure = physical, .lower_weight = lower_weight};
 }
 
@@ -262,6 +264,11 @@ PrincipledLayerComponent::evaluate_coat(
     physical.evaluation_scale = coat_energy.energy_scale;
     physical.preserve_ggx_energy = true;
     physical.beckmann = false;
+    set_cycles_closure_identity_after_setup(
+        physical,
+        cycles_closure::type_microfacet_ggx,
+        static_cast<std::uint32_t>(
+            cycles_closure::MicrofacetFresnel::dielectric));
     return {.closure = physical, .lower_weight = lower_weight};
 }
 

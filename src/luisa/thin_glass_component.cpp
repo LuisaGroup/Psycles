@@ -158,6 +158,8 @@ struct ThinGlassFresnel {
     closure.reflection_albedo = closure.weight;
     closure.transmission_albedo = make_float3(0.0f);
     closure.evaluation_scale = energy.energy_scale;
+    set_cycles_closure_identity_after_setup(
+        closure, cycles_closure::type_microfacet_ggx);
     return closure;
 }
 
@@ -271,6 +273,8 @@ ThinGlassSetupResult ThinGlassComponent::setup(
     transmission.reflection_albedo = make_float3(0.0f);
     transmission.transmission_albedo = transmission.weight;
     transmission.evaluation_scale = transmission_energy.energy_scale;
+    set_cycles_closure_identity_after_setup(
+        transmission, cycles_closure::type_thin_glass_transmission);
 
     auto transparency = prototype;
     transparency.operation = compiler::ClosureOperation::transparent;
@@ -292,6 +296,8 @@ ThinGlassSetupResult ThinGlassComponent::setup(
     transparency.evaluation_scale = make_float3(1.0f);
     transparency.preserve_ggx_energy = false;
     transparency.beckmann = false;
+    set_cycles_closure_identity_after_setup(
+        transparency, cycles_closure::type_transparent);
     return {
         .reflection = reflection,
         .transmission = transmission,
