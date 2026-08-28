@@ -39,8 +39,8 @@ using RenderKernelSignature = void(Buffer<luisa::float4>, Buffer<luisa::float4>,
 template <typename Signature> struct RenderProgramTypes;
 
 template <typename... Args> struct RenderProgramTypes<void(Args...)> {
-    using SerialKernel = Kernel1D<Args...>;
-    using SerialCompiledShader = Shader1D<Args...>;
+    using SerialKernel = luisa::compute::Kernel2D<Args...>;
+    using SerialCompiledShader = luisa::compute::Shader2D<Args...>;
     using SampleKernel = luisa::compute::Kernel3D<Args...>;
     using SampleCompiledShader = luisa::compute::Shader3D<Args...>;
     using Coroutine = luisa::compute::Coroutine<void(Args...)>;
