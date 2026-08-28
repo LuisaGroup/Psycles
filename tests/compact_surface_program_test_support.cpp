@@ -674,6 +674,135 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
     const auto expected_program_count =
         runtime.topologies.size() * SurfaceValueRuntime::programs_per_topology;
 
+    // The replacement scene is independently validated after relocation. Its
+    // evaluator relation is not inferred from opcodes: every value record must
+    // name one exact established semantic variant, every non-value record must
+    // carry the invalid sentinel, and each per-tag variant domain must equal
+    // the old transaction's domain while the migration is in progress.
+    const auto &svm = runtime.svm_scene;
+    auto unified_scene_exact =
+        svm.valid && svm.programs.size() == expected_program_count &&
+        svm.side_ranges.size() == expected_program_count &&
+        image.programs.size() == expected_program_count &&
+        scene.instruction_variants.size() == image.instructions.size() &&
+        validate_surface_svm_scene_image(svm).empty() &&
+        svm.maximum_scalar_slots <= SurfaceValueRuntime::scalar_capacity &&
+        svm.maximum_vector_slots <= SurfaceValueRuntime::vector_capacity &&
+        svm.maximum_unsigned_integer_slots <=
+            SurfaceValueRuntime::unsigned_integer_capacity;
+    auto unified_variant_bijection =
+        unified_scene_exact &&
+        runtime.svm_instruction_variants.size() == svm.instructions.size();
+    auto observed_leaf = false;
+    auto observed_guard = false;
+    for (auto program = std::uint32_t{0u};
+         unified_scene_exact && program < svm.programs.size(); ++program) {
+        const auto &range = svm.programs[program];
+        const auto &old_range = image.programs[program];
+        if (range.instruction_begin > svm.instructions.size() ||
+            range.instruction_count >
+                svm.instructions.size() - range.instruction_begin ||
+            old_range.instruction_begin > image.instructions.size() ||
+            old_range.instruction_count >
+                image.instructions.size() - old_range.instruction_begin) {
+            unified_scene_exact = false;
+            break;
+        }
+        const auto expected_endpoints =
+            program % SurfaceValueRuntime::programs_per_topology ==
+                    SurfaceValueRuntime::emission_program_offset
+                ? surface_closure_endpoint_bit(
+                      SurfaceClosureEndpoint::emission)
+                : all_surface_closure_endpoints;
+        unified_scene_exact &= range.endpoints == expected_endpoints &&
+                               range.flags == old_range.flags;
+
+        auto normal_count = std::uint32_t{};
+        auto end_count = std::uint32_t{};
+        std::vector<std::uint32_t> new_domain;
+        for (auto offset = std::uint32_t{};
+             offset < range.instruction_count; ++offset) {
+            const auto instruction_index = range.instruction_begin + offset;
+            const auto &instruction = svm.instructions[instruction_index];
+            const auto kind = surface_svm_bytecode_kind(instruction);
+            normal_count += kind == SurfaceSvmBytecodeKind::set_normal;
+            end_count += kind == SurfaceSvmBytecodeKind::end;
+            observed_leaf |= kind == SurfaceSvmBytecodeKind::closure_leaf;
+            observed_guard |= kind == SurfaceSvmBytecodeKind::jump_if_one ||
+                              kind == SurfaceSvmBytecodeKind::jump_if_zero;
+            if (kind == SurfaceSvmBytecodeKind::invalid) {
+                unified_scene_exact = false;
+            }
+            if (instruction_index >=
+                runtime.svm_instruction_variants.size()) {
+                unified_variant_bijection = false;
+                continue;
+            }
+            const auto variant =
+                runtime.svm_instruction_variants[instruction_index];
+            if (kind != SurfaceSvmBytecodeKind::value) {
+                unified_variant_bijection &=
+                    variant == SurfaceValueAddress::invalid_value;
+                continue;
+            }
+            if (variant >= scene.variants.size()) {
+                unified_variant_bijection = false;
+                continue;
+            }
+            const auto value = surface_svm_value_instruction(instruction);
+            const auto &static_variant = scene.variants[variant];
+            unified_variant_bijection &=
+                surface_value_operation(value) ==
+                    static_variant.instruction.operation &&
+                surface_value_operand_count(value) ==
+                    static_variant.operand_types.size() &&
+                std::find(static_variant.svm_immediates.begin(),
+                          static_variant.svm_immediates.end(),
+                          surface_value_svm_immediate(value)) !=
+                    static_variant.svm_immediates.end();
+            new_domain.emplace_back(variant);
+        }
+        const auto final_kind =
+            range.instruction_count == 0u
+                ? SurfaceSvmBytecodeKind::invalid
+                : surface_svm_bytecode_kind(
+                      svm.instructions[range.instruction_begin +
+                                       range.instruction_count - 1u]);
+        auto old_normal_count = std::uint32_t{};
+        std::vector<std::uint32_t> old_domain;
+        for (auto offset = std::uint32_t{};
+             offset < old_range.instruction_count; ++offset) {
+            const auto instruction_index =
+                old_range.instruction_begin + offset;
+            if (is_surface_value_surface_normal_transition(
+                    image.instructions[instruction_index])) {
+                ++old_normal_count;
+                continue;
+            }
+            const auto variant = scene.instruction_variants[instruction_index];
+            if (variant >= scene.variants.size()) {
+                unified_variant_bijection = false;
+                continue;
+            }
+            old_domain.emplace_back(variant);
+        }
+        const auto canonicalize = [](auto &domain) {
+            std::sort(domain.begin(), domain.end());
+            domain.erase(std::unique(domain.begin(), domain.end()),
+                         domain.end());
+        };
+        canonicalize(new_domain);
+        canonicalize(old_domain);
+        unified_scene_exact &= normal_count == old_normal_count &&
+                               normal_count <= 1u && end_count == 1u &&
+                               final_kind == SurfaceSvmBytecodeKind::end;
+        unified_variant_bijection &= new_domain == old_domain;
+    }
+    result.unified_scene_exact =
+        unified_scene_exact && observed_leaf && observed_guard;
+    result.unified_variant_bijection =
+        unified_variant_bijection && result.unified_scene_exact;
+
     // Every projected root is one self-contained topological stream. A normal
     // transaction has at most one consuming boundary; only that boundary may
     // use the invalid variant sentinel. This proves the semantic side stream

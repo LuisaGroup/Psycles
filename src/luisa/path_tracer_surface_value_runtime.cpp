@@ -7,6 +7,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -49,6 +50,345 @@ namespace {
            program.vector_slots <= SurfaceValueRuntime::vector_capacity &&
            program.unsigned_integer_slots <=
                SurfaceValueRuntime::unsigned_integer_capacity;
+}
+
+struct SurfaceSvmRuntimeProgram {
+    compiler::SurfaceSvmProgramImage image;
+    // Parallel to `image.instructions`. Value records name their immutable
+    // source expression; every control and closure record uses the invalid
+    // sentinel. This host-only relation is discarded after exact evaluator
+    // variants have been assigned to the aggregated scene.
+    std::vector<std::uint32_t> instruction_sources;
+};
+
+[[nodiscard]] SurfaceSvmRuntimeProgram build_surface_svm_runtime_program(
+    const compiler::SurfaceProgram &program,
+    const compiler::SurfaceClosurePlan &closure_plan,
+    const compiler::SurfaceValueDependencyPlan &dependencies,
+    compiler::SurfaceClosureEndpointMask endpoints,
+    compiler::SurfaceValueStorageCapacity capacity) {
+    SurfaceSvmRuntimeProgram result;
+    const auto schedule = compiler::plan_surface_svm_schedule(
+        program, closure_plan, dependencies, endpoints);
+    if (!schedule.valid) {
+        result.image.diagnostic = "schedule: " + schedule.diagnostic;
+        return result;
+    }
+    const auto storage =
+        compiler::plan_surface_svm_storage(program, schedule, capacity);
+    if (!storage.valid) {
+        result.image.diagnostic = "storage: " + storage.diagnostic;
+        return result;
+    }
+    result.image = compiler::lower_surface_svm_program(
+        program, closure_plan, dependencies, schedule, storage);
+    if (!result.image.valid) {
+        result.image.diagnostic = "lowering: " + result.image.diagnostic;
+        return result;
+    }
+
+    result.instruction_sources.reserve(result.image.instructions.size());
+    for (const auto &instruction : schedule.instructions) {
+        if (instruction.kind ==
+            compiler::SurfaceSvmScheduleInstructionKind::value) {
+            if (instruction.source >= storage.representatives.size()) {
+                result.image.valid = false;
+                result.image.diagnostic =
+                    "scheduled value has no quotient representative";
+                result.instruction_sources.clear();
+                return result;
+            }
+            if (storage.representatives[instruction.source] ==
+                instruction.source) {
+                result.instruction_sources.emplace_back(instruction.source);
+            }
+            continue;
+        }
+        result.instruction_sources.emplace_back(
+            compiler::SurfaceValueAddress::invalid_value);
+    }
+    if (result.instruction_sources.size() != result.image.instructions.size()) {
+        result.image.valid = false;
+        result.image.diagnostic =
+            "source provenance is not parallel to unified bytecode";
+        result.instruction_sources.clear();
+        return result;
+    }
+    for (auto index = std::size_t{};
+         index < result.image.instructions.size(); ++index) {
+        const auto is_value = compiler::surface_svm_bytecode_kind(
+                                  result.image.instructions[index]) ==
+                              compiler::SurfaceSvmBytecodeKind::value;
+        const auto has_source = result.instruction_sources[index] !=
+                                compiler::SurfaceValueAddress::invalid_value;
+        if (is_value != has_source) {
+            result.image.valid = false;
+            result.image.diagnostic =
+                "source provenance disagrees with unified bytecode kind";
+            result.instruction_sources.clear();
+            return result;
+        }
+    }
+    return result;
+}
+
+[[nodiscard]] SurfaceSvmRuntimeProgram compose_surface_svm_runtime_program(
+    const compiler::SurfaceProgram &program,
+    const compiler::SurfaceValueStoragePlan *normal_storage,
+    compiler::ValueExpressionId normal_output,
+    bool uses_undisplaced_geometry,
+    SurfaceSvmRuntimeProgram root) {
+    if (normal_storage == nullptr) {
+        return root;
+    }
+    if (!normal_storage->compatible(program) || !normal_output.valid()) {
+        root.image.valid = false;
+        root.image.diagnostic =
+            "automatic-normal provenance is incomplete or incompatible";
+        root.instruction_sources.clear();
+        return root;
+    }
+    const auto normal =
+        compiler::lower_surface_value_program(program, *normal_storage);
+    if (!normal.valid || normal_output.value >= normal.value_addresses.size()) {
+        root.image.valid = false;
+        root.image.diagnostic = "automatic-normal prefix cannot be lowered";
+        root.instruction_sources.clear();
+        return root;
+    }
+    const auto encoded_output = normal.value_addresses[normal_output.value];
+    if (encoded_output == compiler::SurfaceValueAddress::invalid_value) {
+        root.image.valid = false;
+        root.image.diagnostic =
+            "automatic-normal output has no typed address";
+        root.instruction_sources.clear();
+        return root;
+    }
+    auto composed = compiler::compose_surface_svm_normal_transaction(
+        normal, encoded_output, root.image, uses_undisplaced_geometry);
+    if (!composed.valid) {
+        root.image = std::move(composed);
+        root.instruction_sources.clear();
+        return root;
+    }
+
+    std::vector<std::uint32_t> sources;
+    sources.reserve(composed.instructions.size());
+    for (const auto source : normal_storage->instructions) {
+        sources.emplace_back(source.value);
+    }
+    sources.emplace_back(compiler::SurfaceValueAddress::invalid_value);
+    sources.insert(sources.end(), root.instruction_sources.begin(),
+                   root.instruction_sources.end());
+    if (sources.size() != composed.instructions.size()) {
+        composed.valid = false;
+        composed.diagnostic =
+            "automatic-normal composition changed provenance cardinality";
+        sources.clear();
+    }
+    root.image = std::move(composed);
+    root.instruction_sources = std::move(sources);
+    return root;
+}
+
+[[nodiscard]] bool build_surface_svm_runtime_scene(
+    const compiler::SurfaceValueExecutableScene &executable,
+    std::span<const compiler::SurfaceValueExecutionInput> inputs,
+    std::vector<SurfaceSvmRuntimeProgram> &programs,
+    compiler::SurfaceSvmSceneImage &scene,
+    std::vector<std::uint32_t> &instruction_variants,
+    std::string &diagnostic) {
+    const auto &legacy = executable.values;
+    if (!executable.valid || inputs.size() != programs.size() ||
+        legacy.programs.size() != programs.size() ||
+        executable.instruction_variants.size() !=
+            legacy.instructions.size()) {
+        diagnostic =
+            "unified and established runtime programs do not form a "
+            "bijection";
+        return false;
+    }
+
+    instruction_variants.clear();
+    instruction_variants.reserve([&] {
+        auto count = std::size_t{};
+        for (const auto &program : programs) {
+            count += program.image.instructions.size();
+        }
+        return count;
+    }());
+    for (auto program_index = std::size_t{};
+         program_index < programs.size(); ++program_index) {
+        const auto &input = inputs[program_index];
+        const auto &range = legacy.programs[program_index];
+        auto &program = programs[program_index];
+        if (input.program == nullptr || input.storage == nullptr ||
+            range.instruction_begin > legacy.instructions.size() ||
+            range.instruction_count >
+                legacy.instructions.size() - range.instruction_begin ||
+            program.instruction_sources.size() !=
+                program.image.instructions.size()) {
+            diagnostic = "surface program " +
+                         std::to_string(program_index) +
+                         " has an incomplete evaluator provenance relation";
+            return false;
+        }
+
+        std::vector<std::uint32_t> source_variants(
+            input.program->value_instructions().size(),
+            compiler::SurfaceValueAddress::invalid_value);
+        auto cursor = range.instruction_begin;
+        const auto end = range.instruction_begin + range.instruction_count;
+        const auto consume = [&](const compiler::SurfaceValueStoragePlan &plan,
+                                 std::string_view phase) {
+            if (!plan.compatible(*input.program)) {
+                diagnostic = "surface program " +
+                             std::to_string(program_index) + " " +
+                             std::string{phase} +
+                             " storage is incompatible";
+                return false;
+            }
+            for (const auto source : plan.instructions) {
+                if (!source.valid() ||
+                    source.value >= source_variants.size() || cursor >= end ||
+                    compiler::is_surface_value_surface_normal_transition(
+                        legacy.instructions[cursor])) {
+                    diagnostic = "surface program " +
+                                 std::to_string(program_index) + " " +
+                                 std::string{phase} +
+                                 " lost its instruction/source ordering";
+                    return false;
+                }
+                const auto variant =
+                    executable.instruction_variants[cursor];
+                if (variant >= executable.variants.size() ||
+                    compiler::surface_value_operation(
+                        legacy.instructions[cursor]) !=
+                        input.program->value_instructions()[source.value]
+                            .operation) {
+                    diagnostic = "surface program " +
+                                 std::to_string(program_index) + " " +
+                                 std::string{phase} +
+                                 " has an invalid evaluator variant";
+                    return false;
+                }
+                auto &assigned = source_variants[source.value];
+                if (assigned != compiler::SurfaceValueAddress::invalid_value &&
+                    assigned != variant) {
+                    diagnostic = "surface program " +
+                                 std::to_string(program_index) +
+                                 " assigns two semantic variants to one "
+                                 "source value";
+                    return false;
+                }
+                assigned = variant;
+                ++cursor;
+            }
+            return true;
+        };
+
+        if (input.surface_normal_storage != nullptr) {
+            if (!consume(*input.surface_normal_storage, "automatic-normal") ||
+                cursor >= end ||
+                !compiler::is_surface_value_surface_normal_transition(
+                    legacy.instructions[cursor]) ||
+                executable.instruction_variants[cursor] !=
+                    compiler::SurfaceValueAddress::invalid_value) {
+                if (diagnostic.empty()) {
+                    diagnostic = "surface program " +
+                                 std::to_string(program_index) +
+                                 " has no exact automatic-normal boundary";
+                }
+                return false;
+            }
+            ++cursor;
+        }
+        if (!consume(*input.storage, "root") || cursor != end) {
+            if (diagnostic.empty()) {
+                diagnostic = "surface program " +
+                             std::to_string(program_index) +
+                             " established stream has an unowned suffix";
+            }
+            return false;
+        }
+
+        for (auto instruction_index = std::size_t{};
+             instruction_index < program.image.instructions.size();
+             ++instruction_index) {
+            const auto &instruction =
+                program.image.instructions[instruction_index];
+            const auto kind =
+                compiler::surface_svm_bytecode_kind(instruction);
+            const auto source =
+                program.instruction_sources[instruction_index];
+            if (kind != compiler::SurfaceSvmBytecodeKind::value) {
+                if (source != compiler::SurfaceValueAddress::invalid_value) {
+                    diagnostic = "surface program " +
+                                 std::to_string(program_index) +
+                                 " assigns a value source to a control record";
+                    return false;
+                }
+                instruction_variants.emplace_back(
+                    compiler::SurfaceValueAddress::invalid_value);
+                continue;
+            }
+            if (source >= source_variants.size()) {
+                diagnostic = "surface program " +
+                             std::to_string(program_index) +
+                             " has a value record without a source";
+                return false;
+            }
+            const auto variant = source_variants[source];
+            if (variant >= executable.variants.size()) {
+                diagnostic = "surface program " +
+                             std::to_string(program_index) +
+                             " has a value record outside the semantic "
+                             "variant domain";
+                return false;
+            }
+            const auto value =
+                compiler::surface_svm_value_instruction(instruction);
+            const auto &static_variant = executable.variants[variant];
+            const auto immediate = compiler::surface_value_svm_immediate(value);
+            if (compiler::surface_value_operation(value) !=
+                    static_variant.instruction.operation ||
+                compiler::surface_value_operand_count(value) !=
+                    static_variant.operand_types.size() ||
+                std::find(static_variant.svm_immediates.begin(),
+                          static_variant.svm_immediates.end(),
+                          immediate) == static_variant.svm_immediates.end()) {
+                diagnostic = "surface program " +
+                             std::to_string(program_index) +
+                             " value record disagrees with its exact "
+                             "evaluator variant";
+                return false;
+            }
+            instruction_variants.emplace_back(variant);
+        }
+    }
+
+    std::vector<compiler::SurfaceSvmProgramImage> images;
+    images.reserve(programs.size());
+    for (auto &program : programs) {
+        images.emplace_back(std::move(program.image));
+    }
+    scene = compiler::build_surface_svm_scene_image(images);
+    if (!scene.valid) {
+        diagnostic = "unified surface SVM scene: " + scene.diagnostic;
+        return false;
+    }
+    if (instruction_variants.size() != scene.instructions.size()) {
+        diagnostic =
+            "unified evaluator variants are not parallel to the scene";
+        return false;
+    }
+    if (const auto validation =
+            compiler::validate_surface_svm_scene_image(scene);
+        !validation.empty()) {
+        diagnostic = "unified surface SVM scene validation: " + validation;
+        return false;
+    }
+    return true;
 }
 
 template<typename T>
@@ -131,6 +471,9 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     std::vector<compiler::SurfaceValueStoragePlan> root_storage;
     root_storage.reserve(programs.size() *
                          SurfaceValueRuntime::programs_per_topology);
+    std::vector<SurfaceSvmRuntimeProgram> svm_programs;
+    svm_programs.reserve(programs.size() *
+                         SurfaceValueRuntime::programs_per_topology);
     std::vector<bool> automatic_normal_uses_undisplaced_geometry;
     automatic_normal_uses_undisplaced_geometry.reserve(programs.size());
     std::vector<bool> emission_uses_automatic_normal;
@@ -206,6 +549,55 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                     compiler::ValueOperation::bump_samples &&
                 (instruction.static_u0 & 4u) != 0u;
         }
+        const auto has_automatic_normal =
+            program.surface_normal_root().valid();
+        const auto emission_has_automatic_normal =
+            dependencies.emission_observes_shading_normal() &&
+            has_automatic_normal;
+        auto preparation_svm = build_surface_svm_runtime_program(
+            program, closure_plans[topology], dependencies,
+            compiler::all_surface_closure_endpoints,
+            SurfaceValueRuntime::storage_capacity);
+        if (!preparation_svm.image.valid) {
+            diagnostic = "surface topology " + std::to_string(topology) +
+                         " unified preparation " +
+                         preparation_svm.image.diagnostic;
+            return nullptr;
+        }
+        preparation_svm = compose_surface_svm_runtime_program(
+            program, has_automatic_normal ? &topology_normal_storage : nullptr,
+            program.surface_normal_root(),
+            topology_uses_undisplaced_geometry, std::move(preparation_svm));
+        if (!preparation_svm.image.valid) {
+            diagnostic = "surface topology " + std::to_string(topology) +
+                         " unified preparation " +
+                         preparation_svm.image.diagnostic;
+            return nullptr;
+        }
+        auto emission_svm = build_surface_svm_runtime_program(
+            program, closure_plans[topology], dependencies,
+            compiler::surface_closure_endpoint_bit(
+                compiler::SurfaceClosureEndpoint::emission),
+            SurfaceValueRuntime::storage_capacity);
+        if (!emission_svm.image.valid) {
+            diagnostic = "surface topology " + std::to_string(topology) +
+                         " unified emission " +
+                         emission_svm.image.diagnostic;
+            return nullptr;
+        }
+        emission_svm = compose_surface_svm_runtime_program(
+            program,
+            emission_has_automatic_normal ? &topology_normal_storage : nullptr,
+            emission_has_automatic_normal ? program.surface_normal_root()
+                                          : compiler::ValueExpressionId{},
+            emission_has_automatic_normal &&
+                topology_uses_undisplaced_geometry,
+            std::move(emission_svm));
+        if (!emission_svm.image.valid) {
+            diagnostic = "surface topology " + std::to_string(topology) +
+                         " unified emission " + emission_svm.image.diagnostic;
+            return nullptr;
+        }
         runtime->topologies.emplace_back(SurfaceValueRuntimeTopology{
             .program = program_ptr,
             .preparation_addresses =
@@ -214,10 +606,11 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         automatic_normal_uses_undisplaced_geometry.emplace_back(
             topology_uses_undisplaced_geometry);
         emission_uses_automatic_normal.emplace_back(
-            dependencies.emission_observes_shading_normal() &&
-            program.surface_normal_root().valid());
+            emission_has_automatic_normal);
         root_storage.emplace_back(std::move(preparation_storage));
         root_storage.emplace_back(std::move(emission_storage));
+        svm_programs.emplace_back(std::move(preparation_svm));
+        svm_programs.emplace_back(std::move(emission_svm));
     }
 
     std::vector<compiler::SurfaceValueExecutionInput> roots;
@@ -272,6 +665,33 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                      "the root-program bijection";
         return nullptr;
     }
+    if (!build_surface_svm_runtime_scene(
+            runtime->executable, roots, svm_programs, runtime->svm_scene,
+            runtime->svm_instruction_variants, diagnostic)) {
+        return nullptr;
+    }
+    auto svm_value_count = std::uint32_t{};
+    auto svm_guard_count = std::uint32_t{};
+    auto svm_leaf_count = std::uint32_t{};
+    for (const auto &instruction : runtime->svm_scene.instructions) {
+        const auto kind = compiler::surface_svm_bytecode_kind(instruction);
+        svm_value_count += kind == compiler::SurfaceSvmBytecodeKind::value;
+        svm_guard_count +=
+            kind == compiler::SurfaceSvmBytecodeKind::jump_if_one ||
+            kind == compiler::SurfaceSvmBytecodeKind::jump_if_zero;
+        svm_leaf_count +=
+            kind == compiler::SurfaceSvmBytecodeKind::closure_leaf;
+    }
+    LUISA_INFO(
+        "Built replacement surface SVM scene: {} programs, {} records ({} "
+        "values, {} guards, {} closure leaves), typed slots {}/{}/{}; every "
+        "record has an exact evaluator/source proof.",
+        runtime->svm_scene.programs.size(),
+        runtime->svm_scene.instructions.size(), svm_value_count,
+        svm_guard_count, svm_leaf_count,
+        runtime->svm_scene.maximum_scalar_slots,
+        runtime->svm_scene.maximum_vector_slots,
+        runtime->svm_scene.maximum_unsigned_integer_slots);
     runtime->region_specializations =
         compiler::plan_surface_value_region_specializations(
             runtime->executable, region_handler_site_budget);

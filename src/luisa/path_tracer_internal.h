@@ -4,6 +4,7 @@
 
 #include <psycles/compiler/material_library.h>
 #include <psycles/compiler/surface_execution_plan.h>
+#include <psycles/compiler/surface_svm_program.h>
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/graph_surface.h>
@@ -359,6 +360,15 @@ struct SurfaceValueRuntime {
         storage_capacity.unsigned_integer_slots;
 
     compiler::SurfaceValueExecutableScene executable;
+    // Replacement single-stream image. During the migration the established
+    // executable remains the semantic-variant interner, but no unified SVM
+    // instruction is allowed to infer a handler from its opcode alone:
+    // `svm_instruction_variants` is a total, scene-parallel proof side stream
+    // for value records and the invalid sentinel for every control/closure
+    // record. Once the single-PC interpreter is active, the old value/closure
+    // bytecode members below can be removed without changing this contract.
+    compiler::SurfaceSvmSceneImage svm_scene;
+    std::vector<std::uint32_t> svm_instruction_variants;
     compiler::SurfaceValueRegionSpecializationPlan region_specializations;
     // True when every selected specialization fits in the instruction's
     // one-byte runtime tag. Larger diagnostic plans retain the exact parallel
