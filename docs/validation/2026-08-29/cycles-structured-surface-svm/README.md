@@ -516,3 +516,87 @@ XIR-to-SPIR-V Vulkan complex-scene rendering, triptychs, code-object and
 compile-time measurements, followed by Cycles-aligned per-kernel and
 end-to-end performance profiling. No replacement-complete or speed claim is
 made before that evidence exists.
+
+## Coroutine-local SVM stack lifetime
+
+The first production coroutine dump after the 255-lane replacement found a
+structural regression which the isolated callable tests could not expose. The
+single stack appeared as the following logical frame value:
+
+```text
+name='_reg_5835' type=array<float,255> size=1020 align=4
+scope_external=[5] scope_touched=[5] scope_live_in=[5] scope_live_out=[5]
+edge_live=[0..28] edge_store=[21,22,23]
+```
+
+The resulting Barbershop wavefront frame was 1,856 bytes with 177 physical
+fields. Scope 5 is `shade_surface`; edges 21--23 leave it for direct-light and
+path continuations. Thus this was not 1,020 bytes of material state which
+semantically crossed a cut. It was the undefined entry contents of a
+scratch allocation whose fresh lifetime had not been expressed in the new
+unified interpreter.
+
+The formal distinction is definition-sensitive. For memory atom `a` in scope
+`s`, the scope exposed-use generator contains a use only when no must-definition
+of `a` reaches it. A whole-aggregate definition at interpreter entry kills
+all 255 lane atoms before any handler reference escape. Since no successor
+observes the stack after `shade_surface`, backward inter-scope liveness then
+contains neither `a` nor an edge store. It would be unsound to remove every
+allocation merely because it is touched in one continuation: an aggregate
+defined before suspension and first read after resume must still cross the
+edge.
+
+`SurfaceValueLocals` now establishes the whole-stack undefined definition in
+its constructor. The host bytecode verifier is the proof obligation which
+makes this fresh lifetime valid: every scheduled read is dominated by a write
+in the same SVM invocation. Encoding the witness as a constructor invariant
+prevents a future interpreter call site from forgetting it. The undefined
+assignment is not a zero fill or observable material operation and is erased
+by native lowering.
+
+Luisa's permanent CFG regression contains both sides of the theorem:
+
+- a root-scope `array<float,255>` fully defined after the surface resume and
+  conservatively passed by reference remains absent from every frame/edge;
+- an aggregate defined before suspension and observed after resume remains a
+  frame value.
+
+With `LUISA_CORO_VERIFY_DENSE_DATAFLOW=1`, the Luisa test passes all 493
+assertions in 56 cases. The Psycles fresh-lifetime AST test now verifies that
+construction itself emits exactly one argument-free aggregate definition.
+The fallback/HIP/native-XIR Vulkan compact-preparation matrix passes 3/3.
+
+The same production Barbershop command after the fix reports:
+
+```text
+subroutines=9 frame_fields=176 frame_bytes=848
+array<float,255> frame values: 0
+```
+
+This is a 1,008-byte frame reduction without changing the 255-lane semantic
+limit, scene topology, cache identity, or bytecode. A new HIP performance
+claim still requires an interleaved render/profile run; frame size alone is
+not treated as elapsed-time evidence.
+
+## Cross-backend Barbershop smoke matrix
+
+The same 320x180, one-sample image and SVM histogram were produced on all
+three Luisa routes. Vulkan ran with `LUISA_VULKAN_USE_XIR=1`,
+`LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
+`LUISA_VULKAN_DISABLE_DXC=1`; its log contains successful native SPIR-V
+optimization/compilation after DXC was made unavailable.
+
+| backend | scene compile | shader JIT | render-only |
+|---|---:|---:|---:|
+| HIP | 17.1764 s | 18.441 s | 0.0633394 s |
+| fallback | 9.13115 s | 9.90685 s | 0.12632 s |
+| native-XIR Vulkan | 9.34201 s | 18.3884 s | 0.418543 s |
+
+These are cold/smoke observations, not a performance benchmark. Across the
+one-sample outputs, Environment and both Volume passes are exact, while
+Emission and direct Transmission differ only around `1e-7`. Normal/Albedo
+whole-frame RMS is `0.00155..0.00228`; isolated silhouette pixels choose
+different primitive/normal results across traversal implementations. Combined
+RMS is dominated by high-energy paths landing on different pixels after such
+one-sample path divergence, so it is not used as a material-fidelity metric.
+Higher-spp comparison against the exact Cycles 5.2 export remains required.

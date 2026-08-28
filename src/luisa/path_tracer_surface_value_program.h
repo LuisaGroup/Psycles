@@ -98,8 +98,8 @@ struct SurfaceValueLocalsView {
 struct SurfaceValueLocals {
     luisa::compute::Local<float> stack{SurfaceValueRuntime::stack_capacity};
 
+    SurfaceValueLocals() noexcept;
     [[nodiscard]] SurfaceValueLocalsView view() const noexcept;
-    void define_all() const noexcept;
 };
 
 template<typename T>
