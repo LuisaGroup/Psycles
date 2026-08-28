@@ -172,7 +172,17 @@ struct SurfaceOperandRouteCensus {
     std::size_t dynamically_routed_references{};
     std::size_t statically_parameter_references{};
     std::size_t statically_local_references{};
+    std::size_t result_references{};
+    std::size_t statically_indexed_results{};
+    std::size_t dynamically_indexed_results{};
+    std::size_t local_operand_coordinates{};
+    std::size_t singleton_local_operand_coordinates{};
+    std::size_t statically_indexed_local_references{};
+    std::size_t dynamically_indexed_local_references{};
     std::vector<std::set<std::uint16_t>> routes_by_variant;
+    std::vector<std::set<std::uint32_t>> result_indices_by_variant;
+    std::vector<std::vector<std::set<std::uint32_t>>>
+        local_indices_by_variant_operand;
 };
 
 [[nodiscard]] SurfaceOperandRouteCensus census_surface_operand_routes(
@@ -184,6 +194,12 @@ struct SurfaceOperandRouteCensus {
         return result;
     }
     result.routes_by_variant.resize(scene.variants.size());
+    result.result_indices_by_variant.resize(scene.variants.size());
+    result.local_indices_by_variant_operand.reserve(scene.variants.size());
+    for (const auto &variant : scene.variants) {
+        result.local_indices_by_variant_operand.emplace_back(
+            variant.operand_types.size());
+    }
 
     for (auto instruction_index = std::size_t{};
          instruction_index < scene.values.instructions.size();
@@ -200,6 +216,16 @@ struct SurfaceOperandRouteCensus {
                 "surface value instruction has an invalid static variant";
             return result;
         }
+        const auto result_address =
+            psycles::compiler::SurfaceValueAddress{instruction.result};
+        if (!result_address.valid() || result_address.parameter()) {
+            result.diagnostic =
+                "surface value instruction has a non-local result";
+            return result;
+        }
+        ++result.result_references;
+        result.result_indices_by_variant[variant_index].insert(
+            result_address.index());
         const auto operand_count =
             psycles::compiler::surface_value_operand_count(instruction);
         if (operand_count >
@@ -240,6 +266,10 @@ struct SurfaceOperandRouteCensus {
                 ++result.parameter_references;
             } else {
                 ++result.local_references;
+                result.local_indices_by_variant_operand[variant_index]
+                                                       [operand_index]
+                                                           .insert(
+                                                               operand.index());
             }
         }
         result.routes_by_variant[variant_index].insert(parameter_mask);
@@ -269,6 +299,24 @@ struct SurfaceOperandRouteCensus {
         result.maximum_routes_per_variant =
             std::max(result.maximum_routes_per_variant, routes.size());
     }
+    for (auto variant_index = std::size_t{};
+         variant_index < scene.variants.size(); ++variant_index) {
+        const auto &result_indices =
+            result.result_indices_by_variant[variant_index];
+        if (result_indices.empty()) {
+            result.diagnostic =
+                "surface value executable scene has an unobserved result";
+            return result;
+        }
+        for (const auto &indices :
+             result.local_indices_by_variant_operand[variant_index]) {
+            if (!indices.empty()) {
+                ++result.local_operand_coordinates;
+                result.singleton_local_operand_coordinates +=
+                    indices.size() == 1u ? 1u : 0u;
+            }
+        }
+    }
 
     // Independently reconstruct the same finite product-domain join used by
     // the compiler. This is a census, not a read of the published route, so a
@@ -286,6 +334,13 @@ struct SurfaceOperandRouteCensus {
         const auto operand_count =
             psycles::compiler::surface_value_operand_count(instruction);
         const auto &routes = result.routes_by_variant[variant_index];
+        const auto &result_indices =
+            result.result_indices_by_variant[variant_index];
+        if (result_indices.size() == 1u) {
+            ++result.statically_indexed_results;
+        } else {
+            ++result.dynamically_indexed_results;
+        }
         auto parameter_union = std::uint16_t{};
         auto parameter_intersection = static_cast<std::uint16_t>(
             (std::uint32_t{1u} << operand_count) - 1u);
@@ -307,6 +362,30 @@ struct SurfaceOperandRouteCensus {
                     ++result.statically_parameter_references;
                 } else {
                     ++result.statically_local_references;
+                }
+            }
+            const auto word_index =
+                operand_index /
+                psycles::compiler::surface_value_operands_per_word;
+            const auto lane =
+                operand_index %
+                psycles::compiler::surface_value_operands_per_word;
+            const auto word =
+                operand_count <=
+                        psycles::compiler::surface_value_inline_operand_capacity
+                    ? instruction.operand_payload
+                    : scene.values.operands.at(instruction.operand_payload +
+                                               word_index);
+            const auto operand =
+                psycles::compiler::surface_value_operand_from_word(word, lane);
+            if (!operand.parameter()) {
+                const auto &indices =
+                    result.local_indices_by_variant_operand[variant_index]
+                                                           [operand_index];
+                if (indices.size() == 1u) {
+                    ++result.statically_indexed_local_references;
+                } else {
+                    ++result.dynamically_indexed_local_references;
                 }
             }
         }
@@ -586,6 +665,73 @@ struct SurfaceOperandRouteCensus {
            vector_math.exact_fusable_pairs == 2u;
 }
 
+[[nodiscard]] bool operand_index_partition_regression() {
+    using namespace psycles::compiler;
+    using psycles::contract::SocketType;
+
+    const auto address = [](bool parameter, std::uint32_t index) noexcept {
+        return SurfaceValueAddress{
+            (parameter ? SurfaceValueAddress::parameter_bit : 0u) |
+            index};
+    };
+    const auto pack = [&](SurfaceValueAddress a,
+                          SurfaceValueAddress b) noexcept {
+        SurfaceValueOperandAddress compact_a;
+        SurfaceValueOperandAddress compact_b;
+        if (!encode_surface_value_operand_address(a, compact_a) ||
+            !encode_surface_value_operand_address(b, compact_b)) {
+            std::abort();
+        }
+        return static_cast<std::uint32_t>(compact_a.encoded()) |
+               (static_cast<std::uint32_t>(compact_b.encoded())
+                << surface_value_operand_lane_bits);
+    };
+    const auto instruction = [&](ValueOperation operation,
+                                 std::uint32_t result,
+                                 SurfaceValueAddress a,
+                                 SurfaceValueAddress b) noexcept {
+        return SurfaceValueBytecodeInstruction{
+            .control = make_surface_value_control(
+                operation, SurfaceValueBank::scalar, 0u),
+            .result = address(false, result).encoded(),
+            .operand_payload = pack(a, b),
+            .metadata_index = SurfaceValueAddress::invalid_value};
+    };
+
+    SurfaceValueExecutableScene scene{
+        .valid = true,
+        .variants = {
+            SurfaceValueStaticVariant{
+                .instruction = {.operation = ValueOperation::add},
+                .operand_types = {SocketType::floating,
+                                  SocketType::floating},
+                .operand_routes = {SurfaceValueOperandRoute::local,
+                                   SurfaceValueOperandRoute::parameter}},
+            SurfaceValueStaticVariant{
+                .instruction = {.operation = ValueOperation::multiply},
+                .operand_types = {SocketType::floating,
+                                  SocketType::floating},
+                .operand_routes = {SurfaceValueOperandRoute::local,
+                                   SurfaceValueOperandRoute::local}}},
+        .instruction_variants = {0u, 0u, 1u}};
+    scene.values.instructions = {
+        instruction(ValueOperation::add, 0u, address(false, 2u),
+                    address(true, 0u)),
+        instruction(ValueOperation::add, 1u, address(false, 3u),
+                    address(true, 1u)),
+        instruction(ValueOperation::multiply, 4u, address(false, 5u),
+                    address(false, 6u))};
+
+    const auto census = census_surface_operand_routes(scene);
+    return census.valid && census.result_references == 3u &&
+           census.statically_indexed_results == 1u &&
+           census.dynamically_indexed_results == 2u &&
+           census.local_operand_coordinates == 3u &&
+           census.singleton_local_operand_coordinates == 2u &&
+           census.statically_indexed_local_references == 2u &&
+           census.dynamically_indexed_local_references == 2u;
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -593,6 +739,15 @@ int main(int argc, char **argv) {
         std::string_view{argv[1]} == "--self-test-producer-partition") {
         if (!producer_partition_regression()) {
             std::cerr << "exact producer partition regression failed\n";
+            return EXIT_FAILURE;
+        }
+        return EXIT_SUCCESS;
+    }
+    if (argc == 2 &&
+        std::string_view{argv[1]} ==
+            "--self-test-operand-index-partition") {
+        if (!operand_index_partition_regression()) {
+            std::cerr << "operand index partition regression failed\n";
             return EXIT_FAILURE;
         }
         return EXIT_SUCCESS;
@@ -1293,6 +1448,20 @@ int main(int argc, char **argv) {
             << value_operand_routes.statically_parameter_references
             << "\nvalue_operand_statically_local_references "
             << value_operand_routes.statically_local_references
+            << "\nvalue_result_references "
+            << value_operand_routes.result_references
+            << "\nvalue_result_statically_indexed_references "
+            << value_operand_routes.statically_indexed_results
+            << "\nvalue_result_dynamically_indexed_references "
+            << value_operand_routes.dynamically_indexed_results
+            << "\nvalue_local_operand_coordinates "
+            << value_operand_routes.local_operand_coordinates
+            << "\nvalue_singleton_local_operand_coordinates "
+            << value_operand_routes.singleton_local_operand_coordinates
+            << "\nvalue_operand_statically_indexed_local_references "
+            << value_operand_routes.statically_indexed_local_references
+            << "\nvalue_operand_dynamically_indexed_local_references "
+            << value_operand_routes.dynamically_indexed_local_references
             << "\nreachable_image_producers "
             << reachable_image_producers.producers
             << "\nreachable_image_output_instructions "
