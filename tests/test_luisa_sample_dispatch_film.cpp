@@ -583,6 +583,19 @@ validate_surface_program_histograms(const RenderResult &single_request,
       return false;
     }
   }
+  auto value_handler_transition_executions = std::uint64_t{0u};
+  auto directly_dependent_transition_executions = std::uint64_t{0u};
+  for (const auto &entry : expected.value_handler_transitions) {
+    value_handler_transition_executions += entry.executions;
+    directly_dependent_transition_executions +=
+        entry.direct_dependency ? entry.executions : 0u;
+    if (entry.executions == 0u ||
+        entry.executions % expected_surface_events != 0u) {
+      std::cerr << "one-topology value handler transition count is not an "
+                   "exact multiple of surface events\n";
+      return false;
+    }
+  }
   const auto &operand_executions = expected.value_operand_executions;
   const auto total_operand_executions =
       operand_executions.direct_local +
@@ -638,6 +651,9 @@ validate_surface_program_histograms(const RenderResult &single_request,
       interval_dynamic_parameter_references !=
           operand_executions.dynamic_parameter ||
       interval_unique_parameters < unique_parameter_values ||
+      value_handler_transition_executions == 0u ||
+      directly_dependent_transition_executions == 0u ||
+      value_handler_transition_executions >= value_handler_executions ||
       value_handler_executions +
               expected.surface_normal_transition_executions !=
           expected.value_instruction_executions ||

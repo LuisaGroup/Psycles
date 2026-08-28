@@ -197,7 +197,7 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
   auto *root = yyjson_mut_obj(document);
   yyjson_mut_doc_set_root(document, root);
   yyjson_mut_obj_add_str(document, root, "schema",
-                         "psycles.surface-program-execution-histogram.v3");
+                         "psycles.surface-program-execution-histogram.v4");
   yyjson_mut_obj_add_bool(document, root, "exact", histogram.exact);
 
   auto surface_populations = std::uint64_t{0u};
@@ -295,6 +295,30 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
     yyjson_mut_arr_add_val(value_handlers, entry);
   }
   yyjson_mut_obj_add_val(document, root, "value_handlers", value_handlers);
+
+  auto *value_handler_transitions = yyjson_mut_arr(document);
+  for (const auto &transition : histogram.value_handler_transitions) {
+    auto *entry = yyjson_mut_obj(document);
+    yyjson_mut_obj_add_uint(document, entry, "source_variant_index",
+                            transition.source_variant_index);
+    yyjson_mut_obj_add_uint(document, entry, "source_handler_key",
+                            transition.source_handler_key);
+    yyjson_mut_obj_add_uint(document, entry, "source_operation",
+                            transition.source_operation);
+    yyjson_mut_obj_add_uint(document, entry, "target_variant_index",
+                            transition.target_variant_index);
+    yyjson_mut_obj_add_uint(document, entry, "target_handler_key",
+                            transition.target_handler_key);
+    yyjson_mut_obj_add_uint(document, entry, "target_operation",
+                            transition.target_operation);
+    yyjson_mut_obj_add_bool(document, entry, "direct_dependency",
+                            transition.direct_dependency);
+    yyjson_mut_obj_add_uint(document, entry, "executions",
+                            transition.executions);
+    yyjson_mut_arr_add_val(value_handler_transitions, entry);
+  }
+  yyjson_mut_obj_add_val(document, root, "value_handler_transitions",
+                         value_handler_transitions);
 
   constexpr std::array closure_kind_names{"leaf", "mix_both", "mix_left",
                                           "mix_right"};
