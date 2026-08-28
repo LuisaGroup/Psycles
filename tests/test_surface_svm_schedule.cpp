@@ -477,6 +477,9 @@ struct WeightedBytecodeLeaf {
       ++pc;
       break;
     }
+    case SurfaceSvmBytecodeKind::set_normal:
+      throw std::runtime_error{
+          "weight-only bytecode fixture unexpectedly contains SetNormal"};
     case SurfaceSvmBytecodeKind::end:
       return leaves;
     case SurfaceSvmBytecodeKind::invalid:

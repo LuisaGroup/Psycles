@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -12,8 +13,9 @@ namespace psycles::compiler {
 // One 16-byte instruction stream for value evaluation, closure-weight SSA,
 // structured guards and closure setup. Ordinary value records retain their
 // established bit-for-bit ABI. Opcodes above the closed ValueOperation range
-// select the six unified control records; 0xff remains reserved by the legacy
-// automatic-normal transaction and is deliberately not accepted here.
+// select the unified control records. The established 0xff SetNormal record
+// is retained as the explicit transaction boundary between an automatic-
+// normal prefix and the structured closure body; 0xfe remains reserved.
 struct SurfaceSvmBytecodeInstruction {
   std::uint32_t control{};
   std::uint32_t payload0{};
@@ -31,6 +33,7 @@ enum class SurfaceSvmBytecodeKind : std::uint8_t {
   jump_if_one,
   jump_if_zero,
   closure_leaf,
+  set_normal,
   end,
   invalid,
 };
@@ -41,6 +44,9 @@ inline constexpr std::uint32_t surface_svm_jump_if_one_opcode = 250u;
 inline constexpr std::uint32_t surface_svm_jump_if_zero_opcode = 251u;
 inline constexpr std::uint32_t surface_svm_closure_leaf_opcode = 252u;
 inline constexpr std::uint32_t surface_svm_end_opcode = 253u;
+inline constexpr std::uint32_t surface_svm_reserved_opcode = 254u;
+inline constexpr std::uint32_t surface_svm_set_normal_opcode =
+    surface_value_surface_normal_transition_control;
 inline constexpr std::uint32_t surface_svm_opcode_mask = 0xffu;
 inline constexpr std::uint32_t surface_svm_invalid_payload =
     ~std::uint32_t{0u};
@@ -84,6 +90,8 @@ static_assert((surface_closure_control_mask <<
     return SurfaceSvmBytecodeKind::closure_leaf;
   case surface_svm_end_opcode:
     return SurfaceSvmBytecodeKind::end;
+  case surface_svm_set_normal_opcode:
+    return SurfaceSvmBytecodeKind::set_normal;
   default:
     return SurfaceSvmBytecodeKind::invalid;
   }
@@ -147,6 +155,62 @@ struct SurfaceSvmProgramImage {
   std::uint32_t weight_add_instruction_count{};
   std::uint32_t conditional_branch_count{};
   std::uint32_t closure_leaf_count{};
+  std::uint32_t surface_normal_transition_count{};
+  std::uint32_t used_closure_operations{};
+  PrincipledClosureFeatureMask used_principled_features{};
+};
+
+// Compact device descriptor. Side-stream ranges are host validation data and
+// intentionally live in the parallel structure below instead of inflating the
+// per-invocation descriptor fetched by the shader.
+struct SurfaceSvmProgramDescriptor {
+  std::uint32_t instruction_begin{};
+  std::uint32_t instruction_count{};
+  std::uint32_t scalar_slots{};
+  std::uint32_t vector_slots{};
+  std::uint32_t unsigned_integer_slots{};
+  std::uint32_t flags{};
+  SurfaceClosureEndpointMask endpoints{};
+  std::uint32_t reserved{};
+
+  auto operator<=>(const SurfaceSvmProgramDescriptor &) const noexcept =
+      default;
+};
+
+// Exact host-side partition of the four independently typed side streams.
+// The runtime does not upload this table: every device instruction already
+// contains its absolute scene offset.
+struct SurfaceSvmProgramSideRange {
+  std::uint32_t value_operand_begin{};
+  std::uint32_t value_operand_count{};
+  std::uint32_t metadata_begin{};
+  std::uint32_t metadata_count{};
+  std::uint32_t static_data_begin{};
+  std::uint32_t static_data_count{};
+  std::uint32_t closure_operand_begin{};
+  std::uint32_t closure_operand_count{};
+
+  auto operator<=>(const SurfaceSvmProgramSideRange &) const noexcept =
+      default;
+};
+
+// Runtime tags index `programs` directly. Instructions and all side streams
+// are dense concatenations in the same tag order. Jumps and side references
+// are absolute scene offsets; typed local addresses remain invocation-local.
+struct SurfaceSvmSceneImage {
+  bool valid{};
+  std::string diagnostic;
+  std::vector<SurfaceSvmProgramDescriptor> programs;
+  std::vector<SurfaceSvmProgramSideRange> side_ranges;
+  std::vector<SurfaceSvmBytecodeInstruction> instructions;
+  std::vector<std::uint32_t> value_operands;
+  std::vector<SurfaceValueBytecodeMetadata> value_metadata;
+  std::vector<float> static_data;
+  std::vector<std::uint32_t> closure_operands;
+  std::uint32_t maximum_instruction_count{};
+  std::uint32_t maximum_scalar_slots{};
+  std::uint32_t maximum_vector_slots{};
+  std::uint32_t maximum_unsigned_integer_slots{};
   std::uint32_t used_closure_operations{};
   PrincipledClosureFeatureMask used_principled_features{};
 };
@@ -166,5 +230,25 @@ struct SurfaceSvmProgramImage {
     const SurfaceValueDependencyPlan &dependencies,
     const SurfaceSvmSchedulePlan &schedule,
     const SurfaceSvmStoragePlan &storage);
+
+// Formal sequential composition of Cycles' automatic-normal transaction:
+// evaluate `normal`, commit its selected vector to ShaderData::N, discard the
+// prefix locals, then execute `root`. Independent slot colorings may overlap
+// because the SetNormal boundary kills every prefix local after its one read.
+[[nodiscard]] SurfaceSvmProgramImage compose_surface_svm_normal_transaction(
+    const SurfaceValueProgramImage &normal, std::uint32_t normal_output,
+    const SurfaceSvmProgramImage &root, bool uses_undisplaced_geometry);
+
+// Concatenates programs in runtime-tag order and rebases every jump, overflow
+// operand, metadata/static-table reference, and closure operand begin to an
+// absolute scene offset. Local typed addresses and parameter ids are not
+// changed.
+[[nodiscard]] SurfaceSvmSceneImage build_surface_svm_scene_image(
+    std::span<const SurfaceSvmProgramImage> programs);
+
+// Returns an empty string iff descriptors form exact dense partitions and
+// every de-relocated per-tag program satisfies the complete program verifier.
+[[nodiscard]] std::string validate_surface_svm_scene_image(
+    const SurfaceSvmSceneImage &scene);
 
 } // namespace psycles::compiler

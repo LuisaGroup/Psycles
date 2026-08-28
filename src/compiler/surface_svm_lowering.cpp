@@ -124,6 +124,10 @@ struct ProgramPoint {
   IndexSet weight_uses;
   std::vector<Definition> definitions;
   std::vector<std::uint32_t> successors;
+  // SetNormal consumes its selected vector and then starts a disjoint local
+  // lifetime epoch. Prefix and root colorings may use the same physical slots,
+  // so no prefix definition is available after this point.
+  bool clear_definitions_after_uses{};
 };
 
 [[nodiscard]] bool add_value_use(ProgramPoint &point,
@@ -210,6 +214,10 @@ struct ProgramPoint {
         return false;
       }
     }
+    if (points[index].clear_definitions_after_uses) {
+      state.values.clear();
+      state.weights.clear();
+    }
     for (const auto &definition : points[index].definitions) {
       if (definition.weight) {
         erase(state.values, scalar_address(definition.value));
@@ -282,8 +290,10 @@ std::string validate_surface_svm_program_image(
   auto add_count = std::uint32_t{};
   auto branch_count = std::uint32_t{};
   auto leaf_count = std::uint32_t{};
+  auto normal_transition_count = std::uint32_t{};
   auto end_count = std::uint32_t{};
   auto closure_operand_cursor = std::size_t{};
+  auto saw_structured_surface_control = false;
 
   for (auto index = std::size_t{}; index < program.instructions.size();
        ++index) {
@@ -295,6 +305,7 @@ std::string validate_surface_svm_program_image(
       ++value_count;
       break;
     case SurfaceSvmBytecodeKind::mix_closure: {
+      saw_structured_surface_control = true;
       if ((instruction.control &
            ~(surface_svm_opcode_mask | surface_svm_mix_result_mask)) != 0u ||
           (instruction.control & surface_svm_opcode_mask) !=
@@ -306,6 +317,7 @@ std::string validate_surface_svm_program_image(
       break;
     }
     case SurfaceSvmBytecodeKind::add_closure_weight:
+      saw_structured_surface_control = true;
       if (instruction.control != surface_svm_add_closure_weight_opcode) {
         return "a unified weight Add has undefined control bits";
       }
@@ -313,6 +325,7 @@ std::string validate_surface_svm_program_image(
       break;
     case SurfaceSvmBytecodeKind::jump_if_one:
     case SurfaceSvmBytecodeKind::jump_if_zero:
+      saw_structured_surface_control = true;
       if (instruction.control !=
               (surface_svm_bytecode_kind(instruction) ==
                        SurfaceSvmBytecodeKind::jump_if_one
@@ -326,6 +339,7 @@ std::string validate_surface_svm_program_image(
       ++branch_count;
       break;
     case SurfaceSvmBytecodeKind::closure_leaf: {
+      saw_structured_surface_control = true;
       const auto closure_control = surface_svm_closure_control(instruction);
       if ((closure_control & ~surface_closure_control_mask) != 0u ||
           instruction.control !=
@@ -352,7 +366,18 @@ std::string validate_surface_svm_program_image(
       ++leaf_count;
       break;
     }
+    case SurfaceSvmBytecodeKind::set_normal:
+      if (saw_structured_surface_control ||
+          instruction.control != surface_svm_set_normal_opcode ||
+          ++normal_transition_count != 1u) {
+        return "the unified SetNormal boundary is nested or follows surface "
+               "control";
+      }
+      value_projection.instructions.emplace_back(
+          surface_svm_value_instruction(instruction));
+      break;
     case SurfaceSvmBytecodeKind::end:
+      saw_structured_surface_control = true;
       if (instruction.control != surface_svm_end_opcode ||
           instruction.payload0 != surface_svm_invalid_payload ||
           instruction.payload1 != surface_svm_invalid_payload ||
@@ -375,7 +400,8 @@ std::string validate_surface_svm_program_image(
       mix_count != program.mix_instruction_count ||
       add_count != program.weight_add_instruction_count ||
       branch_count != program.conditional_branch_count ||
-      leaf_count != program.closure_leaf_count) {
+      leaf_count != program.closure_leaf_count ||
+      normal_transition_count != program.surface_normal_transition_count) {
     return "the unified surface SVM instruction counts are inconsistent";
   }
   if (const auto diagnostic =
@@ -486,6 +512,13 @@ std::string validate_surface_svm_program_image(
       }
       break;
     }
+    case SurfaceSvmBytecodeKind::set_normal:
+      if (!add_value_use(point, program, instruction.payload0, false,
+                         SurfaceValueBank::vector, true)) {
+        return "the unified SetNormal boundary has no initialized vector";
+      }
+      point.clear_definitions_after_uses = true;
+      break;
     case SurfaceSvmBytecodeKind::end:
       continue;
     case SurfaceSvmBytecodeKind::invalid:
