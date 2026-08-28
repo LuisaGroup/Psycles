@@ -189,6 +189,30 @@ NodeRegistry make_core_node_registry() {
                                       feature_bit(ShaderFeature::ray_state)}));
 
   static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::ambient_occlusion,
+      .inputs = {input("Distance", SocketType::floating,
+                       SocketValue::floating(1.0f)),
+                 input("Normal", SocketType::normal,
+                       SocketValue::normal({0.0f, 0.0f, 0.0f}))},
+      .outputs = {output("AO", SocketType::floating)},
+      // Samples is material data, not shader shape. Blender import narrows it
+      // to the exact uint8 value stored by Cycles' SVM instruction.
+      .properties = {
+          runtime_property("Samples", SocketType::unsigned_integer,
+                           SocketValue::unsigned_integer(16u)),
+          property("NormalLinked", SocketType::boolean,
+                   SocketValue::boolean(false)),
+          property("Inside", SocketType::boolean,
+                   SocketValue::boolean(false)),
+          property("OnlyLocal", SocketType::boolean,
+                   SocketValue::boolean(false)),
+          property("GlobalRadius", SocketType::boolean,
+                   SocketValue::boolean(false))},
+      .required_features = feature_bit(ShaderFeature::surface) |
+                           feature_bit(ShaderFeature::ray_state) |
+                           feature_bit(ShaderFeature::ambient_occlusion)}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::mapping,
       .inputs = {input("Vector", SocketType::vector,
                        SocketValue::vector({0.0f, 0.0f, 0.0f})),

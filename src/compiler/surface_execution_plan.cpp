@@ -165,7 +165,7 @@ validate_surface_value_program_image(const SurfaceValueProgramImage &program) {
     }
     if ((instruction.control & ~surface_value_control_mask) != 0u ||
         static_cast<std::uint32_t>(surface_value_operation(instruction)) >
-            static_cast<std::uint32_t>(ValueOperation::nishita_sky)) {
+            static_cast<std::uint32_t>(ValueOperation::ambient_occlusion)) {
       return "an instruction has an invalid control word";
     }
     const auto operation = surface_value_operation(instruction);
@@ -1168,7 +1168,7 @@ SurfaceValueProgramImage lower_surface_value_program(
   static_assert(std::is_trivially_copyable_v<SurfaceValueBytecodeMetadata>);
   static_assert(sizeof(SurfaceValueBytecodeInstruction) == 16u);
   static_assert(sizeof(SurfaceValueBytecodeMetadata) == 40u);
-  static_assert(static_cast<std::uint32_t>(ValueOperation::nishita_sky) <=
+  static_assert(static_cast<std::uint32_t>(ValueOperation::ambient_occlusion) <=
                 surface_value_opcode_mask);
   if (!storage.compatible(program)) {
     return reject_image("cannot lower an incompatible value storage plan");

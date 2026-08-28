@@ -218,6 +218,40 @@ SurfaceProgramBuilder::lower_context_node(const contract::ShaderNode &node) {
     }
     return true;
   }
+  if (node.type == node_type::ambient_occlusion) {
+    auto distance = lower_value_input(node, "Distance");
+    auto normal = lower_value_input(node, "Normal");
+    auto samples = lower_property_parameter(node, "Samples");
+    if (distance && normal && samples) {
+      const auto configuration =
+          (property_bool(node, "OnlyLocal")
+               ? ambient_occlusion_only_local
+               : 0u) |
+          (property_bool(node, "Inside")
+               ? ambient_occlusion_inside
+               : 0u) |
+          (property_bool(node, "GlobalRadius")
+               ? ambient_occlusion_global_radius
+               : 0u) |
+          (property_bool(node, "NormalLinked")
+               ? ambient_occlusion_normal_linked
+               : 0u);
+      publish(
+          node.id,
+          "AO",
+          append(ValueInstruction{
+              .operation = ValueOperation::ambient_occlusion,
+              .source_node = node.id,
+              .result_type = SocketType::floating,
+              .operands =
+                  make_value_operands<operand::ambient_occlusion>({
+                      {operand::ambient_occlusion::distance, *distance},
+                      {operand::ambient_occlusion::normal, *normal},
+                      {operand::ambient_occlusion::samples, *samples}}),
+              .static_u0 = configuration}));
+    }
+    return true;
+  }
   return false;
 }
 

@@ -73,6 +73,7 @@ is_spatial_source(compiler::ValueOperation operation) noexcept {
   case ValueOperation::gradient:
   case ValueOperation::hosek_wilkie_sky:
   case ValueOperation::nishita_sky:
+  case ValueOperation::ambient_occlusion:
     return true;
   default:
     return false;

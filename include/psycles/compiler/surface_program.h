@@ -194,7 +194,8 @@ enum class ValueOperation : std::uint8_t {
   separate_b,
   combine_color,
   hosek_wilkie_sky,
-  nishita_sky
+  nishita_sky,
+  ambient_occlusion
 };
 
 // Operand layouts are shared by lowering and backend AST construction. Named
@@ -368,6 +369,13 @@ struct fresnel {
   static constexpr std::size_t ior = 0u;
   static constexpr std::size_t normal = 1u;
   static constexpr std::size_t count = 2u;
+};
+
+struct ambient_occlusion {
+  static constexpr std::size_t distance = 0u;
+  static constexpr std::size_t normal = 1u;
+  static constexpr std::size_t samples = 2u;
+  static constexpr std::size_t count = 3u;
 };
 
 struct uv {
@@ -654,6 +662,8 @@ value_operation_operand_count(ValueOperation operation) noexcept {
     case ValueOperation::layer_weight_fresnel:
     case ValueOperation::layer_weight_facing:
       return value_operand::layer_weight::count;
+    case ValueOperation::ambient_occlusion:
+      return value_operand::ambient_occlusion::count;
     case ValueOperation::mapping:
       return value_operand::mapping::count;
     case ValueOperation::image_color:
@@ -870,6 +880,17 @@ enum class NormalMapConvention : std::uint8_t {
   open_gl,
   direct_x
 };
+
+// Exact immutable Ambient Occlusion instruction fields. The low three bits
+// intentionally match Cycles' NodeAO ABI; NormalLinked is an additional
+// front-end fact replacing Cycles' valid/invalid stack-offset encoding.
+inline constexpr std::uint64_t ambient_occlusion_only_local = 1u << 0u;
+inline constexpr std::uint64_t ambient_occlusion_inside = 1u << 1u;
+inline constexpr std::uint64_t ambient_occlusion_global_radius = 1u << 2u;
+inline constexpr std::uint64_t ambient_occlusion_normal_linked = 1u << 3u;
+inline constexpr std::uint64_t ambient_occlusion_configuration_mask =
+    ambient_occlusion_only_local | ambient_occlusion_inside |
+    ambient_occlusion_global_radius | ambient_occlusion_normal_linked;
 
 // Normal Map is a static shader-stage configuration. Keep its packed IR
 // contract in one place so graph lowering and Luisa AST construction cannot

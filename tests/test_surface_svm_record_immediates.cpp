@@ -185,6 +185,35 @@ void test_typed_record_quotients() {
         optional_normal_configs,
         "Layer Weight Fresnel linked-normal data split its SVM handler");
 
+    constexpr SocketType ambient_occlusion_operands[]{
+        SocketType::floating,
+        SocketType::normal,
+        SocketType::unsigned_integer};
+    constexpr RecordConfiguration ambient_occlusion_configs[]{
+        {0u, 0u},
+        {ambient_occlusion_only_local, 0u},
+        {ambient_occlusion_inside | ambient_occlusion_global_radius |
+             ambient_occlusion_normal_linked,
+         0u}};
+    require_single_handler(
+        ValueOperation::ambient_occlusion,
+        SocketType::floating,
+        ambient_occlusion_operands,
+        ambient_occlusion_configs,
+        "Ambient Occlusion flags split its typed SVM handler");
+    require_rejected(
+        ValueOperation::ambient_occlusion,
+        SocketType::floating,
+        ambient_occlusion_operands,
+        {1u << 8u, 0u},
+        "Ambient Occlusion accepted an unknown configuration bit");
+    require_rejected(
+        ValueOperation::ambient_occlusion,
+        SocketType::floating,
+        ambient_occlusion_operands,
+        {0u, 1u},
+        "Ambient Occlusion accepted a non-canonical second immediate");
+
     constexpr SocketType clamp_operands[]{
         SocketType::floating,
         SocketType::floating,
