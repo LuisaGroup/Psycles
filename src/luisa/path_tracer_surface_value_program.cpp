@@ -130,6 +130,29 @@ struct SurfaceValueHandlerGroup {
     std::vector<std::uint32_t> variants;
 };
 
+struct SurfaceValueBytecodeSlots {
+    SurfaceValueRuntimeBufferSlot operand;
+    SurfaceValueRuntimeBufferSlot metadata_parameter;
+    SurfaceValueRuntimeBufferSlot metadata_static_range;
+    SurfaceValueRuntimeBufferSlot static_data;
+};
+
+inline constexpr SurfaceValueBytecodeSlots legacy_value_bytecode_slots{
+    .operand = SurfaceValueRuntimeBufferSlot::operand,
+    .metadata_parameter =
+        SurfaceValueRuntimeBufferSlot::metadata_parameter,
+    .metadata_static_range =
+        SurfaceValueRuntimeBufferSlot::metadata_static_range,
+    .static_data = SurfaceValueRuntimeBufferSlot::static_data};
+
+inline constexpr SurfaceValueBytecodeSlots svm_value_bytecode_slots{
+    .operand = SurfaceValueRuntimeBufferSlot::svm_value_operand,
+    .metadata_parameter =
+        SurfaceValueRuntimeBufferSlot::svm_metadata_parameter,
+    .metadata_static_range =
+        SurfaceValueRuntimeBufferSlot::svm_metadata_static_range,
+    .static_data = SurfaceValueRuntimeBufferSlot::svm_static_data};
+
 [[nodiscard]] bool surface_value_variant_is_external_query(
     const SurfaceValueRuntime &runtime,
     std::uint32_t variant_index) noexcept {
@@ -393,6 +416,7 @@ void write_dynamic_value(
 [[nodiscard]] TracedValues load_variant_operands(
     const compiler::SurfaceValueStaticVariant &variant,
     const SurfaceValueRuntime &runtime,
+    const SurfaceValueBytecodeSlots &slots,
     const ShaderServices &services,
     const SurfacePoint &point,
     const SurfaceValueLocalsView &locals,
@@ -418,8 +442,7 @@ void write_dynamic_value(
         auto word = inline_operands
                         ? UInt{instruction.z.expression()}
                         : surface_value_runtime_buffer<luisa::uint>(
-                              runtime,
-                              SurfaceValueRuntimeBufferSlot::operand)
+                              runtime, slots.operand)
                               .read(instruction.z +
                                     static_cast<std::uint32_t>(word_index));
         for (auto lane = std::size_t{0u};
@@ -452,6 +475,7 @@ void write_dynamic_value(
     const compiler::SurfaceValueStaticVariant &variant,
     const ValueNode &node,
     const SurfaceValueRuntime &runtime,
+    const SurfaceValueBytecodeSlots &slots,
     const ShaderServices &services,
     const SurfacePoint &point,
     TracedValues &operands,
@@ -478,8 +502,7 @@ void write_dynamic_value(
     std::optional<Expr<std::uint32_t>> parameter_expression;
     if (table_parameter) {
         auto parameter = surface_value_runtime_buffer<luisa::uint>(
-                             runtime,
-                             SurfaceValueRuntimeBufferSlot::metadata_parameter)
+                             runtime, slots.metadata_parameter)
                              .read(instruction.w);
         parameter_expression.emplace(parameter.expression());
     }
@@ -487,13 +510,12 @@ void write_dynamic_value(
     if (static_table) {
         auto static_range =
             surface_value_runtime_buffer<luisa::uint2>(
-                runtime,
-                SurfaceValueRuntimeBufferSlot::metadata_static_range)
+                runtime, slots.metadata_static_range)
                 .read(instruction.w);
         static_table_view.emplace(ValueStaticTableView{
             .resources = Expr<BindlessArray>{runtime.device_view},
             .buffer_slot = surface_value_runtime_buffer_slot(
-                SurfaceValueRuntimeBufferSlot::static_data),
+                slots.static_data),
             .begin = Expr<std::uint32_t>{static_range.x.expression()}});
     }
     ValueEvaluationContext context{
@@ -553,6 +575,7 @@ make_surface_value_handler_callable(
     const std::shared_ptr<SurfaceValueNodes> &nodes,
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
+    SurfaceValueBytecodeSlots bytecode_slots,
     std::uint32_t variant_index) noexcept {
     if (!scene->surface_values ||
         variant_index >= scene->surface_values->executable.variants.size() ||
@@ -564,8 +587,8 @@ make_surface_value_handler_callable(
                                .variants[variant_index]
                                .instruction.operation;
     SurfaceValueHandlerCallable handler =
-        [scene, nodes, texture_sampling, attribute_lookup, variant_index,
-         runtime](BufferFloat scalar_parameters,
+        [scene, nodes, texture_sampling, attribute_lookup, bytecode_slots,
+         variant_index, runtime](BufferFloat scalar_parameters,
                   BufferFloat3 vector_parameters,
                   BufferFloat cycles_bsdf_tables,
                   BindlessVar textures,
@@ -611,10 +634,11 @@ make_surface_value_handler_callable(
                 transaction_shading_normal,
                 use_undisplaced_geometry);
             auto operands = load_variant_operands(
-                variant, *runtime, services, point, locals, instruction);
+                variant, *runtime, bytecode_slots, services, point, locals,
+                instruction);
             const auto value = evaluate_non_bump_variant(
-                variant, *(*nodes)[variant_index], *runtime, services, point,
-                operands, instruction);
+                variant, *(*nodes)[variant_index], *runtime, bytecode_slots,
+                services, point, operands, instruction);
             write_dynamic_value(
                 variant.instruction.result_type, locals, instruction.y,
                 value);
@@ -632,6 +656,7 @@ make_surface_ambient_occlusion_handler_callable(
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
     const std::shared_ptr<const SceneTraversalComponent> &traversal,
+    SurfaceValueBytecodeSlots bytecode_slots,
     std::uint32_t variant_index) noexcept {
     if (!scene->surface_values || !traversal ||
         variant_index >= scene->surface_values->executable.variants.size() ||
@@ -646,7 +671,7 @@ make_surface_ambient_occlusion_handler_callable(
                                .instruction.operation;
     SurfaceValueAmbientOcclusionHandlerCallable handler =
         [scene, nodes, texture_sampling, attribute_lookup, traversal,
-         variant_index, runtime](
+         bytecode_slots, variant_index, runtime](
             BufferFloat scalar_parameters,
             BufferFloat3 vector_parameters,
             BufferFloat cycles_bsdf_tables,
@@ -707,10 +732,11 @@ make_surface_ambient_occlusion_handler_callable(
                 transaction_shading_normal,
                 use_undisplaced_geometry);
             auto operands = load_variant_operands(
-                variant, *runtime, services, point, locals, instruction);
+                variant, *runtime, bytecode_slots, services, point, locals,
+                instruction);
             const auto value = evaluate_non_bump_variant(
-                variant, *(*nodes)[variant_index], *runtime, services, point,
-                operands, instruction);
+                variant, *(*nodes)[variant_index], *runtime, bytecode_slots,
+                services, point, operands, instruction);
             write_dynamic_value(
                 variant.instruction.result_type, locals, instruction.y,
                 value);
@@ -727,6 +753,7 @@ make_surface_ambient_occlusion_handler_callable(
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
     std::span<const std::uint32_t> active_variants,
+    SurfaceValueBytecodeSlots bytecode_slots,
     bool include_external_queries) noexcept {
     SurfaceValueHandlers handlers(
         scene->surface_values->executable.variants.size());
@@ -743,7 +770,7 @@ make_surface_ambient_occlusion_handler_callable(
         handlers[variant_index].emplace(
             make_surface_value_handler_callable(
                 scene, nodes, texture_sampling, attribute_lookup,
-                variant_index));
+                bytecode_slots, variant_index));
     }
     return handlers;
 }
@@ -754,7 +781,8 @@ make_surface_ambient_occlusion_handlers(
     const std::shared_ptr<SurfaceValueNodes> &nodes,
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
-    std::span<const std::uint32_t> active_variants) noexcept {
+    std::span<const std::uint32_t> active_variants,
+    SurfaceValueBytecodeSlots bytecode_slots) noexcept {
     SurfaceValueAmbientOcclusionHandlers handlers(
         scene->surface_values->executable.variants.size());
     const auto traversal = make_scene_traversal_component(
@@ -772,7 +800,7 @@ make_surface_ambient_occlusion_handlers(
         handlers[variant_index].emplace(
             make_surface_ambient_occlusion_handler_callable(
                 scene, nodes, texture_sampling, attribute_lookup, traversal,
-                variant_index));
+                bytecode_slots, variant_index));
     }
     return handlers;
 }
@@ -999,8 +1027,9 @@ make_surface_value_region_callable(
                     }
                 }
                 results[member].emplace(evaluate_non_bump_variant(
-                    variant, *(*nodes)[variant_index], *runtime, services,
-                    point, operands, instruction));
+                    variant, *(*nodes)[variant_index], *runtime,
+                    legacy_value_bytecode_slots, services, point, operands,
+                    instruction));
                 if (std::binary_search(
                         shape.live_output_instruction_offsets.begin(),
                         shape.live_output_instruction_offsets.end(),
@@ -1316,7 +1345,7 @@ make_surface_value_program_callable_impl(
         domain_view.value_variants.begin(), domain_view.value_variants.end()};
     auto handlers = make_surface_value_handlers(
         scene, nodes, texture_sampling, attribute_lookup, value_variants,
-        true);
+        legacy_value_bytecode_slots, true);
     auto region_callables = make_surface_value_region_callables(
         scene, nodes, texture_sampling, attribute_lookup, value_variants);
     const auto program_offset = domain_view.program_offset;
@@ -1408,10 +1437,11 @@ make_surface_ambient_occlusion_program_callable_impl(
         domain_view.value_variants.begin(), domain_view.value_variants.end()};
     auto handlers = make_surface_value_handlers(
         scene, nodes, texture_sampling, attribute_lookup, value_variants,
-        false);
+        legacy_value_bytecode_slots, false);
     auto ambient_occlusion_handlers =
         make_surface_ambient_occlusion_handlers(
-            scene, nodes, texture_sampling, attribute_lookup, value_variants);
+            scene, nodes, texture_sampling, attribute_lookup, value_variants,
+            legacy_value_bytecode_slots);
     auto region_callables = make_surface_value_region_callables(
         scene, nodes, texture_sampling, attribute_lookup, value_variants);
     const auto program_offset = domain_view.program_offset;
@@ -1515,6 +1545,108 @@ make_surface_ambient_occlusion_program_callable_impl(
 
 } // namespace
 
+struct SurfaceValueInstructionDispatcher::Impl {
+    const SurfaceValueRuntime *runtime{};
+    SurfaceValueHandlers handlers;
+    SurfaceValueAmbientOcclusionHandlers ambient_occlusion_handlers;
+    std::vector<SurfaceValueHandlerGroup> handler_groups;
+    bool ambient_occlusion{};
+};
+
+SurfaceValueInstructionDispatcher::SurfaceValueInstructionDispatcher(
+    std::shared_ptr<const Impl> impl) noexcept
+    : _impl{std::move(impl)} {
+    if (!_impl || _impl->runtime == nullptr) {
+        std::abort();
+    }
+}
+
+bool SurfaceValueInstructionDispatcher::requires_ambient_occlusion()
+    const noexcept {
+    return _impl->ambient_occlusion;
+}
+
+void SurfaceValueInstructionDispatcher::operator()(
+    Expr<Buffer<float>> scalar_parameters,
+    Expr<Buffer<luisa::float3>> vector_parameters,
+    Expr<Buffer<float>> cycles_bsdf_tables,
+    Expr<BindlessArray> textures,
+    Expr<BindlessArray> geometry_heap,
+    Var<SurfacePointCall> &point,
+    Float3 transaction_shading_normal,
+    Bool use_undisplaced_geometry,
+    Var<luisa::uint4> instruction,
+    UInt instruction_index,
+    luisa::compute::detail::Ref<SurfaceValueScalarBank> scalar_bank,
+    luisa::compute::detail::Ref<SurfaceValueVectorBank> vector_bank,
+    luisa::compute::detail::Ref<luisa::ulong> unsigned_integer_bank,
+    const PathSurfaceAmbientOcclusionContext
+        *ambient_occlusion) const noexcept {
+    const auto &impl = *_impl;
+    const auto emit_variant = [&](std::uint32_t index) noexcept {
+        if (index >= impl.handlers.size()) {
+            std::abort();
+        }
+        if (impl.handlers[index].has_value()) {
+            (*impl.handlers[index])(
+                scalar_parameters, vector_parameters, cycles_bsdf_tables,
+                textures, geometry_heap, point, transaction_shading_normal,
+                use_undisplaced_geometry, instruction, scalar_bank,
+                vector_bank, unsigned_integer_bank);
+            return;
+        }
+        if (!impl.ambient_occlusion || ambient_occlusion == nullptr ||
+            index >= impl.ambient_occlusion_handlers.size() ||
+            !impl.ambient_occlusion_handlers[index].has_value()) {
+            std::abort();
+        }
+        auto random_state = luisa::compute::make_uint4(
+            ambient_occlusion->sobol_sequence_size,
+            ambient_occlusion->sample_index,
+            ambient_occlusion->rng_hash,
+            ambient_occlusion->rng_offset);
+        const auto source = make_uint2(
+            ambient_occlusion->source_object,
+            ambient_occlusion->source_primitive);
+        (*impl.ambient_occlusion_handlers[index])(
+            scalar_parameters, vector_parameters, cycles_bsdf_tables,
+            textures, geometry_heap, point, transaction_shading_normal,
+            use_undisplaced_geometry, instruction, scalar_bank, vector_bank,
+            unsigned_integer_bank, ambient_occlusion->sobol_table,
+            random_state, source);
+    };
+    const auto primary_key = device_handler_key(instruction.x);
+    luisa::compute::detail::SwitchStmtBuilder{primary_key} % [&] {
+        for (const auto &group : impl.handler_groups) {
+            luisa::compute::detail::SwitchCaseStmtBuilder{group.key} % [&] {
+                if (group.variants.size() == 1u) {
+                    emit_variant(group.variants.front());
+                    return;
+                }
+                const auto variant =
+                    surface_value_runtime_buffer<luisa::uint>(
+                        *impl.runtime,
+                        SurfaceValueRuntimeBufferSlot::svm_instruction_variant)
+                        .read(instruction_index);
+                luisa::compute::detail::SwitchStmtBuilder{variant} % [&] {
+                    for (const auto index : group.variants) {
+                        luisa::compute::detail::SwitchCaseStmtBuilder{index} %
+                            [&, index] { emit_variant(index); };
+                    }
+                    luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+                        luisa::compute::dsl::unreachable(
+                            "invalid unified surface evaluator fiber");
+                    };
+                };
+            };
+        }
+        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+            luisa::compute::dsl::unreachable(
+                "invalid unified surface value handler");
+        };
+    };
+}
+
 SurfaceValueProgram::SurfaceValueProgram(
     SurfaceValueProgramCallable callable) noexcept
     : _ordinary{std::move(callable)} {}
@@ -1610,6 +1742,51 @@ SurfaceValueProgram make_surface_value_program_callable(
     }
     return SurfaceValueProgram{make_surface_value_program_callable_impl(
         scene, nodes, texture_sampling, attribute_lookup, domain)};
+}
+
+SurfaceValueInstructionDispatcher make_surface_value_instruction_dispatcher(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const Texture2DSamplingCallables &texture_sampling,
+    const SurfaceAttributeLookupCallable &attribute_lookup,
+    SurfaceValueProgramDomain domain,
+    bool enable_external_queries) noexcept {
+    if (!scene || !scene->surface_values) {
+        std::abort();
+    }
+    auto nodes = make_surface_value_nodes(*scene->surface_values);
+    const auto domain_view =
+        surface_value_program_domain(*scene->surface_values, domain);
+    std::vector<std::uint32_t> variants{
+        domain_view.value_variants.begin(),
+        domain_view.value_variants.end()};
+    const auto needs_ambient_occlusion =
+        enable_external_queries &&
+        surface_value_program_domain_has_external_query(
+            *scene->surface_values, domain);
+    if (needs_ambient_occlusion &&
+        (!scene->has_ambient_occlusion ||
+         !scene->ambient_occlusion_distance_buffer)) {
+        std::abort();
+    }
+    auto handlers = make_surface_value_handlers(
+        scene, nodes, texture_sampling, attribute_lookup, variants,
+        svm_value_bytecode_slots, !needs_ambient_occlusion);
+    SurfaceValueAmbientOcclusionHandlers ambient_occlusion_handlers;
+    if (needs_ambient_occlusion) {
+        ambient_occlusion_handlers = make_surface_ambient_occlusion_handlers(
+            scene, nodes, texture_sampling, attribute_lookup, variants,
+            svm_value_bytecode_slots);
+    }
+    auto groups = make_handler_groups(*scene->surface_values, variants);
+    return SurfaceValueInstructionDispatcher{std::make_shared<
+        SurfaceValueInstructionDispatcher::Impl>(
+        SurfaceValueInstructionDispatcher::Impl{
+            .runtime = scene->surface_values.get(),
+            .handlers = std::move(handlers),
+            .ambient_occlusion_handlers =
+                std::move(ambient_occlusion_handlers),
+            .handler_groups = std::move(groups),
+            .ambient_occlusion = needs_ambient_occlusion})};
 }
 
 } // namespace psycles::luisa_backend::detail

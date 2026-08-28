@@ -61,6 +61,30 @@ struct SurfaceSvmRuntimeProgram {
     std::vector<std::uint32_t> instruction_sources;
 };
 
+void collect_surface_svm_closure_variants(
+    const compiler::SurfaceSvmProgramImage &program,
+    std::vector<SurfaceSvmClosureVariant> &variants) {
+    for (const auto &instruction : program.instructions) {
+        if (compiler::surface_svm_bytecode_kind(instruction) !=
+            compiler::SurfaceSvmBytecodeKind::closure_leaf) {
+            continue;
+        }
+        const auto control =
+            compiler::surface_svm_closure_control(instruction);
+        variants.emplace_back(SurfaceSvmClosureVariant{
+            .static_variant =
+                control & compiler::surface_closure_static_variant_mask,
+            .principled_features = instruction.payload2});
+    }
+}
+
+void canonicalize_surface_svm_closure_variants(
+    std::vector<SurfaceSvmClosureVariant> &variants) {
+    std::sort(variants.begin(), variants.end());
+    variants.erase(std::unique(variants.begin(), variants.end()),
+                   variants.end());
+}
+
 [[nodiscard]] SurfaceSvmRuntimeProgram build_surface_svm_runtime_program(
     const compiler::SurfaceProgram &program,
     const compiler::SurfaceClosurePlan &closure_plan,
@@ -598,6 +622,17 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                          " unified emission " + emission_svm.image.diagnostic;
             return nullptr;
         }
+        collect_surface_svm_closure_variants(
+            preparation_svm.image,
+            runtime->preparation_svm_closure_variants);
+        collect_surface_svm_closure_variants(
+            emission_svm.image,
+            runtime->emission_svm_closure_variants);
+        if (bssrdf_topologies[topology]) {
+            collect_surface_svm_closure_variants(
+                preparation_svm.image,
+                runtime->bssrdf_svm_closure_variants);
+        }
         runtime->topologies.emplace_back(SurfaceValueRuntimeTopology{
             .program = program_ptr,
             .preparation_addresses =
@@ -612,6 +647,12 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         svm_programs.emplace_back(std::move(preparation_svm));
         svm_programs.emplace_back(std::move(emission_svm));
     }
+    canonicalize_surface_svm_closure_variants(
+        runtime->preparation_svm_closure_variants);
+    canonicalize_surface_svm_closure_variants(
+        runtime->emission_svm_closure_variants);
+    canonicalize_surface_svm_closure_variants(
+        runtime->bssrdf_svm_closure_variants);
 
     std::vector<compiler::SurfaceValueExecutionInput> roots;
     roots.reserve(root_storage.size());
@@ -692,6 +733,43 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         runtime->svm_scene.maximum_scalar_slots,
         runtime->svm_scene.maximum_vector_slots,
         runtime->svm_scene.maximum_unsigned_integer_slots);
+    static_assert(sizeof(compiler::SurfaceSvmProgramDescriptor) == 32u);
+    runtime->svm_program_descriptors.reserve(
+        runtime->svm_scene.programs.size() * 2u);
+    for (const auto &program : runtime->svm_scene.programs) {
+        runtime->svm_program_descriptors.emplace_back(luisa::make_uint4(
+            program.instruction_begin, program.instruction_count,
+            program.scalar_slots, program.vector_slots));
+        runtime->svm_program_descriptors.emplace_back(luisa::make_uint4(
+            program.unsigned_integer_slots, program.flags,
+            program.endpoints, program.reserved));
+    }
+    runtime->svm_instructions.reserve(
+        runtime->svm_scene.instructions.size());
+    for (const auto &instruction : runtime->svm_scene.instructions) {
+        runtime->svm_instructions.emplace_back(luisa::make_uint4(
+            instruction.control, instruction.payload0, instruction.payload1,
+            instruction.payload2));
+    }
+    runtime->svm_value_operands.assign(
+        runtime->svm_scene.value_operands.begin(),
+        runtime->svm_scene.value_operands.end());
+    runtime->svm_variants.assign(runtime->svm_instruction_variants.begin(),
+                                 runtime->svm_instruction_variants.end());
+    runtime->svm_metadata_parameters.reserve(
+        runtime->svm_scene.value_metadata.size());
+    runtime->svm_metadata_static_ranges.reserve(
+        runtime->svm_scene.value_metadata.size());
+    for (const auto &metadata : runtime->svm_scene.value_metadata) {
+        runtime->svm_metadata_parameters.emplace_back(metadata.parameter);
+        runtime->svm_metadata_static_ranges.emplace_back(luisa::make_uint2(
+            metadata.static_table_begin, metadata.static_table_count));
+    }
+    runtime->svm_static_data.assign(runtime->svm_scene.static_data.begin(),
+                                    runtime->svm_scene.static_data.end());
+    runtime->svm_closure_operands.assign(
+        runtime->svm_scene.closure_operands.begin(),
+        runtime->svm_scene.closure_operands.end());
     runtime->region_specializations =
         compiler::plan_surface_value_region_specializations(
             runtime->executable, region_handler_site_budget);
@@ -998,6 +1076,20 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                            luisa::make_uint4(0u));
     provide_dummy_if_empty(runtime->closure_operands,
                            compiler::SurfaceValueAddress::invalid_value);
+    provide_dummy_if_empty(runtime->svm_program_descriptors,
+                           luisa::make_uint4(0u));
+    provide_dummy_if_empty(runtime->svm_instructions,
+                           luisa::make_uint4(0u));
+    provide_dummy_if_empty(runtime->svm_value_operands, 0u);
+    provide_dummy_if_empty(runtime->svm_variants,
+                           compiler::SurfaceValueAddress::invalid_value);
+    provide_dummy_if_empty(runtime->svm_metadata_parameters,
+                           compiler::SurfaceValueAddress::invalid_value);
+    provide_dummy_if_empty(runtime->svm_metadata_static_ranges,
+                           luisa::make_uint2(0u));
+    provide_dummy_if_empty(runtime->svm_static_data, 0.0f);
+    provide_dummy_if_empty(runtime->svm_closure_operands,
+                           compiler::SurfaceValueAddress::invalid_value);
 
     auto maximum_instruction_count = std::uint32_t{0u};
     auto maximum_scalar_slots = std::uint32_t{0u};
@@ -1128,6 +1220,25 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         runtime->closure_instructions.size());
     runtime->closure_operand_buffer =
         device.create_buffer<luisa::uint>(runtime->closure_operands.size());
+    runtime->svm_program_buffer = device.create_buffer<luisa::uint4>(
+        runtime->svm_program_descriptors.size());
+    runtime->svm_instruction_buffer = device.create_buffer<luisa::uint4>(
+        runtime->svm_instructions.size());
+    runtime->svm_value_operand_buffer = device.create_buffer<luisa::uint>(
+        runtime->svm_value_operands.size());
+    runtime->svm_instruction_variant_buffer =
+        device.create_buffer<luisa::uint>(runtime->svm_variants.size());
+    runtime->svm_metadata_parameter_buffer =
+        device.create_buffer<luisa::uint>(
+            runtime->svm_metadata_parameters.size());
+    runtime->svm_metadata_static_range_buffer =
+        device.create_buffer<luisa::uint2>(
+            runtime->svm_metadata_static_ranges.size());
+    runtime->svm_static_data_buffer =
+        device.create_buffer<float>(runtime->svm_static_data.size());
+    runtime->svm_closure_operand_buffer =
+        device.create_buffer<luisa::uint>(
+            runtime->svm_closure_operands.size());
     runtime->device_view =
         device.create_bindless_array(surface_value_runtime_buffer_slot_count);
     const auto bind = [&](SurfaceValueRuntimeBufferSlot slot,
@@ -1155,6 +1266,22 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
          runtime->closure_instruction_buffer);
     bind(SurfaceValueRuntimeBufferSlot::closure_operand,
          runtime->closure_operand_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::svm_program,
+         runtime->svm_program_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::svm_instruction,
+         runtime->svm_instruction_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::svm_value_operand,
+         runtime->svm_value_operand_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::svm_instruction_variant,
+         runtime->svm_instruction_variant_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::svm_metadata_parameter,
+         runtime->svm_metadata_parameter_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::svm_metadata_static_range,
+         runtime->svm_metadata_static_range_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::svm_static_data,
+         runtime->svm_static_data_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::svm_closure_operand,
+         runtime->svm_closure_operand_buffer);
     return runtime;
 }
 
@@ -1181,6 +1308,22 @@ void upload_surface_value_runtime(Stream &stream,
                   luisa::span{runtime.closure_instructions})
            << runtime.closure_operand_buffer.copy_from(
                   luisa::span{runtime.closure_operands})
+           << runtime.svm_program_buffer.copy_from(
+                  luisa::span{runtime.svm_program_descriptors})
+           << runtime.svm_instruction_buffer.copy_from(
+                  luisa::span{runtime.svm_instructions})
+           << runtime.svm_value_operand_buffer.copy_from(
+                  luisa::span{runtime.svm_value_operands})
+           << runtime.svm_instruction_variant_buffer.copy_from(
+                  luisa::span{runtime.svm_variants})
+           << runtime.svm_metadata_parameter_buffer.copy_from(
+                  luisa::span{runtime.svm_metadata_parameters})
+           << runtime.svm_metadata_static_range_buffer.copy_from(
+                  luisa::span{runtime.svm_metadata_static_ranges})
+           << runtime.svm_static_data_buffer.copy_from(
+                  luisa::span{runtime.svm_static_data})
+           << runtime.svm_closure_operand_buffer.copy_from(
+                  luisa::span{runtime.svm_closure_operands})
            << runtime.device_view.update();
 }
 

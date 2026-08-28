@@ -317,6 +317,19 @@ struct SurfaceValueRuntimeTopology {
     std::vector<std::uint32_t> preparation_addresses;
 };
 
+// Exact host/JIT identity of one closure-leaf evaluator in the replacement
+// SVM. `static_variant` selects the closure algorithm and its topology flags;
+// `principled_features` is the per-leaf Cycles feature mask, not a scene-wide
+// union. Keeping the pair explicit is what lets the device interpreter emit
+// only the Principled branches which can actually inhabit a runtime leaf.
+struct SurfaceSvmClosureVariant {
+    std::uint32_t static_variant{};
+    compiler::PrincipledClosureFeatureMask principled_features{};
+
+    auto operator<=>(const SurfaceSvmClosureVariant &) const noexcept =
+        default;
+};
+
 // Fixed semantic slots in the compact surface program's private bindless
 // device view. The view has scene-independent shape, so adding material
 // programs changes data only; it does not grow the path-kernel resource ABI.
@@ -332,6 +345,14 @@ enum class SurfaceValueRuntimeBufferSlot : std::uint32_t {
     closure_operand,
     program_flag,
     instruction_region_specialization,
+    svm_program,
+    svm_instruction,
+    svm_value_operand,
+    svm_instruction_variant,
+    svm_metadata_parameter,
+    svm_metadata_static_range,
+    svm_static_data,
+    svm_closure_operand,
     count,
 };
 
@@ -360,15 +381,22 @@ struct SurfaceValueRuntime {
         storage_capacity.unsigned_integer_slots;
 
     compiler::SurfaceValueExecutableScene executable;
-    // Replacement single-stream image. During the migration the established
-    // executable remains the semantic-variant interner, but no unified SVM
+    // Executed single-stream image. The established executable remains only as
+    // a temporary host-side semantic-variant interner and migration oracle; no
+    // device consumer executes its split value/closure streams. No unified SVM
     // instruction is allowed to infer a handler from its opcode alone:
     // `svm_instruction_variants` is a total, scene-parallel proof side stream
     // for value records and the invalid sentinel for every control/closure
-    // record. Once the single-PC interpreter is active, the old value/closure
-    // bytecode members below can be removed without changing this contract.
+    // record. Replacing the interner lets the legacy bytecode members below be
+    // removed without changing this contract.
     compiler::SurfaceSvmSceneImage svm_scene;
     std::vector<std::uint32_t> svm_instruction_variants;
+    std::vector<SurfaceSvmClosureVariant>
+        preparation_svm_closure_variants;
+    std::vector<SurfaceSvmClosureVariant>
+        emission_svm_closure_variants;
+    std::vector<SurfaceSvmClosureVariant>
+        bssrdf_svm_closure_variants;
     compiler::SurfaceValueRegionSpecializationPlan region_specializations;
     // True when every selected specialization fits in the instruction's
     // one-byte runtime tag. Larger diagnostic plans retain the exact parallel
@@ -424,6 +452,19 @@ struct SurfaceValueRuntime {
     luisa::vector<luisa::uint4> closure_instructions;
     luisa::vector<luisa::uint> closure_operands;
 
+    // Device projection of the replacement scene. Program descriptors occupy
+    // two uint4 words in the exact 32-byte host layout; all instruction-owned
+    // offsets are already scene-absolute, so no per-invocation side-range data
+    // is uploaded.
+    luisa::vector<luisa::uint4> svm_program_descriptors;
+    luisa::vector<luisa::uint4> svm_instructions;
+    luisa::vector<luisa::uint> svm_value_operands;
+    luisa::vector<luisa::uint> svm_variants;
+    luisa::vector<luisa::uint> svm_metadata_parameters;
+    luisa::vector<luisa::uint2> svm_metadata_static_ranges;
+    luisa::vector<float> svm_static_data;
+    luisa::vector<luisa::uint> svm_closure_operands;
+
     Buffer<luisa::uint4> program_buffer;
     Buffer<luisa::uint> program_flag_buffer;
     Buffer<luisa::uint4> instruction_buffer;
@@ -436,6 +477,14 @@ struct SurfaceValueRuntime {
 
     Buffer<luisa::uint4> closure_instruction_buffer;
     Buffer<luisa::uint> closure_operand_buffer;
+    Buffer<luisa::uint4> svm_program_buffer;
+    Buffer<luisa::uint4> svm_instruction_buffer;
+    Buffer<luisa::uint> svm_value_operand_buffer;
+    Buffer<luisa::uint> svm_instruction_variant_buffer;
+    Buffer<luisa::uint> svm_metadata_parameter_buffer;
+    Buffer<luisa::uint2> svm_metadata_static_range_buffer;
+    Buffer<float> svm_static_data_buffer;
+    Buffer<luisa::uint> svm_closure_operand_buffer;
     // Declared after the bound buffers so reverse member destruction releases
     // the descriptor view before its resources.
     BindlessArray device_view;

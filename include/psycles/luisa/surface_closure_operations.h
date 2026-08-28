@@ -90,6 +90,9 @@ class SurfaceBssrdfNormalAccumulator {
         Expr<luisa::float3> shading_normal,
         std::size_t capacity) noexcept;
 
+    void set_shading_normal(
+        Expr<luisa::float3> shading_normal) noexcept;
+
     void add(
         Expr<std::uint32_t> closure_type,
         Expr<luisa::float3> weight,

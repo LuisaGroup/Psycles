@@ -955,6 +955,12 @@ int main(int argc, char **argv) {
                   << backend << '\n';
         return EXIT_FAILURE;
     }
+    if (!program_evidence.unified_closure_domains_exact) {
+        std::cerr << "replacement surface SVM did not preserve the exact "
+                     "closure/Principled-feature JIT domain on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
     const auto bump_variant = program_evidence.bump_variant;
     const auto contains_variant = [](const auto &domain,
                                      std::uint32_t variant) noexcept {

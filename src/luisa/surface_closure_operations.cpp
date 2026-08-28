@@ -508,6 +508,11 @@ detail::SurfaceBssrdfNormalAccumulator::SurfaceBssrdfNormalAccumulator(
           static_cast<std::size_t>(maximum_surface_closure_capacity))},
       _shading_normal{shading_normal} {}
 
+void detail::SurfaceBssrdfNormalAccumulator::set_shading_normal(
+    Expr<luisa::float3> shading_normal) noexcept {
+    _shading_normal = shading_normal;
+}
+
 void detail::SurfaceBssrdfNormalAccumulator::add(
     Expr<std::uint32_t> closure_type_expression,
     Expr<luisa::float3> weight_expression,
