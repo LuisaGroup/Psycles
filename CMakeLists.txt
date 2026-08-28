@@ -1907,6 +1907,11 @@ if(PSYCLES_ENABLE_LUISA)
                     COMMAND
                         psycles_inspect_blender_material
                         --self-test-producer-partition)
+                add_test(
+                    NAME psycles.inspect_blender_material_operand_index_partition
+                    COMMAND
+                        psycles_inspect_blender_material
+                        --self-test-operand-index-partition)
             endif()
         endif()
     else()
