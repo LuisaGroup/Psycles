@@ -5,12 +5,14 @@
 #endif
 
 #include <array>
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 #include <psycles/contract/render.h>
 #include <psycles/luisa/path_trace_schema.h>
@@ -176,6 +178,65 @@ struct LuisaSurfaceClosureCountHistogramRequest {
     std::shared_ptr<LuisaSurfaceClosureCountHistogramSink> sink;
 };
 
+// Hit-weighted execution census for the compact populate-once surface SVM.
+// A device invocation records only its topology tag. The host then projects
+// that exact count through the topology's immutable preparation program, so
+// the reported value-handler executions require one atomic per surface hit,
+// not one atomic per bytecode instruction.
+struct LuisaSurfaceValueHandlerExecutionCount {
+  std::uint32_t variant_index{};
+  std::uint32_t handler_key{};
+  std::uint32_t operation{};
+  std::uint32_t result_bank{};
+  std::uint32_t svm_immediate{};
+  std::uint64_t executions{};
+
+  auto operator<=>(
+      const LuisaSurfaceValueHandlerExecutionCount &) const noexcept = default;
+};
+
+struct LuisaSurfaceClosureLeafVisitCount {
+  std::uint32_t static_variant{};
+  std::uint32_t operation{};
+  std::uint64_t visits{};
+
+  auto operator<=>(const LuisaSurfaceClosureLeafVisitCount &) const noexcept =
+      default;
+};
+
+struct LuisaSurfaceProgramExecutionHistogram {
+  std::vector<std::uint64_t> topology_surface_populations;
+  std::vector<LuisaSurfaceValueHandlerExecutionCount> value_handlers;
+  std::uint64_t value_instruction_executions{};
+  std::uint64_t surface_normal_transition_executions{};
+  // Dense SurfaceClosureInstructionKind order: leaf, mix_both, mix_left,
+  // mix_right. These are first-traversal instruction visits. A zero-weight
+  // leaf is visited but does not invoke its decoder, so leaf visits are not
+  // mislabeled as physical-closure allocations.
+  std::array<std::uint64_t, 4u> closure_instruction_kind_visits{};
+  std::vector<LuisaSurfaceClosureLeafVisitCount> closure_leaf_variants;
+  std::uint64_t closure_instruction_visits{};
+  // False means a float counter shard exceeded its consecutive-integer
+  // domain, host projection overflowed, or the scene did not use the compact
+  // populate-once execution contract required by the projection.
+  bool exact{};
+
+  auto operator<=>(
+      const LuisaSurfaceProgramExecutionHistogram &) const noexcept = default;
+};
+
+class LuisaSurfaceProgramExecutionHistogramSink {
+
+public:
+  virtual ~LuisaSurfaceProgramExecutionHistogramSink() noexcept = default;
+  virtual void
+  write(const LuisaSurfaceProgramExecutionHistogram &histogram) = 0;
+};
+
+struct LuisaSurfaceProgramExecutionHistogramRequest {
+  std::shared_ptr<LuisaSurfaceProgramExecutionHistogramSink> sink;
+};
+
 struct LuisaPathTracerOptions {
     bool next_event_estimation{true};
     // Cycles' HIP kernels are compiled with fast math and explicitly select
@@ -264,6 +325,11 @@ struct LuisaPathTracerOptions {
     // write nor a device-side enable branch. The sink receives cumulative
     // counts after each completed render_samples() call.
     std::optional<LuisaSurfaceClosureCountHistogramRequest> surface_closure_count_histogram;
+    // Diagnostic-only exact topology census plus host projection through the
+    // immutable compact preparation program. Presence specializes the host/JIT
+    // build; production shaders contain neither its atomic nor an enable flag.
+    std::optional<LuisaSurfaceProgramExecutionHistogramRequest>
+        surface_program_execution_histogram;
 };
 
 class LuisaPathTracerBackend final : public contract::RendererBackend {

@@ -58,11 +58,23 @@ struct PathDiagnosticBufferLayout {
     std::size_t path_trace_slot_count{};
     std::size_t surface_closure_count_histogram_base{};
     std::size_t surface_closure_count_histogram_slot_count{};
+    std::size_t surface_program_execution_histogram_base{};
+    std::size_t surface_program_execution_histogram_slot_count{};
     std::size_t allocation_slot_count{};
 };
 
+// Each float lane is an exact integer only below 2^24. Sixteen float4 shards
+// raise the per-topology checked domain to roughly one billion populations
+// while retaining the existing cross-backend float-atomic contract.
+inline constexpr std::size_t
+    surface_program_execution_histogram_shards_per_topology = 16u;
+inline constexpr std::size_t
+    surface_program_execution_histogram_lanes_per_topology =
+        4u * surface_program_execution_histogram_shards_per_topology;
+
 [[nodiscard]] PathDiagnosticBufferLayout path_diagnostic_buffer_layout(
-    const LuisaPathTracerOptions &options) noexcept;
+    const LuisaPathTracerOptions &options,
+    std::size_t surface_value_topology_count) noexcept;
 
 namespace cycles_sampler =
     ::psycles::luisa_backend::cycles_sampler;
@@ -615,13 +627,16 @@ private:
 
 private:
     [[nodiscard]] std::size_t pixel_count() const noexcept;
+    [[nodiscard]] std::size_t
+    surface_program_execution_histogram_topology_count() const noexcept;
     void prepare_sobol_table(std::uint32_t total_samples);
     void initialize(const RenderSettings &settings);
     [[nodiscard]] bool write_passes(contract::OutputSink &output);
     void deliver_path_trace();
     void deliver_surface_closure_count_histogram();
+    void deliver_surface_program_execution_histogram();
 
-public:
+  public:
     LuisaRenderSession(
         std::shared_ptr<LuisaSceneData> scene,
         LuisaPathTracerOptions options,
