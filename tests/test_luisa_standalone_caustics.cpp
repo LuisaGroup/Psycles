@@ -105,14 +105,14 @@ int main(int argc, char **argv) {
     const auto disabled_diffuse = disabled.entry(0u);
     const auto disabled_absent = disabled.entry(1u);
     output.write(8u, make_float4(cast<float>(enabled.count()),
-                                 cast<float>(enabled_glossy.kind),
+                                 cast<float>(enabled_glossy.closure_type),
                                  enabled_glossy.allocation_weight,
                                  enabled_glossy.sample_weight));
     output.write(9u, make_float4(cast<float>(disabled.count()),
-                                 cast<float>(disabled_diffuse.kind),
+                                 cast<float>(disabled_diffuse.closure_type),
                                  disabled_diffuse.allocation_weight,
                                  disabled_diffuse.sample_weight));
-    output.write(10u, make_float4(cast<float>(disabled_absent.kind),
+    output.write(10u, make_float4(cast<float>(disabled_absent.closure_type),
                                   disabled_absent.allocation_weight,
                                   disabled_absent.sample_weight, 0.0f));
     output.write(11u, make_float4(disabled_diffuse.weight, 0.0f));
@@ -147,12 +147,10 @@ int main(int argc, char **argv) {
       approximately_equal(actual[6u], luisa::float4{1.0f, none, 0.0f, 0.0f});
   const auto collections_match =
       approximately_equal(actual[8u].x, 2.0f) &&
-      approximately_equal(actual[8u].y,
-                          static_cast<float>(SurfaceClosureKind::glossy)) &&
+      approximately_equal(actual[8u].y, glossy) &&
       actual[8u].z > 0.0f && actual[8u].w > 0.0f &&
       approximately_equal(actual[9u].x, 1.0f) &&
-      approximately_equal(actual[9u].y,
-                          static_cast<float>(SurfaceClosureKind::diffuse)) &&
+      approximately_equal(actual[9u].y, diffuse) &&
       actual[9u].z > 0.0f && actual[9u].w > 0.0f &&
       approximately_equal(actual[10u], luisa::float4{}) &&
       approximately_equal(actual[11u],

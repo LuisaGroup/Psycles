@@ -2,6 +2,7 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_program.h>
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_evaluator.h>
 #include <psycles/luisa/surface_closure_set.h>
@@ -358,8 +359,14 @@ int main(int argc, char **argv) {
     SurfaceClosureSet closures{3u, SurfaceClosureStorageProfile::physical};
     const auto collection = principled_surfaces.collect_closures(
         UInt{principled_tag}, services, point, true, true, closures);
-    const auto first = closures.entry(0u);
-    const auto second = closures.entry(1u);
+    const auto first_access = closures.physical_access(0u);
+    const auto first_common = closures.physical_common_entry(first_access);
+    const auto first = unpack_surface_closure_physical_general(
+        first_common,
+        Expr<luisa::float4x4>{
+            closures.physical_payload_block(first_access).expression()});
+    const auto second_access = closures.physical_access(1u);
+    const auto second_common = closures.physical_common_entry(second_access);
     const SurfaceClosureEvaluator evaluator{
         point, closures, collection.shading_normal, principled_reachability};
     const auto outgoing = normalize(make_float3(-0.2f, 0.3f, 0.9327379f));
@@ -369,11 +376,13 @@ int main(int argc, char **argv) {
     const auto base = case_index * result_stride;
     output.write(base + result_row::identity,
                  make_float4(cast<float>(closures.count()),
-                             cast<float>(first.kind), cast<float>(first.lobe),
-                             select(0.0f, 1.0f, first.setup_valid)));
+                             cast<float>(first_common.closure_type),
+                             cast<float>(first_common.microfacet_fresnel),
+                             select(0.0f, 1.0f, first_access.valid())));
     output.write(base + result_row::optical,
-                 make_float4(first.thin_film_thickness, first.thin_film_ior,
-                             first.ior, first.weight.x));
+                 make_float4(first.payload.thin_film_thickness,
+                             first.payload.thin_film_ior,
+                             first.payload.ior, first_common.weight.x));
     output.write(base + result_row::evaluation,
                  make_float4(evaluation.f, evaluation.pdf));
     output.write(base + result_row::sample,
@@ -382,7 +391,8 @@ int main(int argc, char **argv) {
     output.write(base + result_row::sample_direction,
                  make_float4(sample.wi, select(0.0f, 1.0f, sample.valid)));
     output.write(base + result_row::second_closure,
-                 make_float4(second.weight, cast<float>(second.kind)));
+                 make_float4(second_common.weight,
+                             cast<float>(second_common.closure_type)));
   };
 
   Kernel1D test_glass = [&](BufferFloat table, BufferFloat4 parameters,
@@ -399,7 +409,12 @@ int main(int argc, char **argv) {
     SurfaceClosureSet closures{1u, SurfaceClosureStorageProfile::physical};
     const auto collection = glass_surfaces.collect_closures(
         UInt{glass_tag}, services, point, true, true, closures);
-    const auto first = closures.entry(0u);
+    const auto first_access = closures.physical_access(0u);
+    const auto first_common = closures.physical_common_entry(first_access);
+    const auto first = unpack_surface_closure_physical_dielectric(
+        first_common,
+        Expr<luisa::float4x4>{
+            closures.physical_payload_block(first_access).expression()});
     const SurfaceClosureEvaluator evaluator{
         point, closures, collection.shading_normal, glass_reachability};
     const auto outgoing = normalize(make_float3(-0.2f, 0.3f, 0.9327379f));
@@ -409,11 +424,13 @@ int main(int argc, char **argv) {
     const auto base = case_index * result_stride;
     output.write(base + result_row::identity,
                  make_float4(cast<float>(closures.count()),
-                             cast<float>(first.kind), cast<float>(first.lobe),
-                             select(0.0f, 1.0f, first.setup_valid)));
+                             cast<float>(first_common.closure_type),
+                             cast<float>(first_common.microfacet_fresnel),
+                             select(0.0f, 1.0f, first_access.valid())));
     output.write(base + result_row::optical,
-                 make_float4(first.thin_film_thickness, first.thin_film_ior,
-                             first.ior, first.weight.x));
+                 make_float4(first.payload.thin_film_thickness,
+                             first.payload.thin_film_ior,
+                             first.payload.ior, first_common.weight.x));
     output.write(base + result_row::evaluation,
                  make_float4(evaluation.f, evaluation.pdf));
     output.write(base + result_row::sample,
@@ -460,18 +477,19 @@ int main(int argc, char **argv) {
     return values[case_index * result_stride + offset];
   };
   auto ok = true;
-  constexpr auto principled_kind =
-      static_cast<float>(SurfaceClosureKind::principled);
-  constexpr auto metallic_lobe =
-      static_cast<float>(SurfaceClosureLobe::metallic);
-  constexpr auto dielectric_lobe =
-      static_cast<float>(SurfaceClosureLobe::dielectric);
   for (auto case_index = std::size_t{principled_case::regular_metallic};
        case_index <= principled_case::delta_dielectric; ++case_index) {
-    const auto lobe = (case_index % 2u) == 0u ? metallic_lobe : dielectric_lobe;
+    const auto fresnel = (case_index % 2u) == 0u
+                             ? cycles_closure::MicrofacetFresnel::f82_tint
+                             : cycles_closure::MicrofacetFresnel::
+                                   generalized_schlick;
     ok &= expect_row(backend, "Principled identity",
                      row(principled_results, case_index, result_row::identity),
-                     {1.0f, principled_kind, lobe, 1.0f}, 0.0f);
+                     {1.0f,
+                      static_cast<float>(cycles_closure::type_microfacet_ggx),
+                      static_cast<float>(fresnel),
+                      1.0f},
+                     0.0f);
     ok &= expect_row(
         backend, "Principled optical payload",
         row(principled_results, case_index, result_row::optical),
@@ -505,15 +523,16 @@ int main(int argc, char **argv) {
         {-0.6f, 0.0f, 0.8f, 1.0f});
   }
 
-  constexpr auto glossy_kind = static_cast<float>(SurfaceClosureKind::glossy);
   constexpr auto thin_transmission_kind =
-      static_cast<float>(SurfaceClosureKind::thin_glass_transmission);
-  constexpr auto transmission_lobe =
-      static_cast<float>(SurfaceClosureLobe::transmission);
+      static_cast<float>(cycles_closure::type_thin_glass_transmission);
   ok &= expect_row(
       backend, "Thin Wall identity",
       row(principled_results, principled_case::thin_wall, result_row::identity),
-      {2.0f, glossy_kind, transmission_lobe, 1.0f}, 0.0f);
+      {2.0f,
+       static_cast<float>(cycles_closure::type_microfacet_ggx),
+       static_cast<float>(cycles_closure::MicrofacetFresnel::none),
+       1.0f},
+      0.0f);
   ok &= expect_row(
       backend, "Thin Wall reflected closure",
       row(principled_results, principled_case::thin_wall, result_row::optical),
@@ -528,13 +547,16 @@ int main(int argc, char **argv) {
                        result_row::sample_direction),
                    {0.0f, 0.0f, 1.0f, 1.0f});
 
-  constexpr auto glass_kind = static_cast<float>(SurfaceClosureKind::glass);
   for (auto case_index = std::size_t{glass_case::regular_front};
        case_index < glass_case::count; ++case_index) {
     ok &= expect_row(
         backend, "Glass identity",
         row(glass_results, case_index, result_row::identity),
-        {1.0f, glass_kind, static_cast<float>(SurfaceClosureLobe::none), 1.0f},
+        {1.0f,
+         static_cast<float>(cycles_closure::type_microfacet_ggx_glass),
+         static_cast<float>(cycles_closure::MicrofacetFresnel::
+                                generalized_schlick),
+         1.0f},
         0.0f);
   }
   ok &= expect_row(

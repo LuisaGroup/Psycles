@@ -1,3 +1,4 @@
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/surface_closure_evaluation.h>
 #include <psycles/luisa/surface_closure_reachability.h>
 #include <psycles/luisa/surface_closure_sampling.h>
@@ -443,15 +444,17 @@ template <typename Kernel>
 
 [[nodiscard]] auto make_probe_kernel(SurfaceClosureReachability reachability) {
     return Kernel1D{[reachability](
-                        BufferFloat4 parameters, BufferUInt closure_kinds,
-                        BufferUInt closure_lobes, BufferFloat4 output) noexcept {
+                        BufferFloat4 parameters, BufferUInt closure_types,
+                        BufferUInt microfacet_fresnels,
+                        BufferFloat4 output) noexcept {
         const auto invocation = dispatch_x();
         ParameterShaderServices services{parameters, 0.73f};
         const auto point = make_surface_point();
         const SurfaceClosurePoint closure_point{point};
         auto closure_record = SurfaceClosureRecord::zero();
-        closure_record.kind = closure_kinds.read(invocation);
-        closure_record.lobe = closure_lobes.read(invocation);
+        closure_record.closure_type = closure_types.read(invocation);
+        closure_record.microfacet_fresnel =
+            microfacet_fresnels.read(invocation);
         closure_record.weight = make_float3(0.7f, 0.5f, 0.3f);
         closure_record.allocation_weight = 0.6f;
         closure_record.sample_weight = 0.55f;
@@ -664,69 +667,74 @@ int main(int argc, char **argv) {
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
-    constexpr std::array closure_kinds{
-        static_cast<std::uint32_t>(SurfaceClosureKind::diffuse),
-        static_cast<std::uint32_t>(SurfaceClosureKind::translucent),
-        static_cast<std::uint32_t>(SurfaceClosureKind::glossy),
-        static_cast<std::uint32_t>(SurfaceClosureKind::metallic_f82),
-        static_cast<std::uint32_t>(SurfaceClosureKind::metallic_conductor),
-        static_cast<std::uint32_t>(SurfaceClosureKind::sheen_microfiber),
-        static_cast<std::uint32_t>(SurfaceClosureKind::sheen_ashikhmin),
-        static_cast<std::uint32_t>(SurfaceClosureKind::hair_reflection),
-        static_cast<std::uint32_t>(SurfaceClosureKind::hair_transmission),
-        static_cast<std::uint32_t>(SurfaceClosureKind::glass),
-        static_cast<std::uint32_t>(SurfaceClosureKind::transparent),
-        static_cast<std::uint32_t>(SurfaceClosureKind::bssrdf),
-        static_cast<std::uint32_t>(SurfaceClosureKind::refraction),
-        static_cast<std::uint32_t>(SurfaceClosureKind::principled),
-        static_cast<std::uint32_t>(SurfaceClosureKind::principled),
-        static_cast<std::uint32_t>(SurfaceClosureKind::principled),
-        static_cast<std::uint32_t>(SurfaceClosureKind::principled)};
-    constexpr std::array closure_lobes{
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::none),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::sheen),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::coat),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::metallic),
-        static_cast<std::uint32_t>(SurfaceClosureLobe::dielectric)};
-    static_assert(closure_kinds.size() == closure_lobes.size());
+    constexpr std::array closure_types{
+        cycles_closure::type_diffuse,
+        cycles_closure::type_translucent,
+        cycles_closure::type_microfacet_ggx,
+        cycles_closure::type_microfacet_ggx,
+        cycles_closure::type_microfacet_ggx,
+        cycles_closure::type_sheen,
+        cycles_closure::type_ashikhmin_velvet,
+        cycles_closure::type_hair_reflection,
+        cycles_closure::type_hair_transmission,
+        cycles_closure::type_microfacet_ggx_glass,
+        cycles_closure::type_transparent,
+        cycles_closure::type_bssrdf_random_walk,
+        cycles_closure::type_microfacet_ggx_refraction,
+        cycles_closure::type_sheen,
+        cycles_closure::type_microfacet_ggx,
+        cycles_closure::type_microfacet_ggx,
+        cycles_closure::type_microfacet_ggx};
+    using Fresnel = cycles_closure::MicrofacetFresnel;
+    constexpr std::array<std::uint32_t, closure_types.size()>
+        microfacet_fresnels{
+            static_cast<std::uint32_t>(Fresnel::none),
+            static_cast<std::uint32_t>(Fresnel::none),
+            static_cast<std::uint32_t>(Fresnel::none),
+            static_cast<std::uint32_t>(Fresnel::f82_tint),
+            static_cast<std::uint32_t>(Fresnel::conductor),
+            static_cast<std::uint32_t>(Fresnel::none),
+            static_cast<std::uint32_t>(Fresnel::none),
+            static_cast<std::uint32_t>(Fresnel::none),
+            static_cast<std::uint32_t>(Fresnel::none),
+            static_cast<std::uint32_t>(Fresnel::generalized_schlick),
+            static_cast<std::uint32_t>(Fresnel::none),
+            static_cast<std::uint32_t>(Fresnel::none),
+            static_cast<std::uint32_t>(Fresnel::none),
+            static_cast<std::uint32_t>(Fresnel::none),
+            static_cast<std::uint32_t>(Fresnel::generalized_schlick),
+            static_cast<std::uint32_t>(Fresnel::f82_tint),
+            static_cast<std::uint32_t>(Fresnel::generalized_schlick)};
+    static_assert(closure_types.size() == microfacet_fresnels.size());
     constexpr auto records_per_closure = 5u;
     auto parameters = device.create_buffer<luisa::float4>(1u);
-    auto closure_kind_buffer =
-        device.create_buffer<std::uint32_t>(closure_kinds.size());
-    auto closure_lobe_buffer =
-        device.create_buffer<std::uint32_t>(closure_lobes.size());
+    auto closure_type_buffer =
+        device.create_buffer<std::uint32_t>(closure_types.size());
+    auto microfacet_fresnel_buffer =
+        device.create_buffer<std::uint32_t>(microfacet_fresnels.size());
     auto specialized_output = device.create_buffer<luisa::float4>(
-        closure_kinds.size() * records_per_closure);
-    auto top_output = device.create_buffer<luisa::float4>(closure_kinds.size() *
+        closure_types.size() * records_per_closure);
+    auto top_output = device.create_buffer<luisa::float4>(closure_types.size() *
                                                           records_per_closure);
     auto specialized_shader = device.compile(scene_probe);
     auto top_shader = device.compile(top_probe);
     constexpr std::array parameter_data{luisa::float4{0.0f}};
-    std::array<luisa::float4, closure_kinds.size() * records_per_closure>
+    std::array<luisa::float4, closure_types.size() * records_per_closure>
         specialized_result{};
-    std::array<luisa::float4, closure_kinds.size() * records_per_closure>
+    std::array<luisa::float4, closure_types.size() * records_per_closure>
         top_result{};
     stream << parameters.copy_from(luisa::span{parameter_data})
-           << closure_kind_buffer.copy_from(luisa::span{closure_kinds})
-           << closure_lobe_buffer.copy_from(luisa::span{closure_lobes})
-           << specialized_shader(parameters, closure_kind_buffer,
-                                 closure_lobe_buffer, specialized_output)
-                  .dispatch(static_cast<std::uint32_t>(closure_kinds.size()))
-           << top_shader(parameters, closure_kind_buffer, closure_lobe_buffer,
+           << closure_type_buffer.copy_from(luisa::span{closure_types})
+           << microfacet_fresnel_buffer.copy_from(
+                  luisa::span{microfacet_fresnels})
+           << specialized_shader(parameters, closure_type_buffer,
+                                 microfacet_fresnel_buffer,
+                                 specialized_output)
+                  .dispatch(static_cast<std::uint32_t>(closure_types.size()))
+           << top_shader(parameters, closure_type_buffer,
+                         microfacet_fresnel_buffer,
                          top_output)
-                  .dispatch(static_cast<std::uint32_t>(closure_kinds.size()))
+                  .dispatch(static_cast<std::uint32_t>(closure_types.size()))
            << specialized_output.copy_to(luisa::span{specialized_result})
            << top_output.copy_to(luisa::span{top_result}) << synchronize();
     for (auto index = std::size_t{0u}; index < specialized_result.size();

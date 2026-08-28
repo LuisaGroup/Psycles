@@ -6,24 +6,6 @@
 #include <psycles/luisa/cycles_sample_mapping.h>
 
 namespace psycles::luisa_backend::detail {
-namespace {
-
-template<typename Closure>
-[[nodiscard]] Bool has_kind(
-    const Closure &closure,
-    SurfaceClosureKind kind) noexcept {
-    return closure.kind == static_cast<std::uint32_t>(kind);
-}
-
-template<typename Closure>
-[[nodiscard]] Bool has_lobe(
-    const Closure &closure,
-    SurfaceClosureLobe lobe) noexcept {
-    return closure.lobe == static_cast<std::uint32_t>(lobe);
-}
-
-}// namespace
-
 [[nodiscard]] Float fresnel_dielectric_cos(
     Float cosine, Float eta) noexcept {
     auto c = abs(cosine);
@@ -258,15 +240,12 @@ template<typename Closure>
 }
 
 [[nodiscard]] Bool closure_allocated(
-    const SurfaceClosurePhysicalRecord &closure) noexcept {
-    return closure_allocated(surface_closure_identity(closure));
-}
-
-[[nodiscard]] Bool closure_allocated(
-    const SurfaceClosureIdentityExpression &closure) noexcept {
-    return !has_kind(closure, SurfaceClosureKind::none) &
-           (closure.allocation_weight >=
-               cycles_closure::closure_weight_cutoff);
+    const SurfaceClosureRecord &closure) noexcept {
+    // Allocation is a prefix property, independent of whether setup later
+    // canonicalized the slot to ClosureType::NONE. This is Cycles'
+    // num_closure topology: failed setup consumes an allocated slot.
+    return closure.allocation_weight >=
+           cycles_closure::closure_weight_cutoff;
 }
 
 [[nodiscard]] Float bump_shadowing_term(
@@ -330,262 +309,133 @@ template<typename Closure>
 }
 
 [[nodiscard]] UInt cycles_runtime_flags(
-    const SurfaceClosurePhysicalRecord &closure,
+    const SurfaceClosureRecord &closure,
     Float glossy_filter_roughness,
     SurfaceClosureReachability reachability) noexcept {
-    return cycles_runtime_flags(
-        surface_closure_identity(closure),
-        std::move(glossy_filter_roughness),
-        reachability);
+    return select(
+        UInt{0u},
+        cycles_runtime_flags(
+            closure.closure_type,
+            closure.roughness,
+            std::move(glossy_filter_roughness),
+            reachability),
+        closure_allocated(closure));
 }
 
 [[nodiscard]] UInt cycles_runtime_flags(
-    const SurfaceClosureIdentityExpression &closure,
+    UInt closure_type,
+    Float roughness,
     Float glossy_filter_roughness,
     SurfaceClosureReachability reachability) noexcept {
     const auto bsdf = cycles_closure::runtime_bsdf;
-    const auto has_eval =
-        cycles_closure::runtime_bsdf_has_eval;
-    UInt flags = 0u;
-    const auto select_kind_flags =
-        [&](SurfaceClosureKind kind, std::uint32_t value) noexcept {
-            // Reachability is a host/JIT abstract value. An absent tag is
-            // impossible by construction, so do not record either its tag
-            // comparison or its select in the shader AST.
-            if (reachability.contains(kind)) {
-                flags = select(flags, UInt{value}, has_kind(closure, kind));
-            }
-        };
-    select_kind_flags(
-        SurfaceClosureKind::diffuse, bsdf | has_eval);
-    const auto transmission_flags =
-        bsdf | has_eval |
+    const auto has_eval = cycles_closure::runtime_bsdf_has_eval;
+    const auto transmission =
         cycles_closure::runtime_bsdf_has_transmission;
-    select_kind_flags(
-        SurfaceClosureKind::translucent, transmission_flags);
-    select_kind_flags(
-        SurfaceClosureKind::rough_translucent, transmission_flags);
-    select_kind_flags(
-        SurfaceClosureKind::sheen_microfiber, bsdf | has_eval);
-    select_kind_flags(
-        SurfaceClosureKind::sheen_ashikhmin, bsdf | has_eval);
-    select_kind_flags(
-        SurfaceClosureKind::hair_reflection, bsdf | has_eval);
-    select_kind_flags(
-        SurfaceClosureKind::hair_transmission, transmission_flags);
-
-    const auto sheen_lobe_reachable =
-        reachability.contains_principled_lobe(
-            SurfaceClosureLobe::sheen);
-    if (sheen_lobe_reachable) {
-        flags = select(flags,
-            UInt{bsdf | has_eval},
-            has_kind(closure, SurfaceClosureKind::principled) &
-                has_lobe(closure, SurfaceClosureLobe::sheen));
+    UInt flags = 0u;
+    const auto select_type_flags =
+        [&](Bool predicate, std::uint32_t value) noexcept {
+            flags = select(flags, UInt{value}, predicate);
+        };
+    if (reachability.contains(SurfaceClosureKind::diffuse)) {
+        select_type_flags(
+            cycles_closure::is_diffuse_or_oren_nayar(closure_type),
+            bsdf | has_eval);
+    }
+    if (reachability.contains(SurfaceClosureKind::translucent)) {
+        select_type_flags(
+            closure_type == cycles_closure::type_translucent,
+            bsdf | has_eval | transmission);
+    }
+    if (reachability.contains(SurfaceClosureKind::rough_translucent)) {
+        select_type_flags(
+            closure_type == cycles_closure::type_rough_translucent,
+            bsdf | has_eval | transmission);
+    }
+    if (reachability.contains_principled_lobe(
+            SurfaceClosureLobe::sheen) ||
+        reachability.contains(SurfaceClosureKind::sheen_microfiber)) {
+        select_type_flags(
+            closure_type == cycles_closure::type_sheen,
+            bsdf | has_eval);
+    }
+    if (reachability.contains(SurfaceClosureKind::sheen_ashikhmin)) {
+        select_type_flags(
+            closure_type == cycles_closure::type_ashikhmin_velvet,
+            bsdf | has_eval);
+    }
+    if (reachability.contains(SurfaceClosureKind::hair_reflection)) {
+        select_type_flags(
+            closure_type == cycles_closure::type_hair_reflection,
+            bsdf | has_eval);
+    }
+    if (reachability.contains(SurfaceClosureKind::hair_transmission)) {
+        select_type_flags(
+            closure_type == cycles_closure::type_hair_transmission,
+            bsdf | has_eval | transmission);
     }
 
+    auto alpha = clamp(roughness, 0.0f, 1.0f);
+    alpha *= alpha;
+    alpha = max(alpha, glossy_filter_roughness);
+    const auto regular_microfacet =
+        alpha * alpha >
+        cycles_closure::microfacet_singular_alpha_product;
+    const auto microfacet_flags =
+        bsdf | select(0u, has_eval, regular_microfacet);
     constexpr auto sheen_lobe_bit =
         surface_closure_lobe_bit(SurfaceClosureLobe::sheen);
-    const auto principled_microfacet_reachable =
-        reachability.contains(SurfaceClosureKind::principled) &&
-        (reachability.principled_lobes & ~sheen_lobe_bit) != 0u;
-    const auto standalone_microfacet_reachable =
+    const auto reflection_microfacet_reachable =
+        (reachability.contains(SurfaceClosureKind::principled) &&
+         (reachability.principled_lobes & ~sheen_lobe_bit) != 0u) ||
         reachability.contains(SurfaceClosureKind::glossy) ||
         reachability.contains(SurfaceClosureKind::metallic_f82) ||
-        reachability.contains(SurfaceClosureKind::metallic_conductor) ||
-        reachability.contains(SurfaceClosureKind::glass) ||
-        reachability.contains(SurfaceClosureKind::refraction) ||
-        reachability.contains(
-            SurfaceClosureKind::thin_glass_transmission);
-    if (principled_microfacet_reachable ||
-        standalone_microfacet_reachable) {
-        auto alpha = clamp(closure.roughness, 0.0f, 1.0f);
-        alpha *= alpha;
-        alpha = max(alpha, glossy_filter_roughness);
-        const auto regular_microfacet =
-            alpha * alpha >
-            cycles_closure::microfacet_singular_alpha_product;
-        const auto microfacet_flags =
-            bsdf | select(0u, has_eval, regular_microfacet);
-        if (principled_microfacet_reachable) {
-            auto predicate = has_kind(
-                closure, SurfaceClosureKind::principled);
-            if (sheen_lobe_reachable) {
-                predicate &=
-                    !has_lobe(closure, SurfaceClosureLobe::sheen);
-            }
-            flags = select(flags, microfacet_flags, predicate);
-        }
-        const auto select_microfacet_kind =
-            [&](SurfaceClosureKind kind, bool transmission) noexcept {
-                if (reachability.contains(kind)) {
-                    auto value = microfacet_flags;
-                    if (transmission) {
-                        value |= cycles_closure::runtime_bsdf_has_transmission;
-                    }
-                    flags = select(
-                        flags, value, has_kind(closure, kind));
-                }
-            };
-        select_microfacet_kind(SurfaceClosureKind::glossy, false);
-        select_microfacet_kind(SurfaceClosureKind::metallic_f82, false);
-        select_microfacet_kind(
-            SurfaceClosureKind::metallic_conductor, false);
-        select_microfacet_kind(SurfaceClosureKind::glass, true);
-        select_microfacet_kind(SurfaceClosureKind::refraction, true);
-        select_microfacet_kind(
-            SurfaceClosureKind::thin_glass_transmission, true);
+        reachability.contains(SurfaceClosureKind::metallic_conductor);
+    if (reflection_microfacet_reachable) {
+        flags = select(
+            flags,
+            microfacet_flags,
+            cycles_closure::is_reflection_microfacet(closure_type));
     }
-    select_kind_flags(
-        SurfaceClosureKind::transparent,
-        bsdf | cycles_closure::runtime_transparent);
-    select_kind_flags(
-        SurfaceClosureKind::bssrdf,
-        cycles_closure::runtime_bssrdf);
-    flags |= select(0u,
+    if (reachability.contains(SurfaceClosureKind::glass)) {
+        flags = select(
+            flags,
+            microfacet_flags | transmission,
+            cycles_closure::is_glass_microfacet(closure_type));
+    }
+    if (reachability.contains(SurfaceClosureKind::refraction)) {
+        flags = select(
+            flags,
+            microfacet_flags | transmission,
+            cycles_closure::is_refraction_microfacet(closure_type));
+    }
+    if (reachability.contains(
+            SurfaceClosureKind::thin_glass_transmission)) {
+        flags = select(
+            flags,
+            UInt{bsdf} | select(0u, has_eval, regular_microfacet) |
+                transmission,
+            closure_type ==
+                cycles_closure::type_thin_glass_transmission);
+    }
+    if (reachability.contains(SurfaceClosureKind::transparent)) {
+        select_type_flags(
+            closure_type == cycles_closure::type_transparent,
+            bsdf | cycles_closure::runtime_transparent);
+    }
+    if (reachability.contains(SurfaceClosureKind::bssrdf)) {
+        select_type_flags(
+            cycles_closure::is_bssrdf(closure_type),
+            cycles_closure::runtime_bssrdf);
+    }
+    flags |= select(
+        0u,
         has_eval,
         glossy_filter_roughness * glossy_filter_roughness >
             cycles_closure::microfacet_singular_alpha_product);
-    return select(0u,
+    return select(
+        UInt{0u},
         flags,
-        closure_allocated(closure) & closure.setup_valid);
-}
-
-[[nodiscard]] UInt cycles_closure_type(
-    const SurfaceClosurePhysicalRecord &closure,
-    SurfaceClosureReachability reachability) noexcept {
-    return cycles_closure_type(
-        surface_closure_identity(closure), reachability);
-}
-
-[[nodiscard]] UInt cycles_closure_type(
-    const SurfaceClosureIdentityExpression &closure,
-    SurfaceClosureReachability reachability) noexcept {
-    UInt type = cycles_closure::type_none;
-    if (reachability.contains(SurfaceClosureKind::diffuse)) {
-        type = select(type,
-            select(
-                UInt{cycles_closure::type_oren_nayar},
-                UInt{cycles_closure::type_diffuse},
-                closure.roughness < 1.0e-5f),
-            has_kind(closure, SurfaceClosureKind::diffuse));
-    }
-    const auto select_kind_type =
-        [&](SurfaceClosureKind kind, std::uint32_t value) noexcept {
-            if (reachability.contains(kind)) {
-                type = select(type, UInt{value}, has_kind(closure, kind));
-            }
-        };
-    select_kind_type(
-        SurfaceClosureKind::translucent,
-        cycles_closure::type_translucent);
-    select_kind_type(
-        SurfaceClosureKind::rough_translucent,
-        cycles_closure::type_rough_translucent);
-
-    constexpr auto sheen_lobe_bit =
-        surface_closure_lobe_bit(SurfaceClosureLobe::sheen);
-    const auto sheen_lobe_reachable =
-        reachability.contains_principled_lobe(
-            SurfaceClosureLobe::sheen);
-    const auto principled_microfacet_reachable =
-        reachability.contains(SurfaceClosureKind::principled) &&
-        (reachability.principled_lobes & ~sheen_lobe_bit) != 0u;
-    if (principled_microfacet_reachable) {
-        auto predicate = has_kind(
-            closure, SurfaceClosureKind::principled);
-        if (sheen_lobe_reachable) {
-            predicate &=
-                !has_lobe(closure, SurfaceClosureLobe::sheen);
-        }
-        type = select(type,
-            UInt{cycles_closure::type_microfacet_ggx},
-            predicate);
-    }
-    const auto select_reflection_kind =
-        [&](SurfaceClosureKind kind) noexcept {
-            if (reachability.contains(kind)) {
-                const auto reflection = select(
-                    UInt{cycles_closure::type_microfacet_ggx},
-                    UInt{cycles_closure::type_microfacet_beckmann},
-                    closure.beckmann);
-                type = select(
-                    type, reflection, has_kind(closure, kind));
-            }
-        };
-    select_reflection_kind(SurfaceClosureKind::glossy);
-    select_reflection_kind(SurfaceClosureKind::metallic_f82);
-    select_reflection_kind(SurfaceClosureKind::metallic_conductor);
-    if (reachability.contains(SurfaceClosureKind::glass)) {
-        const auto single_glass = select(
-            UInt{cycles_closure::type_microfacet_ggx_glass},
-            UInt{cycles_closure::type_microfacet_beckmann_glass},
-            closure.beckmann);
-        const auto glass = select(single_glass,
-            UInt{cycles_closure::type_microfacet_multi_ggx_glass},
-            closure.preserve_ggx_energy);
-        type = select(type,
-            glass,
-            has_kind(closure, SurfaceClosureKind::glass));
-    }
-    if (reachability.contains(SurfaceClosureKind::refraction)) {
-        const auto refraction = select(
-            UInt{cycles_closure::type_microfacet_ggx_refraction},
-            UInt{cycles_closure::type_microfacet_beckmann_refraction},
-            closure.beckmann);
-        type = select(type,
-            refraction,
-            has_kind(closure, SurfaceClosureKind::refraction));
-    }
-    select_kind_type(
-        SurfaceClosureKind::thin_glass_transmission,
-        cycles_closure::type_thin_glass_transmission);
-    select_kind_type(
-        SurfaceClosureKind::transparent,
-        cycles_closure::type_transparent);
-    if (sheen_lobe_reachable) {
-        type = select(type,
-            UInt{cycles_closure::type_sheen},
-            has_kind(closure, SurfaceClosureKind::principled) &
-                has_lobe(closure, SurfaceClosureLobe::sheen));
-    }
-    select_kind_type(
-        SurfaceClosureKind::sheen_microfiber,
-        cycles_closure::type_sheen);
-    select_kind_type(
-        SurfaceClosureKind::sheen_ashikhmin,
-        cycles_closure::type_ashikhmin_velvet);
-    select_kind_type(
-        SurfaceClosureKind::hair_reflection,
-        cycles_closure::type_hair_reflection);
-    select_kind_type(
-        SurfaceClosureKind::hair_transmission,
-        cycles_closure::type_hair_transmission);
-    if (reachability.contains(SurfaceClosureKind::bssrdf)) {
-        auto bssrdf_type = UInt{
-            cycles_closure::type_bssrdf_random_walk};
-        bssrdf_type = select(
-            bssrdf_type,
-            UInt{cycles_closure::type_bssrdf_burley},
-            closure.bssrdf_method == static_cast<std::uint32_t>(
-                SurfaceBssrdfMethod::burley));
-        bssrdf_type = select(
-            bssrdf_type,
-            UInt{cycles_closure::type_bssrdf_random_walk_legacy},
-            closure.bssrdf_method == static_cast<std::uint32_t>(
-                SurfaceBssrdfMethod::random_walk_legacy));
-        bssrdf_type = select(
-            bssrdf_type,
-            UInt{cycles_closure::type_bssrdf_random_walk_skin},
-            closure.bssrdf_method == static_cast<std::uint32_t>(
-                SurfaceBssrdfMethod::random_walk_skin));
-        type = select(type,
-            bssrdf_type,
-            has_kind(closure, SurfaceClosureKind::bssrdf));
-    }
-    return select(UInt{cycles_closure::type_none},
-        type,
-        closure.setup_valid);
+        closure_type != cycles_closure::type_none);
 }
 
 [[nodiscard]] Float oren_nayar_g(Float cosine) noexcept {
@@ -740,7 +590,8 @@ namespace {
     Float distribution = 0.0f;
     Float lambda_incoming = 0.0f;
     Float lambda_outgoing = 0.0f;
-    $if(closure.beckmann) {
+    $if(cycles_closure::is_beckmann_microfacet(
+        closure.closure_type)) {
         distribution = microfacet_beckmann_distribution(
             n_dot_h, alpha);
         lambda_incoming = microfacet_beckmann_lambda(
@@ -854,7 +705,8 @@ microfacet_reflection_distribution_terms(
             dot(basis.tangent, outgoing),
             dot(basis.bitangent, outgoing),
             n_dot_outgoing);
-        $if(closure.common.beckmann) {
+        $if(cycles_closure::is_beckmann_microfacet(
+            closure.common.closure_type)) {
             distribution = microfacet_beckmann_anisotropic_distribution(
                 local_half, alpha.x, alpha.y);
             lambda_incoming = microfacet_beckmann_anisotropic_lambda(
@@ -881,84 +733,27 @@ microfacet_reflection_distribution_terms(
     const SurfaceClosurePhysicalGeneralRecord &closure,
     Float cosine,
     const ShaderServices *services,
-    bool may_have_metallic_thin_film,
-    bool may_have_dielectric_thin_film,
-    bool may_have_standalone_f82,
-    bool may_have_standalone_f82_thin_film,
+    bool may_have_f82,
+    bool may_have_f82_thin_film,
+    bool may_have_dielectric,
+    bool may_have_generalized_schlick,
+    bool may_have_generalized_schlick_thin_film,
     bool may_have_conductor,
     bool may_have_conductor_thin_film) noexcept {
-    // Cycles' standalone Glossy closure uses MicrofacetFresnel::NONE:
-    // Color is already baked into ShaderClosure::weight, so the remaining
-    // directional factor is constant one (plus optional MULTI_GGX scale).
-    auto metallic =
-        fresnel_f82(cosine,
-            closure.common.color_or_evaluation_scale,
-            closure.payload.specular_tint) *
-        closure.payload.evaluation_scale;
-    auto dielectric =
-        generalized_dielectric_fresnel(
-            cosine,
-            closure.payload.ior,
-            closure.common.color_or_evaluation_scale) *
-        closure.payload.evaluation_scale;
-    Float3 standalone_f82 = make_float3(0.0f);
-    if (may_have_standalone_f82) {
-        standalone_f82 =
+    using Fresnel = cycles_closure::MicrofacetFresnel;
+    const UInt fresnel_type{closure.common.microfacet_fresnel};
+    // NONE is Cycles' ordinary Glossy behavior: color already lives in
+    // ShaderClosure::weight and the remaining directional scale is constant.
+    Float3 result = closure.payload.evaluation_scale;
+    if (may_have_f82) {
+        auto f82 =
             fresnel_f82(cosine,
                         closure.common.color_or_evaluation_scale,
                         closure.payload.specular_tint) *
             closure.payload.evaluation_scale;
-    }
-    Float3 conductor = make_float3(0.0f);
-    if (may_have_conductor) {
-        conductor =
-            fresnel_conductor(cosine,
-                              closure.common.color_or_evaluation_scale,
-                              closure.payload.specular_tint) *
-            closure.payload.evaluation_scale;
-    }
-    if (may_have_metallic_thin_film ||
-        may_have_dielectric_thin_film ||
-        may_have_standalone_f82_thin_film ||
-        may_have_conductor_thin_film) {
-        LUISA_ASSERT(services != nullptr,
-                     "Thin-film Fresnel requires Cycles table services.");
-        const auto film_active =
-            closure.payload.thin_film_thickness >
-            thin_film_thickness_cutoff;
-        if (may_have_metallic_thin_film) {
-            const auto metallic_film = thin_film_f82_fresnel(
-                *services,
-                closure.payload.thin_film_thickness,
-                closure.payload.thin_film_ior,
-                closure.common.color_or_evaluation_scale,
-                closure.payload.specular_tint,
-                cosine) * closure.payload.evaluation_scale;
-            metallic = select(
-                metallic,
-                metallic_film,
-                film_active &
-                    has_lobe(closure.common,
-                             SurfaceClosureLobe::metallic));
-        }
-        if (may_have_dielectric_thin_film) {
-            const auto dielectric_film =
-                thin_film_dielectric_fresnel(
-                    *services,
-                    closure.payload.thin_film_thickness,
-                    closure.payload.thin_film_ior,
-                    closure.payload.ior,
-                    closure.common.color_or_evaluation_scale,
-                    cosine)
-                    .reflectance * closure.payload.evaluation_scale;
-            dielectric = select(
-                dielectric,
-                dielectric_film,
-                film_active &
-                    has_lobe(closure.common,
-                             SurfaceClosureLobe::dielectric));
-        }
-        if (may_have_standalone_f82_thin_film) {
+        if (may_have_f82_thin_film) {
+            LUISA_ASSERT(services != nullptr,
+                         "Thin-film Fresnel requires Cycles table services.");
             const auto film = thin_film_f82_fresnel(
                 *services,
                 closure.payload.thin_film_thickness,
@@ -966,13 +761,66 @@ microfacet_reflection_distribution_terms(
                 closure.common.color_or_evaluation_scale,
                 closure.payload.specular_tint,
                 cosine) * closure.payload.evaluation_scale;
-            standalone_f82 = select(
-                standalone_f82,
+            f82 = select(
+                f82,
                 film,
-                film_active & has_kind(
-                    closure.common, SurfaceClosureKind::metallic_f82));
+                closure.payload.thin_film_thickness >
+                    thin_film_thickness_cutoff);
         }
+        result = select(
+            result,
+            f82,
+            fresnel_type ==
+                static_cast<std::uint32_t>(Fresnel::f82_tint));
+    }
+    if (may_have_dielectric) {
+        const auto dielectric =
+            make_float3(fresnel_dielectric_cos(
+                cosine, closure.payload.ior)) *
+            closure.payload.evaluation_scale;
+        result = select(
+            result,
+            dielectric,
+            fresnel_type == static_cast<std::uint32_t>(
+                                Fresnel::dielectric));
+    }
+    if (may_have_generalized_schlick) {
+        auto generalized = generalized_dielectric_fresnel(
+                               cosine,
+                               closure.payload.ior,
+                               closure.common.color_or_evaluation_scale) *
+            closure.payload.evaluation_scale;
+        if (may_have_generalized_schlick_thin_film) {
+            LUISA_ASSERT(services != nullptr,
+                         "Thin-film Fresnel requires Cycles table services.");
+            const auto film = thin_film_dielectric_fresnel(
+                *services,
+                closure.payload.thin_film_thickness,
+                closure.payload.thin_film_ior,
+                closure.payload.ior,
+                closure.common.color_or_evaluation_scale,
+                cosine).reflectance * closure.payload.evaluation_scale;
+            generalized = select(
+                generalized,
+                film,
+                closure.payload.thin_film_thickness >
+                    thin_film_thickness_cutoff);
+        }
+        result = select(
+            result,
+            generalized,
+            fresnel_type == static_cast<std::uint32_t>(
+                                Fresnel::generalized_schlick));
+    }
+    if (may_have_conductor) {
+        auto conductor = fresnel_conductor(
+                             cosine,
+                             closure.common.color_or_evaluation_scale,
+                             closure.payload.specular_tint) *
+                         closure.payload.evaluation_scale;
         if (may_have_conductor_thin_film) {
+            LUISA_ASSERT(services != nullptr,
+                         "Thin-film Fresnel requires Cycles table services.");
             const auto film = thin_film_conductor_fresnel(
                 *services,
                 closure.payload.thin_film_thickness,
@@ -983,30 +831,16 @@ microfacet_reflection_distribution_terms(
             conductor = select(
                 conductor,
                 film,
-                film_active & has_kind(
-                    closure.common,
-                    SurfaceClosureKind::metallic_conductor));
+                closure.payload.thin_film_thickness >
+                    thin_film_thickness_cutoff);
         }
+        result = select(
+            result,
+            conductor,
+            fresnel_type ==
+                static_cast<std::uint32_t>(Fresnel::conductor));
     }
-    const auto principled = select(
-        dielectric,
-        metallic,
-        has_lobe(closure.common, SurfaceClosureLobe::metallic));
-    auto result = principled;
-    result = select(
-        result,
-        standalone_f82,
-        has_kind(closure.common, SurfaceClosureKind::metallic_f82));
-    result = select(
-        result,
-        conductor,
-        has_kind(closure.common, SurfaceClosureKind::metallic_conductor));
-    return select(
-        result,
-        closure.payload.evaluation_scale,
-        has_kind(closure.common, SurfaceClosureKind::glossy) |
-            has_kind(closure.common,
-                     SurfaceClosureKind::thin_glass_transmission));
+    return result;
 }
 
 [[nodiscard]] MicrofacetEvaluation microfacet_evaluate(
@@ -1017,10 +851,11 @@ microfacet_reflection_distribution_terms(
     Float3 glossy_normal,
     Float glossy_filter_roughness,
     bool may_be_anisotropic,
-    bool may_have_metallic_thin_film,
-    bool may_have_dielectric_thin_film,
-    bool may_have_standalone_f82,
-    bool may_have_standalone_f82_thin_film,
+    bool may_have_f82,
+    bool may_have_f82_thin_film,
+    bool may_have_dielectric,
+    bool may_have_generalized_schlick,
+    bool may_have_generalized_schlick_thin_film,
     bool may_have_conductor,
     bool may_have_conductor_thin_film) noexcept {
     Float2 setup_alpha;
@@ -1080,10 +915,11 @@ microfacet_reflection_distribution_terms(
             closure,
             v_dot_h,
             &services,
-            may_have_metallic_thin_film,
-            may_have_dielectric_thin_film,
-            may_have_standalone_f82,
-            may_have_standalone_f82_thin_film,
+            may_have_f82,
+            may_have_f82_thin_film,
+            may_have_dielectric,
+            may_have_generalized_schlick,
+            may_have_generalized_schlick_thin_film,
             may_have_conductor,
             may_have_conductor_thin_film);
         const auto intensity =
@@ -1114,10 +950,11 @@ microfacet_reflection_distribution_terms(
     Float glossy_filter_roughness,
     bool may_be_anisotropic,
     const ShaderServices *services,
-    bool may_have_metallic_thin_film,
-    bool may_have_dielectric_thin_film,
-    bool may_have_standalone_f82,
-    bool may_have_standalone_f82_thin_film,
+    bool may_have_f82,
+    bool may_have_f82_thin_film,
+    bool may_have_dielectric,
+    bool may_have_generalized_schlick,
+    bool may_have_generalized_schlick_thin_film,
     bool may_have_conductor,
     bool may_have_conductor_thin_film) noexcept {
     Float2 alpha;
@@ -1153,7 +990,8 @@ microfacet_reflection_distribution_terms(
             };
         }
         Float3 half_vector;
-        $if(closure.common.beckmann) {
+        $if(cycles_closure::is_beckmann_microfacet(
+            closure.common.closure_type)) {
             half_vector =
                 cycles_sample_mapping::sample_beckmann_visible_normal(
                     glossy_normal,
@@ -1183,10 +1021,11 @@ microfacet_reflection_distribution_terms(
         closure,
         fresnel_cosine,
         services,
-        may_have_metallic_thin_film,
-        may_have_dielectric_thin_film,
-        may_have_standalone_f82,
-        may_have_standalone_f82_thin_film,
+        may_have_f82,
+        may_have_f82_thin_film,
+        may_have_dielectric,
+        may_have_generalized_schlick,
+        may_have_generalized_schlick_thin_film,
         may_have_conductor,
         may_have_conductor_thin_film);
     const auto bump_shadowing = bump_shadowing_term(

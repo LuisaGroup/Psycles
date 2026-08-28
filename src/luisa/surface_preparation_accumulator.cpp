@@ -55,14 +55,8 @@ void SurfacePreparationAccumulator::fold_runtime_identity(
     const SurfaceClosureRecord &closure) noexcept {
     const auto fold_runtime_flags = [&] noexcept {
         _runtime_flags |= _identity(
-            closure.kind,
-            closure.lobe,
-            closure.bssrdf_method,
-            closure.allocation_weight,
-            closure.setup_valid,
+            closure.closure_type,
             closure.roughness,
-            closure.preserve_ggx_energy,
-            closure.beckmann,
             _glossy_filter_roughness)
                               .x;
     };
@@ -85,10 +79,8 @@ void SurfacePreparationAccumulator::fold_retained(
             _point.shading_normal,
             _point.geometric_normal,
             _point.use_bump_map_correction,
-            closure.kind,
-            closure.lobe,
+            closure.closure_type,
             closure.weight,
-            closure.setup_valid,
             closure.albedo,
             closure.reflection_albedo,
             closure.transmission_albedo,
@@ -110,16 +102,13 @@ void SurfacePreparationAccumulator::fold_retained(
 void SurfacePreparationAccumulator::add(
     const SurfaceClosureRecord &closure) noexcept {
     const auto allocated =
-        (closure.kind != static_cast<std::uint32_t>(
-                             SurfaceClosureKind::none)) &
-        (closure.allocation_weight >=
-         cycles_closure::closure_weight_cutoff);
+        closure.allocation_weight >=
+        cycles_closure::closure_weight_cutoff;
     const auto retained =
         allocated &
         (_retained_count < static_cast<std::uint32_t>(_capacity));
     const auto transparent =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::transparent);
+        closure.closure_type == cycles_closure::type_transparent;
     $if(allocated & transparent) {
         begin_transparent_setup(closure);
         $if(retained) {

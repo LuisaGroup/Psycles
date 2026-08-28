@@ -337,20 +337,18 @@ enum class SurfaceBssrdfMethod : std::uint32_t {
 inline constexpr std::uint32_t
     maximum_surface_closure_capacity = 64u;
 
-// Exact post-population dependency cut for physical closure operations.
+// Exact post-setup dependency cut for physical closure operations. The first
+// two fields are the Cycles ShaderClosure ABI produced by setup; authoring
+// kind/lobe, allocation bookkeeping, and compatibility setup flags cannot
+// cross this boundary. `closure_type == NONE` is the sole failed-setup state.
 // Surface preparation owns the three AOV albedos, while adjusted Principled
-// IOR is resolved during setup. Evaluation, categorical selection, conditional
-// sampling, and subsurface transport cannot observe those four setup-only
-// fields. Keeping this as a distinct type makes that non-observability a C++
-// invariant: adding a physical dependency requires extending this record and
-// its packed callable ABI deliberately.
+// IOR is resolved during setup. Keeping this as a distinct type makes those
+// non-observability claims C++ invariants.
 struct SurfaceClosurePhysicalRecord {
-    UInt kind;
-    UInt lobe;
+    UInt closure_type;
+    UInt microfacet_fresnel;
     Float3 weight;
-    Float allocation_weight;
     Float sample_weight;
-    Bool setup_valid;
     Float3 color;
     Float3 normal;
     Float roughness;
@@ -361,8 +359,6 @@ struct SurfaceClosurePhysicalRecord {
     Float3 microfacet_tangent;
     Float microfacet_alpha_x;
     Float microfacet_alpha_y;
-    Float diffuse_roughness;
-    Float metallic;
     Float ior;
     Float thin_film_thickness;
     Float thin_film_ior;
@@ -374,9 +370,6 @@ struct SurfaceClosurePhysicalRecord {
     Float3 fresnel_f90;
     Float3 reflection_tint;
     Float3 transmission_tint;
-    Bool preserve_ggx_energy;
-    Bool beckmann;
-    UInt bssrdf_method;
     Float3 bssrdf_radius;
     Float3 bssrdf_albedo;
     Float bssrdf_ior;
@@ -392,8 +385,11 @@ struct SurfaceClosurePhysicalRecord {
 // host: the record consists entirely of Luisa expressions recorded into the
 // shader AST.
 struct SurfaceClosureRecord {
-    UInt kind;
-    UInt lobe;
+    // Final Cycles identities written by closure setup. Authoring kind/lobe
+    // live only in TracedClosure and host/JIT metadata; they cannot cross this
+    // post-setup record boundary.
+    UInt closure_type;
+    UInt microfacet_fresnel;
     Float3 weight;
     Float allocation_weight;
     Float sample_weight;
@@ -435,20 +431,16 @@ struct SurfaceClosureRecord {
     // the implementation type rather than merely ignored by convention.
     [[nodiscard]] operator SurfaceClosurePhysicalRecord() const noexcept {
         return {
-            .kind = kind,
-            .lobe = lobe,
+            .closure_type = closure_type,
+            .microfacet_fresnel = microfacet_fresnel,
             .weight = weight,
-            .allocation_weight = allocation_weight,
             .sample_weight = sample_weight,
-            .setup_valid = setup_valid,
             .color = color,
             .normal = normal,
             .roughness = roughness,
             .microfacet_tangent = microfacet_tangent,
             .microfacet_alpha_x = microfacet_alpha_x,
             .microfacet_alpha_y = microfacet_alpha_y,
-            .diffuse_roughness = diffuse_roughness,
-            .metallic = metallic,
             .ior = ior,
             .thin_film_thickness = thin_film_thickness,
             .thin_film_ior = thin_film_ior,
@@ -460,9 +452,6 @@ struct SurfaceClosureRecord {
             .fresnel_f90 = fresnel_f90,
             .reflection_tint = reflection_tint,
             .transmission_tint = transmission_tint,
-            .preserve_ggx_energy = preserve_ggx_energy,
-            .beckmann = beckmann,
-            .bssrdf_method = bssrdf_method,
             .bssrdf_radius = bssrdf_radius,
             .bssrdf_albedo = bssrdf_albedo,
             .bssrdf_ior = bssrdf_ior,
@@ -472,10 +461,8 @@ struct SurfaceClosureRecord {
 
     [[nodiscard]] static SurfaceClosureRecord zero() noexcept {
         return {
-            .kind = static_cast<std::uint32_t>(
-                SurfaceClosureKind::none),
-            .lobe = static_cast<std::uint32_t>(
-                SurfaceClosureLobe::none),
+            .closure_type = 0u,
+            .microfacet_fresnel = 0u,
             .weight = make_float3(0.0f),
             .allocation_weight = 0.0f,
             .sample_weight = 0.0f,
@@ -817,8 +804,8 @@ public:
 // the representation retained by multistage visitors while a material branch
 // is being recorded.
 struct SurfaceClosureExpression {
-    Expr<std::uint32_t> kind;
-    Expr<std::uint32_t> lobe;
+    Expr<std::uint32_t> closure_type;
+    Expr<std::uint32_t> microfacet_fresnel;
     Expr<luisa::float3> weight;
     Expr<float> allocation_weight;
     Expr<float> sample_weight;

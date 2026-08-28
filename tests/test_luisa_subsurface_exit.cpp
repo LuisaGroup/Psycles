@@ -178,8 +178,7 @@ int main(int argc, char **argv) {
         SurfaceBssrdfNormalVisitor fallback_visitor{8u};
         fallback_visitor.begin(point.shading_normal);
         auto diffuse = SurfaceClosureRecord::zero();
-        diffuse.kind = static_cast<std::uint32_t>(
-            SurfaceClosureKind::diffuse);
+        diffuse.closure_type = cycles_closure::type_diffuse;
         diffuse.weight = make_float3(1.0f);
         diffuse.allocation_weight = 1.0f;
         diffuse.normal = make_float3(1.0f, 0.0f, 0.0f);

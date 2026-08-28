@@ -1,5 +1,6 @@
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_evaluation.h>
+#include <psycles/luisa/surface_closure_identity.h>
 #include <psycles/luisa/surface_closure_sampling.h>
 
 #include <array>
@@ -236,8 +237,6 @@ constexpr std::array probe_specs{
     BenchmarkShaderServices services{input};
 
     auto closure_record = SurfaceClosureRecord::zero();
-    closure_record.kind = static_cast<std::uint32_t>(spec.kind);
-    closure_record.lobe = static_cast<std::uint32_t>(spec.lobe);
     // Unit closure and categorical weights make the output exactly the
     // selected-closure (eval, pdf) contract returned by Cycles' bsdf_sample.
     // Real per-lane geometry, roughness, and random values remain dynamic.
@@ -290,6 +289,8 @@ constexpr std::array probe_specs{
     closure_record.bssrdf_ior = 1.4f;
     closure_record.bssrdf_roughness = 0.35f;
     closure_record.bssrdf_anisotropy = 0.1f;
+    psycles::luisa_backend::detail::finalize_cycles_closure_identity(
+        closure_record, spec.kind, spec.lobe);
     const auto closure =
         static_cast<SurfaceClosurePhysicalRecord>(closure_record);
 

@@ -15,20 +15,6 @@
 namespace psycles::luisa_backend {
 namespace {
 
-template<typename Closure>
-[[nodiscard]] Bool has_kind(
-    const Closure &closure,
-    SurfaceClosureKind kind) noexcept {
-    return closure.kind == static_cast<std::uint32_t>(kind);
-}
-
-template<typename Closure>
-[[nodiscard]] Bool has_lobe(
-    const Closure &closure,
-    SurfaceClosureLobe lobe) noexcept {
-    return closure.lobe == static_cast<std::uint32_t>(lobe);
-}
-
 [[nodiscard]] Bool has_property(
     Expr<std::uint32_t> properties,
     std::uint32_t property) noexcept {
@@ -133,64 +119,6 @@ Float3 make_surface_closure_sampling_incoming(
         point.incoming, point.shading_normal);
 }
 
-SurfaceClosureSelectionInput
-make_surface_closure_selection_input(
-    const SurfaceClosurePhysicalRecord &closure) noexcept {
-    return {
-        .kind = Expr<std::uint32_t>{closure.kind.expression()},
-        .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
-        .bssrdf_method = Expr<std::uint32_t>{
-            closure.bssrdf_method.expression()},
-        .allocation_weight =
-            Expr<float>{closure.allocation_weight.expression()},
-        .sample_weight =
-            Expr<float>{closure.sample_weight.expression()},
-        .setup_valid =
-            Expr<bool>{closure.setup_valid.expression()},
-        .normal = Expr<luisa::float3>{closure.normal.expression()},
-        .roughness = Expr<float>{closure.roughness.expression()},
-        .preserve_ggx_energy = Expr<bool>{
-            closure.preserve_ggx_energy.expression()},
-        .beckmann = Expr<bool>{closure.beckmann.expression()}};
-}
-
-SurfaceClosureSelectionInput
-make_surface_closure_selection_input(
-    const SurfaceClosurePhysicalCommonRecord &closure) noexcept {
-    return {
-        .kind = Expr<std::uint32_t>{closure.kind.expression()},
-        .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
-        .bssrdf_method = Expr<std::uint32_t>{
-            closure.bssrdf_method.expression()},
-        .allocation_weight =
-            Expr<float>{closure.allocation_weight.expression()},
-        .sample_weight =
-            Expr<float>{closure.sample_weight.expression()},
-        .setup_valid =
-            Expr<bool>{closure.setup_valid.expression()},
-        .normal = Expr<luisa::float3>{closure.normal.expression()},
-        .roughness = Expr<float>{closure.roughness.expression()},
-        .preserve_ggx_energy = Expr<bool>{
-            closure.preserve_ggx_energy.expression()},
-        .beckmann = Expr<bool>{closure.beckmann.expression()}};
-}
-
-SurfaceClosureSelectionInput
-make_surface_closure_selection_input(
-    const SurfaceClosureExpression &closure) noexcept {
-    return {
-        .kind = closure.kind,
-        .lobe = closure.lobe,
-        .bssrdf_method = closure.bssrdf_method,
-        .allocation_weight = closure.allocation_weight,
-        .sample_weight = closure.sample_weight,
-        .setup_valid = closure.setup_valid,
-        .normal = closure.normal,
-        .roughness = closure.roughness,
-        .preserve_ggx_energy = closure.preserve_ggx_energy,
-        .beckmann = closure.beckmann};
-}
-
 SurfaceClosureSelectionContext
 make_surface_closure_selection_context(
     const SurfaceQuery &query) noexcept {
@@ -199,128 +127,6 @@ make_surface_closure_selection_context(
             Expr<std::uint32_t>{query.lobe_mask.expression()},
         .glossy_filter_roughness = Expr<float>{
             query.glossy_filter_roughness.expression()}};
-}
-
-luisa::compute::Var<SurfaceClosureSelectionCall>
-surface_closure_selection(
-    const SurfaceClosureSelectionContext &context,
-    const SurfaceClosureSelectionInput &closure,
-    bool include_runtime_flags,
-    SurfaceClosureReachability reachability) noexcept {
-    const auto identity = detail::SurfaceClosureIdentityExpression{
-        .kind = closure.kind,
-        .lobe = closure.lobe,
-        .bssrdf_method = closure.bssrdf_method,
-        .allocation_weight = closure.allocation_weight,
-        .setup_valid = closure.setup_valid,
-        .roughness = closure.roughness,
-        .preserve_ggx_energy = closure.preserve_ggx_energy,
-        .beckmann = closure.beckmann};
-    UInt lobe_mask{context.lobe_mask};
-    const auto diffuse_enabled =
-        (lobe_mask & static_cast<std::uint32_t>(event_diffuse)) != 0u;
-    const auto glossy_enabled =
-        (lobe_mask & static_cast<std::uint32_t>(event_glossy)) != 0u;
-    const auto transparent_enabled =
-        (lobe_mask & static_cast<std::uint32_t>(event_transparent)) !=
-        0u;
-    const auto transmission_enabled =
-        (lobe_mask & static_cast<std::uint32_t>(event_transmission)) !=
-        0u;
-    Bool eligible = false;
-    const auto select_kind_eligibility =
-        [&](SurfaceClosureKind kind, Bool enabled) noexcept {
-            if (reachability.contains(kind)) {
-                eligible = select(
-                    eligible, enabled, has_kind(closure, kind));
-            }
-        };
-    select_kind_eligibility(
-        SurfaceClosureKind::transparent, transparent_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::translucent,
-        diffuse_enabled & transmission_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::rough_translucent,
-        diffuse_enabled & transmission_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::diffuse, diffuse_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::sheen_microfiber, diffuse_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::sheen_ashikhmin, diffuse_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::bssrdf, diffuse_enabled);
-
-    constexpr auto sheen_lobe_bit =
-        surface_closure_lobe_bit(SurfaceClosureLobe::sheen);
-    const auto sheen_lobe_reachable =
-        reachability.contains_principled_lobe(
-            SurfaceClosureLobe::sheen);
-    if (sheen_lobe_reachable) {
-        eligible = select(eligible,
-            diffuse_enabled,
-            has_kind(closure, SurfaceClosureKind::principled) &
-                has_lobe(closure, SurfaceClosureLobe::sheen));
-    }
-    const auto principled_microfacet_reachable =
-        reachability.contains(SurfaceClosureKind::principled) &&
-        (reachability.principled_lobes & ~sheen_lobe_bit) != 0u;
-    if (principled_microfacet_reachable) {
-        auto predicate = has_kind(
-            closure, SurfaceClosureKind::principled);
-        if (sheen_lobe_reachable) {
-            predicate &=
-                !has_lobe(closure, SurfaceClosureLobe::sheen);
-        }
-        eligible = select(eligible, glossy_enabled, predicate);
-    }
-    select_kind_eligibility(
-        SurfaceClosureKind::glossy, glossy_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::metallic_f82, glossy_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::metallic_conductor, glossy_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::hair_reflection, glossy_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::hair_transmission,
-        glossy_enabled & transmission_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::glass,
-        glossy_enabled | transmission_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::refraction,
-        glossy_enabled & transmission_enabled);
-    select_kind_eligibility(
-        SurfaceClosureKind::thin_glass_transmission,
-        glossy_enabled & transmission_enabled);
-    eligible &= detail::closure_allocated(identity) &
-                Bool{closure.setup_valid};
-
-    luisa::compute::Var<SurfaceClosureSelectionCall> result;
-    // Selection is a pure projection. Express its only conditional field as
-    // data flow so the three consumers (measure, inversion, chosen closure)
-    // do not each introduce a pair of control-flow blocks into the generated
-    // sampler. The value is exactly 0 or sample_weight under the same
-    // predicate; no closure operation is speculated by this select.
-    result.weight = select(
-        0.0f,
-        Float{closure.sample_weight},
-        eligible);
-    result.glossy_normal = closure.normal;
-    if (include_runtime_flags) {
-        result.runtime_flags = detail::cycles_runtime_flags(
-            identity,
-            Float{context.glossy_filter_roughness},
-            reachability);
-    } else {
-        result.runtime_flags = 0u;
-    }
-    result.closure_type =
-        detail::cycles_closure_type(identity, reachability);
-    result.closure_sample_weight = Float{closure.sample_weight};
-    return result;
 }
 
 luisa::compute::Var<SurfaceClosureSelectionCall>
@@ -423,8 +229,7 @@ surface_closure_selection(
     if (reachability.contains(SurfaceClosureKind::glass)) {
         const auto glass =
             (type >= cycles_closure::type_microfacet_beckmann_glass) &
-            (type <=
-                cycles_closure::type_microfacet_multi_ggx_glass);
+            (type <= cycles_closure::type_microfacet_ggx_glass);
         eligible |= glass & (glossy_enabled | transmission_enabled);
     }
     if (reachability.contains(
@@ -440,19 +245,8 @@ surface_closure_selection(
     result.glossy_normal = closure.normal;
     if (include_runtime_flags) {
         result.runtime_flags = detail::cycles_runtime_flags(
-            detail::SurfaceClosureIdentityExpression{
-                .kind = Expr<std::uint32_t>{closure.kind.expression()},
-                .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
-                .bssrdf_method = Expr<std::uint32_t>{
-                    closure.bssrdf_method.expression()},
-                .allocation_weight = Expr<float>{
-                    closure.allocation_weight.expression()},
-                .setup_valid = Expr<bool>{
-                    closure.setup_valid.expression()},
-                .roughness = Expr<float>{closure.roughness.expression()},
-                .preserve_ggx_energy = Expr<bool>{
-                    closure.preserve_ggx_energy.expression()},
-                .beckmann = Expr<bool>{closure.beckmann.expression()}},
+            type,
+            closure.roughness,
             Float{context.glossy_filter_roughness},
             reachability);
     } else {
@@ -461,6 +255,19 @@ surface_closure_selection(
     result.closure_type = type;
     result.closure_sample_weight = closure.sample_weight;
     return result;
+}
+
+luisa::compute::Var<SurfaceClosureSelectionCall>
+surface_closure_selection(
+    const SurfaceClosureSelectionContext &context,
+    const SurfaceClosurePhysicalRecord &closure,
+    bool include_runtime_flags,
+    SurfaceClosureReachability reachability) noexcept {
+    return surface_closure_selection(
+        context,
+        project_surface_closure_physical_common(closure),
+        include_runtime_flags,
+        reachability);
 }
 
 namespace {
@@ -473,19 +280,23 @@ sample_common_closure(
     Float2 random_direction,
     SurfaceClosureReachability reachability) noexcept {
     const auto &common = closure.common;
-    const auto reachable_kind = [&common, reachability](
-                                    SurfaceClosureKind kind) noexcept {
-        if (!reachability.contains(kind)) { return Bool{false}; }
-        return has_kind(common, kind);
-    };
+    const UInt type{common.closure_type};
     const auto is_translucent =
-        reachable_kind(SurfaceClosureKind::translucent);
+        reachability.contains(SurfaceClosureKind::translucent)
+            ? type == cycles_closure::type_translucent
+            : Bool{false};
     const auto is_rough_translucent =
-        reachable_kind(SurfaceClosureKind::rough_translucent);
+        reachability.contains(SurfaceClosureKind::rough_translucent)
+            ? type == cycles_closure::type_rough_translucent
+            : Bool{false};
     const auto is_transparent =
-        reachable_kind(SurfaceClosureKind::transparent);
+        reachability.contains(SurfaceClosureKind::transparent)
+            ? type == cycles_closure::type_transparent
+            : Bool{false};
     const auto is_ashikhmin =
-        reachable_kind(SurfaceClosureKind::sheen_ashikhmin);
+        reachability.contains(SurfaceClosureKind::sheen_ashikhmin)
+            ? type == cycles_closure::type_ashikhmin_velvet
+            : Bool{false};
     auto result = zero_surface_closure_conditional_sample();
     result.valid = true;
     $if(is_transparent) {
@@ -545,31 +356,27 @@ sample_general_closure(
     const SurfaceQuery &query,
     SurfaceClosureReachability reachability) noexcept {
     const auto &common = closure.common;
-    const auto reachable_kind = [&common, reachability](
-                                    SurfaceClosureKind kind) noexcept {
-        if (!reachability.contains(kind)) { return Bool{false}; }
-        return has_kind(common, kind);
-    };
-    const auto is_principled =
-        reachable_kind(SurfaceClosureKind::principled);
-    const auto is_microfiber =
-        reachable_kind(SurfaceClosureKind::sheen_microfiber);
+    const UInt type{common.closure_type};
     const auto is_sheen =
-        is_microfiber |
-        (reachability.contains_principled_lobe(SurfaceClosureLobe::sheen)
-             ? is_principled &
-                   has_lobe(common, SurfaceClosureLobe::sheen)
-             : Bool{false});
-    const auto is_glossy = reachable_kind(SurfaceClosureKind::glossy);
-    const auto is_metallic_f82 =
-        reachable_kind(SurfaceClosureKind::metallic_f82);
-    const auto is_metallic_conductor =
-        reachable_kind(SurfaceClosureKind::metallic_conductor);
-    const auto is_thin = reachable_kind(
-        SurfaceClosureKind::thin_glass_transmission);
+        (reachability.contains_principled_lobe(
+             SurfaceClosureLobe::sheen) ||
+         reachability.contains(SurfaceClosureKind::sheen_microfiber))
+            ? type == cycles_closure::type_sheen
+            : Bool{false};
+    const auto glossy_possible =
+        reachability.contains(SurfaceClosureKind::principled) ||
+        reachability.contains(SurfaceClosureKind::glossy) ||
+        reachability.contains(SurfaceClosureKind::metallic_f82) ||
+        reachability.contains(SurfaceClosureKind::metallic_conductor);
     const auto sample_glossy =
-        is_glossy | is_metallic_f82 | is_metallic_conductor |
-        (is_principled & !is_sheen);
+        glossy_possible
+            ? cycles_closure::is_reflection_microfacet(type)
+            : Bool{false};
+    const auto is_thin =
+        reachability.contains(
+            SurfaceClosureKind::thin_glass_transmission)
+            ? type == cycles_closure::type_thin_glass_transmission
+            : Bool{false};
     Float3 direction = make_float3(0.0f, 0.0f, 1.0f);
     Float2 roughness = make_float2(1.0f);
     Float3 singular_evaluation = make_float3(0.0f);
@@ -621,6 +428,22 @@ sample_general_closure(
             reachability.contains(SurfaceClosureKind::metallic_f82) ||
             reachability.contains(SurfaceClosureKind::metallic_conductor) ||
             principled_glossy_possible) {
+            const auto may_have_f82 =
+                reachability.contains_principled_lobe(
+                    SurfaceClosureLobe::metallic) ||
+                reachability.contains(
+                    SurfaceClosureKind::metallic_f82);
+            const auto may_have_f82_thin_film =
+                reachability.contains_thin_film_principled_lobe(
+                    SurfaceClosureLobe::metallic) ||
+                reachability.contains_thin_film(
+                    SurfaceClosureKind::metallic_f82);
+            const auto may_have_dielectric =
+                reachability.contains_principled_lobe(
+                    SurfaceClosureLobe::coat);
+            const auto may_have_generalized_schlick =
+                reachability.contains_principled_lobe(
+                    SurfaceClosureLobe::dielectric);
             const auto glossy = detail::sample_microfacet_reflection(
                 point,
                 shading_normal,
@@ -638,14 +461,12 @@ sample_general_closure(
                 reachability.contains_anisotropic_microfacet(
                     SurfaceClosureKind::metallic_conductor),
                 &services,
-                reachability.contains_thin_film_principled_lobe(
-                    SurfaceClosureLobe::metallic),
+                may_have_f82,
+                may_have_f82_thin_film,
+                may_have_dielectric,
+                may_have_generalized_schlick,
                 reachability.contains_thin_film_principled_lobe(
                     SurfaceClosureLobe::dielectric),
-                reachability.contains(
-                    SurfaceClosureKind::metallic_f82),
-                reachability.contains_thin_film(
-                    SurfaceClosureKind::metallic_f82),
                 reachability.contains(
                     SurfaceClosureKind::metallic_conductor),
                 reachability.contains_thin_film(
@@ -686,7 +507,8 @@ sample_hair_closure(
     SurfaceClosureReachability reachability) noexcept {
     const auto reflection =
         reachability.contains(SurfaceClosureKind::hair_reflection)
-            ? has_kind(closure.common, SurfaceClosureKind::hair_reflection)
+            ? closure.common.closure_type ==
+                  cycles_closure::type_hair_reflection
             : Bool{false};
     auto result = zero_surface_closure_conditional_sample();
     $if(reflection) {
@@ -766,7 +588,26 @@ sample_bssrdf_closure(
     auto result = zero_surface_closure_conditional_sample();
     result.properties =
         surface_closure_sample_property::bssrdf;
-    result.bssrdf_method = closure.common.bssrdf_method;
+    UInt method = static_cast<std::uint32_t>(
+        SurfaceBssrdfMethod::random_walk);
+    method = select(
+        method,
+        UInt{static_cast<std::uint32_t>(SurfaceBssrdfMethod::burley)},
+        closure.common.closure_type ==
+            cycles_closure::type_bssrdf_burley);
+    method = select(
+        method,
+        UInt{static_cast<std::uint32_t>(
+            SurfaceBssrdfMethod::random_walk_legacy)},
+        closure.common.closure_type ==
+            cycles_closure::type_bssrdf_random_walk_legacy);
+    method = select(
+        method,
+        UInt{static_cast<std::uint32_t>(
+            SurfaceBssrdfMethod::random_walk_skin)},
+        closure.common.closure_type ==
+            cycles_closure::type_bssrdf_random_walk_skin);
+    result.bssrdf_method = method;
     result.bssrdf_radius = closure.payload.radius;
     result.bssrdf_albedo = closure.payload.albedo;
     result.bssrdf_normal = closure.common.normal;
@@ -795,32 +636,14 @@ surface_closure_conditional_sample(
     const auto sampling_point = make_closure_sampling_point(
         point,
         Expr<luisa::float3>{common.normal.expression()});
-    const auto is_general =
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::principled)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::glossy)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::metallic_f82)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::metallic_conductor)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::sheen_microfiber)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::thin_glass_transmission));
-    const auto is_dielectric =
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::glass)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::refraction));
-    const auto is_hair =
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::hair_reflection)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::hair_transmission));
-    const auto is_bssrdf =
-        common.kind == static_cast<std::uint32_t>(
-                           SurfaceClosureKind::bssrdf);
+    const auto is_general = surface_closure_uses_general_payload(
+        common.closure_type);
+    const auto is_dielectric = surface_closure_uses_dielectric_payload(
+        common.closure_type);
+    const auto is_hair = surface_closure_uses_hair_payload(
+        common.closure_type);
+    const auto is_bssrdf = surface_closure_uses_bssrdf_payload(
+        common.closure_type);
     auto result = zero_surface_closure_conditional_sample();
     $if(is_dielectric) {
         result = sample_dielectric_closure(
@@ -881,27 +704,29 @@ surface_closure_conditional_sample_from_physical_common(
     Expr<float> rescaled_lobe,
     const SurfaceQuery &query,
     SurfaceClosureReachability reachability) noexcept {
-    const auto reachable_kind = [&common, reachability](
-                                    SurfaceClosureKind kind) noexcept {
-        if (!reachability.contains(kind)) {
-            return Bool{false};
-        }
-        return has_kind(common, kind);
-    };
-    const auto is_general_payload =
-        reachable_kind(SurfaceClosureKind::principled) |
-        reachable_kind(SurfaceClosureKind::glossy) |
-        reachable_kind(SurfaceClosureKind::metallic_f82) |
-        reachable_kind(SurfaceClosureKind::metallic_conductor) |
-        reachable_kind(SurfaceClosureKind::sheen_microfiber) |
-        reachable_kind(SurfaceClosureKind::thin_glass_transmission);
-    const auto is_dielectric_payload =
-        reachable_kind(SurfaceClosureKind::glass) |
-        reachable_kind(SurfaceClosureKind::refraction);
-    const auto is_hair_payload =
-        reachable_kind(SurfaceClosureKind::hair_reflection) |
-        reachable_kind(SurfaceClosureKind::hair_transmission);
-    const auto is_bssrdf_payload = reachable_kind(SurfaceClosureKind::bssrdf);
+    Bool is_general_payload = false;
+    if ((reachability.kinds &
+         sampling_general_payload_reachability.kinds) != 0u) {
+        is_general_payload = surface_closure_uses_general_payload(
+            common.closure_type);
+    }
+    Bool is_dielectric_payload = false;
+    if ((reachability.kinds &
+         sampling_dielectric_payload_reachability.kinds) != 0u) {
+        is_dielectric_payload = surface_closure_uses_dielectric_payload(
+            common.closure_type);
+    }
+    Bool is_hair_payload = false;
+    if ((reachability.kinds &
+         sampling_hair_payload_reachability.kinds) != 0u) {
+        is_hair_payload = surface_closure_uses_hair_payload(
+            common.closure_type);
+    }
+    Bool is_bssrdf_payload = false;
+    if (reachability.contains(SurfaceClosureKind::bssrdf)) {
+        is_bssrdf_payload = surface_closure_uses_bssrdf_payload(
+            common.closure_type);
+    }
     const auto sampling_point = make_closure_sampling_point(
         point,
         Expr<luisa::float3>{common.normal.expression()});
@@ -1352,7 +1177,7 @@ DirectSurfaceClosureSamplingOperation::selection(
     const SurfaceClosureExpression &closure) const noexcept {
     return surface_closure_selection(
         _selection_context,
-        make_surface_closure_selection_input(closure),
+        static_cast<SurfaceClosurePhysicalRecord>(closure.reference()),
         true,
         _reachability);
 }

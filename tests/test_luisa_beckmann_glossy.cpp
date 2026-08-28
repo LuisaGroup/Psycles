@@ -243,7 +243,8 @@ int main(int argc, char **argv) {
     const auto collected = collection.entry(0u);
     output.write(record::beckmann_collection,
                  make_float4(select(0.0f, 1.0f, collected.beckmann),
-                             cast<float>(collected.kind), collected.roughness,
+                             cast<float>(collected.closure_type),
+                             collected.roughness,
                              cast<float>(collection.count())));
   };
 
@@ -369,7 +370,8 @@ int main(int argc, char **argv) {
   const auto collection_matches =
       approximately_equal(actual[record::beckmann_collection].x, 1.0f) &&
       approximately_equal(actual[record::beckmann_collection].y,
-                          static_cast<float>(SurfaceClosureKind::glossy)) &&
+                          static_cast<float>(
+                              cycles_closure::type_microfacet_beckmann)) &&
       approximately_equal(actual[record::beckmann_collection].z,
                           classroom_roughness) &&
       approximately_equal(actual[record::beckmann_collection].w, 1.0f);

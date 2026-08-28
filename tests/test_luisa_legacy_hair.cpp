@@ -426,10 +426,15 @@ make_clamp_parameter_data(const CompiledSurface &surface) {
     std::uint32_t surface_tag,
     bool reflection,
     bool tangent_linked) {
+    const auto closure_reachability = SurfaceClosureReachability{
+        .kinds = surface_closure_kind_bit(
+            reflection ? SurfaceClosureKind::hair_reflection
+                       : SurfaceClosureKind::hair_transmission)};
     return Kernel1D{[surface = &surfaces,
                        surface_tag,
                        reflection,
-                       tangent_linked](BufferFloat4 parameters,
+                       tangent_linked,
+                       closure_reachability](BufferFloat4 parameters,
                        BufferFloat4 output) noexcept {
         const auto case_index = dispatch_x();
         const auto is_curve = !tangent_linked & (case_index != 0u);
@@ -480,36 +485,38 @@ make_clamp_parameter_data(const CompiledSurface &surface) {
             UInt{surface_tag}, services, point, 0.41f,
             make_float2(sample_random.x, sample_random.y), query);
 
-        const auto selection_input =
-            make_surface_closure_selection_input(common);
         const auto all_selection = surface_closure_selection(
             make_surface_closure_selection_context(query),
-            selection_input,
-            true);
+            common,
+            true,
+            closure_reachability);
         const auto glossy_selection = surface_closure_selection(
             make_surface_closure_selection_context(hair_query(
                 static_cast<std::uint32_t>(event_glossy))),
-            selection_input,
-            false);
+            common,
+            false,
+            closure_reachability);
         const auto transmission_selection = surface_closure_selection(
             make_surface_closure_selection_context(hair_query(
                 static_cast<std::uint32_t>(event_transmission))),
-            selection_input,
-            false);
+            common,
+            false,
+            closure_reachability);
 
         const auto base = case_index * record::count;
         output.write(base + record::identity,
-            make_float4(cast<float>(common.kind),
-                cast<float>(common.lobe),
+            make_float4(cast<float>(common.closure_type),
+                cast<float>(common.microfacet_fresnel),
                 cast<float>(closures.count()),
-                select(0.0f, 1.0f, common.setup_valid)));
+                select(0.0f, 1.0f,
+                    common.closure_type != cycles_closure::type_none)));
         output.write(base + record::trace,
             make_float4(cast<float>(trace.type),
                 trace.sample_weight,
                 cast<float>(trace.runtime_flags),
                 select(0.0f, 1.0f, trace.valid)));
         output.write(base + record::weight,
-            make_float4(common.weight, common.allocation_weight));
+            make_float4(common.weight, common.sample_weight));
         output.write(base + record::tangent,
             make_float4(hair.payload.tangent, hair.payload.offset));
         output.write(base + record::shape,
@@ -640,8 +647,10 @@ make_clamp_parameter_data(const CompiledSurface &surface) {
     const auto sample_glossy =
         reflection ? weighted_sample : zero;
     const auto expected = std::array{
-        luisa::float4{static_cast<float>(kind),
-            static_cast<float>(SurfaceClosureLobe::none), 1.0f, 1.0f},
+        luisa::float4{static_cast<float>(type),
+            static_cast<float>(
+                cycles_closure::MicrofacetFresnel::none),
+            1.0f, 1.0f},
         luisa::float4{static_cast<float>(type), closure_sample_weight,
             static_cast<float>(runtime_flags), 1.0f},
         luisa::float4{authored_color.x, authored_color.y,
@@ -786,15 +795,15 @@ int main(int argc, char **argv) {
             clamped_roughness_v,
             clamped_roughness_u,
             closure_sample_weight});
-    const auto ok = clamp_ok &&
-        verify_scenario(
-            backend, "unlinked triangle reflection", triangle,
-            true, false, false) &&
-        verify_scenario(
-            backend, "unlinked curve reflection", curve,
-            true, true, false) &&
-        verify_scenario(
-            backend, "linked triangle transmission", linked,
-            false, false, true);
+    auto ok = clamp_ok;
+    ok &= verify_scenario(
+        backend, "unlinked triangle reflection", triangle,
+        true, false, false);
+    ok &= verify_scenario(
+        backend, "unlinked curve reflection", curve,
+        true, true, false);
+    ok &= verify_scenario(
+        backend, "linked triangle transmission", linked,
+        false, false, true);
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

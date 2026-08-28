@@ -468,8 +468,6 @@ int main(int argc, char **argv) {
 
     constexpr auto ggx_glass =
         static_cast<float>(cycles_closure::type_microfacet_ggx_glass);
-    constexpr auto multi_ggx_glass =
-        static_cast<float>(cycles_closure::type_microfacet_multi_ggx_glass);
     constexpr auto ggx = static_cast<float>(cycles_closure::type_microfacet_ggx);
     constexpr auto diffuse = static_cast<float>(cycles_closure::type_diffuse);
     const auto meta = [&](std::uint32_t record, float count, float type,
@@ -580,7 +578,7 @@ int main(int argc, char **argv) {
 
     const auto expected_multi_weight =
         luisa::float3{2.0f / 3.0f, 5.0f / 6.0f, 1.0f};
-    if (!meta(30u, 1.0f, multi_ggx_glass, true) ||
+    if (!meta(30u, 1.0f, ggx_glass, true) ||
         !rgb_equal(actual[31u], expected_multi_weight)) {
         std::cerr << "Multi-GGX glass energy regression failed on " << backend
                   << '\n';

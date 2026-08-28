@@ -338,8 +338,7 @@ GraphSurfaceImplementation::closure_trace(
             auto match = allocated & (closure_count == requested_index);
             result.type = select(
                 result.type,
-                cycles_closure_type(
-                    physical, _physical_closure_reachability),
+                physical.closure_type,
                 match);
             result.sample_weight = select(result.sample_weight,
                 physical.sample_weight,

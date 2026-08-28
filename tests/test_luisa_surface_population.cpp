@@ -4,6 +4,7 @@
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_evaluator.h>
+#include <psycles/luisa/surface_closure_identity.h>
 #include <psycles/luisa/surface_closure_population.h>
 #include <psycles/luisa/surface_closure_set.h>
 
@@ -399,8 +400,6 @@ void write_results(
                 const auto source = values.read(
                     static_cast<std::uint32_t>(index));
                 auto closure = SurfaceClosureRecord::zero();
-                closure.kind = static_cast<std::uint32_t>(
-                    SurfaceClosureKind::diffuse);
                 closure.weight = source.xyz();
                 closure.allocation_weight = source.w;
                 closure.sample_weight = source.x;
@@ -426,31 +425,23 @@ void write_results(
                 closure.bssrdf_ior = source.x;
                 closure.bssrdf_roughness = source.y;
                 closure.bssrdf_anisotropy = source.z;
+                psycles::luisa_backend::detail::finalize_cycles_closure_identity(
+                    closure, cycles_closure::type_diffuse);
                 closures.add(closure);
             }
 
             Float3 weight_sum = make_float3(0.0f);
             $for(index, closures.count()) {
-                const auto closure = closures.entry(index);
+                const auto access = closures.physical_access(index);
+                const auto closure =
+                    closures.physical_common_entry(access);
                 weight_sum +=
-                    closure.weight + closure.color + closure.normal +
-                    closure.specular_tint + closure.evaluation_scale +
-                    closure.fresnel_f0 + closure.fresnel_f90 +
-                    closure.reflection_tint +
-                    closure.transmission_tint + closure.bssrdf_radius +
-                    closure.bssrdf_albedo;
+                    closure.weight +
+                    closure.color_or_evaluation_scale + closure.normal;
                 weight_sum += make_float3(
-                    closure.allocation_weight +
                     closure.sample_weight + closure.roughness +
-                    closure.diffuse_roughness + closure.metallic +
-                    closure.ior + closure.sheen_transform_a +
-                    closure.sheen_transform_b + closure.bssrdf_ior +
-                    closure.bssrdf_roughness +
-                    closure.bssrdf_anisotropy +
-                    select(0.0f, 1.0f, closure.setup_valid) +
-                    select(
-                        0.0f, 1.0f, closure.preserve_ggx_energy) +
-                    select(0.0f, 1.0f, closure.beckmann));
+                    cast<float>(closure.closure_type) +
+                    cast<float>(closure.microfacet_fresnel));
             };
 
             // Exercise the production staged path with a runtime request that
@@ -463,21 +454,18 @@ void write_results(
                 closures.physical_access(requested);
             const auto common =
                 closures.physical_common_entry(access);
-            const auto physical =
-                closures.physical_payload_entry(access, common);
             weight_sum += select(
                 make_float3(0.0f),
-                physical.weight + physical.color +
-                    physical.evaluation_scale +
-                    physical.transmission_tint,
+                common.weight + common.color_or_evaluation_scale +
+                    common.normal,
                 access.valid());
 
             // A consumer first reads the tag, then enters a family branch.
             // The counted-prefix witness must be constructed in the block
             // which performs the payload read: a mutable counter snapshot is
             // intentionally not assumed to survive arbitrary CFG edges.
-            $if(common.kind ==
-                static_cast<std::uint32_t>(SurfaceClosureKind::diffuse)) {
+            $if(cycles_closure::is_diffuse_or_oren_nayar(
+                common.closure_type)) {
                 const auto family_access =
                     closures.physical_access(requested);
                 const auto payload =

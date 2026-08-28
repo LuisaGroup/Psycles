@@ -14,7 +14,7 @@ namespace {
 inline constexpr std::uint32_t setup_valid_bit = 1u << 0u;
 inline constexpr std::uint32_t preserve_ggx_energy_bit = 1u << 1u;
 inline constexpr std::uint32_t beckmann_bit = 1u << 2u;
-inline constexpr std::uint32_t physical_setup_valid_bit = 1u << 29u;
+inline constexpr std::uint32_t setup_flags_mask = 0xffu;
 
 enum class StorageField : std::uint32_t {
     identity,
@@ -158,10 +158,10 @@ SurfaceClosureSet::SurfaceClosureSet(
     }
     _identity.write(0u,
         make_uint4(
-            zero.kind,
-            zero.lobe,
+            zero.closure_type,
+            zero.microfacet_fresnel,
             0u,
-            0u));
+            zero.bssrdf_method));
     if (stores(_profile, StorageField::weight)) {
         _weight.write(0u, make_float4(
                                zero.weight,
@@ -232,13 +232,9 @@ void SurfaceClosureSet::add(
 void SurfaceClosureSet::append_impl(
     const SurfaceClosureRecord &closure,
     const std::function<void()> *on_retained) noexcept {
-    const auto scattering =
-        closure.kind != static_cast<std::uint32_t>(
-                            SurfaceClosureKind::none);
     const auto allocated =
-        scattering &
-        (closure.allocation_weight >=
-            cycles_closure::closure_weight_cutoff);
+        closure.allocation_weight >=
+        cycles_closure::closure_weight_cutoff;
     const auto retained =
         allocated &
         (_count < static_cast<std::uint32_t>(_capacity));
@@ -266,10 +262,10 @@ void SurfaceClosureSet::append_impl(
                 0u, beckmann_bit, closure.beckmann);
             _identity.write(_count,
                 make_uint4(
-                    closure.kind,
-                    closure.lobe,
+                    closure.closure_type,
+                    closure.microfacet_fresnel,
                     flags,
-                    0u));
+                    closure.bssrdf_method));
             if (stores(_profile, StorageField::weight)) {
                 _weight.write(_count,
                     make_float4(
@@ -332,15 +328,14 @@ void SurfaceClosureSet::finalize_physical_transparent(
     luisa::compute::UInt4 identity = luisa::make_uint4(
         cycles_closure::type_transparent,
         static_cast<std::uint32_t>(
-            SurfaceClosureKind::transparent),
-        static_cast<std::uint32_t>(
-            SurfaceClosureLobe::none),
-        physical_setup_valid_bit);
+            cycles_closure::MicrofacetFresnel::none),
+        0u,
+        0u);
     _physical_0.write(
         index,
         make_float4x4(
             identity.bitcast<luisa::float4>(),
-            make_float4(weight, sample_weight),
+            make_float4(weight, 0.0f),
             make_float4(make_float3(1.0f), sample_weight),
             make_float4(normal, 0.0f)));
 }
@@ -388,29 +383,6 @@ SurfaceClosureSet::physical_common_entry(
     return physical_common_entry_unchecked(access._index);
 }
 
-SurfaceClosurePhysicalRecord
-SurfaceClosureSet::physical_payload_entry_unchecked(
-    UInt index,
-    const SurfaceClosurePhysicalCommonRecord &common) const noexcept {
-    LUISA_ASSERT(
-        _profile == SurfaceClosureStorageProfile::physical,
-        "Staged physical closure access requires the physical profile.");
-    return unpack_surface_closure_physical_payload(
-        common,
-        Expr<luisa::float4x4>{
-            _physical_1.read(index).expression()});
-}
-
-SurfaceClosurePhysicalRecord
-SurfaceClosureSet::physical_payload_entry(
-    const SurfaceClosurePhysicalAccess &access,
-    const SurfaceClosurePhysicalCommonRecord &common) const noexcept {
-    LUISA_ASSERT(
-        access._owner == this,
-        "Physical closure access belongs to a different set.");
-    return physical_payload_entry_unchecked(access._index, common);
-}
-
 luisa::compute::Float4x4 SurfaceClosureSet::physical_payload_block(
     const SurfaceClosurePhysicalAccess &access) const noexcept {
     LUISA_ASSERT(access._owner == this,
@@ -423,14 +395,18 @@ luisa::compute::Float4x4 SurfaceClosureSet::physical_payload_block(
 
 SurfaceClosureRecord SurfaceClosureSet::entry(
     UInt index) const noexcept {
+    LUISA_ASSERT(
+        _profile != SurfaceClosureStorageProfile::physical,
+        "Physical retained closures are a tagged sum and have no product "
+        "SurfaceClosureRecord inverse; use the family eliminators.");
     const auto valid = index < _count;
     const auto safe_index = select(0u, index, valid);
     const auto zero = SurfaceClosureRecord::zero();
     auto identity = make_uint4(
-        zero.kind,
-        zero.lobe,
+        zero.closure_type,
+        zero.microfacet_fresnel,
         0u,
-        0u);
+        zero.bssrdf_method);
     auto weight = make_float4(
         zero.weight, zero.allocation_weight);
     auto albedo = make_float4(
@@ -500,81 +476,20 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
         bssrdf_radius = complete.bssrdf_radius_anisotropy;
         bssrdf_albedo = complete.bssrdf_albedo_roughness;
         const auto general_film_payload =
-            (complete.identity.x == static_cast<std::uint32_t>(
-                                        SurfaceClosureKind::principled)) &
-            ((complete.identity.y == static_cast<std::uint32_t>(
-                                         SurfaceClosureLobe::metallic)) |
-             (complete.identity.y == static_cast<std::uint32_t>(
-                                         SurfaceClosureLobe::dielectric))) |
-            (complete.identity.x == static_cast<std::uint32_t>(
-                                        SurfaceClosureKind::metallic_f82)) |
-            (complete.identity.x == static_cast<std::uint32_t>(
-                                        SurfaceClosureKind::metallic_conductor));
+            cycles_closure::is_reflection_microfacet(
+                complete.identity.x) &
+            cycles_closure::fresnel_uses_thin_film_payload(
+                complete.identity.y);
         const auto film_payload =
             general_film_payload |
-            (complete.identity.x == static_cast<std::uint32_t>(
-                                        SurfaceClosureKind::glass));
+            cycles_closure::is_glass_microfacet(
+                complete.identity.x);
         thin_film_thickness = select(
             0.0f, transmission_albedo.w, film_payload);
         thin_film_ior = select(0.0f, color.w, film_payload);
         transmission_albedo.w = select(
             transmission_albedo.w, 0.0f, film_payload);
         color.w = select(color.w, 0.0f, film_payload);
-    } else if (
-        _profile == SurfaceClosureStorageProfile::physical) {
-        const auto physical = unpack_surface_closure_physical(
-            Expr<luisa::float4x4>{
-                _physical_0.read(safe_index).expression()},
-            Expr<luisa::float4x4>{
-                _physical_1.read(safe_index).expression()});
-        UInt physical_flags = 0u;
-        physical_flags |= select(
-            0u, setup_valid_bit, physical.setup_valid);
-        physical_flags |= select(
-            0u,
-            preserve_ggx_energy_bit,
-            physical.preserve_ggx_energy);
-        physical_flags |= select(
-            0u, beckmann_bit, physical.beckmann);
-        identity = make_uint4(
-            physical.kind,
-            physical.lobe,
-            physical_flags,
-            physical.bssrdf_method);
-        weight = make_float4(
-            physical.weight, physical.allocation_weight);
-        albedo = make_float4(zero.albedo, physical.sample_weight);
-        reflection_albedo = make_float4(
-            zero.reflection_albedo, physical.roughness);
-        transmission_albedo = make_float4(
-            zero.transmission_albedo, physical.diffuse_roughness);
-        color = make_float4(physical.color, physical.metallic);
-        normal = make_float4(physical.normal, physical.ior);
-        microfacet_tangent = physical.microfacet_tangent;
-        microfacet_alpha_x = physical.microfacet_alpha_x;
-        microfacet_alpha_y = physical.microfacet_alpha_y;
-        specular_tint = make_float4(
-            physical.specular_tint, zero.specular_ior_level);
-        evaluation_scale = make_float4(
-            physical.evaluation_scale,
-            physical.sheen_transform_a);
-        fresnel_f0 = make_float4(
-            physical.fresnel_f0,
-            physical.sheen_transform_b);
-        fresnel_f90 = make_float4(physical.fresnel_f90, 0.0f);
-        reflection_tint = make_float4(
-            physical.reflection_tint, 0.0f);
-        transmission_tint = make_float4(
-            physical.transmission_tint,
-            physical.bssrdf_ior);
-        bssrdf_radius = make_float4(
-            physical.bssrdf_radius,
-            physical.bssrdf_anisotropy);
-        bssrdf_albedo = make_float4(
-            physical.bssrdf_albedo,
-            physical.bssrdf_roughness);
-        thin_film_thickness = physical.thin_film_thickness;
-        thin_film_ior = physical.thin_film_ior;
     } else {
         identity = _identity.read(safe_index);
         if (stores(_profile, StorageField::weight)) {
@@ -599,7 +514,7 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
             normal = _normal.read(safe_index);
         }
     }
-    const auto flags = identity.z;
+    const auto flags = identity.z & setup_flags_mask;
     const auto vector_or_zero =
         [&](Float3 value) noexcept {
             return select(
@@ -617,20 +532,20 @@ SurfaceClosureRecord SurfaceClosureSet::entry(
     // predicate.
     auto allocation_weight =
         scalar_or_zero(weight.w);
-    if (_profile != SurfaceClosureStorageProfile::physical &&
-        !stores(_profile, StorageField::weight)) {
+    if (!stores(_profile, StorageField::weight)) {
         allocation_weight = select(
             0.0f,
             cycles_closure::closure_weight_cutoff,
             valid);
     }
     return {
-        .kind = select(
-            static_cast<std::uint32_t>(SurfaceClosureKind::none),
+        .closure_type = select(
+            UInt{cycles_closure::type_none},
             identity.x,
             valid),
-        .lobe = select(
-            static_cast<std::uint32_t>(SurfaceClosureLobe::none),
+        .microfacet_fresnel = select(
+            UInt{static_cast<std::uint32_t>(
+                cycles_closure::MicrofacetFresnel::none)},
             identity.y,
             valid),
         .weight = vector_or_zero(weight.xyz()),

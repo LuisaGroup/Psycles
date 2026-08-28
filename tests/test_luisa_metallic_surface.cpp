@@ -2,6 +2,7 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_program.h>
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/graph_surface.h>
 #include <psycles/luisa/surface_closure_set.h>
 
@@ -319,8 +320,8 @@ int main(int argc, char **argv) {
         output.write(
             record::f82_identity,
             make_float4(
-                cast<float>(f82_closure.kind),
-                cast<float>(f82_closure.lobe),
+                cast<float>(f82_closure.closure_type),
+                cast<float>(f82_closure.microfacet_fresnel),
                 cast<float>(f82_closures.count()),
                 select(0.0f, 1.0f, f82_closure.setup_valid)));
         output.write(
@@ -350,8 +351,8 @@ int main(int argc, char **argv) {
         output.write(
             record::conductor_identity,
             make_float4(
-                cast<float>(conductor_closure.kind),
-                cast<float>(conductor_closure.lobe),
+                cast<float>(conductor_closure.closure_type),
+                cast<float>(conductor_closure.microfacet_fresnel),
                 cast<float>(conductor_closures.count()),
                 select(0.0f, 1.0f, conductor_closure.setup_valid)));
         output.write(
@@ -457,7 +458,7 @@ int main(int argc, char **argv) {
         output.write(
             record::film_identity,
             make_float4(
-                cast<float>(film_closure.kind),
+                cast<float>(film_closure.microfacet_fresnel),
                 film_closure.thin_film_thickness,
                 film_closure.thin_film_ior,
                 cast<float>(film_closures.count())));
@@ -483,7 +484,7 @@ int main(int argc, char **argv) {
         output.write(
             record::f82_film_identity,
             make_float4(
-                cast<float>(f82_film_closure.kind),
+                cast<float>(f82_film_closure.microfacet_fresnel),
                 f82_film_closure.thin_film_thickness,
                 f82_film_closure.thin_film_ior,
                 cast<float>(f82_film_closures.count())));
@@ -525,12 +526,12 @@ int main(int argc, char **argv) {
            << output_buffer.copy_to(luisa::span{actual})
            << synchronize();
 
-    constexpr auto f82_kind =
-        static_cast<float>(SurfaceClosureKind::metallic_f82);
-    constexpr auto conductor_kind =
-        static_cast<float>(SurfaceClosureKind::metallic_conductor);
-    constexpr auto no_lobe =
-        static_cast<float>(SurfaceClosureLobe::none);
+    constexpr auto reflection_type =
+        static_cast<float>(cycles_closure::type_microfacet_ggx);
+    constexpr auto f82_fresnel = static_cast<float>(
+        cycles_closure::MicrofacetFresnel::f82_tint);
+    constexpr auto conductor_fresnel = static_cast<float>(
+        cycles_closure::MicrofacetFresnel::conductor);
     const auto expected_b = luisa::float3{
         f82_b_channel(f82_color.x, f82_tint.x),
         f82_b_channel(f82_color.y, f82_tint.y),
@@ -548,21 +549,22 @@ int main(int argc, char **argv) {
     const auto identity_ok =
         approximately_equal(
             actual[record::f82_identity],
-            luisa::float4{f82_kind, no_lobe, 1.0f, 1.0f},
+            luisa::float4{reflection_type, f82_fresnel, 1.0f, 1.0f},
             parameter_tolerance) &&
         approximately_equal(
             actual[record::conductor_identity],
-            luisa::float4{conductor_kind, no_lobe, 1.0f, 1.0f},
+            luisa::float4{
+                reflection_type, conductor_fresnel, 1.0f, 1.0f},
             parameter_tolerance) &&
         approximately_equal(
             actual[record::film_identity],
             luisa::float4{
-                conductor_kind, film_thickness, film_ior, 1.0f},
+                conductor_fresnel, film_thickness, film_ior, 1.0f},
             parameter_tolerance) &&
         approximately_equal(
             actual[record::f82_film_identity],
             luisa::float4{
-                f82_kind, film_thickness, film_ior, 1.0f},
+                f82_fresnel, film_thickness, film_ior, 1.0f},
             parameter_tolerance);
     const auto parameters_ok =
         approximately_equal_rgb(

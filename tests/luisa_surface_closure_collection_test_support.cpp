@@ -30,16 +30,16 @@ void RequestedClosureCollector::add(
 
 void RequestedClosureCollector::finish() noexcept {
     for (const auto &closure : _closures) {
-        const auto scattering =
-            closure.kind != static_cast<std::uint32_t>(
-                                SurfaceClosureKind::none);
         const auto allocated =
-            scattering &
-            (closure.allocation_weight >=
-             cycles_closure::closure_weight_cutoff);
+            closure.allocation_weight >=
+            cycles_closure::closure_weight_cutoff;
         const auto match = allocated & (_count == _requested);
-        _selected.kind = select(_selected.kind, closure.kind, match);
-        _selected.lobe = select(_selected.lobe, closure.lobe, match);
+        _selected.closure_type = select(
+            _selected.closure_type, closure.closure_type, match);
+        _selected.microfacet_fresnel = select(
+            _selected.microfacet_fresnel,
+            closure.microfacet_fresnel,
+            match);
         _selected.weight = select(_selected.weight, closure.weight, match);
         _selected.allocation_weight = select(
             _selected.allocation_weight,
@@ -131,6 +131,22 @@ void RequestedClosureCollector::finish() noexcept {
             match);
         _selected.beckmann = select(
             _selected.beckmann, closure.beckmann, match);
+        _selected.bssrdf_method = select(
+            _selected.bssrdf_method, closure.bssrdf_method, match);
+        _selected.bssrdf_radius = select(
+            _selected.bssrdf_radius, closure.bssrdf_radius, match);
+        _selected.bssrdf_albedo = select(
+            _selected.bssrdf_albedo, closure.bssrdf_albedo, match);
+        _selected.bssrdf_ior = select(
+            _selected.bssrdf_ior, closure.bssrdf_ior, match);
+        _selected.bssrdf_roughness = select(
+            _selected.bssrdf_roughness,
+            closure.bssrdf_roughness,
+            match);
+        _selected.bssrdf_anisotropy = select(
+            _selected.bssrdf_anisotropy,
+            closure.bssrdf_anisotropy,
+            match);
         _valid |= match;
         _count += select(0u, 1u, allocated);
     }

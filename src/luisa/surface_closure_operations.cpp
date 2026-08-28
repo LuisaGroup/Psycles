@@ -16,22 +16,14 @@ namespace {
     const SurfaceClosureExpression &closure,
     Expr<float> glossy_filter_roughness) noexcept {
     return identity(
-        closure.kind,
-        closure.lobe,
-        closure.bssrdf_method,
-        closure.allocation_weight,
-        closure.setup_valid,
+        closure.closure_type,
         closure.roughness,
-        closure.preserve_ggx_energy,
-        closure.beckmann,
         glossy_filter_roughness);
 }
 
 struct AovClosureExpression {
-    Expr<std::uint32_t> kind;
-    Expr<std::uint32_t> lobe;
+    Expr<std::uint32_t> closure_type;
     Expr<luisa::float3> weight;
-    Expr<bool> setup_valid;
     Expr<luisa::float3> albedo;
     Expr<luisa::float3> reflection_albedo;
     Expr<luisa::float3> transmission_albedo;
@@ -47,63 +39,37 @@ aov_contribution(
     Expr<luisa::float3> geometric_normal_expression,
     Expr<bool> use_bump_map_correction,
     const Closure &closure) noexcept {
+    const UInt type{closure.closure_type};
     const auto is_transparent =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::transparent);
+        type == cycles_closure::type_transparent;
     const auto is_diffuse =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::diffuse);
+        cycles_closure::is_diffuse_or_oren_nayar(type);
     const auto is_translucent =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::translucent);
+        type == cycles_closure::type_translucent;
     const auto is_rough_translucent =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::rough_translucent);
-    const auto is_principled =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::principled);
+        type == cycles_closure::type_rough_translucent;
     const auto is_sheen =
-        (is_principled &
-         (closure.lobe == static_cast<std::uint32_t>(
-                              SurfaceClosureLobe::sheen))) |
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::sheen_microfiber));
+        type == cycles_closure::type_sheen;
     const auto is_ashikhmin =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::sheen_ashikhmin);
-    const auto is_glossy =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::glossy);
-    const auto is_metallic =
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::metallic_f82)) |
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::metallic_conductor));
+        type == cycles_closure::type_ashikhmin_velvet;
     const auto is_hair_reflection =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::hair_reflection);
+        type == cycles_closure::type_hair_reflection;
     const auto is_hair_transmission =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::hair_transmission);
+        type == cycles_closure::type_hair_transmission;
     const auto is_hair = is_hair_reflection | is_hair_transmission;
     const auto is_glass =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::glass);
+        cycles_closure::is_glass_microfacet(type);
     const auto is_refraction =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::refraction);
+        cycles_closure::is_refraction_microfacet(type);
     const auto is_thin_glass_transmission =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::thin_glass_transmission);
+        type == cycles_closure::type_thin_glass_transmission;
     const auto is_bssrdf =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::bssrdf);
+        cycles_closure::is_bssrdf(type);
     const auto is_dielectric = is_glass | is_refraction;
     const auto is_dielectric_family =
         is_dielectric | is_thin_glass_transmission;
     const auto generic_glossy =
-        (is_principled & !is_sheen) | is_glossy | is_metallic |
-        is_ashikhmin;
+        cycles_closure::is_reflection_microfacet(type) | is_ashikhmin;
 
     const auto incoming = detail::safe_normalize(
         Float3{incoming_expression},
@@ -129,10 +95,7 @@ aov_contribution(
             make_float3(0.0f),
             closure.albedo,
             diffuse_family),
-        select(
-            make_float3(0.0f),
-            closure.albedo,
-            closure.setup_valid),
+        closure.albedo,
         is_sheen);
     const auto closure_pass_weight =
         detail::pass_weight(Float3{closure.weight});
@@ -140,9 +103,7 @@ aov_contribution(
         select(0.0f,
             closure_pass_weight,
             diffuse_family),
-        select(0.0f,
-            closure_pass_weight,
-            closure.setup_valid),
+        closure_pass_weight,
         is_sheen);
     const auto glossy_weight = select(
         0.0f,
@@ -279,10 +240,8 @@ public:
                 point.shading_normal,
                 point.geometric_normal,
                 point.use_bump_map_correction,
-                closure.kind,
-                closure.lobe,
+                closure.closure_type,
                 closure.weight,
-                closure.setup_valid,
                 closure.albedo,
                 closure.reflection_albedo,
                 closure.transmission_albedo,
@@ -386,34 +345,15 @@ reduce_closures(
 SurfaceClosureIdentityCallable
 make_surface_closure_identity_callable() noexcept {
     SurfaceClosureIdentityCallable callable = [](
-               UInt kind,
-               UInt lobe,
-               UInt bssrdf_method,
-               Float allocation_weight,
-               Bool setup_valid,
+               UInt closure_type,
                Float roughness,
-               Bool preserve_ggx_energy,
-               Bool beckmann,
                Float glossy_filter_roughness) noexcept {
-        const auto closure =
-            detail::SurfaceClosureIdentityExpression{
-                .kind = Expr<std::uint32_t>{kind.expression()},
-                .lobe = Expr<std::uint32_t>{lobe.expression()},
-                .bssrdf_method = Expr<std::uint32_t>{
-                    bssrdf_method.expression()},
-                .allocation_weight =
-                    Expr<float>{allocation_weight.expression()},
-                .setup_valid =
-                    Expr<bool>{setup_valid.expression()},
-                .roughness = Expr<float>{roughness.expression()},
-                .preserve_ggx_energy =
-                    Expr<bool>{preserve_ggx_energy.expression()},
-                .beckmann = Expr<bool>{beckmann.expression()}};
         return luisa::compute::make_uint2(
             detail::cycles_runtime_flags(
-                closure,
-                std::move(glossy_filter_roughness)),
-            detail::cycles_closure_type(closure));
+                closure_type,
+                roughness,
+                glossy_filter_roughness),
+            closure_type);
     };
     callable.set_name("surface_closure_identity");
     return callable;
@@ -426,20 +366,16 @@ make_surface_closure_aov_callable() noexcept {
                Float3 shading_normal,
                Float3 geometric_normal,
                Bool use_bump_map_correction,
-               UInt kind,
-               UInt lobe,
+               UInt closure_type,
                Float3 weight,
-               Bool setup_valid,
                Float3 albedo,
                Float3 reflection_albedo,
                Float3 transmission_albedo,
                Float3 normal,
                Float roughness) noexcept {
         const auto closure = AovClosureExpression{
-            .kind = Expr<std::uint32_t>{kind.expression()},
-            .lobe = Expr<std::uint32_t>{lobe.expression()},
+            .closure_type = Expr<std::uint32_t>{closure_type.expression()},
             .weight = Expr<luisa::float3>{weight.expression()},
-            .setup_valid = Expr<bool>{setup_valid.expression()},
             .albedo = Expr<luisa::float3>{albedo.expression()},
             .reflection_albedo =
                 Expr<luisa::float3>{reflection_albedo.expression()},
@@ -573,19 +509,18 @@ detail::SurfaceBssrdfNormalAccumulator::SurfaceBssrdfNormalAccumulator(
       _shading_normal{shading_normal} {}
 
 void detail::SurfaceBssrdfNormalAccumulator::add(
-    Expr<std::uint32_t> kind_expression, Expr<luisa::float3> weight_expression,
+    Expr<std::uint32_t> closure_type_expression,
+    Expr<luisa::float3> weight_expression,
     Expr<float> allocation_weight_expression,
     Expr<luisa::float3> normal_expression) noexcept {
-    const auto kind = UInt{kind_expression};
+    const auto closure_type = UInt{closure_type_expression};
     const auto allocation_weight = Float{allocation_weight_expression};
     const auto allocated =
-        (kind != static_cast<std::uint32_t>(SurfaceClosureKind::none)) &
-        (allocation_weight >= cycles_closure::closure_weight_cutoff);
+        allocation_weight >= cycles_closure::closure_weight_cutoff;
     const auto retained =
         allocated & (_retained_count < static_cast<std::uint32_t>(_capacity));
     const auto contributes =
-        retained &
-        (kind == static_cast<std::uint32_t>(SurfaceClosureKind::bssrdf));
+        retained & cycles_closure::is_bssrdf(closure_type);
     const auto weight = detail::pass_weight(Float3{weight_expression});
     _weighted_normal += select(make_float3(0.0f),
                                Float3{normal_expression} * weight, contributes);
@@ -610,7 +545,7 @@ void SurfaceBssrdfNormalVisitor::visit(
                                                        _capacity};
     for (const auto &closure : closures) {
         accumulator.add(
-            closure.kind,
+            closure.closure_type,
             closure.weight,
             closure.allocation_weight,
             closure.normal);

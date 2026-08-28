@@ -12,20 +12,6 @@
 namespace psycles::luisa_backend {
 namespace {
 
-template<typename Closure>
-[[nodiscard]] Bool has_kind(
-    const Closure &closure,
-    SurfaceClosureKind kind) noexcept {
-    return closure.kind == static_cast<std::uint32_t>(kind);
-}
-
-template<typename Closure>
-[[nodiscard]] Bool has_lobe(
-    const Closure &closure,
-    SurfaceClosureLobe lobe) noexcept {
-    return closure.lobe == static_cast<std::uint32_t>(lobe);
-}
-
 inline constexpr auto evaluation_general_payload_reachability =
     SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::principled) |
@@ -148,21 +134,31 @@ evaluate_common_closure(
     Bool selected_sample,
     SurfaceClosureReachability reachability) noexcept {
     const auto &common = closure.common;
-    const auto reachable_kind = [&common, reachability](
-                                    SurfaceClosureKind kind) noexcept {
-        if (!reachability.contains(kind)) { return Bool{false}; }
-        return has_kind(common, kind);
-    };
+    const UInt type{common.closure_type};
     const auto is_transparent =
-        reachable_kind(SurfaceClosureKind::transparent);
-    const auto is_diffuse = reachable_kind(SurfaceClosureKind::diffuse);
+        reachability.contains(SurfaceClosureKind::transparent)
+            ? type == cycles_closure::type_transparent
+            : Bool{false};
+    const auto is_diffuse =
+        reachability.contains(SurfaceClosureKind::diffuse)
+            ? cycles_closure::is_diffuse_or_oren_nayar(type)
+            : Bool{false};
     const auto is_translucent =
-        reachable_kind(SurfaceClosureKind::translucent);
+        reachability.contains(SurfaceClosureKind::translucent)
+            ? type == cycles_closure::type_translucent
+            : Bool{false};
     const auto is_rough_translucent =
-        reachable_kind(SurfaceClosureKind::rough_translucent);
-    const auto is_bssrdf = reachable_kind(SurfaceClosureKind::bssrdf);
+        reachability.contains(SurfaceClosureKind::rough_translucent)
+            ? type == cycles_closure::type_rough_translucent
+            : Bool{false};
+    const auto is_bssrdf =
+        reachability.contains(SurfaceClosureKind::bssrdf)
+            ? cycles_closure::is_bssrdf(type)
+            : Bool{false};
     const auto is_ashikhmin =
-        reachable_kind(SurfaceClosureKind::sheen_ashikhmin);
+        reachability.contains(SurfaceClosureKind::sheen_ashikhmin)
+            ? type == cycles_closure::type_ashikhmin_velvet
+            : Bool{false};
     const auto diffuse_family =
         is_diffuse | is_translucent | is_rough_translucent | is_bssrdf |
         is_ashikhmin;
@@ -199,8 +195,7 @@ evaluate_common_closure(
                 ((diffuse_enabled &
                   (is_diffuse | is_bssrdf | is_ashikhmin)) |
                  (diffuse_enabled & transmission_enabled &
-                  translucent_family)) &
-                common.setup_valid;
+                  translucent_family));
             $if(allowed) {
                 Float pdf = 0.0f;
                 Float3 value = make_float3(0.0f);
@@ -327,31 +322,27 @@ evaluate_general_closure(
     Bool selected_sample,
     SurfaceClosureReachability reachability) noexcept {
     const auto &common = closure.common;
-    const auto reachable_kind = [&common, reachability](
-                                    SurfaceClosureKind kind) noexcept {
-        if (!reachability.contains(kind)) { return Bool{false}; }
-        return has_kind(common, kind);
-    };
-    const auto is_principled =
-        reachable_kind(SurfaceClosureKind::principled);
-    const auto is_microfiber =
-        reachable_kind(SurfaceClosureKind::sheen_microfiber);
+    const UInt type{common.closure_type};
     const auto is_sheen =
-        is_microfiber |
-        (reachability.contains_principled_lobe(SurfaceClosureLobe::sheen)
-             ? is_principled &
-                   has_lobe(common, SurfaceClosureLobe::sheen)
-             : Bool{false});
-    const auto is_glossy = reachable_kind(SurfaceClosureKind::glossy);
-    const auto is_metallic_f82 =
-        reachable_kind(SurfaceClosureKind::metallic_f82);
-    const auto is_metallic_conductor =
-        reachable_kind(SurfaceClosureKind::metallic_conductor);
-    const auto is_thin = reachable_kind(
-        SurfaceClosureKind::thin_glass_transmission);
+        (reachability.contains_principled_lobe(
+             SurfaceClosureLobe::sheen) ||
+         reachability.contains(SurfaceClosureKind::sheen_microfiber))
+            ? type == cycles_closure::type_sheen
+            : Bool{false};
+    const auto generic_glossy_possible =
+        reachability.contains(SurfaceClosureKind::principled) ||
+        reachability.contains(SurfaceClosureKind::glossy) ||
+        reachability.contains(SurfaceClosureKind::metallic_f82) ||
+        reachability.contains(SurfaceClosureKind::metallic_conductor);
     const auto generic_glossy =
-        (is_principled & !is_sheen) | is_glossy |
-        is_metallic_f82 | is_metallic_conductor;
+        generic_glossy_possible
+            ? cycles_closure::is_reflection_microfacet(type)
+            : Bool{false};
+    const auto is_thin =
+        reachability.contains(
+            SurfaceClosureKind::thin_glass_transmission)
+            ? type == cycles_closure::type_thin_glass_transmission
+            : Bool{false};
     const auto diffuse_enabled =
         (query.lobe_mask &
          static_cast<std::uint32_t>(event_diffuse)) != 0u;
@@ -367,7 +358,7 @@ evaluate_general_closure(
         if (reachability.contains_principled_lobe(
                 SurfaceClosureLobe::sheen) ||
             reachability.contains(SurfaceClosureKind::sheen_microfiber)) {
-            const auto allowed = diffuse_enabled & common.setup_valid;
+            const auto allowed = diffuse_enabled;
             $if(allowed) {
                 const auto bump_shadowing =
                     detail::bump_shadowing_term(
@@ -413,7 +404,7 @@ evaluate_general_closure(
             reachability.contains(SurfaceClosureKind::metallic_f82) ||
             reachability.contains(SurfaceClosureKind::metallic_conductor) ||
             principled_glossy_possible) {
-            const auto allowed = glossy_enabled & common.setup_valid;
+            const auto allowed = glossy_enabled;
             $if(allowed) {
                 const auto glossy_normal =
                     detail::maybe_ensure_valid_specular_reflection(
@@ -428,6 +419,22 @@ evaluate_general_closure(
                         !selected_sample);
                 const auto bump_pdf_valid =
                     (bump_shadowing != 0.0f) | selected_sample;
+                const auto may_have_f82 =
+                    reachability.contains_principled_lobe(
+                        SurfaceClosureLobe::metallic) ||
+                    reachability.contains(
+                        SurfaceClosureKind::metallic_f82);
+                const auto may_have_f82_thin_film =
+                    reachability.contains_thin_film_principled_lobe(
+                        SurfaceClosureLobe::metallic) ||
+                    reachability.contains_thin_film(
+                        SurfaceClosureKind::metallic_f82);
+                const auto may_have_dielectric =
+                    reachability.contains_principled_lobe(
+                        SurfaceClosureLobe::coat);
+                const auto may_have_generalized_schlick =
+                    reachability.contains_principled_lobe(
+                        SurfaceClosureLobe::dielectric);
                 const auto evaluation = detail::microfacet_evaluate(
                     services,
                     closure,
@@ -443,14 +450,12 @@ evaluate_general_closure(
                             SurfaceClosureKind::metallic_f82) ||
                         reachability.contains_anisotropic_microfacet(
                             SurfaceClosureKind::metallic_conductor),
-                    reachability.contains_thin_film_principled_lobe(
-                        SurfaceClosureLobe::metallic),
+                    may_have_f82,
+                    may_have_f82_thin_film,
+                    may_have_dielectric,
+                    may_have_generalized_schlick,
                     reachability.contains_thin_film_principled_lobe(
                         SurfaceClosureLobe::dielectric),
-                    reachability.contains(
-                        SurfaceClosureKind::metallic_f82),
-                    reachability.contains_thin_film(
-                        SurfaceClosureKind::metallic_f82),
                     reachability.contains(
                         SurfaceClosureKind::metallic_conductor),
                     reachability.contains_thin_film(
@@ -482,8 +487,7 @@ evaluate_general_closure(
     $elif(is_thin) {
         if (reachability.contains(
                 SurfaceClosureKind::thin_glass_transmission)) {
-            const auto allowed = glossy_enabled & transmission_enabled &
-                                 common.setup_valid;
+            const auto allowed = glossy_enabled & transmission_enabled;
             $if(allowed) {
                 const detail::ThinGlassComponent thin_glass{
                     services, point};
@@ -545,11 +549,12 @@ evaluate_dielectric_closure(
     const auto &common = closure.common;
     const auto is_glass =
         reachability.contains(SurfaceClosureKind::glass)
-            ? has_kind(common, SurfaceClosureKind::glass)
+            ? cycles_closure::is_glass_microfacet(common.closure_type)
             : Bool{false};
     const auto is_refraction =
         reachability.contains(SurfaceClosureKind::refraction)
-            ? has_kind(common, SurfaceClosureKind::refraction)
+            ? cycles_closure::is_refraction_microfacet(
+                  common.closure_type)
             : Bool{false};
     const auto glossy_enabled =
         (query.lobe_mask &
@@ -569,11 +574,9 @@ evaluate_dielectric_closure(
         is_glass &
         select(glossy_enabled,
                transmission_enabled,
-               glass_is_transmission) &
-        common.setup_valid;
+               glass_is_transmission);
     const auto refraction_allowed =
-        is_refraction & glossy_enabled & transmission_enabled &
-        common.setup_valid;
+        is_refraction & glossy_enabled & transmission_enabled;
     const auto allowed = glass_allowed | refraction_allowed;
     $if(allowed) {
         const auto selected_unit_ior_glass_delta =
@@ -659,7 +662,8 @@ evaluate_hair_closure(
     SurfaceClosureReachability reachability) noexcept {
     const auto reflection =
         reachability.contains(SurfaceClosureKind::hair_reflection)
-            ? has_kind(closure.common, SurfaceClosureKind::hair_reflection)
+            ? closure.common.closure_type ==
+                  cycles_closure::type_hair_reflection
             : Bool{false};
     const auto glossy_enabled =
         (query.lobe_mask &
@@ -667,10 +671,8 @@ evaluate_hair_closure(
     const auto transmission_enabled =
         (query.lobe_mask &
          static_cast<std::uint32_t>(event_transmission)) != 0u;
-    const auto allowed =
-        glossy_enabled &
-        select(transmission_enabled, Bool{true}, reflection) &
-        closure.common.setup_valid;
+    const auto allowed = glossy_enabled &
+                         select(transmission_enabled, Bool{true}, reflection);
     auto result = zero_surface_closure_evaluation_contribution();
     $if(allowed) {
         Float intensity = 0.0f;
@@ -747,29 +749,12 @@ surface_closure_evaluation_contribution(
     Expr<bool> selected_sample_expression,
     SurfaceClosureReachability reachability) noexcept {
     const auto common = project_surface_closure_physical_common(closure);
-    const auto is_general =
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::principled)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::glossy)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::metallic_f82)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::metallic_conductor)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::sheen_microfiber)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::thin_glass_transmission));
-    const auto is_dielectric =
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::glass)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::refraction));
-    const auto is_hair =
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::hair_reflection)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::hair_transmission));
+    const auto is_general = surface_closure_uses_general_payload(
+        common.closure_type);
+    const auto is_dielectric = surface_closure_uses_dielectric_payload(
+        common.closure_type);
+    const auto is_hair = surface_closure_uses_hair_payload(
+        common.closure_type);
     auto result = zero_surface_closure_evaluation_contribution();
     $if(is_dielectric) {
         result = evaluate_dielectric_closure(
@@ -837,31 +822,29 @@ surface_closure_evaluation_contribution_from_physical_common(
     const SurfaceClosureEvaluationPolicy &policy,
     Expr<bool> selected_sample,
     SurfaceClosureReachability reachability) noexcept {
-    const auto reachable_kind = [&common, reachability](
-                                    SurfaceClosureKind kind) noexcept {
-        if (!reachability.contains(kind)) {
-            return Bool{false};
-        }
-        return has_kind(common, kind);
-    };
-    const auto is_general_payload =
-        reachable_kind(SurfaceClosureKind::principled) |
-        reachable_kind(SurfaceClosureKind::glossy) |
-        reachable_kind(SurfaceClosureKind::metallic_f82) |
-        reachable_kind(SurfaceClosureKind::metallic_conductor) |
-        reachable_kind(SurfaceClosureKind::sheen_microfiber) |
-        reachable_kind(SurfaceClosureKind::thin_glass_transmission);
-    const auto is_dielectric_payload =
-        reachable_kind(SurfaceClosureKind::glass) |
-        reachable_kind(SurfaceClosureKind::refraction);
-    const auto is_hair_payload =
-        reachable_kind(SurfaceClosureKind::hair_reflection) |
-        reachable_kind(SurfaceClosureKind::hair_transmission);
+    Bool is_general_payload = false;
+    if ((reachability.kinds &
+         evaluation_general_payload_reachability.kinds) != 0u) {
+        is_general_payload = surface_closure_uses_general_payload(
+            common.closure_type);
+    }
+    Bool is_dielectric_payload = false;
+    if ((reachability.kinds &
+         evaluation_dielectric_payload_reachability.kinds) != 0u) {
+        is_dielectric_payload = surface_closure_uses_dielectric_payload(
+            common.closure_type);
+    }
+    Bool is_hair_payload = false;
+    if ((reachability.kinds &
+         evaluation_hair_payload_reachability.kinds) != 0u) {
+        is_hair_payload = surface_closure_uses_hair_payload(
+            common.closure_type);
+    }
 
     auto result = zero_surface_closure_evaluation_contribution();
     // The three reachability meets are a proof obligation as well as a
     // specialization: the inner canonical consumer cannot re-introduce a tag
-    // excluded by the dominating family predicate. Only `result` crosses the
+    // excluded by the dominating type predicate. Only `result` crosses the
     // branch merge, so mutually exclusive payload fields never coexist in the
     // caller's loop-carried state.
     $if(is_dielectric_payload) {

@@ -78,10 +78,9 @@ bool SurfaceClosurePopulationCollector::
 
 void SurfaceClosurePopulationCollector::
     begin_transparent_closure(
-        const SurfaceClosureRecord &closure) noexcept {
+    const SurfaceClosureRecord &closure) noexcept {
     const auto allocated =
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::transparent)) &
+        (closure.closure_type == cycles_closure::type_transparent) &
         (closure.allocation_weight >=
          cycles_closure::closure_weight_cutoff);
     $if(allocated) {

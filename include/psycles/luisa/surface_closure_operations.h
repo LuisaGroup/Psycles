@@ -43,13 +43,7 @@ namespace psycles::luisa_backend {
 using SurfaceClosureIdentityCallable =
     luisa::compute::Callable<luisa::uint2(
         luisa::uint,
-        luisa::uint,
-        luisa::uint,
         float,
-        bool,
-        float,
-        bool,
-        bool,
         float)>;
 
 [[nodiscard]] SurfaceClosureIdentityCallable
@@ -62,9 +56,7 @@ using SurfaceClosureAovCallable =
         luisa::float3,
         bool,
         luisa::uint,
-        luisa::uint,
         luisa::float3,
-        bool,
         luisa::float3,
         luisa::float3,
         luisa::float3,
@@ -99,7 +91,7 @@ class SurfaceBssrdfNormalAccumulator {
         std::size_t capacity) noexcept;
 
     void add(
-        Expr<std::uint32_t> kind,
+        Expr<std::uint32_t> closure_type,
         Expr<luisa::float3> weight,
         Expr<float> allocation_weight,
         Expr<luisa::float3> normal) noexcept;
