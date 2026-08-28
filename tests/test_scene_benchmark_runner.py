@@ -55,6 +55,12 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
         ):
             self.runner._backend_list("fallback,metal,metal")
 
+    def test_experimental_simd_backend_is_accepted(self) -> None:
+        self.assertEqual(
+            self.runner._backend_list("metal,simd"),
+            ("metal", "simd"),
+        )
+
     def test_scheduler_matrix_is_validated(self) -> None:
         schedulers = (
             "megakernel",

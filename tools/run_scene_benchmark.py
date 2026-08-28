@@ -46,6 +46,7 @@ _KNOWN_LUISA_BACKENDS = {
     "hip",
     "metal",
     "remote",
+    "simd",
     "vk",
 }
 _KNOWN_PSYCLES_SCHEDULERS = (
