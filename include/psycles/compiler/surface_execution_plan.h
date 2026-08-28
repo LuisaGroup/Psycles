@@ -1547,6 +1547,69 @@ struct SurfaceValueForwardingPlan {
     const SurfaceValueSceneImage &image,
     const SurfaceValueProgramDescriptor &program);
 
+inline constexpr std::uint32_t surface_value_no_region =
+    std::numeric_limits<std::uint32_t>::max();
+
+enum class SurfaceValueRegionOperandSourceKind : std::uint8_t {
+  parameter,
+  live_input,
+  instruction_result,
+};
+
+// Canonical symbolic source of one region operand. Parameter indices remain
+// bytecode data. Live inputs are numbered by first use in the region, while
+// instruction results use a zero-based offset from the region beginning.
+// This makes the region's typed data-flow graph independent of colored slot
+// numbers and suitable for exact structural interning.
+struct SurfaceValueRegionOperandSource {
+  SurfaceValueRegionOperandSourceKind kind{
+      SurfaceValueRegionOperandSourceKind::parameter};
+  std::uint32_t index{};
+
+  auto operator<=>(const SurfaceValueRegionOperandSource &) const noexcept =
+      default;
+};
+
+// One maximal straight-line component of the exact adjacent-forwarding
+// relation. Offsets are relative to the containing program descriptor.
+// Definition offsets, rather than encoded slot addresses, identify boundary
+// values: a typed slot may be redefined many times under the bytecode's
+// read-before-write contract.
+//
+// `live_input_definition_offsets` contains definitions made before the region
+// and read by at least one instruction in it. `live_output_definition_offsets`
+// contains definitions made in the region whose final semantic use is after
+// it (including a normal commit or closure-terminal use). Values merely kept
+// in the local bank and not observed by the region are intentionally absent:
+// they need no operand or result in a projected region evaluator.
+struct SurfaceValueRegionDescriptor {
+  std::uint32_t instruction_begin_offset{};
+  std::uint32_t instruction_count{};
+  std::vector<std::uint32_t> live_input_definition_offsets;
+  std::vector<std::uint32_t> live_output_definition_offsets;
+  // Outer entries are parallel to region instructions; inner entries are
+  // parallel to each instruction's semantic operands.
+  std::vector<std::vector<SurfaceValueRegionOperandSource>> operand_sources;
+};
+
+// Exact, deterministic partition of every ordinary instruction in a program.
+// A normal commit has `surface_value_no_region`; every other instruction maps
+// to exactly one region. Regions are the maximal connected components of the
+// adjacent last-use forwarding graph. Since that graph is a subgraph of a
+// path, this partition is unique, contains every legal forwarding edge, and
+// never duplicates an instruction.
+struct SurfaceValueRegionPlan {
+  bool valid{};
+  std::string diagnostic;
+  std::vector<SurfaceValueRegionDescriptor> regions;
+  std::vector<std::uint32_t> instruction_region_indices;
+  std::vector<std::uint32_t> successor_operand_masks;
+};
+
+[[nodiscard]] SurfaceValueRegionPlan plan_surface_value_regions(
+    const SurfaceValueSceneImage &image,
+    const SurfaceValueProgramDescriptor &program);
+
 // `active` must be transitively closed over ValueInstruction operands.
 // `outputs` names values consumed after the stream (normally closure roots),
 // and must be a subset of `active`.

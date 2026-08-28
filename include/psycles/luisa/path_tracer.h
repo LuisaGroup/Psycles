@@ -272,6 +272,36 @@ struct LuisaSurfaceValueUniqueParameterCounts {
       default;
 };
 
+// Canonical code shape of one maximal typed straight-line value region.
+// Parameter addresses are runtime data and therefore normalize their source
+// index to zero. Live inputs use first-use order; instruction results use a
+// region-relative definition offset. Together with exact scene-wide handler
+// variants, forwarding masks, boundary banks, and stored result offsets, this
+// is an injective description of the AST produced by a projected evaluator;
+// colored local-slot indices and material parameter identities are absent.
+struct LuisaSurfaceValueRegionShape {
+  std::vector<std::uint32_t> variant_indices;
+  std::vector<std::uint32_t> successor_operand_masks;
+  // Prefix sum delimiting the two flat operand-source arrays. It has one more
+  // entry than variant_indices and begins at zero.
+  std::vector<std::uint32_t> operand_offsets;
+  std::vector<std::uint32_t> operand_source_kinds;
+  std::vector<std::uint32_t> operand_source_indices;
+  std::vector<std::uint32_t> live_input_banks;
+  std::vector<std::uint32_t> live_output_instruction_offsets;
+
+  auto operator<=>(const LuisaSurfaceValueRegionShape &) const noexcept =
+      default;
+};
+
+struct LuisaSurfaceValueRegionExecutionCount {
+  LuisaSurfaceValueRegionShape shape;
+  std::uint64_t executions{};
+
+  auto operator<=>(
+      const LuisaSurfaceValueRegionExecutionCount &) const noexcept = default;
+};
+
 // Exact per-transaction-segment reuse distribution for immutable material
 // parameters. Bins 0..6 represent exactly 1..7 references; bin 7 contains
 // eight or more. `instruction_span` is the hit-weighted inclusive distance
@@ -300,6 +330,17 @@ struct LuisaSurfaceProgramExecutionHistogram {
   std::uint64_t surface_normal_transition_executions{};
   LuisaSurfaceValueOperandExecutionCounts value_operand_executions;
   LuisaSurfaceValueUniqueParameterCounts unique_parameter_values;
+  // Hit-weighted execution census of the formal maximal-region partition.
+  // Every ordinary instruction belongs to one region and every internal edge
+  // is an exact last-use forwarding edge. These are semantic counts, not a
+  // speedup claim; they bound a future typed-region JIT without changing the
+  // device diagnostic path.
+  std::vector<LuisaSurfaceValueRegionExecutionCount> value_regions;
+  std::uint64_t value_region_invocations{};
+  std::uint64_t value_region_instruction_executions{};
+  std::uint64_t value_region_forwarded_edge_executions{};
+  std::uint64_t value_region_live_input_executions{};
+  std::uint64_t value_region_live_output_executions{};
   // Dense SurfaceValueBank order: scalar, vector, unsigned_integer.
   std::array<
       std::array<LuisaSurfaceParameterReuseBin,

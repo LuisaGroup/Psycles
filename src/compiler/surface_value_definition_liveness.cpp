@@ -1,5 +1,6 @@
 #include <psycles/compiler/surface_execution_plan.h>
 
+#include <algorithm>
 #include <map>
 #include <utility>
 
@@ -202,6 +203,181 @@ SurfaceValueForwardingPlan plan_surface_value_forwarding(
         return reject("definition liveness names a successor without a use");
       }
       result.successor_operand_masks[source_offset] = operand_mask;
+    }
+  }
+
+  result.valid = true;
+  return result;
+}
+
+SurfaceValueRegionPlan plan_surface_value_regions(
+    const SurfaceValueSceneImage &image,
+    const SurfaceValueProgramDescriptor &program) {
+  SurfaceValueRegionPlan result;
+  const auto reject = [&](std::string diagnostic) {
+    result.diagnostic = std::move(diagnostic);
+    return result;
+  };
+  const auto liveness =
+      analyze_surface_value_definition_liveness(image, program);
+  if (!liveness.valid) {
+    return reject("definition liveness: " + liveness.diagnostic);
+  }
+  const auto forwarding = plan_surface_value_forwarding(image, program);
+  if (!forwarding.valid) {
+    return reject("adjacent forwarding: " + forwarding.diagnostic);
+  }
+  if (liveness.last_use_offsets.size() != program.instruction_count ||
+      forwarding.successor_operand_masks.size() !=
+          program.instruction_count) {
+    return reject("the prerequisite analyses are not parallel to the program");
+  }
+
+  result.successor_operand_masks = forwarding.successor_operand_masks;
+  result.instruction_region_indices.assign(program.instruction_count,
+                                           surface_value_no_region);
+
+  // The legal-edge graph is a subgraph of the instruction path. Its maximal
+  // connected components are therefore the unique non-overlapping partition
+  // that realizes every forwarding edge. Normal commits have no definition,
+  // clear the colored namespace, and cannot belong to such a component.
+  for (auto offset = std::uint32_t{}; offset < program.instruction_count;) {
+    const auto &instruction =
+        image.instructions[program.instruction_begin + offset];
+    if (is_surface_value_surface_normal_transition(instruction)) {
+      ++offset;
+      continue;
+    }
+    const auto region_index = static_cast<std::uint32_t>(result.regions.size());
+    const auto begin = offset;
+    auto end = offset;
+    while (end + 1u < program.instruction_count &&
+           forwarding.successor_operand_masks[end] != 0u) {
+      const auto &successor =
+          image.instructions[program.instruction_begin + end + 1u];
+      if (is_surface_value_surface_normal_transition(successor)) {
+        return reject("adjacent forwarding crosses a normal commit");
+      }
+      ++end;
+    }
+    result.regions.emplace_back(SurfaceValueRegionDescriptor{
+        .instruction_begin_offset = begin,
+        .instruction_count = end - begin + 1u,
+        .live_input_definition_offsets = {},
+        .live_output_definition_offsets = {},
+        .operand_sources = std::vector<std::vector<
+            SurfaceValueRegionOperandSource>>(end - begin + 1u)});
+    for (auto member = begin; member <= end; ++member) {
+      result.instruction_region_indices[member] = region_index;
+    }
+    offset = end + 1u;
+  }
+
+  // Replay the exact definition epochs. An operand whose active definition
+  // predates its region is a true live-in. A definition whose final semantic
+  // use follows its region is a true live-out. The liveness analysis already
+  // proves every local read has an active epoch, but this replay intentionally
+  // checks that invariant again so a future analysis change fails closed.
+  std::map<std::uint32_t, std::uint32_t> active_definitions;
+  const auto find_or_append = [](auto &values, std::uint32_t value) {
+    const auto found = std::find(values.begin(), values.end(), value);
+    if (found != values.end()) {
+      return static_cast<std::uint32_t>(found - values.begin());
+    }
+    values.emplace_back(value);
+    return static_cast<std::uint32_t>(values.size() - 1u);
+  };
+  for (auto offset = std::uint32_t{}; offset < program.instruction_count;
+       ++offset) {
+    const auto &instruction =
+        image.instructions[program.instruction_begin + offset];
+    if (is_surface_value_surface_normal_transition(instruction)) {
+      active_definitions.clear();
+      continue;
+    }
+    const auto region_index = result.instruction_region_indices[offset];
+    if (region_index == surface_value_no_region ||
+        region_index >= result.regions.size()) {
+      return reject("an ordinary instruction has no region");
+    }
+    auto &region = result.regions[region_index];
+    const auto region_end = region.instruction_begin_offset +
+                            region.instruction_count - 1u;
+    auto &operand_sources =
+        region.operand_sources[offset - region.instruction_begin_offset];
+    const auto operand_count = surface_value_operand_count(instruction);
+    operand_sources.reserve(operand_count);
+    for (auto operand_index = std::size_t{}; operand_index < operand_count;
+         ++operand_index) {
+      auto operand = SurfaceValueOperandAddress{};
+      if (!decode_operand(image, instruction, operand_index, operand)) {
+        return reject("an ordinary instruction has an invalid operand");
+      }
+      if (operand.parameter()) {
+        operand_sources.emplace_back(SurfaceValueRegionOperandSource{
+            .kind = SurfaceValueRegionOperandSourceKind::parameter,
+            .index = operand.index()});
+        continue;
+      }
+      const auto definition = active_definitions.find(
+          operand.expanded().encoded());
+      if (definition == active_definitions.end()) {
+        return reject("an ordinary instruction reads an undefined epoch");
+      }
+      if (definition->second < region.instruction_begin_offset) {
+        const auto input_index = find_or_append(
+            region.live_input_definition_offsets, definition->second);
+        operand_sources.emplace_back(SurfaceValueRegionOperandSource{
+            .kind = SurfaceValueRegionOperandSourceKind::live_input,
+            .index = input_index});
+      } else {
+        if (definition->second >= offset) {
+          return reject("a region operand does not precede its use");
+        }
+        operand_sources.emplace_back(SurfaceValueRegionOperandSource{
+            .kind = SurfaceValueRegionOperandSourceKind::instruction_result,
+            .index = definition->second -
+                     region.instruction_begin_offset});
+      }
+    }
+
+    const auto definition = SurfaceValueAddress{instruction.result};
+    if (!definition.valid() || definition.parameter()) {
+      return reject("an ordinary instruction has an invalid local result");
+    }
+    active_definitions.insert_or_assign(definition.encoded(), offset);
+    const auto final_use = liveness.last_use_offsets[offset];
+    if (final_use != surface_value_definition_no_use &&
+        final_use > region_end) {
+      region.live_output_definition_offsets.emplace_back(offset);
+    }
+  }
+
+  // The symbolic data-flow graph and the forwarding masks are two independent
+  // projections of the same epoch relation. Requiring exact agreement here
+  // prevents either representation from becoming a permissive approximation.
+  for (const auto &region : result.regions) {
+    for (auto source = std::uint32_t{};
+         source + 1u < region.instruction_count; ++source) {
+      const auto source_offset = region.instruction_begin_offset + source;
+      const auto mask = result.successor_operand_masks[source_offset];
+      if (mask == 0u) {
+        return reject("a maximal region contains a non-forwarding edge");
+      }
+      const auto &target_sources = region.operand_sources[source + 1u];
+      auto symbolic_mask = std::uint32_t{};
+      for (auto operand = std::size_t{}; operand < target_sources.size();
+           ++operand) {
+        const auto &source_ref = target_sources[operand];
+        if (source_ref.kind ==
+                SurfaceValueRegionOperandSourceKind::instruction_result &&
+            source_ref.index == source) {
+          symbolic_mask |= std::uint32_t{1u} << operand;
+        }
+      }
+      if (symbolic_mask != mask) {
+        return reject("region data flow disagrees with its forwarding mask");
+      }
     }
   }
 

@@ -1,0 +1,33 @@
+{
+  "scene": "Blender 5.2 Barbershop export",
+  "backend": "hip",
+  "resolution": [320, 240],
+  "samples": 16,
+  "scheduler": "wavefront-staged",
+  "exact": true,
+  "surface_populations": 3366093,
+  "value_instruction_executions": 300238565,
+  "surface_normal_transition_executions": 2228986,
+  "ordinary_instruction_executions": 298009579,
+  "region_invocations": 83460904,
+  "forwarded_edge_executions": 214548675,
+  "live_input_executions": 113836603,
+  "live_output_executions": 83460904,
+  "average_region_length": 3.570648827383897,
+  "average_live_inputs": 1.3639512339813622,
+  "average_live_outputs": 1.0,
+  "non_singleton_instruction_share": 0.9110533020819441,
+  "unique_region_shapes": 524,
+  "unique_shape_instruction_sites": 2795,
+  "maximum_region_length": 18,
+  "top_shape_instruction_coverage": {
+    "1": 0.043976344800648166,
+    "4": 0.1495148114014147,
+    "8": 0.25347678169767823,
+    "16": 0.426874083802521,
+    "32": 0.6090088063914214,
+    "64": 0.7700747733347189,
+    "128": 0.9129448989960152,
+    "256": 0.9896705568648853
+  }
+}

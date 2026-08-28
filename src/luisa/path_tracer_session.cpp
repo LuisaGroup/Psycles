@@ -210,6 +210,7 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
   // dynamic-route subset, source-last-used-by-target.
   using ValueTransitionKey = std::array<std::uint32_t, 10u>;
   std::map<ValueTransitionKey, std::uint64_t> value_transition_counts;
+  std::map<LuisaSurfaceValueRegionShape, std::uint64_t> value_region_counts;
   std::map<std::uint32_t, std::uint64_t> closure_leaf_counts;
   const auto &runtime = *_scene->surface_values;
   const auto &image = runtime.executable.values;
@@ -235,13 +236,120 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
       histogram.exact = false;
       continue;
     }
-    const auto forwarding =
-        compiler::plan_surface_value_forwarding(image, program);
-    if (!forwarding.valid ||
-        forwarding.successor_operand_masks.size() !=
+    const auto regions = compiler::plan_surface_value_regions(image, program);
+    if (!regions.valid ||
+        regions.successor_operand_masks.size() !=
             program.instruction_count) {
       histogram.exact = false;
       continue;
+    }
+
+    // Project the exact epoch graph to a canonical AST identity. Raw local
+    // slots and parameter indices are bytecode data, not JIT identity. No
+    // approximation or hash-only equality is used for aggregation.
+    for (const auto &region : regions.regions) {
+      if (region.instruction_count == 0u ||
+          region.instruction_begin_offset >= program.instruction_count ||
+          region.instruction_count >
+              program.instruction_count - region.instruction_begin_offset ||
+          region.operand_sources.size() != region.instruction_count) {
+        histogram.exact = false;
+        continue;
+      }
+      auto shape = LuisaSurfaceValueRegionShape{};
+      shape.variant_indices.reserve(region.instruction_count);
+      shape.successor_operand_masks.reserve(region.instruction_count);
+      shape.operand_offsets.reserve(region.instruction_count + 1u);
+      shape.operand_offsets.emplace_back(0u);
+      auto shape_valid = true;
+      for (const auto definition_offset :
+           region.live_input_definition_offsets) {
+        if (definition_offset >= region.instruction_begin_offset ||
+            definition_offset >= program.instruction_count) {
+          shape_valid = false;
+          break;
+        }
+        const auto &definition = image.instructions[
+            program.instruction_begin + definition_offset];
+        if (compiler::is_surface_value_surface_normal_transition(definition)) {
+          shape_valid = false;
+          break;
+        }
+        shape.live_input_banks.emplace_back(static_cast<std::uint32_t>(
+            compiler::surface_value_result_bank(definition)));
+      }
+      for (const auto definition_offset :
+           region.live_output_definition_offsets) {
+        if (definition_offset < region.instruction_begin_offset ||
+            definition_offset >= region.instruction_begin_offset +
+                                     region.instruction_count) {
+          shape_valid = false;
+          break;
+        }
+        shape.live_output_instruction_offsets.emplace_back(
+            definition_offset - region.instruction_begin_offset);
+      }
+      for (auto member = std::uint32_t{};
+           shape_valid && member < region.instruction_count; ++member) {
+        const auto offset = region.instruction_begin_offset + member;
+        const auto instruction_index = program.instruction_begin + offset;
+        if (instruction_index >=
+                runtime.executable.instruction_variants.size() ||
+            compiler::is_surface_value_surface_normal_transition(
+                image.instructions[instruction_index])) {
+          shape_valid = false;
+          break;
+        }
+        const auto variant =
+            runtime.executable.instruction_variants[instruction_index];
+        if (variant >= runtime.executable.variants.size()) {
+          shape_valid = false;
+          break;
+        }
+        shape.variant_indices.emplace_back(variant);
+        shape.successor_operand_masks.emplace_back(
+            regions.successor_operand_masks[offset]);
+        for (const auto &source : region.operand_sources[member]) {
+          shape.operand_source_kinds.emplace_back(
+              static_cast<std::uint32_t>(source.kind));
+          shape.operand_source_indices.emplace_back(
+              source.kind == compiler::
+                                 SurfaceValueRegionOperandSourceKind::parameter
+                  ? 0u
+                  : source.index);
+        }
+        if (shape.operand_source_kinds.size() >
+            std::numeric_limits<std::uint32_t>::max()) {
+          shape_valid = false;
+          break;
+        }
+        shape.operand_offsets.emplace_back(static_cast<std::uint32_t>(
+            shape.operand_source_kinds.size()));
+      }
+      if (!shape_valid ||
+          shape.operand_source_kinds.size() !=
+              shape.operand_source_indices.size() ||
+          shape.operand_offsets.size() !=
+              shape.variant_indices.size() + 1u ||
+          shape.successor_operand_masks.size() !=
+              shape.variant_indices.size() ||
+          shape.successor_operand_masks.back() != 0u) {
+        histogram.exact = false;
+        continue;
+      }
+      checked_add(value_region_counts[std::move(shape)], populations);
+      checked_add(histogram.value_region_invocations, populations);
+      checked_weighted_add(histogram.value_region_instruction_executions,
+                           populations, region.instruction_count);
+      checked_weighted_add(
+          histogram.value_region_forwarded_edge_executions, populations,
+          region.instruction_count - 1u);
+      checked_weighted_add(
+          histogram.value_region_live_input_executions, populations,
+          region.live_input_definition_offsets.size());
+      checked_weighted_add(
+          histogram.value_region_live_output_executions, populations,
+          region.live_output_definition_offsets.size());
     }
     const auto decode_operand =
         [&](const compiler::SurfaceValueBytecodeInstruction &instruction,
@@ -451,8 +559,8 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
       if (previous_value_instruction) {
         const auto source_forwarding_mask =
             previous_value_instruction->offset <
-                    forwarding.successor_operand_masks.size()
-                ? forwarding.successor_operand_masks[
+                    regions.successor_operand_masks.size()
+                ? regions.successor_operand_masks[
                       previous_value_instruction->offset]
                 : 0u;
         if (source_forwarding_mask != 0u &&
@@ -552,6 +660,12 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
             .direct_dependency = key[7u] != 0u,
             .source_last_used_by_target = key[9u] != 0u,
             .executions = executions});
+  }
+  histogram.value_regions.reserve(value_region_counts.size());
+  for (const auto &[shape, executions] : value_region_counts) {
+    histogram.value_regions.emplace_back(
+        LuisaSurfaceValueRegionExecutionCount{
+            .shape = shape, .executions = executions});
   }
   histogram.closure_leaf_variants.reserve(closure_leaf_counts.size());
   for (const auto &[static_variant, visits] : closure_leaf_counts) {

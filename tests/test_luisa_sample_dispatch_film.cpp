@@ -612,6 +612,97 @@ validate_surface_program_histograms(const RenderResult &single_request,
       return false;
     }
   }
+  auto region_invocations = std::uint64_t{};
+  auto region_instruction_executions = std::uint64_t{};
+  auto region_forwarded_edge_executions = std::uint64_t{};
+  auto region_live_input_executions = std::uint64_t{};
+  auto region_live_output_executions = std::uint64_t{};
+  for (const auto &entry : expected.value_regions) {
+    const auto &shape = entry.shape;
+    const auto instruction_count = shape.variant_indices.size();
+    if (entry.executions == 0u ||
+        entry.executions % expected_surface_events != 0u ||
+        instruction_count == 0u ||
+        shape.successor_operand_masks.size() != instruction_count ||
+        shape.successor_operand_masks.back() != 0u ||
+        shape.operand_offsets.size() != instruction_count + 1u ||
+        shape.operand_offsets.front() != 0u ||
+        shape.operand_offsets.back() != shape.operand_source_kinds.size() ||
+        shape.operand_source_kinds.size() !=
+            shape.operand_source_indices.size()) {
+      std::cerr << "surface value region shape has malformed extents\n";
+      return false;
+    }
+    for (auto instruction = std::size_t{};
+         instruction < instruction_count; ++instruction) {
+      if (instruction + 1u < instruction_count &&
+          shape.successor_operand_masks[instruction] == 0u) {
+        std::cerr << "surface value region is not a maximal forwarding "
+                     "component\n";
+        return false;
+      }
+      const auto operand_begin = shape.operand_offsets[instruction];
+      const auto operand_end = shape.operand_offsets[instruction + 1u];
+      if (operand_begin > operand_end ||
+          operand_end > shape.operand_source_kinds.size()) {
+        std::cerr << "surface value region operand range is malformed\n";
+        return false;
+      }
+      for (auto operand = operand_begin; operand < operand_end; ++operand) {
+        const auto kind = static_cast<
+            SurfaceValueRegionOperandSourceKind>(
+            shape.operand_source_kinds[operand]);
+        const auto index = shape.operand_source_indices[operand];
+        switch (kind) {
+        case SurfaceValueRegionOperandSourceKind::parameter:
+          if (index != 0u) {
+            std::cerr << "surface value region parameter identity was baked "
+                         "into its code shape\n";
+            return false;
+          }
+          break;
+        case SurfaceValueRegionOperandSourceKind::live_input:
+          if (index >= shape.live_input_banks.size()) {
+            std::cerr << "surface value region has an invalid live input\n";
+            return false;
+          }
+          break;
+        case SurfaceValueRegionOperandSourceKind::instruction_result:
+          if (index >= instruction) {
+            std::cerr << "surface value region data flow is not topological\n";
+            return false;
+          }
+          break;
+        default:
+          std::cerr << "surface value region has an unknown operand source\n";
+          return false;
+        }
+      }
+    }
+    if (std::any_of(
+            shape.live_input_banks.begin(), shape.live_input_banks.end(),
+            [](const auto bank) noexcept {
+              return bank > static_cast<std::uint32_t>(
+                                SurfaceValueBank::unsigned_integer);
+            }) ||
+        std::any_of(shape.live_output_instruction_offsets.begin(),
+                    shape.live_output_instruction_offsets.end(),
+                    [instruction_count](const auto offset) noexcept {
+                      return offset >= instruction_count;
+                    })) {
+      std::cerr << "surface value region has an invalid boundary value\n";
+      return false;
+    }
+    region_invocations += entry.executions;
+    region_instruction_executions +=
+        entry.executions * instruction_count;
+    region_forwarded_edge_executions +=
+        entry.executions * (instruction_count - 1u);
+    region_live_input_executions +=
+        entry.executions * shape.live_input_banks.size();
+    region_live_output_executions +=
+        entry.executions * shape.live_output_instruction_offsets.size();
+  }
   const auto &operand_executions = expected.value_operand_executions;
   const auto total_operand_executions =
       operand_executions.direct_local +
@@ -672,6 +763,20 @@ validate_surface_program_histograms(const RenderResult &single_request,
       last_use_forwarding_transition_executions == 0u ||
       last_use_forwarding_transition_executions >
           directly_dependent_transition_executions ||
+      region_invocations != expected.value_region_invocations ||
+      region_instruction_executions !=
+          expected.value_region_instruction_executions ||
+      region_forwarded_edge_executions !=
+          expected.value_region_forwarded_edge_executions ||
+      region_forwarded_edge_executions !=
+          last_use_forwarding_transition_executions ||
+      region_live_input_executions !=
+          expected.value_region_live_input_executions ||
+      region_live_output_executions !=
+          expected.value_region_live_output_executions ||
+      region_instruction_executions +
+              expected.surface_normal_transition_executions !=
+          expected.value_instruction_executions ||
       value_handler_transition_executions >= value_handler_executions ||
       value_handler_executions +
               expected.surface_normal_transition_executions !=

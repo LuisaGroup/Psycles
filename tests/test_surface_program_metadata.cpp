@@ -511,6 +511,31 @@ void test_surface_value_storage_plan() {
               linear_forwarding.successor_operand_masks ==
                   std::vector<std::uint32_t>{1u, 1u, 0u},
           "adjacent last-use forwarding lost a linear in-place chain");
+  const auto linear_regions = plan_surface_value_regions(
+      scene_image, scene_image.programs[0u]);
+  require(linear_regions.valid && linear_regions.regions.size() == 1u &&
+              linear_regions.instruction_region_indices ==
+                  std::vector<std::uint32_t>{0u, 0u, 0u} &&
+              linear_regions.successor_operand_masks ==
+                  linear_forwarding.successor_operand_masks &&
+              linear_regions.regions[0u].instruction_begin_offset == 0u &&
+              linear_regions.regions[0u].instruction_count == 3u &&
+              linear_regions.regions[0u]
+                  .live_input_definition_offsets.empty() &&
+              linear_regions.regions[0u]
+                  .live_output_definition_offsets.empty(),
+          "region planning did not form the unique maximal linear chain");
+  require(linear_regions.regions[0u].operand_sources ==
+              std::vector<std::vector<SurfaceValueRegionOperandSource>>{
+                  {{SurfaceValueRegionOperandSourceKind::parameter, 0u},
+                   {SurfaceValueRegionOperandSourceKind::parameter, 1u}},
+                  {{SurfaceValueRegionOperandSourceKind::instruction_result,
+                    0u}},
+                  {{SurfaceValueRegionOperandSourceKind::instruction_result,
+                    1u},
+                   {SurfaceValueRegionOperandSourceKind::parameter, 1u}}},
+          "region symbolic data flow retained colored slots instead of "
+          "definition identities");
 
   auto duplicate_successor_use_image = scene_image;
   auto &duplicate_successor =
@@ -545,6 +570,33 @@ void test_surface_value_storage_plan() {
                   std::vector<std::uint32_t>{0u, 0u, 0u},
           "forwarding erased a definition that remains live after its "
           "successor");
+  const auto nonfinal_regions = plan_surface_value_regions(
+      nonfinal_successor_use_image, nonfinal_program);
+  require(nonfinal_regions.valid && nonfinal_regions.regions.size() == 3u &&
+              nonfinal_regions.instruction_region_indices ==
+                  std::vector<std::uint32_t>{0u, 1u, 2u} &&
+              nonfinal_regions.regions[0u]
+                      .live_output_definition_offsets ==
+                  std::vector<std::uint32_t>{0u} &&
+              nonfinal_regions.regions[1u]
+                      .live_input_definition_offsets ==
+                  std::vector<std::uint32_t>{0u} &&
+              nonfinal_regions.regions[1u]
+                  .live_output_definition_offsets.empty() &&
+              nonfinal_regions.regions[2u]
+                      .live_input_definition_offsets ==
+                  std::vector<std::uint32_t>{0u} &&
+              nonfinal_regions.regions[2u]
+                  .live_output_definition_offsets.empty(),
+          "region boundary projection confused a live epoch with its slot");
+  require(nonfinal_regions.regions[1u].operand_sources ==
+                  std::vector<std::vector<SurfaceValueRegionOperandSource>>{
+                      {{SurfaceValueRegionOperandSourceKind::live_input, 0u}}} &&
+              nonfinal_regions.regions[2u].operand_sources ==
+                  std::vector<std::vector<SurfaceValueRegionOperandSource>>{
+                      {{SurfaceValueRegionOperandSourceKind::live_input, 0u},
+                       {SurfaceValueRegionOperandSourceKind::parameter, 1u}}},
+          "region symbolic inputs did not use canonical boundary numbering");
   auto undefined_liveness_image = scene_image;
   auto &undefined_liveness_instruction =
       undefined_liveness_image.instructions[
@@ -569,6 +621,13 @@ void test_surface_value_storage_plan() {
               undefined_forwarding.diagnostic.find("undefined local") !=
                   std::string::npos,
           "forwarding planning did not fail closed on undefined data flow");
+  const auto undefined_regions = plan_surface_value_regions(
+      undefined_liveness_image,
+      undefined_liveness_image.programs[0u]);
+  require(!undefined_regions.valid &&
+              undefined_regions.diagnostic.find("undefined local") !=
+                  std::string::npos,
+          "region planning did not fail closed on undefined data flow");
 
   auto closure_terminal_image = scene_image;
   auto &closure_terminal_program = closure_terminal_image.programs[0u];
@@ -592,6 +651,14 @@ void test_surface_value_storage_plan() {
               closure_terminal_liveness.last_use_offsets ==
                   std::vector<std::uint32_t>{1u, 2u, 3u},
           "definition liveness did not retain a closure-terminal value");
+  const auto closure_terminal_regions = plan_surface_value_regions(
+      closure_terminal_image, closure_terminal_program);
+  require(closure_terminal_regions.valid &&
+              closure_terminal_regions.regions.size() == 1u &&
+              closure_terminal_regions.regions[0u]
+                      .live_output_definition_offsets ==
+                  std::vector<std::uint32_t>{2u},
+          "region planning dropped a closure-terminal live-out");
 
   const std::vector execution_inputs{
       SurfaceValueExecutionInput{.program = &program, .storage = &plan},
@@ -862,6 +929,16 @@ void test_surface_value_storage_plan() {
               transaction_forwarding.successor_operand_masks ==
                   std::vector<std::uint32_t>{0u, 0u},
           "forwarding crossed a surface-normal transaction boundary");
+  const auto transaction_regions = plan_surface_value_regions(
+      raw_transaction_scene, raw_transaction_scene.programs.front());
+  require(transaction_regions.valid &&
+              transaction_regions.regions.size() == 1u &&
+              transaction_regions.instruction_region_indices ==
+                  std::vector<std::uint32_t>{0u, surface_value_no_region} &&
+              transaction_regions.regions[0u]
+                      .live_output_definition_offsets ==
+                  std::vector<std::uint32_t>{0u},
+          "region planning crossed or failed to feed a normal commit");
   auto post_commit_use_scene = raw_transaction_scene;
   auto post_commit_read = post_commit_use_scene.instructions.front();
   post_commit_read.operand_payload = replace_operand_lane(
