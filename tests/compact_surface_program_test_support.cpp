@@ -221,6 +221,41 @@ std::string validate_compact_surface_value_program_abi(
     return {};
 }
 
+std::string validate_surface_value_fresh_lifetime_seed() {
+    Callable<void()> seed_callable{[]() noexcept {
+        SurfaceValueLocals locals;
+        locals.define_all();
+    }};
+    auto scalar_seeds = std::size_t{0u};
+    auto vector_seeds = std::size_t{0u};
+    auto unsigned_integer_seeds = std::size_t{0u};
+    auto malformed_seeds = std::size_t{0u};
+    traverse_expressions<true>(
+        seed_callable.function().body(),
+        [&](const Expression *expression) noexcept {
+            if (expression->tag() != Expression::Tag::CALL) {
+                return;
+            }
+            const auto *call = static_cast<const CallExpr *>(expression);
+            if (call->op() != CallOp::UNDEFINED) {
+                return;
+            }
+            malformed_seeds += !call->arguments().empty();
+            scalar_seeds += call->type() == Type::of<SurfaceValueScalarBank>();
+            vector_seeds += call->type() == Type::of<SurfaceValueVectorBank>();
+            unsigned_integer_seeds +=
+                call->type() == Type::of<luisa::ulong>();
+        },
+        [](const Statement *) noexcept {},
+        [](const Statement *) noexcept {});
+    if (scalar_seeds != 1u || vector_seeds != 1u ||
+        unsigned_integer_seeds != 1u || malformed_seeds != 0u) {
+        return "compact surface bank roots are not exactly three typed, "
+               "argument-free fresh-lifetime seeds";
+    }
+    return {};
+}
+
 void print_compact_surface_sample_mismatch(
     const SurfaceSampleTraceCall &actual,
     const SurfaceSampleTraceCall &expected,

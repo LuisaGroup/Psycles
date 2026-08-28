@@ -33,19 +33,21 @@ SurfaceValueLocalsView SurfaceValueLocals::view() const noexcept {
 
 void SurfaceValueLocals::define_all() const noexcept {
     // The host compiler proves read-before-write for every legal bytecode
-    // operand. Full definition is needed only when the bank starts in a
-    // coroutine root scope, so XIR can move the alloca below shade_surface
-    // without depending on opaque immutable-buffer contents.
-    for (auto i = 0u; i < SurfaceValueRuntime::scalar_capacity; ++i) {
-        scalars.write(i, 0.0f);
-    }
-    for (auto i = 0u; i < SurfaceValueRuntime::vector_capacity; ++i) {
-        vectors.write(i, make_float3(0.0f));
-    }
-    for (auto i = 0u;
-         i < SurfaceValueRuntime::unsigned_integer_capacity; ++i) {
-        unsigned_integers.write(i, 0ull);
-    }
+    // operand. These aggregate assignments are therefore lifetime witnesses,
+    // not observable values: XIR can move each alloca below shade_surface and
+    // native backends can erase the seeds instead of materializing 44 zeros.
+    auto scalar_bank =
+        luisa::compute::detail::Ref<SurfaceValueScalarBank>{
+            scalars.expression()};
+    auto vector_bank =
+        luisa::compute::detail::Ref<SurfaceValueVectorBank>{
+            vectors.expression()};
+    auto unsigned_integer_bank =
+        luisa::compute::detail::Ref<luisa::ulong>{
+            unsigned_integers.expression()};
+    scalar_bank = luisa::compute::undefined<SurfaceValueScalarBank>();
+    vector_bank = luisa::compute::undefined<SurfaceValueVectorBank>();
+    unsigned_integer_bank = luisa::compute::undefined<luisa::ulong>();
 }
 
 Float read_scalar_dynamic(

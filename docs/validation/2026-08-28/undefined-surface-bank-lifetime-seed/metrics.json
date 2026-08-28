@@ -1,0 +1,137 @@
+{
+  "schema": "psycles.undefined-surface-bank-lifetime-seed.v1",
+  "identity": {
+    "cycles_blender_5_2": "9e2066aef7ef7e20c142ad7bd3303138a4304c93",
+    "device": "AMD Radeon RX 9070 XT (gfx1201)",
+    "luisa_baseline": "ca29d37d3458bd44c4d7bbc55f69c7bf047f83ae",
+    "luisa_candidate": "004096a9bb8b246ba0872df0ecc6d9ac2a01325a",
+    "luisa_undefined_semantics": "bd05221638494269261418f0d14478aef4fc7680",
+    "psycles_baseline": "5c62d055942a093c5c92cbec1f74c8a9dd7e029a",
+    "scene": "Blender 5.2 Barbershop, 640x480, 64 fixed spp"
+  },
+  "generated_structure": {
+    "baseline": {
+      "coroutine_frame_bytes": 864,
+      "coroutine_frame_fields": 177,
+      "disassembled_instructions": 60719,
+      "fixed_private_bytes": 3096,
+      "global_loads": 1239,
+      "global_stores": 277,
+      "hip_object_bytes": 340184,
+      "llvm_allocas": 17,
+      "llvm_branches": 1589,
+      "llvm_bytes": 3008050,
+      "llvm_calls": 3351,
+      "llvm_lines": 53989,
+      "llvm_loads": 2527,
+      "llvm_phi": 2281,
+      "llvm_selects": 2666,
+      "llvm_stores": 1319,
+      "llvm_switches": 38,
+      "scratch_loads": 678,
+      "scratch_stores": 543,
+      "sgpr_metadata": 107,
+      "vgpr_metadata": 256
+    },
+    "candidate": {
+      "coroutine_frame_bytes": 864,
+      "coroutine_frame_fields": 177,
+      "disassembled_instructions": 60706,
+      "fixed_private_bytes": 3096,
+      "global_loads": 1187,
+      "global_stores": 277,
+      "hip_object_bytes": 339800,
+      "llvm_allocas": 17,
+      "llvm_branches": 1589,
+      "llvm_bytes": 3001514,
+      "llvm_calls": 3351,
+      "llvm_lines": 53903,
+      "llvm_loads": 2527,
+      "llvm_phi": 2281,
+      "llvm_selects": 2666,
+      "llvm_stores": 1275,
+      "llvm_switches": 38,
+      "scratch_loads": 678,
+      "scratch_stores": 529,
+      "sgpr_metadata": 107,
+      "vgpr_metadata": 256
+    }
+  },
+  "hip_surface_profiles": {
+    "baseline": [
+      {
+        "calls": 365,
+        "duration_ns": 1180051937,
+        "ns_per_work_item": 22.027295938,
+        "render_seconds": 2.53212,
+        "work_items": 53572256
+      },
+      {
+        "calls": 355,
+        "duration_ns": 1179782042,
+        "ns_per_work_item": 22.028297513,
+        "render_seconds": 2.53125,
+        "work_items": 53557568
+      }
+    ],
+    "baseline_mean_ns_per_work_item": 22.0277967255,
+    "baseline_mean_render_seconds": 2.531685,
+    "candidate": [
+      {
+        "calls": 356,
+        "duration_ns": 1153878070,
+        "ns_per_work_item": 21.525442665,
+        "render_seconds": 2.50699,
+        "work_items": 53605312
+      },
+      {
+        "calls": 358,
+        "duration_ns": 1151813401,
+        "ns_per_work_item": 21.487388311,
+        "render_seconds": 2.50154,
+        "work_items": 53604160
+      },
+      {
+        "calls": 358,
+        "duration_ns": 1151165919,
+        "ns_per_work_item": 21.480836239,
+        "render_seconds": 2.49962,
+        "work_items": 53590368
+      }
+    ],
+    "candidate_mean_ns_per_work_item": 21.497889071667,
+    "candidate_mean_render_seconds": 2.502716667,
+    "render_change_percent": -1.144231345,
+    "surface_change_percent": -2.405631668
+  },
+  "megakernel": {
+    "baseline_render_seconds": 4.28316,
+    "candidate_render_seconds": 4.26834,
+    "primary_pass_rmse": {
+      "candidate_vs_baseline": {
+        "Combined": 0.014863460324704647,
+        "DiffCol": 0.002789729740470648,
+        "Normal": 0.0011131007922813296
+      },
+      "baseline_repeat": {
+        "Combined": 0.01882980577647686,
+        "DiffCol": 0.0030376650393009186,
+        "Normal": 0.002133163157850504
+      }
+    }
+  },
+  "tests": {
+    "focused_host_fallback_hip": "18/18",
+    "focused_strict_native_vulkan": "7/7",
+    "luisa_xir_spirv_c_codegen_excluding_existing_target_feature_failure": "79/79",
+    "psycles_full": "309/315",
+    "psycles_full_existing_failures": [
+      "psycles.luisa_stacked_volume_fallback",
+      "psycles.luisa_homogeneous_volume_fallback",
+      "psycles.luisa_area_light_forward_vk",
+      "psycles.luisa_volume_path_fallback",
+      "psycles.luisa_volume_path_vk",
+      "psycles.luisa_volume_triangle_fallback"
+    ]
+  }
+}
