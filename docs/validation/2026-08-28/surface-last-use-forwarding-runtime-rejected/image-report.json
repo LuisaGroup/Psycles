@@ -1,0 +1,114 @@
+{
+  "actual_label": "Forwarding candidate",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9780904054641724,
+        0.9940776824951172,
+        1.0117839574813843
+      ],
+      "cycles": "/var/tmp/psycles-surface-forwarding-baseline.KVLKkV/out.exr",
+      "cycles_channel_mean": [
+        0.046637050807476044,
+        0.03250417858362198,
+        0.023545898497104645
+      ],
+      "cycles_luminance_mean": 0.03486340120434761,
+      "cycles_rms": 0.13319894671440125,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.990392124953238,
+      "maximum_absolute_error": 21.870534896850586,
+      "mean_absolute_error": 0.008270342834293842,
+      "orientation_rmse": {
+        "flip_x": 0.16703297197818756,
+        "flip_xy": 0.17118391394615173,
+        "flip_y": 0.1686999350786209,
+        "identity": 0.05536103621125221
+      },
+      "p95_pixel_rmse": 0.04351772367954254,
+      "p99_pixel_rmse": 0.14362329244613647,
+      "psycles": "/var/tmp/psycles-surface-forwarding-u3-profile.VDdcwO/out.exr",
+      "psycles_channel_mean": [
+        0.04561525210738182,
+        0.03231167793273926,
+        0.023823363706469536
+      ],
+      "psycles_luminance_mean": 0.03452843800187111,
+      "psycles_rms": 0.12196206061320335,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.4156266815679457,
+      "rmse": 0.05536103621125221,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 4.49537653648965,
+        "display_scale": 1.3041360375168454,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/surface-last-use-forwarding-runtime-rejected/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Canonical runtime",
+  "schema": "psycles.cycles-differential.v2"
+}

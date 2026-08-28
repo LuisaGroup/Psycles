@@ -140,4 +140,73 @@ SurfaceValueDefinitionLiveness analyze_surface_value_definition_liveness(
   return result;
 }
 
+SurfaceValueForwardingPlan plan_surface_value_forwarding(
+    const SurfaceValueSceneImage &image,
+    const SurfaceValueProgramDescriptor &program) {
+  SurfaceValueForwardingPlan result;
+  const auto reject = [&](std::string diagnostic) {
+    result.diagnostic = std::move(diagnostic);
+    return result;
+  };
+  const auto liveness =
+      analyze_surface_value_definition_liveness(image, program);
+  if (!liveness.valid) {
+    return reject("definition liveness: " + liveness.diagnostic);
+  }
+  if (liveness.last_use_offsets.size() != program.instruction_count) {
+    return reject("definition liveness is not parallel to the program");
+  }
+  result.successor_operand_masks.assign(program.instruction_count, 0u);
+
+  // Let D_i be the definition produced by ordinary instruction i and U_i(j)
+  // the definition read by successor operand j. Forwarding is legal exactly
+  // when {j | U_i(j) = D_i} is non-empty and last_use(D_i) = i + 1. The first
+  // equality supplies every substituted use; the second proves that omitting
+  // D_i's bank write cannot affect any instruction or closure after the
+  // successor. This is a local implementation of that relation, not an
+  // opcode-specific peephole.
+  for (auto source_offset = std::uint32_t{};
+       source_offset + 1u < program.instruction_count; ++source_offset) {
+    const auto target_offset = source_offset + 1u;
+    const auto &source =
+        image.instructions[program.instruction_begin + source_offset];
+    const auto &target =
+        image.instructions[program.instruction_begin + target_offset];
+    if (is_surface_value_surface_normal_transition(source) ||
+        is_surface_value_surface_normal_transition(target)) {
+      continue;
+    }
+    const auto definition = SurfaceValueAddress{source.result};
+    if (!definition.valid() || definition.parameter() ||
+        definition.bank() != surface_value_result_bank(source)) {
+      return reject("an ordinary source has an invalid local result");
+    }
+
+    auto operand_mask = std::uint32_t{};
+    const auto operand_count = surface_value_operand_count(target);
+    if (operand_count > surface_value_max_operand_count) {
+      return reject("a successor exceeds the forwarding mask domain");
+    }
+    for (auto operand_index = std::size_t{}; operand_index < operand_count;
+         ++operand_index) {
+      auto operand = SurfaceValueOperandAddress{};
+      if (!decode_operand(image, target, operand_index, operand)) {
+        return reject("a successor has an invalid operand");
+      }
+      if (!operand.parameter() && operand.expanded() == definition) {
+        operand_mask |= std::uint32_t{1u} << operand_index;
+      }
+    }
+    if (liveness.last_use_offsets[source_offset] == target_offset) {
+      if (operand_mask == 0u) {
+        return reject("definition liveness names a successor without a use");
+      }
+      result.successor_operand_masks[source_offset] = operand_mask;
+    }
+  }
+
+  result.valid = true;
+  return result;
+}
+
 } // namespace psycles::compiler

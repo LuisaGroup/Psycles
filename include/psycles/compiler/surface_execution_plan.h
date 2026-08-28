@@ -1525,6 +1525,28 @@ analyze_surface_value_definition_liveness(
     const SurfaceValueSceneImage &image,
     const SurfaceValueProgramDescriptor &program);
 
+// Exact adjacent-definition forwarding relation for one serialized value
+// program. Entry i is a bit mask over the operands of instruction i + 1 and
+// names every operand that reads instruction i's result definition. A mask is
+// nonzero only when that successor is the definition's final semantic use.
+// Thus an evaluator may keep the result in a typed transient, omit its local
+// bank write, and substitute the transient for precisely the marked successor
+// reads without changing any later observation.
+//
+// Normal commits are hard namespace boundaries and closure operands are
+// terminal uses, so neither can be represented by an adjacent mask. The plan
+// is parallel to the descriptor's instruction slice and does not mutate the
+// canonical bytecode image.
+struct SurfaceValueForwardingPlan {
+  bool valid{};
+  std::string diagnostic;
+  std::vector<std::uint32_t> successor_operand_masks;
+};
+
+[[nodiscard]] SurfaceValueForwardingPlan plan_surface_value_forwarding(
+    const SurfaceValueSceneImage &image,
+    const SurfaceValueProgramDescriptor &program);
+
 // `active` must be transitively closed over ValueInstruction operands.
 // `outputs` names values consumed after the stream (normally closure roots),
 // and must be a subset of `active`.
