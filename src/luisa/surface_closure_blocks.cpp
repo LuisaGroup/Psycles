@@ -1,4 +1,5 @@
 #include <psycles/luisa/surface_closure_blocks.h>
+#include <psycles/luisa/cycles_closure.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -8,6 +9,7 @@ namespace {
 inline constexpr std::uint32_t setup_valid_bit = 1u << 0u;
 inline constexpr std::uint32_t preserve_ggx_energy_bit = 1u << 1u;
 inline constexpr std::uint32_t beckmann_bit = 1u << 2u;
+inline constexpr std::uint32_t setup_flags_mask = 0xffu;
 
 }// namespace
 
@@ -21,25 +23,19 @@ SurfaceClosureBlocks pack_surface_closure(
         closure.preserve_ggx_energy);
     flags |= select(0u, beckmann_bit, closure.beckmann);
     const auto general_film_payload =
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::principled)) &
-        ((closure.lobe == static_cast<std::uint32_t>(
-                              SurfaceClosureLobe::metallic)) |
-         (closure.lobe == static_cast<std::uint32_t>(
-                              SurfaceClosureLobe::dielectric))) |
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::metallic_f82)) |
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::metallic_conductor));
+        cycles_closure::is_reflection_microfacet(
+            closure.closure_type) &
+        cycles_closure::fresnel_uses_thin_film_payload(
+            closure.microfacet_fresnel);
     const auto film_payload =
         general_film_payload |
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::glass));
+        cycles_closure::is_glass_microfacet(
+            closure.closure_type);
     return {
         .block_0 = make_float4x4(
             make_uint4(
-                closure.kind,
-                closure.lobe,
+                closure.closure_type,
+                closure.microfacet_fresnel,
                 flags,
                 closure.bssrdf_method)
                 .bitcast<luisa::float4>(),
@@ -107,25 +103,18 @@ SurfaceClosureRecord unpack_surface_closure(
         block_1_expression,
         block_2_expression,
         block_3_expression);
-    const auto flags = rows.identity.z;
+    const auto flags = rows.identity.z & setup_flags_mask;
     const auto general_film_payload =
-        (rows.identity.x == static_cast<std::uint32_t>(
-                                SurfaceClosureKind::principled)) &
-        ((rows.identity.y == static_cast<std::uint32_t>(
-                                 SurfaceClosureLobe::metallic)) |
-         (rows.identity.y == static_cast<std::uint32_t>(
-                                 SurfaceClosureLobe::dielectric))) |
-        (rows.identity.x == static_cast<std::uint32_t>(
-                                SurfaceClosureKind::metallic_f82)) |
-        (rows.identity.x == static_cast<std::uint32_t>(
-                                SurfaceClosureKind::metallic_conductor));
+        cycles_closure::is_reflection_microfacet(
+            rows.identity.x) &
+        cycles_closure::fresnel_uses_thin_film_payload(
+            rows.identity.y);
     const auto film_payload =
         general_film_payload |
-        (rows.identity.x == static_cast<std::uint32_t>(
-                                SurfaceClosureKind::glass));
+        cycles_closure::is_glass_microfacet(rows.identity.x);
     return {
-        .kind = rows.identity.x,
-        .lobe = rows.identity.y,
+        .closure_type = rows.identity.x,
+        .microfacet_fresnel = rows.identity.y,
         .weight = rows.weight_allocation_weight.xyz(),
         .allocation_weight = rows.weight_allocation_weight.w,
         .sample_weight = rows.albedo_sample_weight.w,

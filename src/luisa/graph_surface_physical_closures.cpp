@@ -2,6 +2,7 @@
 #include "microfacet_anisotropy.h"
 
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/surface_closure_identity.h>
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -106,8 +107,6 @@ SurfaceClosureRecord canonical_surface_closure(
     const TracedClosure &closure) noexcept {
     auto result = SurfaceClosureRecord::zero();
     const auto identity = canonical_surface_closure_identity(closure);
-    result.kind = static_cast<std::uint32_t>(identity.kind);
-    result.lobe = static_cast<std::uint32_t>(identity.lobe);
     result.weight = closure.weight;
     result.allocation_weight = closure.allocation_weight;
     result.sample_weight = closure.sample_weight;
@@ -204,6 +203,10 @@ SurfaceClosureRecord canonical_surface_closure(
         result.bssrdf_roughness = closure.roughness;
         result.bssrdf_anisotropy = closure.subsurface_anisotropy;
     }
+    // Retention consumes this exact post-setup identity. No downstream pack,
+    // selector, evaluator, or sampler may reconstruct it from kind/lobe.
+    finalize_cycles_closure_identity(
+        result, identity.kind, identity.lobe);
     return result;
 }
 

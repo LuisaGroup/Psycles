@@ -26,8 +26,8 @@ struct GlassGeometry {
 
 [[nodiscard]] Bool is_refraction(
     const SurfaceClosurePhysicalDielectricRecord &closure) noexcept {
-    return closure.common.kind == static_cast<std::uint32_t>(
-                                      SurfaceClosureKind::refraction);
+    return cycles_closure::is_refraction_microfacet(
+        closure.common.closure_type);
 }
 
 [[nodiscard]] GlassFresnel glass_fresnel(
@@ -421,7 +421,8 @@ GlassSample MicrofacetGlassComponent::sample(
     // execute eagerly in the Luisa expression graph.
     $if(!singular) {
         const auto sampling_alpha = max(alpha, 1.0e-7f);
-        $if(closure.common.beckmann) {
+        $if(cycles_closure::is_beckmann_microfacet(
+            closure.common.closure_type)) {
             half_vector =
                 cycles_sample_mapping::sample_beckmann_visible_normal(
                     glossy_normal,

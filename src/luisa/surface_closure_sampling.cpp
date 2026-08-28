@@ -44,7 +44,7 @@ void for_each_surface_closure_selection(
             consumer(index,
                 surface_closure_selection(
                     context,
-                    make_surface_closure_selection_input(closure),
+                    closure,
                     include_runtime_flags,
                     reachability));
             index += 1u;
@@ -65,30 +65,18 @@ void with_selected_surface_closure(
     SurfaceClosureReachability reachability,
     bool include_runtime_flags,
     Consumer &&consumer) noexcept {
-    if (closures.profile() ==
-        SurfaceClosureStorageProfile::physical) {
-        const auto access =
-            closures.physical_access(selected_index);
-        const auto common =
-            closures.physical_common_entry(access);
-        consumer(
-            closures.physical_payload_entry(access, common),
-            surface_closure_selection(
-                context,
-                common,
-                include_runtime_flags,
-                reachability));
-    } else {
-        const auto closure =
-            static_cast<SurfaceClosurePhysicalRecord>(
-                closures.entry(selected_index));
-        consumer(closure,
-            surface_closure_selection(
-                context,
-                make_surface_closure_selection_input(closure),
-                include_runtime_flags,
-                reachability));
-    }
+    LUISA_ASSERT(
+        closures.profile() != SurfaceClosureStorageProfile::physical,
+        "Physical selection must eliminate its retained tagged union.");
+    const auto closure =
+        static_cast<SurfaceClosurePhysicalRecord>(
+            closures.entry(selected_index));
+    consumer(closure,
+        surface_closure_selection(
+            context,
+            closure,
+            include_runtime_flags,
+            reachability));
 }
 
 }// namespace

@@ -11,26 +11,6 @@
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend {
-namespace {
-
-[[nodiscard]] detail::SurfaceClosureIdentityExpression
-physical_common_identity(
-    const SurfaceClosurePhysicalCommonRecord &closure) noexcept {
-    return {
-        .kind = Expr<std::uint32_t>{closure.kind.expression()},
-        .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
-        .bssrdf_method = Expr<std::uint32_t>{
-            closure.bssrdf_method.expression()},
-        .allocation_weight =
-            Expr<float>{closure.allocation_weight.expression()},
-        .setup_valid = Expr<bool>{closure.setup_valid.expression()},
-        .roughness = Expr<float>{closure.roughness.expression()},
-        .preserve_ggx_energy = Expr<bool>{
-            closure.preserve_ggx_energy.expression()},
-        .beckmann = Expr<bool>{closure.beckmann.expression()}};
-}
-
-}// namespace
 
 SurfaceClosureEvaluator::SurfaceClosureEvaluator(
     const SurfacePoint &point,
@@ -65,9 +45,11 @@ UInt SurfaceClosureEvaluator::runtime_flags(
         $while(index < _closures.count()) {
             const auto access =
                 _closures.physical_access(index);
+            const auto common =
+                _closures.physical_common_entry(access);
             result |= detail::cycles_runtime_flags(
-                physical_common_identity(
-                    _closures.physical_common_entry(access)),
+                common.closure_type,
+                common.roughness,
                 glossy_filter_roughness,
                 _reachability);
             index += 1u;
@@ -116,7 +98,7 @@ SurfaceClosureTrace SurfaceClosureEvaluator::closure_trace(
         .count = _closures.count(),
         .runtime_flags = runtime_flags(),
         .index = requested_index,
-        .type = detail::cycles_closure_type(closure, _reachability),
+        .type = closure.closure_type,
         .sample_weight = closure.sample_weight,
         .weight = closure.weight,
         .normal = closure.normal,
@@ -124,6 +106,10 @@ SurfaceClosureTrace SurfaceClosureEvaluator::closure_trace(
 }
 
 SurfaceAov SurfaceClosureEvaluator::aov() const noexcept {
+    LUISA_ASSERT(
+        _closures.profile() != SurfaceClosureStorageProfile::physical,
+        "Physical retained storage omits setup-owned AOV fields; consume "
+        "SurfaceClosurePopulationState instead of reconstructing closures.");
     auto result = SurfaceAov{
         .albedo = make_float3(0.0f),
         .glossy_albedo = make_float3(0.0f),

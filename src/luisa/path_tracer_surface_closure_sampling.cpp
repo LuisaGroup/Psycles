@@ -27,31 +27,22 @@ SurfaceClosureSamplingCallables make_surface_closure_sampling_callables(
     SurfaceClosureSelectionCallable selection =
         [reachability](UInt lobe_mask,
             Float glossy_filter_roughness,
-            UInt kind,
-            UInt lobe,
-            UInt bssrdf_method,
-            Float allocation_weight,
+            UInt closure_type,
             Float sample_weight,
-            Bool setup_valid,
             Float3 normal,
-            Float roughness,
-            Bool preserve_ggx_energy,
-            Bool beckmann) noexcept {
+            Float roughness) noexcept {
             const auto context = SurfaceClosureSelectionContext{
                 .lobe_mask = Expr<std::uint32_t>{lobe_mask.expression()},
                 .glossy_filter_roughness =
                     Expr<float>{glossy_filter_roughness.expression()}};
-            const auto closure = SurfaceClosureSelectionInput{
-                .kind = Expr<std::uint32_t>{kind.expression()},
-                .lobe = Expr<std::uint32_t>{lobe.expression()},
-                .bssrdf_method = Expr<std::uint32_t>{bssrdf_method.expression()},
-                .allocation_weight = Expr<float>{allocation_weight.expression()},
-                .sample_weight = Expr<float>{sample_weight.expression()},
-                .setup_valid = Expr<bool>{setup_valid.expression()},
-                .normal = Expr<luisa::float3>{normal.expression()},
-                .roughness = Expr<float>{roughness.expression()},
-                .preserve_ggx_energy = Expr<bool>{preserve_ggx_energy.expression()},
-                .beckmann = Expr<bool>{beckmann.expression()}};
+            const auto closure = SurfaceClosurePhysicalCommonRecord{
+                .closure_type = std::move(closure_type),
+                .microfacet_fresnel = 0u,
+                .weight = make_float3(0.0f),
+                .sample_weight = std::move(sample_weight),
+                .color_or_evaluation_scale = make_float3(0.0f),
+                .normal = std::move(normal),
+                .roughness = std::move(roughness)};
             return surface_closure_selection(
                 context, closure, true, reachability);
         };
@@ -121,10 +112,8 @@ CallableSurfaceClosureSamplingOperation::selection(
     const SurfaceClosureExpression &closure) const noexcept {
     return _callables.selection(
         _selection_context.lobe_mask, _selection_context.glossy_filter_roughness,
-        closure.kind, closure.lobe, closure.bssrdf_method,
-        closure.allocation_weight, closure.sample_weight, closure.setup_valid,
-        closure.normal, closure.roughness,
-        closure.preserve_ggx_energy, closure.beckmann);
+        closure.closure_type, closure.sample_weight,
+        closure.normal, closure.roughness);
 }
 
 luisa::compute::Var<SurfaceClosureConditionalSampleCall>

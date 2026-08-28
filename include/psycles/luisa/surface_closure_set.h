@@ -99,10 +99,6 @@ class SurfaceClosureSet final : public SurfaceClosureCollector {
 
     [[nodiscard]] SurfaceClosurePhysicalCommonRecord
     physical_common_entry_unchecked(UInt index) const noexcept;
-    [[nodiscard]] SurfaceClosurePhysicalRecord
-    physical_payload_entry_unchecked(
-        UInt index,
-        const SurfaceClosurePhysicalCommonRecord &common) const noexcept;
 
   public:
     explicit SurfaceClosureSet(
@@ -141,21 +137,14 @@ class SurfaceClosureSet final : public SurfaceClosureCollector {
     [[nodiscard]] UInt count() const noexcept;
 
     // Staged access to the physical tagged union. Reading common never touches
-    // the payload Local. Reading the payload remains a separate operation so a
-    // caller can place it after categorical selection or under a family
-    // branch. All reads require a physical_access() witness; raw Local indices
-    // stay private so a source-level guard cannot accidentally be mistaken for
-    // an initialized-prefix proof by the renderer.
+    // the payload Local. All reads require a physical_access() witness; raw
+    // Local indices stay private so a source-level guard cannot accidentally
+    // be mistaken for an initialized-prefix proof by the renderer.
     [[nodiscard]] SurfaceClosurePhysicalAccess
     physical_access(UInt requested_index) const noexcept;
     [[nodiscard]] SurfaceClosurePhysicalCommonRecord
     physical_common_entry(
         const SurfaceClosurePhysicalAccess &access) const noexcept;
-    [[nodiscard]] SurfaceClosurePhysicalRecord
-    physical_payload_entry(
-        const SurfaceClosurePhysicalAccess &access,
-        const SurfaceClosurePhysicalCommonRecord &common) const noexcept;
-
     [[nodiscard]] luisa::compute::Float4x4 physical_payload_block(
         const SurfaceClosurePhysicalAccess &access) const noexcept;
 

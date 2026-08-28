@@ -1,86 +1,72 @@
 #include <psycles/luisa/surface_closure_physical_blocks.h>
-#include <psycles/luisa/surface_closure_identity.h>
+#include <psycles/luisa/cycles_closure.h>
 
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend {
-namespace {
-
-// The fourth identity lane is a semantic bitfield. SurfaceBssrdfMethod owns
-// the low 29 bits; flags occupy the high bits so every value in the declared
-// method domain round trips without consuming a lane needed by ClosureType.
-inline constexpr std::uint32_t bssrdf_method_mask = (1u << 29u) - 1u;
-inline constexpr std::uint32_t setup_valid_bit = 1u << 29u;
-inline constexpr std::uint32_t preserve_ggx_energy_bit = 1u << 30u;
-inline constexpr std::uint32_t beckmann_bit = 1u << 31u;
-static_assert(
-    static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk_skin) <=
-    bssrdf_method_mask);
-
-}// namespace
 
 SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
     const SurfaceClosurePhysicalRecord &closure) noexcept {
-    UInt flags = 0u;
-    flags |= select(0u, setup_valid_bit, closure.setup_valid);
-    flags |= select(
-        0u,
-        preserve_ggx_energy_bit,
-        closure.preserve_ggx_energy);
-    flags |= select(0u, beckmann_bit, closure.beckmann);
-    flags |= closure.bssrdf_method & bssrdf_method_mask;
-    const auto closure_type =
-        detail::cycles_closure_type(closure);
-    const auto glass_payload =
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::glass)) |
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::refraction));
+    const UInt closure_type{closure.closure_type};
+    const UInt microfacet_fresnel{closure.microfacet_fresnel};
+    const auto general_payload =
+        surface_closure_uses_general_payload(closure_type);
+    const auto hair_payload =
+        surface_closure_uses_hair_payload(closure_type);
+    const auto dielectric_payload =
+        surface_closure_uses_dielectric_payload(closure_type);
     const auto bssrdf_payload =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::bssrdf);
+        surface_closure_uses_bssrdf_payload(closure_type);
     const auto general_film_payload =
-        ((closure.kind == static_cast<std::uint32_t>(
-                              SurfaceClosureKind::principled)) &
-         ((closure.lobe == static_cast<std::uint32_t>(
-                               SurfaceClosureLobe::metallic)) |
-          (closure.lobe == static_cast<std::uint32_t>(
-                               SurfaceClosureLobe::dielectric)))) |
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::metallic_f82)) |
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::metallic_conductor));
+        general_payload &
+        cycles_closure::fresnel_uses_thin_film_payload(
+            microfacet_fresnel);
     const auto glass_film_payload =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::glass);
+        cycles_closure::is_glass_microfacet(closure_type);
 
     // block_0 is the common tagged record. Glass uses the otherwise
     // unobservable Color lanes for evaluation_scale. Its post-setup Color is
     // unobservable: reflection/transmission tint are the physical inputs.
     const auto common_color = select(
-        closure.color, closure.evaluation_scale, glass_payload);
+        closure.color, closure.evaluation_scale, dielectric_payload);
 
-    auto payload_0 = make_float4(
+    auto payload_0 = select(make_float4(0.0f), make_float4(
         closure.specular_tint,
         select(0.0f,
                closure.thin_film_thickness,
-               general_film_payload));
-    auto payload_1 = make_float4(
+               general_film_payload)), general_payload);
+    auto payload_1 = select(make_float4(0.0f), make_float4(
         closure.evaluation_scale,
-        select(0.0f, closure.thin_film_ior, general_film_payload));
-    auto payload_2 = make_float4(
+        select(0.0f, closure.thin_film_ior, general_film_payload)),
+        general_payload);
+    auto payload_2 = select(make_float4(0.0f), make_float4(
         closure.sheen_transform_a,
         closure.sheen_transform_b,
         closure.ior,
-        closure.microfacet_alpha_x);
-    Float4 payload_3 = make_float4(
-        closure.microfacet_tangent,
-        closure.microfacet_alpha_y);
+        closure.microfacet_alpha_x), general_payload);
+    Float4 payload_3 = select(make_float4(0.0f), make_float4(
+        closure.microfacet_tangent, closure.microfacet_alpha_y),
+        general_payload);
+
+    payload_2 = select(
+        payload_2,
+        make_float4(
+            closure.sheen_transform_a,
+            0.0f,
+            0.0f,
+            closure.microfacet_alpha_x),
+        hair_payload);
+    payload_3 = select(
+        payload_3,
+        make_float4(
+            closure.microfacet_tangent,
+            closure.microfacet_alpha_y),
+        hair_payload);
 
     payload_0 = select(
         payload_0,
         make_float4(closure.fresnel_f0, closure.ior),
-        glass_payload);
+        dielectric_payload);
     payload_1 = select(
         payload_1,
         make_float4(
@@ -88,17 +74,17 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
             select(0.0f,
                    closure.thin_film_thickness,
                    glass_film_payload)),
-        glass_payload);
+        dielectric_payload);
     payload_2 = select(
         payload_2,
         make_float4(
             closure.reflection_tint,
             select(0.0f, closure.thin_film_ior, glass_film_payload)),
-        glass_payload);
+        dielectric_payload);
     payload_3 = select(
         payload_3,
         make_float4(closure.transmission_tint, 0.0f),
-        glass_payload);
+        dielectric_payload);
 
     payload_0 = select(
         payload_0,
@@ -116,7 +102,7 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
         payload_2,
         make_float4(
             closure.bssrdf_ior,
-            closure.ior,
+            0.0f,
             0.0f,
             0.0f),
         bssrdf_payload);
@@ -128,13 +114,13 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
         .block_0 = make_float4x4(
             make_uint4(
                 closure_type,
-                closure.kind,
-                closure.lobe,
-                flags)
+                microfacet_fresnel,
+                0u,
+                0u)
                 .bitcast<luisa::float4>(),
             make_float4(
                 closure.weight,
-                closure.allocation_weight),
+                0.0f),
             make_float4(
                 common_color,
                 closure.sample_weight),
@@ -155,47 +141,55 @@ unpack_surface_closure_physical_common(
         luisa::compute::Float4x4{block_0_expression};
     const auto identity =
         block_0[0u].bitcast<luisa::uint4>();
-    const auto flags = identity.w;
     return {
         .closure_type = identity.x,
-        .kind = identity.y,
-        .lobe = identity.z,
+        .microfacet_fresnel = identity.y,
         .weight = block_0[1u].xyz(),
-        .allocation_weight = block_0[1u].w,
         .sample_weight = block_0[2u].w,
-        .setup_valid = (flags & setup_valid_bit) != 0u,
         .color_or_evaluation_scale = block_0[2u].xyz(),
         .normal = block_0[3u].xyz(),
-        .roughness = block_0[3u].w,
-        .preserve_ggx_energy =
-            (flags & preserve_ggx_energy_bit) != 0u,
-        .beckmann = (flags & beckmann_bit) != 0u,
-        .bssrdf_method = flags & bssrdf_method_mask};
+        .roughness = block_0[3u].w};
+}
+
+Bool surface_closure_uses_general_payload(
+    UInt closure_type) noexcept {
+    return cycles_closure::is_reflection_microfacet(closure_type) |
+           (closure_type == cycles_closure::type_sheen) |
+           (closure_type ==
+            cycles_closure::type_thin_glass_transmission);
+}
+
+Bool surface_closure_uses_hair_payload(
+    UInt closure_type) noexcept {
+    return cycles_closure::is_hair(closure_type);
+}
+
+Bool surface_closure_uses_dielectric_payload(
+    UInt closure_type) noexcept {
+    return cycles_closure::is_refraction_microfacet(closure_type) |
+           cycles_closure::is_glass_microfacet(closure_type);
+}
+
+Bool surface_closure_uses_bssrdf_payload(
+    UInt closure_type) noexcept {
+    return cycles_closure::is_bssrdf(closure_type);
 }
 
 SurfaceClosurePhysicalCommonRecord
 project_surface_closure_physical_common(
     const SurfaceClosurePhysicalRecord &closure) noexcept {
+    const UInt closure_type{closure.closure_type};
     return {
-        .closure_type = detail::cycles_closure_type(closure),
-        .kind = closure.kind,
-        .lobe = closure.lobe,
+        .closure_type = closure_type,
+        .microfacet_fresnel = closure.microfacet_fresnel,
         .weight = closure.weight,
-        .allocation_weight = closure.allocation_weight,
         .sample_weight = closure.sample_weight,
-        .setup_valid = closure.setup_valid,
         .color_or_evaluation_scale = select(
             closure.color,
             closure.evaluation_scale,
-            (closure.kind == static_cast<std::uint32_t>(
-                                 SurfaceClosureKind::glass)) |
-                (closure.kind == static_cast<std::uint32_t>(
-                                     SurfaceClosureKind::refraction))),
+            surface_closure_uses_dielectric_payload(closure_type)),
         .normal = closure.normal,
-        .roughness = closure.roughness,
-        .preserve_ggx_energy = closure.preserve_ggx_energy,
-        .beckmann = closure.beckmann,
-        .bssrdf_method = closure.bssrdf_method};
+        .roughness = closure.roughness};
 }
 
 SurfaceClosurePhysicalCommonOnlyRecord
@@ -207,19 +201,12 @@ project_surface_closure_physical_common_only(
 SurfaceClosurePhysicalGeneralRecord
 project_surface_closure_physical_general(
     const SurfaceClosurePhysicalRecord &closure) noexcept {
+    const auto common = project_surface_closure_physical_common(closure);
     const auto film_payload =
-        ((closure.kind == static_cast<std::uint32_t>(
-                              SurfaceClosureKind::principled)) &
-         ((closure.lobe == static_cast<std::uint32_t>(
-                               SurfaceClosureLobe::metallic)) |
-          (closure.lobe == static_cast<std::uint32_t>(
-                               SurfaceClosureLobe::dielectric)))) |
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::metallic_f82)) |
-        (closure.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::metallic_conductor));
+        cycles_closure::fresnel_uses_thin_film_payload(
+            common.microfacet_fresnel);
     return {
-        .common = project_surface_closure_physical_common(closure),
+        .common = common,
         .payload = {
             .thin_film_thickness = select(
                 0.0f, closure.thin_film_thickness, film_payload),
@@ -250,11 +237,11 @@ project_surface_closure_physical_hair(
 SurfaceClosurePhysicalDielectricRecord
 project_surface_closure_physical_dielectric(
     const SurfaceClosurePhysicalRecord &closure) noexcept {
+    const auto common = project_surface_closure_physical_common(closure);
     const auto film_payload =
-        closure.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::glass);
+        cycles_closure::is_glass_microfacet(common.closure_type);
     return {
-        .common = project_surface_closure_physical_common(closure),
+        .common = common,
         .payload = {
             .ior = closure.ior,
             .thin_film_thickness = select(
@@ -354,117 +341,6 @@ unpack_surface_closure_physical_bssrdf(
             .bssrdf_ior = block_1[2u].x,
             .roughness = block_1[1u].w,
             .anisotropy = block_1[0u].w}};
-}
-
-SurfaceClosurePhysicalRecord
-unpack_surface_closure_physical_payload(
-    const SurfaceClosurePhysicalCommonRecord &common,
-    Expr<luisa::float4x4> block_1_expression) noexcept {
-    const auto block_1 =
-        luisa::compute::Float4x4{block_1_expression};
-    const auto glass_payload =
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::glass)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::refraction));
-    const auto bssrdf_payload =
-        common.kind == static_cast<std::uint32_t>(
-                           SurfaceClosureKind::bssrdf);
-    const auto general_film_payload =
-        ((common.kind == static_cast<std::uint32_t>(
-                             SurfaceClosureKind::principled)) &
-         ((common.lobe == static_cast<std::uint32_t>(
-                              SurfaceClosureLobe::metallic)) |
-          (common.lobe == static_cast<std::uint32_t>(
-                              SurfaceClosureLobe::dielectric)))) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::metallic_f82)) |
-        (common.kind == static_cast<std::uint32_t>(
-                            SurfaceClosureKind::metallic_conductor));
-    const auto glass_film_payload =
-        common.kind == static_cast<std::uint32_t>(
-                           SurfaceClosureKind::glass);
-    const auto specialized_payload =
-        glass_payload | bssrdf_payload;
-    const auto zero3 = make_float3(0.0f);
-    const auto general_ior = block_1[2u].z;
-    const auto bssrdf_ior = block_1[2u].x;
-    return {
-        .kind = common.kind,
-        .lobe = common.lobe,
-        .weight = common.weight,
-        .allocation_weight = common.allocation_weight,
-        .sample_weight = common.sample_weight,
-        .setup_valid = common.setup_valid,
-        .color = select(
-            common.color_or_evaluation_scale,
-            zero3,
-            glass_payload),
-        .normal = common.normal,
-        .roughness = common.roughness,
-        .microfacet_tangent = select(
-            block_1[3u].xyz(), zero3, specialized_payload),
-        .microfacet_alpha_x = select(
-            block_1[2u].w, 0.0f, specialized_payload),
-        .microfacet_alpha_y = select(
-            block_1[3u].w, 0.0f, specialized_payload),
-        .diffuse_roughness = 0.0f,
-        .metallic = 0.0f,
-        .ior = select(
-            select(general_ior, block_1[0u].w, glass_payload),
-            block_1[2u].y,
-            bssrdf_payload),
-        .thin_film_thickness = select(
-            select(0.0f, block_1[0u].w, general_film_payload),
-            block_1[1u].w,
-            glass_film_payload),
-        .thin_film_ior = select(
-            select(0.0f, block_1[1u].w, general_film_payload),
-            block_1[2u].w,
-            glass_film_payload),
-        .specular_tint = select(
-            block_1[0u].xyz(), zero3, specialized_payload),
-        .sheen_transform_a = select(
-            block_1[2u].x, 0.0f, specialized_payload),
-        .sheen_transform_b = select(
-            block_1[2u].y, 0.0f, specialized_payload),
-        .evaluation_scale = select(
-            select(
-                block_1[1u].xyz(),
-                common.color_or_evaluation_scale,
-                glass_payload),
-            make_float3(1.0f),
-            bssrdf_payload),
-        .fresnel_f0 = select(
-            zero3, block_1[0u].xyz(), glass_payload),
-        .fresnel_f90 = select(
-            zero3, block_1[1u].xyz(), glass_payload),
-        .reflection_tint = select(
-            zero3, block_1[2u].xyz(), glass_payload),
-        .transmission_tint = select(
-            zero3, block_1[3u].xyz(), glass_payload),
-        .preserve_ggx_energy = common.preserve_ggx_energy,
-        .beckmann = common.beckmann,
-        .bssrdf_method = common.bssrdf_method,
-        .bssrdf_radius = select(
-            zero3, block_1[0u].xyz(), bssrdf_payload),
-        .bssrdf_albedo = select(
-            zero3, block_1[1u].xyz(), bssrdf_payload),
-        .bssrdf_ior = select(
-            1.4f, bssrdf_ior, bssrdf_payload),
-        .bssrdf_roughness = select(
-            1.0f, block_1[1u].w, bssrdf_payload),
-        .bssrdf_anisotropy = select(
-            0.0f, block_1[0u].w, bssrdf_payload)};
-}
-
-SurfaceClosurePhysicalRecord unpack_surface_closure_physical(
-    Expr<luisa::float4x4> block_0_expression,
-    Expr<luisa::float4x4> block_1_expression) noexcept {
-    const auto common = unpack_surface_closure_physical_common(
-        block_0_expression);
-    return unpack_surface_closure_physical_payload(
-        common, block_1_expression);
 }
 
 }// namespace psycles::luisa_backend

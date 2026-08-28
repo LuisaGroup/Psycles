@@ -12,23 +12,6 @@ namespace psycles::luisa_backend {
 
 struct SurfaceClosurePhysicalCommonRecord;
 
-// Strongly typed, expression-only projection of the closure fields used by
-// categorical selection. This is intentionally smaller than the conditional
-// BSDF record: graph expansion retains the original socket types and only
-// projects the values consumed by p(i) across a shared callable boundary.
-struct SurfaceClosureSelectionInput {
-    Expr<std::uint32_t> kind;
-    Expr<std::uint32_t> lobe;
-    Expr<std::uint32_t> bssrdf_method;
-    Expr<float> allocation_weight;
-    Expr<float> sample_weight;
-    Expr<bool> setup_valid;
-    Expr<luisa::float3> normal;
-    Expr<float> roughness;
-    Expr<bool> preserve_ggx_energy;
-    Expr<bool> beckmann;
-};
-
 // The exact query projection needed by closure selection. Surface closure
 // setup has already converted the authored normal into the final Cycles
 // ShaderClosure normal before this boundary, so categorical selection must
@@ -111,23 +94,9 @@ inline constexpr std::uint32_t bssrdf = 1u << 6u;
 [[nodiscard]] Float3 make_surface_closure_sampling_incoming(
     const SurfaceClosurePoint &point) noexcept;
 
-[[nodiscard]] SurfaceClosureSelectionInput
-make_surface_closure_selection_input(
-    const SurfaceClosurePhysicalRecord &closure) noexcept;
-
-// The categorical p(i) projection is a function of the tagged-union header
-// alone. Keeping this overload independent of the physical payload prevents
-// selection from extending mutually exclusive family values across both
-// inverse-CDF passes.
-[[nodiscard]] SurfaceClosureSelectionInput
-make_surface_closure_selection_input(
-    const SurfaceClosurePhysicalCommonRecord &closure) noexcept;
-
-// Cycles ShaderClosure selection over a retained physical slot. Unlike the
-// candidate-record overload, allocation is represented by membership in the
-// initialized prefix and setup failure by closure_type == type_none. The hot
-// path therefore consumes only closure_type and sample_weight; wider identity
-// fields are observed solely when diagnostic runtime flags are requested.
+// Cycles ShaderClosure selection over a retained physical slot. Allocation is
+// represented by membership in the initialized prefix and setup failure by
+// closure_type == type_none. There is deliberately no authoring-kind overload.
 [[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
 surface_closure_selection(
     const SurfaceClosureSelectionContext &context,
@@ -136,22 +105,17 @@ surface_closure_selection(
     SurfaceClosureReachability reachability =
         all_surface_closure_reachability) noexcept;
 
-[[nodiscard]] SurfaceClosureSelectionInput
-make_surface_closure_selection_input(
-    const SurfaceClosureExpression &closure) noexcept;
+[[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
+surface_closure_selection(
+    const SurfaceClosureSelectionContext &context,
+    const SurfaceClosurePhysicalRecord &closure,
+    bool include_runtime_flags = true,
+    SurfaceClosureReachability reachability =
+        all_surface_closure_reachability) noexcept;
 
 [[nodiscard]] SurfaceClosureSelectionContext
 make_surface_closure_selection_context(
     const SurfaceQuery &query) noexcept;
-
-// Canonical p(i) state over an already populated physical closure.
-[[nodiscard]] luisa::compute::Var<SurfaceClosureSelectionCall>
-surface_closure_selection(
-    const SurfaceClosureSelectionContext &context,
-    const SurfaceClosureSelectionInput &closure,
-    bool include_runtime_flags = true,
-    SurfaceClosureReachability reachability =
-        all_surface_closure_reachability) noexcept;
 
 // Canonical conditional sampler p(w_i | i). It must only be invoked under the
 // categorical `choose` predicate. In particular, this function never decides

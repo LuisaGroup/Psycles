@@ -1698,7 +1698,8 @@ SurfaceBssrdfNormalCallable make_compact_surface_bssrdf_normal_callable(
                                 preparation_program, reflective_caustics,
                                 reflective_caustics, refractive_caustics,
                                 [&](const SurfaceClosureRecord &closure) noexcept {
-                                    accumulator.add(closure.kind, closure.weight,
+                                    accumulator.add(closure.closure_type,
+                                                    closure.weight,
                                                     closure.allocation_weight,
                                                     closure.normal);
                                 },

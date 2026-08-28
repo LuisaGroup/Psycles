@@ -312,7 +312,11 @@ MicrofacetEvaluation ThinGlassComponent::evaluate(
         outgoing,
         closure.common.normal,
         glossy_filter_roughness,
-        false);
+        false,
+        false, false,
+        false,
+        false, false,
+        false, false);
 }
 
 MicrofacetReflectionSample ThinGlassComponent::sample(

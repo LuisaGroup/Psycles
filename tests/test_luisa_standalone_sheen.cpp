@@ -200,11 +200,8 @@ struct CompiledSurface {
         static_cast<void>(surface->collect_closures(
             UInt{surface_tag}, services, point, true, true, closures));
         const auto closure = closures.entry(0u);
-        const auto physical_blocks =
-            pack_surface_closure_physical(closure);
-        const auto physical_closure = unpack_surface_closure_physical(
-            Expr<luisa::float4x4>{physical_blocks.block_0.expression()},
-            Expr<luisa::float4x4>{physical_blocks.block_1.expression()});
+        const auto physical_closure =
+            static_cast<SurfaceClosurePhysicalRecord>(closure);
         const auto trace = surface->closure_trace(
             UInt{surface_tag}, services, point, 0u);
         const auto aov = surface_aov(
@@ -285,8 +282,8 @@ struct CompiledSurface {
 
         const auto base = case_index * record::count;
         output.write(base + record::identity,
-            make_float4(cast<float>(closure.kind),
-                cast<float>(closure.lobe),
+            make_float4(cast<float>(closure.closure_type),
+                cast<float>(closure.microfacet_fresnel),
                 cast<float>(closures.count()),
                 select(0.0f, 1.0f, closure.setup_valid)));
         output.write(base + record::trace,
@@ -371,11 +368,8 @@ struct CompiledSurface {
         static_cast<void>(surface->collect_closures(
             UInt{surface_tag}, services, point, true, true, closures));
         const auto closure = closures.entry(0u);
-        const auto physical_blocks =
-            pack_surface_closure_physical(closure);
-        auto physical_closure = unpack_surface_closure_physical(
-            Expr<luisa::float4x4>{physical_blocks.block_0.expression()},
-            Expr<luisa::float4x4>{physical_blocks.block_1.expression()});
+        auto physical_closure =
+            static_cast<SurfaceClosurePhysicalRecord>(closure);
 
         // Ashikhmin setup does not derive any parameter from N, so replacing
         // this expression is exactly the physical record produced by the
@@ -591,8 +585,6 @@ struct ScalarEvaluation {
     std::string_view model,
     const std::array<luisa::float4, record::count> &actual,
     bool microfiber) noexcept {
-    const auto kind = microfiber ? SurfaceClosureKind::sheen_microfiber
-                                 : SurfaceClosureKind::sheen_ashikhmin;
     const auto type = microfiber ? cycles_closure::type_sheen
                                  : cycles_closure::type_ashikhmin_velvet;
     const auto closure_weight = microfiber
@@ -636,7 +628,10 @@ struct ScalarEvaluation {
                                     ? luisa::float3{0.0f}
                                     : closure_weight * sampled_evaluation.value;
     const std::array expected{
-        luisa::float4{static_cast<float>(kind), 0.0f, 1.0f, 1.0f},
+        luisa::float4{static_cast<float>(type),
+            static_cast<float>(cycles_closure::MicrofacetFresnel::none),
+            1.0f,
+            1.0f},
         luisa::float4{static_cast<float>(type),
             closure_sample_weight, 1.0f, 1.0f},
         float4_of(closure_weight, 24.0f),
@@ -817,8 +812,8 @@ int main(int argc, char **argv) {
         record::light_policy};
     const std::array invalid_expected{
         luisa::float4{
-            static_cast<float>(SurfaceClosureKind::sheen_microfiber),
-            0.0f,
+            static_cast<float>(cycles_closure::type_none),
+            static_cast<float>(cycles_closure::MicrofacetFresnel::none),
             1.0f,
             0.0f},
         luisa::float4{

@@ -10,8 +10,9 @@ namespace psycles::luisa_backend {
 
 // Lossless value ABI for passing one canonical closure across a shared Luisa
 // Callable boundary. These four SSA matrix values are never dynamically
-// indexed and are not a device closure array. Integer identity and Boolean
-// setup bits are preserved by bitcast.
+// indexed and are not a device closure array. identity.x/y are the exact
+// ClosureType/MicrofacetFresnel pair; integer identity and Boolean setup bits
+// are preserved by bitcast. Authoring kind/lobe have no lane in this ABI.
 struct SurfaceClosureBlocks {
     luisa::compute::Float4x4 block_0;
     luisa::compute::Float4x4 block_1;

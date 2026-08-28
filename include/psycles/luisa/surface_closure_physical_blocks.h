@@ -12,13 +12,16 @@
 namespace psycles::luisa_backend {
 
 // Tagged-union callable ABI for the exact post-population physical
-// projection. The (kind, lobe) tag selects a conservative payload family;
-// fields outside that family are canonicalized to
-// SurfaceClosureRecord::zero(). Each family contains every field observable
-// by any of its member tags. The two matrices contain 32 scalar lanes. This
-// is sufficient because the widest members are general and glass/refraction:
+// projection. Its discrete identity is the same pair used by Cycles'
+// ShaderClosure/MicrofacetBsdf: ClosureType and MicrofacetFresnel. Authoring
+// kind/lobe, allocation state, setup flags, distribution flags and BSSRDF
+// method are deliberately absent: after retention they are either encoded by
+// that pair, represented by retained-prefix membership, or unobservable.
+// Fields outside the selected payload family are canonicalized to zero. The
+// two matrices contain 32 scalar lanes. This is sufficient because the widest
+// members are general and glass/refraction:
 //
-//   identity/flags 4 + weight/allocation 4 + sample weight 1 +
+//   identity/reserved 4 + weight/reserved 4 + sample weight 1 +
 //   normal/roughness 4 + color 3 + payload 16 = 32.
 //
 // For every tag k, pack is injective on the fields observable for k and
@@ -45,13 +48,11 @@ using SurfaceClosurePhysicalPayloadLoader =
     std::function<luisa::compute::Float4x4()>;
 
 // Decoded discriminants and fields shared by every member of the physical
-// closure tagged union. `closure_type` is the post-setup Cycles ClosureType,
-// recorded once when the retained slot is written. It is deliberately
-// distinct from the authoring-oriented (kind, lobe) payload tag: categorical
-// selection consumes only closure_type and sample_weight, while payload
-// elimination may still use the richer tag until every family adopts the
-// Cycles ABI directly. The last vector is intentionally named after its
-// representation rather than either logical interpretation: block_0 stores
+// closure tagged union. `closure_type` is the post-setup Cycles ClosureType;
+// `microfacet_fresnel` is Cycles' MicrofacetFresnel ABI value and is none for
+// closure families which do not observe it. The last vector is intentionally
+// named after its representation rather than either logical interpretation:
+// block_0 stores
 // Color for ordinary/BSSRDF closures and evaluation_scale for the dielectric
 // family. Decoding that lane is independent of block_1; choosing its semantic
 // meaning is part of payload elimination below.
@@ -63,18 +64,12 @@ using SurfaceClosurePhysicalPayloadLoader =
 // the demand-loaded ShaderClosure representation used by Cycles.
 struct SurfaceClosurePhysicalCommonRecord {
     UInt closure_type;
-    UInt kind;
-    UInt lobe;
+    UInt microfacet_fresnel;
     Float3 weight;
-    Float allocation_weight;
     Float sample_weight;
-    Bool setup_valid;
     Float3 color_or_evaluation_scale;
     Float3 normal;
     Float roughness;
-    Bool preserve_ggx_energy;
-    Bool beckmann;
-    UInt bssrdf_method;
 };
 
 // The physical closure representation is a tagged sum, not a product of all
@@ -191,6 +186,20 @@ pack_surface_closure_physical(
 unpack_surface_closure_physical_common(
     Expr<luisa::float4x4> block_0) noexcept;
 
+// Conservative payload classes are a function of the retained post-setup
+// ClosureType. The predicates are pairwise disjoint over the represented
+// Cycles type domain; type_none and common-only closures match none. Keeping
+// one predicate per class lets host reachability omit impossible checks while
+// recording a specialized shader AST.
+[[nodiscard]] Bool surface_closure_uses_general_payload(
+    UInt closure_type) noexcept;
+[[nodiscard]] Bool surface_closure_uses_hair_payload(
+    UInt closure_type) noexcept;
+[[nodiscard]] Bool surface_closure_uses_dielectric_payload(
+    UInt closure_type) noexcept;
+[[nodiscard]] Bool surface_closure_uses_bssrdf_payload(
+    UInt closure_type) noexcept;
+
 // Eliminators for the physical tagged union. Let P_k be the projection onto
 // fields observable by closure kind k. For every encoded physical closure x,
 // the implementation invariant is
@@ -224,18 +233,6 @@ unpack_surface_closure_physical_dielectric(
 [[nodiscard]] SurfaceClosurePhysicalBssrdfRecord
 unpack_surface_closure_physical_bssrdf(
     const SurfaceClosurePhysicalCommonRecord &common,
-    Expr<luisa::float4x4> block_1) noexcept;
-
-// Generic inverse retained for storage round trips and diagnostics. Hot
-// consumers should dispatch on common.kind and use one eliminator above.
-[[nodiscard]] SurfaceClosurePhysicalRecord
-unpack_surface_closure_physical_payload(
-    const SurfaceClosurePhysicalCommonRecord &common,
-    Expr<luisa::float4x4> block_1) noexcept;
-
-[[nodiscard]] SurfaceClosurePhysicalRecord
-unpack_surface_closure_physical(
-    Expr<luisa::float4x4> block_0,
     Expr<luisa::float4x4> block_1) noexcept;
 
 }// namespace psycles::luisa_backend

@@ -1,13 +1,11 @@
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/surface_closure_evaluation.h>
-#include <psycles/luisa/surface_closure_identity.h>
 #include <psycles/luisa/surface_closure_physical_blocks.h>
 #include <psycles/luisa/surface_closure_sampling.h>
 
 #include "luisa_surface_test_support.h"
 
 #include <array>
-#include <bit>
-#include <cstddef>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
@@ -20,472 +18,302 @@ namespace {
 
 using namespace luisa::compute;
 using namespace psycles::luisa_backend;
-using psycles::test_support::approximately_equal;
 using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
 using psycles::test_support::ParameterShaderServices;
 
 template<typename T>
-concept HasAlbedo = requires(T value) { value.albedo; };
-
-template<typename T>
-concept HasReflectionAlbedo = requires(T value) {
-    value.reflection_albedo;
+concept HasAllocationState = requires(T x) {
+    x.allocation_weight;
+    x.setup_valid;
 };
-
 template<typename T>
-concept HasTransmissionAlbedo = requires(T value) {
-    value.transmission_albedo;
+concept HasAovInputs = requires(T x) {
+    x.albedo;
+    x.reflection_albedo;
+    x.transmission_albedo;
 };
-
 template<typename T>
-concept HasSpecularIorLevel = requires(T value) {
-    value.specular_ior_level;
+concept HasSetupClassification = requires(T x) {
+    x.specular_ior_level;
+    x.preserve_ggx_energy;
+    x.beckmann;
+    x.bssrdf_method;
 };
-
 template<typename T>
-concept HasGeneralMetallic = requires(T value) {
-    value.payload.metallic;
+concept HasAuthoringMixtureState = requires(T x) {
+    x.diffuse_roughness;
+    x.metallic;
 };
-
 template<typename T>
-concept HasThinFilm = requires(T value) {
-    value.payload.thin_film_thickness;
-    value.payload.thin_film_ior;
+concept HasGeneralState = requires(T x) {
+    x.payload.microfacet_tangent;
+    x.payload.microfacet_alpha_x;
+    x.payload.microfacet_alpha_y;
+    x.payload.specular_tint;
+    x.payload.evaluation_scale;
 };
-
 template<typename T>
-concept HasGeneralMicrofacetState = requires(T value) {
-    value.payload.microfacet_tangent;
-    value.payload.microfacet_alpha_x;
-    value.payload.microfacet_alpha_y;
+concept HasHairState = requires(T x) {
+    x.payload.tangent;
+    x.payload.roughness_u;
+    x.payload.roughness_v;
+    x.payload.offset;
 };
-
 template<typename T>
-concept HasHairState = requires(T value) {
-    value.payload.tangent;
-    value.payload.roughness_u;
-    value.payload.roughness_v;
-    value.payload.offset;
+concept HasDielectricState = requires(T x) {
+    x.payload.fresnel_f0;
+    x.payload.fresnel_f90;
+    x.payload.reflection_tint;
+    x.payload.transmission_tint;
 };
-
 template<typename T>
-concept HasDielectricFresnel = requires(T value) {
-    value.payload.fresnel_f0;
+concept HasBssrdfState = requires(T x) {
+    x.payload.radius;
+    x.payload.albedo;
+    x.payload.bssrdf_ior;
+    x.payload.roughness;
+    x.payload.anisotropy;
 };
-
 template<typename T>
-concept HasBssrdfRadius = requires(T value) {
-    value.payload.radius;
-};
-
-template<typename T>
-concept HasBssrdfIor = requires(T value) {
-    value.payload.bssrdf_ior;
+concept HasThinFilmState = requires(T x) {
+    x.payload.thin_film_thickness;
+    x.payload.thin_film_ior;
 };
 
 static_assert(surface_closure_physical_block_count == 2u);
-static_assert(!HasAlbedo<SurfaceClosurePhysicalRecord>);
-static_assert(!HasReflectionAlbedo<SurfaceClosurePhysicalRecord>);
-static_assert(!HasTransmissionAlbedo<SurfaceClosurePhysicalRecord>);
-static_assert(!HasSpecularIorLevel<SurfaceClosurePhysicalRecord>);
-static_assert(!HasGeneralMetallic<SurfaceClosurePhysicalGeneralRecord>);
-static_assert(HasThinFilm<SurfaceClosurePhysicalGeneralRecord>);
-static_assert(HasGeneralMicrofacetState<SurfaceClosurePhysicalGeneralRecord>);
-static_assert(!HasHairState<SurfaceClosurePhysicalGeneralRecord>);
-static_assert(!HasDielectricFresnel<SurfaceClosurePhysicalGeneralRecord>);
-static_assert(!HasBssrdfRadius<SurfaceClosurePhysicalGeneralRecord>);
-static_assert(!HasBssrdfIor<SurfaceClosurePhysicalGeneralRecord>);
-static_assert(HasHairState<SurfaceClosurePhysicalHairRecord>);
-static_assert(!HasGeneralMicrofacetState<SurfaceClosurePhysicalHairRecord>);
-static_assert(!HasThinFilm<SurfaceClosurePhysicalHairRecord>);
-static_assert(!HasDielectricFresnel<SurfaceClosurePhysicalHairRecord>);
-static_assert(!HasBssrdfRadius<SurfaceClosurePhysicalHairRecord>);
-static_assert(!HasBssrdfIor<SurfaceClosurePhysicalHairRecord>);
-static_assert(!HasGeneralMetallic<SurfaceClosurePhysicalDielectricRecord>);
-static_assert(HasThinFilm<SurfaceClosurePhysicalDielectricRecord>);
-static_assert(!HasGeneralMicrofacetState<SurfaceClosurePhysicalDielectricRecord>);
-static_assert(HasDielectricFresnel<SurfaceClosurePhysicalDielectricRecord>);
-static_assert(!HasBssrdfRadius<SurfaceClosurePhysicalDielectricRecord>);
-static_assert(!HasBssrdfIor<SurfaceClosurePhysicalDielectricRecord>);
-static_assert(!HasGeneralMetallic<SurfaceClosurePhysicalBssrdfRecord>);
-static_assert(!HasThinFilm<SurfaceClosurePhysicalBssrdfRecord>);
-static_assert(!HasGeneralMicrofacetState<SurfaceClosurePhysicalBssrdfRecord>);
-static_assert(!HasDielectricFresnel<SurfaceClosurePhysicalBssrdfRecord>);
-static_assert(HasBssrdfRadius<SurfaceClosurePhysicalBssrdfRecord>);
-static_assert(HasBssrdfIor<SurfaceClosurePhysicalBssrdfRecord>);
+static_assert(!HasAllocationState<SurfaceClosurePhysicalRecord>);
+static_assert(!HasAovInputs<SurfaceClosurePhysicalRecord>);
+static_assert(!HasSetupClassification<SurfaceClosurePhysicalRecord>);
+static_assert(!HasAuthoringMixtureState<SurfaceClosurePhysicalRecord>);
 
-struct ClosureCase {
-    SurfaceClosureKind kind;
-    SurfaceClosureLobe lobe{SurfaceClosureLobe::none};
+static_assert(!HasGeneralState<SurfaceClosurePhysicalCommonOnlyRecord>);
+static_assert(!HasHairState<SurfaceClosurePhysicalCommonOnlyRecord>);
+static_assert(!HasDielectricState<SurfaceClosurePhysicalCommonOnlyRecord>);
+static_assert(!HasBssrdfState<SurfaceClosurePhysicalCommonOnlyRecord>);
+static_assert(!HasThinFilmState<SurfaceClosurePhysicalCommonOnlyRecord>);
+
+static_assert(HasGeneralState<SurfaceClosurePhysicalGeneralRecord>);
+static_assert(!HasHairState<SurfaceClosurePhysicalGeneralRecord>);
+static_assert(!HasDielectricState<SurfaceClosurePhysicalGeneralRecord>);
+static_assert(!HasBssrdfState<SurfaceClosurePhysicalGeneralRecord>);
+static_assert(HasThinFilmState<SurfaceClosurePhysicalGeneralRecord>);
+
+static_assert(HasHairState<SurfaceClosurePhysicalHairRecord>);
+static_assert(!HasGeneralState<SurfaceClosurePhysicalHairRecord>);
+static_assert(!HasDielectricState<SurfaceClosurePhysicalHairRecord>);
+static_assert(!HasBssrdfState<SurfaceClosurePhysicalHairRecord>);
+static_assert(!HasThinFilmState<SurfaceClosurePhysicalHairRecord>);
+
+static_assert(HasDielectricState<SurfaceClosurePhysicalDielectricRecord>);
+static_assert(!HasGeneralState<SurfaceClosurePhysicalDielectricRecord>);
+static_assert(!HasHairState<SurfaceClosurePhysicalDielectricRecord>);
+static_assert(!HasBssrdfState<SurfaceClosurePhysicalDielectricRecord>);
+static_assert(HasThinFilmState<SurfaceClosurePhysicalDielectricRecord>);
+
+static_assert(HasBssrdfState<SurfaceClosurePhysicalBssrdfRecord>);
+static_assert(!HasGeneralState<SurfaceClosurePhysicalBssrdfRecord>);
+static_assert(!HasHairState<SurfaceClosurePhysicalBssrdfRecord>);
+static_assert(!HasDielectricState<SurfaceClosurePhysicalBssrdfRecord>);
+static_assert(!HasThinFilmState<SurfaceClosurePhysicalBssrdfRecord>);
+
+enum class PayloadClass : std::uint32_t {
+    common,
+    general,
+    hair,
+    dielectric,
+    bssrdf,
 };
 
+struct ClosureCase {
+    std::uint32_t type;
+    cycles_closure::MicrofacetFresnel fresnel;
+    PayloadClass payload;
+    SurfaceBssrdfMethod bssrdf_method;
+    bool beckmann;
+    bool preserve_energy;
+};
+
+using Fresnel = cycles_closure::MicrofacetFresnel;
+constexpr auto common = PayloadClass::common;
+constexpr auto general = PayloadClass::general;
+constexpr auto hair = PayloadClass::hair;
+constexpr auto dielectric = PayloadClass::dielectric;
+constexpr auto bssrdf = PayloadClass::bssrdf;
+constexpr auto random_walk = SurfaceBssrdfMethod::random_walk;
+
 constexpr std::array closure_cases{
-    ClosureCase{SurfaceClosureKind::diffuse},
-    ClosureCase{SurfaceClosureKind::translucent},
-    ClosureCase{SurfaceClosureKind::principled, SurfaceClosureLobe::sheen},
-    ClosureCase{SurfaceClosureKind::principled, SurfaceClosureLobe::metallic},
-    ClosureCase{SurfaceClosureKind::principled, SurfaceClosureLobe::dielectric},
-    ClosureCase{SurfaceClosureKind::glossy},
-    ClosureCase{SurfaceClosureKind::metallic_f82},
-    ClosureCase{SurfaceClosureKind::metallic_conductor},
-    ClosureCase{SurfaceClosureKind::sheen_microfiber},
-    ClosureCase{SurfaceClosureKind::sheen_ashikhmin},
-    ClosureCase{SurfaceClosureKind::hair_reflection},
-    ClosureCase{SurfaceClosureKind::hair_transmission},
-    ClosureCase{SurfaceClosureKind::glass},
-    ClosureCase{SurfaceClosureKind::refraction},
-    ClosureCase{SurfaceClosureKind::bssrdf},
-    ClosureCase{SurfaceClosureKind::rough_translucent},
-    ClosureCase{SurfaceClosureKind::thin_glass_transmission},
-    ClosureCase{SurfaceClosureKind::transparent}};
-static_assert(
-    closure_cases.size() ==
-    static_cast<std::size_t>(SurfaceClosureKind::thin_glass_transmission) +
-        2u);
+    ClosureCase{cycles_closure::type_oren_nayar, Fresnel::none,
+                common, random_walk, false, false},
+    ClosureCase{cycles_closure::type_translucent, Fresnel::none,
+                common, random_walk, false, false},
+    ClosureCase{cycles_closure::type_sheen, Fresnel::none,
+                general, random_walk, false, false},
+    ClosureCase{cycles_closure::type_microfacet_ggx,
+                Fresnel::generalized_schlick,
+                general, random_walk, false, false},
+    ClosureCase{cycles_closure::type_microfacet_ggx, Fresnel::f82_tint,
+                general, random_walk, false, false},
+    ClosureCase{cycles_closure::type_microfacet_ggx,
+                Fresnel::generalized_schlick,
+                general, random_walk, false, false},
+    ClosureCase{cycles_closure::type_microfacet_beckmann, Fresnel::none,
+                general, random_walk, true, false},
+    ClosureCase{cycles_closure::type_microfacet_ggx, Fresnel::f82_tint,
+                general, random_walk, false, false},
+    ClosureCase{cycles_closure::type_microfacet_ggx, Fresnel::conductor,
+                general, random_walk, false, false},
+    ClosureCase{cycles_closure::type_sheen, Fresnel::none,
+                general, random_walk, false, false},
+    ClosureCase{cycles_closure::type_ashikhmin_velvet, Fresnel::none,
+                common, random_walk, false, false},
+    ClosureCase{cycles_closure::type_hair_reflection, Fresnel::none,
+                hair, random_walk, false, false},
+    ClosureCase{cycles_closure::type_hair_transmission, Fresnel::none,
+                hair, random_walk, false, false},
+    ClosureCase{cycles_closure::type_microfacet_beckmann_glass,
+                Fresnel::generalized_schlick,
+                dielectric, random_walk, true, false},
+    ClosureCase{cycles_closure::type_microfacet_ggx_glass,
+                Fresnel::generalized_schlick,
+                dielectric, random_walk, false, true},
+    ClosureCase{cycles_closure::type_microfacet_beckmann_refraction,
+                Fresnel::none, dielectric, random_walk, true, false},
+    ClosureCase{cycles_closure::type_bssrdf_burley, Fresnel::none,
+                bssrdf, SurfaceBssrdfMethod::burley, false, false},
+    ClosureCase{cycles_closure::type_bssrdf_random_walk, Fresnel::none,
+                bssrdf, random_walk, false, false},
+    ClosureCase{cycles_closure::type_bssrdf_random_walk_legacy,
+                Fresnel::none, bssrdf,
+                SurfaceBssrdfMethod::random_walk_legacy, false, false},
+    ClosureCase{cycles_closure::type_bssrdf_random_walk_skin,
+                Fresnel::none, bssrdf,
+                SurfaceBssrdfMethod::random_walk_skin, false, false},
+    ClosureCase{cycles_closure::type_rough_translucent, Fresnel::none,
+                common, random_walk, false, false},
+    ClosureCase{cycles_closure::type_thin_glass_transmission,
+                Fresnel::none, general, random_walk, false, false},
+    ClosureCase{cycles_closure::type_transparent, Fresnel::none,
+                common, random_walk, false, false}};
 constexpr auto case_count =
     static_cast<std::uint32_t>(closure_cases.size());
-constexpr std::uint32_t logical_row_count = 14u;
-namespace invariant_row {
-constexpr std::uint32_t stable_representation = 0u;
-constexpr std::uint32_t family_projection = 1u;
-constexpr std::uint32_t evaluation = 2u;
-constexpr std::uint32_t sample_components = 3u;
-constexpr std::uint32_t sample_state = 4u;
-constexpr std::uint32_t product_sample_numeric = 5u;
-constexpr std::uint32_t tagged_sample_numeric = 6u;
+
+namespace result_row {
+constexpr std::uint32_t identity = 0u;
+constexpr std::uint32_t common_projection = 1u;
+constexpr std::uint32_t family_projection = 2u;
+constexpr std::uint32_t canonical_payload = 3u;
+constexpr std::uint32_t evaluation = 4u;
+constexpr std::uint32_t sample = 5u;
+constexpr std::uint32_t selection = 6u;
 constexpr std::uint32_t payload_reads = 7u;
-constexpr std::uint32_t retained_selection = 8u;
-constexpr std::uint32_t count = 9u;
-}// namespace invariant_row
-constexpr std::uint32_t invariant_row_count = invariant_row::count;
-constexpr std::uint32_t rows_per_case =
-    logical_row_count + invariant_row_count;
+constexpr std::uint32_t invalid_setup = 8u;
+constexpr std::uint32_t derived_identity = 9u;
+constexpr std::uint32_t count = 10u;
+}// namespace result_row
 
-using PhysicalRoundTripCallable = Callable<luisa::float4x4(
-    luisa::float4x4,
-    luisa::float4x4,
-    std::uint32_t)>;
-
-[[nodiscard]] constexpr bool uses_glass_payload(
-    SurfaceClosureKind kind) noexcept {
-    return kind == SurfaceClosureKind::glass ||
-           kind == SurfaceClosureKind::refraction;
-}
-
-[[nodiscard]] constexpr bool uses_bssrdf_payload(
-    SurfaceClosureKind kind) noexcept {
-    return kind == SurfaceClosureKind::bssrdf;
-}
-
-[[nodiscard]] constexpr bool uses_thin_film_payload(
-    ClosureCase closure) noexcept {
-    return closure.kind == SurfaceClosureKind::glass ||
-           closure.kind == SurfaceClosureKind::metallic_f82 ||
-           closure.kind == SurfaceClosureKind::metallic_conductor ||
-           (closure.kind == SurfaceClosureKind::principled &&
-            (closure.lobe == SurfaceClosureLobe::metallic ||
-             closure.lobe == SurfaceClosureLobe::dielectric));
-}
-
-[[nodiscard]] luisa::float4 identity_row(
-    std::uint32_t case_index) noexcept {
-    const auto flags =
-        ((case_index & 1u) != 0u ? 1u : 0u) |
-        ((case_index & 2u) != 0u ? 2u : 0u) |
-        ((case_index & 4u) != 0u ? 4u : 0u);
-    const auto closure = closure_cases[case_index];
-    const auto kind = static_cast<std::uint32_t>(closure.kind);
-    const auto lobe = static_cast<std::uint32_t>(closure.lobe);
-    return std::bit_cast<luisa::float4>(
-        luisa::uint4{kind, lobe, flags, 17u + case_index});
-}
-
-[[nodiscard]] luisa::float4 expected_row(
-    std::uint32_t case_index,
-    std::uint32_t row) noexcept {
-    const auto closure = closure_cases[case_index];
-    const auto kind = closure.kind;
-    const auto glass = uses_glass_payload(kind);
-    const auto bssrdf = uses_bssrdf_payload(kind);
-    const auto general = !glass && !bssrdf;
-    const auto thin_film = uses_thin_film_payload(closure);
-    const auto offset = 10.0f * static_cast<float>(case_index);
-    switch (row) {
-        case 0u:
-            return identity_row(case_index);
-        case 1u:
-            return {1.1f + offset,
-                    1.2f + offset,
-                    1.3f + offset,
-                    1.4f + offset};
-        case 2u:
-            return {glass ? 0.0f : 2.1f + offset,
-                    glass ? 0.0f : 2.2f + offset,
-                    glass ? 0.0f : 2.3f + offset,
-                    1.5f + offset};
-        case 3u:
-            return {3.1f + offset,
-                    3.2f + offset,
-                    3.3f + offset,
-                    3.4f + offset};
-        case 4u:
-            return general
-                       ? luisa::float4{4.1f + offset,
-                                      4.2f + offset,
-                                      4.3f + offset,
-                                      0.0f}
-                       : luisa::float4{0.0f};
-        case 5u:
-            return general
-                       ? luisa::float4{5.1f + offset,
-                                      5.2f + offset,
-                                      5.3f + offset,
-                                      0.0f}
-                       : glass
-                             ? luisa::float4{5.1f + offset,
-                                            5.2f + offset,
-                                            5.3f + offset,
-                                            0.0f}
-                             : luisa::float4{1.0f, 1.0f, 1.0f, 0.0f};
-        case 6u:
-            return glass
-                       ? luisa::float4{6.1f + offset,
-                                      6.2f + offset,
-                                      6.3f + offset,
-                                      6.4f + offset}
-                       : luisa::float4{0.0f,
-                                      0.0f,
-                                      0.0f,
-                                      6.4f + offset};
-        case 7u:
-            return glass
-                       ? luisa::float4{7.1f + offset,
-                                      7.2f + offset,
-                                      7.3f + offset,
-                                      0.0f}
-                       : luisa::float4{0.0f,
-                                      0.0f,
-                                      0.0f,
-                                      general ? 7.4f + offset : 0.0f};
-        case 8u:
-            return glass
-                       ? luisa::float4{8.1f + offset,
-                                      8.2f + offset,
-                                      8.3f + offset,
-                                      0.0f}
-                       : luisa::float4{0.0f,
-                                      0.0f,
-                                      0.0f,
-                                      general ? 8.4f + offset : 0.0f};
-        case 9u:
-            return glass
-                       ? luisa::float4{9.1f + offset,
-                                      9.2f + offset,
-                                      9.3f + offset,
-                                      1.4f}
-                       : luisa::float4{0.0f,
-                                      0.0f,
-                                      0.0f,
-                                      bssrdf ? 9.4f + offset : 1.4f};
-        case 10u:
-            return bssrdf
-                       ? luisa::float4{10.1f + offset,
-                                      10.2f + offset,
-                                      10.3f + offset,
-                                      10.4f + offset}
-                       : luisa::float4{0.0f};
-        case 11u:
-            return bssrdf
-                       ? luisa::float4{11.1f + offset,
-                                      11.2f + offset,
-                                      11.3f + offset,
-                                      11.4f + offset}
-                       : luisa::float4{0.0f, 0.0f, 0.0f, 1.0f};
-        case 12u:
-            return general
-                       ? luisa::float4{12.1f + offset,
-                                      12.2f + offset,
-                                      12.3f + offset,
-                                      12.4f + offset}
-                       : luisa::float4{0.0f};
-        case 13u:
-            return {general ? 13.1f + offset : 0.0f,
-                    thin_film ? 14.4f + offset : 0.0f,
-                    thin_film ? 14.5f + offset : 0.0f,
-                    0.0f};
-        default:
-            return luisa::float4{1.0f};
-    }
-}
-
-[[nodiscard]] bool same_identity_bits(
-    luisa::float4 observed,
-    luisa::float4 expected) noexcept {
-    const auto observed_bits =
-        std::bit_cast<luisa::uint4>(observed);
-    const auto expected_bits =
-        std::bit_cast<luisa::uint4>(expected);
-    return all(observed_bits == expected_bits);
-}
-
-[[nodiscard]] Bool same_common_projection(
-    const SurfaceClosurePhysicalRecord &lhs,
-    const SurfaceClosurePhysicalCommonRecord &rhs,
-    Float3 expected_color_or_evaluation_scale) noexcept {
-    return (psycles::luisa_backend::detail::cycles_closure_type(lhs) ==
-               rhs.closure_type) &
-           (lhs.kind == rhs.kind) &
-           (lhs.lobe == rhs.lobe) &
-           all(lhs.weight == rhs.weight) &
-           (lhs.allocation_weight == rhs.allocation_weight) &
-           (lhs.sample_weight == rhs.sample_weight) &
-           (lhs.setup_valid == rhs.setup_valid) &
-           all(expected_color_or_evaluation_scale ==
-               rhs.color_or_evaluation_scale) &
-           all(lhs.normal == rhs.normal) &
-           (lhs.roughness == rhs.roughness) &
-           (lhs.preserve_ggx_energy == rhs.preserve_ggx_energy) &
-           (lhs.beckmann == rhs.beckmann) &
-           (lhs.bssrdf_method == rhs.bssrdf_method);
-}
-
-[[nodiscard]] Bool same_payload_projection(
-    const SurfaceClosurePhysicalRecord &lhs,
-    const SurfaceClosurePhysicalGeneralRecord &rhs) noexcept {
-    return same_common_projection(
-               lhs, rhs.common, lhs.color) &
-           (lhs.thin_film_thickness ==
-            rhs.payload.thin_film_thickness) &
-           (lhs.thin_film_ior == rhs.payload.thin_film_ior) &
-           (lhs.ior == rhs.payload.ior) &
-           all(lhs.specular_tint == rhs.payload.specular_tint) &
-           (lhs.sheen_transform_a == rhs.payload.sheen_transform_a) &
-           (lhs.sheen_transform_b == rhs.payload.sheen_transform_b) &
-           all(lhs.evaluation_scale == rhs.payload.evaluation_scale) &
-           all(lhs.microfacet_tangent == rhs.payload.microfacet_tangent) &
-           (lhs.microfacet_alpha_x == rhs.payload.microfacet_alpha_x) &
-           (lhs.microfacet_alpha_y == rhs.payload.microfacet_alpha_y);
-}
-
-[[nodiscard]] Bool same_payload_projection(
-    const SurfaceClosurePhysicalRecord &lhs,
-    const SurfaceClosurePhysicalHairRecord &rhs) noexcept {
-    return same_common_projection(
-               lhs, rhs.common, lhs.color) &
-           all(lhs.microfacet_tangent == rhs.payload.tangent) &
-           (lhs.microfacet_alpha_x == rhs.payload.roughness_u) &
-           (lhs.microfacet_alpha_y == rhs.payload.roughness_v) &
-           (lhs.sheen_transform_a == rhs.payload.offset);
-}
-
-[[nodiscard]] Bool same_payload_projection(
-    const SurfaceClosurePhysicalRecord &lhs,
-    const SurfaceClosurePhysicalDielectricRecord &rhs) noexcept {
-    return same_common_projection(
-               lhs, rhs.common, lhs.evaluation_scale) &
-           (lhs.ior == rhs.payload.ior) &
-           (lhs.thin_film_thickness ==
-            rhs.payload.thin_film_thickness) &
-           (lhs.thin_film_ior == rhs.payload.thin_film_ior) &
-           all(lhs.fresnel_f0 == rhs.payload.fresnel_f0) &
-           all(lhs.fresnel_f90 == rhs.payload.fresnel_f90) &
-           all(lhs.reflection_tint == rhs.payload.reflection_tint) &
-           all(lhs.transmission_tint == rhs.payload.transmission_tint);
-}
-
-[[nodiscard]] Bool same_payload_projection(
-    const SurfaceClosurePhysicalRecord &lhs,
-    const SurfaceClosurePhysicalBssrdfRecord &rhs) noexcept {
-    return same_common_projection(
-               lhs, rhs.common, lhs.color) &
-           all(lhs.bssrdf_radius == rhs.payload.radius) &
-           all(lhs.bssrdf_albedo == rhs.payload.albedo) &
-           (lhs.bssrdf_ior == rhs.payload.bssrdf_ior) &
-           (lhs.bssrdf_roughness == rhs.payload.roughness) &
-           (lhs.bssrdf_anisotropy == rhs.payload.anisotropy);
-}
-
-inline constexpr float fp_absolute_tolerance = 1.0e-5f;
-inline constexpr float fp_relative_tolerance =
+constexpr float abs_tolerance = 1.0e-5f;
+constexpr float rel_tolerance =
     8.0f * std::numeric_limits<float>::epsilon();
 
-[[nodiscard]] Bool close(Float lhs, Float rhs) noexcept {
-    const auto scale = max(abs(lhs), abs(rhs));
-    return abs(lhs - rhs) <=
-           fp_absolute_tolerance + fp_relative_tolerance * scale;
+[[nodiscard]] Bool close(Float a, Float b) noexcept {
+    return abs(a - b) <= abs_tolerance +
+                              rel_tolerance * max(abs(a), abs(b));
+}
+[[nodiscard]] Bool close(Float2 a, Float2 b) noexcept {
+    return all(abs(a - b) <= make_float2(abs_tolerance) +
+                                  rel_tolerance * max(abs(a), abs(b)));
+}
+[[nodiscard]] Bool close(Float3 a, Float3 b) noexcept {
+    return all(abs(a - b) <= make_float3(abs_tolerance) +
+                                  rel_tolerance * max(abs(a), abs(b)));
 }
 
-[[nodiscard]] Bool close(Float2 lhs, Float2 rhs) noexcept {
-    const auto scale = max(abs(lhs), abs(rhs));
-    return all(abs(lhs - rhs) <=
-               make_float2(fp_absolute_tolerance) +
-                   fp_relative_tolerance * scale);
+[[nodiscard]] Bool same_common(
+    const SurfaceClosurePhysicalCommonRecord &a,
+    const SurfaceClosurePhysicalCommonRecord &b) noexcept {
+    return (a.closure_type == b.closure_type) &
+           (a.microfacet_fresnel == b.microfacet_fresnel) &
+           all(a.weight == b.weight) &
+           (a.sample_weight == b.sample_weight) &
+           all(a.color_or_evaluation_scale == b.color_or_evaluation_scale) &
+           all(a.normal == b.normal) & (a.roughness == b.roughness);
 }
 
-[[nodiscard]] Bool close(Float3 lhs, Float3 rhs) noexcept {
-    const auto scale = max(abs(lhs), abs(rhs));
-    return all(abs(lhs - rhs) <=
-               make_float3(fp_absolute_tolerance) +
-                   fp_relative_tolerance * scale);
+[[nodiscard]] Bool same_evaluation(
+    const Var<SurfaceClosureEvaluationContributionCall> &a,
+    const Var<SurfaceClosureEvaluationContributionCall> &b) noexcept {
+    return close(a.f, b.f) & close(a.diffuse_f, b.diffuse_f) &
+           close(a.glossy_f, b.glossy_f) &
+           close(a.total_sample_weight, b.total_sample_weight) &
+           close(a.weighted_pdf, b.weighted_pdf) &
+           close(a.weighted_roughness_squared,
+                 b.weighted_roughness_squared) &
+           (a.events == b.events);
 }
 
-[[nodiscard]] Bool same_evaluation_contribution(
-    const Var<SurfaceClosureEvaluationContributionCall> &lhs,
-    const Var<SurfaceClosureEvaluationContributionCall> &rhs) noexcept {
-    return close(lhs.f, rhs.f) & close(lhs.diffuse_f, rhs.diffuse_f) &
-           close(lhs.glossy_f, rhs.glossy_f) &
-           close(lhs.total_sample_weight, rhs.total_sample_weight) &
-           close(lhs.weighted_pdf, rhs.weighted_pdf) &
-           close(lhs.weighted_roughness_squared,
-                 rhs.weighted_roughness_squared) &
-           (lhs.events == rhs.events);
+[[nodiscard]] Bool same_sample(
+    const Var<SurfaceClosureConditionalSampleCall> &a,
+    const Var<SurfaceClosureConditionalSampleCall> &b) noexcept {
+    return all(abs(a.direction - b.direction) <= make_float3(5.0e-4f)) &
+           close(a.roughness, b.roughness) &
+           close(a.singular_evaluation, b.singular_evaluation) &
+           close(a.singular_pdf, b.singular_pdf) & close(a.eta, b.eta) &
+           (a.properties == b.properties) & (a.valid == b.valid) &
+           (a.bssrdf_method == b.bssrdf_method) &
+           close(a.bssrdf_radius, b.bssrdf_radius) &
+           close(a.bssrdf_albedo, b.bssrdf_albedo) &
+           close(a.bssrdf_normal, b.bssrdf_normal) &
+           close(a.bssrdf_ior, b.bssrdf_ior) &
+           close(a.bssrdf_roughness, b.bssrdf_roughness) &
+           close(a.bssrdf_anisotropy, b.bssrdf_anisotropy);
 }
 
-// The production shader option enables fast math. Two algebraically
-// equivalent inlined projections may therefore receive different FMA/rsqrt
-// schedules even when their decoded inputs compare bit-for-bit. Bound sample
-// directions independently: 5e-4 per component is below 0.05 degrees for
-// unit vectors, while all transported scalar state keeps the tighter bound.
-[[nodiscard]] Bool close_sample_direction(
-    Float3 lhs, Float3 rhs) noexcept {
-    return all(abs(lhs - rhs) <= make_float3(5.0e-4f));
-}
-
-[[nodiscard]] Bool same_conditional_sample_transport_state(
-    const Var<SurfaceClosureConditionalSampleCall> &lhs,
-    const Var<SurfaceClosureConditionalSampleCall> &rhs) noexcept {
-    return close(lhs.roughness, rhs.roughness) &
-           close(lhs.singular_evaluation, rhs.singular_evaluation) &
-           close(lhs.singular_pdf, rhs.singular_pdf) &
-           close(lhs.eta, rhs.eta);
-}
-
-[[nodiscard]] Bool same_conditional_sample_identity_state(
-    const Var<SurfaceClosureConditionalSampleCall> &lhs,
-    const Var<SurfaceClosureConditionalSampleCall> &rhs) noexcept {
-    return (lhs.properties == rhs.properties) &
-           (lhs.valid == rhs.valid);
-}
-
-[[nodiscard]] Bool same_conditional_sample_bssrdf_state(
-    const Var<SurfaceClosureConditionalSampleCall> &lhs,
-    const Var<SurfaceClosureConditionalSampleCall> &rhs) noexcept {
-    return (lhs.bssrdf_method == rhs.bssrdf_method) &
-           close(lhs.bssrdf_radius, rhs.bssrdf_radius) &
-           close(lhs.bssrdf_albedo, rhs.bssrdf_albedo) &
-           close(lhs.bssrdf_normal, rhs.bssrdf_normal) &
-           close(lhs.bssrdf_ior, rhs.bssrdf_ior) &
-           close(lhs.bssrdf_roughness, rhs.bssrdf_roughness) &
-           close(lhs.bssrdf_anisotropy, rhs.bssrdf_anisotropy);
-}
-
-[[nodiscard]] Bool same_conditional_sample_state(
-    const Var<SurfaceClosureConditionalSampleCall> &lhs,
-    const Var<SurfaceClosureConditionalSampleCall> &rhs) noexcept {
-    return same_conditional_sample_transport_state(lhs, rhs) &
-           same_conditional_sample_identity_state(lhs, rhs) &
-           same_conditional_sample_bssrdf_state(lhs, rhs);
+[[nodiscard]] SurfaceClosureRecord make_source(UInt case_index) noexcept {
+    auto result = SurfaceClosureRecord::zero();
+    for (auto i = 0u; i < case_count; ++i) {
+        const auto selected = case_index == i;
+        const auto &c = closure_cases[i];
+        result.closure_type = select(
+            result.closure_type, c.type, selected);
+        result.microfacet_fresnel = select(
+            result.microfacet_fresnel,
+            static_cast<std::uint32_t>(c.fresnel),
+            selected);
+        result.bssrdf_method = select(
+            result.bssrdf_method,
+            static_cast<std::uint32_t>(c.bssrdf_method), selected);
+        result.beckmann = select(result.beckmann, c.beckmann, selected);
+        result.preserve_ggx_energy = select(
+            result.preserve_ggx_energy, c.preserve_energy, selected);
+    }
+    result.weight = make_float3(0.37f, 0.29f, 0.41f);
+    result.allocation_weight = 0.73f;
+    result.sample_weight = 0.61f;
+    result.setup_valid = true;
+    result.color = make_float3(0.62f, 0.48f, 0.31f);
+    result.normal = normalize(make_float3(0.13f, -0.09f, 0.98f));
+    result.roughness = 0.36f;
+    result.microfacet_tangent = normalize(make_float3(0.93f, 0.31f, 0.07f));
+    result.microfacet_alpha_x = 0.08f;
+    result.microfacet_alpha_y = 0.31f;
+    result.ior = 1.43f;
+    result.thin_film_thickness = 385.0f;
+    result.thin_film_ior = 1.32f;
+    result.specular_tint = make_float3(0.84f, 0.71f, 0.59f);
+    result.sheen_transform_a = 0.83f;
+    result.sheen_transform_b = 0.17f;
+    result.evaluation_scale = make_float3(0.91f, 0.87f, 0.79f);
+    result.fresnel_f0 = make_float3(0.04f, 0.05f, 0.06f);
+    result.fresnel_f90 = make_float3(1.0f);
+    result.reflection_tint = make_float3(0.92f, 0.81f, 0.73f);
+    result.transmission_tint = make_float3(0.67f, 0.76f, 0.88f);
+    result.bssrdf_radius = make_float3(0.8f, 0.5f, 0.3f);
+    result.bssrdf_albedo = make_float3(0.7f, 0.4f, 0.2f);
+    result.bssrdf_ior = 1.4f;
+    result.bssrdf_roughness = 0.32f;
+    result.bssrdf_anisotropy = 0.15f;
+    return result;
 }
 
 }// namespace
@@ -493,295 +321,191 @@ inline constexpr float fp_relative_tolerance =
 int main(int argc, char **argv) {
     const auto backend =
         std::string_view{argc > 1 ? argv[1] : "fallback"};
+    Kernel1D test = [](BufferFloat4 parameters, BufferFloat4 output) noexcept {
+        const UInt case_index{dispatch_x()};
+        const auto source = make_source(case_index);
+        const auto physical = static_cast<SurfaceClosurePhysicalRecord>(source);
+        const auto packed = pack_surface_closure_physical(physical);
+        const auto decoded_common = unpack_surface_closure_physical_common(
+            Expr<luisa::float4x4>{packed.block_0.expression()});
+        const auto direct_common =
+            project_surface_closure_physical_common(physical);
 
-    PhysicalRoundTripCallable round_trip = [](
-        Float4x4 block_0,
-        Float4x4 block_1,
-        UInt requested_block) noexcept {
-        const auto closure = unpack_surface_closure_physical(
-            Expr<luisa::float4x4>{block_0.expression()},
-            Expr<luisa::float4x4>{block_1.expression()});
-        const auto packed = pack_surface_closure_physical(closure);
-        Float4x4 result{packed.block_0};
-        $if (requested_block == 1u) {
-            result = packed.block_1;
-        };
-        return result;
-    };
-    round_trip.set_name("surface_closure_physical_round_trip");
-
-    Kernel1D test = [round_trip](
-                        BufferFloat4 parameter_buffer,
-                        BufferFloat4 output) noexcept {
-        const auto case_index = dispatch_x();
-        const auto offset = 10.0f * cast<float>(case_index);
-        auto closure = SurfaceClosureRecord::zero();
-        closure.kind = static_cast<std::uint32_t>(
-            SurfaceClosureKind::diffuse);
+        UInt expected_type = closure_cases[0u].type;
+        UInt expected_fresnel = static_cast<std::uint32_t>(
+            closure_cases[0u].fresnel);
+        UInt expected_payload = static_cast<std::uint32_t>(
+            closure_cases[0u].payload);
+        UInt expected_method = static_cast<std::uint32_t>(
+            closure_cases[0u].bssrdf_method);
+        Bool expected_beckmann = closure_cases[0u].beckmann;
         for (auto i = 1u; i < case_count; ++i) {
-            closure.kind = select(
-                closure.kind,
-                static_cast<std::uint32_t>(closure_cases[i].kind),
-                case_index == i);
-            closure.lobe = select(
-                closure.lobe,
-                static_cast<std::uint32_t>(closure_cases[i].lobe),
-                case_index == i);
-        }
-        closure.weight = make_float3(
-            1.1f + offset, 1.2f + offset, 1.3f + offset);
-        closure.allocation_weight = 1.4f + offset;
-        closure.sample_weight = 1.5f + offset;
-        closure.setup_valid = (case_index & 1u) != 0u;
-        closure.color = make_float3(
-            2.1f + offset, 2.2f + offset, 2.3f + offset);
-        closure.normal = make_float3(
-            3.1f + offset, 3.2f + offset, 3.3f + offset);
-        closure.roughness = 3.4f + offset;
-        closure.specular_tint = make_float3(
-            4.1f + offset, 4.2f + offset, 4.3f + offset);
-        closure.diffuse_roughness = 4.4f + offset;
-        closure.evaluation_scale = make_float3(
-            5.1f + offset, 5.2f + offset, 5.3f + offset);
-        closure.metallic = 5.4f + offset;
-        closure.fresnel_f0 = make_float3(
-            6.1f + offset, 6.2f + offset, 6.3f + offset);
-        closure.ior = 6.4f + offset;
-        closure.fresnel_f90 = make_float3(
-            7.1f + offset, 7.2f + offset, 7.3f + offset);
-        closure.sheen_transform_a = 7.4f + offset;
-        closure.reflection_tint = make_float3(
-            8.1f + offset, 8.2f + offset, 8.3f + offset);
-        closure.sheen_transform_b = 8.4f + offset;
-        closure.transmission_tint = make_float3(
-            9.1f + offset, 9.2f + offset, 9.3f + offset);
-        closure.bssrdf_ior = 9.4f + offset;
-        closure.bssrdf_radius = make_float3(
-            10.1f + offset, 10.2f + offset, 10.3f + offset);
-        closure.bssrdf_anisotropy = 10.4f + offset;
-        closure.bssrdf_albedo = make_float3(
-            11.1f + offset, 11.2f + offset, 11.3f + offset);
-        closure.bssrdf_roughness = 11.4f + offset;
-        closure.microfacet_tangent = make_float3(
-            12.1f + offset, 12.2f + offset, 12.3f + offset);
-        closure.microfacet_alpha_x = 12.4f + offset;
-        closure.microfacet_alpha_y = 13.1f + offset;
-        closure.thin_film_thickness = 14.4f + offset;
-        closure.thin_film_ior = 14.5f + offset;
-        closure.preserve_ggx_energy = (case_index & 2u) != 0u;
-        closure.beckmann = (case_index & 4u) != 0u;
-        closure.bssrdf_method = 17u + case_index;
-
-        // Setup/AOV-only fields deliberately remain distinct poison values.
-        closure.albedo = make_float3(101.0f + offset);
-        closure.reflection_albedo = make_float3(211.0f + offset);
-        closure.transmission_albedo = make_float3(307.0f + offset);
-        closure.specular_ior_level = 401.0f + offset;
-
-        const auto packed = pack_surface_closure_physical(closure);
-        const auto round_trip_0 = round_trip(
-            packed.block_0, packed.block_1, 0u);
-        const auto round_trip_1 = round_trip(
-            packed.block_0, packed.block_1, 1u);
-        const auto canonical = unpack_surface_closure_physical(
-            Expr<luisa::float4x4>{round_trip_0.expression()},
-            Expr<luisa::float4x4>{round_trip_1.expression()});
-
-        UInt flags = 0u;
-        flags |= select(0u, 1u, canonical.setup_valid);
-        flags |= select(0u, 2u, canonical.preserve_ggx_energy);
-        flags |= select(0u, 4u, canonical.beckmann);
-        std::array logical_rows{
-            make_uint4(
-                canonical.kind,
-                canonical.lobe,
-                flags,
-                canonical.bssrdf_method)
-                .bitcast<luisa::float4>(),
-            make_float4(canonical.weight, canonical.allocation_weight),
-            make_float4(canonical.color, canonical.sample_weight),
-            make_float4(canonical.normal, canonical.roughness),
-            make_float4(
-                canonical.specular_tint,
-                canonical.diffuse_roughness),
-            make_float4(canonical.evaluation_scale, canonical.metallic),
-            make_float4(canonical.fresnel_f0, canonical.ior),
-            make_float4(canonical.fresnel_f90, canonical.sheen_transform_a),
-            make_float4(
-                canonical.reflection_tint,
-                canonical.sheen_transform_b),
-            make_float4(canonical.transmission_tint, canonical.bssrdf_ior),
-            make_float4(
-                canonical.bssrdf_radius,
-                canonical.bssrdf_anisotropy),
-            make_float4(
-                canonical.bssrdf_albedo,
-                canonical.bssrdf_roughness),
-            make_float4(
-                canonical.microfacet_tangent,
-                canonical.microfacet_alpha_x),
-            make_float4(canonical.microfacet_alpha_y,
-                        canonical.thin_film_thickness,
-                        canonical.thin_film_ior,
-                        0.0f)};
-        for (auto row = 0u; row < logical_row_count; ++row) {
-            output->write(
-                case_index * rows_per_case + row,
-                logical_rows[row]);
+            const auto selected = case_index == i;
+            expected_type = select(expected_type, closure_cases[i].type, selected);
+            expected_fresnel = select(
+                expected_fresnel,
+                static_cast<std::uint32_t>(closure_cases[i].fresnel), selected);
+            expected_payload = select(
+                expected_payload,
+                static_cast<std::uint32_t>(closure_cases[i].payload), selected);
+            expected_method = select(
+                expected_method,
+                static_cast<std::uint32_t>(closure_cases[i].bssrdf_method),
+                selected);
+            expected_beckmann = select(
+                expected_beckmann, closure_cases[i].beckmann, selected);
         }
 
-        // Formal round-trip property on the encoded quotient: irrelevant
-        // fields may canonicalize, but the physical representation must be
-        // idempotent bit-for-bit after one pack/unpack step.
-        const auto repacked = pack_surface_closure_physical(canonical);
-        Bool stable = true;
-        for (auto row = 0u; row < 4u; ++row) {
-            stable &= all(
-                packed.block_0[row].bitcast<luisa::uint4>() ==
-                repacked.block_0[row].bitcast<luisa::uint4>());
-            stable &= all(
-                packed.block_1[row].bitcast<luisa::uint4>() ==
-                repacked.block_1[row].bitcast<luisa::uint4>());
-        }
-        output->write(
-            case_index * rows_per_case + logical_row_count +
-                invariant_row::stable_representation,
-            make_float4(select(0.0f, 1.0f, stable)));
+        const auto identity = packed.block_0[0u].bitcast<luisa::uint4>();
+        const auto identity_ok =
+            (identity.x == expected_type) & (identity.y == expected_fresnel) &
+            (identity.z == 0u) & (identity.w == 0u) &
+            (packed.block_0[1u].w == 0.0f) &
+            (decoded_common.closure_type == expected_type) &
+            (decoded_common.microfacet_fresnel == expected_fresnel);
+        output.write(case_index * result_row::count + result_row::identity,
+                     make_float4(select(0.0f, 1.0f, identity_ok)));
+        output.write(
+            case_index * result_row::count + result_row::common_projection,
+            make_float4(select(
+                0.0f, 1.0f, same_common(decoded_common, direct_common))));
 
-        // A family eliminator is correct precisely when it agrees with the
-        // generic inverse after projection to fields observable for that
-        // family. The comparison itself stays branch-local: merging the
-        // distinct record types would recreate the forbidden product.
-        const auto common = unpack_surface_closure_physical_common(
-            Expr<luisa::float4x4>{round_trip_0.expression()});
-        const auto glass =
-            (canonical.kind == static_cast<std::uint32_t>(
-                                   SurfaceClosureKind::glass)) |
-            (canonical.kind == static_cast<std::uint32_t>(
-                                   SurfaceClosureKind::refraction));
-        const auto bssrdf =
-            canonical.kind == static_cast<std::uint32_t>(
-                                  SurfaceClosureKind::bssrdf);
-        const auto hair =
-            (canonical.kind == static_cast<std::uint32_t>(
-                                   SurfaceClosureKind::hair_reflection)) |
-            (canonical.kind == static_cast<std::uint32_t>(
-                                   SurfaceClosureKind::hair_transmission));
-        const auto general =
-            (canonical.kind == static_cast<std::uint32_t>(
-                                   SurfaceClosureKind::principled)) |
-            (canonical.kind == static_cast<std::uint32_t>(
-                                   SurfaceClosureKind::glossy)) |
-            (canonical.kind == static_cast<std::uint32_t>(
-                                   SurfaceClosureKind::metallic_f82)) |
-            (canonical.kind == static_cast<std::uint32_t>(
-                                   SurfaceClosureKind::metallic_conductor)) |
-            (canonical.kind == static_cast<std::uint32_t>(
-                                   SurfaceClosureKind::sheen_microfiber)) |
-            (canonical.kind == static_cast<std::uint32_t>(
-                                   SurfaceClosureKind::thin_glass_transmission));
-        Bool projection_equal = false;
-        $if(glass) {
-            const auto projected =
-                unpack_surface_closure_physical_dielectric(
-                common,
-                Expr<luisa::float4x4>{round_trip_1.expression()});
-            projection_equal =
-                same_payload_projection(canonical, projected);
+        const auto uses_general = surface_closure_uses_general_payload(
+            decoded_common.closure_type);
+        const auto uses_hair = surface_closure_uses_hair_payload(
+            decoded_common.closure_type);
+        const auto uses_dielectric = surface_closure_uses_dielectric_payload(
+            decoded_common.closure_type);
+        const auto uses_bssrdf = surface_closure_uses_bssrdf_payload(
+            decoded_common.closure_type);
+        Bool family_equal = false;
+        $if(uses_general) {
+            const auto a = project_surface_closure_physical_general(physical);
+            const auto b = unpack_surface_closure_physical_general(
+                decoded_common,
+                Expr<luisa::float4x4>{packed.block_1.expression()});
+            family_equal = same_common(a.common, b.common) &
+                (a.payload.thin_film_thickness == b.payload.thin_film_thickness) &
+                (a.payload.thin_film_ior == b.payload.thin_film_ior) &
+                (a.payload.ior == b.payload.ior) &
+                all(a.payload.specular_tint == b.payload.specular_tint) &
+                (a.payload.sheen_transform_a == b.payload.sheen_transform_a) &
+                (a.payload.sheen_transform_b == b.payload.sheen_transform_b) &
+                all(a.payload.evaluation_scale == b.payload.evaluation_scale) &
+                all(a.payload.microfacet_tangent == b.payload.microfacet_tangent) &
+                (a.payload.microfacet_alpha_x == b.payload.microfacet_alpha_x) &
+                (a.payload.microfacet_alpha_y == b.payload.microfacet_alpha_y);
         }
-        $elif(bssrdf) {
-            const auto projected =
-                unpack_surface_closure_physical_bssrdf(
-                common,
-                Expr<luisa::float4x4>{round_trip_1.expression()});
-            projection_equal =
-                same_payload_projection(canonical, projected);
+        $elif(uses_hair) {
+            const auto a = project_surface_closure_physical_hair(physical);
+            const auto b = unpack_surface_closure_physical_hair(
+                decoded_common,
+                Expr<luisa::float4x4>{packed.block_1.expression()});
+            family_equal = same_common(a.common, b.common) &
+                all(a.payload.tangent == b.payload.tangent) &
+                (a.payload.roughness_u == b.payload.roughness_u) &
+                (a.payload.roughness_v == b.payload.roughness_v) &
+                (a.payload.offset == b.payload.offset);
         }
-        $elif(hair) {
-            const auto projected =
-                unpack_surface_closure_physical_hair(
-                common,
-                Expr<luisa::float4x4>{round_trip_1.expression()});
-            projection_equal =
-                same_payload_projection(canonical, projected);
+        $elif(uses_dielectric) {
+            const auto a = project_surface_closure_physical_dielectric(physical);
+            const auto b = unpack_surface_closure_physical_dielectric(
+                decoded_common,
+                Expr<luisa::float4x4>{packed.block_1.expression()});
+            family_equal = same_common(a.common, b.common) &
+                (a.payload.ior == b.payload.ior) &
+                (a.payload.thin_film_thickness == b.payload.thin_film_thickness) &
+                (a.payload.thin_film_ior == b.payload.thin_film_ior) &
+                all(a.payload.fresnel_f0 == b.payload.fresnel_f0) &
+                all(a.payload.fresnel_f90 == b.payload.fresnel_f90) &
+                all(a.payload.reflection_tint == b.payload.reflection_tint) &
+                all(a.payload.transmission_tint == b.payload.transmission_tint);
         }
-        $elif(general) {
-            const auto projected =
-                unpack_surface_closure_physical_general(
-                common,
-                Expr<luisa::float4x4>{round_trip_1.expression()});
-            projection_equal =
-                same_payload_projection(canonical, projected);
+        $elif(uses_bssrdf) {
+            const auto a = project_surface_closure_physical_bssrdf(physical);
+            const auto b = unpack_surface_closure_physical_bssrdf(
+                decoded_common,
+                Expr<luisa::float4x4>{packed.block_1.expression()});
+            family_equal = same_common(a.common, b.common) &
+                all(a.payload.radius == b.payload.radius) &
+                all(a.payload.albedo == b.payload.albedo) &
+                (a.payload.bssrdf_ior == b.payload.bssrdf_ior) &
+                (a.payload.roughness == b.payload.roughness) &
+                (a.payload.anisotropy == b.payload.anisotropy);
         }
         $else {
-            const auto projected =
-                unpack_surface_closure_physical_common_only(common);
-            projection_equal = same_common_projection(
-                canonical, projected.common, canonical.color);
+            family_equal = expected_payload ==
+                static_cast<std::uint32_t>(PayloadClass::common);
         };
-        output->write(
-            case_index * rows_per_case +
-                logical_row_count + invariant_row::family_projection,
-            make_float4(select(
-                0.0f, 1.0f, projection_equal)));
+        const auto family_count =
+            cast<std::uint32_t>(uses_general) +
+            cast<std::uint32_t>(uses_hair) +
+            cast<std::uint32_t>(uses_dielectric) +
+            cast<std::uint32_t>(uses_bssrdf);
+        UInt actual_payload = static_cast<std::uint32_t>(PayloadClass::common);
+        actual_payload = select(actual_payload,
+            static_cast<std::uint32_t>(PayloadClass::general), uses_general);
+        actual_payload = select(actual_payload,
+            static_cast<std::uint32_t>(PayloadClass::hair), uses_hair);
+        actual_payload = select(actual_payload,
+            static_cast<std::uint32_t>(PayloadClass::dielectric), uses_dielectric);
+        actual_payload = select(actual_payload,
+            static_cast<std::uint32_t>(PayloadClass::bssrdf), uses_bssrdf);
+        family_equal &= (family_count <= 1u) &
+                        (actual_payload == expected_payload);
+        output.write(
+            case_index * result_row::count + result_row::family_projection,
+            make_float4(select(0.0f, 1.0f, family_equal)));
 
-        // Differential semantic oracle for the consumer-directed
-        // eliminators. Use a separate finite closure so every family executes
-        // meaningful directional algebra while the ABI rows above retain
-        // their poison values for projection testing.
-        auto consumer_source = SurfaceClosureRecord::zero();
-        consumer_source.kind = closure.kind;
-        consumer_source.lobe = closure.lobe;
-        consumer_source.weight = make_float3(0.37f, 0.29f, 0.41f);
-        consumer_source.allocation_weight = 0.73f;
-        consumer_source.sample_weight = 0.61f;
-        consumer_source.setup_valid = true;
-        consumer_source.color = make_float3(0.62f, 0.48f, 0.31f);
-        consumer_source.normal = normalize(make_float3(0.13f, -0.09f, 0.98f));
-        consumer_source.roughness = 0.36f;
-        consumer_source.microfacet_tangent = normalize(
-            make_float3(0.93f, 0.31f, 0.07f));
-        consumer_source.microfacet_alpha_x = 0.08f;
-        consumer_source.microfacet_alpha_y = 0.31f;
-        consumer_source.diffuse_roughness = 0.27f;
-        consumer_source.metallic = 0.22f;
-        consumer_source.ior = 1.43f;
-        consumer_source.specular_tint = make_float3(0.84f, 0.71f, 0.59f);
-        consumer_source.sheen_transform_a = 0.83f;
-        consumer_source.sheen_transform_b = 0.17f;
-        consumer_source.evaluation_scale = make_float3(0.91f, 0.87f, 0.79f);
-        consumer_source.fresnel_f0 = make_float3(0.04f, 0.05f, 0.06f);
-        consumer_source.fresnel_f90 = make_float3(1.0f);
-        consumer_source.reflection_tint = make_float3(0.92f, 0.81f, 0.73f);
-        consumer_source.transmission_tint = make_float3(0.67f, 0.76f, 0.88f);
-        consumer_source.preserve_ggx_energy = false;
-        consumer_source.beckmann = false;
-        consumer_source.bssrdf_method =
-            static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk);
-        consumer_source.bssrdf_radius = make_float3(0.8f, 0.5f, 0.3f);
-        consumer_source.bssrdf_albedo = make_float3(0.7f, 0.4f, 0.2f);
-        consumer_source.bssrdf_ior = 1.4f;
-        consumer_source.bssrdf_roughness = 0.32f;
-        consumer_source.bssrdf_anisotropy = 0.15f;
-        const auto consumer_blocks =
-            pack_surface_closure_physical(consumer_source);
-        const auto consumer_common = unpack_surface_closure_physical_common(
-            Expr<luisa::float4x4>{consumer_blocks.block_0.expression()});
-        const auto consumer_product = unpack_surface_closure_physical(
-            Expr<luisa::float4x4>{consumer_blocks.block_0.expression()},
-            Expr<luisa::float4x4>{consumer_blocks.block_1.expression()});
-        auto surface_point = make_surface_point();
-        surface_point.incoming = normalize(make_float3(0.21f, -0.16f, 0.96f));
-        const SurfaceClosurePoint point{surface_point};
-        ParameterShaderServices services{parameter_buffer, 1.0f};
+        // The physical blocks are a canonical tagged sum, not merely a
+        // sufficiently large byte container. Lanes outside the selected
+        // payload family are representation-independent zero; otherwise two
+        // observationally equal closures could retain different hidden state.
+        Bool payload_canonical = true;
+        $if(uses_general) {
+            const auto film_payload =
+                cycles_closure::fresnel_uses_thin_film_payload(
+                    decoded_common.microfacet_fresnel);
+            payload_canonical &= film_payload |
+                ((packed.block_1[0u].w == 0.0f) &
+                 (packed.block_1[1u].w == 0.0f));
+        }
+        $elif(uses_hair) {
+            payload_canonical &= all(packed.block_1[0u] == make_float4(0.0f)) &
+                all(packed.block_1[1u] == make_float4(0.0f)) &
+                (packed.block_1[2u].y == 0.0f) &
+                (packed.block_1[2u].z == 0.0f);
+        }
+        $elif(uses_dielectric) {
+            payload_canonical &= packed.block_1[3u].w == 0.0f;
+        }
+        $elif(uses_bssrdf) {
+            payload_canonical &=
+                all(packed.block_1[2u].yzw() == make_float3(0.0f)) &
+                all(packed.block_1[3u] == make_float4(0.0f));
+        }
+        $else {
+            payload_canonical &=
+                all(packed.block_1[0u] == make_float4(0.0f)) &
+                all(packed.block_1[1u] == make_float4(0.0f)) &
+                all(packed.block_1[2u] == make_float4(0.0f)) &
+                all(packed.block_1[3u] == make_float4(0.0f));
+        };
+        output.write(
+            case_index * result_row::count + result_row::canonical_payload,
+            make_float4(select(0.0f, 1.0f, payload_canonical)));
+
+        auto point_value = make_surface_point();
+        point_value.incoming = normalize(make_float3(0.21f, -0.16f, 0.96f));
+        const SurfaceClosurePoint point{point_value};
+        ParameterShaderServices services{parameters, 1.0f};
         const auto incoming = make_surface_closure_sampling_incoming(point);
         const auto outgoing = normalize(make_float3(-0.18f, 0.24f, 0.95f));
         const auto query = SurfaceQuery{
             .lobe_mask = static_cast<std::uint32_t>(
-                event_diffuse | event_glossy |
-                event_transmission | event_transparent),
-            .transport_mode =
-                static_cast<std::uint32_t>(TransportMode::radiance),
+                event_diffuse | event_glossy | event_transmission |
+                event_transparent),
+            .transport_mode = static_cast<std::uint32_t>(TransportMode::radiance),
             .glossy_filter_roughness = 0.0f,
             .reflective_caustics = true,
             .refractive_caustics = true};
@@ -791,256 +515,145 @@ int main(int argc, char **argv) {
             .glass_included = true,
             .transmission_included = true,
             .preserve_pdf = true};
-        const auto product_evaluation =
-            surface_closure_evaluation_contribution(
-                services, point, point.shading_normal, consumer_product,
-                incoming, outgoing, query, policy, false);
-        const auto raw_tagged_evaluation =
-            surface_closure_evaluation_contribution_from_physical_blocks(
-                services, point, point.shading_normal,
-                Expr<luisa::float4x4>{consumer_blocks.block_0.expression()},
-                Expr<luisa::float4x4>{consumer_blocks.block_1.expression()},
-                incoming, outgoing, query, policy, false);
-        UInt payload_read_count = 0u;
+        const auto direct_eval = surface_closure_evaluation_contribution(
+            services, point, point_value.shading_normal, physical,
+            incoming, outgoing, query, policy, false);
+        UInt payload_reads = 0u;
         const auto load_payload = [&] {
-            payload_read_count += 1u;
-            return Float4x4{consumer_blocks.block_1};
+            payload_reads += 1u;
+            return Float4x4{packed.block_1};
         };
-        const auto tagged_evaluation =
+        const auto retained_eval =
             surface_closure_evaluation_contribution_from_physical_common(
-                services, point, point.shading_normal, consumer_common,
+                services, point, point_value.shading_normal, decoded_common,
                 load_payload, incoming, outgoing, query, policy, false);
-        const auto random_direction = make_float2(0.37f, 0.64f);
-        const auto product_sample = surface_closure_conditional_sample(
-            services, point, point.shading_normal, consumer_product, incoming,
-            consumer_product.normal, random_direction, 0.42f, query);
-        const auto raw_tagged_sample =
-            surface_closure_conditional_sample_from_physical_blocks(
-                services, point, point.shading_normal,
-                Expr<luisa::float4x4>{consumer_blocks.block_0.expression()},
-                Expr<luisa::float4x4>{consumer_blocks.block_1.expression()},
-                incoming, consumer_product.normal, random_direction,
-                0.42f, query);
-        const auto tagged_sample =
-            surface_closure_conditional_sample_from_physical_common(
-                services, point, point.shading_normal, consumer_common,
-                load_payload, incoming, consumer_product.normal,
-                random_direction, 0.42f, query);
-        output->write(
-            case_index * rows_per_case + logical_row_count +
-                invariant_row::evaluation,
-            make_float4(
-                select(0.0f, 1.0f,
-                    same_evaluation_contribution(
-                        product_evaluation, tagged_evaluation)),
-                select(0.0f, 1.0f,
-                    same_evaluation_contribution(
-                        raw_tagged_evaluation, tagged_evaluation)),
-                select(0.0f, 1.0f,
-                    close_sample_direction(
-                        raw_tagged_sample.direction,
-                        tagged_sample.direction)),
-                select(0.0f, 1.0f,
-                    same_conditional_sample_state(
-                        raw_tagged_sample, tagged_sample))));
-        output->write(
-            case_index * rows_per_case + logical_row_count +
-                invariant_row::sample_components,
-            make_float4(
-                select(0.0f, 1.0f,
-                    close_sample_direction(
-                        product_sample.direction,
-                        tagged_sample.direction)),
-                select(0.0f, 1.0f,
-                    close(product_sample.roughness,
-                          tagged_sample.roughness)),
-                select(0.0f, 1.0f,
-                    close(product_sample.singular_evaluation,
-                          tagged_sample.singular_evaluation) &
-                        close(product_sample.singular_pdf,
-                              tagged_sample.singular_pdf)),
-                select(0.0f, 1.0f,
-                    close(product_sample.eta,
-                          tagged_sample.eta))));
-
-        output->write(
-            case_index * rows_per_case + logical_row_count +
-                invariant_row::sample_state,
-            make_float4(
-                select(0.0f, 1.0f,
-                    same_conditional_sample_transport_state(
-                        product_sample, tagged_sample)),
-                select(0.0f, 1.0f,
-                    same_conditional_sample_identity_state(
-                        product_sample, tagged_sample)),
-                select(0.0f, 1.0f,
-                    same_conditional_sample_bssrdf_state(
-                        product_sample, tagged_sample)),
-                1.0f));
-
-        output->write(
-            case_index * rows_per_case + logical_row_count +
-                invariant_row::product_sample_numeric,
-            make_float4(product_sample.singular_evaluation,
-                        product_sample.singular_pdf));
-        output->write(
-            case_index * rows_per_case + logical_row_count +
-                invariant_row::tagged_sample_numeric,
-            make_float4(tagged_sample.singular_evaluation,
-                        tagged_sample.singular_pdf));
-
-        const auto general_payload =
-            (consumer_source.kind ==
-             static_cast<std::uint32_t>(SurfaceClosureKind::principled)) |
-            (consumer_source.kind ==
-             static_cast<std::uint32_t>(SurfaceClosureKind::glossy)) |
-            (consumer_source.kind ==
-             static_cast<std::uint32_t>(SurfaceClosureKind::metallic_f82)) |
-            (consumer_source.kind == static_cast<std::uint32_t>(
-                 SurfaceClosureKind::metallic_conductor)) |
-            (consumer_source.kind == static_cast<std::uint32_t>(
-                 SurfaceClosureKind::sheen_microfiber)) |
-            (consumer_source.kind ==
-             static_cast<std::uint32_t>(
-                 SurfaceClosureKind::thin_glass_transmission));
-        const auto hair_payload =
-            (consumer_source.kind == static_cast<std::uint32_t>(
-                 SurfaceClosureKind::hair_reflection)) |
-            (consumer_source.kind == static_cast<std::uint32_t>(
-                 SurfaceClosureKind::hair_transmission));
-        const auto expected_payload_reads =
-            select(0u, 2u, glass | general_payload | hair_payload) +
-            select(0u, 1u, bssrdf);
-        output->write(
-            case_index * rows_per_case + logical_row_count +
-                invariant_row::payload_reads,
+        output.write(case_index * result_row::count + result_row::evaluation,
             make_float4(select(
-                0.0f, 1.0f,
-                payload_read_count == expected_payload_reads)));
+                0.0f, 1.0f, same_evaluation(direct_eval, retained_eval))));
 
-        // Cycles' retained ShaderClosure selection is a quotient of the
-        // pre-storage candidate operation. For every lobe-mask combination,
-        // stored (type, sample_weight) must produce the same categorical mass
-        // and selected identity as the wider kind/lobe/setup representation.
-        Bool retained_selection_equal = true;
-        constexpr std::array lobe_masks{
+        const auto direct_sample = surface_closure_conditional_sample(
+            services, point, point_value.shading_normal, physical,
+            incoming, physical.normal, make_float2(0.37f, 0.64f),
+            0.42f, query);
+        const auto retained_sample =
+            surface_closure_conditional_sample_from_physical_common(
+                services, point, point_value.shading_normal, decoded_common,
+                load_payload, incoming, decoded_common.normal,
+                make_float2(0.37f, 0.64f), 0.42f, query);
+        output.write(case_index * result_row::count + result_row::sample,
+            make_float4(select(
+                0.0f, 1.0f, same_sample(direct_sample, retained_sample))));
+
+        Bool selections_equal = true;
+        constexpr std::array masks{
             std::uint32_t{0u},
             static_cast<std::uint32_t>(event_diffuse),
             static_cast<std::uint32_t>(event_glossy),
             static_cast<std::uint32_t>(event_transmission),
             static_cast<std::uint32_t>(event_transparent),
+            static_cast<std::uint32_t>(event_diffuse | event_transmission),
+            static_cast<std::uint32_t>(event_glossy | event_transmission),
             static_cast<std::uint32_t>(
-                event_diffuse | event_transmission),
-            static_cast<std::uint32_t>(
-                event_glossy | event_transmission),
-            static_cast<std::uint32_t>(
-                event_diffuse | event_glossy |
-                event_transmission | event_transparent)};
-        for (const auto lobe_mask : lobe_masks) {
-            const auto selection_context =
-                SurfaceClosureSelectionContext{
-                    .lobe_mask = lobe_mask,
-                    .glossy_filter_roughness = 0.0f};
-            const auto candidate_selection =
-                surface_closure_selection(
-                    selection_context,
-                    make_surface_closure_selection_input(
-                        consumer_product),
-                    false);
-            const auto retained_selection =
-                surface_closure_selection(
-                    selection_context,
-                    consumer_common,
-                    false);
-            retained_selection_equal &=
-                candidate_selection.weight ==
-                    retained_selection.weight;
-            retained_selection_equal &=
-                candidate_selection.closure_type ==
-                    retained_selection.closure_type;
-            retained_selection_equal &=
-                candidate_selection.closure_sample_weight ==
-                    retained_selection.closure_sample_weight;
-            retained_selection_equal &= all(
-                candidate_selection.glossy_normal ==
-                retained_selection.glossy_normal);
+                event_diffuse | event_glossy | event_transmission |
+                event_transparent)};
+        for (const auto mask : masks) {
+            const auto context = SurfaceClosureSelectionContext{
+                .lobe_mask = mask, .glossy_filter_roughness = 0.07f};
+            const auto a = surface_closure_selection(
+                context, physical, true);
+            const auto b = surface_closure_selection(
+                context, decoded_common, true);
+            selections_equal &= close(a.weight, b.weight) &
+                (a.runtime_flags == b.runtime_flags) &
+                (a.closure_type == b.closure_type) &
+                close(a.closure_sample_weight, b.closure_sample_weight) &
+                all(a.glossy_normal == b.glossy_normal);
         }
-        output->write(
-            case_index * rows_per_case + logical_row_count +
-                invariant_row::retained_selection,
-            make_float4(select(
-                0.0f, 1.0f, retained_selection_equal)));
-    };
+        output.write(case_index * result_row::count + result_row::selection,
+                     make_float4(select(0.0f, 1.0f, selections_equal)));
 
-    if (test.function()->function().custom_callables().size() != 1u) {
-        std::cerr << "Physical closure callable reuse regression: expected "
-                     "one definition, got "
-                  << test.function()->function().custom_callables().size()
-                  << '\n';
-        return EXIT_FAILURE;
-    }
+        const auto expected_reads =
+            select(0u, 2u, uses_general | uses_hair | uses_dielectric) +
+            select(0u, 1u, uses_bssrdf);
+        output.write(case_index * result_row::count + result_row::payload_reads,
+            make_float4(select(
+                0.0f, 1.0f, payload_reads == expected_reads)));
+
+        auto invalid = physical;
+        invalid.closure_type = cycles_closure::type_none;
+        invalid.microfacet_fresnel = static_cast<std::uint32_t>(
+            Fresnel::none);
+        const auto invalid_blocks = pack_surface_closure_physical(invalid);
+        const auto invalid_common = unpack_surface_closure_physical_common(
+            Expr<luisa::float4x4>{invalid_blocks.block_0.expression()});
+        const auto invalid_selection = surface_closure_selection(
+            SurfaceClosureSelectionContext{
+                .lobe_mask = static_cast<std::uint32_t>(
+                    event_diffuse | event_glossy | event_transmission |
+                    event_transparent),
+                .glossy_filter_roughness = 0.07f},
+            invalid_common, true);
+        const auto invalid_ok =
+            (invalid_common.closure_type == cycles_closure::type_none) &
+            (invalid_common.microfacet_fresnel ==
+             static_cast<std::uint32_t>(Fresnel::none)) &
+            !surface_closure_uses_general_payload(invalid_common.closure_type) &
+            !surface_closure_uses_hair_payload(invalid_common.closure_type) &
+            !surface_closure_uses_dielectric_payload(invalid_common.closure_type) &
+            !surface_closure_uses_bssrdf_payload(invalid_common.closure_type) &
+            (invalid_selection.weight == 0.0f) &
+            (invalid_selection.runtime_flags == 0u);
+        output.write(case_index * result_row::count + result_row::invalid_setup,
+                     make_float4(select(0.0f, 1.0f, invalid_ok)));
+
+        UInt derived_method = static_cast<std::uint32_t>(random_walk);
+        derived_method = select(derived_method,
+            static_cast<std::uint32_t>(SurfaceBssrdfMethod::burley),
+            decoded_common.closure_type == cycles_closure::type_bssrdf_burley);
+        derived_method = select(derived_method,
+            static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk_legacy),
+            decoded_common.closure_type ==
+                cycles_closure::type_bssrdf_random_walk_legacy);
+        derived_method = select(derived_method,
+            static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk_skin),
+            decoded_common.closure_type ==
+                cycles_closure::type_bssrdf_random_walk_skin);
+        const auto distribution_ok =
+            !cycles_closure::is_reflection_microfacet(
+                decoded_common.closure_type) |
+            (cycles_closure::is_beckmann_microfacet(
+                 decoded_common.closure_type) == expected_beckmann);
+        const auto method_ok = !uses_bssrdf |
+                               (derived_method == expected_method);
+        output.write(case_index * result_row::count +
+                         result_row::derived_identity,
+            make_float4(select(
+                0.0f, 1.0f, distribution_ok & method_ok)));
+    };
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
-    auto output =
-        device.create_buffer<luisa::float4>(case_count * rows_per_case);
-    auto parameter_buffer = device.create_buffer<luisa::float4>(1u);
+    auto parameters = device.create_buffer<luisa::float4>(1u);
+    auto output = device.create_buffer<luisa::float4>(
+        case_count * result_row::count);
     auto shader = compile_named_kernel(
-        device, "surface closure physical ABI", test);
-    std::array<luisa::float4, case_count * rows_per_case> actual{};
+        device, "surface closure Cycles ABI", test);
     const std::array parameter_data{luisa::float4{1.0f}};
-    stream << parameter_buffer.copy_from(luisa::span{parameter_data})
-           << shader(parameter_buffer, output).dispatch(case_count)
-           << output.copy_to(luisa::span{actual})
-           << synchronize();
-
-    for (auto case_index = 0u; case_index < case_count; ++case_index) {
-        for (auto row = 0u; row < rows_per_case; ++row) {
-            if (row == logical_row_count +
-                           invariant_row::product_sample_numeric ||
-                row == logical_row_count +
-                           invariant_row::tagged_sample_numeric) {
-                continue;
-            }
-            const auto observed =
-                actual[case_index * rows_per_case + row];
-            const auto expected = expected_row(case_index, row);
-            const auto matches = row == 0u
-                                     ? same_identity_bits(observed, expected)
-                                     : approximately_equal(
-                                           observed, expected, 1.0e-6f);
-            if (!matches) {
-                std::cerr << "Physical closure ABI mismatch on " << backend
-                          << std::setprecision(9)
-                          << ", case " << case_index << ", row " << row
-                          << ": got {" << observed.x << ", " << observed.y
-                          << ", " << observed.z << ", " << observed.w
-                          << "}, expected {" << expected.x << ", "
-                          << expected.y << ", " << expected.z << ", "
-                          << expected.w << "}";
-                if (row == logical_row_count +
-                               invariant_row::sample_components ||
-                    row == logical_row_count +
-                               invariant_row::sample_state) {
-                    const auto product_numeric = actual[
-                        case_index * rows_per_case + logical_row_count +
-                        invariant_row::product_sample_numeric];
-                    const auto tagged_numeric = actual[
-                        case_index * rows_per_case + logical_row_count +
-                        invariant_row::tagged_sample_numeric];
-                    std::cerr << "; product singular={"
-                              << product_numeric.x << ", "
-                              << product_numeric.y << ", "
-                              << product_numeric.z << "}, pdf="
-                              << product_numeric.w
-                              << "; tagged singular={"
-                              << tagged_numeric.x << ", "
-                              << tagged_numeric.y << ", "
-                              << tagged_numeric.z << "}, pdf="
-                              << tagged_numeric.w;
-                }
-                std::cerr << '\n';
+    std::array<luisa::float4, case_count * result_row::count> actual{};
+    stream << parameters.copy_from(luisa::span{parameter_data})
+           << shader(parameters, output).dispatch(case_count)
+           << output.copy_to(luisa::span{actual}) << synchronize();
+    for (auto c = 0u; c < case_count; ++c) {
+        for (auto r = 0u; r < result_row::count; ++r) {
+            const auto value = actual[c * result_row::count + r];
+            if (!(value.x == 1.0f && value.y == 1.0f &&
+                  value.z == 1.0f && value.w == 1.0f)) {
+                std::cerr << "Physical closure Cycles ABI mismatch on "
+                          << backend << std::setprecision(9) << ", case "
+                          << c << ", row " << r << ": got {" << value.x
+                          << ", " << value.y << ", " << value.z << ", "
+                          << value.w << "}\n";
                 return EXIT_FAILURE;
             }
         }

@@ -8,8 +8,8 @@ namespace psycles::luisa_backend {
 
 SurfaceClosureExpression::SurfaceClosureExpression(
     const SurfaceClosureRecord &closure) noexcept
-    : kind{closure.kind.expression()},
-      lobe{closure.lobe.expression()},
+    : closure_type{closure.closure_type.expression()},
+      microfacet_fresnel{closure.microfacet_fresnel.expression()},
       weight{closure.weight.expression()},
       allocation_weight{closure.allocation_weight.expression()},
       sample_weight{closure.sample_weight.expression()},
@@ -48,8 +48,8 @@ SurfaceClosureExpression::SurfaceClosureExpression(
 
 SurfaceClosureRecord SurfaceClosureExpression::reference() const noexcept {
     return {
-        .kind = UInt{kind.expression()},
-        .lobe = UInt{lobe.expression()},
+        .closure_type = UInt{closure_type.expression()},
+        .microfacet_fresnel = UInt{microfacet_fresnel.expression()},
         .weight = Float3{weight.expression()},
         .allocation_weight = Float{allocation_weight.expression()},
         .sample_weight = Float{sample_weight.expression()},
@@ -102,8 +102,6 @@ Bool SurfaceClosureExpressionVisitor::retains(
     const SurfaceClosureExpression &closure,
     Expr<std::uint32_t> allocated_count) const noexcept {
     return
-        (closure.kind != static_cast<std::uint32_t>(
-                             SurfaceClosureKind::none)) &
         (closure.allocation_weight >=
             cycles_closure::closure_weight_cutoff) &
         (allocated_count < static_cast<std::uint32_t>(

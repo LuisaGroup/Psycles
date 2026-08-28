@@ -12,6 +12,19 @@
 
 namespace psycles::luisa_backend::cycles_closure {
 
+// Exact numeric ABI of Cycles' kernel/closure/bsdf_microfacet.h
+// MicrofacetFresnel. ClosureType identifies the scattering distribution and
+// transport family; this independent discriminator identifies the Fresnel
+// payload interpreted by a reflection microfacet closure.
+enum class MicrofacetFresnel : std::uint32_t {
+    none = 0u,
+    dielectric = 1u,
+    dielectric_tint = 2u,
+    conductor = 3u,
+    generalized_schlick = 4u,
+    f82_tint = 5u,
+};
+
 // Stable values from the Cycles ClosureType ABI used by ShaderClosure. These
 // are trace and interoperability identities, not Psycles-internal operation
 // tags.
@@ -31,12 +44,16 @@ inline constexpr std::uint32_t type_thin_glass_transmission = 22u;
 inline constexpr std::uint32_t type_hair_transmission = 23u;
 inline constexpr std::uint32_t type_microfacet_beckmann_glass = 24u;
 inline constexpr std::uint32_t type_microfacet_ggx_glass = 25u;
+// Virtual SVM authoring type. Cycles' GGX setup overwrites it with
+// type_microfacet_ggx_glass before the closure becomes observable.
 inline constexpr std::uint32_t type_microfacet_multi_ggx_glass = 26u;
 inline constexpr std::uint32_t type_transparent = 30u;
 inline constexpr std::uint32_t type_bssrdf_burley = 31u;
 inline constexpr std::uint32_t type_bssrdf_random_walk = 32u;
 inline constexpr std::uint32_t type_bssrdf_random_walk_legacy = 33u;
 inline constexpr std::uint32_t type_bssrdf_random_walk_skin = 34u;
+// Virtual SVM aggregate. Principled population expands it into physical
+// ShaderClosure entries and this value must never enter retained storage.
 inline constexpr std::uint32_t type_principled_virtual = 43u;
 
 inline constexpr std::uint32_t label_none = 0u;
@@ -67,6 +84,67 @@ inline constexpr std::uint32_t runtime_ray_portal = 1u << 12u;
 
 inline constexpr auto closure_weight_cutoff = 1.0e-5f;
 inline constexpr auto microfacet_singular_alpha_product = 2.0e-10f;
+
+// Device-side forms of the ordered ClosureType predicates in Cycles'
+// kernel/svm/types.h. Keep these intervals centralized: retained closure
+// consumers must dispatch on the post-setup type, not reconstruct a second
+// classification from an authoring node tag.
+[[nodiscard]] inline luisa::compute::Bool
+is_diffuse_or_oren_nayar(luisa::compute::UInt type) noexcept {
+    return (type >= type_diffuse) & (type <= type_oren_nayar);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
+is_reflection_microfacet(luisa::compute::UInt type) noexcept {
+    return (type == type_microfacet_ggx) |
+           (type == type_microfacet_beckmann);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
+is_refraction_microfacet(luisa::compute::UInt type) noexcept {
+    return (type >= type_microfacet_beckmann_refraction) &
+           (type <= type_microfacet_ggx_refraction);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
+is_glass_microfacet(luisa::compute::UInt type) noexcept {
+    return (type >= type_microfacet_beckmann_glass) &
+           (type <= type_microfacet_ggx_glass);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
+is_hair(luisa::compute::UInt type) noexcept {
+    return (type == type_hair_reflection) |
+           (type == type_hair_transmission);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
+is_bssrdf(luisa::compute::UInt type) noexcept {
+    return (type >= type_bssrdf_burley) &
+           (type <= type_bssrdf_random_walk_skin);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
+is_beckmann_microfacet(luisa::compute::UInt type) noexcept {
+    return (type == type_microfacet_beckmann) |
+           (type == type_microfacet_beckmann_refraction) |
+           (type == type_microfacet_beckmann_glass);
+}
+
+// Fresnel payloads backed by a Cycles extra closure allocation carry the
+// thin-film struct. Plain DIELECTRIC is the inline Coat/glass discriminator
+// and owns no such payload; NONE owns no Fresnel payload at all.
+[[nodiscard]] inline luisa::compute::Bool
+fresnel_uses_thin_film_payload(luisa::compute::UInt fresnel) noexcept {
+    return (fresnel == static_cast<std::uint32_t>(
+                           MicrofacetFresnel::dielectric_tint)) |
+           (fresnel == static_cast<std::uint32_t>(
+                           MicrofacetFresnel::conductor)) |
+           (fresnel == static_cast<std::uint32_t>(
+                           MicrofacetFresnel::generalized_schlick)) |
+           (fresnel == static_cast<std::uint32_t>(
+                           MicrofacetFresnel::f82_tint));
+}
 
 // Convert the renderer-independent surface-event contract back to the exact
 // Cycles ClosureLabel bit layout. Keeping this mapping explicit prevents

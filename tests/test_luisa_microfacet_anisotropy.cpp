@@ -3,6 +3,7 @@
 #include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/graph_surface.h>
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/surface_closure_set.h>
 
 #include "graph_surface_internal.h"
@@ -268,7 +269,7 @@ int main(int argc, char **argv) {
                              principled_closure.microfacet_alpha_x));
     output.write(record::principled_state_tail,
                  make_float4(principled_closure.microfacet_alpha_y,
-                             cast<float>(principled_closure.lobe),
+                             cast<float>(principled_closure.microfacet_fresnel),
                              cast<float>(principled_closures.count()), 0.0f));
 
     const auto glossy_sample =
@@ -299,19 +300,14 @@ int main(int argc, char **argv) {
     const auto closure_point = SurfaceClosurePoint{point};
     const SurfaceClosurePhysicalGeneralRecord closure{
         .common =
-            {.kind = static_cast<std::uint32_t>(SurfaceClosureKind::principled),
-             .lobe = static_cast<std::uint32_t>(SurfaceClosureLobe::metallic),
+            {.closure_type = cycles_closure::type_microfacet_ggx,
+             .microfacet_fresnel = static_cast<std::uint32_t>(
+                 cycles_closure::MicrofacetFresnel::f82_tint),
              .weight = make_float3(1.0f),
-             .allocation_weight = 1.0f,
              .sample_weight = 1.0f,
-             .setup_valid = true,
              .color_or_evaluation_scale = make_float3(0.0f),
              .normal = point.shading_normal,
-             .roughness = roughness,
-             .preserve_ggx_energy = false,
-             .beckmann = false,
-             .bssrdf_method =
-                 static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk)},
+             .roughness = roughness},
         .payload = {.thin_film_thickness = 0.0f,
                     .thin_film_ior = 0.0f,
                     .ior = 1.5f,
@@ -325,17 +321,20 @@ int main(int argc, char **argv) {
     const auto sample =
         psycles::luisa_backend::detail::sample_microfacet_reflection(
             closure_point, point.shading_normal, closure, point.incoming,
-            make_float2(sample_random), point.shading_normal, 0.0f, false);
+            make_float2(sample_random), point.shading_normal, 0.0f, false,
+            nullptr, true, false, false, false, false, false, false);
     const auto sampled_half_vector =
         normalize(point.incoming + sample.direction);
     const auto normal_cosine = dot(point.shading_normal, point.incoming);
     const auto half_cosine = dot(sampled_half_vector, point.incoming);
     const auto normal_fresnel =
         psycles::luisa_backend::detail::microfacet_reflection_fresnel(
-            closure, normal_cosine);
+            closure, normal_cosine, nullptr,
+            true, false, false, false, false, false, false);
     const auto half_fresnel =
         psycles::luisa_backend::detail::microfacet_reflection_fresnel(
-            closure, half_cosine);
+            closure, half_cosine, nullptr,
+            true, false, false, false, false, false, false);
     output.write(record::sampled_fresnel_direction,
                  make_float4(sample.direction, cast<float>(sample.valid)));
     output.write(record::sampled_fresnel_values,
@@ -475,7 +474,8 @@ int main(int argc, char **argv) {
       approximately_equal(actual[record::principled_state_tail].x,
                           principled_alpha_y, 2.0e-6f) &&
       approximately_equal(actual[record::principled_state_tail].y,
-                          static_cast<float>(SurfaceClosureLobe::metallic)) &&
+                          static_cast<float>(
+                              cycles_closure::MicrofacetFresnel::f82_tint)) &&
       approximately_equal(actual[record::principled_state_tail].z, 1.0f);
 
   const auto unrotated_direction = actual[record::glossy_sample].xyz();

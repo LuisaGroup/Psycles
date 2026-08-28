@@ -6,7 +6,9 @@
 #include <psycles/luisa/surface_closure_evaluator.h>
 #include <psycles/luisa/surface_closure_blocks.h>
 #include <psycles/luisa/surface_closure_evaluation.h>
+#include <psycles/luisa/surface_closure_identity.h>
 #include <psycles/luisa/surface_closure_operations.h>
+#include <psycles/luisa/surface_closure_physical_blocks.h>
 #include <psycles/luisa/surface_closure_sampling.h>
 #include <psycles/luisa/surface_closure_set.h>
 
@@ -141,7 +143,8 @@ public:
         }
         return surface_closure_selection(
             make_surface_closure_selection_context(_query),
-            make_surface_closure_selection_input(closure));
+            static_cast<SurfaceClosurePhysicalRecord>(
+                closure.reference()));
     }
 
     [[nodiscard]] luisa::compute::Var<
@@ -294,8 +297,8 @@ int main(int argc, char **argv) {
         const auto &closure = trace.closure;
         const auto base = invocation * records_per_slot;
         output.write(base, make_float4(cast<float>(trace.count),
-                                       cast<float>(closure.kind),
-                                       cast<float>(closure.lobe),
+                                       cast<float>(closure.closure_type),
+                                       cast<float>(closure.microfacet_fresnel),
                                        select(0.0f, 1.0f, trace.valid)));
         output.write(base + 1u, make_float4(closure.weight, closure.sample_weight));
         output.write(base + 2u,
@@ -358,8 +361,8 @@ int main(int argc, char **argv) {
         output.write(base,
             make_float4(
                 cast<float>(closures.count()),
-                cast<float>(closure.kind),
-                cast<float>(closure.lobe),
+                cast<float>(closure.closure_type),
+                cast<float>(closure.microfacet_fresnel),
                 select(0.0f, 1.0f, valid)));
         output.write(base + 1u,
             make_float4(
@@ -375,21 +378,15 @@ int main(int argc, char **argv) {
         SurfaceClosureSet closures{2u};
 
         auto ignored = SurfaceClosureRecord::zero();
-        ignored.allocation_weight = 1.0f;
         closures.add(ignored);
 
         auto below_cutoff = SurfaceClosureRecord::zero();
-        below_cutoff.kind = static_cast<std::uint32_t>(
-            SurfaceClosureKind::diffuse);
+        below_cutoff.closure_type = cycles_closure::type_diffuse;
         below_cutoff.allocation_weight =
             0.5f * cycles_closure::closure_weight_cutoff;
         closures.add(below_cutoff);
 
         auto invalid_setup = SurfaceClosureRecord::zero();
-        invalid_setup.kind = static_cast<std::uint32_t>(
-            SurfaceClosureKind::principled);
-        invalid_setup.lobe = static_cast<std::uint32_t>(
-            SurfaceClosureLobe::sheen);
         invalid_setup.weight = make_float3(0.1f, 0.2f, 0.3f);
         invalid_setup.allocation_weight = 0.2f;
         invalid_setup.sample_weight = 0.0f;
@@ -402,10 +399,6 @@ int main(int argc, char **argv) {
         invalid_setup_only.add(invalid_setup);
 
         auto glass_record = SurfaceClosureRecord::zero();
-        glass_record.kind = static_cast<std::uint32_t>(
-            SurfaceClosureKind::glass);
-        glass_record.lobe = static_cast<std::uint32_t>(
-            SurfaceClosureLobe::transmission);
         glass_record.weight = make_float3(1.0f, 2.0f, 3.0f);
         glass_record.allocation_weight = 0.4f;
         glass_record.sample_weight = 0.5f;
@@ -443,7 +436,10 @@ int main(int argc, char **argv) {
         glass_record.transmission_tint =
             make_float3(40.0f, 41.0f, 42.0f);
         glass_record.preserve_ggx_energy = true;
-        glass_record.beckmann = true;
+        // MULTI_GGX is an authoring choice, not an independent retained flag:
+        // Cycles lowers it through GGX setup with energy preservation. A
+        // simultaneous Beckmann+multi state is not representable by Cycles.
+        glass_record.beckmann = false;
         glass_record.bssrdf_method = static_cast<std::uint32_t>(
             SurfaceBssrdfMethod::random_walk_skin);
         glass_record.bssrdf_radius =
@@ -453,6 +449,10 @@ int main(int argc, char **argv) {
         glass_record.bssrdf_ior = 1.49f;
         glass_record.bssrdf_roughness = 0.51f;
         glass_record.bssrdf_anisotropy = 0.52f;
+        psycles::luisa_backend::detail::finalize_cycles_closure_identity(
+            glass_record,
+            SurfaceClosureKind::glass,
+            SurfaceClosureLobe::transmission);
         closures.add(glass_record);
         SurfaceClosureSet physical_closures{
             1u, SurfaceClosureStorageProfile::physical};
@@ -462,11 +462,11 @@ int main(int argc, char **argv) {
         });
 
         auto overflow = SurfaceClosureRecord::zero();
-        overflow.kind = static_cast<std::uint32_t>(
-            SurfaceClosureKind::diffuse);
         overflow.weight = make_float3(99.0f);
         overflow.allocation_weight = 0.9f;
         overflow.setup_valid = true;
+        psycles::luisa_backend::detail::finalize_cycles_closure_identity(
+            overflow, SurfaceClosureKind::diffuse);
         closures.add(overflow);
         physical_closures.append(overflow, [&] {
             physical_fold_mask |= 2u;
@@ -486,8 +486,8 @@ int main(int argc, char **argv) {
             output.write(base,
                 make_float4(
                     cast<float>(count),
-                    cast<float>(closure.kind),
-                    cast<float>(closure.lobe),
+                    cast<float>(closure.closure_type),
+                    cast<float>(closure.microfacet_fresnel),
                     select(0.0f, 1.0f, valid)));
             output.write(base + 1u,
                 make_float4(
@@ -604,11 +604,60 @@ int main(int argc, char **argv) {
                 make_float4(0.0f));
             constexpr auto physical_base =
                 4u * storage_records_per_slot;
-            write_closure(
+            for (auto row = 0u; row < storage_records_per_slot; ++row) {
+                output.write(physical_base + row, make_float4(0.0f));
+            }
+            const auto physical_access =
+                physical_closures.physical_access(0u);
+            const auto physical_common =
+                physical_closures.physical_common_entry(physical_access);
+            const auto physical_dielectric =
+                unpack_surface_closure_physical_dielectric(
+                    physical_common,
+                    Expr<luisa::float4x4>{
+                        physical_closures
+                            .physical_payload_block(physical_access)
+                            .expression()});
+            output.write(
                 physical_base,
-                physical_closures.count(),
-                true,
-                physical_closures.entry(0u));
+                make_float4(
+                    cast<float>(physical_closures.count()),
+                    cast<float>(physical_common.closure_type),
+                    cast<float>(physical_common.microfacet_fresnel),
+                    select(0.0f, 1.0f, physical_access.valid())));
+            output.write(
+                physical_base + 1u,
+                make_float4(
+                    physical_common.weight,
+                    physical_common.sample_weight));
+            output.write(
+                physical_base + 2u,
+                make_float4(
+                    physical_common.color_or_evaluation_scale,
+                    physical_common.roughness));
+            output.write(
+                physical_base + 3u,
+                make_float4(physical_common.normal, 0.0f));
+            output.write(
+                physical_base + 4u,
+                make_float4(
+                    physical_dielectric.payload.fresnel_f0,
+                    physical_dielectric.payload.ior));
+            output.write(
+                physical_base + 5u,
+                make_float4(
+                    physical_dielectric.payload.fresnel_f90,
+                    physical_dielectric.payload.thin_film_thickness));
+            output.write(
+                physical_base + 6u,
+                make_float4(
+                    physical_dielectric.payload.reflection_tint,
+                    physical_dielectric.payload.thin_film_ior));
+            output.write(
+                physical_base + 7u,
+                make_float4(
+                    physical_dielectric.payload.transmission_tint,
+                    0.0f));
             output.write(
                 physical_base + 14u,
                 make_float4(
@@ -1278,20 +1327,15 @@ int main(int argc, char **argv) {
             const auto context = SurfaceClosureSelectionContext{
                 .lobe_mask = ~std::uint32_t{0u},
                 .glossy_filter_roughness = 0.0f};
-            const auto closure = SurfaceClosureSelectionInput{
-                .kind = static_cast<std::uint32_t>(
-                    SurfaceClosureKind::diffuse),
-                .lobe = static_cast<std::uint32_t>(
-                    SurfaceClosureLobe::none),
-                .bssrdf_method = static_cast<std::uint32_t>(
-                    SurfaceBssrdfMethod::random_walk),
-                .allocation_weight = 0.7f,
+            const auto closure = SurfaceClosurePhysicalCommonRecord{
+                .closure_type = cycles_closure::type_diffuse,
+                .microfacet_fresnel = static_cast<std::uint32_t>(
+                    cycles_closure::MicrofacetFresnel::none),
+                .weight = make_float3(1.0f),
                 .sample_weight = 0.7f,
-                .setup_valid = true,
+                .color_or_evaluation_scale = make_float3(1.0f),
                 .normal = stored_normal,
-                .roughness = 0.25f,
-                .preserve_ggx_energy = false,
-                .beckmann = false};
+                .roughness = 0.25f};
             const auto selection = surface_closure_selection(
                 context, closure);
             output.write(
@@ -1552,24 +1596,22 @@ int main(int argc, char **argv) {
         }
     }
 
-    constexpr std::array layered_kinds{
-        SurfaceClosureKind::transparent, SurfaceClosureKind::principled,
-        SurfaceClosureKind::principled, SurfaceClosureKind::principled,
-        SurfaceClosureKind::glass, SurfaceClosureKind::principled,
-        SurfaceClosureKind::diffuse};
-    constexpr std::array layered_lobes{
-        SurfaceClosureLobe::none, SurfaceClosureLobe::sheen,
-        SurfaceClosureLobe::coat, SurfaceClosureLobe::metallic,
-        SurfaceClosureLobe::transmission, SurfaceClosureLobe::dielectric,
-        SurfaceClosureLobe::none};
     constexpr std::array layered_types{
         cycles_closure::type_transparent,
         cycles_closure::type_sheen,
         cycles_closure::type_microfacet_ggx,
         cycles_closure::type_microfacet_ggx,
-        cycles_closure::type_microfacet_multi_ggx_glass,
+        cycles_closure::type_microfacet_ggx_glass,
         cycles_closure::type_microfacet_ggx,
         cycles_closure::type_oren_nayar};
+    constexpr std::array layered_fresnels{
+        cycles_closure::MicrofacetFresnel::none,
+        cycles_closure::MicrofacetFresnel::none,
+        cycles_closure::MicrofacetFresnel::dielectric,
+        cycles_closure::MicrofacetFresnel::f82_tint,
+        cycles_closure::MicrofacetFresnel::generalized_schlick,
+        cycles_closure::MicrofacetFresnel::generalized_schlick,
+        cycles_closure::MicrofacetFresnel::none};
 
     for (auto invocation = 0u; invocation < invocation_count; ++invocation) {
         const auto material = invocation / closure_slots;
@@ -1580,22 +1622,18 @@ int main(int argc, char **argv) {
         const auto legacy_meta = old[legacy_base];
         const auto expected_count = material == 0u ? 7u : 1u;
         const auto expected_valid = requested < expected_count;
-        const auto expected_kind =
-            material == 0u && expected_valid
-                ? layered_kinds[requested]
-            : material != 0u && expected_valid
-                ? SurfaceClosureKind::glass
-                : SurfaceClosureKind::none;
-        const auto expected_lobe =
-            material == 0u && expected_valid
-                ? layered_lobes[requested]
-                : SurfaceClosureLobe::none;
         const auto expected_type =
             material == 0u && expected_valid
                 ? layered_types[requested]
             : material != 0u && expected_valid
                 ? cycles_closure::type_microfacet_beckmann_glass
                 : cycles_closure::type_none;
+        const auto expected_fresnel =
+            material == 0u && expected_valid
+                ? layered_fresnels[requested]
+            : material != 0u && expected_valid
+                ? cycles_closure::MicrofacetFresnel::generalized_schlick
+                : cycles_closure::MicrofacetFresnel::none;
         const auto retained_count = material == 0u ? 3u : 1u;
         const auto retained_valid = requested < retained_count;
         const auto retained_meta = retained[legacy_base];
@@ -1603,15 +1641,13 @@ int main(int argc, char **argv) {
             approximately_equal(retained_meta.x,
                 static_cast<float>(retained_count)) &&
             approximately_equal(retained_meta.y,
-                static_cast<float>(
-                    retained_valid
-                        ? expected_kind
-                        : SurfaceClosureKind::none)) &&
+                static_cast<float>(retained_valid
+                                       ? expected_type
+                                       : cycles_closure::type_none)) &&
             approximately_equal(retained_meta.z,
-                static_cast<float>(
-                    retained_valid
-                        ? expected_lobe
-                        : SurfaceClosureLobe::none)) &&
+                static_cast<float>(retained_valid
+                                       ? expected_fresnel
+                                       : cycles_closure::MicrofacetFresnel::none)) &&
             approximately_equal(retained_meta.w,
                 retained_valid ? 1.0f : 0.0f) &&
             approximately_equal(
@@ -1626,8 +1662,9 @@ int main(int argc, char **argv) {
                     : luisa::float4{0.0f, 0.0f, 1.0f, 0.0f});
         const auto core_equal =
             approximately_equal(meta.x, static_cast<float>(expected_count)) &&
-            approximately_equal(meta.y, static_cast<float>(expected_kind)) &&
-            approximately_equal(meta.z, static_cast<float>(expected_lobe)) &&
+            approximately_equal(meta.y, static_cast<float>(expected_type)) &&
+            approximately_equal(
+                meta.z, static_cast<float>(expected_fresnel)) &&
             approximately_equal(meta.w, expected_valid ? 1.0f : 0.0f) &&
             approximately_equal(legacy_meta.x,
                                 static_cast<float>(expected_count)) &&
@@ -1654,7 +1691,9 @@ int main(int argc, char **argv) {
                 ? 0.0f
             : material != 0u
                 ? 5.0f
-            : expected_kind == SurfaceClosureKind::glass
+            : expected_type >= cycles_closure::type_microfacet_beckmann_glass &&
+                      expected_type <=
+                          cycles_closure::type_microfacet_ggx_glass
                 ? 3.0f
                 : 1.0f +
                       (requested == 2u || requested == 3u ||
@@ -1683,8 +1722,10 @@ int main(int argc, char **argv) {
 
     constexpr std::array glass_storage_expected{
         luisa::float4{2.0f,
-            static_cast<float>(SurfaceClosureKind::glass),
-            static_cast<float>(SurfaceClosureLobe::transmission),
+            static_cast<float>(
+                cycles_closure::type_microfacet_ggx_glass),
+            static_cast<float>(cycles_closure::MicrofacetFresnel::
+                                   generalized_schlick),
             1.0f},
         luisa::float4{1.0f, 2.0f, 3.0f, 0.4f},
         luisa::float4{4.0f, 5.0f, 6.0f, 0.5f},
@@ -1695,15 +1736,16 @@ int main(int argc, char **argv) {
         luisa::float4{23.0f, 24.0f, 25.0f, 0.22f},
         luisa::float4{28.0f, 29.0f, 30.0f, 0.26f},
         luisa::float4{31.0f, 32.0f, 33.0f, 0.27f},
-        luisa::float4{34.0f, 35.0f, 36.0f, 7.0f},
+        luisa::float4{34.0f, 35.0f, 36.0f, 3.0f},
         luisa::float4{37.0f, 38.0f, 39.0f, 0.56f},
         luisa::float4{40.0f, 41.0f, 42.0f, 0.57f},
         luisa::float4{53.0f, 54.0f, 55.0f, 0.0f}};
     const auto invalid_setup_retained =
         approximately_equal(stored[0u],
             luisa::float4{2.0f,
-                static_cast<float>(SurfaceClosureKind::principled),
-                static_cast<float>(SurfaceClosureLobe::sheen),
+                static_cast<float>(cycles_closure::type_none),
+                static_cast<float>(
+                    cycles_closure::MicrofacetFresnel::none),
                 1.0f}) &&
         approximately_equal(stored[1u],
             luisa::float4{0.1f, 0.2f, 0.3f, 0.2f}) &&
@@ -1750,22 +1792,18 @@ int main(int argc, char **argv) {
     }
     constexpr std::array physical_storage_expected{
         luisa::float4{1.0f,
-            static_cast<float>(SurfaceClosureKind::glass),
-            static_cast<float>(SurfaceClosureLobe::transmission),
+            static_cast<float>(
+                cycles_closure::type_microfacet_ggx_glass),
+            static_cast<float>(cycles_closure::MicrofacetFresnel::
+                                   generalized_schlick),
             1.0f},
-        luisa::float4{1.0f, 2.0f, 3.0f, 0.4f},
-        luisa::float4{0.0f, 0.0f, 0.0f, 0.5f},
-        luisa::float4{0.0f, 0.0f, 0.0f, 0.19f},
-        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
-        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
-        luisa::float4{16.0f, 17.0f, 18.0f, 1.37f},
-        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
-        luisa::float4{28.0f, 29.0f, 30.0f, 0.0f},
-        luisa::float4{31.0f, 32.0f, 33.0f, 0.0f},
-        luisa::float4{34.0f, 35.0f, 36.0f, 7.0f},
-        luisa::float4{37.0f, 38.0f, 39.0f, 0.0f},
-        luisa::float4{40.0f, 41.0f, 42.0f, 0.0f},
-        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f}};
+        luisa::float4{1.0f, 2.0f, 3.0f, 0.5f},
+        luisa::float4{28.0f, 29.0f, 30.0f, 0.19f},
+        luisa::float4{16.0f, 17.0f, 18.0f, 0.0f},
+        luisa::float4{31.0f, 32.0f, 33.0f, 1.37f},
+        luisa::float4{34.0f, 35.0f, 36.0f, 456.0f},
+        luisa::float4{37.0f, 38.0f, 39.0f, 1.29f},
+        luisa::float4{40.0f, 41.0f, 42.0f, 0.0f}};
     auto physical_round_trip = true;
     for (auto record = 0u;
          record < physical_storage_expected.size();
@@ -1773,21 +1811,6 @@ int main(int argc, char **argv) {
         physical_round_trip &= approximately_equal(
             stored[4u * storage_records_per_slot + record],
             physical_storage_expected[record]);
-    }
-    constexpr std::array physical_bssrdf_storage_expected{
-        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
-        luisa::float4{0.0f, 0.0f, 0.0f, 1.0f},
-        luisa::float4{
-            static_cast<float>(SurfaceBssrdfMethod::random_walk_skin),
-            1.4f,
-            0.0f,
-            0.0f}};
-    for (auto record = 0u;
-         record < physical_bssrdf_storage_expected.size();
-         ++record) {
-        physical_round_trip &= approximately_equal(
-            stored[4u * storage_records_per_slot + 15u + record],
-            physical_bssrdf_storage_expected[record]);
     }
     physical_round_trip &= approximately_equal(
         stored[4u * storage_records_per_slot + 14u],
@@ -1798,16 +1821,14 @@ int main(int argc, char **argv) {
             luisa::float4{456.0f, 1.29f, 0.0f, 0.0f}) &&
         approximately_equal(
             stored[3u * storage_records_per_slot + 18u],
-            luisa::float4{456.0f, 1.29f, 0.0f, 0.0f}) &&
-        approximately_equal(
-            stored[4u * storage_records_per_slot + 18u],
             luisa::float4{456.0f, 1.29f, 0.0f, 0.0f});
     const auto overflow_truncated =
         approximately_equal(
             stored[2u * storage_records_per_slot],
             luisa::float4{2.0f,
-                static_cast<float>(SurfaceClosureKind::none),
-                static_cast<float>(SurfaceClosureLobe::none),
+                static_cast<float>(cycles_closure::type_none),
+                static_cast<float>(
+                    cycles_closure::MicrofacetFresnel::none),
                 0.0f}) &&
         approximately_equal(
             stored[2u * storage_records_per_slot + 6u],
