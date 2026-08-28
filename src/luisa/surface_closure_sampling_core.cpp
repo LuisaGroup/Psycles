@@ -323,6 +323,146 @@ surface_closure_selection(
     return result;
 }
 
+luisa::compute::Var<SurfaceClosureSelectionCall>
+surface_closure_selection(
+    const SurfaceClosureSelectionContext &context,
+    const SurfaceClosurePhysicalCommonRecord &closure,
+    bool include_runtime_flags,
+    SurfaceClosureReachability reachability) noexcept {
+    // This is Cycles' finite categorical measure over the retained
+    // ShaderClosure array. The type intervals below are disjoint over the
+    // representable Psycles closure domain, so OR-ing their event predicates
+    // is exactly the former kind/lobe case distinction. type_none matches no
+    // interval and is therefore the complete setup-failure state.
+    const UInt type{closure.closure_type};
+    UInt lobe_mask{context.lobe_mask};
+    const auto diffuse_enabled =
+        (lobe_mask & static_cast<std::uint32_t>(event_diffuse)) != 0u;
+    const auto glossy_enabled =
+        (lobe_mask & static_cast<std::uint32_t>(event_glossy)) != 0u;
+    const auto transparent_enabled =
+        (lobe_mask & static_cast<std::uint32_t>(event_transparent)) !=
+        0u;
+    const auto transmission_enabled =
+        (lobe_mask & static_cast<std::uint32_t>(event_transmission)) !=
+        0u;
+
+    Bool eligible = false;
+    if (reachability.contains(SurfaceClosureKind::diffuse)) {
+        const auto diffuse =
+            (type >= cycles_closure::type_diffuse) &
+            (type <= cycles_closure::type_oren_nayar);
+        eligible |= diffuse & diffuse_enabled;
+    }
+    if (reachability.contains(SurfaceClosureKind::translucent)) {
+        eligible |=
+            (type == cycles_closure::type_translucent) &
+            diffuse_enabled & transmission_enabled;
+    }
+    if (reachability.contains(
+            SurfaceClosureKind::rough_translucent)) {
+        eligible |=
+            (type == cycles_closure::type_rough_translucent) &
+            diffuse_enabled & transmission_enabled;
+    }
+    if (reachability.contains_principled_lobe(
+            SurfaceClosureLobe::sheen) ||
+        reachability.contains(
+            SurfaceClosureKind::sheen_microfiber)) {
+        eligible |= (type == cycles_closure::type_sheen) &
+                    diffuse_enabled;
+    }
+    if (reachability.contains(
+            SurfaceClosureKind::sheen_ashikhmin)) {
+        eligible |=
+            (type == cycles_closure::type_ashikhmin_velvet) &
+            diffuse_enabled;
+    }
+    if (reachability.contains(SurfaceClosureKind::bssrdf)) {
+        const auto bssrdf =
+            (type >= cycles_closure::type_bssrdf_burley) &
+            (type <= cycles_closure::type_bssrdf_random_walk_skin);
+        eligible |= bssrdf & diffuse_enabled;
+    }
+
+    constexpr auto sheen_lobe_bit =
+        surface_closure_lobe_bit(SurfaceClosureLobe::sheen);
+    const auto reflection_microfacet_reachable =
+        (reachability.contains(SurfaceClosureKind::principled) &&
+            (reachability.principled_lobes & ~sheen_lobe_bit) != 0u) ||
+        reachability.contains(SurfaceClosureKind::glossy) ||
+        reachability.contains(SurfaceClosureKind::metallic_f82) ||
+        reachability.contains(
+            SurfaceClosureKind::metallic_conductor);
+    if (reflection_microfacet_reachable) {
+        const auto reflection_microfacet =
+            (type == cycles_closure::type_microfacet_ggx) |
+            (type == cycles_closure::type_microfacet_beckmann);
+        eligible |= reflection_microfacet & glossy_enabled;
+    }
+    if (reachability.contains(
+            SurfaceClosureKind::hair_reflection)) {
+        eligible |=
+            (type == cycles_closure::type_hair_reflection) &
+            glossy_enabled;
+    }
+    const auto transmission_microfacet_reachable =
+        reachability.contains(SurfaceClosureKind::refraction) ||
+        reachability.contains(
+            SurfaceClosureKind::thin_glass_transmission) ||
+        reachability.contains(
+            SurfaceClosureKind::hair_transmission);
+    if (transmission_microfacet_reachable) {
+        const auto transmission_microfacet =
+            (type >=
+                cycles_closure::type_microfacet_beckmann_refraction) &
+            (type <= cycles_closure::type_hair_transmission);
+        eligible |= transmission_microfacet & glossy_enabled &
+                    transmission_enabled;
+    }
+    if (reachability.contains(SurfaceClosureKind::glass)) {
+        const auto glass =
+            (type >= cycles_closure::type_microfacet_beckmann_glass) &
+            (type <=
+                cycles_closure::type_microfacet_multi_ggx_glass);
+        eligible |= glass & (glossy_enabled | transmission_enabled);
+    }
+    if (reachability.contains(
+            SurfaceClosureKind::transparent)) {
+        eligible |=
+            (type == cycles_closure::type_transparent) &
+            transparent_enabled;
+    }
+
+    luisa::compute::Var<SurfaceClosureSelectionCall> result;
+    result.weight = select(
+        0.0f, closure.sample_weight, eligible);
+    result.glossy_normal = closure.normal;
+    if (include_runtime_flags) {
+        result.runtime_flags = detail::cycles_runtime_flags(
+            detail::SurfaceClosureIdentityExpression{
+                .kind = Expr<std::uint32_t>{closure.kind.expression()},
+                .lobe = Expr<std::uint32_t>{closure.lobe.expression()},
+                .bssrdf_method = Expr<std::uint32_t>{
+                    closure.bssrdf_method.expression()},
+                .allocation_weight = Expr<float>{
+                    closure.allocation_weight.expression()},
+                .setup_valid = Expr<bool>{
+                    closure.setup_valid.expression()},
+                .roughness = Expr<float>{closure.roughness.expression()},
+                .preserve_ggx_energy = Expr<bool>{
+                    closure.preserve_ggx_energy.expression()},
+                .beckmann = Expr<bool>{closure.beckmann.expression()}},
+            Float{context.glossy_filter_roughness},
+            reachability);
+    } else {
+        result.runtime_flags = 0u;
+    }
+    result.closure_type = type;
+    result.closure_sample_weight = closure.sample_weight;
+    return result;
+}
+
 namespace {
 
 [[nodiscard]] luisa::compute::Var<SurfaceClosureConditionalSampleCall>

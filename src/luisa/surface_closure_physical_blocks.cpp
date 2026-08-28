@@ -1,13 +1,21 @@
 #include <psycles/luisa/surface_closure_physical_blocks.h>
+#include <psycles/luisa/surface_closure_identity.h>
 
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend {
 namespace {
 
-inline constexpr std::uint32_t setup_valid_bit = 1u << 0u;
-inline constexpr std::uint32_t preserve_ggx_energy_bit = 1u << 1u;
-inline constexpr std::uint32_t beckmann_bit = 1u << 2u;
+// The fourth identity lane is a semantic bitfield. SurfaceBssrdfMethod owns
+// the low 29 bits; flags occupy the high bits so every value in the declared
+// method domain round trips without consuming a lane needed by ClosureType.
+inline constexpr std::uint32_t bssrdf_method_mask = (1u << 29u) - 1u;
+inline constexpr std::uint32_t setup_valid_bit = 1u << 29u;
+inline constexpr std::uint32_t preserve_ggx_energy_bit = 1u << 30u;
+inline constexpr std::uint32_t beckmann_bit = 1u << 31u;
+static_assert(
+    static_cast<std::uint32_t>(SurfaceBssrdfMethod::random_walk_skin) <=
+    bssrdf_method_mask);
 
 }// namespace
 
@@ -20,6 +28,9 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
         preserve_ggx_energy_bit,
         closure.preserve_ggx_energy);
     flags |= select(0u, beckmann_bit, closure.beckmann);
+    flags |= closure.bssrdf_method & bssrdf_method_mask;
+    const auto closure_type =
+        detail::cycles_closure_type(closure);
     const auto glass_payload =
         (closure.kind == static_cast<std::uint32_t>(
                              SurfaceClosureKind::glass)) |
@@ -116,10 +127,10 @@ SurfaceClosurePhysicalBlocks pack_surface_closure_physical(
     return {
         .block_0 = make_float4x4(
             make_uint4(
+                closure_type,
                 closure.kind,
                 closure.lobe,
-                flags,
-                closure.bssrdf_method)
+                flags)
                 .bitcast<luisa::float4>(),
             make_float4(
                 closure.weight,
@@ -144,10 +155,11 @@ unpack_surface_closure_physical_common(
         luisa::compute::Float4x4{block_0_expression};
     const auto identity =
         block_0[0u].bitcast<luisa::uint4>();
-    const auto flags = identity.z;
+    const auto flags = identity.w;
     return {
-        .kind = identity.x,
-        .lobe = identity.y,
+        .closure_type = identity.x,
+        .kind = identity.y,
+        .lobe = identity.z,
         .weight = block_0[1u].xyz(),
         .allocation_weight = block_0[1u].w,
         .sample_weight = block_0[2u].w,
@@ -158,13 +170,14 @@ unpack_surface_closure_physical_common(
         .preserve_ggx_energy =
             (flags & preserve_ggx_energy_bit) != 0u,
         .beckmann = (flags & beckmann_bit) != 0u,
-        .bssrdf_method = identity.w};
+        .bssrdf_method = flags & bssrdf_method_mask};
 }
 
 SurfaceClosurePhysicalCommonRecord
 project_surface_closure_physical_common(
     const SurfaceClosurePhysicalRecord &closure) noexcept {
     return {
+        .closure_type = detail::cycles_closure_type(closure),
         .kind = closure.kind,
         .lobe = closure.lobe,
         .weight = closure.weight,

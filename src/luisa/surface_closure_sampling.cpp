@@ -31,7 +31,7 @@ void for_each_surface_closure_selection(
             consumer(index,
                 surface_closure_selection(
                     context,
-                    make_surface_closure_selection_input(common),
+                    common,
                     include_runtime_flags,
                     reachability));
             index += 1u;
@@ -75,7 +75,7 @@ void with_selected_surface_closure(
             closures.physical_payload_entry(access, common),
             surface_closure_selection(
                 context,
-                make_surface_closure_selection_input(common),
+                common,
                 include_runtime_flags,
                 reachability));
     } else {
@@ -153,7 +153,7 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
             const auto common = _closures.physical_common_entry(access);
             const auto selection = surface_closure_selection(
                 selection_context,
-                make_surface_closure_selection_input(common),
+                common,
                 !use_populated_runtime_flags,
                 _reachability);
             const auto sample =

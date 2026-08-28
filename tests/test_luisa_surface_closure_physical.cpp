@@ -1,4 +1,5 @@
 #include <psycles/luisa/surface_closure_evaluation.h>
+#include <psycles/luisa/surface_closure_identity.h>
 #include <psycles/luisa/surface_closure_physical_blocks.h>
 #include <psycles/luisa/surface_closure_sampling.h>
 
@@ -154,7 +155,8 @@ constexpr std::uint32_t sample_state = 4u;
 constexpr std::uint32_t product_sample_numeric = 5u;
 constexpr std::uint32_t tagged_sample_numeric = 6u;
 constexpr std::uint32_t payload_reads = 7u;
-constexpr std::uint32_t count = 8u;
+constexpr std::uint32_t retained_selection = 8u;
+constexpr std::uint32_t count = 9u;
 }// namespace invariant_row
 constexpr std::uint32_t invariant_row_count = invariant_row::count;
 constexpr std::uint32_t rows_per_case =
@@ -331,7 +333,9 @@ using PhysicalRoundTripCallable = Callable<luisa::float4x4(
     const SurfaceClosurePhysicalRecord &lhs,
     const SurfaceClosurePhysicalCommonRecord &rhs,
     Float3 expected_color_or_evaluation_scale) noexcept {
-    return (lhs.kind == rhs.kind) &
+    return (psycles::luisa_backend::detail::cycles_closure_type(lhs) ==
+               rhs.closure_type) &
+           (lhs.kind == rhs.kind) &
            (lhs.lobe == rhs.lobe) &
            all(lhs.weight == rhs.weight) &
            (lhs.allocation_weight == rhs.allocation_weight) &
@@ -913,6 +917,59 @@ int main(int argc, char **argv) {
             make_float4(select(
                 0.0f, 1.0f,
                 payload_read_count == expected_payload_reads)));
+
+        // Cycles' retained ShaderClosure selection is a quotient of the
+        // pre-storage candidate operation. For every lobe-mask combination,
+        // stored (type, sample_weight) must produce the same categorical mass
+        // and selected identity as the wider kind/lobe/setup representation.
+        Bool retained_selection_equal = true;
+        constexpr std::array lobe_masks{
+            std::uint32_t{0u},
+            static_cast<std::uint32_t>(event_diffuse),
+            static_cast<std::uint32_t>(event_glossy),
+            static_cast<std::uint32_t>(event_transmission),
+            static_cast<std::uint32_t>(event_transparent),
+            static_cast<std::uint32_t>(
+                event_diffuse | event_transmission),
+            static_cast<std::uint32_t>(
+                event_glossy | event_transmission),
+            static_cast<std::uint32_t>(
+                event_diffuse | event_glossy |
+                event_transmission | event_transparent)};
+        for (const auto lobe_mask : lobe_masks) {
+            const auto selection_context =
+                SurfaceClosureSelectionContext{
+                    .lobe_mask = lobe_mask,
+                    .glossy_filter_roughness = 0.0f};
+            const auto candidate_selection =
+                surface_closure_selection(
+                    selection_context,
+                    make_surface_closure_selection_input(
+                        consumer_product),
+                    false);
+            const auto retained_selection =
+                surface_closure_selection(
+                    selection_context,
+                    consumer_common,
+                    false);
+            retained_selection_equal &=
+                candidate_selection.weight ==
+                    retained_selection.weight;
+            retained_selection_equal &=
+                candidate_selection.closure_type ==
+                    retained_selection.closure_type;
+            retained_selection_equal &=
+                candidate_selection.closure_sample_weight ==
+                    retained_selection.closure_sample_weight;
+            retained_selection_equal &= all(
+                candidate_selection.glossy_normal ==
+                retained_selection.glossy_normal);
+        }
+        output->write(
+            case_index * rows_per_case + logical_row_count +
+                invariant_row::retained_selection,
+            make_float4(select(
+                0.0f, 1.0f, retained_selection_equal)));
     };
 
     if (test.function()->function().custom_callables().size() != 1u) {
