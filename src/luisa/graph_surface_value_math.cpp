@@ -395,8 +395,13 @@ public:
                 case compiler::ValueOperation::mix_float: {
                     auto t = scalar(
                         instruction.operand(operand::mix::factor), result);
-                    if (instruction.static_u0 != 0u) {
-                        t = clamp(t, 0.0f, 1.0f);
+                    if (context.svm_immediate_override != nullptr) {
+                      t = select(
+                          t, clamp(t, 0.0f, 1.0f),
+                          (*context.svm_immediate_override &
+                           compiler::surface_value_mix_float_clamp_bit) != 0u);
+                    } else if (instruction.static_u0 != 0u) {
+                      t = clamp(t, 0.0f, 1.0f);
                     }
                     value = make_float4(lerp(
                         scalar(
@@ -417,8 +422,13 @@ public:
                                            instruction.operand(
                                                operand::mix::factor),
                                            result));
-                    if (instruction.static_u1 != 0u) {
-                        t = clamp(t, 0.0f, 1.0f);
+                    if (context.svm_immediate_override != nullptr) {
+                      t = select(
+                          t, clamp(t, 0.0f, 1.0f),
+                          (*context.svm_immediate_override &
+                           compiler::surface_value_mix_vector_clamp_bit) != 0u);
+                    } else if (instruction.static_u1 != 0u) {
+                      t = clamp(t, 0.0f, 1.0f);
                     }
                     value = make_float4(
                         lerp(

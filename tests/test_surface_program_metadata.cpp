@@ -1179,8 +1179,17 @@ void test_surface_value_storage_plan() {
                                  .storage = &positive_zero_plan}};
   const auto signed_zero_scene =
       build_surface_value_executable_scene(zero_inputs);
-  require(signed_zero_scene.valid && signed_zero_scene.variants.size() == 2u,
-          "exact immutable-variant interning merged signed zero");
+  require(signed_zero_scene.valid && signed_zero_scene.variants.size() == 1u &&
+              signed_zero_scene.instruction_variants ==
+                  std::vector<std::uint32_t>{0u, 0u} &&
+              signed_zero_scene.values.metadata.size() == 2u &&
+              std::bit_cast<std::uint32_t>(
+                  signed_zero_scene.values.metadata[0u].static_f1) ==
+                  0x80000000u &&
+              std::bit_cast<std::uint32_t>(
+                  signed_zero_scene.values.metadata[1u].static_f1) == 0u,
+          "dead signed-zero metadata multiplied typed handlers or lost its "
+          "exact bytecode bits");
 
   auto translated_transform = transform;
   translated_transform[12u] = 3.5f;
@@ -1201,7 +1210,7 @@ void test_surface_value_storage_plan() {
   require(transform_scene.valid && transform_scene.variants.size() == 1u &&
               transform_scene.instruction_variants ==
                   std::vector<std::uint32_t>{0u, 0u},
-          "equal-shape static tables did not share one semantic evaluator");
+          "equal-shape static tables did not share one typed handler");
   require(
       transform_scene.values.metadata.size() == 2u &&
           transform_scene.values.metadata[0u].static_table_begin == 0u &&
@@ -1215,13 +1224,13 @@ void test_surface_value_storage_plan() {
                             translated_transform.end());
                 return data;
               }(),
-      "semantic interning lost distinct static-table bytecode payloads");
+      "handler interning lost distinct static-table bytecode payloads");
   require(transform_scene.variants[0u].instruction.static_table.size() == 16u &&
               std::all_of(
                   transform_scene.variants[0u].instruction.static_table.begin(),
                   transform_scene.variants[0u].instruction.static_table.end(),
                   [](float value) noexcept { return value == 0.0f; }),
-          "a semantic evaluator retained an authored static-table payload");
+          "a typed handler retained an authored static-table payload");
 
   auto foreign_normalize_image = metadata_image;
   foreign_normalize_image.instructions.front().control |=

@@ -4,8 +4,8 @@
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/graph_surface.h>
 
-#include "luisa_surface_test_support.h"
 #include "luisa_shader_shape_test_support.h"
+#include "luisa_surface_test_support.h"
 
 #include <algorithm>
 #include <array>
@@ -26,12 +26,12 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 namespace cycles_abi = psycles::contract::cycles_abi;
-using psycles::test_support::ParameterShaderServices;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::compile_named_kernel;
 using psycles::test_support::make_surface_point;
 using psycles::test_support::merged_surface_closure_plan;
 using psycles::test_support::parameter_data;
+using psycles::test_support::ParameterShaderServices;
 using psycles::test_support::require_bounded_xir;
 using psycles::test_support::surface_aov;
 
@@ -109,14 +109,11 @@ public:
         return Float3{value};
     }
 
-    [[nodiscard]] Float3 nishita_sky(Expr<std::uint32_t>,
-        std::uint32_t,
-        Expr<luisa::float3>,
-        Expr<float>,
-        Expr<float>,
-        Expr<float>,
-        Expr<float>) const noexcept override {
-        return make_float3(0.0f);
+    [[nodiscard]] Float3 nishita_sky(Expr<std::uint32_t>, Expr<std::uint32_t>,
+                                     Expr<luisa::float3>, Expr<float>,
+                                     Expr<float>, Expr<float>,
+                                     Expr<float>) const noexcept override {
+      return make_float3(0.0f);
     }
 };
 

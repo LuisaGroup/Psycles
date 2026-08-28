@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <psycles/compiler/surface_program.h>
+#include <psycles/compiler/surface_value_immediate_domains.h>
 
 namespace psycles::compiler {
 
@@ -724,8 +725,6 @@ inline constexpr std::uint32_t surface_value_result_bank_shift = 16u;
 inline constexpr std::uint32_t surface_value_result_bank_mask =
     0x3u << surface_value_result_bank_shift;
 inline constexpr std::uint32_t surface_value_svm_immediate_shift = 18u;
-inline constexpr std::uint32_t surface_value_svm_immediate_value_mask =
-    (1u << 14u) - 1u;
 inline constexpr std::uint32_t surface_value_svm_immediate_mask =
     surface_value_svm_immediate_value_mask << surface_value_svm_immediate_shift;
 inline constexpr std::uint32_t
@@ -800,114 +799,14 @@ inline constexpr std::uint32_t surface_value_wave_profile_mask =
 inline constexpr std::uint32_t surface_value_mix_operation_mask = 0x1fu;
 inline constexpr std::uint32_t surface_value_mix_factor_clamp_bit = 1u << 5u;
 inline constexpr std::uint32_t surface_value_mix_result_clamp_bit = 1u << 6u;
-inline constexpr std::uint32_t surface_value_clamp_mode_mask = 0x1u;
-inline constexpr std::uint32_t surface_value_map_range_interpolation_mask =
-    0x3u;
-inline constexpr std::uint32_t surface_value_map_range_clamp_bit = 1u << 2u;
-inline constexpr std::uint32_t surface_value_map_range_configuration_mask =
-    surface_value_map_range_interpolation_mask |
-    surface_value_map_range_clamp_bit;
-static_assert(static_cast<std::uint32_t>(ClampMode::minmax) == 0u);
-static_assert(static_cast<std::uint32_t>(ClampMode::range) == 1u);
-static_assert(static_cast<std::uint32_t>(MapRangeInterpolation::linear) == 0u);
-static_assert(static_cast<std::uint32_t>(MapRangeInterpolation::stepped) == 1u);
-static_assert(static_cast<std::uint32_t>(MapRangeInterpolation::smoothstep) ==
-              2u);
-static_assert(static_cast<std::uint32_t>(MapRangeInterpolation::smootherstep) ==
-              3u);
-static_assert((surface_value_map_range_interpolation_mask &
-               surface_value_map_range_clamp_bit) == 0u);
-static_assert((surface_value_map_range_configuration_mask &
-               ~surface_value_svm_immediate_value_mask) == 0u);
-
-[[nodiscard]] constexpr std::uint32_t encode_surface_value_clamp_immediate(
-    ClampMode mode) noexcept {
-  return static_cast<std::uint32_t>(mode);
-}
-
-[[nodiscard]] constexpr ClampMode decode_surface_value_clamp_immediate(
-    std::uint32_t immediate) noexcept {
-  return static_cast<ClampMode>(immediate & surface_value_clamp_mode_mask);
-}
-
-[[nodiscard]] constexpr std::uint32_t encode_surface_value_map_range_immediate(
-    MapRangeInterpolation interpolation, bool clamp_result) noexcept {
-  return static_cast<std::uint32_t>(interpolation) |
-         (clamp_result ? surface_value_map_range_clamp_bit : 0u);
-}
-
-[[nodiscard]] constexpr MapRangeInterpolation
-decode_surface_value_map_range_interpolation(
-    std::uint32_t immediate) noexcept {
-  return static_cast<MapRangeInterpolation>(
-      immediate & surface_value_map_range_interpolation_mask);
-}
-
-[[nodiscard]] constexpr bool decode_surface_value_map_range_clamp(
-    std::uint32_t immediate) noexcept {
-  return (immediate & surface_value_map_range_clamp_bit) != 0u;
-}
-
-// Exhaust the finite semantic domains at compile time. This proves both
-// decode(encode(c)) == c and injectivity, which are the obligations required
-// before the corresponding host evaluator fields may be quotiented away.
-[[nodiscard]] constexpr bool surface_value_clamp_immediate_contract_holds()
-    noexcept {
-  constexpr auto mode_count = static_cast<std::uint32_t>(ClampMode::range) + 1u;
-  for (auto mode = 0u; mode < mode_count; ++mode) {
-    const auto semantic_mode = static_cast<ClampMode>(mode);
-    const auto encoded = encode_surface_value_clamp_immediate(semantic_mode);
-    if ((encoded & ~surface_value_clamp_mode_mask) != 0u ||
-        decode_surface_value_clamp_immediate(encoded) != semantic_mode) {
-      return false;
-    }
-    for (auto other = 0u; other < mode_count; ++other) {
-      if (mode != other &&
-          encoded == encode_surface_value_clamp_immediate(
-                         static_cast<ClampMode>(other))) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-[[nodiscard]] constexpr bool surface_value_map_range_immediate_contract_holds()
-    noexcept {
-  for (auto interpolation = 0u;
-       interpolation < map_range_interpolation_count;
-       ++interpolation) {
-    for (auto clamp = 0u; clamp < 2u; ++clamp) {
-      const auto semantic_interpolation =
-          static_cast<MapRangeInterpolation>(interpolation);
-      const auto encoded = encode_surface_value_map_range_immediate(
-          semantic_interpolation, clamp != 0u);
-      if ((encoded & ~surface_value_map_range_configuration_mask) != 0u ||
-          decode_surface_value_map_range_interpolation(encoded) !=
-              semantic_interpolation ||
-          decode_surface_value_map_range_clamp(encoded) != (clamp != 0u)) {
-        return false;
-      }
-      for (auto other_interpolation = 0u;
-           other_interpolation < map_range_interpolation_count;
-           ++other_interpolation) {
-        for (auto other_clamp = 0u; other_clamp < 2u; ++other_clamp) {
-          if ((interpolation != other_interpolation || clamp != other_clamp) &&
-              encoded == encode_surface_value_map_range_immediate(
-                             static_cast<MapRangeInterpolation>(
-                                 other_interpolation),
-                             other_clamp != 0u)) {
-            return false;
-          }
-        }
-      }
-    }
-  }
-  return true;
-}
-
-static_assert(surface_value_clamp_immediate_contract_holds());
-static_assert(surface_value_map_range_immediate_contract_holds());
+inline constexpr std::uint32_t surface_value_mix_float_clamp_bit = 1u;
+inline constexpr std::uint32_t surface_value_mix_vector_non_uniform_bit = 1u;
+inline constexpr std::uint32_t surface_value_mix_vector_clamp_bit = 1u << 1u;
+inline constexpr std::uint32_t surface_value_white_noise_dimensions_mask = 0x7u;
+inline constexpr std::uint32_t surface_value_color_ramp_mode_mask = 0x3u;
+inline constexpr std::uint32_t surface_value_color_ramp_alpha_bit = 1u << 2u;
+inline constexpr std::uint32_t surface_value_rgb_curve_sampled_bit = 1u;
+inline constexpr std::uint32_t surface_value_color_mode_mask = 0x3u;
 inline constexpr std::uint32_t surface_value_mapping_type_mask = 0x3u;
 inline constexpr std::uint32_t surface_value_mapping_axes_shift = 2u;
 inline constexpr std::uint32_t surface_value_mapping_axes_mask =
@@ -1010,18 +909,22 @@ inline constexpr std::uint32_t surface_value_runtime_control_mask =
     surface_value_control_mask | surface_value_region_specialization_tag_mask;
 
 // Primary interpreter dispatch is derived from the instruction itself. The
-// opcode and result bank select the typed handler. Image BOX is the sole
-// current sub-opcode execution family because it records a normal-weighted
-// multi-sample AST instead of the regular one-sample image AST. Bit 18 is in a
-// separate handler-key namespace; it does not consume another bytecode bit.
+// opcode and result bank select the typed handler. Image BOX records a
+// normal-weighted multi-sample AST, while non-uniform Mix Vector consumes a
+// float3 factor instead of a scalar. These are sub-opcode typed execution
+// families; their bits live only in the handler-key namespace.
 inline constexpr std::uint32_t surface_value_handler_image_box_bit = 1u << 18u;
-static_assert(
-    (surface_value_handler_image_box_bit &
-     (surface_value_opcode_mask | surface_value_result_bank_mask)) == 0u);
+inline constexpr std::uint32_t
+    surface_value_handler_mix_vector_non_uniform_bit = 1u << 19u;
+static_assert(((surface_value_handler_image_box_bit |
+                surface_value_handler_mix_vector_non_uniform_bit) &
+               (surface_value_opcode_mask | surface_value_result_bank_mask)) ==
+              0u);
 static_assert(
     (surface_value_region_specialization_tag_mask &
      (surface_value_opcode_mask | surface_value_result_bank_mask |
-      surface_value_handler_image_box_bit)) == 0u,
+      surface_value_handler_image_box_bit |
+      surface_value_handler_mix_vector_non_uniform_bit)) == 0u,
     "region tags and ordinary handler keys must occupy disjoint bit fields");
 
 // For a tagged region beginning, the exact region identity and the ordinary
@@ -1087,12 +990,16 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
   operation = surface_value_semantic_base_operation(operation);
   return operation == ValueOperation::noise_factor ||
          operation == ValueOperation::noise_color ||
+         operation == ValueOperation::white_noise_value ||
+         operation == ValueOperation::white_noise_color ||
          operation == ValueOperation::math ||
          operation == ValueOperation::vector_math_value ||
          operation == ValueOperation::vector_math_vector ||
          operation == ValueOperation::clamp_range ||
          operation == ValueOperation::map_range_float ||
          operation == ValueOperation::map_range_vector ||
+         operation == ValueOperation::mix_float ||
+         operation == ValueOperation::mix_vector ||
          operation == ValueOperation::mix ||
          operation == ValueOperation::fresnel ||
          operation == ValueOperation::layer_weight_fresnel ||
@@ -1105,6 +1012,16 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
          operation == ValueOperation::wave_factor ||
          operation == ValueOperation::gradient ||
          operation == ValueOperation::color_ramp ||
+         operation == ValueOperation::rgb_curve ||
+         operation == ValueOperation::separate_r ||
+         operation == ValueOperation::separate_g ||
+         operation == ValueOperation::separate_b ||
+         operation == ValueOperation::combine_color ||
+         operation == ValueOperation::voronoi_distance ||
+         operation == ValueOperation::voronoi_color ||
+         operation == ValueOperation::voronoi_position ||
+         operation == ValueOperation::voronoi_w ||
+         operation == ValueOperation::voronoi_radius ||
          surface_value_operation_uses_mapping_immediate(operation) ||
          surface_value_operation_uses_image_immediate(operation);
 }
@@ -1129,29 +1046,83 @@ surface_value_operation_is_external_query(
 [[nodiscard]] constexpr std::uint64_t
 surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
   operation = surface_value_semantic_base_operation(operation);
+  if (operation == ValueOperation::mix_vector) {
+    // Scalar and vector factors are distinct typed execution shapes, matching
+    // Cycles' NODE_MIX_VECTOR and NODE_MIX_VECTOR_NON_UNIFORM opcodes. The
+    // shape is duplicated in the immediate for device dispatch but remains in
+    // the host handler key; it is therefore not quotiented away here.
+    return 0u;
+  }
   return operation == ValueOperation::math ||
-             operation == ValueOperation::vector_math_value ||
-             operation == ValueOperation::vector_math_vector ||
-             operation == ValueOperation::clamp_range ||
-             operation == ValueOperation::map_range_float ||
-             operation == ValueOperation::map_range_vector ||
-             operation == ValueOperation::mix ||
-             operation == ValueOperation::fresnel ||
-             operation == ValueOperation::layer_weight_fresnel ||
-             operation == ValueOperation::layer_weight_facing ||
-             operation == ValueOperation::ambient_occlusion ||
-             operation == ValueOperation::uv ||
-             operation == ValueOperation::normal_map ||
-             operation == ValueOperation::bump ||
-             operation == ValueOperation::noise_factor ||
-             operation == ValueOperation::noise_color ||
-             operation == ValueOperation::wave_color ||
-             operation == ValueOperation::wave_factor ||
-             operation == ValueOperation::gradient ||
-             operation == ValueOperation::color_ramp ||
-             surface_value_operation_uses_mapping_immediate(operation)
+                 operation == ValueOperation::vector_math_value ||
+                 operation == ValueOperation::vector_math_vector ||
+                 operation == ValueOperation::clamp_range ||
+                 operation == ValueOperation::map_range_float ||
+                 operation == ValueOperation::map_range_vector ||
+                 operation == ValueOperation::mix ||
+                 operation == ValueOperation::mix_float ||
+                 operation == ValueOperation::fresnel ||
+                 operation == ValueOperation::layer_weight_fresnel ||
+                 operation == ValueOperation::layer_weight_facing ||
+                 operation == ValueOperation::ambient_occlusion ||
+                 operation == ValueOperation::uv ||
+                 operation == ValueOperation::normal_map ||
+                 operation == ValueOperation::bump ||
+                 operation == ValueOperation::noise_factor ||
+                 operation == ValueOperation::noise_color ||
+                 operation == ValueOperation::white_noise_value ||
+                 operation == ValueOperation::white_noise_color ||
+                 operation == ValueOperation::wave_color ||
+                 operation == ValueOperation::wave_factor ||
+                 operation == ValueOperation::gradient ||
+                 operation == ValueOperation::color_ramp ||
+                 operation == ValueOperation::rgb_curve ||
+                 operation == ValueOperation::separate_r ||
+                 operation == ValueOperation::separate_g ||
+                 operation == ValueOperation::separate_b ||
+                 operation == ValueOperation::combine_color ||
+                 operation == ValueOperation::voronoi_distance ||
+                 operation == ValueOperation::voronoi_color ||
+                 operation == ValueOperation::voronoi_position ||
+                 operation == ValueOperation::voronoi_w ||
+                 operation == ValueOperation::voronoi_radius ||
+                 operation == ValueOperation::nishita_sky ||
+                 surface_value_operation_uses_mapping_immediate(operation)
              ? ~std::uint64_t{0u}
              : 0u;
+}
+
+// Nishita's texture-table index is unbounded within uint32 and therefore
+// cannot inhabit the opcode-owned 14-bit immediate. It remains ordinary
+// instruction metadata, but is not handler/JIT identity: one typed Nishita
+// body loads the exact index of the current bytecode record.
+[[nodiscard]] constexpr bool surface_value_operation_uses_metadata_static_u0(
+    ValueOperation operation) noexcept {
+  return surface_value_semantic_base_operation(operation) ==
+         ValueOperation::nishita_sky;
+}
+
+// These are the only current operations whose Luisa AST contains statically
+// indexed table accesses. Their table length is execution shape; all other
+// static-table payloads are semantically dead to a value handler and cannot
+// create a distinct callable.
+[[nodiscard]] constexpr std::size_t
+surface_value_handler_static_table_size(ValueOperation operation) noexcept {
+  operation = surface_value_semantic_base_operation(operation);
+  if (operation == ValueOperation::object_position_with_transform) {
+    return 16u;
+  }
+  if (operation == ValueOperation::hosek_wilkie_sky) {
+    return 33u;
+  }
+  return 0u;
+}
+
+[[nodiscard]] constexpr bool
+surface_value_static_table_shape_valid(ValueOperation operation,
+                                       std::size_t size) noexcept {
+  const auto required = surface_value_handler_static_table_size(operation);
+  return required == 0u || size == required;
 }
 
 [[nodiscard]] constexpr std::uint64_t
@@ -1161,6 +1132,8 @@ surface_value_svm_static_u1_mask(ValueOperation operation) noexcept {
     return ~std::uint64_t{0u};
   }
   return operation == ValueOperation::mix ||
+                 operation == ValueOperation::mix_vector ||
+                 operation == ValueOperation::color_ramp ||
                  operation == ValueOperation::map_range_float ||
                  operation == ValueOperation::map_range_vector ||
                  surface_value_operation_uses_mapping_immediate(operation) ||
@@ -1207,6 +1180,12 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
                static_cast<std::uint64_t>(BlendOperation::value) &&
            static_u1 <= 0x3u;
   }
+  if (operation == ValueOperation::mix_float) {
+    return static_u0 <= 1u && static_u1 == 0u;
+  }
+  if (operation == ValueOperation::mix_vector) {
+    return static_u0 <= 1u && static_u1 <= 1u;
+  }
   if (operation == ValueOperation::math) {
     return static_u0 < math_operation_count && static_u1 == 0u;
   }
@@ -1249,6 +1228,10 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
     return static_u0 >= 1u && static_u0 <= 4u && type <= 4u &&
            (static_u1 & ~std::uint64_t{0x701u}) == 0u;
   }
+  if (operation == ValueOperation::white_noise_value ||
+      operation == ValueOperation::white_noise_color) {
+    return static_u0 >= 1u && static_u0 <= 4u && static_u1 == 0u;
+  }
   if (operation == ValueOperation::wave_color ||
       operation == ValueOperation::wave_factor) {
     const auto type = static_u0 & 0xffu;
@@ -1264,6 +1247,36 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
   }
   if (operation == ValueOperation::color_ramp) {
     return static_u0 <= 3u && static_u1 <= 1u;
+  }
+  if (operation == ValueOperation::rgb_curve) {
+    return static_u0 <= 1u && static_u1 == 0u;
+  }
+  if (operation == ValueOperation::separate_r ||
+      operation == ValueOperation::separate_g ||
+      operation == ValueOperation::separate_b ||
+      operation == ValueOperation::combine_color) {
+    return static_u0 <= 2u && static_u1 == 0u;
+  }
+  if (operation == ValueOperation::voronoi_distance ||
+      operation == ValueOperation::voronoi_color ||
+      operation == ValueOperation::voronoi_position ||
+      operation == ValueOperation::voronoi_w ||
+      operation == ValueOperation::voronoi_radius) {
+    const auto dimensions = static_cast<std::uint32_t>(static_u0 & 0xffu);
+    const auto feature = static_cast<std::uint32_t>((static_u0 >> 8u) & 0xffu);
+    const auto metric = static_cast<std::uint32_t>((static_u0 >> 16u) & 0xffu);
+    const auto normalize =
+        static_cast<std::uint32_t>((static_u0 >> 24u) & 0xffu);
+    return dimensions >= 1u && dimensions <= 4u &&
+           feature <=
+               static_cast<std::uint32_t>(VoronoiFeature::n_sphere_radius) &&
+           metric <=
+               static_cast<std::uint32_t>(VoronoiDistanceMetric::minkowski) &&
+           normalize <= 1u && (static_u0 >> 32u) == 0u && static_u1 == 0u;
+  }
+  if (operation == ValueOperation::nishita_sky) {
+    return static_u0 <= std::numeric_limits<std::uint32_t>::max() &&
+           static_u1 == 0u;
   }
   if (surface_value_operation_uses_mapping_immediate(operation)) {
     return static_u0 <= static_cast<std::uint64_t>(MappingVectorType::normal) &&
@@ -1300,6 +1313,17 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
            (static_cast<std::uint32_t>((static_u1 >> 8u) & 0xffu)
             << surface_value_noise_type_shift);
   }
+  if (operation == ValueOperation::white_noise_value ||
+      operation == ValueOperation::white_noise_color) {
+    return static_cast<std::uint32_t>(static_u0);
+  }
+  if (operation == ValueOperation::mix_float) {
+    return static_u0 != 0u ? surface_value_mix_float_clamp_bit : 0u;
+  }
+  if (operation == ValueOperation::mix_vector) {
+    return (static_u0 != 0u ? surface_value_mix_vector_non_uniform_bit : 0u) |
+           (static_u1 != 0u ? surface_value_mix_vector_clamp_bit : 0u);
+  }
   if (operation == ValueOperation::mix) {
     return static_cast<std::uint32_t>(static_u0) |
            ((static_u1 & 1u) != 0u
@@ -1332,9 +1356,32 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
       operation == ValueOperation::uv ||
       operation == ValueOperation::normal_map ||
       operation == ValueOperation::bump ||
-      operation == ValueOperation::gradient ||
-      operation == ValueOperation::color_ramp) {
+      operation == ValueOperation::gradient) {
     return static_cast<std::uint32_t>(static_u0);
+  }
+  if (operation == ValueOperation::color_ramp) {
+    return static_cast<std::uint32_t>(static_u0) |
+           (static_u1 != 0u ? surface_value_color_ramp_alpha_bit : 0u);
+  }
+  if (operation == ValueOperation::rgb_curve) {
+    return static_u0 != 0u ? surface_value_rgb_curve_sampled_bit : 0u;
+  }
+  if (operation == ValueOperation::separate_r ||
+      operation == ValueOperation::separate_g ||
+      operation == ValueOperation::separate_b ||
+      operation == ValueOperation::combine_color) {
+    return static_cast<std::uint32_t>(static_u0);
+  }
+  if (operation == ValueOperation::voronoi_distance ||
+      operation == ValueOperation::voronoi_color ||
+      operation == ValueOperation::voronoi_position ||
+      operation == ValueOperation::voronoi_w ||
+      operation == ValueOperation::voronoi_radius) {
+    return encode_surface_value_voronoi_immediate(
+        static_cast<std::uint32_t>(static_u0 & 0xffu),
+        static_cast<VoronoiFeature>((static_u0 >> 8u) & 0xffu),
+        static_cast<VoronoiDistanceMetric>((static_u0 >> 16u) & 0xffu),
+        ((static_u0 >> 24u) & 1u) != 0u);
   }
   if (operation == ValueOperation::wave_color ||
       operation == ValueOperation::wave_factor) {
@@ -1365,12 +1412,10 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
          operation == ValueOperation::image_alpha;
 }
 
-// This coarse instruction-local projection identifies the common Cycles-style
-// opcode/execution-family branch without consulting operands or metadata.
-// Distinct exact evaluator variants may intentionally map to the same primary
-// key; the interpreter refines such a fiber with the complete semantic
-// discriminator. Thus this projection only moves the first dispatch level and
-// never weakens exact evaluator interning.
+// Exact typed-handler identity. All remaining immutable fields are instruction
+// data decoded by that handler; there is no secondary material/evaluator
+// dispatch. Equality of keys therefore means equality of the Luisa AST ABI,
+// not merely a coarse first-level projection.
 [[nodiscard]] constexpr std::uint32_t make_surface_value_handler_key(
     ValueOperation operation,
     SurfaceValueBank result_bank,
@@ -1385,6 +1430,10 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
     if (projection == 1u) {
       key |= surface_value_handler_image_box_bit;
     }
+  }
+  if (operation == ValueOperation::mix_vector &&
+      (svm_immediate & surface_value_mix_vector_non_uniform_bit) != 0u) {
+    key |= surface_value_handler_mix_vector_non_uniform_bit;
   }
   return key;
 }

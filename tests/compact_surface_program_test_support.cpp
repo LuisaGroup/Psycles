@@ -11,9 +11,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
@@ -194,28 +194,21 @@ template<std::size_t StackCapacity>
     const std::shared_ptr<LuisaSceneData> &scene,
     const SurfaceValueInstructionDispatcher &dispatcher) {
     using Stack = SurfaceValueStackBankFor<StackCapacity>;
-    using ProbeCallable = Callable<void(
-        Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
-        BindlessArray, SurfacePointCall &, luisa::float3, bool, luisa::uint4,
-        luisa::uint, Stack &)>;
+    using ProbeCallable =
+        Callable<void(Buffer<float>, Buffer<luisa::float3>, Buffer<float>,
+                      BindlessArray, BindlessArray, SurfacePointCall &,
+                      luisa::float3, bool, luisa::uint4, Stack &)>;
     ProbeCallable probe{
-        [dispatcher](BufferFloat scalar_parameters,
-                     BufferFloat3 vector_parameters,
-                     BufferFloat cycles_bsdf_tables,
-                     BindlessVar textures,
-                     BindlessVar geometry_heap,
-                     Var<SurfacePointCall> &point,
-                     Float3 transaction_shading_normal,
-                     Bool use_undisplaced_geometry,
-                     Var<luisa::uint4> instruction,
-                     UInt instruction_index,
-                     Var<Stack> &stack) noexcept {
-            const SurfaceValueLocalsView locals{stack.expression()};
-            dispatcher(
-                scalar_parameters, vector_parameters, cycles_bsdf_tables,
-                textures, geometry_heap, point, transaction_shading_normal,
-                use_undisplaced_geometry, instruction, instruction_index,
-                locals, nullptr);
+        [dispatcher](
+            BufferFloat scalar_parameters, BufferFloat3 vector_parameters,
+            BufferFloat cycles_bsdf_tables, BindlessVar textures,
+            BindlessVar geometry_heap, Var<SurfacePointCall> &point,
+            Float3 transaction_shading_normal, Bool use_undisplaced_geometry,
+            Var<luisa::uint4> instruction, Var<Stack> &stack) noexcept {
+          const SurfaceValueLocalsView locals{stack.expression()};
+          dispatcher(scalar_parameters, vector_parameters, cycles_bsdf_tables,
+                     textures, geometry_heap, point, transaction_shading_normal,
+                     use_undisplaced_geometry, instruction, locals, nullptr);
         }};
     const auto &function = probe.function();
     auto surface_point_arguments = std::size_t{0u};

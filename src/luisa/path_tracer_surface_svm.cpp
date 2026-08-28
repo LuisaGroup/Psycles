@@ -143,19 +143,12 @@ Float3 SurfaceSvmInterpreter::execute(
 
             $if(opcode <= static_cast<std::uint32_t>(
                               compiler::ValueOperation::ambient_occlusion)) {
-                impl.values(
-                    resources.scalar_parameters,
-                    resources.vector_parameters,
-                    resources.cycles_bsdf_tables,
-                    resources.textures,
-                    resources.geometry_heap,
-                    packed_base_point,
-                    transaction_shading_normal,
-                    use_undisplaced_geometry,
-                    instruction,
-                    instruction_index,
-                    locals_view,
-                    ambient_occlusion);
+              impl.values(resources.scalar_parameters,
+                          resources.vector_parameters,
+                          resources.cycles_bsdf_tables, resources.textures,
+                          resources.geometry_heap, packed_base_point,
+                          transaction_shading_normal, use_undisplaced_geometry,
+                          instruction, locals_view, ambient_occlusion);
             }
             $elif(opcode == compiler::surface_svm_mix_closure_opcode) {
                 const auto point = transaction_point();

@@ -150,8 +150,8 @@ template<typename T>
 
 // Host/JIT dispatcher for exactly one unified value record. It owns the
 // scene-pruned typed evaluator callables while leaving PC/control sequencing
-// to the surface SVM interpreter. The exact instruction-variant side stream is
-// read only when more than one evaluator inhabits the same handler fiber.
+// to the surface SVM interpreter. The instruction control word selects exactly
+// one handler; material data never participates in device dispatch identity.
 class SurfaceValueInstructionDispatcher {
 
   public:
@@ -167,20 +167,16 @@ class SurfaceValueInstructionDispatcher {
     [[nodiscard]] bool requires_ambient_occlusion() const noexcept;
     [[nodiscard]] std::uint32_t stack_capacity() const noexcept;
 
-    void operator()(
-        Expr<Buffer<float>> scalar_parameters,
-        Expr<Buffer<luisa::float3>> vector_parameters,
-        Expr<Buffer<float>> cycles_bsdf_tables,
-        Expr<BindlessArray> textures,
-        Expr<BindlessArray> geometry_heap,
-        Var<SurfacePointCall> &point,
-        Float3 transaction_shading_normal,
-        Bool use_undisplaced_geometry,
-        Var<luisa::uint4> instruction,
-        UInt instruction_index,
-        const SurfaceValueLocalsView &locals,
-        const PathSurfaceAmbientOcclusionContext
-            *ambient_occlusion) const noexcept;
+    void
+    operator()(Expr<Buffer<float>> scalar_parameters,
+               Expr<Buffer<luisa::float3>> vector_parameters,
+               Expr<Buffer<float>> cycles_bsdf_tables,
+               Expr<BindlessArray> textures, Expr<BindlessArray> geometry_heap,
+               Var<SurfacePointCall> &point, Float3 transaction_shading_normal,
+               Bool use_undisplaced_geometry, Var<luisa::uint4> instruction,
+               const SurfaceValueLocalsView &locals,
+               const PathSurfaceAmbientOcclusionContext *ambient_occlusion)
+        const noexcept;
 };
 
 [[nodiscard]] Float read_scalar_dynamic(
