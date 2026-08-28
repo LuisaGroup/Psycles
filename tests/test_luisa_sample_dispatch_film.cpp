@@ -596,6 +596,21 @@ validate_surface_program_histograms(const RenderResult &single_request,
   const auto parameter_operand_executions =
       operand_executions.direct_parameter +
       operand_executions.dynamic_parameter;
+  auto interval_parameter_references = std::uint64_t{0u};
+  auto interval_dynamic_parameter_references = std::uint64_t{0u};
+  auto interval_unique_parameters = std::uint64_t{0u};
+  for (const auto &bank : expected.parameter_reuse_bins) {
+    for (const auto &bin : bank) {
+      interval_parameter_references += bin.references;
+      interval_dynamic_parameter_references += bin.dynamic_references;
+      interval_unique_parameters += bin.unique_values;
+      if (bin.dynamic_references > bin.references ||
+          (bin.unique_values != 0u && bin.instruction_span == 0u)) {
+        std::cerr << "surface parameter interval census is malformed\n";
+        return false;
+      }
+    }
+  }
   auto closure_kind_visits = std::uint64_t{0u};
   for (const auto visits : expected.closure_instruction_kind_visits) {
     closure_kind_visits += visits;
@@ -619,6 +634,10 @@ validate_surface_program_histograms(const RenderResult &single_request,
       unique_parameter_values == 0u ||
       unique_parameter_values % expected_surface_events != 0u ||
       parameter_operand_executions <= unique_parameter_values ||
+      interval_parameter_references != parameter_operand_executions ||
+      interval_dynamic_parameter_references !=
+          operand_executions.dynamic_parameter ||
+      interval_unique_parameters < unique_parameter_values ||
       value_handler_executions +
               expected.surface_normal_transition_executions !=
           expected.value_instruction_executions ||

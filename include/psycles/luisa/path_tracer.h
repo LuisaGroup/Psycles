@@ -236,6 +236,25 @@ struct LuisaSurfaceValueUniqueParameterCounts {
       default;
 };
 
+// Exact per-transaction-segment reuse distribution for immutable material
+// parameters. Bins 0..6 represent exactly 1..7 references; bin 7 contains
+// eight or more. `instruction_span` is the hit-weighted inclusive distance
+// from first to last use in the fixed bytecode schedule. Keeping banks
+// separate makes the result directly usable by the typed interval allocator
+// without pretending scalar, float3, and uint64 slots are interchangeable.
+inline constexpr std::size_t
+    luisa_surface_parameter_reuse_bin_count = 8u;
+
+struct LuisaSurfaceParameterReuseBin {
+  std::uint64_t unique_values{};
+  std::uint64_t references{};
+  std::uint64_t dynamic_references{};
+  std::uint64_t instruction_span{};
+
+  auto operator<=>(const LuisaSurfaceParameterReuseBin &) const noexcept =
+      default;
+};
+
 struct LuisaSurfaceProgramExecutionHistogram {
   std::vector<std::uint64_t> topology_surface_populations;
   std::vector<LuisaSurfaceValueHandlerExecutionCount> value_handlers;
@@ -243,6 +262,12 @@ struct LuisaSurfaceProgramExecutionHistogram {
   std::uint64_t surface_normal_transition_executions{};
   LuisaSurfaceValueOperandExecutionCounts value_operand_executions;
   LuisaSurfaceValueUniqueParameterCounts unique_parameter_values;
+  // Dense SurfaceValueBank order: scalar, vector, unsigned_integer.
+  std::array<
+      std::array<LuisaSurfaceParameterReuseBin,
+                 luisa_surface_parameter_reuse_bin_count>,
+      3u>
+      parameter_reuse_bins{};
   // Dense SurfaceClosureInstructionKind order: leaf, mix_both, mix_left,
   // mix_right. These are first-traversal instruction visits. A zero-weight
   // leaf is visited but does not invoke its decoder, so leaf visits are not
