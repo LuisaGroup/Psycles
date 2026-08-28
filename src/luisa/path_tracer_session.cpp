@@ -3,8 +3,10 @@
 
 #include <psycles/luisa/volume_guiding.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <map>
 #include <set>
 
 namespace psycles::luisa_backend::detail {
@@ -189,6 +191,16 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
     }
     destination += value;
   };
+  const auto checked_weighted_add = [&](std::uint64_t &destination,
+                                        std::uint64_t count,
+                                        std::uint64_t weight) noexcept {
+    if (count != 0u &&
+        weight > std::numeric_limits<std::uint64_t>::max() / count) {
+      histogram.exact = false;
+      return;
+    }
+    checked_add(destination, count * weight);
+  };
   // Exact device-dispatch identity plus its decoded presentation fields.
   // std::array provides a total lexicographic order without introducing a
   // second hash identity for diagnostic aggregation.
@@ -224,12 +236,52 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
       std::set<std::uint32_t> vectors;
       std::set<std::uint32_t> unsigned_integers;
     } unique_parameter_addresses;
+    struct ParameterUseInterval {
+      std::uint32_t references{};
+      std::uint32_t dynamic_references{};
+      std::uint32_t first_instruction{};
+      std::uint32_t last_instruction{};
+    };
+    using ParameterAddress = std::pair<std::uint32_t, std::uint32_t>;
+    std::map<ParameterAddress, ParameterUseInterval> parameter_intervals;
+    const auto flush_parameter_intervals = [&]() noexcept {
+      for (const auto &[address, interval] : parameter_intervals) {
+        if (address.first >= histogram.parameter_reuse_bins.size() ||
+            interval.references == 0u ||
+            interval.dynamic_references > interval.references ||
+            interval.first_instruction > interval.last_instruction) {
+          histogram.exact = false;
+          continue;
+        }
+        const auto bin = std::min<std::size_t>(
+            interval.references,
+            luisa_surface_parameter_reuse_bin_count) - 1u;
+        auto &destination =
+            histogram.parameter_reuse_bins[address.first][bin];
+        checked_add(destination.unique_values, populations);
+        checked_weighted_add(destination.references, populations,
+                             interval.references);
+        checked_weighted_add(destination.dynamic_references, populations,
+                             interval.dynamic_references);
+        checked_weighted_add(
+            destination.instruction_span, populations,
+            static_cast<std::uint64_t>(interval.last_instruction) -
+                    interval.first_instruction +
+                1u);
+      }
+      parameter_intervals.clear();
+    };
     for (auto offset = std::uint32_t{0u}; offset < program.instruction_count;
          ++offset) {
       const auto instruction_index = program.instruction_begin + offset;
       const auto &instruction = image.instructions[instruction_index];
       checked_add(histogram.value_instruction_executions, populations);
       if (compiler::is_surface_value_surface_normal_transition(instruction)) {
+        // Normal-prefix and endpoint-root slots are independently colored and
+        // may overlap after this commit. A materialized parameter cannot be
+        // assumed live across that reuse boundary, so it forms two exact
+        // intervals when both segments consume it.
+        flush_parameter_intervals();
         checked_add(histogram.surface_normal_transition_executions,
                     populations);
         continue;
@@ -287,6 +339,30 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
                 operand.index());
             break;
           }
+          const auto key = ParameterAddress{
+              static_cast<std::uint32_t>(operand.bank()), operand.index()};
+          auto [iter, inserted] = parameter_intervals.try_emplace(
+              key, ParameterUseInterval{.first_instruction = offset,
+                                        .last_instruction = offset});
+          auto &interval = iter->second;
+          if (!inserted) {
+            interval.last_instruction = offset;
+          }
+          if (interval.references ==
+              std::numeric_limits<std::uint32_t>::max()) {
+            histogram.exact = false;
+          } else {
+            ++interval.references;
+          }
+          if (static_variant.operand_routes[operand_index] ==
+              compiler::SurfaceValueOperandRoute::dynamic) {
+            if (interval.dynamic_references ==
+                std::numeric_limits<std::uint32_t>::max()) {
+              histogram.exact = false;
+            } else {
+              ++interval.dynamic_references;
+            }
+          }
         }
         switch (static_variant.operand_routes[operand_index]) {
         case compiler::SurfaceValueOperandRoute::local:
@@ -322,6 +398,7 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
                       compiler::surface_value_svm_immediate(instruction)}],
                   populations);
     }
+    flush_parameter_intervals();
     const auto accumulate_unique_parameters =
         [&](const std::set<std::uint32_t> &addresses,
             std::uint64_t &destination) noexcept {

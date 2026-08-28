@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -196,7 +197,7 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
   auto *root = yyjson_mut_obj(document);
   yyjson_mut_doc_set_root(document, root);
   yyjson_mut_obj_add_str(document, root, "schema",
-                         "psycles.surface-program-execution-histogram.v2");
+                         "psycles.surface-program-execution-histogram.v3");
   yyjson_mut_obj_add_bool(document, root, "exact", histogram.exact);
 
   auto surface_populations = std::uint64_t{0u};
@@ -243,6 +244,40 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
       histogram.unique_parameter_values.unsigned_integer);
   yyjson_mut_obj_add_val(document, root, "unique_parameter_values",
                          unique_parameters);
+
+  constexpr std::array parameter_bank_names{
+      "scalar", "vector", "unsigned_integer"};
+  auto *parameter_reuse = yyjson_mut_obj(document);
+  for (auto bank = std::size_t{};
+       bank < histogram.parameter_reuse_bins.size(); ++bank) {
+    auto *bins = yyjson_mut_arr(document);
+    for (auto bin = std::size_t{};
+         bin < histogram.parameter_reuse_bins[bank].size(); ++bin) {
+      const auto &source = histogram.parameter_reuse_bins[bank][bin];
+      auto *entry = yyjson_mut_obj(document);
+      yyjson_mut_obj_add_uint(document, entry, "minimum_references", bin + 1u);
+      yyjson_mut_obj_add_uint(
+          document, entry, "maximum_references",
+          bin + 1u ==
+                  psycles::luisa_backend::
+                      luisa_surface_parameter_reuse_bin_count
+              ? std::numeric_limits<std::uint64_t>::max()
+              : bin + 1u);
+      yyjson_mut_obj_add_uint(document, entry, "unique_values",
+                              source.unique_values);
+      yyjson_mut_obj_add_uint(document, entry, "references",
+                              source.references);
+      yyjson_mut_obj_add_uint(document, entry, "dynamic_references",
+                              source.dynamic_references);
+      yyjson_mut_obj_add_uint(document, entry, "instruction_span",
+                              source.instruction_span);
+      yyjson_mut_arr_add_val(bins, entry);
+    }
+    yyjson_mut_obj_add_val(document, parameter_reuse,
+                           parameter_bank_names[bank], bins);
+  }
+  yyjson_mut_obj_add_val(document, root, "parameter_reuse_bins",
+                         parameter_reuse);
 
   auto *value_handlers = yyjson_mut_arr(document);
   for (const auto &handler : histogram.value_handlers) {
