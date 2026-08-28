@@ -33,233 +33,227 @@ constexpr auto sample_count = 8u;
 constexpr auto traced_sample = 5u;
 
 constexpr std::array pass_kinds{PassKind::combined,
-    PassKind::normal,
-    PassKind::albedo,
-    PassKind::glossy_color,
-    PassKind::transmission_color,
-    PassKind::emission,
-    PassKind::environment,
-    PassKind::diffuse_direct,
-    PassKind::diffuse_indirect,
-    PassKind::glossy_direct,
-    PassKind::glossy_indirect,
-    PassKind::transmission_direct,
-    PassKind::transmission_indirect,
-    PassKind::volume_direct,
-    PassKind::volume_indirect,
-    PassKind::sample_count};
+                                PassKind::normal,
+                                PassKind::albedo,
+                                PassKind::glossy_color,
+                                PassKind::transmission_color,
+                                PassKind::emission,
+                                PassKind::environment,
+                                PassKind::diffuse_direct,
+                                PassKind::diffuse_indirect,
+                                PassKind::glossy_direct,
+                                PassKind::glossy_indirect,
+                                PassKind::transmission_direct,
+                                PassKind::transmission_indirect,
+                                PassKind::volume_direct,
+                                PassKind::volume_indirect,
+                                PassKind::sample_count};
 
 [[nodiscard]] Mat4f translated(float x, float y, float z) noexcept {
-    Mat4f result;
-    result.elements[12u] = x;
-    result.elements[13u] = y;
-    result.elements[14u] = z;
-    return result;
+  Mat4f result;
+  result.elements[12u] = x;
+  result.elements[13u] = y;
+  result.elements[14u] = z;
+  return result;
 }
 
 [[nodiscard]] ShaderGraph surface_shader() {
-    ShaderGraph graph;
-    const auto geometry =
-        graph.add_node(node_type::geometry, "Per-sample dispatch geometry");
-    const auto normal_vector = graph.add_node(
-        node_type::normal_to_vector,
-        "Per-sample dispatch normal vector");
-    const auto normal_projection = graph.add_node(
-        node_type::vector_math, "Per-sample dispatch normal projection");
-    const auto shared_color = graph.add_node(
-        node_type::constant_color, "Per-sample dispatch shared color");
-    const auto parameter_mix = graph.add_node(
-        node_type::mix_color, "Per-sample dispatch parameter mix");
-    const auto local_mix = graph.add_node(
-        node_type::mix_color, "Per-sample dispatch local mix");
-    const auto principled = graph.add_node(node_type::principled_bsdf,
-                                           "Per-sample dispatch surface");
-    const auto configured =
-        graph.set_property(normal_projection, "Operation",
-                           SocketValue::string("DOT_PRODUCT")) &&
-        graph.set_input(normal_projection, "B",
-                        SocketValue::vector({0.0f, 0.0f, 0.31f})) &&
-        graph.set_input(shared_color, "Color",
-                        SocketValue::color({0.23f, 0.51f, 0.71f})) &&
-        graph.set_input(parameter_mix, "Factor",
-                        SocketValue::floating(0.25f)) &&
-        graph.set_input(local_mix, "Factor",
-                        SocketValue::floating(0.5f)) &&
-        graph.connect({.node = geometry, .socket = "Normal"}, normal_vector,
-                      "Normal") &&
-        graph.connect({.node = normal_vector, .socket = "Vector"},
-                      normal_projection, "A") &&
-        graph.connect({.node = normal_projection, .socket = "Value"},
-                      principled, "Roughness") &&
-        graph.connect({.node = shared_color, .socket = "Color"},
-                      parameter_mix, "A") &&
-        graph.connect({.node = shared_color, .socket = "Color"},
-                      parameter_mix, "B") &&
-        graph.connect({.node = parameter_mix, .socket = "Color"}, local_mix,
-                      "A") &&
-        graph.connect({.node = shared_color, .socket = "Color"}, local_mix,
-                      "B") &&
-        graph.connect({.node = local_mix, .socket = "Color"}, principled,
-                      "BaseColor") &&
-        graph.set_input(principled, "Metallic", SocketValue::floating(0.17f)) &&
-        graph.set_input(principled, "EmissionColor",
-                        SocketValue::color({0.04f, 0.015f, 0.007f})) &&
-        graph.set_input(principled, "EmissionStrength",
-                        SocketValue::floating(0.25f)) &&
-        graph.connect({.node = geometry, .socket = "Normal"}, principled,
-                      "Normal");
-    if (!configured) {
-        std::abort();
-    }
+  ShaderGraph graph;
+  const auto geometry =
+      graph.add_node(node_type::geometry, "Per-sample dispatch geometry");
+  const auto normal_vector = graph.add_node(
+      node_type::normal_to_vector, "Per-sample dispatch normal vector");
+  const auto normal_projection = graph.add_node(
+      node_type::vector_math, "Per-sample dispatch normal projection");
+  const auto shared_color = graph.add_node(node_type::constant_color,
+                                           "Per-sample dispatch shared color");
+  const auto parameter_mix =
+      graph.add_node(node_type::mix_color, "Per-sample dispatch parameter mix");
+  const auto local_mix =
+      graph.add_node(node_type::mix_color, "Per-sample dispatch local mix");
+  const auto principled =
+      graph.add_node(node_type::principled_bsdf, "Per-sample dispatch surface");
+  const auto configured =
+      graph.set_property(normal_projection, "Operation",
+                         SocketValue::string("DOT_PRODUCT")) &&
+      graph.set_input(normal_projection, "B",
+                      SocketValue::vector({0.0f, 0.0f, 0.31f})) &&
+      graph.set_input(shared_color, "Color",
+                      SocketValue::color({0.23f, 0.51f, 0.71f})) &&
+      graph.set_input(parameter_mix, "Factor", SocketValue::floating(0.25f)) &&
+      graph.set_input(local_mix, "Factor", SocketValue::floating(0.5f)) &&
+      graph.connect({.node = geometry, .socket = "Normal"}, normal_vector,
+                    "Normal") &&
+      graph.connect({.node = normal_vector, .socket = "Vector"},
+                    normal_projection, "A") &&
+      graph.connect({.node = normal_projection, .socket = "Value"}, principled,
+                    "Roughness") &&
+      graph.connect({.node = shared_color, .socket = "Color"}, parameter_mix,
+                    "A") &&
+      graph.connect({.node = shared_color, .socket = "Color"}, parameter_mix,
+                    "B") &&
+      graph.connect({.node = parameter_mix, .socket = "Color"}, local_mix,
+                    "A") &&
+      graph.connect({.node = shared_color, .socket = "Color"}, local_mix,
+                    "B") &&
+      graph.connect({.node = local_mix, .socket = "Color"}, principled,
+                    "BaseColor") &&
+      graph.set_input(principled, "Metallic", SocketValue::floating(0.17f)) &&
+      graph.set_input(principled, "EmissionColor",
+                      SocketValue::color({0.04f, 0.015f, 0.007f})) &&
+      graph.set_input(principled, "EmissionStrength",
+                      SocketValue::floating(0.25f)) &&
+      graph.connect({.node = geometry, .socket = "Normal"}, principled,
+                    "Normal");
+  if (!configured) {
+    std::abort();
+  }
   graph.set_root(ShaderDomain::surface,
                  OutputRef{.node = principled, .socket = "Closure"});
-    return graph;
+  return graph;
 }
 
 [[nodiscard]] ShaderGraph world_shader() {
-    ShaderGraph graph;
+  ShaderGraph graph;
   const auto emission =
       graph.add_node(node_type::emission, "Per-sample dispatch world");
-    const auto configured =
+  const auto configured =
       graph.set_input(emission, "Color",
-            SocketValue::color({0.12f, 0.18f, 0.27f})) &&
+                      SocketValue::color({0.12f, 0.18f, 0.27f})) &&
       graph.set_input(emission, "Strength", SocketValue::floating(0.35f));
-    if (!configured) {
-        std::abort();
-    }
+  if (!configured) {
+    std::abort();
+  }
   graph.set_root(ShaderDomain::surface,
                  OutputRef{.node = emission, .socket = "Closure"});
-    return graph;
+  return graph;
 }
 
 [[nodiscard]] SceneSnapshot make_scene() {
-    constexpr MaterialId surface_material{1u};
-    constexpr MaterialId world_material{2u};
-    constexpr GeometryId geometry{3u};
-    constexpr InstanceId instance{4u};
-    constexpr CameraId camera{5u};
-    constexpr LightId light{6u};
+  constexpr MaterialId surface_material{1u};
+  constexpr MaterialId world_material{2u};
+  constexpr GeometryId geometry{3u};
+  constexpr InstanceId instance{4u};
+  constexpr CameraId camera{5u};
+  constexpr LightId light{6u};
 
-    SceneSnapshot scene;
-    scene.revision = 1u;
+  SceneSnapshot scene;
+  scene.revision = 1u;
   scene.materials.emplace(surface_material,
                           MaterialDesc{.name = "Per-sample dispatch surface",
-            .shader = surface_shader(),
-            .cycles_shader_index = 0u});
+                                       .shader = surface_shader(),
+                                       .cycles_shader_index = 0u});
   scene.materials.emplace(world_material,
                           MaterialDesc{.name = "Per-sample dispatch world",
-            .shader = world_shader(),
-            .cycles_shader_index = 1u});
+                                       .shader = world_shader(),
+                                       .cycles_shader_index = 1u});
 
-    TriangleMeshDesc mesh;
-    mesh.name = "Per-sample dispatch receiver";
-    mesh.positions = {
+  TriangleMeshDesc mesh;
+  mesh.name = "Per-sample dispatch receiver";
+  mesh.positions = {
       {-4.0f, -4.0f, 0.0f}, {4.0f, -4.0f, 0.0f}, {0.0f, 4.0f, 0.0f}};
   mesh.normals.values.assign(mesh.positions.size(), Vec3f{0.0f, 0.0f, 1.0f});
-    mesh.triangles = {{0u, 1u, 2u}};
-    mesh.material_slots = {surface_material};
-    mesh.triangle_material_slots = {0u};
-    mesh.triangle_smooth = {1u};
-    mesh.triangle_random_per_island = {0.0f};
-    scene.geometries.emplace(geometry, std::move(mesh));
+  mesh.triangles = {{0u, 1u, 2u}};
+  mesh.material_slots = {surface_material};
+  mesh.triangle_material_slots = {0u};
+  mesh.triangle_smooth = {1u};
+  mesh.triangle_random_per_island = {0.0f};
+  scene.geometries.emplace(geometry, std::move(mesh));
   scene.instances.emplace(instance,
                           InstanceDesc{.name = "Per-sample dispatch receiver",
-            .geometry = geometry,
-            .transform = {},
-            .cycles_object_index = 0u});
+                                       .geometry = geometry,
+                                       .transform = {},
+                                       .cycles_object_index = 0u});
 
   scene.cameras.emplace(camera,
                         CameraDesc{.name = "Per-sample dispatch camera",
-            .projection = CameraProjection::orthographic,
-            .transform = translated(0.0f, 0.0f, 3.0f),
-            .orthographic_scale = 2.0f,
-            .near_clip = 0.1f,
-            .far_clip = 100.0f});
-    scene.active_camera = camera;
+                                   .projection = CameraProjection::orthographic,
+                                   .transform = translated(0.0f, 0.0f, 3.0f),
+                                   .orthographic_scale = 2.0f,
+                                   .near_clip = 0.1f,
+                                   .far_clip = 100.0f});
+  scene.active_camera = camera;
 
   scene.lights.emplace(light,
                        LightDesc{.name = "Per-sample dispatch point light",
-            .type = LightType::point,
-            .transform = translated(0.4f, -0.25f, 2.0f),
-            .color = {1.0f, 0.73f, 0.41f},
-            .power = 35.0f,
-            .size = 0.1f,
-            .normalize = true,
-            .is_sphere = true,
-            .use_mis = true,
-            .cast_shadow = true,
-            .visibility_mask = all_ray_visibility,
-            .cycles_shader_index = 2u,
-            .cycles_object_index = 1u});
-    scene.world_shader = world_material;
-    scene.world_sampling = WorldSampling::automatic;
-    scene.cycles_background_object_index = 2u;
-    return scene;
+                                 .type = LightType::point,
+                                 .transform = translated(0.4f, -0.25f, 2.0f),
+                                 .color = {1.0f, 0.73f, 0.41f},
+                                 .power = 35.0f,
+                                 .size = 0.1f,
+                                 .normalize = true,
+                                 .is_sphere = true,
+                                 .use_mis = true,
+                                 .cast_shadow = true,
+                                 .visibility_mask = all_ray_visibility,
+                                 .cycles_shader_index = 2u,
+                                 .cycles_object_index = 1u});
+  scene.world_shader = world_material;
+  scene.world_sampling = WorldSampling::automatic;
+  scene.cycles_background_object_index = 2u;
+  return scene;
 }
 
 [[nodiscard]] RenderSettings make_settings() {
-    RenderSettings settings{
-        .full_extent = {.width = width, .height = height},
-        .window = {},
-        .seed = 11939u,
-        .transparent_background = false,
-        .pixel_filter = PixelFilter::box,
-        .filter_width = 1.0f,
-        .pass_alpha_threshold = 0.5f,
+  RenderSettings settings{
+      .full_extent = {.width = width, .height = height},
+      .window = {},
+      .seed = 11939u,
+      .transparent_background = false,
+      .pixel_filter = PixelFilter::box,
+      .filter_width = 1.0f,
+      .pass_alpha_threshold = 0.5f,
       .integrator = {.max_bounces = 2u,
-            .min_bounces = 0u,
-            .diffuse_bounces = 1u,
-            .glossy_bounces = 1u,
-            .transmission_bounces = 1u,
-            .volume_bounces = 0u,
-            .transparent_min_bounces = 0u,
-            .transparent_max_bounces = 2u,
-            .sample_clamp_direct = 0.0f,
-            .sample_clamp_indirect = 0.0f,
-            .filter_glossy = 0.0f,
-            .film_exposure = 1.0f,
-            .light_sampling_threshold = 0.01f,
-            .reflective_caustics = true,
-            .refractive_caustics = true,
-            .use_light_tree = false,
-            .direct_light_sampling =
-                DirectLightSampling::multiple_importance_sampling}};
-    settings.passes.reserve(pass_kinds.size());
-    for (const auto kind : pass_kinds) {
+                     .min_bounces = 0u,
+                     .diffuse_bounces = 1u,
+                     .glossy_bounces = 1u,
+                     .transmission_bounces = 1u,
+                     .volume_bounces = 0u,
+                     .transparent_min_bounces = 0u,
+                     .transparent_max_bounces = 2u,
+                     .sample_clamp_direct = 0.0f,
+                     .sample_clamp_indirect = 0.0f,
+                     .filter_glossy = 0.0f,
+                     .film_exposure = 1.0f,
+                     .light_sampling_threshold = 0.01f,
+                     .reflective_caustics = true,
+                     .refractive_caustics = true,
+                     .use_light_tree = false,
+                     .direct_light_sampling =
+                         DirectLightSampling::multiple_importance_sampling}};
+  settings.passes.reserve(pass_kinds.size());
+  for (const auto kind : pass_kinds) {
     settings.passes.emplace_back(
         PassRequest{.kind = kind,
-            .name = "dispatch-regression",
+                    .name = "dispatch-regression",
                     .channels = kind == PassKind::combined       ? 4u
                                 : kind == PassKind::sample_count ? 1u
-                                  : 3u});
-    }
-    return settings;
+                                                                 : 3u});
+  }
+  return settings;
 }
 
 class TraceSink final : public psycles::luisa_backend::LuisaPathTraceSink {
 
 public:
-    std::optional<psycles::luisa_backend::LuisaPathTrace> trace;
+  std::optional<psycles::luisa_backend::LuisaPathTrace> trace;
 
   void write(const psycles::luisa_backend::LuisaPathTrace &value) override {
-        trace = value;
-    }
+    trace = value;
+  }
 };
 
 class ClosureHistogramSink final
-    : public psycles::luisa_backend::
-          LuisaSurfaceClosureCountHistogramSink {
+    : public psycles::luisa_backend::LuisaSurfaceClosureCountHistogramSink {
 
 public:
-    std::optional<psycles::luisa_backend::
-                      LuisaSurfaceClosureCountHistogram>
-        histogram;
+  std::optional<psycles::luisa_backend::LuisaSurfaceClosureCountHistogram>
+      histogram;
 
-    void write(
-        const psycles::luisa_backend::
-            LuisaSurfaceClosureCountHistogram &value) override {
-        histogram = value;
-    }
+  void write(const psycles::luisa_backend::LuisaSurfaceClosureCountHistogram
+                 &value) override {
+    histogram = value;
+  }
 };
 
 class SurfaceProgramHistogramSink final
@@ -276,10 +270,9 @@ public:
 };
 
 struct RenderResult {
-    psycles::io::MemoryOutputSink output;
+  psycles::io::MemoryOutputSink output;
   std::optional<psycles::luisa_backend::LuisaPathTrace> trace;
-  std::optional<psycles::luisa_backend::
-                    LuisaSurfaceClosureCountHistogram>
+  std::optional<psycles::luisa_backend::LuisaSurfaceClosureCountHistogram>
       closure_histogram;
   std::optional<psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogram>
       surface_program_histogram;
@@ -315,12 +308,12 @@ render(luisa::compute::Context &context, std::string_view backend,
                 .sample = traced_sample,
                 .sink = trace_sink}}
           : std::optional<psycles::luisa_backend::LuisaPathTraceRequest>{};
-  std::optional<psycles::luisa_backend::
-                    LuisaSurfaceClosureCountHistogramRequest>
+  std::optional<
+      psycles::luisa_backend::LuisaSurfaceClosureCountHistogramRequest>
       closure_histogram_request;
   if (closure_histogram_sink) {
-    closure_histogram_request = psycles::luisa_backend::
-        LuisaSurfaceClosureCountHistogramRequest{
+    closure_histogram_request =
+        psycles::luisa_backend::LuisaSurfaceClosureCountHistogramRequest{
             .sink = closure_histogram_sink};
   }
   std::optional<
@@ -358,56 +351,56 @@ render(luisa::compute::Context &context, std::string_view backend,
            surface_program_histogram_request}};
   auto compilation = renderer.compile_scene(make_scene());
   if (!compilation.ok()) {
-      for (const auto &diagnostic : compilation.diagnostics) {
-          std::cerr << diagnostic.message << '\n';
-      }
-      return std::nullopt;
+    for (const auto &diagnostic : compilation.diagnostics) {
+      std::cerr << diagnostic.message << '\n';
+    }
+    return std::nullopt;
   }
   auto session = renderer.create_session(*compilation.scene, make_settings());
-    if (!session) {
-        return std::nullopt;
-    }
+  if (!session) {
+    return std::nullopt;
+  }
 
-    psycles::io::MemoryOutputSink output;
-    if (split_request) {
-        psycles::io::MemoryOutputSink partial;
-        if (!session->render_samples(
+  psycles::io::MemoryOutputSink output;
+  if (split_request) {
+    psycles::io::MemoryOutputSink partial;
+    if (!session->render_samples(
             {.first = 0u, .count = 3u, .offset = 0u, .total = sample_count},
-                partial) ||
+            partial) ||
         !session->render_samples({.first = 3u,
-                 .count = sample_count - 3u,
-                 .offset = 0u,
-                 .total = sample_count},
-                output)) {
-            return std::nullopt;
-        }
-  } else if (!session->render_samples({.first = 0u,
-                    .count = sample_count,
-                    .offset = 0u,
-                    .total = sample_count},
-                   output)) {
-        return std::nullopt;
-    }
-  if (trace_sink && !trace_sink->trace) {
-        return std::nullopt;
-    }
-    if (closure_histogram_sink && !closure_histogram_sink->histogram) {
-        return std::nullopt;
-    }
-    if (surface_program_histogram_sink &&
-        !surface_program_histogram_sink->histogram) {
+                                  .count = sample_count - 3u,
+                                  .offset = 0u,
+                                  .total = sample_count},
+                                 output)) {
       return std::nullopt;
     }
-    return RenderResult{
-        .output = std::move(output),
-        .trace = trace_sink ? std::move(trace_sink->trace) : std::nullopt,
-        .closure_histogram = closure_histogram_sink
-                                 ? std::move(closure_histogram_sink->histogram)
-                                 : std::nullopt,
-        .surface_program_histogram =
-            surface_program_histogram_sink
-                ? std::move(surface_program_histogram_sink->histogram)
-                : std::nullopt};
+  } else if (!session->render_samples({.first = 0u,
+                                       .count = sample_count,
+                                       .offset = 0u,
+                                       .total = sample_count},
+                                      output)) {
+    return std::nullopt;
+  }
+  if (trace_sink && !trace_sink->trace) {
+    return std::nullopt;
+  }
+  if (closure_histogram_sink && !closure_histogram_sink->histogram) {
+    return std::nullopt;
+  }
+  if (surface_program_histogram_sink &&
+      !surface_program_histogram_sink->histogram) {
+    return std::nullopt;
+  }
+  return RenderResult{
+      .output = std::move(output),
+      .trace = trace_sink ? std::move(trace_sink->trace) : std::nullopt,
+      .closure_histogram = closure_histogram_sink
+                               ? std::move(closure_histogram_sink->histogram)
+                               : std::nullopt,
+      .surface_program_histogram =
+          surface_program_histogram_sink
+              ? std::move(surface_program_histogram_sink->histogram)
+              : std::nullopt};
 }
 
 [[nodiscard]] bool same_bits(float lhs, float rhs) noexcept {
@@ -416,97 +409,94 @@ render(luisa::compute::Context &context, std::string_view backend,
 
 [[nodiscard]] bool close(float lhs, float rhs,
                          float tolerance = 2.0e-5f) noexcept {
-    return std::isfinite(lhs) && std::isfinite(rhs) &&
-           std::abs(lhs - rhs) <=
-               tolerance * std::max({1.0f, std::abs(lhs), std::abs(rhs)});
+  return std::isfinite(lhs) && std::isfinite(rhs) &&
+         std::abs(lhs - rhs) <=
+             tolerance * std::max({1.0f, std::abs(lhs), std::abs(rhs)});
 }
 
 [[nodiscard]] bool compare_outputs(const RenderResult &reference,
                                    const RenderResult &candidate, bool exact,
                                    std::string_view label) {
-    for (const auto kind : pass_kinds) {
-        const auto *expected = reference.output.find(kind);
-        const auto *actual = candidate.output.find(kind);
-        if (expected == nullptr || actual == nullptr ||
-            expected->channels != actual->channels ||
-            expected->extent.width != actual->extent.width ||
-            expected->extent.height != actual->extent.height ||
-            expected->pixels.size() != actual->pixels.size()) {
-            std::cerr << label << " changed pass shape "
-                      << static_cast<std::uint32_t>(kind) << '\n';
-            return false;
-        }
-        for (auto i = std::size_t{0u}; i < expected->pixels.size(); ++i) {
-            const auto matches = exact ?
-                                     same_bits(expected->pixels[i],
-                                               actual->pixels[i]) :
-                                     close(expected->pixels[i],
-                                           actual->pixels[i]);
-            if (!matches) {
-                std::cerr << label << " changed pass "
-                          << static_cast<std::uint32_t>(kind) << " value " << i
-                          << ": expected " << expected->pixels[i] << ", got "
-                          << actual->pixels[i] << '\n';
-                return false;
-            }
-        }
+  for (const auto kind : pass_kinds) {
+    const auto *expected = reference.output.find(kind);
+    const auto *actual = candidate.output.find(kind);
+    if (expected == nullptr || actual == nullptr ||
+        expected->channels != actual->channels ||
+        expected->extent.width != actual->extent.width ||
+        expected->extent.height != actual->extent.height ||
+        expected->pixels.size() != actual->pixels.size()) {
+      std::cerr << label << " changed pass shape "
+                << static_cast<std::uint32_t>(kind) << '\n';
+      return false;
     }
-    if (reference.trace.has_value() != candidate.trace.has_value()) {
-        std::cerr << label << " changed path-trace availability\n";
+    for (auto i = std::size_t{0u}; i < expected->pixels.size(); ++i) {
+      const auto matches =
+          exact ? same_bits(expected->pixels[i], actual->pixels[i])
+                : close(expected->pixels[i], actual->pixels[i]);
+      if (!matches) {
+        std::cerr << label << " changed pass "
+                  << static_cast<std::uint32_t>(kind) << " value " << i
+                  << ": expected " << expected->pixels[i] << ", got "
+                  << actual->pixels[i] << '\n';
         return false;
+      }
     }
-    if (reference.trace) {
-        for (auto slot = std::size_t{0u}; slot < reference.trace->slots.size();
-             ++slot) {
-            for (auto component = std::size_t{0u};
-                 component < reference.trace->slots[slot].size(); ++component) {
-                const auto expected = reference.trace->slots[slot][component];
-                const auto actual = candidate.trace->slots[slot][component];
-                const auto matches = exact ? same_bits(expected, actual)
-                                           : close(expected, actual);
-                if (!matches) {
-                    std::cerr
-                        << label << " changed path trace at slot " << slot
-                        << ", component " << component << ": expected "
-                        << expected << " (0x" << std::hex
-                        << std::bit_cast<std::uint32_t>(expected) << "), got "
-                        << std::dec << actual << " (0x" << std::hex
-                        << std::bit_cast<std::uint32_t>(actual) << ")\n"
-                        << std::dec;
-                    return false;
-                }
-            }
+  }
+  if (reference.trace.has_value() != candidate.trace.has_value()) {
+    std::cerr << label << " changed path-trace availability\n";
+    return false;
+  }
+  if (reference.trace) {
+    for (auto slot = std::size_t{0u}; slot < reference.trace->slots.size();
+         ++slot) {
+      for (auto component = std::size_t{0u};
+           component < reference.trace->slots[slot].size(); ++component) {
+        const auto expected = reference.trace->slots[slot][component];
+        const auto actual = candidate.trace->slots[slot][component];
+        const auto matches =
+            exact ? same_bits(expected, actual) : close(expected, actual);
+        if (!matches) {
+          std::cerr << label << " changed path trace at slot " << slot
+                    << ", component " << component << ": expected " << expected
+                    << " (0x" << std::hex
+                    << std::bit_cast<std::uint32_t>(expected) << "), got "
+                    << std::dec << actual << " (0x" << std::hex
+                    << std::bit_cast<std::uint32_t>(actual) << ")\n"
+                    << std::dec;
+          return false;
         }
+      }
     }
-    return true;
+  }
+  return true;
 }
 
 [[nodiscard]] bool validate_reference(const RenderResult &result) {
-    const auto *samples = result.output.find(PassKind::sample_count);
-    const auto *combined = result.output.find(PassKind::combined);
-    const auto *normal = result.output.find(PassKind::normal);
-    const auto *albedo = result.output.find(PassKind::albedo);
-    if (samples == nullptr || combined == nullptr || normal == nullptr ||
-        albedo == nullptr || samples->pixels.size() != width * height) {
-        return false;
-    }
+  const auto *samples = result.output.find(PassKind::sample_count);
+  const auto *combined = result.output.find(PassKind::combined);
+  const auto *normal = result.output.find(PassKind::normal);
+  const auto *albedo = result.output.find(PassKind::albedo);
+  if (samples == nullptr || combined == nullptr || normal == nullptr ||
+      albedo == nullptr || samples->pixels.size() != width * height) {
+    return false;
+  }
   if (!std::all_of(samples->pixels.begin(), samples->pixels.end(),
-            [](float value) noexcept {
-                return value == static_cast<float>(sample_count);
-            })) {
-        std::cerr << "sample-count pass did not record every (pixel, sample)\n";
-        return false;
-    }
-    const auto has_energy = [](const auto &image) noexcept {
-        return std::any_of(
+                   [](float value) noexcept {
+                     return value == static_cast<float>(sample_count);
+                   })) {
+    std::cerr << "sample-count pass did not record every (pixel, sample)\n";
+    return false;
+  }
+  const auto has_energy = [](const auto &image) noexcept {
+    return std::any_of(
         image.pixels.begin(), image.pixels.end(), [](float value) noexcept {
-                return std::isfinite(value) && std::abs(value) > 1.0e-6f;
-            });
-    };
+          return std::isfinite(value) && std::abs(value) > 1.0e-6f;
+        });
+  };
   if (!has_energy(*combined) || !has_energy(*normal) || !has_energy(*albedo)) {
-        std::cerr << "dispatch fixture did not exercise primary film passes\n";
-        return false;
-    }
+    std::cerr << "dispatch fixture did not exercise primary film passes\n";
+    return false;
+  }
   if (!result.trace) {
     std::cerr << "reference path trace is missing\n";
     return false;
@@ -514,43 +504,41 @@ render(luisa::compute::Context &context, std::string_view backend,
   const auto &rng =
       result.trace->slots[trace_schema::index(trace_schema::GlobalSlot::rng)];
   if (result.trace->sample != traced_sample ||
-        rng[0u] != static_cast<float>(traced_sample)) {
-        std::cerr << "dispatch.z did not preserve the absolute sample index\n";
-        return false;
-    }
-    return true;
+      rng[0u] != static_cast<float>(traced_sample)) {
+    std::cerr << "dispatch.z did not preserve the absolute sample index\n";
+    return false;
+  }
+  return true;
 }
 
-[[nodiscard]] bool validate_closure_histograms(
-    const RenderResult &single_request,
-    const RenderResult &split_request) {
-    if (!single_request.closure_histogram ||
-        !split_request.closure_histogram) {
-        std::cerr << "surface closure histogram is missing\n";
-        return false;
-    }
-    const auto &expected = *single_request.closure_histogram;
-    const auto &actual = *split_request.closure_histogram;
-    if (!expected.exact || !actual.exact ||
-        expected.counts != actual.counts) {
-        std::cerr << "surface closure histogram changed across sample "
-                     "chunking\n";
-        return false;
-    }
-    auto total = std::uint64_t{0u};
-    for (const auto count : expected.counts) {
-        total += count;
-    }
-    constexpr auto expected_surface_events =
-        static_cast<std::uint64_t>(width) * height * sample_count;
-    if (total != expected_surface_events ||
-        expected.counts[3u] != expected_surface_events) {
-        std::cerr << "surface closure histogram did not record exactly one "
-                     "three-closure event per (pixel, sample): total "
-                  << total << ", count-3 " << expected.counts[3u] << '\n';
-        return false;
-    }
-    return true;
+[[nodiscard]] bool
+validate_closure_histograms(const RenderResult &single_request,
+                            const RenderResult &split_request) {
+  if (!single_request.closure_histogram || !split_request.closure_histogram) {
+    std::cerr << "surface closure histogram is missing\n";
+    return false;
+  }
+  const auto &expected = *single_request.closure_histogram;
+  const auto &actual = *split_request.closure_histogram;
+  if (!expected.exact || !actual.exact || expected.counts != actual.counts) {
+    std::cerr << "surface closure histogram changed across sample "
+                 "chunking\n";
+    return false;
+  }
+  auto total = std::uint64_t{0u};
+  for (const auto count : expected.counts) {
+    total += count;
+  }
+  constexpr auto expected_surface_events =
+      static_cast<std::uint64_t>(width) * height * sample_count;
+  if (total != expected_surface_events ||
+      expected.counts[3u] != expected_surface_events) {
+    std::cerr << "surface closure histogram did not record exactly one "
+                 "three-closure event per (pixel, sample): total "
+              << total << ", count-3 " << expected.counts[3u] << '\n';
+    return false;
+  }
+  return true;
 }
 
 [[nodiscard]] bool
@@ -598,121 +586,38 @@ validate_surface_program_histograms(const RenderResult &single_request,
     if (entry.executions == 0u ||
         entry.executions % expected_surface_events != 0u ||
         entry.direct_dependency != (entry.direct_operand_mask != 0u) ||
-        (entry.dynamic_direct_operand_mask &
-         ~entry.direct_operand_mask) != 0u ||
+        (entry.dynamic_direct_operand_mask & ~entry.direct_operand_mask) !=
+            0u ||
         (entry.direct_operand_mask & ~valid_direct_operand_mask) != 0u ||
-        (entry.source_last_used_by_target &&
-         !entry.direct_dependency) ||
+        (entry.source_last_used_by_target && !entry.direct_dependency) ||
         entry.source_result_bank >
-            static_cast<std::uint32_t>(
-                SurfaceValueBank::unsigned_integer)) {
+            static_cast<std::uint32_t>(SurfaceValueBank::unsigned_integer)) {
       std::cerr << "one-topology value handler transition count is not an "
                    "exact multiple of surface events, or its exact data-flow "
                    "classification is malformed\n";
       return false;
     }
   }
-  auto region_invocations = std::uint64_t{};
-  auto region_instruction_executions = std::uint64_t{};
-  auto region_forwarded_edge_executions = std::uint64_t{};
-  auto region_live_input_executions = std::uint64_t{};
-  auto region_live_output_executions = std::uint64_t{};
-  for (const auto &entry : expected.value_regions) {
-    const auto &shape = entry.shape;
-    const auto instruction_count = shape.variant_indices.size();
-    if (entry.executions == 0u ||
-        entry.executions % expected_surface_events != 0u ||
-        instruction_count == 0u ||
-        shape.successor_operand_masks.size() != instruction_count ||
-        shape.successor_operand_masks.back() != 0u ||
-        shape.operand_offsets.size() != instruction_count + 1u ||
-        shape.operand_offsets.front() != 0u ||
-        shape.operand_offsets.back() != shape.operand_source_kinds.size() ||
-        shape.operand_source_kinds.size() !=
-            shape.operand_source_indices.size()) {
-      std::cerr << "surface value region shape has malformed extents\n";
-      return false;
-    }
-    for (auto instruction = std::size_t{};
-         instruction < instruction_count; ++instruction) {
-      if (instruction + 1u < instruction_count &&
-          shape.successor_operand_masks[instruction] == 0u) {
-        std::cerr << "surface value region is not a maximal forwarding "
-                     "component\n";
-        return false;
-      }
-      const auto operand_begin = shape.operand_offsets[instruction];
-      const auto operand_end = shape.operand_offsets[instruction + 1u];
-      if (operand_begin > operand_end ||
-          operand_end > shape.operand_source_kinds.size()) {
-        std::cerr << "surface value region operand range is malformed\n";
-        return false;
-      }
-      for (auto operand = operand_begin; operand < operand_end; ++operand) {
-        const auto kind = static_cast<
-            SurfaceValueRegionOperandSourceKind>(
-            shape.operand_source_kinds[operand]);
-        const auto index = shape.operand_source_indices[operand];
-        switch (kind) {
-        case SurfaceValueRegionOperandSourceKind::parameter:
-          if (index != 0u) {
-            std::cerr << "surface value region parameter identity was baked "
-                         "into its code shape\n";
-            return false;
-          }
-          break;
-        case SurfaceValueRegionOperandSourceKind::live_input:
-          if (index >= shape.live_input_banks.size()) {
-            std::cerr << "surface value region has an invalid live input\n";
-            return false;
-          }
-          break;
-        case SurfaceValueRegionOperandSourceKind::instruction_result:
-          if (index >= instruction) {
-            std::cerr << "surface value region data flow is not topological\n";
-            return false;
-          }
-          break;
-        default:
-          std::cerr << "surface value region has an unknown operand source\n";
-          return false;
-        }
-      }
-    }
-    if (std::any_of(
-            shape.live_input_banks.begin(), shape.live_input_banks.end(),
-            [](const auto bank) noexcept {
-              return bank > static_cast<std::uint32_t>(
-                                SurfaceValueBank::unsigned_integer);
-            }) ||
-        std::any_of(shape.live_output_instruction_offsets.begin(),
-                    shape.live_output_instruction_offsets.end(),
-                    [instruction_count](const auto offset) noexcept {
-                      return offset >= instruction_count;
-                    })) {
-      std::cerr << "surface value region has an invalid boundary value\n";
-      return false;
-    }
-    region_invocations += entry.executions;
-    region_instruction_executions +=
-        entry.executions * instruction_count;
-    region_forwarded_edge_executions +=
-        entry.executions * (instruction_count - 1u);
-    region_live_input_executions +=
-        entry.executions * shape.live_input_banks.size();
-    region_live_output_executions +=
-        entry.executions * shape.live_output_instruction_offsets.size();
+  // The split-stream maximal-region experiment has no canonical image in
+  // the structured SVM. Its retained ABI fields must remain explicitly
+  // empty instead of fabricating a linear partition across guards.
+  if (!expected.value_regions.empty() ||
+      expected.value_region_invocations != 0u ||
+      expected.value_region_instruction_executions != 0u ||
+      expected.value_region_forwarded_edge_executions != 0u ||
+      expected.value_region_live_input_executions != 0u ||
+      expected.value_region_live_output_executions != 0u) {
+    std::cerr << "obsolete split-stream region census was populated\n";
+    return false;
   }
   const auto &operand_executions = expected.value_operand_executions;
   const auto total_operand_executions =
-      operand_executions.direct_local +
-      operand_executions.direct_parameter +
-      operand_executions.dynamic_local +
-      operand_executions.dynamic_parameter;
+      operand_executions.direct_local + operand_executions.direct_parameter +
+      operand_executions.dynamic_local + operand_executions.dynamic_parameter;
   const auto &unique_parameters = expected.unique_parameter_values;
-  const auto unique_parameter_values =
-      unique_parameters.scalar + unique_parameters.vector +
-      unique_parameters.unsigned_integer;
+  const auto unique_parameter_values = unique_parameters.scalar +
+                                       unique_parameters.vector +
+                                       unique_parameters.unsigned_integer;
   const auto parameter_operand_executions =
       operand_executions.direct_parameter +
       operand_executions.dynamic_parameter;
@@ -746,8 +651,7 @@ validate_surface_program_histograms(const RenderResult &single_request,
   }
   if (surface_events != expected_surface_events ||
       expected.value_instruction_executions == 0u ||
-      total_operand_executions == 0u ||
-      operand_executions.direct_local == 0u ||
+      total_operand_executions == 0u || operand_executions.direct_local == 0u ||
       operand_executions.direct_parameter == 0u ||
       operand_executions.dynamic_local == 0u ||
       operand_executions.dynamic_parameter == 0u ||
@@ -760,27 +664,9 @@ validate_surface_program_histograms(const RenderResult &single_request,
       interval_unique_parameters < unique_parameter_values ||
       value_handler_transition_executions == 0u ||
       directly_dependent_transition_executions == 0u ||
-      last_use_forwarding_transition_executions == 0u ||
-      last_use_forwarding_transition_executions >
-          directly_dependent_transition_executions ||
-      region_invocations != expected.value_region_invocations ||
-      region_instruction_executions !=
-          expected.value_region_instruction_executions ||
-      region_forwarded_edge_executions !=
-          expected.value_region_forwarded_edge_executions ||
-      region_forwarded_edge_executions !=
-          last_use_forwarding_transition_executions ||
-      region_live_input_executions !=
-          expected.value_region_live_input_executions ||
-      region_live_output_executions !=
-          expected.value_region_live_output_executions ||
-      region_instruction_executions +
-              expected.surface_normal_transition_executions !=
-          expected.value_instruction_executions ||
+      last_use_forwarding_transition_executions != 0u ||
       value_handler_transition_executions >= value_handler_executions ||
-      value_handler_executions +
-              expected.surface_normal_transition_executions !=
-          expected.value_instruction_executions ||
+      value_handler_executions != expected.value_instruction_executions ||
       closure_kind_visits != expected.closure_instruction_visits ||
       closure_leaf_visits != expected.closure_instruction_kind_visits[0u]) {
     std::cerr << "surface program host projection violated its "
@@ -790,20 +676,20 @@ validate_surface_program_histograms(const RenderResult &single_request,
   return true;
 }
 
-}// namespace
+} // namespace
 
 int main(int argc, char **argv) {
   const auto backend = std::string_view{argc > 1 ? argv[1] : "fallback"};
-    luisa::compute::Context context{argv[0]};
+  luisa::compute::Context context{argv[0]};
 
-    const auto reference = render(
+  const auto reference = render(
       context, backend, psycles::luisa_backend::LuisaPathScheduler::megakernel,
       sample_count, false);
-    // The serial film path is the deterministic diagnostic oracle. Splitting
-    // the same ordered sample range across host dispatches must remain
-    // bit-exact for every pass; this catches accidental changes to exact-hash
-    // validation without imposing bit identity on floating-point atomics.
-    const auto deterministic = render(
+  // The serial film path is the deterministic diagnostic oracle. Splitting
+  // the same ordered sample range across host dispatches must remain
+  // bit-exact for every pass; this catches accidental changes to exact-hash
+  // validation without imposing bit identity on floating-point atomics.
+  const auto deterministic = render(
       context, backend, psycles::luisa_backend::LuisaPathScheduler::megakernel,
       sample_count, true);
   const auto single_plane =
@@ -857,11 +743,11 @@ int main(int argc, char **argv) {
   // because it intentionally keeps shadow evaluation inline and ordered.
   const auto staged_direct_inline =
       render(context, backend,
-        psycles::luisa_backend::LuisaPathScheduler::wavefront_staged,
+             psycles::luisa_backend::LuisaPathScheduler::wavefront_staged,
              sample_count, false, true, false, false);
   const auto staged_direct_queued =
       render(context, backend,
-        psycles::luisa_backend::LuisaPathScheduler::wavefront_staged,
+             psycles::luisa_backend::LuisaPathScheduler::wavefront_staged,
              sample_count, false, true, false, true);
   const auto staged_direct_queued_chunked =
       render(context, backend,
@@ -875,47 +761,46 @@ int main(int argc, char **argv) {
       render(context, backend,
              psycles::luisa_backend::LuisaPathScheduler::wavefront_staged,
              sample_count, false, true, false, true, 4096u, 4u, 2u, 3u);
-    const auto persistent = render(
+  const auto persistent = render(
       context, backend, psycles::luisa_backend::LuisaPathScheduler::persistent,
       sample_count, false);
-    if (!reference || !deterministic || !single_plane || !per_sample ||
-        !per_sample_no_trace || !chunked || !wavefront || !graph_wavefront ||
-        !graph_wavefront_tail || !staged_wavefront ||
-        !staged_wavefront_unsorted || !staged_direct_inline ||
-        !staged_direct_queued || !staged_direct_queued_chunked ||
-        !staged_direct_queued_small_capacity || !persistent ||
-        !validate_reference(*reference) ||
-        !compare_outputs(*reference, *deterministic, true,
-                         "deterministic serial chunking") ||
-        !compare_outputs(*reference, *single_plane, false,
-                         "single-plane atomic dispatch") ||
-        !compare_outputs(*reference, *per_sample, false,
-                         "batched per-sample dispatch") ||
-        !compare_outputs(*reference, *chunked, false,
-                         "chunked per-sample dispatch") ||
-        !validate_closure_histograms(*per_sample, *chunked) ||
-        !validate_surface_program_histograms(*per_sample, *chunked) ||
-        !compare_outputs(*per_sample_no_trace, *staged_direct_inline, false,
-                         "deferred shadow after surface continuation") ||
-        !compare_outputs(*reference, *wavefront, false, "wavefront dispatch") ||
-        !compare_outputs(*reference, *graph_wavefront, false,
-                         "graph wavefront dispatch") ||
-        !compare_outputs(*reference, *graph_wavefront_tail, false,
-                         "graph wavefront tail dispatch") ||
-        !compare_outputs(*reference, *staged_wavefront, false,
-                         "staged wavefront dispatch") ||
-        !compare_outputs(*reference, *staged_wavefront_unsorted, false,
-                         "staged wavefront dispatch without surface sorting") ||
-        !compare_outputs(*staged_direct_inline, *staged_direct_queued, false,
-                         "queued direct-light visibility") ||
-        !compare_outputs(*staged_direct_inline, *staged_direct_queued_chunked,
-                         false, "chunked queued direct-light visibility") ||
-        !compare_outputs(*staged_direct_inline,
-                         *staged_direct_queued_small_capacity, false,
-                         "small-capacity queued direct-light visibility") ||
-        !compare_outputs(*reference, *persistent, false,
-                         "persistent dispatch")) {
-      return EXIT_FAILURE;
-    }
-    return EXIT_SUCCESS;
+  if (!reference || !deterministic || !single_plane || !per_sample ||
+      !per_sample_no_trace || !chunked || !wavefront || !graph_wavefront ||
+      !graph_wavefront_tail || !staged_wavefront ||
+      !staged_wavefront_unsorted || !staged_direct_inline ||
+      !staged_direct_queued || !staged_direct_queued_chunked ||
+      !staged_direct_queued_small_capacity || !persistent ||
+      !validate_reference(*reference) ||
+      !compare_outputs(*reference, *deterministic, true,
+                       "deterministic serial chunking") ||
+      !compare_outputs(*reference, *single_plane, false,
+                       "single-plane atomic dispatch") ||
+      !compare_outputs(*reference, *per_sample, false,
+                       "batched per-sample dispatch") ||
+      !compare_outputs(*reference, *chunked, false,
+                       "chunked per-sample dispatch") ||
+      !validate_closure_histograms(*per_sample, *chunked) ||
+      !validate_surface_program_histograms(*per_sample, *chunked) ||
+      !compare_outputs(*per_sample_no_trace, *staged_direct_inline, false,
+                       "deferred shadow after surface continuation") ||
+      !compare_outputs(*reference, *wavefront, false, "wavefront dispatch") ||
+      !compare_outputs(*reference, *graph_wavefront, false,
+                       "graph wavefront dispatch") ||
+      !compare_outputs(*reference, *graph_wavefront_tail, false,
+                       "graph wavefront tail dispatch") ||
+      !compare_outputs(*reference, *staged_wavefront, false,
+                       "staged wavefront dispatch") ||
+      !compare_outputs(*reference, *staged_wavefront_unsorted, false,
+                       "staged wavefront dispatch without surface sorting") ||
+      !compare_outputs(*staged_direct_inline, *staged_direct_queued, false,
+                       "queued direct-light visibility") ||
+      !compare_outputs(*staged_direct_inline, *staged_direct_queued_chunked,
+                       false, "chunked queued direct-light visibility") ||
+      !compare_outputs(*staged_direct_inline,
+                       *staged_direct_queued_small_capacity, false,
+                       "small-capacity queued direct-light visibility") ||
+      !compare_outputs(*reference, *persistent, false, "persistent dispatch")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
 }
