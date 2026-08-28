@@ -18,8 +18,7 @@ build_surface_value_runtime(
     std::span<const std::shared_ptr<const compiler::SurfaceProgram>> programs,
     std::span<const compiler::SurfaceClosurePlan> closure_plans,
     std::span<const std::uint32_t> bssrdf_bump_tags,
-    std::string &diagnostic,
-    std::uint32_t region_handler_site_budget = 0u);
+    std::string &diagnostic);
 
 void upload_surface_value_runtime(
     Stream &stream,

@@ -1,5 +1,4 @@
 #include "path_tracer_surface_values.h"
-#include "path_tracer_surface_route_policy.h"
 
 #include <psycles/compiler/surface_bump_expansion.h>
 
@@ -7,7 +6,6 @@
 #include <limits>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -44,14 +42,6 @@ namespace {
     return active;
 }
 
-[[nodiscard]] bool fits_runtime_capacity(
-    const compiler::SurfaceValueProgramDescriptor &program) noexcept {
-    return program.scalar_slots <= SurfaceValueRuntime::scalar_capacity &&
-           program.vector_slots <= SurfaceValueRuntime::vector_capacity &&
-           program.unsigned_integer_slots <=
-               SurfaceValueRuntime::unsigned_integer_capacity;
-}
-
 struct SurfaceSvmRuntimeProgram {
     compiler::SurfaceSvmProgramImage image;
     // Parallel to `image.instructions`. Value records name their immutable
@@ -83,6 +73,109 @@ void canonicalize_surface_svm_closure_variants(
     std::sort(variants.begin(), variants.end());
     variants.erase(std::unique(variants.begin(), variants.end()),
                    variants.end());
+}
+
+void canonicalize_u32_domain(std::vector<std::uint32_t> &values) {
+    std::sort(values.begin(), values.end());
+    values.erase(std::unique(values.begin(), values.end()), values.end());
+}
+
+[[nodiscard]] bool collect_surface_svm_value_domain(
+    const compiler::SurfaceSvmSceneImage &scene,
+    std::span<const std::uint32_t> instruction_variants,
+    std::size_t evaluator_count,
+    std::uint32_t program_index,
+    std::vector<std::uint32_t> &domain,
+    std::string &diagnostic) {
+    if (instruction_variants.size() != scene.instructions.size() ||
+        program_index >= scene.programs.size()) {
+        diagnostic = "unified surface evaluator side stream is not total";
+        return false;
+    }
+    const auto &program = scene.programs[program_index];
+    if (program.instruction_begin > scene.instructions.size() ||
+        program.instruction_count >
+            scene.instructions.size() - program.instruction_begin) {
+        diagnostic =
+            "unified surface program range exceeds its instruction stream";
+        return false;
+    }
+    for (auto offset = std::uint32_t{}; offset < program.instruction_count;
+         ++offset) {
+        const auto instruction_index = program.instruction_begin + offset;
+        const auto kind = compiler::surface_svm_bytecode_kind(
+            scene.instructions[instruction_index]);
+        const auto variant = instruction_variants[instruction_index];
+        if (kind == compiler::SurfaceSvmBytecodeKind::value) {
+            if (variant >= evaluator_count) {
+                diagnostic =
+                    "unified surface value record has no exact evaluator";
+                return false;
+            }
+            domain.emplace_back(variant);
+        } else if (variant != compiler::SurfaceValueAddress::invalid_value) {
+            diagnostic =
+                "unified surface control record names a value evaluator";
+            return false;
+        }
+    }
+    return true;
+}
+
+void project_surface_svm_closure_domain(
+    std::span<const SurfaceSvmClosureVariant> variants,
+    std::uint32_t static_variant_mask,
+    std::vector<std::uint32_t> &static_variants,
+    compiler::PrincipledClosureFeatureMask &principled_features) {
+    static_variants.reserve(static_variants.size() + variants.size());
+    for (const auto &variant : variants) {
+        static_variants.emplace_back(
+            variant.static_variant & static_variant_mask);
+        principled_features |= variant.principled_features;
+    }
+    canonicalize_u32_domain(static_variants);
+}
+
+struct SurfaceSvmClosureCapabilities {
+    std::uint32_t operations{};
+    compiler::PrincipledClosureFeatureMask principled_features{};
+    std::uint32_t anisotropic_operations{};
+    compiler::PrincipledClosureFeatureMask anisotropic_principled_features{};
+    std::uint32_t thin_film_operations{};
+    compiler::PrincipledClosureFeatureMask thin_film_principled_features{};
+};
+
+[[nodiscard]] SurfaceSvmClosureCapabilities
+analyze_surface_svm_closure_capabilities(
+    std::span<const SurfaceSvmClosureVariant> variants) noexcept {
+    static_assert(static_cast<std::uint32_t>(
+                      compiler::ClosureOperation::refraction) < 32u);
+    SurfaceSvmClosureCapabilities result;
+    for (const auto &variant : variants) {
+        const auto operation = static_cast<compiler::ClosureOperation>(
+            variant.static_variant & compiler::surface_closure_opcode_mask);
+        const auto operation_index = static_cast<std::uint32_t>(operation);
+        const auto operation_bit = std::uint32_t{1u} << operation_index;
+        result.operations |= operation_bit;
+        result.principled_features |= variant.principled_features;
+        if ((variant.static_variant &
+             compiler::surface_closure_microfacet_anisotropy) != 0u) {
+            result.anisotropic_operations |= operation_bit;
+            if (operation == compiler::ClosureOperation::principled) {
+                result.anisotropic_principled_features |=
+                    variant.principled_features;
+            }
+        }
+        if ((variant.static_variant & compiler::surface_closure_thin_film) !=
+            0u) {
+            result.thin_film_operations |= operation_bit;
+            if (operation == compiler::ClosureOperation::principled) {
+                result.thin_film_principled_features |=
+                    variant.principled_features;
+            }
+        }
+    }
+    return result;
 }
 
 [[nodiscard]] SurfaceSvmRuntimeProgram build_surface_svm_runtime_program(
@@ -215,206 +308,6 @@ void canonicalize_surface_svm_closure_variants(
     return root;
 }
 
-[[nodiscard]] bool build_surface_svm_runtime_scene(
-    const compiler::SurfaceValueExecutableScene &executable,
-    std::span<const compiler::SurfaceValueExecutionInput> inputs,
-    std::vector<SurfaceSvmRuntimeProgram> &programs,
-    compiler::SurfaceSvmSceneImage &scene,
-    std::vector<std::uint32_t> &instruction_variants,
-    std::string &diagnostic) {
-    const auto &legacy = executable.values;
-    if (!executable.valid || inputs.size() != programs.size() ||
-        legacy.programs.size() != programs.size() ||
-        executable.instruction_variants.size() !=
-            legacy.instructions.size()) {
-        diagnostic =
-            "unified and established runtime programs do not form a "
-            "bijection";
-        return false;
-    }
-
-    instruction_variants.clear();
-    instruction_variants.reserve([&] {
-        auto count = std::size_t{};
-        for (const auto &program : programs) {
-            count += program.image.instructions.size();
-        }
-        return count;
-    }());
-    for (auto program_index = std::size_t{};
-         program_index < programs.size(); ++program_index) {
-        const auto &input = inputs[program_index];
-        const auto &range = legacy.programs[program_index];
-        auto &program = programs[program_index];
-        if (input.program == nullptr || input.storage == nullptr ||
-            range.instruction_begin > legacy.instructions.size() ||
-            range.instruction_count >
-                legacy.instructions.size() - range.instruction_begin ||
-            program.instruction_sources.size() !=
-                program.image.instructions.size()) {
-            diagnostic = "surface program " +
-                         std::to_string(program_index) +
-                         " has an incomplete evaluator provenance relation";
-            return false;
-        }
-
-        std::vector<std::uint32_t> source_variants(
-            input.program->value_instructions().size(),
-            compiler::SurfaceValueAddress::invalid_value);
-        auto cursor = range.instruction_begin;
-        const auto end = range.instruction_begin + range.instruction_count;
-        const auto consume = [&](const compiler::SurfaceValueStoragePlan &plan,
-                                 std::string_view phase) {
-            if (!plan.compatible(*input.program)) {
-                diagnostic = "surface program " +
-                             std::to_string(program_index) + " " +
-                             std::string{phase} +
-                             " storage is incompatible";
-                return false;
-            }
-            for (const auto source : plan.instructions) {
-                if (!source.valid() ||
-                    source.value >= source_variants.size() || cursor >= end ||
-                    compiler::is_surface_value_surface_normal_transition(
-                        legacy.instructions[cursor])) {
-                    diagnostic = "surface program " +
-                                 std::to_string(program_index) + " " +
-                                 std::string{phase} +
-                                 " lost its instruction/source ordering";
-                    return false;
-                }
-                const auto variant =
-                    executable.instruction_variants[cursor];
-                if (variant >= executable.variants.size() ||
-                    compiler::surface_value_operation(
-                        legacy.instructions[cursor]) !=
-                        input.program->value_instructions()[source.value]
-                            .operation) {
-                    diagnostic = "surface program " +
-                                 std::to_string(program_index) + " " +
-                                 std::string{phase} +
-                                 " has an invalid evaluator variant";
-                    return false;
-                }
-                auto &assigned = source_variants[source.value];
-                if (assigned != compiler::SurfaceValueAddress::invalid_value &&
-                    assigned != variant) {
-                    diagnostic = "surface program " +
-                                 std::to_string(program_index) +
-                                 " assigns two semantic variants to one "
-                                 "source value";
-                    return false;
-                }
-                assigned = variant;
-                ++cursor;
-            }
-            return true;
-        };
-
-        if (input.surface_normal_storage != nullptr) {
-            if (!consume(*input.surface_normal_storage, "automatic-normal") ||
-                cursor >= end ||
-                !compiler::is_surface_value_surface_normal_transition(
-                    legacy.instructions[cursor]) ||
-                executable.instruction_variants[cursor] !=
-                    compiler::SurfaceValueAddress::invalid_value) {
-                if (diagnostic.empty()) {
-                    diagnostic = "surface program " +
-                                 std::to_string(program_index) +
-                                 " has no exact automatic-normal boundary";
-                }
-                return false;
-            }
-            ++cursor;
-        }
-        if (!consume(*input.storage, "root") || cursor != end) {
-            if (diagnostic.empty()) {
-                diagnostic = "surface program " +
-                             std::to_string(program_index) +
-                             " established stream has an unowned suffix";
-            }
-            return false;
-        }
-
-        for (auto instruction_index = std::size_t{};
-             instruction_index < program.image.instructions.size();
-             ++instruction_index) {
-            const auto &instruction =
-                program.image.instructions[instruction_index];
-            const auto kind =
-                compiler::surface_svm_bytecode_kind(instruction);
-            const auto source =
-                program.instruction_sources[instruction_index];
-            if (kind != compiler::SurfaceSvmBytecodeKind::value) {
-                if (source != compiler::SurfaceValueAddress::invalid_value) {
-                    diagnostic = "surface program " +
-                                 std::to_string(program_index) +
-                                 " assigns a value source to a control record";
-                    return false;
-                }
-                instruction_variants.emplace_back(
-                    compiler::SurfaceValueAddress::invalid_value);
-                continue;
-            }
-            if (source >= source_variants.size()) {
-                diagnostic = "surface program " +
-                             std::to_string(program_index) +
-                             " has a value record without a source";
-                return false;
-            }
-            const auto variant = source_variants[source];
-            if (variant >= executable.variants.size()) {
-                diagnostic = "surface program " +
-                             std::to_string(program_index) +
-                             " has a value record outside the semantic "
-                             "variant domain";
-                return false;
-            }
-            const auto value =
-                compiler::surface_svm_value_instruction(instruction);
-            const auto &static_variant = executable.variants[variant];
-            const auto immediate = compiler::surface_value_svm_immediate(value);
-            if (compiler::surface_value_operation(value) !=
-                    static_variant.instruction.operation ||
-                compiler::surface_value_operand_count(value) !=
-                    static_variant.operand_types.size() ||
-                std::find(static_variant.svm_immediates.begin(),
-                          static_variant.svm_immediates.end(),
-                          immediate) == static_variant.svm_immediates.end()) {
-                diagnostic = "surface program " +
-                             std::to_string(program_index) +
-                             " value record disagrees with its exact "
-                             "evaluator variant";
-                return false;
-            }
-            instruction_variants.emplace_back(variant);
-        }
-    }
-
-    std::vector<compiler::SurfaceSvmProgramImage> images;
-    images.reserve(programs.size());
-    for (auto &program : programs) {
-        images.emplace_back(std::move(program.image));
-    }
-    scene = compiler::build_surface_svm_scene_image(images);
-    if (!scene.valid) {
-        diagnostic = "unified surface SVM scene: " + scene.diagnostic;
-        return false;
-    }
-    if (instruction_variants.size() != scene.instructions.size()) {
-        diagnostic =
-            "unified evaluator variants are not parallel to the scene";
-        return false;
-    }
-    if (const auto validation =
-            compiler::validate_surface_svm_scene_image(scene);
-        !validation.empty()) {
-        diagnostic = "unified surface SVM scene validation: " + validation;
-        return false;
-    }
-    return true;
-}
-
 template<typename T>
 void provide_dummy_if_empty(luisa::vector<T> &values, T dummy) {
     if (values.empty()) {
@@ -429,8 +322,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     std::span<const std::shared_ptr<const compiler::SurfaceProgram>> programs,
     std::span<const compiler::SurfaceClosurePlan> closure_plans,
     std::span<const std::uint32_t> bssrdf_bump_tags,
-    std::string &diagnostic,
-    std::uint32_t region_handler_site_budget) {
+    std::string &diagnostic) {
     diagnostic.clear();
     if (programs.empty() || programs.size() != closure_plans.size()) {
         diagnostic = "surface topology programs and closure plans do not form a "
@@ -490,18 +382,12 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
 
     auto runtime = std::make_unique<SurfaceValueRuntime>();
     runtime->topologies.reserve(programs.size());
-    std::vector<compiler::SurfaceValueStoragePlan> normal_storage;
-    normal_storage.reserve(programs.size());
-    std::vector<compiler::SurfaceValueStoragePlan> root_storage;
-    root_storage.reserve(programs.size() *
-                         SurfaceValueRuntime::programs_per_topology);
     std::vector<SurfaceSvmRuntimeProgram> svm_programs;
     svm_programs.reserve(programs.size() *
                          SurfaceValueRuntime::programs_per_topology);
-    std::vector<bool> automatic_normal_uses_undisplaced_geometry;
-    automatic_normal_uses_undisplaced_geometry.reserve(programs.size());
-    std::vector<bool> emission_uses_automatic_normal;
-    emission_uses_automatic_normal.reserve(programs.size());
+    std::vector<compiler::ValueExpressionId> svm_surface_normal_outputs;
+    svm_surface_normal_outputs.reserve(
+        programs.size() * SurfaceValueRuntime::programs_per_topology);
 
     for (auto topology = std::size_t{0u}; topology < programs.size();
          ++topology) {
@@ -530,39 +416,6 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
 
         const auto dependencies = compiler::analyze_surface_value_dependencies(
             program, closure_plans[topology]);
-        auto preparation_storage = compiler::plan_surface_value_storage(
-            program, dependencies.preparation,
-            dependencies.preparation_outputs,
-            SurfaceValueRuntime::storage_capacity);
-        if (!preparation_storage.valid) {
-            diagnostic = "surface topology " + std::to_string(topology) +
-                         " preparation plan: " + preparation_storage.diagnostic;
-            return nullptr;
-        }
-        auto preparation_image =
-            compiler::lower_surface_value_program(program, preparation_storage);
-        if (!preparation_image.valid) {
-            diagnostic =
-                "surface topology " + std::to_string(topology) +
-                " preparation lowering: " + preparation_image.diagnostic;
-            return nullptr;
-        }
-        auto emission_storage = compiler::plan_surface_value_storage(
-            program, dependencies.emission, dependencies.emission_outputs,
-            SurfaceValueRuntime::storage_capacity);
-        if (!emission_storage.valid) {
-            diagnostic = "surface topology " + std::to_string(topology) +
-                         " emission plan: " + emission_storage.diagnostic;
-            return nullptr;
-        }
-        const auto emission_image =
-            compiler::lower_surface_value_program(program, emission_storage);
-        if (!emission_image.valid) {
-            diagnostic = "surface topology " + std::to_string(topology) +
-                         " emission lowering: " + emission_image.diagnostic;
-            return nullptr;
-        }
-
         auto topology_uses_undisplaced_geometry = false;
         for (auto index = std::size_t{0u}; index < normal_active.size();
              ++index) {
@@ -634,16 +487,13 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                 runtime->bssrdf_svm_closure_variants);
         }
         runtime->topologies.emplace_back(SurfaceValueRuntimeTopology{
-            .program = program_ptr,
-            .preparation_addresses =
-                std::move(preparation_image.value_addresses)});
-        normal_storage.emplace_back(std::move(topology_normal_storage));
-        automatic_normal_uses_undisplaced_geometry.emplace_back(
-            topology_uses_undisplaced_geometry);
-        emission_uses_automatic_normal.emplace_back(
-            emission_has_automatic_normal);
-        root_storage.emplace_back(std::move(preparation_storage));
-        root_storage.emplace_back(std::move(emission_storage));
+            .program = program_ptr});
+        svm_surface_normal_outputs.emplace_back(
+            has_automatic_normal ? program.surface_normal_root()
+                                 : compiler::ValueExpressionId{});
+        svm_surface_normal_outputs.emplace_back(
+            emission_has_automatic_normal ? program.surface_normal_root()
+                                          : compiler::ValueExpressionId{});
         svm_programs.emplace_back(std::move(preparation_svm));
         svm_programs.emplace_back(std::move(emission_svm));
     }
@@ -654,48 +504,6 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     canonicalize_surface_svm_closure_variants(
         runtime->bssrdf_svm_closure_variants);
 
-    std::vector<compiler::SurfaceValueExecutionInput> roots;
-    roots.reserve(root_storage.size());
-    for (auto topology = std::size_t{0u}; topology < programs.size();
-         ++topology) {
-        const auto has_automatic_normal =
-            execution_programs[topology]->surface_normal_root().valid();
-        const auto *normal =
-            has_automatic_normal ? &normal_storage[topology] : nullptr;
-        roots.emplace_back(compiler::SurfaceValueExecutionInput{
-            .program = execution_programs[topology].get(),
-            .storage =
-                &root_storage[topology *
-                                  SurfaceValueRuntime::programs_per_topology +
-                              SurfaceValueRuntime::preparation_program_offset],
-            .surface_normal_storage = normal,
-            .surface_normal_output =
-                execution_programs[topology]->surface_normal_root(),
-            .surface_normal_uses_undisplaced_geometry =
-                has_automatic_normal &&
-                automatic_normal_uses_undisplaced_geometry[topology],
-            .closure_plan = &closure_plans[topology]});
-        const auto emission_has_automatic_normal =
-            emission_uses_automatic_normal[topology];
-        roots.emplace_back(compiler::SurfaceValueExecutionInput{
-            .program = execution_programs[topology].get(),
-            .storage =
-                &root_storage[topology *
-                                  SurfaceValueRuntime::programs_per_topology +
-                              SurfaceValueRuntime::emission_program_offset],
-            .surface_normal_storage =
-                emission_has_automatic_normal ? normal : nullptr,
-            .surface_normal_output =
-                emission_has_automatic_normal
-                    ? execution_programs[topology]->surface_normal_root()
-                    : compiler::ValueExpressionId{},
-            .surface_normal_uses_undisplaced_geometry =
-                emission_has_automatic_normal &&
-                automatic_normal_uses_undisplaced_geometry[topology],
-            .closure_plan = &closure_plans[topology],
-            .closure_endpoints = compiler::surface_closure_endpoint_bit(
-                compiler::SurfaceClosureEndpoint::emission)});
-    }
     std::vector<compiler::SurfaceSvmEvaluatorProgramInput> evaluator_inputs;
     evaluator_inputs.reserve(svm_programs.size());
     for (auto program_index = std::size_t{};
@@ -709,7 +517,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
                 .instruction_sources =
                     svm_programs[program_index].instruction_sources,
                 .surface_normal_output =
-                    roots[program_index].surface_normal_output});
+                    svm_surface_normal_outputs[program_index]});
     }
     auto svm_executable =
         compiler::build_surface_svm_executable_scene(evaluator_inputs);
@@ -722,19 +530,6 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     runtime->svm_instruction_variants =
         std::move(svm_executable.instruction_variants);
 
-    // Retained only until the static execution histogram and its old ABI
-    // regression are expressed on the unified CFG. Production evaluator
-    // construction above is independent of this diagnostic image.
-    runtime->executable = compiler::build_surface_value_executable_scene(roots);
-    if (!runtime->executable.valid) {
-        diagnostic = runtime->executable.diagnostic;
-        return nullptr;
-    }
-    if (runtime->executable.values.programs.size() != roots.size()) {
-        diagnostic = "diagnostic split surface executable does not preserve "
-                     "the root-program bijection";
-        return nullptr;
-    }
     auto svm_value_count = std::uint32_t{};
     auto svm_guard_count = std::uint32_t{};
     auto svm_leaf_count = std::uint32_t{};
@@ -794,136 +589,79 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     runtime->svm_closure_operands.assign(
         runtime->svm_scene.closure_operands.begin(),
         runtime->svm_scene.closure_operands.end());
-    runtime->region_specializations =
-        compiler::plan_surface_value_region_specializations(
-            runtime->executable, region_handler_site_budget);
-    if (!runtime->region_specializations.valid) {
-        diagnostic = "surface value region specialization: " +
-                     runtime->region_specializations.diagnostic;
+    const auto &image = runtime->svm_scene;
+    const auto expected_program_count =
+        programs.size() * SurfaceValueRuntime::programs_per_topology;
+    if (!image.valid || image.programs.size() != expected_program_count ||
+        runtime->svm_instruction_variants.size() !=
+            image.instructions.size()) {
+        diagnostic =
+            "unified surface scene does not preserve the topology/program "
+            "bijection";
         return nullptr;
     }
-    const auto &image = runtime->executable.values;
-    if (runtime->executable.instruction_variants.size() !=
-            image.instructions.size() ||
-        image.closure_principled_features.size() !=
-            image.closure_instructions.size()) {
-        diagnostic = "compact surface semantic side streams are not parallel";
+
+    const auto capabilities = analyze_surface_svm_closure_capabilities(
+        runtime->preparation_svm_closure_variants);
+    if (capabilities.operations != image.used_closure_operations ||
+        capabilities.principled_features !=
+            image.used_principled_features) {
+        diagnostic =
+            "unified surface closure domain disagrees with scene aggregate "
+            "capabilities";
         return nullptr;
     }
-    runtime->used_principled_closure_features =
-        image.used_principled_closure_features;
-    std::uint32_t anisotropic_closure_operations = 0u;
-    std::uint32_t anisotropic_principled_features = 0u;
-    std::uint32_t thin_film_closure_operations = 0u;
-    std::uint32_t thin_film_principled_features = 0u;
-    runtime->closure_static_variants.reserve(image.closure_instructions.size());
-    for (auto instruction_index = std::size_t{0u};
-         instruction_index < image.closure_instructions.size();
-         ++instruction_index) {
-        const auto &instruction =
-            image.closure_instructions[instruction_index];
-        if (!compiler::surface_closure_is_leaf(instruction)) {
-            continue;
-        }
-        if ((instruction.control &
-             compiler::surface_closure_microfacet_anisotropy) != 0u) {
-            const auto operation =
-                compiler::surface_closure_operation(instruction);
-            anisotropic_closure_operations |=
-                std::uint32_t{1u} << static_cast<std::uint32_t>(operation);
-            if (operation == compiler::ClosureOperation::principled) {
-                anisotropic_principled_features |=
-                    image.closure_principled_features[instruction_index];
-            }
-        }
-        if ((instruction.control & compiler::surface_closure_thin_film) != 0u) {
-            const auto operation =
-                compiler::surface_closure_operation(instruction);
-            thin_film_closure_operations |=
-                std::uint32_t{1u} << static_cast<std::uint32_t>(operation);
-            if (operation == compiler::ClosureOperation::principled) {
-                thin_film_principled_features |=
-                    image.closure_principled_features[instruction_index];
-            }
-        }
-        const auto key =
-            instruction.control & compiler::surface_closure_static_variant_mask;
-        if (std::find(runtime->closure_static_variants.begin(),
-                      runtime->closure_static_variants.end(),
-                      key) == runtime->closure_static_variants.end()) {
-            runtime->closure_static_variants.emplace_back(key);
-        }
+    project_surface_svm_closure_domain(
+        runtime->preparation_svm_closure_variants,
+        compiler::surface_closure_static_variant_mask,
+        runtime->closure_static_variants,
+        runtime->used_principled_closure_features);
+    project_surface_svm_closure_domain(
+        runtime->emission_svm_closure_variants,
+        compiler::surface_closure_emission_static_variant_mask,
+        runtime->emission_closure_static_variants,
+        runtime->emission_principled_closure_features);
+    project_surface_svm_closure_domain(
+        runtime->bssrdf_svm_closure_variants,
+        compiler::surface_closure_static_variant_mask,
+        runtime->bssrdf_closure_static_variants,
+        runtime->bssrdf_principled_closure_features);
+    if (runtime->used_principled_closure_features !=
+        capabilities.principled_features) {
+        diagnostic =
+            "unified surface closure projection lost a Principled feature";
+        return nullptr;
     }
-    std::sort(runtime->closure_static_variants.begin(),
-              runtime->closure_static_variants.end());
+
     runtime->physical_closure_reachability = reachable_surface_closures(
-        image.used_closure_operations,
-        image.used_principled_closure_features,
-        anisotropic_closure_operations,
-        anisotropic_principled_features,
-        thin_film_closure_operations,
-        thin_film_principled_features);
-    runtime->maximum_closure_mix_slots = image.maximum_closure_mix_slots;
+        capabilities.operations,
+        capabilities.principled_features,
+        capabilities.anisotropic_operations,
+        capabilities.anisotropic_principled_features,
+        capabilities.thin_film_operations,
+        capabilities.thin_film_principled_features);
     LUISA_INFO(
-        "Surface physical-closure reachability: operations=0x{:08x}, "
-        "Principled features=0x{:08x}, anisotropic operations=0x{:08x}, "
-        "anisotropic Principled features=0x{:08x}, thin-film operations="
-        "0x{:08x}, thin-film Principled features=0x{:08x}, kinds=0x{:08x}, "
-        "Principled lobes=0x{:08x}, anisotropic kinds=0x{:08x}, "
-        "thin-film kinds=0x{:08x}, thin-film lobes=0x{:08x}.",
-        image.used_closure_operations,
-        image.used_principled_closure_features,
-        anisotropic_closure_operations,
-        anisotropic_principled_features,
-        thin_film_closure_operations,
-        thin_film_principled_features,
+        "Surface physical-closure reachability from unified SVM: "
+        "operations=0x{:08x}, Principled features=0x{:08x}, anisotropic "
+        "operations=0x{:08x}, anisotropic Principled features=0x{:08x}, "
+        "thin-film operations=0x{:08x}, thin-film Principled "
+        "features=0x{:08x}, kinds=0x{:08x}, Principled lobes=0x{:08x}, "
+        "anisotropic kinds=0x{:08x}, thin-film kinds=0x{:08x}, thin-film "
+        "lobes=0x{:08x}.",
+        capabilities.operations,
+        capabilities.principled_features,
+        capabilities.anisotropic_operations,
+        capabilities.anisotropic_principled_features,
+        capabilities.thin_film_operations,
+        capabilities.thin_film_principled_features,
         runtime->physical_closure_reachability.kinds,
         runtime->physical_closure_reachability.principled_lobes,
         runtime->physical_closure_reachability
             .anisotropic_microfacet_kinds,
         runtime->physical_closure_reachability.thin_film_kinds,
         runtime->physical_closure_reachability.thin_film_principled_lobes);
-    const auto append_unique = [](auto &values, auto value) noexcept {
-        if (std::find(values.begin(), values.end(), value) == values.end()) {
-            values.emplace_back(value);
-        }
-    };
-    const auto valid_program_range = [&image](std::uint32_t program) noexcept {
-        if (program >= image.programs.size()) {
-            return false;
-        }
-        const auto &range = image.programs[program];
-        return range.instruction_begin <= image.instructions.size() &&
-               range.instruction_count <=
-                   image.instructions.size() - range.instruction_begin &&
-               range.closure_begin <= image.closure_instructions.size() &&
-               range.closure_count <=
-                   image.closure_instructions.size() - range.closure_begin;
-    };
-    const auto collect_values =
-        [&](std::uint32_t program,
-            std::vector<std::uint32_t> &variants) noexcept {
-            if (!valid_program_range(program)) {
-                return false;
-            }
-            const auto &range = image.programs[program];
-            for (auto offset = std::uint32_t{0u};
-                 offset < range.instruction_count; ++offset) {
-                const auto instruction = range.instruction_begin + offset;
-                const auto variant =
-                    runtime->executable.instruction_variants[instruction];
-                if (variant == compiler::SurfaceValueAddress::invalid_value) {
-                    if (!compiler::is_surface_value_surface_normal_transition(
-                            image.instructions[instruction])) {
-                        return false;
-                    }
-                    continue;
-                }
-                append_unique(variants, variant);
-            }
-            return true;
-        };
-    for (auto topology = std::size_t{0u}; topology < programs.size();
+
+    for (auto topology = std::size_t{}; topology < programs.size();
          ++topology) {
         const auto base = static_cast<std::uint32_t>(
             topology * SurfaceValueRuntime::programs_per_topology);
@@ -931,175 +669,38 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
             base + SurfaceValueRuntime::preparation_program_offset;
         const auto emission_program =
             base + SurfaceValueRuntime::emission_program_offset;
-        if (!collect_values(preparation_program,
-                            runtime->preparation_value_static_variants) ||
-            !collect_values(emission_program,
-                            runtime->emission_value_static_variants)) {
-            diagnostic = "surface root program range exceeds its stream";
+        const auto emission_endpoint = compiler::surface_closure_endpoint_bit(
+            compiler::SurfaceClosureEndpoint::emission);
+        if (image.programs[preparation_program].endpoints !=
+                compiler::all_surface_closure_endpoints ||
+            image.programs[emission_program].endpoints !=
+                emission_endpoint) {
+            diagnostic =
+                "unified surface program endpoint projection is not exact";
+            return nullptr;
+        }
+        if (!collect_surface_svm_value_domain(
+                image, runtime->svm_instruction_variants,
+                runtime->value_variants.size(), preparation_program,
+                runtime->preparation_value_static_variants, diagnostic) ||
+            !collect_surface_svm_value_domain(
+                image, runtime->svm_instruction_variants,
+                runtime->value_variants.size(), emission_program,
+                runtime->emission_value_static_variants, diagnostic)) {
             return nullptr;
         }
         if (bssrdf_topologies[topology] &&
-            !collect_values(preparation_program,
-                            runtime->bssrdf_value_static_variants)) {
-            diagnostic = "BSSRDF topology program range exceeds its stream";
+            !collect_surface_svm_value_domain(
+                image, runtime->svm_instruction_variants,
+                runtime->value_variants.size(), preparation_program,
+                runtime->bssrdf_value_static_variants, diagnostic)) {
             return nullptr;
         }
-        const auto &range = image.programs[emission_program];
-        for (auto offset = std::uint32_t{0u}; offset < range.closure_count;
-             ++offset) {
-            const auto closure = range.closure_begin + offset;
-            const auto &instruction = image.closure_instructions[closure];
-            if (!compiler::surface_closure_is_leaf(instruction)) {
-                continue;
-            }
-            const auto endpoints =
-                compiler::surface_closure_endpoints(instruction);
-            const auto operation =
-                compiler::surface_closure_operation(instruction);
-            if (endpoints != compiler::surface_closure_endpoint_bit(
-                                 compiler::SurfaceClosureEndpoint::emission) ||
-                (operation != compiler::ClosureOperation::emission &&
-                 operation != compiler::ClosureOperation::principled)) {
-                diagnostic =
-                    "emission projection retained a non-emission closure";
-                return nullptr;
-            }
-            append_unique(
-                runtime->emission_closure_static_variants,
-                instruction.control &
-                    compiler::surface_closure_emission_static_variant_mask);
-            runtime->emission_principled_closure_features |=
-                image.closure_principled_features[closure];
-        }
-        if (bssrdf_topologies[topology]) {
-            const auto &bssrdf_range = image.programs[preparation_program];
-            for (auto offset = std::uint32_t{0u};
-                 offset < bssrdf_range.closure_count; ++offset) {
-                const auto closure = bssrdf_range.closure_begin + offset;
-                const auto &instruction = image.closure_instructions[closure];
-                if (!compiler::surface_closure_is_leaf(instruction)) {
-                    continue;
-                }
-                if (compiler::surface_closure_endpoints(instruction) == 0u) {
-                    diagnostic =
-                        "BSSRDF topology retained an endpoint-free closure";
-                    return nullptr;
-                }
-                append_unique(
-                    runtime->bssrdf_closure_static_variants,
-                    instruction.control &
-                        compiler::surface_closure_static_variant_mask);
-                runtime->bssrdf_principled_closure_features |=
-                    image.closure_principled_features[closure];
-            }
-        }
     }
-    const auto sort_variants = [](auto &variants) noexcept {
-        std::sort(variants.begin(), variants.end());
-    };
-    sort_variants(runtime->preparation_value_static_variants);
-    sort_variants(runtime->emission_value_static_variants);
-    sort_variants(runtime->bssrdf_value_static_variants);
-    std::sort(runtime->emission_closure_static_variants.begin(),
-              runtime->emission_closure_static_variants.end());
-    std::sort(runtime->bssrdf_closure_static_variants.begin(),
-              runtime->bssrdf_closure_static_variants.end());
+    canonicalize_u32_domain(runtime->preparation_value_static_variants);
+    canonicalize_u32_domain(runtime->emission_value_static_variants);
+    canonicalize_u32_domain(runtime->bssrdf_value_static_variants);
 
-    for (auto index = std::size_t{0u}; index < image.programs.size(); ++index) {
-        if (!fits_runtime_capacity(image.programs[index])) {
-            diagnostic =
-                "compact surface program " + std::to_string(index) +
-                " requires typed slots beyond the 8 scalar / 12 vector / 1 "
-                "uint64 validation capacity";
-            return nullptr;
-        }
-        runtime->program_ranges.emplace_back(
-            luisa::make_uint4(image.programs[index].instruction_begin,
-                              image.programs[index].instruction_count,
-                              image.programs[index].closure_begin,
-                              image.programs[index].closure_count));
-        runtime->program_flags.emplace_back(image.programs[index].flags);
-    }
-    runtime->region_specializations_use_inline_tags =
-        !runtime->region_specializations.specializations.empty() &&
-        runtime->region_specializations.specializations.size() <=
-            compiler::surface_value_region_specialization_tag_capacity;
-    runtime->instructions.reserve(image.instructions.size());
-    for (auto instruction_index = std::size_t{};
-         instruction_index < image.instructions.size(); ++instruction_index) {
-        const auto &instruction = image.instructions[instruction_index];
-        auto control = instruction.control;
-        if (runtime->region_specializations_use_inline_tags) {
-            const auto specialization = runtime->region_specializations
-                                            .instruction_specialization_indices[
-                                                instruction_index];
-            if (specialization != compiler::surface_value_no_region) {
-                if (specialization >=
-                        runtime->region_specializations.specializations.size() ||
-                    !compiler::
-                        surface_value_region_specialization_has_inline_tag(
-                            specialization)) {
-                    diagnostic =
-                        "surface value region specialization cannot be encoded "
-                        "in the validated runtime instruction";
-                    return nullptr;
-                }
-                control |= compiler::make_surface_value_region_specialization_tag(
-                    specialization);
-            }
-        }
-        runtime->instructions.emplace_back(luisa::make_uint4(
-            control, instruction.result, instruction.operand_payload,
-            instruction.metadata_index));
-    }
-    runtime->operands.assign(image.operands.begin(), image.operands.end());
-    runtime->instruction_variants.assign(
-        runtime->executable.instruction_variants.begin(),
-        runtime->executable.instruction_variants.end());
-    // Inline-tag plans and the production budget-zero route never read the
-    // parallel side stream. Keep only the later dummy binding in those cases;
-    // copying and uploading one uint per instruction would be pure overhead.
-    if (!runtime->region_specializations.specializations.empty() &&
-        !runtime->region_specializations_use_inline_tags) {
-        runtime->instruction_region_specializations.assign(
-            runtime->region_specializations.instruction_specialization_indices
-                .begin(),
-            runtime->region_specializations.instruction_specialization_indices
-                .end());
-    }
-    runtime->metadata_parameters.reserve(image.metadata.size());
-    runtime->metadata_static_ranges.reserve(image.metadata.size());
-    for (const auto &metadata : image.metadata) {
-        runtime->metadata_parameters.emplace_back(metadata.parameter);
-        runtime->metadata_static_ranges.emplace_back(luisa::make_uint2(
-            metadata.static_table_begin, metadata.static_table_count));
-    }
-    runtime->static_data.assign(image.static_data.begin(),
-                                image.static_data.end());
-    runtime->closure_instructions.reserve(image.closure_instructions.size());
-    for (const auto &instruction : image.closure_instructions) {
-        runtime->closure_instructions.emplace_back(luisa::make_uint4(
-            instruction.control, instruction.payload0,
-            instruction.payload1, instruction.payload2));
-    }
-    runtime->closure_operands.assign(image.closure_operands.begin(),
-                                     image.closure_operands.end());
-    provide_dummy_if_empty(runtime->program_ranges, luisa::make_uint4(0u));
-    provide_dummy_if_empty(runtime->program_flags, 0u);
-    provide_dummy_if_empty(runtime->instructions, luisa::make_uint4(0u));
-    provide_dummy_if_empty(runtime->operands, 0u);
-    provide_dummy_if_empty(runtime->instruction_variants, 0u);
-    provide_dummy_if_empty(runtime->instruction_region_specializations,
-                           compiler::surface_value_no_region);
-    provide_dummy_if_empty(runtime->metadata_parameters,
-                           compiler::SurfaceValueAddress::invalid_value);
-    provide_dummy_if_empty(runtime->metadata_static_ranges,
-                           luisa::make_uint2(0u));
-    provide_dummy_if_empty(runtime->static_data, 0.0f);
-    provide_dummy_if_empty(runtime->closure_instructions,
-                           luisa::make_uint4(0u));
-    provide_dummy_if_empty(runtime->closure_operands,
-                           compiler::SurfaceValueAddress::invalid_value);
     provide_dummy_if_empty(runtime->svm_program_descriptors,
                            luisa::make_uint4(0u));
     provide_dummy_if_empty(runtime->svm_instructions,
@@ -1115,135 +716,24 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     provide_dummy_if_empty(runtime->svm_closure_operands,
                            compiler::SurfaceValueAddress::invalid_value);
 
-    auto maximum_instruction_count = std::uint32_t{0u};
-    auto maximum_scalar_slots = std::uint32_t{0u};
-    auto maximum_vector_slots = std::uint32_t{0u};
-    auto maximum_unsigned_integer_slots = std::uint32_t{0u};
-    for (const auto &program : image.programs) {
-        maximum_instruction_count =
-            std::max(maximum_instruction_count, program.instruction_count);
-        maximum_scalar_slots =
-            std::max(maximum_scalar_slots, program.scalar_slots);
-        maximum_vector_slots =
-            std::max(maximum_vector_slots, program.vector_slots);
-        maximum_unsigned_integer_slots = std::max(
-            maximum_unsigned_integer_slots, program.unsigned_integer_slots);
-    }
     LUISA_INFO(
-        "Built one-stream compact surface runtime: {} programs, {} "
-        "instructions, {} operands, {} metadata records, {} static floats, "
-        "{} semantic variants (population {}, emission {}, BSSRDF {} tags / "
-        "{} values), {} closure instructions "
-        "(population/emission/BSSRDF variants {}/{}/{}), maximum program "
-        "length {}, typed slots {}/{}/{}, linear closure-weight slots {}.",
-        image.programs.size(), image.instructions.size(), image.operands.size(),
-        image.metadata.size(), image.static_data.size(),
-        runtime->value_variants.size(),
+        "Built unified surface SVM runtime: {} programs, {} records, {} value "
+        "operands, {} metadata records, {} static floats, {} semantic "
+        "evaluators (preparation {}, emission {}, BSSRDF {} tags / {} "
+        "evaluators), {} closure leaves "
+        "(preparation/emission/BSSRDF variants {}/{}/{}), maximum program "
+        "length {}, typed slots {}/{}/{}.",
+        image.programs.size(), image.instructions.size(),
+        image.value_operands.size(), image.value_metadata.size(),
+        image.static_data.size(), runtime->value_variants.size(),
         runtime->preparation_value_static_variants.size(),
         runtime->emission_value_static_variants.size(),
         bssrdf_topology_count, runtime->bssrdf_value_static_variants.size(),
-        image.closure_instructions.size(),
-        runtime->closure_static_variants.size(),
-        runtime->emission_closure_static_variants.size(),
-        runtime->bssrdf_closure_static_variants.size(),
-        maximum_instruction_count, maximum_scalar_slots, maximum_vector_slots,
-        maximum_unsigned_integer_slots,
-        runtime->maximum_closure_mix_slots);
-    LUISA_INFO(
-        "Selected {} typed surface regions: {} static occurrences, {} "
-        "handler sites / {} budget, {} eliminated local-bank accesses, {} "
-        "dispatch.",
-        runtime->region_specializations.specializations.size(),
-        [&] {
-            auto count = std::uint64_t{};
-            for (const auto &specialization :
-                 runtime->region_specializations.specializations) {
-                count += specialization.static_occurrences;
-            }
-            return count;
-        }(),
-        runtime->region_specializations.selected_handler_sites,
-        runtime->region_specializations.handler_site_budget,
-        runtime->region_specializations.eliminated_bank_accesses,
-        runtime->region_specializations.specializations.empty()
-            ? "disabled"
-            : runtime->region_specializations_use_inline_tags
-                  ? "inline instruction-tag"
-                  : "side-stream");
-    if (surface_value_region_diagnostics_requested()) {
-        const auto list = [](const auto &values, const auto &project) {
-            std::string text;
-            for (const auto &value : values) {
-                if (!text.empty()) {
-                    text += ',';
-                }
-                text += std::to_string(project(value));
-            }
-            return text;
-        };
-        for (auto index = std::size_t{};
-             index < runtime->region_specializations.specializations.size();
-             ++index) {
-            const auto &specialization =
-                runtime->region_specializations.specializations[index];
-            const auto &shape = specialization.shape;
-            std::vector<std::uint32_t> operand_offsets{0u};
-            std::vector<std::uint32_t> source_kinds;
-            std::vector<std::uint32_t> source_indices;
-            for (const auto &operands : shape.operand_sources) {
-                for (const auto &source : operands) {
-                    source_kinds.emplace_back(
-                        static_cast<std::uint32_t>(source.kind));
-                    source_indices.emplace_back(source.index);
-                }
-                operand_offsets.emplace_back(
-                    static_cast<std::uint32_t>(source_kinds.size()));
-            }
-            LUISA_INFO(
-                "Typed surface region {}: static_occurrences={} "
-                "handler_sites={} eliminated_accesses={} variants=[{}] "
-                "operand_offsets=[{}] source_kinds=[{}] source_indices=[{}] "
-                "live_input_banks=[{}] live_outputs=[{}].",
-                index, specialization.static_occurrences,
-                specialization.handler_site_cost,
-                specialization.eliminated_bank_accesses,
-                list(shape.variant_indices,
-                     [](auto value) { return value; }),
-                list(operand_offsets, [](auto value) { return value; }),
-                list(source_kinds, [](auto value) { return value; }),
-                list(source_indices, [](auto value) { return value; }),
-                list(shape.live_input_banks,
-                     [](auto value) {
-                         return static_cast<std::uint32_t>(value);
-                     }),
-                list(shape.live_output_instruction_offsets,
-                     [](auto value) { return value; }));
-        }
-    }
-
-    runtime->program_buffer =
-        device.create_buffer<luisa::uint4>(runtime->program_ranges.size());
-    runtime->program_flag_buffer =
-        device.create_buffer<luisa::uint>(runtime->program_flags.size());
-    runtime->instruction_buffer =
-        device.create_buffer<luisa::uint4>(runtime->instructions.size());
-    runtime->operand_buffer =
-        device.create_buffer<luisa::uint>(runtime->operands.size());
-    runtime->instruction_variant_buffer =
-        device.create_buffer<luisa::uint>(runtime->instruction_variants.size());
-    runtime->instruction_region_specialization_buffer =
-        device.create_buffer<luisa::uint>(
-            runtime->instruction_region_specializations.size());
-    runtime->metadata_parameter_buffer =
-        device.create_buffer<luisa::uint>(runtime->metadata_parameters.size());
-    runtime->metadata_static_range_buffer = device.create_buffer<luisa::uint2>(
-        runtime->metadata_static_ranges.size());
-    runtime->static_data_buffer =
-        device.create_buffer<float>(runtime->static_data.size());
-    runtime->closure_instruction_buffer = device.create_buffer<luisa::uint4>(
-        runtime->closure_instructions.size());
-    runtime->closure_operand_buffer =
-        device.create_buffer<luisa::uint>(runtime->closure_operands.size());
+        svm_leaf_count, runtime->preparation_svm_closure_variants.size(),
+        runtime->emission_svm_closure_variants.size(),
+        runtime->bssrdf_svm_closure_variants.size(),
+        image.maximum_instruction_count, image.maximum_scalar_slots,
+        image.maximum_vector_slots, image.maximum_unsigned_integer_slots);
     runtime->svm_program_buffer = device.create_buffer<luisa::uint4>(
         runtime->svm_program_descriptors.size());
     runtime->svm_instruction_buffer = device.create_buffer<luisa::uint4>(
@@ -1270,26 +760,6 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         runtime->device_view.emplace_on_update(
             surface_value_runtime_buffer_slot(slot), buffer);
     };
-    bind(SurfaceValueRuntimeBufferSlot::program, runtime->program_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::program_flag,
-         runtime->program_flag_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::instruction,
-         runtime->instruction_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::operand, runtime->operand_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::instruction_variant,
-         runtime->instruction_variant_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::instruction_region_specialization,
-         runtime->instruction_region_specialization_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::metadata_parameter,
-         runtime->metadata_parameter_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::metadata_static_range,
-         runtime->metadata_static_range_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::static_data,
-         runtime->static_data_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::closure_instruction,
-         runtime->closure_instruction_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::closure_operand,
-         runtime->closure_operand_buffer);
     bind(SurfaceValueRuntimeBufferSlot::svm_program,
          runtime->svm_program_buffer);
     bind(SurfaceValueRuntimeBufferSlot::svm_instruction,
@@ -1311,28 +781,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
 
 void upload_surface_value_runtime(Stream &stream,
                                   SurfaceValueRuntime &runtime) noexcept {
-    stream << runtime.program_buffer.copy_from(
-                  luisa::span{runtime.program_ranges})
-           << runtime.program_flag_buffer.copy_from(
-                  luisa::span{runtime.program_flags})
-           << runtime.instruction_buffer.copy_from(
-                  luisa::span{runtime.instructions})
-           << runtime.operand_buffer.copy_from(luisa::span{runtime.operands})
-           << runtime.instruction_variant_buffer.copy_from(
-                  luisa::span{runtime.instruction_variants})
-           << runtime.instruction_region_specialization_buffer.copy_from(
-                  luisa::span{runtime.instruction_region_specializations})
-           << runtime.metadata_parameter_buffer.copy_from(
-                  luisa::span{runtime.metadata_parameters})
-           << runtime.metadata_static_range_buffer.copy_from(
-                  luisa::span{runtime.metadata_static_ranges})
-           << runtime.static_data_buffer.copy_from(
-                  luisa::span{runtime.static_data})
-           << runtime.closure_instruction_buffer.copy_from(
-                  luisa::span{runtime.closure_instructions})
-           << runtime.closure_operand_buffer.copy_from(
-                  luisa::span{runtime.closure_operands})
-           << runtime.svm_program_buffer.copy_from(
+    stream << runtime.svm_program_buffer.copy_from(
                   luisa::span{runtime.svm_program_descriptors})
            << runtime.svm_instruction_buffer.copy_from(
                   luisa::span{runtime.svm_instructions})

@@ -54,7 +54,7 @@ using namespace luisa_backend::detail;
 }
 
 [[nodiscard]] std::size_t
-count_bump_configuration(const SurfaceValueSceneImage &image,
+count_bump_configuration(const SurfaceSvmSceneImage &image,
                          std::uint32_t program_begin, std::uint32_t program_end,
                          std::uint16_t configuration) noexcept {
     auto count = std::size_t{0u};
@@ -64,12 +64,14 @@ count_bump_configuration(const SurfaceValueSceneImage &image,
              instruction < range.instruction_begin + range.instruction_count;
              ++instruction) {
             const auto &record = image.instructions[instruction];
-            if (is_surface_value_surface_normal_transition(record)) {
+            if (surface_svm_bytecode_kind(record) !=
+                SurfaceSvmBytecodeKind::value) {
                 continue;
             }
-            count += surface_value_operation(record) ==
+            const auto value = surface_svm_value_instruction(record);
+            count += surface_value_operation(value) ==
                          ValueOperation::bump_samples &&
-                     surface_value_svm_immediate(record) == configuration;
+                     surface_value_svm_immediate(value) == configuration;
         }
     }
     return count;
@@ -189,13 +191,38 @@ std::string validate_compact_surface_value_program_abi(
     const auto texture_sampling = make_texture_2d_sampling_callables();
     const auto attribute_lookup =
         make_surface_attribute_lookup_callable(0u, 1u);
-    const auto callable = make_surface_value_program_callable(
+    const auto dispatcher = make_surface_value_instruction_dispatcher(
         scene, texture_sampling, attribute_lookup,
         SurfaceValueProgramDomain::preparation);
-    if (callable.requires_ambient_occlusion()) {
-        return "AO-free compact value program changed callable ABI";
+    if (dispatcher.requires_ambient_occlusion()) {
+        return "AO-free unified value dispatcher changed callable ABI";
     }
-    const auto &function = callable.function();
+    using ProbeCallable = Callable<void(
+        Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
+        BindlessArray, SurfacePointCall &, luisa::float3, bool, luisa::uint4,
+        luisa::uint, SurfaceValueScalarBank &, SurfaceValueVectorBank &,
+        luisa::ulong &)>;
+    ProbeCallable probe{
+        [dispatcher](BufferFloat scalar_parameters,
+                     BufferFloat3 vector_parameters,
+                     BufferFloat cycles_bsdf_tables,
+                     BindlessVar textures,
+                     BindlessVar geometry_heap,
+                     Var<SurfacePointCall> &point,
+                     Float3 transaction_shading_normal,
+                     Bool use_undisplaced_geometry,
+                     Var<luisa::uint4> instruction,
+                     UInt instruction_index,
+                     Var<SurfaceValueScalarBank> &scalar_bank,
+                     Var<SurfaceValueVectorBank> &vector_bank,
+                     ULong &unsigned_integer_bank) noexcept {
+            dispatcher(
+                scalar_parameters, vector_parameters, cycles_bsdf_tables,
+                textures, geometry_heap, point, transaction_shading_normal,
+                use_undisplaced_geometry, instruction, instruction_index,
+                scalar_bank, vector_bank, unsigned_integer_bank, nullptr);
+        }};
+    const auto &function = probe.function();
     auto surface_point_arguments = std::size_t{0u};
     auto surface_point_is_reference = false;
     for (const auto &argument : function.arguments()) {
@@ -204,19 +231,18 @@ std::string validate_compact_surface_value_program_abi(
             surface_point_is_reference = argument.is_reference();
         }
     }
-    // Only shading_normal is observable after the value transaction. The
-    // immutable base point must remain an on-demand reference so the device
-    // compiler can eliminate fields not observed by a selected handler.
-    if (function.return_type() != Type::of<luisa::float3>() ||
+    // The unified PC loop owns transaction state. Its per-record dispatcher
+    // observes the point by reference and returns no aggregate state.
+    if (function.return_type() != nullptr ||
         surface_point_arguments != 1u || !surface_point_is_reference) {
-        return "compact value program lost its narrow point ABI";
+        return "unified value dispatcher lost its narrow point ABI";
     }
     const auto handler_call_count =
         count_named_custom_calls(function, "surface_value_handler_");
     const auto expected =
         scene->surface_values->preparation_value_static_variants.size();
     if (handler_call_count != expected) {
-        return "compact value interpreter lost its per-variant callable "
+        return "unified value dispatcher lost its per-variant callable "
                "boundary (calls=" +
                std::to_string(handler_call_count) + ", variants=" +
                std::to_string(expected) + ")";
@@ -563,7 +589,7 @@ bool has_typed_clamp_record_domain(
         ValueOperation::clamp_range,
         SurfaceValueBank::scalar,
         0u);
-    for (const auto &variant : runtime.executable.variants) {
+    for (const auto &variant : runtime.value_variants) {
         if (variant.instruction.operation != ValueOperation::clamp_range) {
             continue;
         }
@@ -598,7 +624,7 @@ bool has_typed_map_range_record_domains(
         std::uint16_t{6u}, std::uint16_t{7u}};
     auto scalar_count = std::size_t{0u};
     auto vector_count = std::size_t{0u};
-    for (const auto &variant : runtime.executable.variants) {
+    for (const auto &variant : runtime.value_variants) {
         if (variant.instruction.operation != ValueOperation::map_range_float &&
             variant.instruction.operation != ValueOperation::map_range_vector) {
             continue;
@@ -623,24 +649,28 @@ bool has_typed_map_range_record_domains(
 
 bool has_color_ramp_record_product(
     const SurfaceValueRuntime &runtime) noexcept {
-    const auto &executable = runtime.executable;
     const auto variant_count = std::count_if(
-        executable.variants.begin(), executable.variants.end(),
+        runtime.value_variants.begin(), runtime.value_variants.end(),
         [](const auto &variant) noexcept {
             return variant.instruction.operation == ValueOperation::color_ramp;
         });
     std::vector<std::uint32_t> parameters;
-    for (const auto &instruction : executable.values.instructions) {
-        if (surface_value_operation(instruction) !=
+    for (const auto &instruction : runtime.svm_scene.instructions) {
+        if (surface_svm_bytecode_kind(instruction) !=
+            SurfaceSvmBytecodeKind::value) {
+            continue;
+        }
+        const auto value = surface_svm_value_instruction(instruction);
+        if (surface_value_operation(value) !=
             ValueOperation::color_ramp) {
             continue;
         }
-        if (instruction.metadata_index >=
-            executable.values.metadata.size()) {
+        if (value.metadata_index >=
+            runtime.svm_scene.value_metadata.size()) {
             return false;
         }
         const auto parameter =
-            executable.values.metadata[instruction.metadata_index].parameter;
+            runtime.svm_scene.value_metadata[value.metadata_index].parameter;
         if (parameter == ~std::uint32_t{0u}) {
             return false;
         }
@@ -669,22 +699,12 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
         domain_matches(bssrdf, runtime.bssrdf_value_static_variants,
                        SurfaceValueRuntime::preparation_program_offset);
 
-    const auto &scene = runtime.executable;
-    const auto &image = scene.values;
+    const auto &svm = runtime.svm_scene;
     const auto expected_program_count =
         runtime.topologies.size() * SurfaceValueRuntime::programs_per_topology;
-
-    // The replacement scene is independently validated after relocation. Its
-    // evaluator relation is not inferred from opcodes: every value record must
-    // name one exact established semantic variant, every non-value record must
-    // carry the invalid sentinel, and each per-tag variant domain must equal
-    // the old transaction's domain while the migration is in progress.
-    const auto &svm = runtime.svm_scene;
     auto unified_scene_exact =
         svm.valid && svm.programs.size() == expected_program_count &&
         svm.side_ranges.size() == expected_program_count &&
-        image.programs.size() == expected_program_count &&
-        scene.instruction_variants.size() == image.instructions.size() &&
         validate_surface_svm_scene_image(svm).empty() &&
         svm.maximum_scalar_slots <= SurfaceValueRuntime::scalar_capacity &&
         svm.maximum_vector_slots <= SurfaceValueRuntime::vector_capacity &&
@@ -693,24 +713,24 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
     auto unified_variant_bijection =
         unified_scene_exact &&
         runtime.svm_instruction_variants.size() == svm.instructions.size();
+    auto normal_transactions_exact = unified_variant_bijection;
     auto observed_leaf = false;
     auto observed_guard = false;
+    std::vector<std::uint32_t> preparation_value_domain;
+    std::vector<std::uint32_t> emission_value_domain;
     std::vector<SurfaceSvmClosureVariant> preparation_closure_domain;
     std::vector<SurfaceSvmClosureVariant> emission_closure_domain;
     const auto canonicalize = [](auto &domain) {
         std::sort(domain.begin(), domain.end());
         domain.erase(std::unique(domain.begin(), domain.end()), domain.end());
     };
-    for (auto program = std::uint32_t{0u};
+
+    for (auto program = std::uint32_t{};
          unified_scene_exact && program < svm.programs.size(); ++program) {
         const auto &range = svm.programs[program];
-        const auto &old_range = image.programs[program];
         if (range.instruction_begin > svm.instructions.size() ||
             range.instruction_count >
-                svm.instructions.size() - range.instruction_begin ||
-            old_range.instruction_begin > image.instructions.size() ||
-            old_range.instruction_count >
-                image.instructions.size() - old_range.instruction_begin) {
+                svm.instructions.size() - range.instruction_begin) {
             unified_scene_exact = false;
             break;
         }
@@ -722,12 +742,14 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
                 ? surface_closure_endpoint_bit(
                       SurfaceClosureEndpoint::emission)
                 : all_surface_closure_endpoints;
-        unified_scene_exact &= range.endpoints == expected_endpoints &&
-                               range.flags == old_range.flags;
+        unified_scene_exact &= range.endpoints == expected_endpoints;
 
         auto normal_count = std::uint32_t{};
         auto end_count = std::uint32_t{};
-        std::vector<std::uint32_t> new_domain;
+        auto &value_domain = emission_program ? emission_value_domain
+                                              : preparation_value_domain;
+        auto &closure_domain = emission_program ? emission_closure_domain
+                                                : preparation_closure_domain;
         for (auto offset = std::uint32_t{};
              offset < range.instruction_count; ++offset) {
             const auto instruction_index = range.instruction_begin + offset;
@@ -739,9 +761,7 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
             observed_guard |= kind == SurfaceSvmBytecodeKind::jump_if_one ||
                               kind == SurfaceSvmBytecodeKind::jump_if_zero;
             if (kind == SurfaceSvmBytecodeKind::closure_leaf) {
-                auto &domain = emission_program ? emission_closure_domain
-                                                : preparation_closure_domain;
-                domain.emplace_back(SurfaceSvmClosureVariant{
+                closure_domain.emplace_back(SurfaceSvmClosureVariant{
                     .static_variant =
                         surface_svm_closure_control(instruction) &
                         surface_closure_static_variant_mask,
@@ -750,11 +770,6 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
             if (kind == SurfaceSvmBytecodeKind::invalid) {
                 unified_scene_exact = false;
             }
-            if (instruction_index >=
-                runtime.svm_instruction_variants.size()) {
-                unified_variant_bijection = false;
-                continue;
-            }
             const auto variant =
                 runtime.svm_instruction_variants[instruction_index];
             if (kind != SurfaceSvmBytecodeKind::value) {
@@ -762,12 +777,12 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
                     variant == SurfaceValueAddress::invalid_value;
                 continue;
             }
-            if (variant >= scene.variants.size()) {
+            if (variant >= runtime.value_variants.size()) {
                 unified_variant_bijection = false;
                 continue;
             }
             const auto value = surface_svm_value_instruction(instruction);
-            const auto &static_variant = scene.variants[variant];
+            const auto &static_variant = runtime.value_variants[variant];
             unified_variant_bijection &=
                 surface_value_operation(value) ==
                     static_variant.instruction.operation &&
@@ -777,7 +792,7 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
                           static_variant.svm_immediates.end(),
                           surface_value_svm_immediate(value)) !=
                     static_variant.svm_immediates.end();
-            new_domain.emplace_back(variant);
+            value_domain.emplace_back(variant);
         }
         const auto final_kind =
             range.instruction_count == 0u
@@ -785,39 +800,49 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
                 : surface_svm_bytecode_kind(
                       svm.instructions[range.instruction_begin +
                                        range.instruction_count - 1u]);
-        auto old_normal_count = std::uint32_t{};
-        std::vector<std::uint32_t> old_domain;
-        for (auto offset = std::uint32_t{};
-             offset < old_range.instruction_count; ++offset) {
-            const auto instruction_index =
-                old_range.instruction_begin + offset;
-            if (is_surface_value_surface_normal_transition(
-                    image.instructions[instruction_index])) {
-                ++old_normal_count;
-                continue;
-            }
-            const auto variant = scene.instruction_variants[instruction_index];
-            if (variant >= scene.variants.size()) {
-                unified_variant_bijection = false;
-                continue;
-            }
-            old_domain.emplace_back(variant);
-        }
-        canonicalize(new_domain);
-        canonicalize(old_domain);
-        unified_scene_exact &= normal_count == old_normal_count &&
-                               normal_count <= 1u && end_count == 1u &&
+        const auto known_flags =
+            (range.flags & ~surface_value_program_flag_mask) == 0u;
+        const auto flags_require_transition =
+            range.flags == 0u || normal_count == 1u;
+        unified_scene_exact &= normal_count <= 1u && end_count == 1u &&
                                final_kind == SurfaceSvmBytecodeKind::end;
-        unified_variant_bijection &= new_domain == old_domain;
+        normal_transactions_exact &=
+            normal_count <= 1u && known_flags && flags_require_transition;
+        if (!emission_program) {
+            const auto topology =
+                program / SurfaceValueRuntime::programs_per_topology;
+            normal_transactions_exact &=
+                topology < runtime.topologies.size() &&
+                (normal_count == 1u) ==
+                    runtime.topologies[topology]
+                        .program->surface_normal_root().valid();
+        } else {
+            const auto topology =
+                program / SurfaceValueRuntime::programs_per_topology;
+            normal_transactions_exact &=
+                normal_count == 0u ||
+                (topology < runtime.topologies.size() &&
+                 runtime.topologies[topology]
+                     .program->surface_normal_root().valid());
+        }
     }
-    result.unified_scene_exact =
-        unified_scene_exact && observed_leaf && observed_guard;
-    result.unified_variant_bijection =
-        unified_variant_bijection && result.unified_scene_exact;
+
+    canonicalize(preparation_value_domain);
+    canonicalize(emission_value_domain);
     canonicalize(preparation_closure_domain);
     canonicalize(emission_closure_domain);
     auto canonical_bssrdf_domain = runtime.bssrdf_svm_closure_variants;
     canonicalize(canonical_bssrdf_domain);
+    unified_variant_bijection &=
+        preparation_value_domain ==
+            runtime.preparation_value_static_variants &&
+        emission_value_domain == runtime.emission_value_static_variants;
+    result.unified_scene_exact =
+        unified_scene_exact && observed_leaf && observed_guard;
+    result.unified_variant_bijection =
+        unified_variant_bijection && result.unified_scene_exact;
+    result.normal_transactions_exact =
+        normal_transactions_exact && result.unified_scene_exact;
     result.unified_closure_domains_exact =
         result.unified_scene_exact &&
         preparation_closure_domain ==
@@ -829,96 +854,40 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
                       canonical_bssrdf_domain.begin(),
                       canonical_bssrdf_domain.end());
 
-    // Every projected root is one self-contained topological stream. A normal
-    // transaction has at most one consuming boundary; only that boundary may
-    // use the invalid variant sentinel. This proves the semantic side stream
-    // is total over executable instructions without reintroducing a hidden
-    // Bump callable edge.
-    auto transactions_exact =
-        image.programs.size() == expected_program_count &&
-        scene.instruction_variants.size() == image.instructions.size();
-    for (auto program = std::uint32_t{0u};
-         transactions_exact && program < image.programs.size(); ++program) {
-        const auto &range = image.programs[program];
-        if (range.instruction_begin > image.instructions.size() ||
-            range.instruction_count >
-                image.instructions.size() - range.instruction_begin) {
-            transactions_exact = false;
-            break;
-        }
-        auto transition_count = std::uint32_t{0u};
-        for (auto offset = std::uint32_t{0u}; offset < range.instruction_count;
-             ++offset) {
-            const auto instruction = range.instruction_begin + offset;
-            const auto transition =
-                is_surface_value_surface_normal_transition(
-                    image.instructions[instruction]);
-            transition_count += transition;
-            if (transition) {
-                transactions_exact &=
-                    scene.instruction_variants[instruction] ==
-                    SurfaceValueAddress::invalid_value;
-            } else {
-                transactions_exact &=
-                    scene.instruction_variants[instruction] <
-                    scene.variants.size();
-            }
-        }
-        const auto known_flags =
-            (range.flags & ~surface_value_program_flag_mask) == 0u;
-        const auto flags_require_transition =
-            range.flags == 0u || transition_count == 1u;
-        transactions_exact &= transition_count <= 1u && known_flags &&
-                              flags_require_transition;
-    }
-    for (auto topology = std::size_t{0u};
-         transactions_exact && topology < runtime.topologies.size();
-         ++topology) {
-        const auto program = static_cast<std::uint32_t>(
-            topology * SurfaceValueRuntime::programs_per_topology +
-            SurfaceValueRuntime::preparation_program_offset);
-        const auto &range = image.programs[program];
-        const auto transition_count =
-            std::count_if(image.instructions.begin() + range.instruction_begin,
-                          image.instructions.begin() + range.instruction_begin +
-                              range.instruction_count,
-                          is_surface_value_surface_normal_transition);
-        transactions_exact &=
-            (transition_count == 1u) ==
-            runtime.topologies[topology].program->surface_normal_root().valid();
-    }
-    result.normal_transactions_exact = transactions_exact;
     const auto bump = std::find_if(
-        scene.variants.begin(), scene.variants.end(), [](const auto &variant) {
+        runtime.value_variants.begin(), runtime.value_variants.end(),
+        [](const auto &variant) {
             return variant.instruction.operation ==
                    ValueOperation::bump_samples;
         });
-    if (bump == scene.variants.end()) {
+    if (bump == runtime.value_variants.end()) {
         return result;
     }
-    result.bump_variant =
-        static_cast<std::uint32_t>(std::distance(scene.variants.begin(), bump));
-
+    result.bump_variant = static_cast<std::uint32_t>(
+        std::distance(runtime.value_variants.begin(), bump));
     const auto contains = [variant = result.bump_variant](
                               const auto &domain) noexcept {
         return std::find(domain.begin(), domain.end(), variant) != domain.end();
     };
     const auto has_no_recursive_bump = std::none_of(
-        image.instructions.begin(), image.instructions.end(),
+        svm.instructions.begin(), svm.instructions.end(),
         [](const auto &instruction) noexcept {
-            return surface_value_operation(instruction) ==
+            if (surface_svm_bytecode_kind(instruction) !=
+                SurfaceSvmBytecodeKind::value) {
+                return false;
+            }
+            return surface_value_operation(
+                       surface_svm_value_instruction(instruction)) ==
                    ValueOperation::bump;
         });
-
     result.bump_stream_exact =
-        image.programs.size() == expected_program_count &&
-        scene.instruction_variants.size() == image.instructions.size() &&
+        result.unified_variant_bijection &&
         contains(runtime.preparation_value_static_variants) &&
         count_bump_configuration(
-            image, 0u, static_cast<std::uint32_t>(image.programs.size()), 1u) !=
+            svm, 0u, static_cast<std::uint32_t>(svm.programs.size()), 1u) !=
             0u &&
         count_bump_configuration(
-            image, 0u, static_cast<std::uint32_t>(image.programs.size()), 0u) !=
+            svm, 0u, static_cast<std::uint32_t>(svm.programs.size()), 0u) !=
             0u &&
         has_no_recursive_bump;
     return result;

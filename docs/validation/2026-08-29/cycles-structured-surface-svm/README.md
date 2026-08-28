@@ -381,9 +381,58 @@ exact-domain, and device-interpreter tests passed. The six failures are
 unchanged from the pre-switch baseline and remain small existing numeric
 differences in volume/Vulkan fixtures rather than new surface-SVM failures.
 
-The next gate is to migrate the static execution histogram and its legacy ABI
-regressions to the unified CFG, then delete the diagnostics-only split
-executable and all of its host/device buffers. After that, fallback, HIP, and
-strict native XIR-to-SPIR-V Vulkan complex-scene renders, triptychs, code
-object/compile-time measurements, and Cycles-aligned performance profiling are
-required before claiming the SVM replacement complete.
+## Removal of the split runtime
+
+The static execution histogram now projects measured topology populations
+directly over the unified PC stream. It classifies Value, SetNormal, closure,
+weight and guard records without inventing dynamic guard-visit counts. The old
+linear-region ABI fields remain empty because no canonical linear partition
+exists across structured guards.
+
+The production runtime no longer constructs `SurfaceValueExecutableScene`.
+Closure reachability, endpoint-specific value domains and exact
+`(static_variant, Principled features)` closure domains are derived from the
+unified scene and its total evaluator side stream. The builder checks that the
+preparation closure domain reproduces the scene aggregate operation/feature
+masks before creating any device resource.
+
+The following obsolete implementation was physically removed:
+
+- the split value/closure executable stored in `SurfaceValueRuntime`;
+- region-specialization planning, inline tags and diagnostic side stream;
+- eleven legacy host arrays, buffers, bindless slots and upload commands;
+- the old whole-program value callable and AO callable; and
+- the region callable lowering and duplicate bytecode interpreter.
+
+The replacement dispatcher regression records a real Luisa callable around
+one unified Value record, requires one `SurfacePointCall&`, no aggregate return
+state, and one named semantic handler boundary per exact active evaluator. The
+host-image regression independently verifies every unified instruction against
+its evaluator, reconstructs the preparation/emission value and closure domains,
+and scans Bump records without consulting the removed executable.
+
+Validation after the deletion:
+
+```sh
+cmake --build build \
+  --target psycles_luisa_compact_surface_preparation_tests \
+  -j"$(nproc)"
+
+ctest --test-dir build --output-on-failure \
+  -R '^psycles\.luisa_compact_surface_(preparation|tail)_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure \
+  -R '^psycles\.(surface_program_metadata|surface_svm_scene|luisa_sample_dispatch_film_fallback)$'
+```
+
+Results: all six cross-backend compact-surface tests passed in 15.04 s
+(preparation fallback 2.80 s, HIP 4.19 s, native-XIR Vulkan 7.05 s; tail
+fallback 0.18 s, HIP 0.24 s, Vulkan 0.56 s). The histogram and two focused
+compiler tests passed 3/3 in 8.11 s. These are correctness wall times, not
+renderer performance results.
+
+The remaining completion gate is fallback, HIP, and strict native
+XIR-to-SPIR-V Vulkan complex-scene rendering, triptychs, code-object and
+compile-time measurements, followed by Cycles-aligned per-kernel and
+end-to-end performance profiling. No replacement-complete or speed claim is
+made before that evidence exists.

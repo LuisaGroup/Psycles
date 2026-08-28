@@ -9,7 +9,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 
 #include <luisa/dsl/local.h>
@@ -83,11 +82,6 @@ struct SurfaceValueLocals {
     void define_all() const noexcept;
 };
 
-enum class SurfaceValueBankDefinition {
-    program_prefix,
-    full_bank,
-};
-
 template<typename T>
 [[nodiscard]] auto surface_value_runtime_buffer(
     const SurfaceValueRuntime &runtime,
@@ -96,66 +90,10 @@ template<typename T>
         surface_value_runtime_buffer_slot(slot), false, true);
 }
 
-// A value program observes the immutable surface point and produces only the
-// transaction's shading-normal projection. Passing the point by reference is
-// the device analogue of Cycles' ShaderData pointer: it preserves field-wise
-// demand loads instead of forcing every SurfacePointCall member through the
-// callable ABI. No other SurfacePoint field is an output of this program.
-using SurfaceValueProgramCallable = Callable<luisa::float3(
-    Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
-    BindlessArray, luisa::uint, SurfacePointCall &, SurfaceValueScalarBank &,
-    SurfaceValueVectorBank &, luisa::ulong &)>;
-
-// AO-aware counterpart. The suffix is present only in a semantic domain that
-// actually contains an AO instruction. The two packed integer vectors are
-// (sequence_size, sample, pixel_hash, rng_offset) and
-// (Cycles object, Cycles primitive); authored distance remains scene data.
-using SurfaceValueAmbientOcclusionProgramCallable =
-    Callable<luisa::float3(
-        Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
-        BindlessArray, luisa::uint, SurfacePointCall &,
-        SurfaceValueScalarBank &, SurfaceValueVectorBank &, luisa::ulong &,
-        Buffer<luisa::float4>, luisa::uint4, luisa::uint2)>;
-
-// Host/JIT sum type over the two proven callable ABIs. It never becomes a
-// device variant: construction chooses exactly one member from the exact
-// value-program domain, and invocation emits only that callable.
-class SurfaceValueProgram {
-
-private:
-    std::optional<SurfaceValueProgramCallable> _ordinary;
-    std::optional<SurfaceValueAmbientOcclusionProgramCallable>
-        _ambient_occlusion;
-
-public:
-    explicit SurfaceValueProgram(
-        SurfaceValueProgramCallable callable) noexcept;
-    explicit SurfaceValueProgram(
-        SurfaceValueAmbientOcclusionProgramCallable callable) noexcept;
-
-    [[nodiscard]] bool requires_ambient_occlusion() const noexcept;
-    [[nodiscard]] luisa::compute::Function function() const noexcept;
-
-    [[nodiscard]] Float3 operator()(
-        Expr<Buffer<float>> scalar_parameters,
-        Expr<Buffer<luisa::float3>> vector_parameters,
-        Expr<Buffer<float>> cycles_bsdf_tables,
-        Expr<BindlessArray> textures,
-        Expr<BindlessArray> geometry_heap,
-        UInt surface_tag,
-        Var<SurfacePointCall> &point,
-        luisa::compute::detail::Ref<SurfaceValueScalarBank> scalar_bank,
-        luisa::compute::detail::Ref<SurfaceValueVectorBank> vector_bank,
-        luisa::compute::detail::Ref<luisa::ulong> unsigned_integer_bank,
-        const PathSurfaceAmbientOcclusionContext
-            *ambient_occlusion) const noexcept;
-};
-
-// Host/JIT dispatcher for exactly one value record in the replacement SVM.
-// It owns the same scene-pruned typed evaluator callables as the legacy loop,
-// but leaves PC/control sequencing to the unified surface interpreter. The
-// dispatcher reads the replacement instruction-variant side stream only when
-// more than one exact evaluator inhabits the same compact handler fiber.
+// Host/JIT dispatcher for exactly one unified value record. It owns the
+// scene-pruned typed evaluator callables while leaving PC/control sequencing
+// to the surface SVM interpreter. The exact instruction-variant side stream is
+// read only when more than one evaluator inhabits the same handler fiber.
 class SurfaceValueInstructionDispatcher {
 
   public:
@@ -199,18 +137,6 @@ class SurfaceValueInstructionDispatcher {
     const SurfacePoint &point,
     const SurfaceValueLocalsView &locals,
     UInt address) noexcept;
-
-// Builds one Cycles-style value-program transaction for the selected
-// endpoint. The exact value, SetNormal, and transitive Bump-height domains
-// are derived from the same formal call-graph view; callers cannot pair a
-// program with an unrelated handler domain.
-[[nodiscard]] SurfaceValueProgram
-make_surface_value_program_callable(
-    const std::shared_ptr<LuisaSceneData> &scene,
-    const Texture2DSamplingCallables &texture_sampling,
-    const SurfaceAttributeLookupCallable &attribute_lookup,
-    SurfaceValueProgramDomain domain,
-    bool enable_external_queries = false) noexcept;
 
 [[nodiscard]] SurfaceValueInstructionDispatcher
 make_surface_value_instruction_dispatcher(

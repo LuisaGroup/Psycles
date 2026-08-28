@@ -314,7 +314,6 @@ struct NishitaEnvironmentRuntime {
 // buffers.
 struct SurfaceValueRuntimeTopology {
     std::shared_ptr<const compiler::SurfaceProgram> program;
-    std::vector<std::uint32_t> preparation_addresses;
 };
 
 // Exact host/JIT identity of one closure-leaf evaluator in the replacement
@@ -334,17 +333,6 @@ struct SurfaceSvmClosureVariant {
 // device view. The view has scene-independent shape, so adding material
 // programs changes data only; it does not grow the path-kernel resource ABI.
 enum class SurfaceValueRuntimeBufferSlot : std::uint32_t {
-    program,
-    instruction,
-    operand,
-    instruction_variant,
-    metadata_parameter,
-    metadata_static_range,
-    static_data,
-    closure_instruction,
-    closure_operand,
-    program_flag,
-    instruction_region_specialization,
     svm_program,
     svm_instruction,
     svm_value_operand,
@@ -363,6 +351,7 @@ surface_value_runtime_buffer_slot(SurfaceValueRuntimeBufferSlot slot) noexcept {
 
 inline constexpr auto surface_value_runtime_buffer_slot_count =
     surface_value_runtime_buffer_slot(SurfaceValueRuntimeBufferSlot::count);
+static_assert(surface_value_runtime_buffer_slot_count == 8u);
 
 struct SurfaceValueRuntime {
     static constexpr std::uint32_t programs_per_topology = 2u;
@@ -397,15 +386,6 @@ struct SurfaceValueRuntime {
         emission_svm_closure_variants;
     std::vector<SurfaceSvmClosureVariant>
         bssrdf_svm_closure_variants;
-    // Temporary diagnostics-only image retained while the execution histogram
-    // and legacy ABI regressions are migrated to the unified CFG. It is never
-    // consulted by the replacement interpreter or its evaluator dispatcher.
-    compiler::SurfaceValueExecutableScene executable;
-    compiler::SurfaceValueRegionSpecializationPlan region_specializations;
-    // True when every selected specialization fits in the instruction's
-    // one-byte runtime tag. Larger diagnostic plans retain the exact parallel
-    // side stream instead of truncating an identity.
-    bool region_specializations_use_inline_tags{};
     std::vector<SurfaceValueRuntimeTopology> topologies;
     // Sorted unique host/JIT semantic keys. The device switches on the same
     // masked control word, so AST size is bounded by closure algorithms used
@@ -427,10 +407,6 @@ struct SurfaceValueRuntime {
     std::vector<std::uint32_t> emission_closure_static_variants;
     compiler::PrincipledClosureFeatureMask
         emission_principled_closure_features{};
-    // Host/JIT capacity of the exact topological closure-weight program. The
-    // compiler colors definition-to-last-use intervals under a read-before-
-    // write contract; no traversal or parent-restoration state remains.
-    std::uint32_t maximum_closure_mix_slots{};
     // BSSRDF exit reconstruction can only be invoked for the conservative
     // topology-tag set derived from Cycles' has_bssrdf_bump capability. Its
     // interpreter domain is the exact program image of that set. Closure
@@ -440,21 +416,6 @@ struct SurfaceValueRuntime {
     std::vector<std::uint32_t> bssrdf_value_static_variants;
     std::vector<std::uint32_t> bssrdf_closure_static_variants;
     compiler::PrincipledClosureFeatureMask bssrdf_principled_closure_features{};
-
-    // [value begin, value count, closure begin, closure count]. Closure
-    // ranges are populated for endpoint-projected preparation and emission
-    // transaction programs.
-    luisa::vector<luisa::uint4> program_ranges;
-    luisa::vector<luisa::uint> program_flags;
-    luisa::vector<luisa::uint4> instructions;
-    luisa::vector<luisa::uint> operands;
-    luisa::vector<luisa::uint> instruction_variants;
-    luisa::vector<luisa::uint> instruction_region_specializations;
-    luisa::vector<luisa::uint> metadata_parameters;
-    luisa::vector<luisa::uint2> metadata_static_ranges;
-    luisa::vector<float> static_data;
-    luisa::vector<luisa::uint4> closure_instructions;
-    luisa::vector<luisa::uint> closure_operands;
 
     // Device projection of the replacement scene. Program descriptors occupy
     // two uint4 words in the exact 32-byte host layout; all instruction-owned
@@ -469,18 +430,6 @@ struct SurfaceValueRuntime {
     luisa::vector<float> svm_static_data;
     luisa::vector<luisa::uint> svm_closure_operands;
 
-    Buffer<luisa::uint4> program_buffer;
-    Buffer<luisa::uint> program_flag_buffer;
-    Buffer<luisa::uint4> instruction_buffer;
-    Buffer<luisa::uint> operand_buffer;
-    Buffer<luisa::uint> instruction_variant_buffer;
-    Buffer<luisa::uint> instruction_region_specialization_buffer;
-    Buffer<luisa::uint> metadata_parameter_buffer;
-    Buffer<luisa::uint2> metadata_static_range_buffer;
-    Buffer<float> static_data_buffer;
-
-    Buffer<luisa::uint4> closure_instruction_buffer;
-    Buffer<luisa::uint> closure_operand_buffer;
     Buffer<luisa::uint4> svm_program_buffer;
     Buffer<luisa::uint4> svm_instruction_buffer;
     Buffer<luisa::uint> svm_value_operand_buffer;
