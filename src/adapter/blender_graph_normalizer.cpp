@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <iomanip>
 #include <map>
 #include <set>
@@ -29,6 +30,13 @@ struct LoweredOutputKey {
     auto operator<=>(const LoweredOutputKey &) const noexcept = default;
 };
 
+struct SharedOutputKey {
+    std::string node;
+    std::string semantic;
+
+    auto operator<=>(const SharedOutputKey &) const noexcept = default;
+};
+
 class BlenderGraphNormalizer final
     : public BlenderNodeLoweringContext {
 
@@ -41,6 +49,8 @@ private:
         std::map<LoweredOutputKey, TypedOutput>;
     using GroupInputMap =
         std::map<std::string, TypedOutput, std::less<>>;
+    using SharedOutputMap =
+        std::map<SharedOutputKey, TypedOutput>;
     using NodeGroupMap =
         std::map<std::string, yyjson_val *, std::less<>>;
 
@@ -60,6 +70,7 @@ private:
     RawNodeMap _raw_nodes;
     RawLinkMap _links;
     LoweredOutputMap _outputs;
+    SharedOutputMap _shared_outputs;
     GroupInputMap _group_inputs;
     std::set<std::string, std::less<>> _building;
     std::set<std::string, std::less<>> _group_stack;
@@ -177,6 +188,7 @@ private:
         _raw_nodes.clear();
         _links.clear();
         _outputs.clear();
+        _shared_outputs.clear();
         _building.clear();
 
         auto *nodes = member(_tree, "nodes");
@@ -797,6 +809,38 @@ private:
             type);
     }
 
+    [[nodiscard]] std::optional<TypedOutput> shared_output(
+        std::string_view raw_node_name,
+        std::string_view semantic) const override {
+        const auto iter = _shared_outputs.find(SharedOutputKey{
+            .node = std::string{raw_node_name},
+            .semantic = std::string{semantic}});
+        return iter == _shared_outputs.end()
+                   ? std::nullopt
+                   : std::optional<TypedOutput>{iter->second};
+    }
+
+    void remember_shared_output(
+        std::string raw_node_name,
+        std::string semantic,
+        TypedOutput output) override {
+        auto key = SharedOutputKey{
+            .node = std::move(raw_node_name),
+            .semantic = std::move(semantic)};
+        if (const auto iter = _shared_outputs.find(key);
+            iter != _shared_outputs.end()) {
+            if (iter->second.ref == output.ref &&
+                iter->second.type == output.type) {
+                return;
+            }
+            // A semantic output is single-assignment within one normalized
+            // node-tree scope. Violating this invariant would make output
+            // request order change graph identity.
+            std::abort();
+        }
+        _shared_outputs.emplace(std::move(key), std::move(output));
+    }
+
     [[nodiscard]] std::optional<TypedOutput>
     lower_muted_output(
         yyjson_val *node,
@@ -1254,6 +1298,8 @@ private:
         auto saved_raw_nodes = std::move(_raw_nodes);
         auto saved_links = std::move(_links);
         auto saved_outputs = std::move(_outputs);
+        auto saved_shared_outputs =
+            std::move(_shared_outputs);
         auto saved_group_inputs =
             std::move(_group_inputs);
         auto saved_building = std::move(_building);
@@ -1262,6 +1308,8 @@ private:
             _raw_nodes = std::move(saved_raw_nodes);
             _links = std::move(saved_links);
             _outputs = std::move(saved_outputs);
+            _shared_outputs =
+                std::move(saved_shared_outputs);
             _group_inputs =
                 std::move(saved_group_inputs);
             _building = std::move(saved_building);

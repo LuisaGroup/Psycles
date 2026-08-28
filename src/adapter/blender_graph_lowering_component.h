@@ -120,6 +120,21 @@ public:
         yyjson_val *node,
         std::string_view socket,
         contract::SocketType type) = 0;
+
+    // A Blender node may expose several outputs backed by one semantic
+    // computation (AO is one ray trace whose scalar also multiplies Color).
+    // Cache those normalized subexpressions by raw-node identity and semantic
+    // name so output-driven lowering remains a DAG rather than duplicating the
+    // computation. The normalizer scopes this cache to the active node tree;
+    // group instances therefore cannot alias one another's bound inputs.
+    [[nodiscard]] virtual std::optional<TypedOutput> shared_output(
+        std::string_view raw_node,
+        std::string_view semantic) const = 0;
+
+    virtual void remember_shared_output(
+        std::string raw_node,
+        std::string semantic,
+        TypedOutput output) = 0;
 };
 
 struct BlenderNodeLoweringRequest {

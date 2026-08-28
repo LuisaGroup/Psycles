@@ -99,7 +99,12 @@ enum class ShaderFeature : std::uint64_t {
     derivatives = 1ull << 5u,
     attributes = 1ull << 6u,
     ray_state = 1ull << 7u,
-    subsurface = 1ull << 8u
+    subsurface = 1ull << 8u,
+    // The graph performs scene traversal while evaluating a shading point.
+    // Keeping this distinct from generic ray-state reads lets the host/JIT
+    // omit every AO traversal callable and runtime argument for scenes which
+    // cannot execute an Ambient Occlusion node.
+    ambient_occlusion = 1ull << 9u
 };
 
 [[nodiscard]] constexpr std::uint64_t feature_bit(ShaderFeature feature) noexcept {

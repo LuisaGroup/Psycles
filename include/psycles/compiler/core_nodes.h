@@ -56,6 +56,7 @@ inline constexpr auto hair_info = "psycles.hair_info";
 inline constexpr auto light_path = "psycles.light_path";
 inline constexpr auto layer_weight = "psycles.layer_weight";
 inline constexpr auto fresnel = "psycles.fresnel";
+inline constexpr auto ambient_occlusion = "psycles.ambient_occlusion";
 inline constexpr auto mix_float = "psycles.value.mix_float";
 inline constexpr auto mix_vector = "psycles.value.mix_vector";
 inline constexpr auto mix_vector_nonuniform =

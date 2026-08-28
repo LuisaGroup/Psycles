@@ -422,6 +422,9 @@ bool value_instruction_observes_shading_normal(
   case ValueOperation::layer_weight_facing:
     // static_u0 is the exact "Normal socket linked" bit for these nodes.
     return instruction.static_u0 == 0u;
+  case ValueOperation::ambient_occlusion:
+    return (instruction.static_u0 &
+            ambient_occlusion_normal_linked) == 0u;
   case ValueOperation::image_color:
   case ValueOperation::image_alpha:
     // Box projection computes axis weights from the current ShaderData normal.

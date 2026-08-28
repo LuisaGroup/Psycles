@@ -289,6 +289,77 @@ public:
       return finish({.ref = {.node = id, .socket = "Factor"},
                      .type = SocketType::floating});
     }
+    if (type == "AMBIENT_OCCLUSION") {
+      constexpr auto ao_semantic = "ambient_occlusion.factor";
+      auto ao = context.shared_output(node_name, ao_semantic);
+      if (!ao) {
+        const auto id = context.graph().add_node(
+            compiler::node_type::ambient_occlusion, node_name);
+        const auto normal_linked =
+            context.input_source(node, "Normal").has_value();
+        const auto distance_linked =
+            context.input_source(node, "Distance").has_value();
+        auto *distance_socket = context.raw_input(node, "Distance");
+        const auto global_radius =
+            !distance_linked &&
+            number(member(distance_socket, "default")) == 0.0f;
+        static_cast<void>(context.bind(
+            id, "Distance", node, "Distance", SocketType::floating));
+        static_cast<void>(context.bind(
+            id, "Normal", node, "Normal", SocketType::normal));
+        static_cast<void>(context.graph().set_property(
+            id, "Samples",
+            SocketValue::unsigned_integer(static_cast<std::uint8_t>(
+                static_cast<std::int64_t>(context.node_property_number(
+                    node, "samples", 16.0f))))));
+        static_cast<void>(context.graph().set_property(
+            id, "NormalLinked", SocketValue::boolean(normal_linked)));
+        static_cast<void>(context.graph().set_property(
+            id, "Inside",
+            SocketValue::boolean(
+                context.node_property_bool(node, "inside"))));
+        static_cast<void>(context.graph().set_property(
+            id, "OnlyLocal",
+            SocketValue::boolean(
+                context.node_property_bool(node, "only_local"))));
+        static_cast<void>(context.graph().set_property(
+            id, "GlobalRadius", SocketValue::boolean(global_radius)));
+        ao = TypedOutput{
+            .ref = {.node = id, .socket = "AO"},
+            .type = SocketType::floating};
+        context.remember_shared_output(
+            node_name, ao_semantic, *ao);
+      }
+
+      if (socket == "AO") {
+        return finish(*ao);
+      }
+      if (socket == "Color") {
+        constexpr auto color_semantic = "ambient_occlusion.color";
+        if (auto color = context.shared_output(
+                node_name, color_semantic)) {
+          return finish(*color);
+        }
+        const auto multiply = context.graph().add_node(
+            compiler::node_type::multiply_color,
+            node_name + " / Color");
+        static_cast<void>(context.bind(
+            multiply, "A", node, "Color", SocketType::color));
+        const auto ao_color = context.conversion(
+            *ao, SocketType::color);
+        static_cast<void>(context.graph().connect(
+            ao_color.ref, multiply, "B"));
+        static_cast<void>(context.graph().set_input(
+            multiply, "Factor", SocketValue::floating(1.0f)));
+        auto color = TypedOutput{
+            .ref = {.node = multiply, .socket = "Color"},
+            .type = SocketType::color};
+        context.remember_shared_output(
+            node_name, color_semantic, color);
+        return finish(color);
+      }
+      return std::nullopt;
+    }
     if (type == "NEW_GEOMETRY") {
       if (socket == "Normal" || socket == "True Normal") {
         return finish(context.geometry_output(

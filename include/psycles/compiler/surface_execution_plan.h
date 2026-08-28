@@ -252,7 +252,8 @@ inline constexpr std::uint32_t surface_value_invalid_operand_word =
 maximum_surface_value_operand_count() noexcept {
   auto maximum = std::size_t{};
   for (auto opcode = std::uint32_t{};
-       opcode <= static_cast<std::uint32_t>(ValueOperation::nishita_sky);
+       opcode <= static_cast<std::uint32_t>(
+                     ValueOperation::ambient_occlusion);
        ++opcode) {
     const auto count = value_operation_operand_count(
         static_cast<ValueOperation>(opcode));
@@ -764,7 +765,7 @@ surface_value_region_specialization_tag(std::uint32_t control) noexcept {
 // loop-unrolling choices.
 inline constexpr std::uint32_t surface_value_surface_normal_transition_control =
     surface_value_opcode_mask;
-static_assert(static_cast<std::uint32_t>(ValueOperation::nishita_sky) <
+static_assert(static_cast<std::uint32_t>(ValueOperation::ambient_occlusion) <
               surface_value_surface_normal_transition_control);
 
 [[nodiscard]] constexpr bool is_surface_value_surface_normal_transition(
@@ -1092,6 +1093,7 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
          operation == ValueOperation::fresnel ||
          operation == ValueOperation::layer_weight_fresnel ||
          operation == ValueOperation::layer_weight_facing ||
+         operation == ValueOperation::ambient_occlusion ||
          operation == ValueOperation::uv ||
          operation == ValueOperation::normal_map ||
          operation == ValueOperation::bump ||
@@ -1122,6 +1124,7 @@ surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
              operation == ValueOperation::fresnel ||
              operation == ValueOperation::layer_weight_fresnel ||
              operation == ValueOperation::layer_weight_facing ||
+             operation == ValueOperation::ambient_occlusion ||
              operation == ValueOperation::uv ||
              operation == ValueOperation::normal_map ||
              operation == ValueOperation::bump ||
@@ -1208,6 +1211,10 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
       operation == ValueOperation::layer_weight_fresnel ||
       operation == ValueOperation::layer_weight_facing) {
     return static_u0 <= 1u && static_u1 == 0u;
+  }
+  if (operation == ValueOperation::ambient_occlusion) {
+    return (static_u0 & ~ambient_occlusion_configuration_mask) == 0u &&
+           static_u1 == 0u;
   }
   if (operation == ValueOperation::normal_map) {
     return (static_u0 & ~(normal_map_space_mask | normal_map_named_tangent |
@@ -1306,6 +1313,7 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
   if (operation == ValueOperation::fresnel ||
       operation == ValueOperation::layer_weight_fresnel ||
       operation == ValueOperation::layer_weight_facing ||
+      operation == ValueOperation::ambient_occlusion ||
       operation == ValueOperation::uv ||
       operation == ValueOperation::normal_map ||
       operation == ValueOperation::bump ||
