@@ -10,7 +10,8 @@ makes no render-time, code-object-size, or image-equivalence claim.
 The current implementation produces a typed semantic stream containing
 
 ```text
-Value | MixClosure | JumpIfOne | JumpIfZero | ClosureLeaf | End
+Value | MixClosure | AddClosureWeight | JumpIfOne | JumpIfZero |
+ClosureLeaf | End
 ```
 
 and an exact local-storage allocation for that stream. Shared value nodes are
@@ -18,6 +19,9 @@ evaluated once before the lowest closure region that dominates all uses;
 branch-private texture/math nodes remain after the corresponding Mix guard.
 Closure operand ordering is now defined by one ABI function shared with the
 established closure lowering, rather than duplicated by the new scheduler.
+Closure leaves shared by multiple closure paths are emitted once with the
+same ordered weight accumulation that Cycles builds in
+`transform_multi_closure`.
 
 ## Cycles 5.2 source model
 
@@ -68,6 +72,38 @@ The implementation validates strict value and closure DAG order, operand
 dominance, unique computed-value emission, forward jump targets, endpoint
 projection, and a unique final `End` transactionally.
 
+## Closure-weight SSA
+
+The invalid weight id denotes the root constant one. For an occurrence with
+incoming weight `w`, a dynamic Mix with factor `f` defines one transaction
+
+```text
+s  = saturate(f)
+wL = w * (1 - s)
+wR = w * s
+```
+
+and Add propagates `w` unchanged to both children. The occurrence tree is
+visited left before right, matching `ShaderGraph::transform_multi_closure`.
+For every unique closure leaf `c`, its occurrence weights are folded in that
+stable order:
+
+```text
+W(c) = (((w0 + w1) + w2) + ...)
+```
+
+The leaf and its final weight are placed at the LCA of all occurrences, which
+is exactly where Cycles emits a shared closure before branch guards. Weight
+definitions are themselves strict SSA. Reverse use propagation places every
+Mix/Add at the lowest region dominating its consumers, and paired Mix outputs
+share one instruction and one factor evaluation.
+
+No algebraic identity is applied without an input-domain proof. In
+particular, complementary outputs are not rewritten from
+`w*(1-s) + w*s` to `w`: a linked IEEE factor may be NaN, for which Cycles
+produces NaN and the rewrite would incorrectly produce `w`. The permanent
+regression exercises both finite and NaN factors.
+
 ## CFG liveness and optimal typed storage
 
 The emitted CFG is acyclic because every ordinary successor and jump target
@@ -80,9 +116,10 @@ live_in[i]  = uses[i] union (live_out[i] - definition[i])
 ```
 
 `uses[i]` includes value operands, Mix factors at the weight and guard
-records, and exact active operands at each closure leaf. A forward must-defined
-analysis uses predecessor intersection and rejects any path on which a local
-definition does not dominate its use.
+records, weight-SSA operands, and exact active operands at each closure leaf.
+A program point may define both outputs of one Mix transaction. A forward
+must-defined analysis uses predecessor intersection and rejects any path on
+which a local definition does not dominate its use.
 
 Same-bank `Passthrough` values are contracted as the congruence
 `p = identity(x)` before liveness. Under the read-before-write contract, a
@@ -107,10 +144,16 @@ is rejected. Component-wise scalar/vector/uint64 capacity remains explicit.
 - endpoint projection moving formerly shared work inside the only live guard;
 - nested Mix target boundaries and Add siblings outside Mix control;
 - static 0/1 Mix pruning;
-- a shared closure DAG without shared-value recomputation;
+- a shared closure DAG emitted once with ordered Add-weight accumulation;
+- a closure shared by both sides of one Mix, including NaN preservation;
+- a leaf shared between an unconditional Add child and a Mix child, proving
+  weight hoisting, exact factor 0/interior/1 behavior, and one remaining
+  private guard;
 - definite-assignment rejection when a mutated jump skips a required value;
+- rejection of a Mix-weight expression bound to the wrong source factor;
 - same-bank Passthrough quotienting and component-wise capacity failure; and
-- chordal clique-optimal coloring with read-before-write slot donation.
+- chordal clique-optimal coloring of value and weight SSA with
+  read-before-write slot donation.
 
 One independent-branch fixture requires at least two vector slots under the
 old split value/closure plan but exactly one slot after closure uses are
@@ -127,13 +170,12 @@ ctest --test-dir build --output-on-failure \
   -R 'psycles\.(surface_svm_schedule|surface_closure_execution_plan)'
 ```
 
-Both focused tests pass. The next stage must assign and color virtual closure
-weights, lower this semantic CFG into the final compact bytecode, and execute
-it through one Luisa interpreter. Shared closure DAG weights still require the
-same accumulation semantics as Cycles' `transform_multi_closure`; acceptance
-of the DAG is tested, but final weight coalescing is not claimed yet.
+Both focused tests pass. Virtual closure weights are now assigned and colored
+in the scalar bank together with ordinary scalar values. The next stage is to
+lower this semantic CFG into the final compact bytecode and execute it through
+one Luisa interpreter.
 
-The all-thread repository run executed all 317 registered tests in 12.19 s:
+The all-thread repository run executed all 317 registered tests in 12.11 s:
 311 passed and the same six pre-existing exact numeric fixtures failed
 (`luisa_stacked_volume_fallback`, `luisa_homogeneous_volume_fallback`,
 `luisa_area_light_forward_vk`, `luisa_volume_path_fallback`,

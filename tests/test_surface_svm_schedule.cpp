@@ -5,6 +5,7 @@
 #include <psycles/contract/scene.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -119,6 +120,17 @@ find_schedule_instruction(const SurfaceSvmSchedulePlan &plan,
   throw std::runtime_error{"fixture schedule instruction is absent"};
 }
 
+[[nodiscard]] std::size_t
+find_schedule_instruction(const SurfaceSvmSchedulePlan &plan,
+                          SurfaceSvmScheduleInstructionKind kind) {
+  for (auto index = std::size_t{}; index < plan.instructions.size(); ++index) {
+    if (plan.instructions[index].kind == kind) {
+      return index;
+    }
+  }
+  throw std::runtime_error{"fixture schedule instruction kind is absent"};
+}
+
 void verify_total_schedule_contract(const SurfaceProgram &program,
                                     const SurfaceSvmSchedulePlan &plan) {
   require(plan.valid && !plan.instructions.empty(),
@@ -127,8 +139,12 @@ void verify_total_schedule_contract(const SurfaceProgram &program,
   const auto &closures = program.closure_instructions();
   require(plan.value_regions.size() == values.size(),
           "schedule region map is not parallel to the value IR");
+  require(plan.weight_regions.size() == plan.weight_expressions.size(),
+          "schedule region map is not parallel to the weight IR");
 
   std::vector<std::uint32_t> value_emissions(values.size(), 0u);
+  std::vector<std::uint32_t> weight_emissions(
+      plan.weight_expressions.size(), 0u);
   auto end_count = std::uint32_t{};
   for (auto index = std::size_t{}; index < plan.instructions.size(); ++index) {
     const auto &instruction = plan.instructions[index];
@@ -143,8 +159,26 @@ void verify_total_schedule_contract(const SurfaceProgram &program,
     case SurfaceSvmScheduleInstructionKind::mix_closure:
       require(instruction.source < closures.size() &&
                   closures[instruction.source].operation ==
-                      ClosureOperation::mix,
+                      ClosureOperation::mix && instruction.weight.valid() &&
+                  instruction.weight.value <
+                      plan.weight_expressions.size(),
               "schedule emitted a non-Mix control instruction");
+      ++weight_emissions[instruction.weight.value];
+      if (instruction.secondary_weight.valid()) {
+        require(instruction.secondary_weight.value <
+                    plan.weight_expressions.size(),
+                "schedule emitted an invalid secondary Mix weight");
+        ++weight_emissions[instruction.secondary_weight.value];
+      }
+      break;
+    case SurfaceSvmScheduleInstructionKind::add_closure_weight:
+      require(instruction.source < plan.weight_expressions.size() &&
+                  instruction.weight.valid() &&
+                  instruction.weight.value == instruction.source &&
+                  plan.weight_expressions[instruction.source].operation ==
+                      SurfaceSvmWeightOperation::add,
+              "schedule emitted a malformed closure-weight Add");
+      ++weight_emissions[instruction.weight.value];
       break;
     case SurfaceSvmScheduleInstructionKind::jump_if_one:
     case SurfaceSvmScheduleInstructionKind::jump_if_zero:
@@ -161,7 +195,9 @@ void verify_total_schedule_contract(const SurfaceProgram &program,
               closures[instruction.source].operation != ClosureOperation::add &&
               closures[instruction.source].operation != ClosureOperation::mix &&
               closures[instruction.source].operation !=
-                  ClosureOperation::null_closure,
+                  ClosureOperation::null_closure &&
+              (!instruction.weight.valid() ||
+               instruction.weight.value < plan.weight_expressions.size()),
           "schedule emitted a control closure as a leaf");
       break;
     case SurfaceSvmScheduleInstructionKind::end:
@@ -185,6 +221,36 @@ void verify_total_schedule_contract(const SurfaceProgram &program,
   }
   require(plan.value_instruction_count == expected_value_count,
           "schedule value count disagrees with its region proof");
+
+  auto expected_weight_count = std::uint32_t{};
+  for (auto index = std::size_t{};
+       index < plan.weight_expressions.size(); ++index) {
+    const auto &expression = plan.weight_expressions[index];
+    const auto valid_operand = [&](SurfaceSvmWeightId operand) {
+      return !operand.valid() || operand.value < index;
+    };
+    require(valid_operand(expression.a) &&
+                (expression.operation != SurfaceSvmWeightOperation::add ||
+                 valid_operand(expression.b)),
+            "weight algebra is not a strict SSA DAG");
+    const auto scheduled =
+        plan.weight_regions[index] != surface_svm_invalid_region;
+    require(weight_emissions[index] == (scheduled ? 1u : 0u),
+            "a scheduled weight is missing, duplicated, or spuriously live");
+    expected_weight_count += scheduled ? 1u : 0u;
+  }
+  require(expected_weight_count ==
+              plan.mix_instruction_count * 2u -
+                  std::ranges::count_if(
+                      plan.instructions,
+                      [](const SurfaceSvmScheduleInstruction &instruction) {
+                        return instruction.kind ==
+                                   SurfaceSvmScheduleInstructionKind::
+                                       mix_closure &&
+                               !instruction.secondary_weight.valid();
+                      }) +
+                  plan.weight_add_instruction_count,
+          "weight instruction counts do not cover the active SSA results");
 }
 
 struct ExecutedSchedule {
@@ -204,6 +270,7 @@ execute_control(const SurfaceSvmSchedulePlan &plan,
       ++pc;
       break;
     case SurfaceSvmScheduleInstructionKind::mix_closure:
+    case SurfaceSvmScheduleInstructionKind::add_closure_weight:
       ++pc;
       break;
     case SurfaceSvmScheduleInstructionKind::jump_if_one: {
@@ -227,6 +294,88 @@ execute_control(const SurfaceSvmSchedulePlan &plan,
     }
   }
   throw std::runtime_error{"schedule execution fell off the image"};
+}
+
+struct WeightedLeaf {
+  std::uint32_t closure{};
+  float weight{};
+};
+
+[[nodiscard]] std::vector<WeightedLeaf> execute_weighted_control(
+    const SurfaceSvmSchedulePlan &plan,
+    const std::map<std::uint32_t, float> &mix_factors) {
+  std::vector<float> weights(plan.weight_expressions.size(), 0.0f);
+  std::vector<WeightedLeaf> leaves;
+  const auto read_weight = [&](SurfaceSvmWeightId weight) {
+    return weight.valid() ? weights[weight.value] : 1.0f;
+  };
+  for (auto pc = std::size_t{}; pc < plan.instructions.size();) {
+    const auto &instruction = plan.instructions[pc];
+    switch (instruction.kind) {
+    case SurfaceSvmScheduleInstructionKind::value:
+      ++pc;
+      break;
+    case SurfaceSvmScheduleInstructionKind::mix_closure: {
+      const auto factor = mix_factors.find(instruction.source);
+      require(factor != mix_factors.end(), "missing weighted Mix factor");
+      const auto saturated = std::clamp(factor->second, 0.0f, 1.0f);
+      const auto evaluate = [&](SurfaceSvmWeightId output) {
+        if (!output.valid()) {
+          return;
+        }
+        const auto &expression = plan.weight_expressions[output.value];
+        const auto parent = read_weight(expression.a);
+        weights[output.value] =
+            expression.operation == SurfaceSvmWeightOperation::mix_left
+                ? parent * (1.0f - saturated)
+                : parent * saturated;
+      };
+      evaluate(instruction.weight);
+      evaluate(instruction.secondary_weight);
+      ++pc;
+      break;
+    }
+    case SurfaceSvmScheduleInstructionKind::add_closure_weight: {
+      const auto &expression =
+          plan.weight_expressions[instruction.weight.value];
+      weights[instruction.weight.value] =
+          read_weight(expression.a) + read_weight(expression.b);
+      ++pc;
+      break;
+    }
+    case SurfaceSvmScheduleInstructionKind::jump_if_one: {
+      const auto factor = mix_factors.find(instruction.source);
+      require(factor != mix_factors.end(), "missing weighted Mix guard");
+      pc = factor->second >= 1.0f ? instruction.target : pc + 1u;
+      break;
+    }
+    case SurfaceSvmScheduleInstructionKind::jump_if_zero: {
+      const auto factor = mix_factors.find(instruction.source);
+      require(factor != mix_factors.end(), "missing weighted Mix guard");
+      pc = factor->second <= 0.0f ? instruction.target : pc + 1u;
+      break;
+    }
+    case SurfaceSvmScheduleInstructionKind::closure_leaf:
+      leaves.emplace_back(WeightedLeaf{
+          .closure = instruction.source,
+          .weight = read_weight(instruction.weight)});
+      ++pc;
+      break;
+    case SurfaceSvmScheduleInstructionKind::end:
+      return leaves;
+    }
+  }
+  throw std::runtime_error{"weighted schedule execution fell off the image"};
+}
+
+void require_weighted_leaf(const std::vector<WeightedLeaf> &leaves,
+                           std::uint32_t closure, float weight,
+                           const std::string &message) {
+  const auto found = std::ranges::find_if(
+      leaves, [=](const WeightedLeaf &leaf) {
+        return leaf.closure == closure && leaf.weight == weight;
+      });
+  require(found != leaves.end(), message);
 }
 
 struct ConditionalGraph {
@@ -554,8 +703,146 @@ void test_shared_closure_dag_is_accepted_without_value_recomputation() {
   const auto closure_id = find_closure(*analyzed.compiled.program, diffuse);
   const auto path = execute_control(plan, {});
   require(std::ranges::count(path.values, value_id.value) == 1u &&
-              std::ranges::count(path.leaves, closure_id.value) >= 1u,
-          "closure DAG was rejected or recomputed its shared value");
+              std::ranges::count(path.leaves, closure_id.value) == 1u &&
+              plan.closure_leaf_count == 1u &&
+              plan.weight_add_instruction_count == 1u,
+          "closure DAG was rejected, duplicated, or lost weight accumulation");
+  const auto weighted = execute_weighted_control(plan, {});
+  require(weighted.size() == 1u,
+          "shared Add closure emitted more than one weighted leaf");
+  require_weighted_leaf(weighted, closure_id.value, 2.0f,
+                        "shared Add closure did not accumulate weight two");
+  const auto allocation = storage(analyzed, plan);
+  require(allocation.weight_values == 1u &&
+              allocation.weight_locations.size() ==
+                  plan.weight_expressions.size(),
+          "shared Add weight was not included in scalar SSA coloring");
+}
+
+void test_complementary_shared_mix_leaf_preserves_ieee_weight_algebra() {
+  ShaderGraph graph;
+  const auto factor = graph.add_node(node_type::constant_float,
+                                     "Shared Mix linked factor");
+  const auto diffuse = graph.add_node(node_type::diffuse_bsdf,
+                                      "Shared Mix closure");
+  const auto mix = graph.add_node(node_type::mix_closure,
+                                  "Shared Mix root");
+  require(graph.set_input(factor, "Value", SocketValue::floating(0.37f)) &&
+              graph.connect({.node = factor, .socket = "Value"}, mix,
+                            "Factor") &&
+              graph.connect({.node = diffuse, .socket = "Closure"}, mix,
+                            "A") &&
+              graph.connect({.node = diffuse, .socket = "Closure"}, mix,
+                            "B"),
+          "failed to configure complementary shared Mix leaf");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = mix, .socket = "Closure"});
+  const auto analyzed = analyze(std::move(graph));
+  const auto plan = schedule(analyzed);
+  verify_total_schedule_contract(*analyzed.compiled.program, plan);
+  const auto closure = find_closure(*analyzed.compiled.program, diffuse);
+  const auto mix_id = find_closure(*analyzed.compiled.program, mix);
+  require(plan.closure_leaf_count == 1u &&
+              plan.mix_instruction_count == 1u &&
+              plan.weight_add_instruction_count == 1u &&
+              plan.conditional_branch_count == 0u &&
+              plan.weight_expressions.size() == 3u &&
+              std::ranges::all_of(
+                  plan.weight_regions,
+                  [](std::uint32_t region) {
+                    return region != surface_svm_invalid_region;
+                  }),
+          "complementary shared Mix did not retain its exact weight algebra");
+  const auto leaves = execute_weighted_control(plan, {{mix_id.value, 0.37f}});
+  require(leaves.size() == 1u,
+          "complementary shared Mix emitted duplicate leaves");
+  require_weighted_leaf(leaves, closure.value, 1.0f,
+                        "complementary shared Mix did not retain root weight");
+  const auto nan = std::numeric_limits<float>::quiet_NaN();
+  const auto nan_leaves =
+      execute_weighted_control(plan, {{mix_id.value, nan}});
+  require(nan_leaves.size() == 1u &&
+              nan_leaves.front().closure == closure.value &&
+              std::isnan(nan_leaves.front().weight),
+          "complementary shared Mix incorrectly folded NaN weight to one");
+  const auto allocation = storage(analyzed, plan);
+  require(allocation.weight_values == 3u && allocation.scalar_slots == 2u,
+          "complementary Mix weights were not clique-optimally colored");
+  auto incompatible = allocation;
+  --incompatible.weight_values;
+  require(!incompatible.compatible(*analyzed.compiled.program, plan),
+          "storage compatibility ignored an active closure weight");
+}
+
+void test_shared_leaf_weight_is_hoisted_and_accumulated_before_control() {
+  ShaderGraph graph;
+  const auto diffuse = graph.add_node(node_type::diffuse_bsdf,
+                                      "Hoisted shared diffuse");
+  const auto glossy = graph.add_node(node_type::glossy_bsdf,
+                                     "Hoisted private glossy");
+  const auto mix = graph.add_node(node_type::mix_closure,
+                                  "Hoisted child Mix");
+  const auto add = graph.add_node(node_type::add_closure,
+                                  "Hoisted Add root");
+  require(graph.set_input(mix, "Factor", SocketValue::floating(0.25f)) &&
+              graph.connect({.node = diffuse, .socket = "Closure"}, mix,
+                            "A") &&
+              graph.connect({.node = glossy, .socket = "Closure"}, mix,
+                            "B") &&
+              graph.connect({.node = mix, .socket = "Closure"}, add, "A") &&
+              graph.connect({.node = diffuse, .socket = "Closure"}, add,
+                            "B"),
+          "failed to configure hoisted shared-leaf graph");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = add, .socket = "Closure"});
+  const auto analyzed = analyze(std::move(graph));
+  const auto plan = schedule(analyzed);
+  verify_total_schedule_contract(*analyzed.compiled.program, plan);
+  const auto diffuse_id = find_closure(*analyzed.compiled.program, diffuse);
+  const auto glossy_id = find_closure(*analyzed.compiled.program, glossy);
+  const auto mix_id = find_closure(*analyzed.compiled.program, mix);
+  const auto mix_pc = find_schedule_instruction(
+      plan, SurfaceSvmScheduleInstructionKind::mix_closure, mix_id.value);
+  const auto add_pc = find_schedule_instruction(
+      plan, SurfaceSvmScheduleInstructionKind::add_closure_weight);
+  const auto diffuse_pc = find_schedule_instruction(
+      plan, SurfaceSvmScheduleInstructionKind::closure_leaf,
+      diffuse_id.value);
+  const auto guard_pc = find_schedule_instruction(
+      plan, SurfaceSvmScheduleInstructionKind::jump_if_zero, mix_id.value);
+  require(plan.mix_instruction_count == 1u &&
+              plan.weight_add_instruction_count == 1u &&
+              plan.conditional_branch_count == 1u &&
+              mix_pc < add_pc && add_pc < diffuse_pc &&
+              diffuse_pc < guard_pc,
+          "shared leaf weight/setup was not hoisted before private control");
+
+  const auto at_zero =
+      execute_weighted_control(plan, {{mix_id.value, 0.0f}});
+  require(at_zero.size() == 1u,
+          "zero factor retained the private right closure");
+  require_weighted_leaf(at_zero, diffuse_id.value, 2.0f,
+                        "zero factor produced the wrong shared-leaf weight");
+  const auto interior =
+      execute_weighted_control(plan, {{mix_id.value, 0.25f}});
+  require(interior.size() == 2u,
+          "interior factor did not retain both unique leaves");
+  require_weighted_leaf(interior, diffuse_id.value, 1.75f,
+                        "interior factor produced the wrong accumulated weight");
+  require_weighted_leaf(interior, glossy_id.value, 0.25f,
+                        "interior factor produced the wrong private weight");
+  const auto at_one =
+      execute_weighted_control(plan, {{mix_id.value, 1.0f}});
+  require_weighted_leaf(at_one, diffuse_id.value, 1.0f,
+                        "factor one lost the unconditional shared contribution");
+  require_weighted_leaf(at_one, glossy_id.value, 1.0f,
+                        "factor one lost the private right contribution");
+
+  const auto allocation = storage(analyzed, plan);
+  require(allocation.weight_values == 3u && allocation.scalar_slots == 2u &&
+              allocation.maximum_interference_clique[
+                  static_cast<std::size_t>(SurfaceValueBank::scalar)] == 2u,
+          "hoisted closure-weight SSA was not clique-optimally colored");
 }
 
 void test_cfg_storage_is_clique_optimal_and_read_before_write() {
@@ -716,6 +1003,28 @@ void test_storage_rejects_skipped_definition_and_capacity_overflow() {
               invalid.diagnostic.find("does not dominate") != std::string::npos,
           "CFG storage accepted a path that skips a required definition");
 
+  auto mismatched_factor = plan;
+  const auto mix_pc = find_schedule_instruction(
+      mismatched_factor, SurfaceSvmScheduleInstructionKind::mix_closure);
+  const auto mix_weight = mismatched_factor.instructions[mix_pc].weight;
+  require(mix_weight.valid() &&
+              mix_weight.value < mismatched_factor.weight_expressions.size(),
+          "malformed-factor fixture has no Mix weight");
+  const auto actual_factor =
+      analyzed.compiled.program->closure_instructions()[mix.value].factor;
+  const auto alternative = ValueExpressionId{
+      actual_factor.value == 0u ? 1u : 0u};
+  require(alternative.value <
+              analyzed.compiled.program->value_instructions().size(),
+          "malformed-factor fixture has no alternative value");
+  mismatched_factor.weight_expressions[mix_weight.value].factor = alternative;
+  const auto inconsistent = plan_surface_svm_storage(
+      *analyzed.compiled.program, mismatched_factor);
+  require(!inconsistent.valid &&
+              inconsistent.diagnostic.find("inconsistent primary") !=
+                  std::string::npos,
+          "CFG storage accepted a Mix weight with the wrong source factor");
+
   const auto insufficient = plan_surface_svm_storage(
       *analyzed.compiled.program, plan,
       SurfaceValueStorageCapacity{
@@ -737,6 +1046,8 @@ int main() {
     test_add_sibling_is_outside_mix_control();
     test_static_mix_pruning_removes_control_records();
     test_shared_closure_dag_is_accepted_without_value_recomputation();
+    test_complementary_shared_mix_leaf_preserves_ieee_weight_algebra();
+    test_shared_leaf_weight_is_hoisted_and_accumulated_before_control();
     test_cfg_storage_is_clique_optimal_and_read_before_write();
     test_interleaved_closure_use_reuses_slots_across_branches();
     test_passthrough_quotient_has_no_device_definition();
