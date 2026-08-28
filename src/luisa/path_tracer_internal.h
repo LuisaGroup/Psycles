@@ -380,15 +380,15 @@ struct SurfaceValueRuntime {
     static constexpr std::uint32_t unsigned_integer_capacity =
         storage_capacity.unsigned_integer_slots;
 
-    compiler::SurfaceValueExecutableScene executable;
-    // Executed single-stream image. The established executable remains only as
-    // a temporary host-side semantic-variant interner and migration oracle; no
-    // device consumer executes its split value/closure streams. No unified SVM
-    // instruction is allowed to infer a handler from its opcode alone:
+    // Exact evaluator domain proven directly from the unified CFG and its
+    // source-provenance relation. No split-stream executable participates in
+    // production handler selection.
+    std::vector<compiler::SurfaceValueStaticVariant> value_variants;
+    // Executed single-stream image. No unified SVM instruction is allowed to
+    // infer a handler from its opcode alone:
     // `svm_instruction_variants` is a total, scene-parallel proof side stream
     // for value records and the invalid sentinel for every control/closure
-    // record. Replacing the interner lets the legacy bytecode members below be
-    // removed without changing this contract.
+    // record.
     compiler::SurfaceSvmSceneImage svm_scene;
     std::vector<std::uint32_t> svm_instruction_variants;
     std::vector<SurfaceSvmClosureVariant>
@@ -397,6 +397,10 @@ struct SurfaceValueRuntime {
         emission_svm_closure_variants;
     std::vector<SurfaceSvmClosureVariant>
         bssrdf_svm_closure_variants;
+    // Temporary diagnostics-only image retained while the execution histogram
+    // and legacy ABI regressions are migrated to the unified CFG. It is never
+    // consulted by the replacement interpreter or its evaluator dispatcher.
+    compiler::SurfaceValueExecutableScene executable;
     compiler::SurfaceValueRegionSpecializationPlan region_specializations;
     // True when every selected specialization fits in the instruction's
     // one-byte runtime tag. Larger diagnostic plans retain the exact parallel
