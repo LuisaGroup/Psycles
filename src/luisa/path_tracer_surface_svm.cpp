@@ -155,8 +155,6 @@ Float3 SurfaceSvmInterpreter::execute(
                     instruction,
                     instruction_index,
                     locals_view.scalars.storage,
-                    locals_view.vectors.storage,
-                    locals_view.unsigned_integers.storage,
                     ambient_occlusion);
             }
             $elif(opcode == compiler::surface_svm_mix_closure_opcode) {

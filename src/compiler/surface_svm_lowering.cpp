@@ -27,6 +27,19 @@ using IndexSet = std::vector<std::uint32_t>;
   return static_cast<std::size_t>(bank);
 }
 
+[[nodiscard]] constexpr std::uint32_t
+bank_lane_width(SurfaceValueBank bank) noexcept {
+  switch (bank) {
+  case SurfaceValueBank::scalar:
+    return 1u;
+  case SurfaceValueBank::vector:
+    return 3u;
+  case SurfaceValueBank::unsigned_integer:
+    return 2u;
+  }
+  return 0u;
+}
+
 [[nodiscard]] bool contains(const IndexSet &set,
                             std::uint32_t value) noexcept {
   return std::binary_search(set.begin(), set.end(), value);
@@ -36,13 +49,6 @@ void insert(IndexSet &set, std::uint32_t value) {
   const auto position = std::lower_bound(set.begin(), set.end(), value);
   if (position == set.end() || *position != value) {
     set.insert(position, value);
-  }
-}
-
-void erase(IndexSet &set, std::uint32_t value) {
-  const auto position = std::lower_bound(set.begin(), set.end(), value);
-  if (position != set.end() && *position == value) {
-    set.erase(position);
   }
 }
 
@@ -73,29 +79,17 @@ void erase(IndexSet &set, std::uint32_t value) {
   if (address.parameter()) {
     return true;
   }
-  switch (address.bank()) {
-  case SurfaceValueBank::scalar:
-    return address.index() < program.scalar_slots;
-  case SurfaceValueBank::vector:
-    return address.index() < program.vector_slots;
-  case SurfaceValueBank::unsigned_integer:
-    return address.index() < program.unsigned_integer_slots;
-  }
-  return false;
+  const auto width = bank_lane_width(address.bank());
+  return width != 0u && address.index() < program.stack_lanes &&
+         width <= program.stack_lanes - address.index();
 }
 
 [[nodiscard]] bool valid_weight_slot(const SurfaceSvmProgramImage &program,
                                      std::uint32_t slot,
                                      bool allow_root) noexcept {
   return (allow_root && slot == surface_svm_root_weight_slot) ||
-         (slot < program.scalar_slots &&
+         (slot < program.stack_lanes &&
           slot != surface_svm_invalid_packed_weight_slot);
-}
-
-[[nodiscard]] std::uint32_t scalar_address(std::uint32_t slot) noexcept {
-  return (static_cast<std::uint32_t>(SurfaceValueBank::scalar)
-          << SurfaceValueAddress::bank_shift) |
-         slot;
 }
 
 [[nodiscard]] SurfaceClosureEndpointMask closure_endpoints(
@@ -118,6 +112,23 @@ struct Definition {
   bool weight{};
   std::uint32_t value{};
 };
+
+struct LaneSpan {
+  std::uint32_t begin{};
+  std::uint32_t end{};
+};
+
+[[nodiscard]] constexpr LaneSpan value_lane_span(
+    std::uint32_t encoded) noexcept {
+  const auto address = SurfaceValueAddress{encoded};
+  return {.begin = address.index(),
+          .end = address.index() + bank_lane_width(address.bank())};
+}
+
+[[nodiscard]] constexpr bool lane_spans_overlap(LaneSpan a,
+                                                LaneSpan b) noexcept {
+  return a.begin < b.end && b.begin < a.end;
+}
 
 struct ProgramPoint {
   IndexSet value_uses;
@@ -182,6 +193,21 @@ struct ProgramPoint {
   struct State {
     IndexSet values;
     IndexSet weights;
+
+    // The SVM stack is physically untyped. A write invalidates every logical
+    // value whose occupied 32-bit lane interval overlaps it, independently of
+    // the address's semantic bank tag. This is the bytecode-level proof that
+    // typed coloring and lifetime-epoch reuse cannot silently alias at run
+    // time.
+    void invalidate(LaneSpan written) {
+      std::erase_if(values, [written](std::uint32_t encoded) noexcept {
+        return lane_spans_overlap(value_lane_span(encoded), written);
+      });
+      std::erase_if(weights, [written](std::uint32_t slot) noexcept {
+        return lane_spans_overlap(
+            LaneSpan{.begin = slot, .end = slot + 1u}, written);
+      });
+    }
   };
   std::vector<State> defined_out(points.size());
   for (auto index = std::size_t{}; index < points.size(); ++index) {
@@ -220,13 +246,12 @@ struct ProgramPoint {
     }
     for (const auto &definition : points[index].definitions) {
       if (definition.weight) {
-        erase(state.values, scalar_address(definition.value));
+        state.invalidate(
+            LaneSpan{.begin = definition.value,
+                     .end = definition.value + 1u});
         insert(state.weights, definition.value);
       } else {
-        const auto address = SurfaceValueAddress{definition.value};
-        if (address.bank() == SurfaceValueBank::scalar) {
-          erase(state.weights, address.index());
-        }
+        state.invalidate(value_lane_span(definition.value));
         insert(state.values, definition.value);
       }
     }
@@ -259,8 +284,11 @@ std::string validate_surface_svm_program_image(
       (program.endpoints & ~all_surface_closure_endpoints) != 0u) {
     return "the unified surface SVM has invalid endpoint projection";
   }
-  if (program.scalar_slots > surface_svm_invalid_packed_weight_slot) {
-    return "the unified scalar bank exceeds packed weight addresses";
+  if (program.stack_lanes > surface_svm_stack_lane_capacity) {
+    return "the unified surface SVM exceeds Cycles' 255-lane stack";
+  }
+  if (program.stack_lanes > surface_svm_invalid_packed_weight_slot) {
+    return "the unified lane stack exceeds packed weight addresses";
   }
   if (program.instructions.empty()) {
     return "the unified surface SVM has no instruction stream";
@@ -272,10 +300,9 @@ std::string validate_surface_svm_program_image(
   value_projection.metadata = program.value_metadata;
   value_projection.static_data = program.static_data;
   value_projection.value_addresses = program.value_addresses;
-  value_projection.scalar_slots = program.scalar_slots;
-  value_projection.vector_slots = program.vector_slots;
-  value_projection.unsigned_integer_slots =
-      program.unsigned_integer_slots;
+  value_projection.scalar_slots = program.stack_lanes;
+  value_projection.vector_slots = program.stack_lanes;
+  value_projection.unsigned_integer_slots = program.stack_lanes;
   value_projection.flags = program.flags;
 
   SurfaceClosureProgramImage closure_projection;
@@ -557,16 +584,40 @@ SurfaceSvmProgramImage lower_surface_svm_program(
       (schedule.endpoints & ~all_surface_closure_endpoints) != 0u) {
     return reject("cannot lower an invalid endpoint projection");
   }
-  if (storage.scalar_slots > surface_svm_invalid_packed_weight_slot) {
-    return reject("the unified scalar bank exceeds packed weight addresses");
+  if (storage.stack_lanes > surface_svm_invalid_packed_weight_slot) {
+    return reject("the unified lane stack exceeds packed weight addresses");
   }
 
   SurfaceValueStoragePlan value_storage;
   value_storage.valid = true;
   value_storage.locations = storage.locations;
-  value_storage.scalar_slots = storage.scalar_slots;
-  value_storage.vector_slots = storage.vector_slots;
-  value_storage.unsigned_integer_slots = storage.unsigned_integer_slots;
+  const std::array typed_slot_counts{
+      storage.scalar_slots, storage.vector_slots,
+      storage.unsigned_integer_slots};
+  for (auto &location : value_storage.locations) {
+    if (location.storage != SurfaceValueStorageClass::local_slot) {
+      continue;
+    }
+    const auto typed_bank = bank_index(location.bank);
+    if (typed_bank >= typed_slot_counts.size() ||
+        location.index >= typed_slot_counts[typed_bank]) {
+      return reject("the unified value location exceeds its typed coloring");
+    }
+    const auto lane =
+        static_cast<std::uint64_t>(storage.lane_bases[typed_bank]) +
+        static_cast<std::uint64_t>(location.index) *
+            bank_lane_width(location.bank);
+    if (lane >= storage.stack_lanes) {
+      return reject("the unified value location exceeds its lane stack");
+    }
+    location.index = static_cast<std::uint32_t>(lane);
+  }
+  // The established value serializer treats each type as an independent
+  // address domain. Supplying the common physical extent makes it serialize
+  // the already remapped lane offsets without changing its record format.
+  value_storage.scalar_slots = storage.stack_lanes;
+  value_storage.vector_slots = storage.stack_lanes;
+  value_storage.unsigned_integer_slots = storage.stack_lanes;
   value_storage.active_values = storage.active_values;
   value_storage.parameter_values = storage.parameter_values;
   value_storage.alias_values = storage.alias_values;
@@ -627,9 +678,10 @@ SurfaceSvmProgramImage lower_surface_svm_program(
   result.value_metadata = std::move(values.metadata);
   result.static_data = std::move(values.static_data);
   result.value_addresses = std::move(values.value_addresses);
-  result.scalar_slots = values.scalar_slots;
-  result.vector_slots = values.vector_slots;
-  result.unsigned_integer_slots = values.unsigned_integer_slots;
+  result.stack_lanes = storage.stack_lanes;
+  result.scalar_slots = storage.scalar_slots;
+  result.vector_slots = storage.vector_slots;
+  result.unsigned_integer_slots = storage.unsigned_integer_slots;
   result.flags = values.flags;
 
   const auto value_address = [&](ValueExpressionId value,
@@ -666,7 +718,7 @@ SurfaceSvmProgramImage lower_surface_svm_program(
       return false;
     }
     slot = storage.weight_locations[weight.value];
-    return slot < result.scalar_slots &&
+    return slot < result.stack_lanes &&
            slot != surface_svm_invalid_packed_weight_slot;
   };
 

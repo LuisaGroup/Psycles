@@ -190,9 +190,9 @@ using DefinitionState = std::array<std::vector<std::uint32_t>, 3u>;
 [[nodiscard]] DefinitionState
 make_empty_state(const SurfaceSvmProgramImage &image) {
   return DefinitionState{
-      std::vector<std::uint32_t>(image.scalar_slots, invalid_source),
-      std::vector<std::uint32_t>(image.vector_slots, invalid_source),
-      std::vector<std::uint32_t>(image.unsigned_integer_slots, invalid_source)};
+      std::vector<std::uint32_t>(image.stack_lanes, invalid_source),
+      std::vector<std::uint32_t>(image.stack_lanes, invalid_source),
+      std::vector<std::uint32_t>(image.stack_lanes, invalid_source)};
 }
 
 void clear_state(DefinitionState &state) {

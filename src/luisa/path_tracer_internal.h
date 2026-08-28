@@ -357,17 +357,13 @@ struct SurfaceValueRuntime {
     static constexpr std::uint32_t programs_per_topology = 2u;
     static constexpr std::uint32_t preparation_program_offset = 0u;
     static constexpr std::uint32_t emission_program_offset = 1u;
-    // These are execution capacities, not a weakly typed value ABI. The
-    // builder rejects the complete compact route when any exact liveness plan
-    // exceeds a bank, leaving the established expanded route intact.
+    // This is the Cycles-compatible 32-bit lane-stack execution capacity, not
+    // a weakly typed value ABI. The builder rejects a program whose formally
+    // colored live ranges exceed the finite SVM stack.
     static constexpr auto storage_capacity =
         compact_surface_value_storage_capacity;
-    static constexpr std::uint32_t scalar_capacity =
-        storage_capacity.scalar_slots;
-    static constexpr std::uint32_t vector_capacity =
-        storage_capacity.vector_slots;
-    static constexpr std::uint32_t unsigned_integer_capacity =
-        storage_capacity.unsigned_integer_slots;
+    static constexpr std::uint32_t stack_capacity =
+        storage_capacity.stack_lanes;
 
     // Exact evaluator domain proven directly from the unified CFG and its
     // source-provenance relation. No split-stream executable participates in

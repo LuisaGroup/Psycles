@@ -10,6 +10,11 @@
 
 namespace psycles::compiler {
 
+// Cycles 5.2 intern/cycles/kernel/svm/types.h::SVM_STACK_SIZE. Local value
+// addresses name 32-bit lanes in this closed domain; 255 remains the invalid
+// uint8 stack offset in Cycles and is never a legal lane here.
+inline constexpr std::uint32_t surface_svm_stack_lane_capacity = 255u;
+
 // One 16-byte instruction stream for value evaluation, closure-weight SSA,
 // structured guards and closure setup. Ordinary value records retain their
 // established bit-for-bit ABI. Opcodes above the closed ValueOperation range
@@ -142,6 +147,7 @@ struct SurfaceSvmProgramImage {
   std::vector<float> static_data;
   std::vector<std::uint32_t> closure_operands;
   std::vector<std::uint32_t> value_addresses;
+  std::uint32_t stack_lanes{};
   std::uint32_t scalar_slots{};
   std::uint32_t vector_slots{};
   std::uint32_t unsigned_integer_slots{};
@@ -167,7 +173,7 @@ struct SurfaceSvmProgramDescriptor {
   std::uint32_t unsigned_integer_slots{};
   std::uint32_t flags{};
   SurfaceClosureEndpointMask endpoints{};
-  std::uint32_t reserved{};
+  std::uint32_t stack_lanes{};
 
   auto
   operator<=>(const SurfaceSvmProgramDescriptor &) const noexcept = default;
@@ -203,6 +209,7 @@ struct SurfaceSvmSceneImage {
   std::vector<float> static_data;
   std::vector<std::uint32_t> closure_operands;
   std::uint32_t maximum_instruction_count{};
+  std::uint32_t maximum_stack_lanes{};
   std::uint32_t maximum_scalar_slots{};
   std::uint32_t maximum_vector_slots{};
   std::uint32_t maximum_unsigned_integer_slots{};
