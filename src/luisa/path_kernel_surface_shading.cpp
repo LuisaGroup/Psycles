@@ -132,6 +132,9 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 surface.path_surface_query,
                 include_runtime_flags,
                 include_aov);
+        if (config.surface_program_execution_histogram_enabled) {
+          sample.record_surface_program_execution(surface_tag);
+        }
         if (config.surfaces.population) {
             populated_surface = config.surfaces.population->populate(
                 surface_tag,

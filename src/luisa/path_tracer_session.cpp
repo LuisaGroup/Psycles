@@ -6,26 +6,59 @@
 namespace psycles::luisa_backend::detail {
 
 PathDiagnosticBufferLayout path_diagnostic_buffer_layout(
-    const LuisaPathTracerOptions &options) noexcept {
-    PathDiagnosticBufferLayout layout;
-    layout.path_trace_slot_count =
-        options.path_trace ? path_trace_schema::slot_count : 0u;
-    layout.surface_closure_count_histogram_base =
-        layout.path_trace_slot_count;
-    layout.surface_closure_count_histogram_slot_count =
-        options.surface_closure_count_histogram
-            ? luisa_surface_closure_count_histogram_bin_count
-            : 0u;
-    layout.allocation_slot_count = std::max<std::size_t>(
-        layout.surface_closure_count_histogram_base +
-            layout.surface_closure_count_histogram_slot_count,
-        1u);
-    return layout;
+    const LuisaPathTracerOptions &options,
+    std::size_t surface_value_topology_count) noexcept {
+  PathDiagnosticBufferLayout layout;
+  layout.path_trace_slot_count =
+      options.path_trace ? path_trace_schema::slot_count : 0u;
+  layout.surface_closure_count_histogram_base = layout.path_trace_slot_count;
+  layout.surface_closure_count_histogram_slot_count =
+      options.surface_closure_count_histogram
+          ? luisa_surface_closure_count_histogram_bin_count
+          : 0u;
+  layout.surface_program_execution_histogram_base =
+      layout.surface_closure_count_histogram_base +
+      layout.surface_closure_count_histogram_slot_count;
+  if (options.surface_program_execution_histogram &&
+      surface_value_topology_count != 0u) {
+    if (surface_value_topology_count >
+        std::numeric_limits<std::size_t>::max() /
+            surface_program_execution_histogram_shards_per_topology) {
+      std::abort();
+    }
+    layout.surface_program_execution_histogram_slot_count =
+        surface_value_topology_count *
+        surface_program_execution_histogram_shards_per_topology;
+  }
+  if (layout.surface_program_execution_histogram_base >
+      std::numeric_limits<std::size_t>::max() -
+          layout.surface_program_execution_histogram_slot_count) {
+    std::abort();
+  }
+  layout.allocation_slot_count = std::max<std::size_t>(
+      layout.surface_program_execution_histogram_base +
+          layout.surface_program_execution_histogram_slot_count,
+      1u);
+  if (layout.allocation_slot_count >
+      std::numeric_limits<std::uint32_t>::max()) {
+    std::abort();
+  }
+  return layout;
 }
 
 std::size_t LuisaRenderSession::pixel_count() const noexcept {
     return static_cast<std::size_t>(_window.width) *
            static_cast<std::size_t>(_window.height);
+}
+
+std::size_t
+LuisaRenderSession::surface_program_execution_histogram_topology_count()
+    const noexcept {
+  if (!_options.surface_program_execution_histogram ||
+      !_scene->populate_surface_once || !_scene->surface_values) {
+    return 0u;
+  }
+  return _scene->surface_values->topologies.size();
 }
 
 void LuisaRenderSession::deliver_path_trace() {
@@ -65,7 +98,8 @@ void LuisaRenderSession::deliver_surface_closure_count_histogram() {
     }
     luisa::vector<luisa::float4> bins(
         luisa_surface_closure_count_histogram_bin_count);
-    const auto layout = path_diagnostic_buffer_layout(_options);
+    const auto layout = path_diagnostic_buffer_layout(
+        _options, surface_program_execution_histogram_topology_count());
     _stream
         << _path_trace
                .view(layout.surface_closure_count_histogram_base, bins.size())
@@ -95,6 +129,161 @@ void LuisaRenderSession::deliver_surface_closure_count_histogram() {
         }
     }
     _options.surface_closure_count_histogram->sink->write(histogram);
+}
+
+void LuisaRenderSession::deliver_surface_program_execution_histogram() {
+  if (!_options.surface_program_execution_histogram ||
+      !_options.surface_program_execution_histogram->sink) {
+    return;
+  }
+
+  LuisaSurfaceProgramExecutionHistogram histogram;
+  const auto topology_count =
+      surface_program_execution_histogram_topology_count();
+  if (topology_count == 0u || !_scene->surface_values) {
+    _options.surface_program_execution_histogram->sink->write(histogram);
+    return;
+  }
+  const auto layout = path_diagnostic_buffer_layout(_options, topology_count);
+  luisa::vector<luisa::float4> shards(
+      layout.surface_program_execution_histogram_slot_count);
+  _stream << _path_trace
+                 .view(layout.surface_program_execution_histogram_base,
+                       shards.size())
+                 .copy_to(luisa::span{shards})
+          << synchronize();
+
+  constexpr auto largest_consecutive_float_integer = 16777216.0f;
+  histogram.exact = true;
+  histogram.topology_surface_populations.assign(topology_count, 0u);
+  for (auto topology = std::size_t{0u}; topology < topology_count; ++topology) {
+    auto &count = histogram.topology_surface_populations[topology];
+    const auto begin =
+        topology * surface_program_execution_histogram_shards_per_topology;
+    const auto end =
+        begin + surface_program_execution_histogram_shards_per_topology;
+    for (auto shard = begin; shard < end; ++shard) {
+      const std::array lanes{shards[shard].x, shards[shard].y, shards[shard].z,
+                             shards[shard].w};
+      for (const auto value : lanes) {
+        const auto lane_exact = std::isfinite(value) && value >= 0.0f &&
+                                value < largest_consecutive_float_integer &&
+                                std::trunc(value) == value;
+        histogram.exact &= lane_exact;
+        if (lane_exact) {
+          count += static_cast<std::uint64_t>(value);
+        }
+      }
+    }
+  }
+
+  const auto checked_add = [&](std::uint64_t &destination,
+                               std::uint64_t value) noexcept {
+    if (value > std::numeric_limits<std::uint64_t>::max() - destination) {
+      histogram.exact = false;
+      return;
+    }
+    destination += value;
+  };
+  // Exact device-dispatch identity plus its decoded presentation fields.
+  // std::array provides a total lexicographic order without introducing a
+  // second hash identity for diagnostic aggregation.
+  using ValueKey = std::array<std::uint32_t, 5u>;
+  std::map<ValueKey, std::uint64_t> value_counts;
+  std::map<std::uint32_t, std::uint64_t> closure_leaf_counts;
+  const auto &runtime = *_scene->surface_values;
+  const auto &image = runtime.executable.values;
+  for (auto topology = std::size_t{0u}; topology < topology_count; ++topology) {
+    const auto populations = histogram.topology_surface_populations[topology];
+    if (populations == 0u) {
+      continue;
+    }
+    const auto program_index =
+        topology * SurfaceValueRuntime::programs_per_topology +
+        SurfaceValueRuntime::preparation_program_offset;
+    if (program_index >= image.programs.size()) {
+      histogram.exact = false;
+      continue;
+    }
+    const auto &program = image.programs[program_index];
+    if (program.instruction_begin > image.instructions.size() ||
+        program.instruction_count >
+            image.instructions.size() - program.instruction_begin ||
+        program.closure_begin > image.closure_instructions.size() ||
+        program.closure_count >
+            image.closure_instructions.size() - program.closure_begin) {
+      histogram.exact = false;
+      continue;
+    }
+    for (auto offset = std::uint32_t{0u}; offset < program.instruction_count;
+         ++offset) {
+      const auto instruction_index = program.instruction_begin + offset;
+      const auto &instruction = image.instructions[instruction_index];
+      checked_add(histogram.value_instruction_executions, populations);
+      if (compiler::is_surface_value_surface_normal_transition(instruction)) {
+        checked_add(histogram.surface_normal_transition_executions,
+                    populations);
+        continue;
+      }
+      if (instruction_index >= runtime.executable.instruction_variants.size()) {
+        histogram.exact = false;
+        continue;
+      }
+      const auto variant =
+          runtime.executable.instruction_variants[instruction_index];
+      if (variant >= runtime.executable.variants.size()) {
+        histogram.exact = false;
+        continue;
+      }
+      checked_add(value_counts[ValueKey{
+                      variant, compiler::surface_value_handler_key(instruction),
+                      static_cast<std::uint32_t>(
+                          compiler::surface_value_operation(instruction)),
+                      static_cast<std::uint32_t>(
+                          compiler::surface_value_result_bank(instruction)),
+                      compiler::surface_value_svm_immediate(instruction)}],
+                  populations);
+    }
+    for (auto offset = std::uint32_t{0u}; offset < program.closure_count;
+         ++offset) {
+      const auto &instruction =
+          image.closure_instructions[program.closure_begin + offset];
+      checked_add(histogram.closure_instruction_visits, populations);
+      const auto kind = static_cast<std::size_t>(
+          compiler::surface_closure_instruction_kind(instruction));
+      if (kind >= histogram.closure_instruction_kind_visits.size()) {
+        histogram.exact = false;
+        continue;
+      }
+      checked_add(histogram.closure_instruction_kind_visits[kind], populations);
+      if (compiler::surface_closure_is_leaf(instruction)) {
+        checked_add(
+            closure_leaf_counts[instruction.control &
+                                compiler::surface_closure_static_variant_mask],
+            populations);
+      }
+    }
+  }
+
+  histogram.value_handlers.reserve(value_counts.size());
+  for (const auto &[key, executions] : value_counts) {
+    histogram.value_handlers.emplace_back(
+        LuisaSurfaceValueHandlerExecutionCount{.variant_index = key[0u],
+                                               .handler_key = key[1u],
+                                               .operation = key[2u],
+                                               .result_bank = key[3u],
+                                               .svm_immediate = key[4u],
+                                               .executions = executions});
+  }
+  histogram.closure_leaf_variants.reserve(closure_leaf_counts.size());
+  for (const auto &[static_variant, visits] : closure_leaf_counts) {
+    histogram.closure_leaf_variants.emplace_back(
+        LuisaSurfaceClosureLeafVisitCount{
+            .static_variant = static_variant,
+            .operation = static_variant & compiler::surface_closure_opcode_mask,
+            .visits = visits});
+  }
+  _options.surface_program_execution_histogram->sink->write(histogram);
 }
 
 void LuisaRenderSession::prepare_sobol_table(
@@ -480,6 +669,7 @@ bool LuisaRenderSession::render_samples(
         return false;
     }
     deliver_surface_closure_count_histogram();
+    deliver_surface_program_execution_histogram();
     return true;
 }
 

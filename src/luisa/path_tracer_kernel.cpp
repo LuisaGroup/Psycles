@@ -57,7 +57,10 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
       count * volume_guiding::denoised_pixel_stride);
   _volume_guiding_intermediate = _scene->device.create_buffer<luisa::uint>(
       count * volume_guiding::denoised_pixel_stride);
-  const auto diagnostic_layout = path_diagnostic_buffer_layout(_options);
+  const auto surface_program_histogram_topology_count =
+      surface_program_execution_histogram_topology_count();
+  const auto diagnostic_layout = path_diagnostic_buffer_layout(
+      _options, surface_program_histogram_topology_count);
   _path_trace = _scene->device.create_buffer<luisa::float4>(
       diagnostic_layout.allocation_slot_count);
   const auto generated_filter_table = sampling::make_pixel_filter_table(
@@ -303,9 +306,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .path_trace_enabled = path_trace_enabled,
         .surface_closure_count_histogram_enabled =
             static_cast<bool>(_options.surface_closure_count_histogram),
-        .surface_closure_count_histogram_base =
+        .surface_closure_count_histogram_base = static_cast<std::uint32_t>(
+            diagnostic_layout.surface_closure_count_histogram_base),
+        .surface_program_execution_histogram_enabled =
+            surface_program_histogram_topology_count != 0u,
+        .surface_program_execution_histogram_base = static_cast<std::uint32_t>(
+            diagnostic_layout.surface_program_execution_histogram_base),
+        .surface_program_execution_histogram_topology_count =
             static_cast<std::uint32_t>(
-                diagnostic_layout.surface_closure_count_histogram_base),
+                surface_program_histogram_topology_count),
         .staged_surface_sorting = _options.staged_surface_sorting,
         .volume_stack_size = scene->volume_metadata.stack_size,
         .camera_may_be_inside_volume = camera_may_be_inside_volume,
@@ -316,10 +325,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .light_tree = std::move(light_tree_callables),
         .surfaces = std::move(surface_callables),
         .environment = std::move(environment_callables),
-        .intersect_shadow =
-            std::move(shadow_trace_callables.intersect),
-        .shade_shadow_surface =
-            std::move(shadow_trace_callables.shade_surface),
+        .intersect_shadow = std::move(shadow_trace_callables.intersect),
+        .shade_shadow_surface = std::move(shadow_trace_callables.shade_surface),
         .trace_shadow = std::move(shadow_trace_callables.trace)};
     _render_executor = build_path_kernel_executor(
       _scene->device, kernel_config,

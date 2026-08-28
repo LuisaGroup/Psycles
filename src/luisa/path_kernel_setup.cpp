@@ -641,6 +641,40 @@ void PathSampleContext::record_surface_closure_count(
     };
 }
 
+void PathSampleContext::record_surface_program_execution(
+    UInt surface_tag) const noexcept {
+  const auto &config = invocation.config;
+  if (!config.surface_program_execution_histogram_enabled) {
+    return;
+  }
+
+  static_assert(
+      (surface_program_execution_histogram_lanes_per_topology &
+       (surface_program_execution_histogram_lanes_per_topology - 1u)) == 0u);
+  $if(surface_tag < config.surface_program_execution_histogram_topology_count) {
+    // A checked counter is a commutative multiset projection, so arrival
+    // order is irrelevant. Mix the logical event identity only to spread
+    // one topology over independent exact-float shards; the host rejects
+    // a shard that reaches the 2^24 consecutive-integer boundary.
+    const auto lane =
+        ((invocation.pixel * 0x9e3779b9u) ^ (sample_index * 0x85ebca6bu) ^
+         (path_depth * 0xc2b2ae35u)) &
+        static_cast<std::uint32_t>(
+            surface_program_execution_histogram_lanes_per_topology - 1u);
+    const auto slot =
+        config.surface_program_execution_histogram_base +
+        surface_tag *
+            static_cast<std::uint32_t>(
+                surface_program_execution_histogram_shards_per_topology) +
+        lane / 4u;
+    auto destination = invocation.path_trace.atomic(slot);
+    $if((lane & 3u) == 0u) { destination.x.fetch_add(1.0f); }
+    $elif((lane & 3u) == 1u) { destination.y.fetch_add(1.0f); }
+    $elif((lane & 3u) == 2u) { destination.z.fetch_add(1.0f); }
+    $else { destination.w.fetch_add(1.0f); };
+  };
+}
+
 PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
                                     const UInt &sample_offset) noexcept {
     const auto &sample_first = invocation.sample_first;

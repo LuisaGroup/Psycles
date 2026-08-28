@@ -58,17 +58,22 @@ constexpr std::array pass_kinds{PassKind::combined,
 
 [[nodiscard]] ShaderGraph surface_shader() {
     ShaderGraph graph;
-  const auto principled =
-      graph.add_node(node_type::principled_bsdf, "Per-sample dispatch surface");
+    const auto geometry =
+        graph.add_node(node_type::geometry, "Per-sample dispatch geometry");
+    const auto principled = graph.add_node(node_type::principled_bsdf,
+                                           "Per-sample dispatch surface");
     const auto configured =
-      graph.set_input(principled, "BaseColor",
-            SocketValue::color({0.23f, 0.51f, 0.71f})) &&
-      graph.set_input(principled, "Metallic", SocketValue::floating(0.17f)) &&
-      graph.set_input(principled, "Roughness", SocketValue::floating(0.31f)) &&
-      graph.set_input(principled, "EmissionColor",
-            SocketValue::color({0.04f, 0.015f, 0.007f})) &&
-      graph.set_input(principled, "EmissionStrength",
-            SocketValue::floating(0.25f));
+        graph.set_input(principled, "BaseColor",
+                        SocketValue::color({0.23f, 0.51f, 0.71f})) &&
+        graph.set_input(principled, "Metallic", SocketValue::floating(0.17f)) &&
+        graph.set_input(principled, "Roughness",
+                        SocketValue::floating(0.31f)) &&
+        graph.set_input(principled, "EmissionColor",
+                        SocketValue::color({0.04f, 0.015f, 0.007f})) &&
+        graph.set_input(principled, "EmissionStrength",
+                        SocketValue::floating(0.25f)) &&
+        graph.connect({.node = geometry, .socket = "Normal"}, principled,
+                      "Normal");
     if (!configured) {
         std::abort();
     }
@@ -223,12 +228,27 @@ public:
     }
 };
 
+class SurfaceProgramHistogramSink final
+    : public psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogramSink {
+
+public:
+  std::optional<psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogram>
+      histogram;
+
+  void write(const psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogram
+                 &value) override {
+    histogram = value;
+  }
+};
+
 struct RenderResult {
     psycles::io::MemoryOutputSink output;
   std::optional<psycles::luisa_backend::LuisaPathTrace> trace;
   std::optional<psycles::luisa_backend::
                     LuisaSurfaceClosureCountHistogram>
       closure_histogram;
+  std::optional<psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogram>
+      surface_program_histogram;
 };
 
 [[nodiscard]] std::optional<RenderResult>
@@ -242,14 +262,17 @@ render(luisa::compute::Context &context, std::string_view backend,
        std::uint32_t wavefront_counter_readback_batch_size = 4u,
        std::uint32_t wavefront_counter_readback_pipeline_depth = 2u,
        std::uint32_t wavefront_frame_capacity = 128u,
-       bool closure_histogram_enabled = false) {
-    auto device = context.create_device(backend);
+       bool diagnostic_histograms_enabled = false) {
+  auto device = context.create_device(backend);
   auto trace_sink = path_trace_enabled ? std::make_shared<TraceSink>()
                                        : std::shared_ptr<TraceSink>{};
-  auto closure_histogram_sink =
-      closure_histogram_enabled
-          ? std::make_shared<ClosureHistogramSink>()
-          : std::shared_ptr<ClosureHistogramSink>{};
+  auto closure_histogram_sink = diagnostic_histograms_enabled
+                                    ? std::make_shared<ClosureHistogramSink>()
+                                    : std::shared_ptr<ClosureHistogramSink>{};
+  auto surface_program_histogram_sink =
+      diagnostic_histograms_enabled
+          ? std::make_shared<SurfaceProgramHistogramSink>()
+          : std::shared_ptr<SurfaceProgramHistogramSink>{};
   const auto trace_request =
       trace_sink
           ? std::optional{psycles::luisa_backend::LuisaPathTraceRequest{
@@ -265,6 +288,14 @@ render(luisa::compute::Context &context, std::string_view backend,
     closure_histogram_request = psycles::luisa_backend::
         LuisaSurfaceClosureCountHistogramRequest{
             .sink = closure_histogram_sink};
+  }
+  std::optional<
+      psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogramRequest>
+      surface_program_histogram_request;
+  if (surface_program_histogram_sink) {
+    surface_program_histogram_request =
+        psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogramRequest{
+            .sink = surface_program_histogram_sink};
   }
   psycles::luisa_backend::LuisaPathTracerBackend renderer{
       std::move(device),
@@ -288,8 +319,9 @@ render(luisa::compute::Context &context, std::string_view backend,
        .persistent_fetch_size = 4u,
        .max_samples_per_dispatch = samples_per_dispatch,
        .path_trace = trace_request,
-       .surface_closure_count_histogram =
-           closure_histogram_request}};
+       .surface_closure_count_histogram = closure_histogram_request,
+       .surface_program_execution_histogram =
+           surface_program_histogram_request}};
   auto compilation = renderer.compile_scene(make_scene());
   if (!compilation.ok()) {
       for (const auto &diagnostic : compilation.diagnostics) {
@@ -328,15 +360,20 @@ render(luisa::compute::Context &context, std::string_view backend,
     if (closure_histogram_sink && !closure_histogram_sink->histogram) {
         return std::nullopt;
     }
-    return RenderResult{.output = std::move(output),
-                        .trace = trace_sink
-                                     ? std::move(trace_sink->trace)
-                                     : std::nullopt,
-                        .closure_histogram =
-                            closure_histogram_sink
-                                ? std::move(
-                                      closure_histogram_sink->histogram)
-                                : std::nullopt};
+    if (surface_program_histogram_sink &&
+        !surface_program_histogram_sink->histogram) {
+      return std::nullopt;
+    }
+    return RenderResult{
+        .output = std::move(output),
+        .trace = trace_sink ? std::move(trace_sink->trace) : std::nullopt,
+        .closure_histogram = closure_histogram_sink
+                                 ? std::move(closure_histogram_sink->histogram)
+                                 : std::nullopt,
+        .surface_program_histogram =
+            surface_program_histogram_sink
+                ? std::move(surface_program_histogram_sink->histogram)
+                : std::nullopt};
 }
 
 [[nodiscard]] bool same_bits(float lhs, float rhs) noexcept {
@@ -482,6 +519,64 @@ render(luisa::compute::Context &context, std::string_view backend,
     return true;
 }
 
+[[nodiscard]] bool
+validate_surface_program_histograms(const RenderResult &single_request,
+                                    const RenderResult &split_request) {
+  if (!single_request.surface_program_histogram ||
+      !split_request.surface_program_histogram) {
+    std::cerr << "surface program histogram is missing\n";
+    return false;
+  }
+  const auto &expected = *single_request.surface_program_histogram;
+  const auto &actual = *split_request.surface_program_histogram;
+  if (!expected.exact || !actual.exact || expected != actual) {
+    std::cerr << "surface program histogram changed across sample "
+                 "chunking\n";
+    return false;
+  }
+  constexpr auto expected_surface_events =
+      static_cast<std::uint64_t>(width) * height * sample_count;
+  auto surface_events = std::uint64_t{0u};
+  for (const auto count : expected.topology_surface_populations) {
+    surface_events += count;
+  }
+  auto value_handler_executions = std::uint64_t{0u};
+  for (const auto &entry : expected.value_handlers) {
+    value_handler_executions += entry.executions;
+    if (entry.executions == 0u ||
+        entry.executions % expected_surface_events != 0u) {
+      std::cerr << "one-topology value handler count is not an exact "
+                   "multiple of surface events\n";
+      return false;
+    }
+  }
+  auto closure_kind_visits = std::uint64_t{0u};
+  for (const auto visits : expected.closure_instruction_kind_visits) {
+    closure_kind_visits += visits;
+  }
+  auto closure_leaf_visits = std::uint64_t{0u};
+  for (const auto &entry : expected.closure_leaf_variants) {
+    closure_leaf_visits += entry.visits;
+    if (entry.visits == 0u || entry.visits % expected_surface_events != 0u) {
+      std::cerr << "one-topology closure leaf count is not an exact "
+                   "multiple of surface events\n";
+      return false;
+    }
+  }
+  if (surface_events != expected_surface_events ||
+      expected.value_instruction_executions == 0u ||
+      value_handler_executions +
+              expected.surface_normal_transition_executions !=
+          expected.value_instruction_executions ||
+      closure_kind_visits != expected.closure_instruction_visits ||
+      closure_leaf_visits != expected.closure_instruction_kind_visits[0u]) {
+    std::cerr << "surface program host projection violated its "
+                 "instruction partition\n";
+    return false;
+  }
+  return true;
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -586,6 +681,7 @@ int main(int argc, char **argv) {
         !compare_outputs(*reference, *chunked, false,
                          "chunked per-sample dispatch") ||
         !validate_closure_histograms(*per_sample, *chunked) ||
+        !validate_surface_program_histograms(*per_sample, *chunked) ||
         !compare_outputs(*per_sample_no_trace, *staged_direct_inline, false,
                          "deferred shadow after surface continuation") ||
         !compare_outputs(*reference, *wavefront, false, "wavefront dispatch") ||
@@ -604,8 +700,9 @@ int main(int argc, char **argv) {
         !compare_outputs(*staged_direct_inline,
                          *staged_direct_queued_small_capacity, false,
                          "small-capacity queued direct-light visibility") ||
-        !compare_outputs(*reference, *persistent, false, "persistent dispatch")) {
-        return EXIT_FAILURE;
+        !compare_outputs(*reference, *persistent, false,
+                         "persistent dispatch")) {
+      return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }
