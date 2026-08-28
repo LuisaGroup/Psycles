@@ -156,11 +156,11 @@ inline constexpr SurfaceValueBytecodeSlots svm_value_bytecode_slots{
 [[nodiscard]] bool surface_value_variant_is_external_query(
     const SurfaceValueRuntime &runtime,
     std::uint32_t variant_index) noexcept {
-    if (variant_index >= runtime.executable.variants.size()) {
+    if (variant_index >= runtime.value_variants.size()) {
         std::abort();
     }
     return compiler::surface_value_operation_is_external_query(
-        runtime.executable.variants[variant_index].instruction.operation);
+        runtime.value_variants[variant_index].instruction.operation);
 }
 
 [[nodiscard]] std::uint32_t handler_key(
@@ -193,12 +193,11 @@ make_handler_groups(
     std::vector<SurfaceValueHandlerGroup> groups;
     groups.reserve(active_variants.size());
     for (const auto variant_index : active_variants) {
-        if (variant_index >=
-            runtime.executable.variants.size()) {
+        if (variant_index >= runtime.value_variants.size()) {
             std::abort();
         }
         const auto key = handler_key(
-            runtime.executable.variants[variant_index]);
+            runtime.value_variants[variant_index]);
         const auto group = std::find_if(
             groups.begin(), groups.end(), [key](const auto &candidate) {
                 return candidate.key == key;
@@ -578,7 +577,7 @@ make_surface_value_handler_callable(
     SurfaceValueBytecodeSlots bytecode_slots,
     std::uint32_t variant_index) noexcept {
     if (!scene->surface_values ||
-        variant_index >= scene->surface_values->executable.variants.size() ||
+        variant_index >= scene->surface_values->value_variants.size() ||
         variant_index >= nodes->size()) {
         std::abort();
     }
@@ -628,7 +627,7 @@ make_surface_value_handler_callable(
                     luisa::compute::detail::Ref<luisa::ulong>{
                         unsigned_integer_bank.expression()}}};
             const auto &variant =
-                runtime->executable.variants[variant_index];
+                runtime->value_variants[variant_index];
             const auto point = surface_value_point(
                 packed_base_point,
                 transaction_shading_normal,
@@ -659,7 +658,7 @@ make_surface_ambient_occlusion_handler_callable(
     SurfaceValueBytecodeSlots bytecode_slots,
     std::uint32_t variant_index) noexcept {
     if (!scene->surface_values || !traversal ||
-        variant_index >= scene->surface_values->executable.variants.size() ||
+        variant_index >= scene->surface_values->value_variants.size() ||
         variant_index >= nodes->size() ||
         !surface_value_variant_is_external_query(
             *scene->surface_values, variant_index)) {
@@ -726,7 +725,7 @@ make_surface_ambient_occlusion_handler_callable(
                     luisa::compute::detail::Ref<luisa::ulong>{
                         unsigned_integer_bank.expression()}}};
             const auto &variant =
-                runtime->executable.variants[variant_index];
+                runtime->value_variants[variant_index];
             const auto point = surface_value_point(
                 packed_base_point,
                 transaction_shading_normal,
@@ -756,7 +755,7 @@ make_surface_ambient_occlusion_handler_callable(
     SurfaceValueBytecodeSlots bytecode_slots,
     bool include_external_queries) noexcept {
     SurfaceValueHandlers handlers(
-        scene->surface_values->executable.variants.size());
+        scene->surface_values->value_variants.size());
     for (const auto variant_index : active_variants) {
         if (surface_value_variant_is_external_query(
                 *scene->surface_values, variant_index) &&
@@ -784,7 +783,7 @@ make_surface_ambient_occlusion_handlers(
     std::span<const std::uint32_t> active_variants,
     SurfaceValueBytecodeSlots bytecode_slots) noexcept {
     SurfaceValueAmbientOcclusionHandlers handlers(
-        scene->surface_values->executable.variants.size());
+        scene->surface_values->value_variants.size());
     const auto traversal = make_scene_traversal_component(
         make_scene_traversal_stage_plan(
             scene->geometries.size(), scene->curve_geometries.size()));
@@ -816,10 +815,10 @@ make_surface_ambient_occlusion_handlers(
     for (auto member = std::size_t{}; member < shape.variant_indices.size();
          ++member) {
         const auto variant_index = shape.variant_indices[member];
-        if (variant_index >= runtime.executable.variants.size()) {
+        if (variant_index >= runtime.value_variants.size()) {
             return false;
         }
-        const auto &variant = runtime.executable.variants[variant_index];
+        const auto &variant = runtime.value_variants[variant_index];
         if (compiler::surface_value_operation_is_external_query(
                 variant.instruction.operation)) {
             return false;
@@ -857,8 +856,8 @@ make_surface_ambient_occlusion_handlers(
                     }
                     const auto producer_variant =
                         shape.variant_indices[source.index];
-                    if (producer_variant >= runtime.executable.variants.size() ||
-                        runtime.executable.variants[producer_variant]
+                    if (producer_variant >= runtime.value_variants.size() ||
+                        runtime.value_variants[producer_variant]
                                 .instruction.result_type !=
                             variant.operand_types[operand]) {
                         return false;
@@ -902,7 +901,7 @@ make_surface_value_region_callable(
                             .specializations[specialization_index]
                             .shape;
     if (!valid_surface_value_region_lowering_shape(*runtime, shape) ||
-        nodes->size() != runtime->executable.variants.size()) {
+        nodes->size() != runtime->value_variants.size()) {
         std::abort();
     }
     SurfaceValueRegionCallable region_callable =
@@ -962,13 +961,13 @@ make_surface_value_region_callable(
             for (auto member = std::size_t{};
                  member < shape.variant_indices.size(); ++member) {
                 const auto variant_index = shape.variant_indices[member];
-                if (variant_index >= runtime->executable.variants.size() ||
+                if (variant_index >= runtime->value_variants.size() ||
                     variant_index >= nodes->size() ||
                     member >= shape.operand_sources.size()) {
                     std::abort();
                 }
                 const auto &variant =
-                    runtime->executable.variants[variant_index];
+                    runtime->value_variants[variant_index];
                 const auto &sources = shape.operand_sources[member];
                 if (sources.size() != variant.operand_types.size()) {
                     std::abort();
@@ -1280,13 +1279,13 @@ make_surface_value_region_callable(
                                 std::abort();
                             }
                             const auto first_variant = shape.variant_indices.front();
-                            if (first_variant >= runtime.executable.variants.size()) {
+                            if (first_variant >= runtime.value_variants.size()) {
                                 std::abort();
                             }
                             const auto key = compiler::
                                 make_surface_value_region_handler_key(
-                                    handler_key(runtime.executable
-                                                    .variants[first_variant]),
+                                    handler_key(
+                                        runtime.value_variants[first_variant]),
                                     static_cast<std::uint32_t>(index));
                             luisa::compute::detail::SwitchCaseStmtBuilder{key} %
                                 [&, index] { emit_region(index); };
@@ -1325,8 +1324,8 @@ make_surface_value_region_callable(
 [[nodiscard]] std::shared_ptr<SurfaceValueNodes>
 make_surface_value_nodes(const SurfaceValueRuntime &runtime) noexcept {
     auto nodes = std::make_shared<SurfaceValueNodes>();
-    nodes->reserve(runtime.executable.variants.size());
-    for (const auto &variant : runtime.executable.variants) {
+    nodes->reserve(runtime.value_variants.size());
+    for (const auto &variant : runtime.value_variants) {
         nodes->emplace_back(make_value_node(variant.instruction));
     }
     return nodes;

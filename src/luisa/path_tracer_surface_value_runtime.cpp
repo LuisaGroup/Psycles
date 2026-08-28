@@ -696,19 +696,43 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
             .closure_endpoints = compiler::surface_closure_endpoint_bit(
                 compiler::SurfaceClosureEndpoint::emission)});
     }
+    std::vector<compiler::SurfaceSvmEvaluatorProgramInput> evaluator_inputs;
+    evaluator_inputs.reserve(svm_programs.size());
+    for (auto program_index = std::size_t{};
+         program_index < svm_programs.size(); ++program_index) {
+        const auto topology =
+            program_index / SurfaceValueRuntime::programs_per_topology;
+        evaluator_inputs.emplace_back(
+            compiler::SurfaceSvmEvaluatorProgramInput{
+                .program = execution_programs[topology].get(),
+                .image = &svm_programs[program_index].image,
+                .instruction_sources =
+                    svm_programs[program_index].instruction_sources,
+                .surface_normal_output =
+                    roots[program_index].surface_normal_output});
+    }
+    auto svm_executable =
+        compiler::build_surface_svm_executable_scene(evaluator_inputs);
+    if (!svm_executable.valid) {
+        diagnostic = svm_executable.diagnostic;
+        return nullptr;
+    }
+    runtime->svm_scene = std::move(svm_executable.image);
+    runtime->value_variants = std::move(svm_executable.value_variants);
+    runtime->svm_instruction_variants =
+        std::move(svm_executable.instruction_variants);
+
+    // Retained only until the static execution histogram and its old ABI
+    // regression are expressed on the unified CFG. Production evaluator
+    // construction above is independent of this diagnostic image.
     runtime->executable = compiler::build_surface_value_executable_scene(roots);
     if (!runtime->executable.valid) {
         diagnostic = runtime->executable.diagnostic;
         return nullptr;
     }
     if (runtime->executable.values.programs.size() != roots.size()) {
-        diagnostic = "one-stream compact surface executable does not preserve "
+        diagnostic = "diagnostic split surface executable does not preserve "
                      "the root-program bijection";
-        return nullptr;
-    }
-    if (!build_surface_svm_runtime_scene(
-            runtime->executable, roots, svm_programs, runtime->svm_scene,
-            runtime->svm_instruction_variants, diagnostic)) {
         return nullptr;
     }
     auto svm_value_count = std::uint32_t{};
@@ -1114,7 +1138,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         "length {}, typed slots {}/{}/{}, linear closure-weight slots {}.",
         image.programs.size(), image.instructions.size(), image.operands.size(),
         image.metadata.size(), image.static_data.size(),
-        runtime->executable.variants.size(),
+        runtime->value_variants.size(),
         runtime->preparation_value_static_variants.size(),
         runtime->emission_value_static_variants.size(),
         bssrdf_topology_count, runtime->bssrdf_value_static_variants.size(),

@@ -194,9 +194,22 @@ runtime tag order. The image is retained in `SurfaceValueRuntime::svm_scene`;
 it is no longer only a compiler-test artifact.
 
 Evaluator dispatch is not reconstructed from an opcode or a material tag. A
-temporary host-only relation records the original `ValueExpressionId` at each
-new value record. The established exact semantic interner supplies one variant
-for that source value, and runtime construction checks this commuting relation:
+host-only relation records the original `ValueExpressionId` at each new value
+record. The unified executable builder now validates that relation directly on
+the forward CFG and interns the exact semantic variant from the source value;
+the production dispatcher no longer obtains variants from the established
+split-stream executable.
+
+For every PC, a forward must-definition state maps each typed local slot to its
+exact quotient representative. Branch joins retain a source only when all
+predecessors agree. Value operands must therefore name the exact source value,
+not merely a type-compatible initialized slot. Mix/Add weight definitions kill
+overlapping scalar value identities, and SetNormal proves its exact local or
+parameter source before beginning a new lifetime epoch. Metadata, static-table
+payloads, signed zero and NaN payloads are compared bit-for-bit; metadata and
+static data must form canonical one-use/dense partitions.
+
+The former migration proof was:
 
 ```text
 ValueExpressionId -> old proven instruction -> exact evaluator variant
@@ -204,14 +217,14 @@ ValueExpressionId -> old proven instruction -> exact evaluator variant
         +-> structured SVM value record --------+
 ```
 
-One source value may occur in both normal and root epochs, but both occurrences
-must select the same variant. Every value record must select an in-domain
-variant with the same operation, arity, and opcode-owned immediate; every Mix,
-guard, closure leaf, `SetNormal`, and `End` record must select the invalid
-sentinel. The relation is then concatenated in the same order as the scene
-image. Runtime construction rejects missing sources, duplicate source values
-with different variants, unowned old-stream suffixes, and any non-parallel
-scene relation.
+That old-stream commuting oracle has been removed from production evaluator
+selection. One source value may occur in both normal and root epochs, but both
+occurrences select the same exact variant. Every Mix, guard, closure leaf,
+`SetNormal`, and `End` record carries the invalid variant sentinel. Permanent
+regressions cover independently constructed variant merging, opcode-immediate
+domains, local/parameter route joins, signed-zero distinction, metadata
+substitution, parameter-backed SetNormal, and a type-correct but semantically
+permuted local operand.
 
 The cross-backend compact-surface fixture additionally compares the unique
 variant domain of each new program tag with the corresponding established
@@ -368,8 +381,9 @@ exact-domain, and device-interpreter tests passed. The six failures are
 unchanged from the pre-switch baseline and remain small existing numeric
 differences in volume/Vulkan fixtures rather than new surface-SVM failures.
 
-The next gate is to replace the temporary established-executable variant
-interner and delete its legacy host/device buffers. After that, fallback, HIP,
-and strict native XIR-to-SPIR-V Vulkan complex-scene renders, triptychs, code
+The next gate is to migrate the static execution histogram and its legacy ABI
+regressions to the unified CFG, then delete the diagnostics-only split
+executable and all of its host/device buffers. After that, fallback, HIP, and
+strict native XIR-to-SPIR-V Vulkan complex-scene renders, triptychs, code
 object/compile-time measurements, and Cycles-aligned performance profiling are
 required before claiming the SVM replacement complete.
