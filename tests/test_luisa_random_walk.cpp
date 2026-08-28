@@ -135,11 +135,18 @@ void dump(std::string_view backend,
     const auto &frame = coroutine.frame();
     const auto *continuation =
         coroutine.graph().node_by_name("intersect_subsurface");
+    auto exact_payload_inputs = continuation != nullptr &&
+                                continuation->input_fields.size() ==
+                                    scalar_count;
+    if (continuation != nullptr) {
+        for (auto i = 0u; i < scalar_count; ++i) {
+            exact_payload_inputs &= continuation->input_fields[i] ==
+                                    CoroFrameDesc::reserved_field_count + i;
+        }
+    }
     auto descriptor_ok = frame.field_count() == scalar_count &&
                          frame.total_size() == scalar_count * sizeof(float) &&
-                         continuation != nullptr &&
-                         continuation->input_fields.size() ==
-                             CoroFrameDesc::reserved_field_count + scalar_count;
+                         exact_payload_inputs;
 
     std::array<float, scalar_count> expected{};
     for (auto i = 0u; i < scalar_count; ++i) {
