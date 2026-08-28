@@ -1,0 +1,57 @@
+{
+  "schema": "psycles.branchless-selected-microfacet-seed-rejected.v1",
+  "scene": "official Blender 5.2 Barbershop export",
+  "device": "AMD Radeon RX 9070 XT (gfx1201)",
+  "configuration": {
+    "resolution": [640, 480],
+    "samples": 64,
+    "adaptive_sampling": false,
+    "scheduler": "wavefront-staged",
+    "samples_per_dispatch": 32,
+    "frame_capacity": 1048576,
+    "compact_surface_values": true,
+    "populate_surface_once": true
+  },
+  "baseline": {
+    "commit": "0a8412fcfd989e30c86a305d482a90b7f886417b",
+    "shade_surface_kernel": "kernel_256539170ceff57e",
+    "coroutine_frame_fields": 177,
+    "coroutine_frame_bytes": 864,
+    "final_llvm_lines": 53989,
+    "final_llvm_bytes": 3008050,
+    "hip_object_bytes": 340184,
+    "private_segment_bytes": 3096,
+    "vgpr_count": 256,
+    "fresh_shade_surface_ns_per_item": 26.757419303524777,
+    "fresh_render_only_seconds": 2.51794,
+    "retained_shade_surface_ns_per_item": [
+      26.7558394,
+      26.7644853,
+      26.8457060
+    ]
+  },
+  "candidate": {
+    "shade_surface_kernel": "kernel_6fc1331c3b4e970a",
+    "coroutine_frame_fields": 177,
+    "coroutine_frame_bytes": 864,
+    "final_llvm_lines": 54396,
+    "final_llvm_bytes": 3030257,
+    "hip_object_bytes": 342104,
+    "private_segment_bytes": 3096,
+    "vgpr_count": 256,
+    "shade_surface_ns_per_item": [
+      26.773603041236591,
+      26.769464160911618
+    ],
+    "shade_surface_ns_per_item_mean": 26.771533601074104,
+    "render_only_seconds": [2.51925, 2.52917],
+    "render_only_seconds_mean": 2.52421
+  },
+  "change_percent": {
+    "final_llvm_bytes": 0.7382523561775933,
+    "hip_object_bytes": 0.5644004421136772,
+    "shade_surface_vs_fresh_baseline": 0.052749098817117535,
+    "render_only_vs_fresh_baseline": 0.24901308212270656
+  },
+  "result": "rejected and removed"
+}
