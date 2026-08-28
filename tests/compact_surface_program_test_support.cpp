@@ -200,8 +200,7 @@ std::string validate_compact_surface_value_program_abi(
     using ProbeCallable = Callable<void(
         Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
         BindlessArray, SurfacePointCall &, luisa::float3, bool, luisa::uint4,
-        luisa::uint, SurfaceValueScalarBank &, SurfaceValueVectorBank &,
-        luisa::ulong &)>;
+        luisa::uint, SurfaceValueStackBank &)>;
     ProbeCallable probe{
         [dispatcher](BufferFloat scalar_parameters,
                      BufferFloat3 vector_parameters,
@@ -213,14 +212,12 @@ std::string validate_compact_surface_value_program_abi(
                      Bool use_undisplaced_geometry,
                      Var<luisa::uint4> instruction,
                      UInt instruction_index,
-                     Var<SurfaceValueScalarBank> &scalar_bank,
-                     Var<SurfaceValueVectorBank> &vector_bank,
-                     ULong &unsigned_integer_bank) noexcept {
+                     Var<SurfaceValueStackBank> &stack) noexcept {
             dispatcher(
                 scalar_parameters, vector_parameters, cycles_bsdf_tables,
                 textures, geometry_heap, point, transaction_shading_normal,
                 use_undisplaced_geometry, instruction, instruction_index,
-                scalar_bank, vector_bank, unsigned_integer_bank, nullptr);
+                stack, nullptr);
         }};
     const auto &function = probe.function();
     auto surface_point_arguments = std::size_t{0u};
@@ -255,9 +252,7 @@ std::string validate_surface_value_fresh_lifetime_seed() {
         SurfaceValueLocals locals;
         locals.define_all();
     }};
-    auto scalar_seeds = std::size_t{0u};
-    auto vector_seeds = std::size_t{0u};
-    auto unsigned_integer_seeds = std::size_t{0u};
+    auto stack_seeds = std::size_t{0u};
     auto malformed_seeds = std::size_t{0u};
     traverse_expressions<true>(
         seed_callable.function().body(),
@@ -270,17 +265,13 @@ std::string validate_surface_value_fresh_lifetime_seed() {
                 return;
             }
             malformed_seeds += !call->arguments().empty();
-            scalar_seeds += call->type() == Type::of<SurfaceValueScalarBank>();
-            vector_seeds += call->type() == Type::of<SurfaceValueVectorBank>();
-            unsigned_integer_seeds +=
-                call->type() == Type::of<luisa::ulong>();
+            stack_seeds += call->type() == Type::of<SurfaceValueStackBank>();
         },
         [](const Statement *) noexcept {},
         [](const Statement *) noexcept {});
-    if (scalar_seeds != 1u || vector_seeds != 1u ||
-        unsigned_integer_seeds != 1u || malformed_seeds != 0u) {
-        return "compact surface bank roots are not exactly three typed, "
-               "argument-free fresh-lifetime seeds";
+    if (stack_seeds != 1u || malformed_seeds != 0u) {
+        return "compact surface stack root is not exactly one "
+               "argument-free fresh-lifetime seed";
     }
     return {};
 }
@@ -706,10 +697,7 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
         svm.valid && svm.programs.size() == expected_program_count &&
         svm.side_ranges.size() == expected_program_count &&
         validate_surface_svm_scene_image(svm).empty() &&
-        svm.maximum_scalar_slots <= SurfaceValueRuntime::scalar_capacity &&
-        svm.maximum_vector_slots <= SurfaceValueRuntime::vector_capacity &&
-        svm.maximum_unsigned_integer_slots <=
-            SurfaceValueRuntime::unsigned_integer_capacity;
+        svm.maximum_stack_lanes <= SurfaceValueRuntime::stack_capacity;
     auto unified_variant_bijection =
         unified_scene_exact &&
         runtime.svm_instruction_variants.size() == svm.instructions.size();

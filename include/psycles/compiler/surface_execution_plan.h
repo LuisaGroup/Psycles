@@ -90,6 +90,10 @@ struct SurfaceValueStorageCapacity {
   std::uint32_t vector_slots{std::numeric_limits<std::uint32_t>::max()};
   std::uint32_t unsigned_integer_slots{
       std::numeric_limits<std::uint32_t>::max()};
+  // Optional physical 32-bit lane limit. Legacy typed-bank planning leaves
+  // this unconstrained. The unified surface SVM supplies Cycles'
+  // SVM_STACK_SIZE and packs the independently colored banks into one stack.
+  std::uint32_t stack_lanes{std::numeric_limits<std::uint32_t>::max()};
 };
 
 // A deterministic allocation for one topologically closed value domain.
@@ -124,9 +128,10 @@ struct SurfaceValueStoragePlan {
 };
 
 // Compact device-program address. The high bit selects the immutable material
-// parameter block; computed values use a typed local bank. The next two bits
-// encode the bank and the low 29 bits encode its index. 0xffffffff remains
-// invalid so accidental sentinel use cannot alias valid storage.
+// parameter block and the next two bits encode the computed value's semantic
+// bank. In a legacy typed value image the low 29 bits are a color index; after
+// unified-SVM lane projection they are the physical first-lane offset.
+// 0xffffffff remains invalid so accidental sentinel use cannot alias storage.
 class SurfaceValueAddress {
 
 private:
@@ -167,9 +172,8 @@ public:
 // and local-slot indices must fit 13 bits. Two such addresses occupy one
 // uint32 word. 0xffff is unambiguously invalid because bank value three is not
 // a SurfaceValueBank; it is also the canonical padding lane of an odd-arity
-// record. A scene outside this compact domain is rejected transactionally;
-// callers may then select the established expanded evaluator rather than
-// executing a partially encoded compact image.
+// record. A scene outside this compact domain is rejected transactionally
+// rather than executing a partially encoded image.
 class SurfaceValueOperandAddress {
 
 private:

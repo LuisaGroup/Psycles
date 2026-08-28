@@ -1,6 +1,7 @@
 #include <psycles/compiler/surface_svm_program.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -46,6 +47,134 @@ address_fits_normal_output(const SurfaceValueProgramImage &normal,
          (address.parameter() || address.index() < normal.vector_slots);
 }
 
+[[nodiscard]] constexpr std::uint32_t
+bank_lane_width(SurfaceValueBank bank) noexcept {
+  switch (bank) {
+  case SurfaceValueBank::scalar:
+    return 1u;
+  case SurfaceValueBank::vector:
+    return 3u;
+  case SurfaceValueBank::unsigned_integer:
+    return 2u;
+  }
+  return 0u;
+}
+
+struct SurfaceSvmLaneLayout {
+  std::array<std::uint32_t, 3u> slots{};
+  std::array<std::uint32_t, 3u> bases{};
+  std::uint32_t lanes{};
+};
+
+[[nodiscard]] bool make_lane_layout(std::uint32_t scalar_slots,
+                                    std::uint32_t vector_slots,
+                                    std::uint32_t unsigned_integer_slots,
+                                    SurfaceSvmLaneLayout &layout) noexcept {
+  layout.slots = {scalar_slots, vector_slots, unsigned_integer_slots};
+  auto lane_end = std::uint64_t{};
+  for (auto bank = std::size_t{}; bank < layout.slots.size(); ++bank) {
+    if (lane_end > surface_svm_stack_lane_capacity) {
+      return false;
+    }
+    layout.bases[bank] = static_cast<std::uint32_t>(lane_end);
+    lane_end += static_cast<std::uint64_t>(layout.slots[bank]) *
+                bank_lane_width(static_cast<SurfaceValueBank>(bank));
+  }
+  if (lane_end > surface_svm_stack_lane_capacity) {
+    return false;
+  }
+  layout.lanes = static_cast<std::uint32_t>(lane_end);
+  return true;
+}
+
+[[nodiscard]] bool remap_local_address_to_lane(
+    const SurfaceSvmLaneLayout &layout, std::uint32_t &encoded) noexcept {
+  const auto address = SurfaceValueAddress{encoded};
+  if (!address.valid() || address.parameter()) {
+    return true;
+  }
+  const auto bank = static_cast<std::uint32_t>(address.bank());
+  if (bank >= layout.slots.size() || address.index() >= layout.slots[bank]) {
+    return false;
+  }
+  const auto width = bank_lane_width(address.bank());
+  const auto lane =
+      static_cast<std::uint64_t>(layout.bases[bank]) +
+      static_cast<std::uint64_t>(address.index()) * width;
+  if (width == 0u || lane + width > layout.lanes) {
+    return false;
+  }
+  encoded = (bank << SurfaceValueAddress::bank_shift) |
+            static_cast<std::uint32_t>(lane);
+  return true;
+}
+
+[[nodiscard]] bool remap_operand_word_to_lanes(
+    const SurfaceSvmLaneLayout &layout, std::uint32_t &word) noexcept {
+  for (auto lane = std::uint32_t{};
+       lane < surface_value_operands_per_word; ++lane) {
+    const auto shift = surface_value_operand_lane_bits * lane;
+    auto compact = SurfaceValueOperandAddress{static_cast<std::uint16_t>(
+        (word >> shift) & std::numeric_limits<std::uint16_t>::max())};
+    if (!compact.valid()) {
+      if (compact.encoded() != SurfaceValueOperandAddress::invalid_value) {
+        return false;
+      }
+      continue;
+    }
+    auto expanded = compact.expanded().encoded();
+    if (!remap_local_address_to_lane(layout, expanded) ||
+        !encode_surface_value_operand_address(
+            SurfaceValueAddress{expanded}, compact)) {
+      return false;
+    }
+    word = (word & ~(std::uint32_t{0xffffu} << shift)) |
+           (static_cast<std::uint32_t>(compact.encoded()) << shift);
+  }
+  return true;
+}
+
+[[nodiscard]] bool remap_value_program_to_lanes(
+    SurfaceValueProgramImage &program, const SurfaceSvmLaneLayout &layout,
+    std::uint32_t &selected_output) {
+  if (!remap_local_address_to_lane(layout, selected_output)) {
+    return false;
+  }
+  for (auto &encoded : program.value_addresses) {
+    if (!remap_local_address_to_lane(layout, encoded)) {
+      return false;
+    }
+  }
+  for (auto &instruction : program.instructions) {
+    if (!remap_local_address_to_lane(layout, instruction.result)) {
+      return false;
+    }
+    const auto operand_count = surface_value_operand_count(instruction);
+    if (operand_count <= surface_value_inline_operand_capacity) {
+      if (!remap_operand_word_to_lanes(layout,
+                                       instruction.operand_payload)) {
+        return false;
+      }
+      continue;
+    }
+    const auto word_count = surface_value_operand_word_count(operand_count);
+    if (instruction.operand_payload > program.operands.size() ||
+        word_count > program.operands.size() - instruction.operand_payload) {
+      return false;
+    }
+    for (auto word = std::size_t{}; word < word_count; ++word) {
+      if (!remap_operand_word_to_lanes(
+              layout, program.operands[instruction.operand_payload + word])) {
+        return false;
+      }
+    }
+  }
+  program.scalar_slots = layout.lanes;
+  program.vector_slots = layout.lanes;
+  program.unsigned_integer_slots = layout.lanes;
+  return true;
+}
+
 void rebase_value_instruction(SurfaceSvmBytecodeInstruction &instruction,
                               std::uint32_t operand_begin,
                               std::uint32_t metadata_begin) noexcept {
@@ -66,6 +195,7 @@ de_rebase_program(const SurfaceSvmSceneImage &scene,
                   const SurfaceSvmProgramSideRange &side,
                   SurfaceSvmProgramImage &program, std::string &diagnostic) {
   program.endpoints = descriptor.endpoints;
+  program.stack_lanes = descriptor.stack_lanes;
   program.scalar_slots = descriptor.scalar_slots;
   program.vector_slots = descriptor.vector_slots;
   program.unsigned_integer_slots = descriptor.unsigned_integer_slots;
@@ -207,14 +337,28 @@ SurfaceSvmProgramImage compose_surface_svm_normal_transaction(
     return reject_program("the automatic-normal output is not a vector");
   }
 
+  SurfaceSvmLaneLayout normal_layout;
+  if (!make_lane_layout(normal.scalar_slots, normal.vector_slots,
+                        normal.unsigned_integer_slots, normal_layout)) {
+    return reject_program(
+        "the automatic-normal prefix exceeds the Cycles SVM stack");
+  }
+  auto remapped_normal = normal;
+  auto remapped_normal_output = normal_output;
+  if (!remap_value_program_to_lanes(remapped_normal, normal_layout,
+                                    remapped_normal_output)) {
+    return reject_program(
+        "the automatic-normal prefix could not be mapped to SVM lanes");
+  }
+
   // Appending only the established commit record turns the legacy value
   // verifier into an exact proof that the chosen output is defined by the
   // prefix. No source ValueExpressionId or heuristic last-definition scan is
   // needed here.
-  auto normal_probe = normal;
+  auto normal_probe = remapped_normal;
   normal_probe.instructions.emplace_back(SurfaceValueBytecodeInstruction{
       .control = surface_value_surface_normal_transition_control,
-      .result = normal_output,
+      .result = remapped_normal_output,
       .operand_payload = surface_value_invalid_operand_word,
       .metadata_index = SurfaceValueAddress::invalid_value});
   normal_probe.flags =
@@ -227,10 +371,10 @@ SurfaceSvmProgramImage compose_surface_svm_normal_transaction(
     return reject_program("automatic-normal commit: " + diagnostic);
   }
 
-  auto instruction_count = normal.instructions.size();
-  auto value_operand_count = normal.operands.size();
-  auto metadata_count = normal.metadata.size();
-  auto static_data_count = normal.static_data.size();
+  auto instruction_count = remapped_normal.instructions.size();
+  auto value_operand_count = remapped_normal.operands.size();
+  auto metadata_count = remapped_normal.metadata.size();
+  auto static_data_count = remapped_normal.static_data.size();
   if (!add_extent(instruction_count, 1u) ||
       !add_extent(instruction_count, root.instructions.size()) ||
       !add_extent(value_operand_count, root.value_operands.size()) ||
@@ -243,21 +387,22 @@ SurfaceSvmProgramImage compose_surface_svm_normal_transaction(
   SurfaceSvmProgramImage result;
   result.endpoints = root.endpoints;
   result.instructions.reserve(instruction_count);
-  result.value_operands = normal.operands;
+  result.value_operands = remapped_normal.operands;
   result.value_operands.reserve(value_operand_count);
-  result.value_metadata = normal.metadata;
+  result.value_metadata = remapped_normal.metadata;
   result.value_metadata.reserve(metadata_count);
-  result.static_data = normal.static_data;
+  result.static_data = remapped_normal.static_data;
   result.static_data.reserve(static_data_count);
   result.closure_operands = root.closure_operands;
   result.value_addresses = root.value_addresses;
+  result.stack_lanes = std::max(normal_layout.lanes, root.stack_lanes);
   result.scalar_slots = std::max(normal.scalar_slots, root.scalar_slots);
   result.vector_slots = std::max(normal.vector_slots, root.vector_slots);
   result.unsigned_integer_slots =
       std::max(normal.unsigned_integer_slots, root.unsigned_integer_slots);
   result.flags = normal_probe.flags;
   result.value_instruction_count =
-      static_cast<std::uint32_t>(normal.instructions.size()) +
+      static_cast<std::uint32_t>(remapped_normal.instructions.size()) +
       root.value_instruction_count;
   result.mix_instruction_count = root.mix_instruction_count;
   result.weight_add_instruction_count = root.weight_add_instruction_count;
@@ -267,13 +412,13 @@ SurfaceSvmProgramImage compose_surface_svm_normal_transaction(
   result.used_closure_operations = root.used_closure_operations;
   result.used_principled_features = root.used_principled_features;
 
-  for (const auto &instruction : normal.instructions) {
+  for (const auto &instruction : remapped_normal.instructions) {
     result.instructions.emplace_back(
         make_surface_svm_value_instruction(instruction));
   }
   result.instructions.emplace_back(SurfaceSvmBytecodeInstruction{
       .control = surface_svm_set_normal_opcode,
-      .payload0 = normal_output,
+      .payload0 = remapped_normal_output,
       .payload1 = surface_value_invalid_operand_word,
       .payload2 = SurfaceValueAddress::invalid_value});
 
@@ -344,6 +489,7 @@ validate_surface_svm_scene_image(const SurfaceSvmSceneImage &scene) {
   auto static_data_cursor = std::size_t{};
   auto closure_operand_cursor = std::size_t{};
   auto maximum_instruction_count = std::uint32_t{};
+  auto maximum_stack_lanes = std::uint32_t{};
   auto maximum_scalar_slots = std::uint32_t{};
   auto maximum_vector_slots = std::uint32_t{};
   auto maximum_unsigned_integer_slots = std::uint32_t{};
@@ -353,8 +499,7 @@ validate_surface_svm_scene_image(const SurfaceSvmSceneImage &scene) {
   for (auto index = std::size_t{}; index < scene.programs.size(); ++index) {
     const auto &descriptor = scene.programs[index];
     const auto &side = scene.side_ranges[index];
-    if (descriptor.reserved != 0u ||
-        descriptor.instruction_begin != instruction_cursor ||
+    if (descriptor.instruction_begin != instruction_cursor ||
         side.value_operand_begin != value_operand_cursor ||
         side.metadata_begin != metadata_cursor ||
         side.static_data_begin != static_data_cursor ||
@@ -387,6 +532,8 @@ validate_surface_svm_scene_image(const SurfaceSvmSceneImage &scene) {
     closure_operand_cursor += side.closure_operand_count;
     maximum_instruction_count =
         std::max(maximum_instruction_count, descriptor.instruction_count);
+    maximum_stack_lanes =
+        std::max(maximum_stack_lanes, descriptor.stack_lanes);
     maximum_scalar_slots =
         std::max(maximum_scalar_slots, descriptor.scalar_slots);
     maximum_vector_slots =
@@ -404,6 +551,7 @@ validate_surface_svm_scene_image(const SurfaceSvmSceneImage &scene) {
     return "the surface scene has an unowned stream suffix";
   }
   if (maximum_instruction_count != scene.maximum_instruction_count ||
+      maximum_stack_lanes != scene.maximum_stack_lanes ||
       maximum_scalar_slots != scene.maximum_scalar_slots ||
       maximum_vector_slots != scene.maximum_vector_slots ||
       maximum_unsigned_integer_slots != scene.maximum_unsigned_integer_slots ||
@@ -467,7 +615,8 @@ SurfaceSvmSceneImage build_surface_svm_scene_image(
         .vector_slots = program.vector_slots,
         .unsigned_integer_slots = program.unsigned_integer_slots,
         .flags = program.flags,
-        .endpoints = program.endpoints});
+        .endpoints = program.endpoints,
+        .stack_lanes = program.stack_lanes});
     result.side_ranges.emplace_back(SurfaceSvmProgramSideRange{
         .value_operand_begin = value_operand_begin,
         .value_operand_count =
@@ -520,6 +669,8 @@ SurfaceSvmSceneImage build_surface_svm_scene_image(
     result.maximum_instruction_count =
         std::max(result.maximum_instruction_count,
                  static_cast<std::uint32_t>(program.instructions.size()));
+    result.maximum_stack_lanes =
+        std::max(result.maximum_stack_lanes, program.stack_lanes);
     result.maximum_scalar_slots =
         std::max(result.maximum_scalar_slots, program.scalar_slots);
     result.maximum_vector_slots =

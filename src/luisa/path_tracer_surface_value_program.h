@@ -17,66 +17,86 @@ namespace psycles::luisa_backend::detail {
 
 struct PathSurfaceAmbientOcclusionContext;
 
-using SurfaceValueScalarBank =
-    std::array<float, SurfaceValueRuntime::scalar_capacity>;
-using SurfaceValueVectorBank =
-    std::array<luisa::float3, SurfaceValueRuntime::vector_capacity>;
+using SurfaceValueStackBank =
+    std::array<float, SurfaceValueRuntime::stack_capacity>;
 
-template<typename T, std::size_t Size>
-struct SurfaceValueLocalArrayView {
-    using Storage = std::array<T, Size>;
-    luisa::compute::detail::Ref<Storage> storage;
+struct SurfaceValueLocalScalarView {
+    luisa::compute::detail::Ref<SurfaceValueStackBank> storage;
 
     template<typename Index>
     [[nodiscard]] auto read(Index &&index) const noexcept {
         auto &mutable_storage = const_cast<
-            luisa::compute::detail::Ref<Storage> &>(storage);
+            luisa::compute::detail::Ref<SurfaceValueStackBank> &>(storage);
         return mutable_storage[std::forward<Index>(index)];
     }
 
     template<typename Index, typename Value>
     void write(Index &&index, Value &&value) const noexcept {
         auto &mutable_storage = const_cast<
-            luisa::compute::detail::Ref<Storage> &>(storage);
+            luisa::compute::detail::Ref<SurfaceValueStackBank> &>(storage);
         mutable_storage[std::forward<Index>(index)] =
             std::forward<Value>(value);
     }
 };
 
-template<typename T>
-struct SurfaceValueLocalScalarView {
-    luisa::compute::detail::Ref<T> storage;
+struct SurfaceValueLocalVectorView {
+    luisa::compute::detail::Ref<SurfaceValueStackBank> storage;
 
     template<typename Index>
-    [[nodiscard]] auto read(Index &&) const noexcept {
-        return Var<T>{storage.expression()};
+    [[nodiscard]] auto read(Index &&index) const noexcept {
+        auto &mutable_storage = const_cast<
+            luisa::compute::detail::Ref<SurfaceValueStackBank> &>(storage);
+        auto base = std::forward<Index>(index);
+        return make_float3(mutable_storage[base],
+                           mutable_storage[base + 1u],
+                           mutable_storage[base + 2u]);
     }
 
     template<typename Index, typename Value>
-    void write(Index &&, Value &&value) const noexcept {
+    void write(Index &&index, Value &&value) const noexcept {
         auto &mutable_storage = const_cast<
-            luisa::compute::detail::Ref<T> &>(storage);
-        mutable_storage = std::forward<Value>(value);
+            luisa::compute::detail::Ref<SurfaceValueStackBank> &>(storage);
+        auto base = std::forward<Index>(index);
+        auto stored = std::forward<Value>(value);
+        mutable_storage[base] = stored.x;
+        mutable_storage[base + 1u] = stored.y;
+        mutable_storage[base + 2u] = stored.z;
+    }
+};
+
+struct SurfaceValueLocalUnsignedIntegerView {
+    luisa::compute::detail::Ref<SurfaceValueStackBank> storage;
+
+    template<typename Index>
+    [[nodiscard]] auto read(Index &&index) const noexcept {
+        auto &mutable_storage = const_cast<
+            luisa::compute::detail::Ref<SurfaceValueStackBank> &>(storage);
+        auto base = std::forward<Index>(index);
+        return make_float2(mutable_storage[base],
+                           mutable_storage[base + 1u])
+            .template bitcast<luisa::ulong>();
+    }
+
+    template<typename Index, typename Value>
+    void write(Index &&index, Value &&value) const noexcept {
+        auto &mutable_storage = const_cast<
+            luisa::compute::detail::Ref<SurfaceValueStackBank> &>(storage);
+        auto base = std::forward<Index>(index);
+        auto stored = std::forward<Value>(value)
+                          .template bitcast<luisa::float2>();
+        mutable_storage[base] = stored.x;
+        mutable_storage[base + 1u] = stored.y;
     }
 };
 
 struct SurfaceValueLocalsView {
-    SurfaceValueLocalArrayView<
-        float, SurfaceValueRuntime::scalar_capacity>
-        scalars;
-    SurfaceValueLocalArrayView<
-        luisa::float3, SurfaceValueRuntime::vector_capacity>
-        vectors;
-    SurfaceValueLocalScalarView<luisa::ulong> unsigned_integers;
+    SurfaceValueLocalScalarView scalars;
+    SurfaceValueLocalVectorView vectors;
+    SurfaceValueLocalUnsignedIntegerView unsigned_integers;
 };
 
 struct SurfaceValueLocals {
-    luisa::compute::Local<float> scalars{
-        SurfaceValueRuntime::scalar_capacity};
-    luisa::compute::Local<luisa::float3> vectors{
-        SurfaceValueRuntime::vector_capacity};
-    luisa::compute::Local<luisa::ulong> unsigned_integers{
-        SurfaceValueRuntime::unsigned_integer_capacity};
+    luisa::compute::Local<float> stack{SurfaceValueRuntime::stack_capacity};
 
     [[nodiscard]] SurfaceValueLocalsView view() const noexcept;
     void define_all() const noexcept;
@@ -119,9 +139,7 @@ class SurfaceValueInstructionDispatcher {
         Bool use_undisplaced_geometry,
         Var<luisa::uint4> instruction,
         UInt instruction_index,
-        luisa::compute::detail::Ref<SurfaceValueScalarBank> scalar_bank,
-        luisa::compute::detail::Ref<SurfaceValueVectorBank> vector_bank,
-        luisa::compute::detail::Ref<luisa::ulong> unsigned_integer_bank,
+        luisa::compute::detail::Ref<SurfaceValueStackBank> stack,
         const PathSurfaceAmbientOcclusionContext
             *ambient_occlusion) const noexcept;
 };

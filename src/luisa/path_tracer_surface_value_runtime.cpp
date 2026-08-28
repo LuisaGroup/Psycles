@@ -544,11 +544,13 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     }
     LUISA_INFO(
         "Built replacement surface SVM scene: {} programs, {} records ({} "
-        "values, {} guards, {} closure leaves), typed slots {}/{}/{}; every "
+        "values, {} guards, {} closure leaves), stack lanes {}, typed colors "
+        "{}/{}/{}; every "
         "record has an exact evaluator/source proof.",
         runtime->svm_scene.programs.size(),
         runtime->svm_scene.instructions.size(), svm_value_count,
         svm_guard_count, svm_leaf_count,
+        runtime->svm_scene.maximum_stack_lanes,
         runtime->svm_scene.maximum_scalar_slots,
         runtime->svm_scene.maximum_vector_slots,
         runtime->svm_scene.maximum_unsigned_integer_slots);
@@ -561,7 +563,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
             program.scalar_slots, program.vector_slots));
         runtime->svm_program_descriptors.emplace_back(luisa::make_uint4(
             program.unsigned_integer_slots, program.flags,
-            program.endpoints, program.reserved));
+            program.endpoints, program.stack_lanes));
     }
     runtime->svm_instructions.reserve(
         runtime->svm_scene.instructions.size());
@@ -722,7 +724,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         "evaluators (preparation {}, emission {}, BSSRDF {} tags / {} "
         "evaluators), {} closure leaves "
         "(preparation/emission/BSSRDF variants {}/{}/{}), maximum program "
-        "length {}, typed slots {}/{}/{}.",
+        "length {}, stack lanes {}, typed colors {}/{}/{}.",
         image.programs.size(), image.instructions.size(),
         image.value_operands.size(), image.value_metadata.size(),
         image.static_data.size(), runtime->value_variants.size(),
@@ -732,7 +734,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         svm_leaf_count, runtime->preparation_svm_closure_variants.size(),
         runtime->emission_svm_closure_variants.size(),
         runtime->bssrdf_svm_closure_variants.size(),
-        image.maximum_instruction_count, image.maximum_scalar_slots,
+        image.maximum_instruction_count, image.maximum_stack_lanes,
+        image.maximum_scalar_slots,
         image.maximum_vector_slots, image.maximum_unsigned_integer_slots);
     runtime->svm_program_buffer = device.create_buffer<luisa::uint4>(
         runtime->svm_program_descriptors.size());

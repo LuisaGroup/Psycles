@@ -123,6 +123,12 @@ struct ProvenanceFixture {
          index;
 }
 
+[[nodiscard]] constexpr std::uint32_t lane_extent(
+    std::uint32_t scalar_slots, std::uint32_t vector_slots,
+    std::uint32_t unsigned_integer_slots) noexcept {
+  return scalar_slots + 3u * vector_slots + 2u * unsigned_integer_slots;
+}
+
 [[nodiscard]] std::uint32_t one_operand(std::uint32_t encoded) {
   SurfaceValueOperandAddress operand;
   require(encode_surface_value_operand_address(SurfaceValueAddress{encoded},
@@ -155,12 +161,15 @@ struct ProvenanceFixture {
       surface_closure_endpoint_bit(SurfaceClosureEndpoint::physical);
   root.scalar_slots = 1u;
   root.vector_slots = 2u;
+  root.stack_lanes = lane_extent(root.scalar_slots, root.vector_slots, 0u);
   root.value_instruction_count = 2u;
   root.instructions.emplace_back(
       make_surface_svm_value_instruction(SurfaceValueBytecodeInstruction{
           .control = make_surface_value_control(
               ValueOperation::surface_position, SurfaceValueBank::vector, 0u),
-          .result = local_address(SurfaceValueBank::vector, 1u),
+          // Scalar lane zero precedes two three-lane vector colors. The
+          // second vector therefore begins at physical lane four.
+          .result = local_address(SurfaceValueBank::vector, 4u),
           .operand_payload = surface_value_invalid_operand_word,
           .metadata_index = SurfaceValueAddress::invalid_value}));
   root.instructions.emplace_back(
@@ -169,7 +178,7 @@ struct ProvenanceFixture {
               ValueOperation::vector_to_scalar, SurfaceValueBank::scalar, 0u),
           .result = local_address(SurfaceValueBank::scalar, 0u),
           .operand_payload =
-              one_operand(local_address(SurfaceValueBank::vector, 1u)),
+              one_operand(local_address(SurfaceValueBank::vector, 4u)),
           .metadata_index = SurfaceValueAddress::invalid_value}));
   root.instructions.emplace_back(
       SurfaceSvmBytecodeInstruction{.control = surface_svm_end_opcode,
@@ -224,6 +233,9 @@ struct ProvenanceFixture {
   program.scalar_slots = values.scalar_slots;
   program.vector_slots = values.vector_slots;
   program.unsigned_integer_slots = values.unsigned_integer_slots;
+  program.stack_lanes = lane_extent(
+      program.scalar_slots, program.vector_slots,
+      program.unsigned_integer_slots);
   program.value_instruction_count = 1u;
   require(validate_surface_svm_program_image(program).empty(),
           "static-table unified program is invalid");
@@ -254,6 +266,9 @@ make_provenance_fixture(SurfaceProgram program, std::vector<bool> outputs) {
   image.scalar_slots = values.scalar_slots;
   image.vector_slots = values.vector_slots;
   image.unsigned_integer_slots = values.unsigned_integer_slots;
+  image.stack_lanes = lane_extent(
+      image.scalar_slots, image.vector_slots,
+      image.unsigned_integer_slots);
   image.value_instruction_count =
       static_cast<std::uint32_t>(values.instructions.size());
   image.instructions.reserve(values.instructions.size() + 1u);
@@ -325,6 +340,74 @@ void test_set_normal_starts_a_new_local_lifetime_epoch() {
   require(scene.valid && validate_surface_svm_scene_image(scene).empty() &&
               scene.programs[1u].flags == composed.flags,
           "scene aggregation lost the SetNormal transaction");
+}
+
+void test_lane_stack_rejects_cross_bank_overlap_and_has_cycles_bound() {
+  const auto make_value = [](ValueOperation operation, SurfaceValueBank bank,
+                             std::uint32_t lane) {
+    return make_surface_svm_value_instruction(
+        SurfaceValueBytecodeInstruction{
+            .control = make_surface_value_control(operation, bank, 0u),
+            .result = local_address(bank, lane),
+            .operand_payload = surface_value_invalid_operand_word,
+            .metadata_index = SurfaceValueAddress::invalid_value});
+  };
+
+  ClosureInstruction diffuse{.operation = ClosureOperation::diffuse};
+  SurfaceSvmProgramImage safe;
+  safe.valid = true;
+  safe.endpoints =
+      surface_closure_endpoint_bit(SurfaceClosureEndpoint::physical);
+  safe.stack_lanes = 4u;
+  safe.scalar_slots = 1u;
+  safe.vector_slots = 1u;
+  safe.value_instruction_count = 2u;
+  safe.closure_leaf_count = 1u;
+  safe.used_closure_operations =
+      1u << static_cast<std::uint32_t>(ClosureOperation::diffuse);
+  safe.instructions = {
+      make_value(ValueOperation::path_ray_length,
+                 SurfaceValueBank::scalar, 0u),
+      make_value(ValueOperation::surface_position,
+                 SurfaceValueBank::vector, 1u),
+      SurfaceSvmBytecodeInstruction{
+          .control = surface_svm_closure_leaf_opcode |
+                     (make_surface_closure_control(diffuse, safe.endpoints)
+                      << surface_svm_closure_control_shift),
+          .payload0 = 0u,
+          .payload1 = surface_svm_root_weight_slot,
+          .payload2 = 0u},
+      SurfaceSvmBytecodeInstruction{
+          .control = surface_svm_end_opcode,
+          .payload0 = surface_svm_invalid_payload,
+          .payload1 = surface_svm_invalid_payload,
+          .payload2 = surface_svm_invalid_payload}};
+  safe.closure_operands = {
+      local_address(SurfaceValueBank::vector, 1u),
+      SurfaceValueAddress::invalid_value,
+      local_address(SurfaceValueBank::scalar, 0u)};
+  require(validate_surface_svm_program_image(safe).empty(),
+          "non-overlapping mixed-bank lane fixture is invalid");
+
+  auto overlap = safe;
+  overlap.instructions[1u] =
+      make_value(ValueOperation::surface_position,
+                 SurfaceValueBank::vector, 0u);
+  overlap.closure_operands[0u] =
+      local_address(SurfaceValueBank::vector, 0u);
+  require(validate_surface_svm_program_image(overlap)
+                  .find("undefined value") != std::string::npos,
+          "lane verifier accepted a vector write that clobbers a live "
+          "scalar from another semantic bank");
+
+  auto maximum = safe;
+  maximum.stack_lanes = surface_svm_stack_lane_capacity;
+  require(validate_surface_svm_program_image(maximum).empty(),
+          "the exact Cycles SVM stack bound was rejected");
+  maximum.stack_lanes = surface_svm_stack_lane_capacity + 1u;
+  require(validate_surface_svm_program_image(maximum)
+                  .find("255-lane") != std::string::npos,
+          "the bytecode verifier accepted a stack beyond Cycles' bound");
 }
 
 void test_scene_rebases_control_and_typed_side_streams() {
@@ -420,7 +503,7 @@ void test_scene_rebases_control_and_typed_side_streams() {
           "scene verifier accepted a cross-program closure operand range");
 
   auto noncanonical_descriptor = scene;
-  noncanonical_descriptor.programs[1u].reserved = 1u;
+  noncanonical_descriptor.programs[1u].instruction_begin += 1u;
   require(validate_surface_svm_scene_image(noncanonical_descriptor)
                   .find("not dense and canonical") != std::string::npos,
           "scene verifier accepted a noncanonical descriptor");
@@ -711,6 +794,7 @@ void test_unified_evaluator_provenance_and_exact_interning() {
 int main() {
   try {
     test_set_normal_starts_a_new_local_lifetime_epoch();
+    test_lane_stack_rejects_cross_bank_overlap_and_has_cycles_bound();
     test_scene_rebases_control_and_typed_side_streams();
     test_scene_rebases_metadata_and_static_tables();
     test_unified_evaluator_provenance_and_exact_interning();

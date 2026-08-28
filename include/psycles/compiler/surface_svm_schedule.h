@@ -137,6 +137,12 @@ struct SurfaceSvmStoragePlan {
   std::uint32_t scalar_slots{};
   std::uint32_t vector_slots{};
   std::uint32_t unsigned_integer_slots{};
+  // Physical 32-bit lane layout. Scalar values and closure weights occupy
+  // one lane, vectors occupy three contiguous lanes, and uint64 values occupy
+  // two contiguous lanes. The three independently colored banks are packed
+  // into disjoint ranges; local bytecode addresses name the first lane.
+  std::array<std::uint32_t, 3u> lane_bases{};
+  std::uint32_t stack_lanes{};
   std::uint32_t active_values{};
   std::uint32_t parameter_values{};
   std::uint32_t local_values{};
@@ -152,8 +158,9 @@ struct SurfaceSvmStoragePlan {
 };
 
 // Computes exact read-before-write liveness over the acyclic schedule CFG,
-// proves definite assignment on every path, and optimally colors each typed
-// local bank. Parameters remain direct material reads and consume no slots.
+// proves definite assignment on every path, optimally colors each typed local
+// bank, and packs those colors into a bounded 32-bit lane stack. Parameters
+// remain direct material reads and consume no stack lanes.
 [[nodiscard]] SurfaceSvmStoragePlan
 plan_surface_svm_storage(const SurfaceProgram &program,
                          const SurfaceSvmSchedulePlan &schedule,

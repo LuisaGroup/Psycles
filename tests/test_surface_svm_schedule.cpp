@@ -1348,6 +1348,85 @@ void test_storage_rejects_skipped_definition_and_capacity_overflow() {
           "CFG storage ignored a component-wise typed capacity limit");
 }
 
+void test_nine_scalar_clique_uses_cycles_lane_stack_not_legacy_bank_limit() {
+  constexpr auto value_count = 9u;
+  std::vector<ValueInstruction> values;
+  values.reserve(value_count);
+  for (auto index = std::uint32_t{}; index < value_count; ++index) {
+    values.emplace_back(ValueInstruction{
+        .operation = ValueOperation::path_ray_length,
+        .source_node = NodeId{index + 1u},
+        .result_type = SocketType::floating});
+  }
+  ClosureInstruction closure{.operation = ClosureOperation::principled};
+  closure.roughness = ValueExpressionId{0u};
+  closure.diffuse_roughness = ValueExpressionId{1u};
+  closure.subsurface_weight = ValueExpressionId{2u};
+  closure.subsurface_scale = ValueExpressionId{3u};
+  closure.subsurface_ior = ValueExpressionId{4u};
+  closure.subsurface_anisotropy = ValueExpressionId{5u};
+  closure.transmission_weight = ValueExpressionId{6u};
+  closure.metallic = ValueExpressionId{7u};
+  closure.ior = ValueExpressionId{8u};
+  const SurfaceProgram program{
+      0x9a11u, {}, std::move(values), {closure}, ClosureExpressionId{0u}};
+
+  SurfaceSvmSchedulePlan schedule;
+  schedule.valid = true;
+  schedule.endpoints =
+      surface_closure_endpoint_bit(SurfaceClosureEndpoint::physical);
+  schedule.value_regions.assign(value_count, 0u);
+  schedule.region_count = 1u;
+  schedule.value_instruction_count = value_count;
+  schedule.closure_leaf_count = 1u;
+  for (auto index = std::uint32_t{}; index < value_count; ++index) {
+    schedule.instructions.emplace_back(SurfaceSvmScheduleInstruction{
+        .kind = SurfaceSvmScheduleInstructionKind::value,
+        .source = index});
+  }
+  schedule.instructions.emplace_back(SurfaceSvmScheduleInstruction{
+      .kind = SurfaceSvmScheduleInstructionKind::closure_leaf,
+      .source = 0u});
+  schedule.instructions.emplace_back(SurfaceSvmScheduleInstruction{
+      .kind = SurfaceSvmScheduleInstructionKind::end});
+
+  const auto cycles_capacity = SurfaceValueStorageCapacity{
+      .scalar_slots = surface_svm_stack_lane_capacity,
+      .vector_slots = surface_svm_stack_lane_capacity / 3u,
+      .unsigned_integer_slots = surface_svm_stack_lane_capacity / 2u,
+      .stack_lanes = surface_svm_stack_lane_capacity};
+  const auto allocation =
+      plan_surface_svm_storage(program, schedule, cycles_capacity);
+  require(allocation.valid && allocation.scalar_slots == value_count &&
+              allocation.maximum_interference_clique[0u] == value_count &&
+              allocation.stack_lanes == value_count &&
+              allocation.lane_bases == std::array<std::uint32_t, 3u>{0u, 9u,
+                                                                     9u} &&
+              allocation.payload_bytes() == value_count * sizeof(float),
+          "a nine-scalar live clique was not represented by nine physical "
+          "Cycles SVM lanes");
+
+  auto legacy_limit = cycles_capacity;
+  legacy_limit.scalar_slots = 8u;
+  const auto rejected_bank =
+      plan_surface_svm_storage(program, schedule, legacy_limit);
+  require(!rejected_bank.valid &&
+              rejected_bank.diagnostic.find("scalar bank requires 9") !=
+                  std::string::npos,
+          "the regression fixture no longer proves the removed eight-scalar "
+          "bank failure");
+
+  auto short_stack = cycles_capacity;
+  short_stack.stack_lanes = 8u;
+  const auto rejected_stack =
+      plan_surface_svm_storage(program, schedule, short_stack);
+  require(!rejected_stack.valid &&
+              rejected_stack.diagnostic.find("9 lanes are required") !=
+                  std::string::npos,
+          "the physical lane capacity did not reject an exact one-lane "
+          "overflow");
+}
+
 } // namespace
 
 int main() {
@@ -1365,6 +1444,7 @@ int main() {
     test_passthrough_quotient_has_no_device_definition();
     test_unified_jump_targets_cross_erased_aliases_exactly();
     test_storage_rejects_skipped_definition_and_capacity_overflow();
+    test_nine_scalar_clique_uses_cycles_lane_stack_not_legacy_bank_limit();
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

@@ -19,36 +19,22 @@
 namespace psycles::luisa_backend::detail {
 
 SurfaceValueLocalsView SurfaceValueLocals::view() const noexcept {
-    static_assert(SurfaceValueRuntime::unsigned_integer_capacity == 1u);
+    const auto storage =
+        luisa::compute::detail::Ref<SurfaceValueStackBank>{stack.expression()};
     return {
-        .scalars = {
-            luisa::compute::detail::Ref<SurfaceValueScalarBank>{
-                scalars.expression()}},
-        .vectors = {
-            luisa::compute::detail::Ref<SurfaceValueVectorBank>{
-                vectors.expression()}},
-        .unsigned_integers = {
-            luisa::compute::detail::Ref<luisa::ulong>{
-                unsigned_integers.expression()}}};
+        .scalars = {storage},
+        .vectors = {storage},
+        .unsigned_integers = {storage}};
 }
 
 void SurfaceValueLocals::define_all() const noexcept {
     // The host compiler proves read-before-write for every legal bytecode
     // operand. These aggregate assignments are therefore lifetime witnesses,
     // not observable values: XIR can move each alloca below shade_surface and
-    // native backends can erase the seeds instead of materializing 44 zeros.
-    auto scalar_bank =
-        luisa::compute::detail::Ref<SurfaceValueScalarBank>{
-            scalars.expression()};
-    auto vector_bank =
-        luisa::compute::detail::Ref<SurfaceValueVectorBank>{
-            vectors.expression()};
-    auto unsigned_integer_bank =
-        luisa::compute::detail::Ref<luisa::ulong>{
-            unsigned_integers.expression()};
-    scalar_bank = luisa::compute::undefined<SurfaceValueScalarBank>();
-    vector_bank = luisa::compute::undefined<SurfaceValueVectorBank>();
-    unsigned_integer_bank = luisa::compute::undefined<luisa::ulong>();
+    // native backends can erase the seed instead of materializing 255 zeros.
+    auto storage = luisa::compute::detail::Ref<SurfaceValueStackBank>{
+        stack.expression()};
+    storage = luisa::compute::undefined<SurfaceValueStackBank>();
 }
 
 Float read_scalar_dynamic(
@@ -103,7 +89,7 @@ using SurfaceValueNodes =
 using SurfaceValueHandlerCallable = Callable<void(
     Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
     BindlessArray, SurfacePointCall &, luisa::float3, bool, luisa::uint4,
-    SurfaceValueScalarBank &, SurfaceValueVectorBank &, luisa::ulong &)>;
+    SurfaceValueStackBank &)>;
 
 using SurfaceValueHandlers =
     std::vector<std::optional<SurfaceValueHandlerCallable>>;
@@ -111,8 +97,8 @@ using SurfaceValueHandlers =
 using SurfaceValueAmbientOcclusionHandlerCallable = Callable<void(
     Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
     BindlessArray, SurfacePointCall &, luisa::float3, bool, luisa::uint4,
-    SurfaceValueScalarBank &, SurfaceValueVectorBank &, luisa::ulong &,
-    Buffer<luisa::float4>, luisa::uint4, luisa::uint2)>;
+    SurfaceValueStackBank &, Buffer<luisa::float4>, luisa::uint4,
+    luisa::uint2)>;
 
 using SurfaceValueAmbientOcclusionHandlers =
     std::vector<std::optional<SurfaceValueAmbientOcclusionHandlerCallable>>;
@@ -552,9 +538,7 @@ make_surface_value_handler_callable(
                   Float3 transaction_shading_normal,
                   Bool use_undisplaced_geometry,
                   Var<luisa::uint4> instruction,
-                  Var<SurfaceValueScalarBank> &scalar_bank,
-                  Var<SurfaceValueVectorBank> &vector_bank,
-                  ULong &unsigned_integer_bank) noexcept {
+                  Var<SurfaceValueStackBank> &stack) noexcept {
             CallableTexture2DSamplingProvider texture_provider{
                 textures, texture_sampling};
             CallableSurfaceAttributeLookupProvider attribute_provider{
@@ -572,16 +556,13 @@ make_surface_value_handler_callable(
                 nullptr,
                 &texture_provider,
                 &attribute_provider};
+            const auto storage =
+                luisa::compute::detail::Ref<SurfaceValueStackBank>{
+                    stack.expression()};
             SurfaceValueLocalsView locals{
-                .scalars = {
-                    luisa::compute::detail::Ref<SurfaceValueScalarBank>{
-                        scalar_bank.expression()}},
-                .vectors = {
-                    luisa::compute::detail::Ref<SurfaceValueVectorBank>{
-                        vector_bank.expression()}},
-                .unsigned_integers = {
-                    luisa::compute::detail::Ref<luisa::ulong>{
-                        unsigned_integer_bank.expression()}}};
+                .scalars = {storage},
+                .vectors = {storage},
+                .unsigned_integers = {storage}};
             const auto &variant =
                 runtime->value_variants[variant_index];
             const auto point = surface_value_point(
@@ -635,9 +616,7 @@ make_surface_ambient_occlusion_handler_callable(
             Float3 transaction_shading_normal,
             Bool use_undisplaced_geometry,
             Var<luisa::uint4> instruction,
-            Var<SurfaceValueScalarBank> &scalar_bank,
-            Var<SurfaceValueVectorBank> &vector_bank,
-            ULong &unsigned_integer_bank,
+            Var<SurfaceValueStackBank> &stack,
             BufferFloat4 sobol_table,
             Var<luisa::uint4> random_state,
             UInt2 source) noexcept {
@@ -669,16 +648,13 @@ make_surface_ambient_occlusion_handler_callable(
                 &texture_provider,
                 &attribute_provider,
                 &ambient_occlusion_provider};
+            const auto storage =
+                luisa::compute::detail::Ref<SurfaceValueStackBank>{
+                    stack.expression()};
             SurfaceValueLocalsView locals{
-                .scalars = {
-                    luisa::compute::detail::Ref<SurfaceValueScalarBank>{
-                        scalar_bank.expression()}},
-                .vectors = {
-                    luisa::compute::detail::Ref<SurfaceValueVectorBank>{
-                        vector_bank.expression()}},
-                .unsigned_integers = {
-                    luisa::compute::detail::Ref<luisa::ulong>{
-                        unsigned_integer_bank.expression()}}};
+                .scalars = {storage},
+                .vectors = {storage},
+                .unsigned_integers = {storage}};
             const auto &variant =
                 runtime->value_variants[variant_index];
             const auto point = surface_value_point(
@@ -814,9 +790,7 @@ void SurfaceValueInstructionDispatcher::operator()(
     Bool use_undisplaced_geometry,
     Var<luisa::uint4> instruction,
     UInt instruction_index,
-    luisa::compute::detail::Ref<SurfaceValueScalarBank> scalar_bank,
-    luisa::compute::detail::Ref<SurfaceValueVectorBank> vector_bank,
-    luisa::compute::detail::Ref<luisa::ulong> unsigned_integer_bank,
+    luisa::compute::detail::Ref<SurfaceValueStackBank> stack,
     const PathSurfaceAmbientOcclusionContext
         *ambient_occlusion) const noexcept {
     const auto &impl = *_impl;
@@ -828,8 +802,7 @@ void SurfaceValueInstructionDispatcher::operator()(
             (*impl.handlers[index])(
                 scalar_parameters, vector_parameters, cycles_bsdf_tables,
                 textures, geometry_heap, point, transaction_shading_normal,
-                use_undisplaced_geometry, instruction, scalar_bank,
-                vector_bank, unsigned_integer_bank);
+                use_undisplaced_geometry, instruction, stack);
             return;
         }
         if (!impl.ambient_occlusion || ambient_occlusion == nullptr ||
@@ -848,8 +821,8 @@ void SurfaceValueInstructionDispatcher::operator()(
         (*impl.ambient_occlusion_handlers[index])(
             scalar_parameters, vector_parameters, cycles_bsdf_tables,
             textures, geometry_heap, point, transaction_shading_normal,
-            use_undisplaced_geometry, instruction, scalar_bank, vector_bank,
-            unsigned_integer_bank, ambient_occlusion->sobol_table,
+            use_undisplaced_geometry, instruction, stack,
+            ambient_occlusion->sobol_table,
             random_state, source);
     };
     const auto primary_key = device_handler_key(instruction.x);

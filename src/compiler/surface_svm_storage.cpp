@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -17,6 +18,32 @@ inline constexpr auto invalid_index =
 
 [[nodiscard]] constexpr std::size_t bank_index(SurfaceValueBank bank) noexcept {
   return static_cast<std::size_t>(bank);
+}
+
+[[nodiscard]] constexpr const char *
+bank_name(SurfaceValueBank bank) noexcept {
+  switch (bank) {
+  case SurfaceValueBank::scalar:
+    return "scalar";
+  case SurfaceValueBank::vector:
+    return "vector";
+  case SurfaceValueBank::unsigned_integer:
+    return "unsigned-integer";
+  }
+  return "unknown";
+}
+
+[[nodiscard]] constexpr std::uint32_t
+bank_lane_width(SurfaceValueBank bank) noexcept {
+  switch (bank) {
+  case SurfaceValueBank::scalar:
+    return 1u;
+  case SurfaceValueBank::vector:
+    return 3u;
+  case SurfaceValueBank::unsigned_integer:
+    return 2u;
+  }
+  return 0u;
 }
 
 [[nodiscard]] bool contains(const ValueSet &set, std::uint32_t value) noexcept {
@@ -708,7 +735,11 @@ struct Builder {
     }
     if (used_colors > slot_capacity) {
       result.diagnostic =
-          "the structured-SVM typed storage capacity is insufficient";
+          std::string{"the structured-SVM typed storage capacity is "
+                      "insufficient: "} +
+          bank_name(bank) + " bank requires " +
+          std::to_string(used_colors) + " slots but the ABI provides " +
+          std::to_string(slot_capacity);
       return false;
     }
     for (const auto vertex : bank_vertices) {
@@ -752,6 +783,38 @@ struct Builder {
     return true;
   }
 
+  [[nodiscard]] bool pack_typed_banks() {
+    const std::array slot_counts{result.scalar_slots, result.vector_slots,
+                                 result.unsigned_integer_slots};
+    auto lane_end = std::uint64_t{};
+    for (auto bank = std::size_t{}; bank < slot_counts.size(); ++bank) {
+      if (lane_end > std::numeric_limits<std::uint32_t>::max()) {
+        result.diagnostic =
+            "the structured-SVM physical lane extent overflows uint32";
+        return false;
+      }
+      result.lane_bases[bank] = static_cast<std::uint32_t>(lane_end);
+      const auto width = bank_lane_width(
+          static_cast<SurfaceValueBank>(bank));
+      lane_end += static_cast<std::uint64_t>(slot_counts[bank]) * width;
+    }
+    if (lane_end > std::numeric_limits<std::uint32_t>::max()) {
+      result.diagnostic =
+          "the structured-SVM physical lane extent overflows uint32";
+      return false;
+    }
+    result.stack_lanes = static_cast<std::uint32_t>(lane_end);
+    if (result.stack_lanes > capacity.stack_lanes) {
+      result.diagnostic =
+          "the structured-SVM physical stack capacity is insufficient: " +
+          std::to_string(result.stack_lanes) +
+          " lanes are required but the ABI provides " +
+          std::to_string(capacity.stack_lanes);
+      return false;
+    }
+    return true;
+  }
+
   [[nodiscard]] SurfaceSvmStoragePlan build() {
     if (!schedule.valid ||
         schedule.value_regions.size() != program.value_instructions().size() ||
@@ -770,6 +833,7 @@ struct Builder {
         !color_bank(SurfaceValueBank::unsigned_integer,
                     capacity.unsigned_integer_slots,
                     result.unsigned_integer_slots) ||
+        !pack_typed_banks() ||
         !publish_aliases()) {
       return reject(std::move(result.diagnostic));
     }
@@ -792,6 +856,22 @@ bool SurfaceSvmStoragePlan::compatible(
       active_values != parameter_values + local_values + alias_values) {
     return false;
   }
+  const auto expected_vector_base =
+      static_cast<std::uint64_t>(scalar_slots);
+  const auto expected_unsigned_base =
+      expected_vector_base + static_cast<std::uint64_t>(vector_slots) * 3u;
+  const auto expected_stack_lanes =
+      expected_unsigned_base +
+      static_cast<std::uint64_t>(unsigned_integer_slots) * 2u;
+  if (lane_bases[bank_index(SurfaceValueBank::scalar)] != 0u ||
+      lane_bases[bank_index(SurfaceValueBank::vector)] !=
+          expected_vector_base ||
+      lane_bases[bank_index(SurfaceValueBank::unsigned_integer)] !=
+          expected_unsigned_base ||
+      expected_stack_lanes > std::numeric_limits<std::uint32_t>::max() ||
+      stack_lanes != expected_stack_lanes) {
+    return false;
+  }
   auto active_weight_count = std::uint32_t{};
   for (auto index = std::size_t{}; index < schedule.weight_regions.size();
        ++index) {
@@ -808,10 +888,7 @@ bool SurfaceSvmStoragePlan::compatible(
 }
 
 std::size_t SurfaceSvmStoragePlan::payload_bytes() const noexcept {
-  return static_cast<std::size_t>(scalar_slots) * sizeof(float) +
-         static_cast<std::size_t>(vector_slots) * sizeof(float) * 3u +
-         static_cast<std::size_t>(unsigned_integer_slots) *
-             sizeof(std::uint64_t);
+  return static_cast<std::size_t>(stack_lanes) * sizeof(float);
 }
 
 SurfaceSvmStoragePlan

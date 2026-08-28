@@ -4,17 +4,18 @@
 
 The Cycles-structured stream is now the device execution path for compact
 surface population, emission, preparation, and BSSRDF-normal reconstruction.
-One Luisa interpreter owns the program counter, typed value/weight locals,
-guards, `SetNormal`, closure decode, and `End`; the old split value/closure
-device interpreter and its 1,729-line implementation file have been physically
-removed.
+One Luisa interpreter owns the program counter, one physical 32-bit lane
+stack, guards, `SetNormal`, closure decode, and `End`; the old split
+value/closure device interpreter and its 1,729-line implementation file have
+been physically removed. Production runtime construction no longer builds the
+old executable as an interning or migration oracle.
 
-This is a device-path correctness milestone, not yet a complex-scene image or
-performance milestone. Runtime construction still builds the established
-value executable temporarily to intern exact value-evaluator variants and to
-prove a commuting relation against the replacement image. Removing that host
-migration oracle is the next architectural step. Lone Monk, Barbershop,
-Classroom, Monster, and 1080p performance claims remain pending.
+This is now both a device-path correctness milestone and a first complex-scene
+execution checkpoint. The official Blender 5.2 Barbershop export builds and
+renders through HIP with the replacement SVM. It is not yet a matched
+multi-sample Cycles image or performance milestone: Lone Monk, Classroom,
+Monster, strict native-XIR Vulkan complex scenes, inspected triptychs, and
+1080p performance claims remain pending.
 
 The current implementation produces a typed semantic stream containing
 
@@ -148,10 +149,13 @@ a guard and proves the target lands exactly on the following guard.
 The serialized validator projects ordinary records through the single
 established value-image validator and closure leaves through the single
 established closure-image validator. It additionally solves forward
-must-initialization on the real unified CFG. Scalar slots have two disjoint
-logical states, value and weight: defining one kills the other. This rejects
-both treating a value slot as a closure weight and treating a weight slot as a
-Mix factor, while still permitting proven read-before-write slot donation.
+must-initialization on the real unified CFG. The stack is physically untyped:
+a scalar or weight occupies one lane, a vector occupies three consecutive
+lanes, and a uint64 occupies two. Every definition invalidates all logical
+values whose lane intervals overlap its write. This rejects cross-bank
+clobbering as well as treating a value lane as a closure weight or a weight
+lane as a Mix factor, while still permitting proven read-before-write lane
+donation.
 Closure operands and side tables must be dense, jumps strictly forward, Mix
 outputs non-aliased, aggregate masks exact, and `End` unique and final.
 
@@ -174,10 +178,11 @@ body read to a physically populated prefix slot and requires rejection.
 `build_surface_svm_scene_image` concatenates programs in runtime-tag order.
 Guard targets, overflow value-operand ranges, metadata indices, metadata
 static-table ranges and closure-operand begins become absolute scene offsets.
-Typed local addresses and material parameter ids remain invocation-relative.
-The compact 32-byte device descriptor contains only instruction range, typed
-slot bounds, flags and endpoint projection. Exact side-stream partitions live
-in a parallel host-only table and are not uploaded per invocation.
+Physical local-lane addresses and material parameter ids remain
+invocation-relative. The compact 32-byte device descriptor contains only the
+instruction range, typed-color census, flags, endpoint projection, and stack
+lane extent. Exact side-stream partitions live in a parallel host-only table
+and are not uploaded per invocation.
 
 The public scene verifier proves every descriptor and side range is a dense
 partition, de-relocates each program, and runs the complete program verifier
@@ -294,7 +299,7 @@ Result: 3/3 passed in 3.30 s (fallback 2.08 s, HIP 3.28 s, native-XIR Vulkan
 3.30 s). These are test wall times with concurrent execution, not renderer
 performance measurements.
 
-## CFG liveness and optimal typed storage
+## CFG liveness and Cycles-sized lane-stack storage
 
 The emitted CFG is acyclic because every ordinary successor and jump target
 has a greater instruction index. Liveness therefore needs one reverse pass,
@@ -316,13 +321,29 @@ Same-bank `Passthrough` values are contracted as the congruence
 result may share a slot with an operand precisely when the operand is absent
 from `live_out` at that definition.
 
-For each physical bank, a definition interferes with every same-bank value in
+For each semantic bank, a definition interferes with every same-bank value in
 its `live_out`. Strict SSA dominance makes the resulting interference graph
 chordal. The allocator does not merely assume this theorem: maximum-cardinality
 search constructs a candidate perfect-elimination ordering and the compiler
 checks that every vertex's later neighbors form a clique. Reverse-PEO greedy
 coloring must then use exactly the maximum-clique number; otherwise lowering
-is rejected. Component-wise scalar/vector/uint64 capacity remains explicit.
+is rejected.
+
+The three optimal colorings are then packed into one Cycles-compatible stack:
+
+```text
+scalar/weight base = 0
+vector base        = scalar colors
+uint64 base         = scalar colors + 3 * vector colors
+stack lanes         = scalar colors + 3 * vector colors + 2 * uint64 colors
+```
+
+The semantic upper bound is exactly Cycles 5.2
+`intern/cycles/kernel/svm/types.h::SVM_STACK_SIZE`: 255 32-bit lanes, with
+legal offsets 0 through 254. Material parameters remain in immutable SoA
+buffers and do not consume stack lanes. Component color bounds only prevent an
+individual coloring from exceeding what can fit in 255 lanes; the final
+physical extent is the authoritative capacity proof.
 
 ## Permanent regressions
 
@@ -341,13 +362,27 @@ is rejected. Component-wise scalar/vector/uint64 capacity remains explicit.
   private guard;
 - definite-assignment rejection when a mutated jump skips a required value;
 - rejection of a Mix-weight expression bound to the wrong source factor;
-- same-bank Passthrough quotienting and component-wise capacity failure; and
+- same-bank Passthrough quotienting and component-wise capacity failure;
 - chordal clique-optimal coloring of value and weight SSA with
-  read-before-write slot donation.
+  read-before-write slot donation;
+- a nine-scalar live clique matching the Barbershop failure shape, proving the
+  removed eight-scalar ABI rejects it while the 255-lane SVM accepts it in
+  exactly nine lanes; and
+- exact rejection when the same graph is given only eight physical lanes.
 
 `psycles.surface_svm_scene` additionally covers the SetNormal lifetime epoch,
 all five relocation classes, a static 4x4 table, two-program tag order, and
-malformed cross-program guard/closure references.
+malformed cross-program guard/closure references. It also proves that a
+three-lane vector write invalidates an overlapping live scalar even though the
+two addresses have different semantic bank tags, accepts the exact 255-lane
+bound, and rejects 256 lanes.
+
+`psycles.luisa_surface_mix_svm_{fallback,hip,vk}` uses the production stack
+views inside a real Luisa callable. It writes a scalar, a three-lane vector,
+and the exact 64-bit pattern `0x0102030405060708` into disjoint lanes, then
+requires bit-exact recovery on all three backends. This permanently covers the
+float2-bitcast representation of uint64 stack values rather than checking only
+their low byte.
 
 One independent-branch fixture requires at least two vector slots under the
 old split value/closure plan but exactly one slot after closure uses are
@@ -371,8 +406,8 @@ lowered transactionally into the final compact bytecode, aggregated into a
 scene-wide image, uploaded, and executed by the single-PC interpreter for the
 actual runtime topology set.
 
-The all-thread repository run after a complete relink of every target and
-switching all four consumers executed all 318 registered tests in 37.86 s:
+The latest all-thread repository run after the lane-stack replacement and a
+complete relink executed all 318 registered tests in 30.81 s:
 312 passed and the same six pre-existing exact numeric fixtures failed
 (`luisa_stacked_volume_fallback`, `luisa_homogeneous_volume_fallback`,
 `luisa_area_light_forward_vk`, `luisa_volume_path_fallback`,
@@ -430,6 +465,51 @@ Results: all six cross-backend compact-surface tests passed in 15.04 s
 fallback 0.18 s, HIP 0.24 s, Vulkan 0.56 s). The histogram and two focused
 compiler tests passed 3/3 in 8.11 s. These are correctness wall times, not
 renderer performance results.
+
+## Blender 5.2 Barbershop lane-stack checkpoint
+
+The first real-scene attempt exposed the structural defect in the removed ABI:
+topology 59 (`armchair_cushions.001`, shared with `armchair_cushions`) has 73
+parameters, 42 nodes, 105 values, and five closures. Its exact interference
+coloring needs nine scalar colors, so the old eight-scalar bank rejected the
+scene before JIT. Raising that bank alone was rejected as an ad hoc fix. The
+single lane-stack model above replaces the arbitrary 8/12/1 limits.
+
+After the replacement, the unchanged official Blender 5.2 Barbershop export
+completed this HIP smoke command:
+
+```sh
+env PSYCLES_COMPACT_SURFACE_VALUES=1 PSYCLES_POPULATE_SURFACE_ONCE=1 \
+build/bin/psycles_render_blender_scene \
+  /var/tmp/psycles-official-redownload-20260814/exports/barbershop-5.2 \
+  /var/tmp/psycles-surface-svm-barbershop-20260829/hip-smoke.ppm \
+  hip 320 180 1 1 - 0 0 0 0 1 - 1 0 wavefront-staged \
+  32 32768 32 1 1 0 4 2 auto 0 0 0 1 1048576 \
+  - /var/tmp/psycles-surface-svm-barbershop-20260829/hip-smoke-svm-histogram.json
+```
+
+Observed production census and timings:
+
+```text
+1055 geometries, 1109 instances, 564 materials
+380 SVM programs, 10177 records, 67 exact value evaluators
+maximum typed colors: scalar 9, vector 8, uint64 0
+maximum physical stack: 33 lanes (132 bytes of semantic payload)
+scene compile: 17.1764 s
+reported complete shader JIT: 18.441 s
+render-only 320x180x1: 0.0633394 s
+```
+
+The run produced Combined/Normal/Albedo PFM passes, the surface histogram, and
+a multilayer EXR. Visual inspection of the display PPM found the expected
+camera, salon silhouette, ceiling lights, and major furniture, with no obvious
+structural corruption from lane remapping. One sample is intentionally too
+noisy and dark for material or Cycles-fidelity judgment. The exporter also
+reported ten unavailable source images (`agent_face_*`,
+`guilder_ornament.png`, and `generic_scratches.png` variants), so this smoke is
+not used as a texture-fidelity claim or triptych. A fixed-sample re-export,
+Cycles 5.2 reference, numerical comparison, and inspected triptych remain a
+completion gate.
 
 The remaining completion gate is fallback, HIP, and strict native
 XIR-to-SPIR-V Vulkan complex-scene rendering, triptychs, code-object and
