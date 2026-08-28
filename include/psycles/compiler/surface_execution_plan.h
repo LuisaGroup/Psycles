@@ -1467,6 +1467,16 @@ struct SurfaceValueProgramImage {
   std::uint32_t flags{};
 };
 
+// Structural and definite-initialization validation for one serialized value
+// image. Exposed so the unified surface SVM validator can project its
+// interleaved stream back onto the unchanged value-record ABI instead of
+// maintaining a second opcode validator.
+[[nodiscard]] std::string validate_surface_value_program_image(
+    const SurfaceValueProgramImage &program);
+[[nodiscard]] std::string validate_surface_closure_program_image(
+    const SurfaceClosureProgramImage &closures,
+    const SurfaceValueProgramImage &values);
+
 // Exact storage-class abstraction for one operand position of an interned
 // evaluator variant. The scene builder joins the concrete class observed at
 // every instruction mapped to that variant over the two-point domain
@@ -1753,6 +1763,24 @@ plan_surface_value_storage(const SurfaceProgram &program,
 // operands; their factor/children are control-flow inputs instead.
 [[nodiscard]] std::vector<ValueExpressionId> surface_closure_operands(
     const ClosureInstruction &closure);
+
+// Physical closure ABI shared by the legacy closure stream and the unified
+// Surface SVM. These are total over ClosureOperation; control-only operations
+// are never valid leaves but retain a deterministic scalar bank for malformed
+// image diagnostics.
+[[nodiscard]] bool
+surface_closure_is_leaf_operation(ClosureOperation operation) noexcept;
+[[nodiscard]] SurfaceValueBank
+surface_closure_operand_bank(ClosureOperation operation,
+                             std::size_t operand) noexcept;
+[[nodiscard]] PrincipledClosureFeatureMask
+surface_all_principled_closure_features() noexcept;
+
+inline constexpr auto surface_closure_emission_principled_features =
+    principled_closure_feature_bit(PrincipledClosureFeature::alpha) |
+    principled_closure_feature_bit(PrincipledClosureFeature::sheen) |
+    principled_closure_feature_bit(PrincipledClosureFeature::coat) |
+    principled_closure_feature_bit(PrincipledClosureFeature::emission);
 
 // Flattens the reachable closure tree over an already-lowered preparation
 // value image. Add contributes no weight term; a Mix contributes factor or

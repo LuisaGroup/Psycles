@@ -1,6 +1,7 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_program.h>
+#include <psycles/compiler/surface_svm_program.h>
 #include <psycles/compiler/surface_svm_schedule.h>
 #include <psycles/contract/scene.h>
 
@@ -83,6 +84,25 @@ storage(const PlannedGraph &graph, const SurfaceSvmSchedulePlan &plan,
   return allocation;
 }
 
+[[nodiscard]] SurfaceSvmProgramImage
+lower(const PlannedGraph &graph, const SurfaceSvmSchedulePlan &plan,
+      const SurfaceSvmStoragePlan &allocation) {
+  auto image = lower_surface_svm_program(
+      *graph.compiled.program, graph.closures, graph.dependencies, plan,
+      allocation);
+  require(image.valid, "unified surface SVM failed to lower: " +
+                           image.diagnostic);
+  const auto diagnostic = validate_surface_svm_program_image(image);
+  require(diagnostic.empty(),
+          "unified surface SVM failed to validate: " + diagnostic);
+  return image;
+}
+
+[[nodiscard]] SurfaceSvmProgramImage
+lower(const PlannedGraph &graph, const SurfaceSvmSchedulePlan &plan) {
+  return lower(graph, plan, storage(graph, plan));
+}
+
 [[nodiscard]] ValueExpressionId find_value(const SurfaceProgram &program,
                                            NodeId source,
                                            ValueOperation operation) {
@@ -129,6 +149,17 @@ find_schedule_instruction(const SurfaceSvmSchedulePlan &plan,
     }
   }
   throw std::runtime_error{"fixture schedule instruction kind is absent"};
+}
+
+[[nodiscard]] std::size_t
+find_bytecode_instruction(const SurfaceSvmProgramImage &image,
+                          SurfaceSvmBytecodeKind kind) {
+  for (auto index = std::size_t{}; index < image.instructions.size(); ++index) {
+    if (surface_svm_bytecode_kind(image.instructions[index]) == kind) {
+      return index;
+    }
+  }
+  throw std::runtime_error{"fixture bytecode instruction kind is absent"};
 }
 
 void verify_total_schedule_contract(const SurfaceProgram &program,
@@ -374,6 +405,93 @@ void require_weighted_leaf(const std::vector<WeightedLeaf> &leaves,
   const auto found = std::ranges::find_if(
       leaves, [=](const WeightedLeaf &leaf) {
         return leaf.closure == closure && leaf.weight == weight;
+      });
+  require(found != leaves.end(), message);
+}
+
+struct WeightedBytecodeLeaf {
+  ClosureOperation operation{};
+  float weight{};
+};
+
+[[nodiscard]] std::vector<WeightedBytecodeLeaf> execute_weighted_bytecode(
+    const SurfaceSvmProgramImage &image,
+    const std::map<std::uint32_t, float> &factors) {
+  std::vector<float> scalars(image.scalar_slots, 0.0f);
+  std::vector<WeightedBytecodeLeaf> leaves;
+  const auto read_factor = [&](std::uint32_t address) {
+    const auto found = factors.find(address);
+    require(found != factors.end(), "missing unified-bytecode Mix factor");
+    return found->second;
+  };
+  const auto read_weight = [&](std::uint32_t slot) {
+    if (slot == surface_svm_root_weight_slot) {
+      return 1.0f;
+    }
+    require(slot < scalars.size(), "unified-bytecode weight exceeds bank");
+    return scalars[slot];
+  };
+  for (auto pc = std::size_t{}; pc < image.instructions.size();) {
+    const auto &instruction = image.instructions[pc];
+    switch (surface_svm_bytecode_kind(instruction)) {
+    case SurfaceSvmBytecodeKind::value:
+      ++pc;
+      break;
+    case SurfaceSvmBytecodeKind::mix_closure: {
+      const auto saturated =
+          std::clamp(read_factor(instruction.payload0), 0.0f, 1.0f);
+      const auto parent = read_weight(instruction.payload1);
+      if ((instruction.control & surface_svm_mix_left_result_bit) != 0u) {
+        const auto slot = surface_svm_mix_left_weight_slot(instruction);
+        scalars[slot] = parent * (1.0f - saturated);
+      }
+      if ((instruction.control & surface_svm_mix_right_result_bit) != 0u) {
+        const auto slot = surface_svm_mix_right_weight_slot(instruction);
+        scalars[slot] = parent * saturated;
+      }
+      ++pc;
+      break;
+    }
+    case SurfaceSvmBytecodeKind::add_closure_weight:
+      scalars[instruction.payload2] =
+          read_weight(instruction.payload0) +
+          read_weight(instruction.payload1);
+      ++pc;
+      break;
+    case SurfaceSvmBytecodeKind::jump_if_one:
+      pc = read_factor(instruction.payload0) >= 1.0f
+               ? instruction.payload1
+               : pc + 1u;
+      break;
+    case SurfaceSvmBytecodeKind::jump_if_zero:
+      pc = read_factor(instruction.payload0) <= 0.0f
+               ? instruction.payload1
+               : pc + 1u;
+      break;
+    case SurfaceSvmBytecodeKind::closure_leaf: {
+      const auto legacy = SurfaceClosureBytecodeInstruction{
+          .control = surface_svm_closure_control(instruction)};
+      leaves.emplace_back(WeightedBytecodeLeaf{
+          .operation = surface_closure_operation(legacy),
+          .weight = read_weight(instruction.payload1)});
+      ++pc;
+      break;
+    }
+    case SurfaceSvmBytecodeKind::end:
+      return leaves;
+    case SurfaceSvmBytecodeKind::invalid:
+      throw std::runtime_error{"unified-bytecode execution saw invalid opcode"};
+    }
+  }
+  throw std::runtime_error{"unified-bytecode execution fell off the image"};
+}
+
+void require_weighted_bytecode_leaf(
+    const std::vector<WeightedBytecodeLeaf> &leaves,
+    ClosureOperation operation, float weight, const std::string &message) {
+  const auto found = std::ranges::find_if(
+      leaves, [=](const WeightedBytecodeLeaf &leaf) {
+        return leaf.operation == operation && leaf.weight == weight;
       });
   require(found != leaves.end(), message);
 }
@@ -717,6 +835,13 @@ void test_shared_closure_dag_is_accepted_without_value_recomputation() {
               allocation.weight_locations.size() ==
                   plan.weight_expressions.size(),
           "shared Add weight was not included in scalar SSA coloring");
+  const auto image = lower(analyzed, plan, allocation);
+  const auto bytecode = execute_weighted_bytecode(image, {});
+  require(bytecode.size() == 1u,
+          "unified bytecode duplicated the shared Add leaf");
+  require_weighted_bytecode_leaf(
+      bytecode, ClosureOperation::diffuse, 2.0f,
+      "unified bytecode did not add two root-weight occurrences");
 }
 
 void test_complementary_shared_mix_leaf_preserves_ieee_weight_algebra() {
@@ -768,6 +893,47 @@ void test_complementary_shared_mix_leaf_preserves_ieee_weight_algebra() {
   const auto allocation = storage(analyzed, plan);
   require(allocation.weight_values == 3u && allocation.scalar_slots == 2u,
           "complementary Mix weights were not clique-optimally colored");
+  const auto image = lower(analyzed, plan, allocation);
+  require(image.mix_instruction_count == 1u &&
+              image.weight_add_instruction_count == 1u &&
+              image.conditional_branch_count == 0u &&
+              image.closure_leaf_count == 1u,
+          "unified bytecode changed complementary-Mix cardinality");
+  const auto factor_id =
+      analyzed.compiled.program->closure_instructions()[mix_id.value].factor;
+  const auto factor_address = image.value_addresses[factor_id.value];
+  const auto bytecode_leaves =
+      execute_weighted_bytecode(image, {{factor_address, 0.37f}});
+  require(bytecode_leaves.size() == 1u,
+          "unified bytecode duplicated the shared Mix leaf");
+  require_weighted_bytecode_leaf(
+      bytecode_leaves, ClosureOperation::diffuse, 1.0f,
+      "unified bytecode changed complementary finite weight");
+  const auto bytecode_nan =
+      execute_weighted_bytecode(image, {{factor_address, nan}});
+  require(bytecode_nan.size() == 1u &&
+              bytecode_nan.front().operation == ClosureOperation::diffuse &&
+              std::isnan(bytecode_nan.front().weight),
+          "unified bytecode lost complementary Mix NaN semantics");
+
+  auto aliased_mix = image;
+  const auto mix_pc = find_bytecode_instruction(
+      aliased_mix, SurfaceSvmBytecodeKind::mix_closure);
+  const auto left =
+      surface_svm_mix_left_weight_slot(aliased_mix.instructions[mix_pc]);
+  aliased_mix.instructions[mix_pc].payload2 = left | (left << 16u);
+  require(validate_surface_svm_program_image(aliased_mix).find("aliased") !=
+              std::string::npos,
+          "unified bytecode accepted aliased binary Mix outputs");
+
+  auto wrong_operand_bank = image;
+  require(!wrong_operand_bank.closure_operands.empty(),
+          "unified diffuse fixture has no closure operands");
+  wrong_operand_bank.closure_operands.front() = 0u;
+  require(validate_surface_svm_program_image(wrong_operand_bank)
+                  .find("closure projection") != std::string::npos,
+          "unified bytecode accepted a closure operand in the wrong bank");
+
   auto incompatible = allocation;
   --incompatible.weight_values;
   require(!incompatible.compatible(*analyzed.compiled.program, plan),
@@ -843,6 +1009,45 @@ void test_shared_leaf_weight_is_hoisted_and_accumulated_before_control() {
               allocation.maximum_interference_clique[
                   static_cast<std::size_t>(SurfaceValueBank::scalar)] == 2u,
           "hoisted closure-weight SSA was not clique-optimally colored");
+  const auto image = lower(analyzed, plan, allocation);
+  const auto bytecode_mix = find_bytecode_instruction(
+      image, SurfaceSvmBytecodeKind::mix_closure);
+  const auto bytecode_add = find_bytecode_instruction(
+      image, SurfaceSvmBytecodeKind::add_closure_weight);
+  const auto bytecode_leaf = find_bytecode_instruction(
+      image, SurfaceSvmBytecodeKind::closure_leaf);
+  const auto bytecode_guard = find_bytecode_instruction(
+      image, SurfaceSvmBytecodeKind::jump_if_zero);
+  require(bytecode_mix < bytecode_add && bytecode_add < bytecode_leaf &&
+              bytecode_leaf < bytecode_guard,
+          "unified bytecode lost the proven hoist/control order");
+  const auto factor_id =
+      analyzed.compiled.program->closure_instructions()[mix_id.value].factor;
+  const auto factor_address = image.value_addresses[factor_id.value];
+  const auto bytecode_zero =
+      execute_weighted_bytecode(image, {{factor_address, 0.0f}});
+  require(bytecode_zero.size() == 1u,
+          "unified bytecode retained the zero-weight private closure");
+  require_weighted_bytecode_leaf(
+      bytecode_zero, ClosureOperation::diffuse, 2.0f,
+      "unified bytecode changed the zero-factor shared weight");
+  const auto bytecode_interior =
+      execute_weighted_bytecode(image, {{factor_address, 0.25f}});
+  require(bytecode_interior.size() == 2u,
+          "unified bytecode lost an interior Mix closure");
+  require_weighted_bytecode_leaf(
+      bytecode_interior, ClosureOperation::diffuse, 1.75f,
+      "unified bytecode changed the interior shared weight");
+  require_weighted_bytecode_leaf(
+      bytecode_interior, ClosureOperation::glossy, 0.25f,
+      "unified bytecode changed the interior private weight");
+
+  auto backward_guard = image;
+  backward_guard.instructions[bytecode_guard].payload1 =
+      static_cast<std::uint32_t>(bytecode_guard);
+  require(validate_surface_svm_program_image(backward_guard)
+                  .find("forward") != std::string::npos,
+          "unified bytecode accepted a non-forward closure guard");
 }
 
 void test_cfg_storage_is_clique_optimal_and_read_before_write() {
@@ -974,6 +1179,110 @@ void test_passthrough_quotient_has_no_device_definition() {
               point_location.index == color_location.index &&
               allocation.vector_slots == 1u,
           "same-bank Passthroughs were not contracted before CFG liveness");
+  const auto image = lower(analyzed, plan, allocation);
+  require(image.value_instruction_count + allocation.alias_values ==
+              plan.value_instruction_count,
+          "unified bytecode did not erase exactly the Passthrough quotient");
+}
+
+void test_unified_jump_targets_cross_erased_aliases_exactly() {
+  ShaderGraph graph;
+  const auto geometry =
+      graph.add_node(node_type::geometry, "Guarded alias geometry");
+  const auto point_to_vector =
+      graph.add_node(node_type::point_to_vector, "Guarded point alias");
+  const auto vector_to_color =
+      graph.add_node(node_type::vector_to_color, "Guarded color alias");
+  const auto roughness =
+      graph.add_node(node_type::math, "Guarded scalar roughness");
+  const auto diffuse =
+      graph.add_node(node_type::diffuse_bsdf, "Guarded alias diffuse");
+  const auto emission =
+      graph.add_node(node_type::emission, "Guarded alias emission");
+  const auto mix =
+      graph.add_node(node_type::mix_closure, "Guarded alias Mix");
+  require(
+      graph.connect({.node = geometry, .socket = "Position"},
+                    point_to_vector, "Point") &&
+          graph.connect({.node = point_to_vector, .socket = "Vector"},
+                        vector_to_color, "Vector") &&
+          graph.connect({.node = vector_to_color, .socket = "Color"},
+                        diffuse, "Color") &&
+          graph.set_property(roughness, "Operation",
+                             SocketValue::string("ADD")) &&
+          graph.set_input(roughness, "B", SocketValue::floating(0.2f)) &&
+          graph.connect({.node = geometry, .socket = "Backfacing"},
+                        roughness, "A") &&
+          graph.connect({.node = roughness, .socket = "Value"}, diffuse,
+                        "Roughness") &&
+          graph.connect({.node = roughness, .socket = "Value"}, mix,
+                        "Factor") &&
+          graph.connect({.node = diffuse, .socket = "Closure"}, mix, "A") &&
+          graph.connect({.node = emission, .socket = "Closure"}, mix, "B"),
+      "failed to configure guarded Passthrough graph");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = mix, .socket = "Closure"});
+  const auto analyzed = analyze(std::move(graph));
+  const auto plan = schedule(analyzed);
+  const auto allocation = storage(analyzed, plan);
+  require(allocation.alias_values >= 2u,
+          "guarded alias fixture did not form a quotient");
+  const auto image = lower(analyzed, plan, allocation);
+  const auto left_guard = find_bytecode_instruction(
+      image, SurfaceSvmBytecodeKind::jump_if_one);
+  const auto right_guard = find_bytecode_instruction(
+      image, SurfaceSvmBytecodeKind::jump_if_zero);
+  require(left_guard < right_guard &&
+              image.instructions[left_guard].payload1 == right_guard,
+          "unified guard target was not remapped across erased aliases");
+
+  const auto mix_id = find_closure(*analyzed.compiled.program, mix);
+  const auto factor_id =
+      analyzed.compiled.program->closure_instructions()[mix_id.value].factor;
+  const auto factor_address = image.value_addresses[factor_id.value];
+  const auto at_zero =
+      execute_weighted_bytecode(image, {{factor_address, 0.0f}});
+  require(at_zero.size() == 1u,
+          "unified zero-factor alias path executed two leaves");
+  require_weighted_bytecode_leaf(
+      at_zero, ClosureOperation::diffuse, 1.0f,
+      "unified zero-factor alias path selected the wrong leaf");
+  const auto at_one =
+      execute_weighted_bytecode(image, {{factor_address, 1.0f}});
+  require(at_one.size() == 1u,
+          "unified one-factor alias path executed two leaves");
+  require_weighted_bytecode_leaf(
+      at_one, ClosureOperation::emission, 1.0f,
+      "unified one-factor alias path selected the wrong leaf");
+
+  const auto roughness_id = find_value(
+      *analyzed.compiled.program, roughness, ValueOperation::math);
+  const auto roughness_address =
+      SurfaceValueAddress{image.value_addresses[roughness_id.value]};
+  require(roughness_address.valid() && !roughness_address.parameter() &&
+              roughness_address.bank() == SurfaceValueBank::scalar,
+          "guarded scalar fixture has no local roughness address");
+  auto value_as_weight = image;
+  const auto first_leaf = find_bytecode_instruction(
+      value_as_weight, SurfaceSvmBytecodeKind::closure_leaf);
+  value_as_weight.instructions[first_leaf].payload1 =
+      roughness_address.index();
+  require(validate_surface_svm_program_image(value_as_weight)
+                  .find("undefined weight") != std::string::npos,
+          "unified bytecode confused a scalar value with a weight slot");
+
+  auto weight_as_value = image;
+  const auto mix_pc = find_bytecode_instruction(
+      weight_as_value, SurfaceSvmBytecodeKind::mix_closure);
+  const auto weight_slot = surface_svm_mix_left_weight_slot(
+      weight_as_value.instructions[mix_pc]);
+  weight_as_value.instructions[right_guard].payload0 =
+      static_cast<std::uint32_t>(SurfaceValueBank::scalar)
+          << SurfaceValueAddress::bank_shift |
+      weight_slot;
+  require(validate_surface_svm_program_image(weight_as_value)
+                  .find("undefined value") != std::string::npos,
+          "unified bytecode confused a weight slot with a scalar value");
 }
 
 void test_storage_rejects_skipped_definition_and_capacity_overflow() {
@@ -1051,6 +1360,7 @@ int main() {
     test_cfg_storage_is_clique_optimal_and_read_before_write();
     test_interleaved_closure_use_reuses_slots_across_branches();
     test_passthrough_quotient_has_no_device_definition();
+    test_unified_jump_targets_cross_erased_aliases_exactly();
     test_storage_rejects_skipped_definition_and_capacity_overflow();
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
