@@ -454,7 +454,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             surface_programs_by_tag,
             surface_closure_plans_by_tag,
             data->surface_bssrdf_bump_tags,
-            diagnostic, surface_value_region_handler_site_budget_requested());
+            diagnostic);
         if (!data->surface_values) {
             diagnose(
                 result.diagnostics,

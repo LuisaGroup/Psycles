@@ -901,8 +901,16 @@ int main(int argc, char **argv) {
                   << backend << ": " << diagnostic << '\n';
         return EXIT_FAILURE;
     }
-    if (scene->surface_values->maximum_closure_mix_slots == 0u) {
-        std::cerr << "compact runtime omitted live closure-weight slots on "
+    const auto has_closure_weight_program = std::any_of(
+        scene->surface_values->svm_scene.instructions.begin(),
+        scene->surface_values->svm_scene.instructions.end(),
+        [](const auto &instruction) noexcept {
+            const auto kind = surface_svm_bytecode_kind(instruction);
+            return kind == SurfaceSvmBytecodeKind::mix_closure ||
+                   kind == SurfaceSvmBytecodeKind::add_closure_weight;
+        });
+    if (!has_closure_weight_program) {
+        std::cerr << "unified runtime omitted its closure-weight program on "
                   << backend << " (tail_fast_path=" << tail_fast_path << ")\n";
         return EXIT_FAILURE;
     }
@@ -1012,15 +1020,15 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     const auto transform_variant_count = std::count_if(
-        scene->surface_values->executable.variants.begin(),
-        scene->surface_values->executable.variants.end(),
+        scene->surface_values->value_variants.begin(),
+        scene->surface_values->value_variants.end(),
         [](const auto &variant) noexcept {
             return variant.instruction.operation ==
                    ValueOperation::object_position_with_transform;
         });
     const auto transform_payload_count = std::count_if(
-        scene->surface_values->executable.values.metadata.begin(),
-        scene->surface_values->executable.values.metadata.end(),
+        scene->surface_values->svm_scene.value_metadata.begin(),
+        scene->surface_values->svm_scene.value_metadata.end(),
         [](const auto &metadata) noexcept {
             return metadata.static_table_count == 16u;
         });

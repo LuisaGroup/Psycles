@@ -45,9 +45,9 @@ make_nested_mix_replay_graph(bool restore_after);
 [[nodiscard]] luisa_backend::SurfacePoint
 make_surface_value_transaction_test_point() noexcept;
 
-// Returns an empty string when the compact value-program AST preserves its
-// narrow point-reference ABI and one semantic handler boundary per active
-// variant; otherwise returns a stable diagnostic for the caller.
+// Returns an empty string when the unified per-record dispatcher preserves a
+// narrow point-reference ABI, returns no aggregate transaction state, and owns
+// one semantic handler boundary per active exact evaluator.
 [[nodiscard]] std::string validate_compact_surface_value_program_abi(
     const std::shared_ptr<luisa_backend::detail::LuisaSceneData> &scene);
 
@@ -124,11 +124,10 @@ make_typed_map_range_graphs();
 [[nodiscard]] bool has_color_ramp_record_product(
     const luisa_backend::detail::SurfaceValueRuntime &runtime) noexcept;
 
-// Inspect the host bytecode image rather than pixels. The controlled fixture
-// has two nested Bump records. Refinement must retain both configurations as
-// bump_samples in the projected topological streams, eliminate every recursive
-// Bump operation and hidden height program, and keep the instruction/variant
-// side streams parallel.
+// Inspect the unified host bytecode image rather than pixels. The controlled
+// fixture has two nested Bump records. Refinement must retain both
+// configurations as bump_samples, eliminate every recursive Bump operation and
+// hidden height program, and keep the instruction/evaluator relation total.
 [[nodiscard]] CompactSurfaceProgramEvidence inspect_compact_surface_program(
     const luisa_backend::detail::SurfaceValueRuntime &runtime) noexcept;
 
