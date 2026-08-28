@@ -197,8 +197,17 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
   auto *root = yyjson_mut_obj(document);
   yyjson_mut_doc_set_root(document, root);
   yyjson_mut_obj_add_str(document, root, "schema",
-                         "psycles.surface-program-execution-histogram.v5");
+                         "psycles.surface-program-execution-histogram.v6");
   yyjson_mut_obj_add_bool(document, root, "exact", histogram.exact);
+  const auto add_uint_array =
+      [document](yyjson_mut_val *object, const char *name,
+                 const auto &values) {
+        auto *array = yyjson_mut_arr(document);
+        for (const auto value : values) {
+          yyjson_mut_arr_add_uint(document, array, value);
+        }
+        yyjson_mut_obj_add_val(document, object, name, array);
+      };
 
   auto surface_populations = std::uint64_t{0u};
   auto *topologies = yyjson_mut_arr(document);
@@ -328,6 +337,42 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
   }
   yyjson_mut_obj_add_val(document, root, "value_handler_transitions",
                          value_handler_transitions);
+
+  yyjson_mut_obj_add_uint(document, root, "value_region_invocations",
+                          histogram.value_region_invocations);
+  yyjson_mut_obj_add_uint(
+      document, root, "value_region_instruction_executions",
+      histogram.value_region_instruction_executions);
+  yyjson_mut_obj_add_uint(
+      document, root, "value_region_forwarded_edge_executions",
+      histogram.value_region_forwarded_edge_executions);
+  yyjson_mut_obj_add_uint(
+      document, root, "value_region_live_input_executions",
+      histogram.value_region_live_input_executions);
+  yyjson_mut_obj_add_uint(
+      document, root, "value_region_live_output_executions",
+      histogram.value_region_live_output_executions);
+  auto *value_regions = yyjson_mut_arr(document);
+  for (const auto &region : histogram.value_regions) {
+    auto *entry = yyjson_mut_obj(document);
+    yyjson_mut_obj_add_uint(document, entry, "executions", region.executions);
+    yyjson_mut_obj_add_uint(document, entry, "instruction_count",
+                            region.shape.variant_indices.size());
+    add_uint_array(entry, "variant_indices", region.shape.variant_indices);
+    add_uint_array(entry, "successor_operand_masks",
+                   region.shape.successor_operand_masks);
+    add_uint_array(entry, "operand_offsets", region.shape.operand_offsets);
+    add_uint_array(entry, "operand_source_kinds",
+                   region.shape.operand_source_kinds);
+    add_uint_array(entry, "operand_source_indices",
+                   region.shape.operand_source_indices);
+    add_uint_array(entry, "live_input_banks",
+                   region.shape.live_input_banks);
+    add_uint_array(entry, "live_output_instruction_offsets",
+                   region.shape.live_output_instruction_offsets);
+    yyjson_mut_arr_add_val(value_regions, entry);
+  }
+  yyjson_mut_obj_add_val(document, root, "value_regions", value_regions);
 
   constexpr std::array closure_kind_names{"leaf", "mix_both", "mix_left",
                                           "mix_right"};
