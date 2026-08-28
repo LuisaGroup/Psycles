@@ -695,6 +695,12 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
         runtime.svm_instruction_variants.size() == svm.instructions.size();
     auto observed_leaf = false;
     auto observed_guard = false;
+    std::vector<SurfaceSvmClosureVariant> preparation_closure_domain;
+    std::vector<SurfaceSvmClosureVariant> emission_closure_domain;
+    const auto canonicalize = [](auto &domain) {
+        std::sort(domain.begin(), domain.end());
+        domain.erase(std::unique(domain.begin(), domain.end()), domain.end());
+    };
     for (auto program = std::uint32_t{0u};
          unified_scene_exact && program < svm.programs.size(); ++program) {
         const auto &range = svm.programs[program];
@@ -708,9 +714,11 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
             unified_scene_exact = false;
             break;
         }
-        const auto expected_endpoints =
+        const auto emission_program =
             program % SurfaceValueRuntime::programs_per_topology ==
-                    SurfaceValueRuntime::emission_program_offset
+            SurfaceValueRuntime::emission_program_offset;
+        const auto expected_endpoints =
+            emission_program
                 ? surface_closure_endpoint_bit(
                       SurfaceClosureEndpoint::emission)
                 : all_surface_closure_endpoints;
@@ -730,6 +738,15 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
             observed_leaf |= kind == SurfaceSvmBytecodeKind::closure_leaf;
             observed_guard |= kind == SurfaceSvmBytecodeKind::jump_if_one ||
                               kind == SurfaceSvmBytecodeKind::jump_if_zero;
+            if (kind == SurfaceSvmBytecodeKind::closure_leaf) {
+                auto &domain = emission_program ? emission_closure_domain
+                                                : preparation_closure_domain;
+                domain.emplace_back(SurfaceSvmClosureVariant{
+                    .static_variant =
+                        surface_svm_closure_control(instruction) &
+                        surface_closure_static_variant_mask,
+                    .principled_features = instruction.payload2});
+            }
             if (kind == SurfaceSvmBytecodeKind::invalid) {
                 unified_scene_exact = false;
             }
@@ -786,11 +803,6 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
             }
             old_domain.emplace_back(variant);
         }
-        const auto canonicalize = [](auto &domain) {
-            std::sort(domain.begin(), domain.end());
-            domain.erase(std::unique(domain.begin(), domain.end()),
-                         domain.end());
-        };
         canonicalize(new_domain);
         canonicalize(old_domain);
         unified_scene_exact &= normal_count == old_normal_count &&
@@ -802,6 +814,20 @@ inspect_compact_surface_program(const SurfaceValueRuntime &runtime) noexcept {
         unified_scene_exact && observed_leaf && observed_guard;
     result.unified_variant_bijection =
         unified_variant_bijection && result.unified_scene_exact;
+    canonicalize(preparation_closure_domain);
+    canonicalize(emission_closure_domain);
+    auto canonical_bssrdf_domain = runtime.bssrdf_svm_closure_variants;
+    canonicalize(canonical_bssrdf_domain);
+    result.unified_closure_domains_exact =
+        result.unified_scene_exact &&
+        preparation_closure_domain ==
+            runtime.preparation_svm_closure_variants &&
+        emission_closure_domain == runtime.emission_svm_closure_variants &&
+        canonical_bssrdf_domain == runtime.bssrdf_svm_closure_variants &&
+        std::includes(preparation_closure_domain.begin(),
+                      preparation_closure_domain.end(),
+                      canonical_bssrdf_domain.begin(),
+                      canonical_bssrdf_domain.end());
 
     // Every projected root is one self-contained topological stream. A normal
     // transaction has at most one consuming boundary; only that boundary may

@@ -2,10 +2,19 @@
 
 ## Current outcome
 
-This milestone establishes the compiler foundation for replacing Psycles'
-split value/closure surface evaluator with one Cycles-structured instruction
-stream. It is intentionally not wired into the renderer yet and therefore
-makes no render-time, code-object-size, or image-equivalence claim.
+The Cycles-structured stream is now the device execution path for compact
+surface population, emission, preparation, and BSSRDF-normal reconstruction.
+One Luisa interpreter owns the program counter, typed value/weight locals,
+guards, `SetNormal`, closure decode, and `End`; the old split value/closure
+device interpreter and its 1,729-line implementation file have been physically
+removed.
+
+This is a device-path correctness milestone, not yet a complex-scene image or
+performance milestone. Runtime construction still builds the established
+value executable temporarily to intern exact value-evaluator variants and to
+prove a commuting relation against the replacement image. Removing that host
+migration oracle is the next architectural step. Lone Monk, Barbershop,
+Classroom, Monster, and 1080p performance claims remain pending.
 
 The current implementation produces a typed semantic stream containing
 
@@ -215,9 +224,62 @@ ctest --test-dir build --output-on-failure \
   -R '^psycles\.luisa_compact_surface_preparation_(fallback|hip|vk)$'
 ```
 
-Result: 3/3 passed in 0.88 s. This proves scene construction and evaluator
-selection on real material graphs; device execution still uses the old split
-interpreter at this milestone, so it is not yet an image or performance claim.
+This was the runtime-assembly checkpoint. It proved scene construction and
+evaluator selection before the device route was switched; the single-PC
+execution results below supersede its old execution-status statement.
+
+## Single-PC device interpreter and exact closure domains
+
+`SurfaceSvmInterpreter` executes one loop over the scene-absolute unified
+records. Value records dispatch through the exact semantic evaluator relation;
+Mix and Add define weight SSA in the same typed scalar bank; guards apply the
+raw Cycles `>= 1` and `<= 0` predicates; leaves retain Cycles' exact
+`!(weight <= 0)` NaN behavior; and `SetNormal` begins a new local-lifetime
+epoch before closure evaluation.
+
+Closure dispatch is specialized by the exact pair
+
+```text
+(static closure variant, per-leaf Principled feature mask)
+```
+
+rather than a scene-wide union. Runtime construction canonicalizes the exact
+pair domains separately for preparation, emission, and BSSRDF consumers. A
+permanent regression independently scans every unified record, reconstructs
+the preparation/emission domains, and requires equality with the JIT domains;
+the BSSRDF domain must be canonical and a subset of preparation.
+
+The four consumers share the same interpreter and differ only by host-side
+Luisa AST visitors. Transparent closures preserve Cycles' source ordering:
+the first retained transparent closure owns the allocation slot and later
+transparent setup calls fold additively into it. Production collectors use one
+pass with explicit finalization. Diagnostic collectors without that contract
+perform a whole-program second pass only after the first transparent leaf;
+restarting at a suffix would be unsound because branch-local typed slots may
+already have been overwritten.
+
+The former forwarding shim was removed: the public compact-surface factories
+are implemented directly by the SVM consumers, closure decoding is a separate
+744-line `.h + .cpp` module, and no surface implementation file exceeds 1,000
+lines.
+
+The cross-backend fixture compares all four consumers against the expanded
+Cycles-derived reference, including transparent capacity/exhaustion behavior,
+merged weight/sample weight, shading normal, emission, and BSSRDF normal. It
+also checks the exact value and closure JIT domains:
+
+```sh
+cmake --build build \
+  --target psycles_luisa_compact_surface_preparation_tests \
+  -j"$(nproc)"
+
+ctest --test-dir build --output-on-failure -j"$(nproc)" \
+  -R '^psycles\.luisa_compact_surface_preparation_(fallback|hip|vk)$'
+```
+
+Result: 3/3 passed in 3.30 s (fallback 2.08 s, HIP 3.28 s, native-XIR Vulkan
+3.30 s). These are test wall times with concurrent execution, not renderer
+performance measurements.
 
 ## CFG liveness and optimal typed storage
 
@@ -293,20 +355,21 @@ ctest --test-dir build --output-on-failure \
 All focused tests pass. Virtual closure weights are assigned and colored in
 the scalar bank together with ordinary scalar values, and the semantic CFG is
 lowered transactionally into the final compact bytecode, aggregated into a
-scene-wide image, and constructed for the actual runtime topology set with a
-total evaluator side relation. The next stage is to upload and execute this
-stream through one Luisa interpreter, replacing the old value/closure
-dual-stream runtime.
+scene-wide image, uploaded, and executed by the single-PC interpreter for the
+actual runtime topology set.
 
-The all-thread repository run after runtime scene assembly executed all 318
-registered tests in 13.42 s:
+The all-thread repository run after a complete relink of every target and
+switching all four consumers executed all 318 registered tests in 37.86 s:
 312 passed and the same six pre-existing exact numeric fixtures failed
 (`luisa_stacked_volume_fallback`, `luisa_homogeneous_volume_fallback`,
 `luisa_area_light_forward_vk`, `luisa_volume_path_fallback`,
-`luisa_volume_path_vk`, and `luisa_volume_triangle_fallback`). The new compiler
-and runtime-relation tests passed, and this milestone is not connected to a
-device execution path that could change those images.
+`luisa_volume_path_vk`, and `luisa_volume_triangle_fallback`). The new compiler,
+exact-domain, and device-interpreter tests passed. The six failures are
+unchanged from the pre-switch baseline and remain small existing numeric
+differences in volume/Vulkan fixtures rather than new surface-SVM failures.
 
-Only after the old split runtime has been removed will fallback, HIP, and
-strict native XIR-to-SPIR-V Vulkan image gates and complex-scene benchmarks be
-meaningful. No triptych is produced for this compiler-only milestone.
+The next gate is to replace the temporary established-executable variant
+interner and delete its legacy host/device buffers. After that, fallback, HIP,
+and strict native XIR-to-SPIR-V Vulkan complex-scene renders, triptychs, code
+object/compile-time measurements, and Cycles-aligned performance profiling are
+required before claiming the SVM replacement complete.

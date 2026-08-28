@@ -151,6 +151,43 @@ public:
             *ambient_occlusion) const noexcept;
 };
 
+// Host/JIT dispatcher for exactly one value record in the replacement SVM.
+// It owns the same scene-pruned typed evaluator callables as the legacy loop,
+// but leaves PC/control sequencing to the unified surface interpreter. The
+// dispatcher reads the replacement instruction-variant side stream only when
+// more than one exact evaluator inhabits the same compact handler fiber.
+class SurfaceValueInstructionDispatcher {
+
+  public:
+    struct Impl;
+
+  private:
+    std::shared_ptr<const Impl> _impl;
+
+  public:
+    explicit SurfaceValueInstructionDispatcher(
+        std::shared_ptr<const Impl> impl) noexcept;
+
+    [[nodiscard]] bool requires_ambient_occlusion() const noexcept;
+
+    void operator()(
+        Expr<Buffer<float>> scalar_parameters,
+        Expr<Buffer<luisa::float3>> vector_parameters,
+        Expr<Buffer<float>> cycles_bsdf_tables,
+        Expr<BindlessArray> textures,
+        Expr<BindlessArray> geometry_heap,
+        Var<SurfacePointCall> &point,
+        Float3 transaction_shading_normal,
+        Bool use_undisplaced_geometry,
+        Var<luisa::uint4> instruction,
+        UInt instruction_index,
+        luisa::compute::detail::Ref<SurfaceValueScalarBank> scalar_bank,
+        luisa::compute::detail::Ref<SurfaceValueVectorBank> vector_bank,
+        luisa::compute::detail::Ref<luisa::ulong> unsigned_integer_bank,
+        const PathSurfaceAmbientOcclusionContext
+            *ambient_occlusion) const noexcept;
+};
+
 [[nodiscard]] Float read_scalar_dynamic(
     const ShaderServices &services,
     const SurfacePoint &point,
@@ -169,6 +206,14 @@ public:
 // program with an unrelated handler domain.
 [[nodiscard]] SurfaceValueProgram
 make_surface_value_program_callable(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const Texture2DSamplingCallables &texture_sampling,
+    const SurfaceAttributeLookupCallable &attribute_lookup,
+    SurfaceValueProgramDomain domain,
+    bool enable_external_queries = false) noexcept;
+
+[[nodiscard]] SurfaceValueInstructionDispatcher
+make_surface_value_instruction_dispatcher(
     const std::shared_ptr<LuisaSceneData> &scene,
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,

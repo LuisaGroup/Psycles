@@ -27,6 +27,7 @@ struct CompactSurfaceProgramEvidence {
     bool bump_stream_exact{};
     bool unified_scene_exact{};
     bool unified_variant_bijection{};
+    bool unified_closure_domains_exact{};
     std::uint32_t bump_variant{~std::uint32_t{0u}};
 };
 
