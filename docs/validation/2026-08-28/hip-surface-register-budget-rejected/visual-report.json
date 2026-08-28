@@ -1,0 +1,220 @@
+{
+  "actual_label": "192 VGPR cap",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0128002166748047,
+        1.012492060661316,
+        1.0115972757339478
+      ],
+      "cycles": "/var/tmp/psycles-maxregs0-repeat.mUNdKY/out.exr",
+      "cycles_channel_mean": [
+        0.045312393456697464,
+        0.032058995217084885,
+        0.023599350824952126
+      ],
+      "cycles_luminance_mean": 0.03426714614033699,
+      "cycles_rms": 0.12043598294258118,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0125278890064562,
+      "maximum_absolute_error": 2.245147943496704,
+      "mean_absolute_error": 0.0015158208552747965,
+      "orientation_rmse": {
+        "flip_x": 0.15778563916683197,
+        "flip_xy": 0.16247999668121338,
+        "flip_y": 0.15913927555084229,
+        "identity": 0.01742050237953663
+      },
+      "p95_pixel_rmse": 0.00391228636726737,
+      "p99_pixel_rmse": 0.02946203015744686,
+      "psycles": "/var/tmp/psycles-maxregs192.oacKwS/out.exr",
+      "psycles_channel_mean": [
+        0.04589240252971649,
+        0.032459478825330734,
+        0.023873038589954376
+      ],
+      "psycles_luminance_mean": 0.034696441143751144,
+      "psycles_rms": 0.12319882033404704,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.14464532902796992,
+      "rmse": 0.01742050237953663,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 17.078301715267468,
+        "display_scale": 1.2967172546460102,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/hip-surface-register-budget-rejected/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "DiffCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9998077154159546,
+        0.9998151659965515,
+        0.9998082518577576
+      ],
+      "cycles": "/var/tmp/psycles-maxregs0-repeat.mUNdKY/out.exr",
+      "cycles_channel_mean": [
+        0.2329149693250656,
+        0.20733308792114258,
+        0.18206237256526947
+      ],
+      "cycles_luminance_mean": 0.21091797947883606,
+      "cycles_rms": 0.26117682456970215,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9998108724129896,
+      "maximum_absolute_error": 0.10725782811641693,
+      "mean_absolute_error": 0.0008644409826956689,
+      "orientation_rmse": {
+        "flip_x": 0.22325070202350616,
+        "flip_xy": 0.2251339703798294,
+        "flip_y": 0.21751470863819122,
+        "identity": 0.0037982941139489412
+      },
+      "p95_pixel_rmse": 0.005757404025644064,
+      "p99_pixel_rmse": 0.019795013591647148,
+      "psycles": "/var/tmp/psycles-maxregs192.oacKwS/out.exr",
+      "psycles_channel_mean": [
+        0.2328701764345169,
+        0.207294762134552,
+        0.18202745914459229
+      ],
+      "psycles_luminance_mean": 0.21087808907032013,
+      "psycles_rms": 0.26116135297890464,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.014542998293232036,
+      "rmse": 0.0037982941139489412,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 34.61136700566694,
+        "display_scale": 1.0737419003549795,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/hip-surface-register-budget-rejected/triptychs/diffcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    },
+    "Normal": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999818801879883,
+        1.0000113248825073,
+        0.9998010396957397
+      ],
+      "cycles": "/var/tmp/psycles-maxregs0-repeat.mUNdKY/out.exr",
+      "cycles_channel_mean": [
+        0.10801935940980911,
+        0.313208669424057,
+        -0.05821164324879646
+      ],
+      "cycles_luminance_mean": 0.2427361011505127,
+      "cycles_rms": 0.550031840801239,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000094538011155,
+      "maximum_absolute_error": 0.11980688571929932,
+      "mean_absolute_error": 0.00047090527368709445,
+      "orientation_rmse": {
+        "flip_x": 0.6487395763397217,
+        "flip_xy": 0.870779812335968,
+        "flip_y": 0.7763352394104004,
+        "identity": 0.0024099701549857855
+      },
+      "p95_pixel_rmse": 0.0037354128435254097,
+      "p99_pixel_rmse": 0.011682289652526379,
+      "psycles": "/var/tmp/psycles-maxregs192.oacKwS/out.exr",
+      "psycles_channel_mean": [
+        0.10801739990711212,
+        0.31321221590042114,
+        -0.058200061321258545
+      ],
+      "psycles_luminance_mean": 0.24273839592933655,
+      "psycles_rms": 0.5500416490650986,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.00438151026216073,
+      "rmse": 0.0024099701549857855,
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 59.12279136952095,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-28/hip-surface-register-budget-rejected/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 307200
+    }
+  },
+  "reference_label": "Uncapped 256 VGPR",
+  "schema": "psycles.cycles-differential.v2"
+}
