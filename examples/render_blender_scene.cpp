@@ -196,7 +196,7 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
   auto *root = yyjson_mut_obj(document);
   yyjson_mut_doc_set_root(document, root);
   yyjson_mut_obj_add_str(document, root, "schema",
-                         "psycles.surface-program-execution-histogram.v1");
+                         "psycles.surface-program-execution-histogram.v2");
   yyjson_mut_obj_add_bool(document, root, "exact", histogram.exact);
 
   auto surface_populations = std::uint64_t{0u};
@@ -218,6 +218,31 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
   yyjson_mut_obj_add_uint(document, root,
                           "surface_normal_transition_executions",
                           histogram.surface_normal_transition_executions);
+  auto *operand_routes = yyjson_mut_obj(document);
+  yyjson_mut_obj_add_uint(
+      document, operand_routes, "direct_local",
+      histogram.value_operand_executions.direct_local);
+  yyjson_mut_obj_add_uint(
+      document, operand_routes, "direct_parameter",
+      histogram.value_operand_executions.direct_parameter);
+  yyjson_mut_obj_add_uint(
+      document, operand_routes, "dynamic_local",
+      histogram.value_operand_executions.dynamic_local);
+  yyjson_mut_obj_add_uint(
+      document, operand_routes, "dynamic_parameter",
+      histogram.value_operand_executions.dynamic_parameter);
+  yyjson_mut_obj_add_val(document, root, "value_operand_executions",
+                         operand_routes);
+  auto *unique_parameters = yyjson_mut_obj(document);
+  yyjson_mut_obj_add_uint(document, unique_parameters, "scalar",
+                          histogram.unique_parameter_values.scalar);
+  yyjson_mut_obj_add_uint(document, unique_parameters, "vector",
+                          histogram.unique_parameter_values.vector);
+  yyjson_mut_obj_add_uint(
+      document, unique_parameters, "unsigned_integer",
+      histogram.unique_parameter_values.unsigned_integer);
+  yyjson_mut_obj_add_val(document, root, "unique_parameter_values",
+                         unique_parameters);
 
   auto *value_handlers = yyjson_mut_arr(document);
   for (const auto &handler : histogram.value_handlers) {
