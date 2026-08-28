@@ -1747,6 +1747,13 @@ plan_surface_value_storage(const SurfaceProgram &program,
     const SurfaceProgram &program,
     const SurfaceValueStoragePlan &storage);
 
+// The canonical source-value operand order for one closure leaf. This is the
+// single host-side definition of the packed closure operand ABI used by both
+// storage/lowering and structured SVM scheduling. Add and Mix have no leaf
+// operands; their factor/children are control-flow inputs instead.
+[[nodiscard]] std::vector<ValueExpressionId> surface_closure_operands(
+    const ClosureInstruction &closure);
+
 // Flattens the reachable closure tree over an already-lowered preparation
 // value image. Add contributes no weight term; a Mix contributes factor or
 // (1 - factor) exactly when both of its closure-plan branches are reachable.

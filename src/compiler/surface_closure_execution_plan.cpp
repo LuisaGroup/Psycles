@@ -69,7 +69,7 @@ inline constexpr auto emission_principled_features =
     principled_closure_feature_bit(PrincipledClosureFeature::coat) |
     principled_closure_feature_bit(PrincipledClosureFeature::emission);
 
-[[nodiscard]] std::vector<ValueExpressionId> closure_operands(
+[[nodiscard]] std::vector<ValueExpressionId> make_surface_closure_operands(
     const ClosureInstruction &closure) {
   switch (closure.operation) {
   case ClosureOperation::null_closure:
@@ -534,6 +534,11 @@ all_principled_closure_features() noexcept {
 
 } // namespace
 
+std::vector<ValueExpressionId> surface_closure_operands(
+    const ClosureInstruction &closure) {
+  return make_surface_closure_operands(closure);
+}
+
 SurfaceClosureProgramImage lower_surface_closure_program(
     const SurfaceProgram &program,
     const SurfaceClosurePlan &closure_plan,
@@ -731,7 +736,7 @@ SurfaceClosureProgramImage lower_surface_closure_program(
     if (endpoints == 0u) {
       continue;
     }
-    const auto operands = closure_operands(closure);
+    const auto operands = surface_closure_operands(closure);
     if (operands.size() !=
         surface_closure_operand_count(closure.operation)) {
       return reject("a closure opcode has an inconsistent operand layout");

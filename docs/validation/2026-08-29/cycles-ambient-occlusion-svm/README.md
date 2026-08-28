@@ -225,14 +225,24 @@ of hidden:
 
 ## Known complex-scene risk
 
-A no-AO Barbershop cold-JIT canary was intentionally attempted to prove that
-the ordinary callable ABI remained usable on a complex graph. Host AST/JIT
-construction remained at roughly one CPU core and reached about 12.7 GiB RSS
-without producing a shader after more than 20 minutes, so it was interrupted.
-This is unresolved evidence of surface-program/code-generation bloat. It is
-not an AO semantic failure, but it prevents any honest full-scene performance
-claim for this milestone and remains a primary target of the Surface SVM
-replacement.
+A later `perf` audit disproved the original attribution of the Barbershop
+canary to surface AST/JIT construction. With the shader cache disabled, the
+HIP process reached about 12.7 GiB RSS and the 60.23-second timeout entirely
+inside
+`MeshDisplacementSceneComponent::build -> HIPMesh::build -> hiprtBuildGeometry
+-> hiprt::SbvhBuilder::build`, plus tangent construction. Early and late
+profiles both showed scene geometry build; shader recording/code generation
+had not started. This export contains 1,649 geometries, 2,565 instances, and
+564 materials, so the evidence instead identifies serial high-quality HIPRT
+SBVH construction as the cold-start bottleneck.
+
+The bounded fallback run completed and separated the phases: scene compile
+16.3075 s, shader JIT 8.04167 s, render 0.00506472 s, 25.85 s elapsed, and
+21,208,844 KiB process peak RSS. That peak is not attributed to JIT alone.
+Consequently the earlier 12.7 GiB/timeout observation is not evidence of a
+large shade-surface kernel. Surface SVM restructuring is still required for
+the independently observed code-object and runtime costs, but its performance
+case must be measured after scene build rather than inferred from this canary.
 
 No LuisaCompute backend defect was exposed by this work: every backend passed
 the same semantic canaries. Consequently there is no unrelated Luisa commit;
