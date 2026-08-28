@@ -745,6 +745,12 @@ int main(int argc, char **argv) {
                   << argv[2] << "'\n";
         return EXIT_FAILURE;
     }
+    if (const auto diagnostic =
+            psycles::test_support::validate_surface_value_fresh_lifetime_seed();
+        !diagnostic.empty()) {
+        std::cerr << diagnostic << '\n';
+        return EXIT_FAILURE;
+    }
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();

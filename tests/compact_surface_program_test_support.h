@@ -48,6 +48,12 @@ make_surface_value_transaction_test_point() noexcept;
 [[nodiscard]] std::string validate_compact_surface_value_program_abi(
     const std::shared_ptr<luisa_backend::detail::LuisaSceneData> &scene);
 
+// The compact interpreter's typed banks have a fresh logical lifetime for
+// every surface invocation. Their root definitions must remain non-material
+// lifetime witnesses, one per physical bank, rather than executable zero
+// initialization that reaches the HIP kernel.
+[[nodiscard]] std::string validate_surface_value_fresh_lifetime_seed();
+
 void print_compact_surface_sample_mismatch(
     const luisa_backend::detail::SurfaceSampleTraceCall &actual,
     const luisa_backend::detail::SurfaceSampleTraceCall &expected,
