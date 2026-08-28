@@ -50,6 +50,8 @@ add_library(psycles_core
     src/compiler/shader_program.cpp
     src/compiler/surface_bump_expansion.cpp
     src/compiler/surface_closure_execution_plan.cpp
+    src/compiler/surface_svm_schedule.cpp
+    src/compiler/surface_svm_storage.cpp
     src/compiler/surface_execution_plan.cpp
     src/compiler/surface_program.cpp
     src/compiler/surface_program_builder.cpp
