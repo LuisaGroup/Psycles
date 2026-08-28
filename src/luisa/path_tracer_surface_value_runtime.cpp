@@ -575,16 +575,18 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     runtime->svm_value_operands.assign(
         runtime->svm_scene.value_operands.begin(),
         runtime->svm_scene.value_operands.end());
-    runtime->svm_variants.assign(runtime->svm_instruction_variants.begin(),
-                                 runtime->svm_instruction_variants.end());
+    runtime->svm_metadata_static_u0.reserve(
+        runtime->svm_scene.value_metadata.size());
     runtime->svm_metadata_parameters.reserve(
         runtime->svm_scene.value_metadata.size());
     runtime->svm_metadata_static_ranges.reserve(
         runtime->svm_scene.value_metadata.size());
     for (const auto &metadata : runtime->svm_scene.value_metadata) {
-        runtime->svm_metadata_parameters.emplace_back(metadata.parameter);
-        runtime->svm_metadata_static_ranges.emplace_back(luisa::make_uint2(
-            metadata.static_table_begin, metadata.static_table_count));
+      runtime->svm_metadata_static_u0.emplace_back(
+          static_cast<std::uint32_t>(metadata.static_u0));
+      runtime->svm_metadata_parameters.emplace_back(metadata.parameter);
+      runtime->svm_metadata_static_ranges.emplace_back(luisa::make_uint2(
+          metadata.static_table_begin, metadata.static_table_count));
     }
     runtime->svm_static_data.assign(runtime->svm_scene.static_data.begin(),
                                     runtime->svm_scene.static_data.end());
@@ -708,8 +710,7 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     provide_dummy_if_empty(runtime->svm_instructions,
                            luisa::make_uint4(0u));
     provide_dummy_if_empty(runtime->svm_value_operands, 0u);
-    provide_dummy_if_empty(runtime->svm_variants,
-                           compiler::SurfaceValueAddress::invalid_value);
+    provide_dummy_if_empty(runtime->svm_metadata_static_u0, 0u);
     provide_dummy_if_empty(runtime->svm_metadata_parameters,
                            compiler::SurfaceValueAddress::invalid_value);
     provide_dummy_if_empty(runtime->svm_metadata_static_ranges,
@@ -743,8 +744,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
         runtime->svm_instructions.size());
     runtime->svm_value_operand_buffer = device.create_buffer<luisa::uint>(
         runtime->svm_value_operands.size());
-    runtime->svm_instruction_variant_buffer =
-        device.create_buffer<luisa::uint>(runtime->svm_variants.size());
+    runtime->svm_metadata_static_u0_buffer = device.create_buffer<luisa::uint>(
+        runtime->svm_metadata_static_u0.size());
     runtime->svm_metadata_parameter_buffer =
         device.create_buffer<luisa::uint>(
             runtime->svm_metadata_parameters.size());
@@ -769,8 +770,8 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
          runtime->svm_instruction_buffer);
     bind(SurfaceValueRuntimeBufferSlot::svm_value_operand,
          runtime->svm_value_operand_buffer);
-    bind(SurfaceValueRuntimeBufferSlot::svm_instruction_variant,
-         runtime->svm_instruction_variant_buffer);
+    bind(SurfaceValueRuntimeBufferSlot::svm_metadata_static_u0,
+         runtime->svm_metadata_static_u0_buffer);
     bind(SurfaceValueRuntimeBufferSlot::svm_metadata_parameter,
          runtime->svm_metadata_parameter_buffer);
     bind(SurfaceValueRuntimeBufferSlot::svm_metadata_static_range,
@@ -784,23 +785,23 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
 
 void upload_surface_value_runtime(Stream &stream,
                                   SurfaceValueRuntime &runtime) noexcept {
-    stream << runtime.svm_program_buffer.copy_from(
-                  luisa::span{runtime.svm_program_descriptors})
-           << runtime.svm_instruction_buffer.copy_from(
-                  luisa::span{runtime.svm_instructions})
-           << runtime.svm_value_operand_buffer.copy_from(
-                  luisa::span{runtime.svm_value_operands})
-           << runtime.svm_instruction_variant_buffer.copy_from(
-                  luisa::span{runtime.svm_variants})
-           << runtime.svm_metadata_parameter_buffer.copy_from(
-                  luisa::span{runtime.svm_metadata_parameters})
-           << runtime.svm_metadata_static_range_buffer.copy_from(
-                  luisa::span{runtime.svm_metadata_static_ranges})
-           << runtime.svm_static_data_buffer.copy_from(
-                  luisa::span{runtime.svm_static_data})
-           << runtime.svm_closure_operand_buffer.copy_from(
-                  luisa::span{runtime.svm_closure_operands})
-           << runtime.device_view.update();
+  stream << runtime.svm_program_buffer.copy_from(
+                luisa::span{runtime.svm_program_descriptors})
+         << runtime.svm_instruction_buffer.copy_from(
+                luisa::span{runtime.svm_instructions})
+         << runtime.svm_value_operand_buffer.copy_from(
+                luisa::span{runtime.svm_value_operands})
+         << runtime.svm_metadata_static_u0_buffer.copy_from(
+                luisa::span{runtime.svm_metadata_static_u0})
+         << runtime.svm_metadata_parameter_buffer.copy_from(
+                luisa::span{runtime.svm_metadata_parameters})
+         << runtime.svm_metadata_static_range_buffer.copy_from(
+                luisa::span{runtime.svm_metadata_static_ranges})
+         << runtime.svm_static_data_buffer.copy_from(
+                luisa::span{runtime.svm_static_data})
+         << runtime.svm_closure_operand_buffer.copy_from(
+                luisa::span{runtime.svm_closure_operands})
+         << runtime.device_view.update();
 }
 
 } // namespace psycles::luisa_backend::detail

@@ -136,6 +136,7 @@ metadata_matches_source(const ValueInstruction &source,
                         std::vector<std::uint32_t> &uses,
                         std::string &diagnostic) {
   const auto has_metadata =
+      surface_value_operation_uses_metadata_static_u0(source.operation) ||
       source.static_u0 != 0u || source.static_u1 != 0u ||
       std::bit_cast<std::uint32_t>(source.static_f0) != 0u ||
       std::bit_cast<std::uint32_t>(source.static_f1) != 0u ||

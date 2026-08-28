@@ -3,8 +3,8 @@
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/graph_surface.h>
 
-#include "luisa_surface_test_support.h"
 #include "../src/luisa/shader_table_data.h"
+#include "luisa_surface_test_support.h"
 
 #include <array>
 #include <bit>
@@ -107,15 +107,11 @@ public:
         return Float3{value};
     }
 
-    [[nodiscard]] Float3 nishita_sky(
-        Expr<std::uint32_t>,
-        std::uint32_t,
-        Expr<luisa::float3>,
-        Expr<float>,
-        Expr<float>,
-        Expr<float>,
-        Expr<float>) const noexcept override {
-        return make_float3(0.0f);
+    [[nodiscard]] Float3 nishita_sky(Expr<std::uint32_t>, Expr<std::uint32_t>,
+                                     Expr<luisa::float3>, Expr<float>,
+                                     Expr<float>, Expr<float>,
+                                     Expr<float>) const noexcept override {
+      return make_float3(0.0f);
     }
 };
 
@@ -179,11 +175,11 @@ public:
         return Float3{value};
     }
 
-    [[nodiscard]] Float3 nishita_sky(
-        Expr<std::uint32_t>, std::uint32_t,
-        Expr<luisa::float3>, Expr<float>, Expr<float>,
-        Expr<float>, Expr<float>) const noexcept override {
-        return make_float3(0.0f);
+    [[nodiscard]] Float3 nishita_sky(Expr<std::uint32_t>, Expr<std::uint32_t>,
+                                     Expr<luisa::float3>, Expr<float>,
+                                     Expr<float>, Expr<float>,
+                                     Expr<float>) const noexcept override {
+      return make_float3(0.0f);
     }
 };
 

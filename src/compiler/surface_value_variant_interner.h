@@ -10,11 +10,10 @@
 
 namespace psycles::compiler::detail {
 
-// Exact host/JIT equivalence classes for value evaluators. The key is an
-// ordered semantic tuple, not a hash: every source field not owned by the
-// bytecode immediate/metadata ABI participates bit-for-bit. Authored data that
-// is read from the bytecode remains data and therefore does not multiply AST
-// bodies.
+// Exact typed-handler equivalence classes for value evaluators. The primary
+// key is an ordered AST-shape tuple, not a hash. A second map proves that the
+// device-decodable handler key is injective over those tuples; an opcode ABI
+// collision is rejected instead of repaired with a material-variant switch.
 class SurfaceValueVariantInterner {
 public:
   [[nodiscard]] bool intern(const SurfaceProgram &program,
@@ -28,6 +27,7 @@ public:
 
 private:
   std::map<std::vector<std::uint64_t>, std::uint32_t> _indices;
+  std::map<std::uint32_t, std::uint32_t> _handler_indices;
   std::vector<SurfaceValueStaticVariant> _variants;
   bool _finished{};
 };

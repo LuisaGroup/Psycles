@@ -274,50 +274,37 @@ public:
                 rec709));
     }
 
-    [[nodiscard]] Float3 nishita_sky(
-        Expr<std::uint32_t> block,
-        std::uint32_t sky_index,
-        Expr<luisa::float3> direction_expression,
-        Expr<float> sun_elevation_expression,
-        Expr<float> sun_rotation_expression,
-        Expr<float> angular_diameter_expression,
-        Expr<float> sun_intensity_expression)
-        const noexcept override {
-        Float3 result = make_float3(0.0f);
-        Float3 direction{direction_expression};
-        Float sun_elevation{sun_elevation_expression};
-        Float sun_rotation{sun_rotation_expression};
-        Float angular_diameter{angular_diameter_expression};
-        Float sun_intensity{sun_intensity_expression};
-        for (const auto &binding : _nishita_textures) {
-            if (binding.sky_index != sky_index) {
-                continue;
-            }
-            $if (block == binding.parameter_block) {
-                const auto sun_direction = make_float3(
-                    -cos(sun_elevation) * sin(sun_rotation),
-                    cos(sun_elevation) * cos(sun_rotation),
-                    sin(sun_elevation));
-                const auto sky_xyz =
-                    cycles_nishita::sky_radiance_xyz(
-                        _textures->tex2d(binding.texture_slot),
-                        direction,
-                        sun_rotation);
-                const auto sun_xyz =
-                    cycles_nishita::sun_disc_radiance_xyz(
-                        direction,
-                        sun_direction,
-                        make_float3(binding.pixel_bottom_xyz),
-                        make_float3(binding.pixel_top_xyz),
-                        sun_elevation,
-                        angular_diameter,
-                        sun_intensity);
-                result = max(
-                    xyz_to_rgb(sky_xyz + sun_xyz),
-                    make_float3(0.0f));
-            };
-        }
-        return result;
+    [[nodiscard]] Float3
+    nishita_sky(Expr<std::uint32_t> block,
+                Expr<std::uint32_t> sky_index_expression,
+                Expr<luisa::float3> direction_expression,
+                Expr<float> sun_elevation_expression,
+                Expr<float> sun_rotation_expression,
+                Expr<float> angular_diameter_expression,
+                Expr<float> sun_intensity_expression) const noexcept override {
+      Float3 result = make_float3(0.0f);
+      UInt sky_index{sky_index_expression};
+      Float3 direction{direction_expression};
+      Float sun_elevation{sun_elevation_expression};
+      Float sun_rotation{sun_rotation_expression};
+      Float angular_diameter{angular_diameter_expression};
+      Float sun_intensity{sun_intensity_expression};
+      for (const auto &binding : _nishita_textures) {
+        $if((block == binding.parameter_block) &
+            (sky_index == binding.sky_index)) {
+          const auto sun_direction = make_float3(
+              -cos(sun_elevation) * sin(sun_rotation),
+              cos(sun_elevation) * cos(sun_rotation), sin(sun_elevation));
+          const auto sky_xyz = cycles_nishita::sky_radiance_xyz(
+              _textures->tex2d(binding.texture_slot), direction, sun_rotation);
+          const auto sun_xyz = cycles_nishita::sun_disc_radiance_xyz(
+              direction, sun_direction, make_float3(binding.pixel_bottom_xyz),
+              make_float3(binding.pixel_top_xyz), sun_elevation,
+              angular_diameter, sun_intensity);
+          result = max(xyz_to_rgb(sky_xyz + sun_xyz), make_float3(0.0f));
+        };
+      }
+      return result;
     }
 };
 

@@ -112,11 +112,12 @@ using SurfaceValueAmbientOcclusionHandlers = std::vector<std::optional<
 
 struct SurfaceValueHandlerGroup {
     std::uint32_t key{};
-    std::vector<std::uint32_t> variants;
+    std::uint32_t variant{};
 };
 
 struct SurfaceValueBytecodeSlots {
     SurfaceValueRuntimeBufferSlot operand;
+    SurfaceValueRuntimeBufferSlot metadata_static_u0;
     SurfaceValueRuntimeBufferSlot metadata_parameter;
     SurfaceValueRuntimeBufferSlot metadata_static_range;
     SurfaceValueRuntimeBufferSlot static_data;
@@ -124,8 +125,8 @@ struct SurfaceValueBytecodeSlots {
 
 inline constexpr SurfaceValueBytecodeSlots svm_value_bytecode_slots{
     .operand = SurfaceValueRuntimeBufferSlot::svm_value_operand,
-    .metadata_parameter =
-        SurfaceValueRuntimeBufferSlot::svm_metadata_parameter,
+    .metadata_static_u0 = SurfaceValueRuntimeBufferSlot::svm_metadata_static_u0,
+    .metadata_parameter = SurfaceValueRuntimeBufferSlot::svm_metadata_parameter,
     .metadata_static_range =
         SurfaceValueRuntimeBufferSlot::svm_metadata_static_range,
     .static_data = SurfaceValueRuntimeBufferSlot::svm_static_data};
@@ -180,10 +181,14 @@ make_handler_groups(
                 return candidate.key == key;
             });
         if (group == groups.end()) {
-            groups.emplace_back(SurfaceValueHandlerGroup{
-                .key = key, .variants = {variant_index}});
+          groups.emplace_back(
+              SurfaceValueHandlerGroup{.key = key, .variant = variant_index});
         } else {
-            group->variants.emplace_back(variant_index);
+          // The compiler proves make_surface_value_handler_key is injective
+          // over typed AST shapes. A second variant here would mean that
+          // proof and the device dispatch ABI disagree; never repair such a
+          // compiler bug with a material-dependent secondary switch.
+          std::abort();
         }
     }
     std::sort(groups.begin(), groups.end(), [](const auto &lhs,
@@ -213,6 +218,14 @@ make_handler_groups(
         0u,
         compiler::surface_value_handler_image_box_bit,
         image & (projection == 1u));
+    const auto mix_vector =
+        operation ==
+        static_cast<std::uint32_t>(compiler::ValueOperation::mix_vector);
+    key |= select(
+        0u, compiler::surface_value_handler_mix_vector_non_uniform_bit,
+        mix_vector &
+            ((immediate & compiler::surface_value_mix_vector_non_uniform_bit) !=
+             0u));
     return key;
 }
 
@@ -449,6 +462,13 @@ void write_dynamic_value(
             compiler::ValueOperation::rgb_curve;
     const auto static_table = !variant.instruction.static_table.empty();
     std::optional<Expr<std::uint32_t>> parameter_expression;
+    std::optional<UInt> static_u0_expression;
+    if (compiler::surface_value_operation_uses_metadata_static_u0(
+            variant.instruction.operation)) {
+      static_u0_expression.emplace(surface_value_runtime_buffer<luisa::uint>(
+                                       runtime, slots.metadata_static_u0)
+                                       .read(instruction.w));
+    }
     if (table_parameter) {
         auto parameter = surface_value_runtime_buffer<luisa::uint>(
                              runtime, slots.metadata_parameter)
@@ -472,17 +492,16 @@ void write_dynamic_value(
         .point = point,
         .result = operands,
         .surface = nullptr,
-        .parameter_override = parameter_expression
-                                  ? &*parameter_expression
-                                  : nullptr,
-        .static_table_override = static_table_view
-                                     ? &*static_table_view
-                                     : nullptr,
+        .parameter_override =
+            parameter_expression ? &*parameter_expression : nullptr,
+        .static_table_override =
+            static_table_view ? &*static_table_view : nullptr,
+        .static_u0_override =
+            static_u0_expression ? &*static_u0_expression : nullptr,
         .svm_immediate_override = immediate ? &*immediate : nullptr,
-        .svm_immediate_domain = immediate
-                                    ? std::span<const std::uint16_t>{
-                                          variant.svm_immediates}
-                                    : std::span<const std::uint16_t>{}};
+        .svm_immediate_domain =
+            immediate ? std::span<const std::uint16_t>{variant.svm_immediates}
+                      : std::span<const std::uint16_t>{}};
     return node.evaluate(context);
 }
 
@@ -773,17 +792,12 @@ struct SurfaceValueInstructionDispatcher::Impl {
     virtual void dispatch(
         Expr<Buffer<float>> scalar_parameters,
         Expr<Buffer<luisa::float3>> vector_parameters,
-        Expr<Buffer<float>> cycles_bsdf_tables,
-        Expr<BindlessArray> textures,
-        Expr<BindlessArray> geometry_heap,
-        Var<SurfacePointCall> &point,
-        Float3 transaction_shading_normal,
-        Bool use_undisplaced_geometry,
-        Var<luisa::uint4> instruction,
-        UInt instruction_index,
-        const SurfaceValueLocalsView &locals,
-        const PathSurfaceAmbientOcclusionContext
-            *ambient_occlusion_context) const noexcept = 0;
+        Expr<Buffer<float>> cycles_bsdf_tables, Expr<BindlessArray> textures,
+        Expr<BindlessArray> geometry_heap, Var<SurfacePointCall> &point,
+        Float3 transaction_shading_normal, Bool use_undisplaced_geometry,
+        Var<luisa::uint4> instruction, const SurfaceValueLocalsView &locals,
+        const PathSurfaceAmbientOcclusionContext *ambient_occlusion_context)
+        const noexcept = 0;
 };
 
 namespace {
@@ -813,40 +827,37 @@ struct SurfaceValueInstructionDispatcherImpl final
     void dispatch(
         Expr<Buffer<float>> scalar_parameters,
         Expr<Buffer<luisa::float3>> vector_parameters,
-        Expr<Buffer<float>> cycles_bsdf_tables,
-        Expr<BindlessArray> textures,
-        Expr<BindlessArray> geometry_heap,
-        Var<SurfacePointCall> &point,
-        Float3 transaction_shading_normal,
-        Bool use_undisplaced_geometry,
-        Var<luisa::uint4> instruction,
-        UInt instruction_index,
-        const SurfaceValueLocalsView &locals,
-        const PathSurfaceAmbientOcclusionContext
-            *ambient_occlusion_context) const noexcept override {
-        using Stack = SurfaceValueStackBankFor<StackCapacity>;
-        if (locals.storage_expression() == nullptr ||
-            locals.storage_expression()->type() !=
-                luisa::compute::Type::of<Stack>()) {
-            std::abort();
-        }
-        auto stack = luisa::compute::detail::Ref<
-            Stack>{locals.storage_expression()};
-        const auto emit_variant = [&](std::uint32_t index) noexcept {
-            if (index >= handlers.size()) { std::abort(); }
+        Expr<Buffer<float>> cycles_bsdf_tables, Expr<BindlessArray> textures,
+        Expr<BindlessArray> geometry_heap, Var<SurfacePointCall> &point,
+        Float3 transaction_shading_normal, Bool use_undisplaced_geometry,
+        Var<luisa::uint4> instruction, const SurfaceValueLocalsView &locals,
+        const PathSurfaceAmbientOcclusionContext *ambient_occlusion_context)
+        const noexcept override {
+      using Stack = SurfaceValueStackBankFor<StackCapacity>;
+      if (locals.storage_expression() == nullptr ||
+          locals.storage_expression()->type() !=
+              luisa::compute::Type::of<Stack>()) {
+        std::abort();
+      }
+      auto stack =
+          luisa::compute::detail::Ref<Stack>{locals.storage_expression()};
+      const auto emit_variant =
+          [&](std::uint32_t index) noexcept {
+            if (index >= handlers.size()) {
+              std::abort();
+            }
             if (handlers[index].has_value()) {
-                (*handlers[index])(
-                    scalar_parameters, vector_parameters,
-                    cycles_bsdf_tables, textures, geometry_heap, point,
-                    transaction_shading_normal, use_undisplaced_geometry,
-                    instruction, stack);
-                return;
+              (*handlers[index])(scalar_parameters, vector_parameters,
+                                 cycles_bsdf_tables, textures, geometry_heap,
+                                 point, transaction_shading_normal,
+                                 use_undisplaced_geometry, instruction, stack);
+              return;
             }
             if (!ambient_occlusion ||
                 ambient_occlusion_context == nullptr ||
                 index >= ambient_occlusion_handlers.size() ||
                 !ambient_occlusion_handlers[index].has_value()) {
-                std::abort();
+              std::abort();
             }
             auto random_state = luisa::compute::make_uint4(
                 ambient_occlusion_context->sobol_sequence_size,
@@ -863,45 +874,19 @@ struct SurfaceValueInstructionDispatcherImpl final
                 instruction, stack,
                 ambient_occlusion_context->sobol_table,
                 random_state, source);
-        };
-        const auto primary_key = device_handler_key(instruction.x);
-        luisa::compute::detail::SwitchStmtBuilder{primary_key} % [&] {
+          };
+      const auto primary_key = device_handler_key(instruction.x);
+      luisa::compute::detail::SwitchStmtBuilder{primary_key} %
+          [&] {
             for (const auto &group : handler_groups) {
-                luisa::compute::detail::SwitchCaseStmtBuilder{group.key} %
-                    [&] {
-                        if (group.variants.size() == 1u) {
-                            emit_variant(group.variants.front());
-                            return;
-                        }
-                        const auto variant =
-                            surface_value_runtime_buffer<luisa::uint>(
-                                *runtime,
-                                SurfaceValueRuntimeBufferSlot::
-                                    svm_instruction_variant)
-                                .read(instruction_index);
-                        luisa::compute::detail::SwitchStmtBuilder{variant} %
-                            [&] {
-                                for (const auto index : group.variants) {
-                                    luisa::compute::detail::
-                                        SwitchCaseStmtBuilder{index} %
-                                        [&, index] {
-                                            emit_variant(index);
-                                        };
-                                }
-                                luisa::compute::detail::
-                                    SwitchDefaultStmtBuilder{} % [] {
-                                    luisa::compute::dsl::unreachable(
-                                        "invalid unified surface evaluator "
-                                        "fiber");
-                                };
-                            };
-                    };
+              luisa::compute::detail::SwitchCaseStmtBuilder{group.key} %
+                  [&] { emit_variant(group.variant); };
             }
             luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
                 luisa::compute::dsl::unreachable(
                     "invalid unified surface value handler");
             };
-        };
+          };
     }
 };
 
@@ -956,22 +941,16 @@ std::uint32_t SurfaceValueInstructionDispatcher::stack_capacity()
 void SurfaceValueInstructionDispatcher::operator()(
     Expr<Buffer<float>> scalar_parameters,
     Expr<Buffer<luisa::float3>> vector_parameters,
-    Expr<Buffer<float>> cycles_bsdf_tables,
-    Expr<BindlessArray> textures,
-    Expr<BindlessArray> geometry_heap,
-    Var<SurfacePointCall> &point,
-    Float3 transaction_shading_normal,
-    Bool use_undisplaced_geometry,
-    Var<luisa::uint4> instruction,
-    UInt instruction_index,
-    const SurfaceValueLocalsView &locals,
-    const PathSurfaceAmbientOcclusionContext
-        *ambient_occlusion) const noexcept {
-    _impl->dispatch(
-        scalar_parameters, vector_parameters, cycles_bsdf_tables, textures,
-        geometry_heap, point, transaction_shading_normal,
-        use_undisplaced_geometry, instruction, instruction_index, locals,
-        ambient_occlusion);
+    Expr<Buffer<float>> cycles_bsdf_tables, Expr<BindlessArray> textures,
+    Expr<BindlessArray> geometry_heap, Var<SurfacePointCall> &point,
+    Float3 transaction_shading_normal, Bool use_undisplaced_geometry,
+    Var<luisa::uint4> instruction, const SurfaceValueLocalsView &locals,
+    const PathSurfaceAmbientOcclusionContext *ambient_occlusion)
+    const noexcept {
+  _impl->dispatch(scalar_parameters, vector_parameters, cycles_bsdf_tables,
+                  textures, geometry_heap, point, transaction_shading_normal,
+                  use_undisplaced_geometry, instruction, locals,
+                  ambient_occlusion);
 }
 
 SurfaceValueInstructionDispatcher make_surface_value_instruction_dispatcher(

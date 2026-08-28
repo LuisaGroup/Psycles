@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -593,10 +594,95 @@ void test_primary_handler_projection() {
                     surface_value_handler_key(box_image.instructions.front()),
             "primary handler projection did not isolate Image BOX exactly");
 
+    constexpr SocketType mix_vector_uniform_operands[]{
+        SocketType::vector, SocketType::vector, SocketType::floating};
+    constexpr SocketType mix_vector_non_uniform_operands[]{
+        SocketType::vector, SocketType::vector, SocketType::vector};
+    const auto mix_vector_uniform =
+        make_program(1103u, ValueOperation::mix_vector, SocketType::vector,
+                     mix_vector_uniform_operands, {0u, 0u});
+    const auto mix_vector_uniform_clamped =
+        make_program(1104u, ValueOperation::mix_vector, SocketType::vector,
+                     mix_vector_uniform_operands, {0u, 1u});
+    const auto mix_vector_non_uniform =
+        make_program(1105u, ValueOperation::mix_vector, SocketType::vector,
+                     mix_vector_non_uniform_operands, {1u, 0u});
+    const auto mix_vector_uniform_image = lower_surface_value_program(
+        mix_vector_uniform, make_plan(mix_vector_uniform));
+    const auto mix_vector_uniform_clamped_image = lower_surface_value_program(
+        mix_vector_uniform_clamped, make_plan(mix_vector_uniform_clamped));
+    const auto mix_vector_non_uniform_image = lower_surface_value_program(
+        mix_vector_non_uniform, make_plan(mix_vector_non_uniform));
+    require(
+        mix_vector_uniform_image.valid &&
+            mix_vector_uniform_clamped_image.valid &&
+            mix_vector_non_uniform_image.valid &&
+            surface_value_handler_key(
+                mix_vector_uniform_image.instructions.front()) ==
+                surface_value_handler_key(
+                    mix_vector_uniform_clamped_image.instructions.front()) &&
+            surface_value_handler_key(
+                mix_vector_uniform_image.instructions.front()) !=
+                surface_value_handler_key(
+                    mix_vector_non_uniform_image.instructions.front()),
+        "typed handler projection did not isolate scalar/vector Mix factors");
+
+    const auto uniform_plan = make_plan(mix_vector_uniform);
+    const auto uniform_clamped_plan = make_plan(mix_vector_uniform_clamped);
+    const auto non_uniform_plan = make_plan(mix_vector_non_uniform);
+    const std::array mix_vector_inputs{
+        SurfaceValueExecutionInput{.program = &mix_vector_uniform,
+                                   .storage = &uniform_plan},
+        SurfaceValueExecutionInput{.program = &mix_vector_uniform_clamped,
+                                   .storage = &uniform_clamped_plan},
+        SurfaceValueExecutionInput{.program = &mix_vector_non_uniform,
+                                   .storage = &non_uniform_plan}};
+    const auto mix_vector_scene =
+        build_surface_value_executable_scene(mix_vector_inputs);
+    require(
+        mix_vector_scene.valid && mix_vector_scene.variants.size() == 2u &&
+            mix_vector_scene.instruction_variants[0u] ==
+                mix_vector_scene.instruction_variants[1u] &&
+            mix_vector_scene.instruction_variants[0u] !=
+                mix_vector_scene.instruction_variants[2u],
+        "Mix Vector data modes multiplied a handler or merged distinct typed "
+        "factor ABIs");
+
+    constexpr SocketType nishita_operands[]{
+        SocketType::floating, SocketType::floating, SocketType::floating,
+        SocketType::floating, SocketType::floating, SocketType::floating,
+        SocketType::floating, SocketType::floating, SocketType::vector};
+    const auto nishita_zero =
+        make_program(1106u, ValueOperation::nishita_sky, SocketType::color,
+                     nishita_operands, {0u, 0u});
+    const auto nishita_large = make_program(
+        1107u, ValueOperation::nishita_sky, SocketType::color, nishita_operands,
+        {std::numeric_limits<std::uint32_t>::max(), 0u});
+    const auto nishita_zero_plan = make_plan(nishita_zero);
+    const auto nishita_large_plan = make_plan(nishita_large);
+    const std::array nishita_inputs{
+        SurfaceValueExecutionInput{.program = &nishita_zero,
+                                   .storage = &nishita_zero_plan},
+        SurfaceValueExecutionInput{.program = &nishita_large,
+                                   .storage = &nishita_large_plan}};
+    const auto nishita_scene =
+        build_surface_value_executable_scene(nishita_inputs);
+    require(
+        nishita_scene.valid && nishita_scene.variants.size() == 1u &&
+            nishita_scene.instruction_variants ==
+                std::vector<std::uint32_t>{0u, 0u} &&
+            nishita_scene.variants.front().instruction.static_u0 == 0u &&
+            nishita_scene.variants.front().svm_immediates ==
+                std::vector<std::uint16_t>{0u} &&
+            nishita_scene.values.metadata.size() == 2u &&
+            nishita_scene.values.metadata[0u].static_u0 == 0u &&
+            nishita_scene.values.metadata[1u].static_u0 ==
+                std::numeric_limits<std::uint32_t>::max(),
+        "Nishita indices multiplied handlers or were truncated into the hot "
+        "immediate");
+
     constexpr SocketType clamp_operands[]{
-        SocketType::floating,
-        SocketType::floating,
-        SocketType::floating};
+        SocketType::floating, SocketType::floating, SocketType::floating};
     const auto clamp_minmax = make_program(
         1110u,
         ValueOperation::clamp_range,

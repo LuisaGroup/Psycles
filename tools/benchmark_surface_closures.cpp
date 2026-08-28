@@ -77,7 +77,7 @@ public:
     return Float3{value};
   }
 
-  [[nodiscard]] Float3 nishita_sky(Expr<std::uint32_t>, std::uint32_t,
+  [[nodiscard]] Float3 nishita_sky(Expr<std::uint32_t>, Expr<std::uint32_t>,
                                    Expr<luisa::float3>, Expr<float>,
                                    Expr<float>, Expr<float>,
                                    Expr<float>) const noexcept override {

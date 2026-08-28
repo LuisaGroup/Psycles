@@ -166,6 +166,7 @@ public:
             .surface = context.surface,
             .parameter_override = context.parameter_override,
             .static_table_override = context.static_table_override,
+            .static_u0_override = context.static_u0_override,
             .svm_immediate_override = context.svm_immediate_override,
             .svm_immediate_domain = context.svm_immediate_domain};
         return _base_node->evaluate(sampled_context);

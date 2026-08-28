@@ -724,12 +724,25 @@ void test_unified_evaluator_provenance_and_exact_interning() {
   const auto exact_bit_scene =
       build_surface_svm_executable_scene(exact_bit_inputs);
   require(exact_bit_scene.valid &&
-              exact_bit_scene.value_variants.size() == 2u &&
+              exact_bit_scene.value_variants.size() == 1u &&
+              exact_bit_scene.image.value_metadata.size() == 1u &&
               std::bit_cast<std::uint32_t>(
-                  exact_bit_scene.value_variants[0u].instruction.static_f0) !=
-                  std::bit_cast<std::uint32_t>(
-                      exact_bit_scene.value_variants[1u].instruction.static_f0),
-          "exact evaluator interning erased signed-zero semantic bits");
+                  exact_bit_scene.image.value_metadata[0u].static_f0) ==
+                  0x80000000u &&
+              surface_svm_value_instruction(
+                  exact_bit_scene.image.instructions
+                      [exact_bit_scene.image.programs[0u].instruction_begin])
+                      .metadata_index == SurfaceValueAddress::invalid_value &&
+              surface_svm_value_instruction(
+                  exact_bit_scene.image.instructions
+                      [exact_bit_scene.image.programs[1u].instruction_begin])
+                      .metadata_index == 0u &&
+              exact_bit_scene.instruction_variants
+                      [exact_bit_scene.image.programs[0u].instruction_begin] ==
+                  exact_bit_scene.instruction_variants
+                      [exact_bit_scene.image.programs[1u].instruction_begin],
+          "dead signed-zero metadata multiplied typed handlers or lost its "
+          "exact bytecode bits");
 
   auto mismatched_metadata = negative_zero.image;
   require(mismatched_metadata.value_metadata.size() == 1u,

@@ -1108,6 +1108,8 @@ lower_surface_value_program(const SurfaceProgram &program,
 
     auto metadata_index = ~std::uint32_t{0u};
     const auto has_metadata =
+        surface_value_operation_uses_metadata_static_u0(
+            instruction.operation) ||
         instruction.static_u0 != 0u || instruction.static_u1 != 0u ||
         std::bit_cast<std::uint32_t>(instruction.static_f0) != 0u ||
         std::bit_cast<std::uint32_t>(instruction.static_f1) != 0u ||

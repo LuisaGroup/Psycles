@@ -1,9 +1,10 @@
 #include "graph_surface_internal.h"
 #include "surface_shader_table_evaluation.h"
 
+#include <luisa/dsl/sugar.h>
+
 #include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/luisa/cycles_noise.h>
-#include <luisa/dsl/sugar.h>
 
 #include <algorithm>
 #include <array>
@@ -20,7 +21,34 @@ namespace operand = compiler::value_operand;
 
 inline constexpr std::uint64_t color_ramp_constant_bit = 1u;
 inline constexpr std::uint64_t color_ramp_sampled_bit = 2u;
-inline constexpr std::uint64_t rgb_curve_sampled_bit = 1u;
+
+template <std::size_t DomainSize, typename Evaluate>
+void dispatch_surface_value_immediate(
+    UInt immediate, std::span<const std::uint16_t> immediate_domain,
+    std::uint32_t mask, Evaluate &&evaluate) noexcept {
+  std::array<bool, DomainSize> active{};
+  for (const auto encoded : immediate_domain) {
+    const auto value = static_cast<std::uint32_t>(encoded) & mask;
+    if (value >= active.size()) {
+      std::abort();
+    }
+    active[value] = true;
+  }
+  luisa::compute::detail::SwitchStmtBuilder{immediate & mask} % [&] {
+    for (auto value = std::size_t{}; value < active.size(); ++value) {
+      if (!active[value]) {
+        continue;
+      }
+      luisa::compute::detail::SwitchCaseStmtBuilder{
+          static_cast<luisa::uint>(value)} %
+          [&, value] { evaluate(static_cast<std::uint32_t>(value)); };
+    }
+    luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+      luisa::compute::dsl::unreachable(
+          "invalid compact surface opcode immediate");
+    };
+  };
+}
 
 // Variable-length node tables are material data. The descriptor keeps payload
 // cardinality out of shader structure; sampled and legacy representations are
@@ -126,16 +154,20 @@ inline constexpr std::uint64_t rgb_curve_sampled_bit = 1u;
     Float factor) noexcept {
     std::array<bool, 4u> active{};
     for (const auto encoded : immediate_domain) {
-        if (encoded >= active.size()) {
-            std::abort();
-        }
-        active[encoded] = true;
+      const auto mode = static_cast<std::uint32_t>(encoded) &
+                        compiler::surface_value_color_ramp_mode_mask;
+      if (mode >= active.size()) {
+        std::abort();
+      }
+      active[mode] = true;
     }
     Float4 ramp = make_float4(0.0f);
-    luisa::compute::detail::SwitchStmtBuilder{mode} % [&] {
-        for (auto index = std::size_t{0u}; index < active.size(); ++index) {
+    luisa::compute::detail::SwitchStmtBuilder{
+        mode & compiler::surface_value_color_ramp_mode_mask} %
+        [&] {
+          for (auto index = std::size_t{0u}; index < active.size(); ++index) {
             if (!active[index]) {
-                continue;
+              continue;
             }
             luisa::compute::detail::SwitchCaseStmtBuilder{
                 static_cast<luisa::uint>(index)} %
@@ -144,12 +176,12 @@ inline constexpr std::uint64_t rgb_curve_sampled_bit = 1u;
                         services, table, factor,
                         static_cast<std::uint32_t>(index));
                 };
-        }
-        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+          }
+          luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
             luisa::compute::dsl::unreachable(
                 "invalid compact surface Color Ramp mode");
+          };
         };
-    };
     return ramp;
 }
 
@@ -303,18 +335,28 @@ public:
                         instruction.operation ==
                         compiler::ValueOperation::
                             white_noise_color;
-                    value =
-                        cycles_noise::evaluate_white_shared(
-                            static_cast<std::uint32_t>(
-                                instruction.static_u0),
-                            color_needed,
-                            vector(
-                                instruction.operand(
-                                    operand::white_noise::vector),
-                                result),
-                            scalar(
-                                instruction.operand(operand::white_noise::w),
-                                result));
+                    const auto vector_value = vector(
+                        instruction.operand(operand::white_noise::vector),
+                        result);
+                    const auto w = scalar(
+                        instruction.operand(operand::white_noise::w), result);
+                    if (context.svm_immediate_override != nullptr) {
+                      dispatch_surface_value_immediate<5u>(
+                          *context.svm_immediate_override,
+                          context.svm_immediate_domain,
+                          compiler::surface_value_white_noise_dimensions_mask,
+                          [&](std::uint32_t dimensions) noexcept {
+                            if (dimensions == 0u) {
+                              std::abort();
+                            }
+                            value = cycles_noise::evaluate_white_shared(
+                                dimensions, color_needed, vector_value, w);
+                          });
+                    } else {
+                      value = cycles_noise::evaluate_white_shared(
+                          static_cast<std::uint32_t>(instruction.static_u0),
+                          color_needed, vector_value, w);
+                    }
                     break;
                 }
                 case compiler::ValueOperation::checker_color:
@@ -565,10 +607,12 @@ public:
                                   factor,
                                   static_cast<std::uint32_t>(
                                       instruction.static_u0));
-                    value =
-                        instruction.static_u1 != 0u
-                            ? make_float4(ramp.w)
-                            : ramp;
+                    const auto alpha_output =
+                        context.svm_immediate_override != nullptr
+                            ? surface_value_category(instruction.result_type) ==
+                                  SurfaceValueCategory::scalar
+                            : instruction.static_u1 != 0u;
+                    value = alpha_output ? make_float4(ramp.w) : ramp;
                     break;
                 }
                 case compiler::ValueOperation::rgb_curve: {
@@ -585,66 +629,65 @@ public:
                                   instruction.parameter.value};
                     const auto table = shader_table_view(
                         services, point, parameter);
-                    Float3 mapped;
-                    if ((instruction.static_u0 &
-                         rgb_curve_sampled_bit) != 0u) {
-                        mapped = rgb_curve_sampled(
-                            services,
-                            table,
-                            input,
-                            factor,
-                            scalar(
-                                instruction.operand(
-                                    operand::rgb_curve::min_x),
-                                result),
-                            scalar(
-                                instruction.operand(
-                                    operand::rgb_curve::max_x),
-                                result),
-                            scalar(
-                                instruction.operand(
-                                    operand::rgb_curve::extrapolate),
-                                result));
+                    const auto min_x = scalar(
+                        instruction.operand(operand::rgb_curve::min_x), result);
+                    const auto max_x = scalar(
+                        instruction.operand(operand::rgb_curve::max_x), result);
+                    const auto extrapolate = scalar(
+                        instruction.operand(operand::rgb_curve::extrapolate),
+                        result);
+                    Float3 mapped = make_float3(0.0f);
+                    const auto evaluate_curve = [&](bool sampled) noexcept {
+                      mapped = sampled ? rgb_curve_sampled(services, table,
+                                                           input, factor, min_x,
+                                                           max_x, extrapolate)
+                                       : rgb_curve_control(services, table,
+                                                           input, factor);
+                    };
+                    if (context.svm_immediate_override != nullptr) {
+                      dispatch_surface_value_immediate<2u>(
+                          *context.svm_immediate_override,
+                          context.svm_immediate_domain,
+                          compiler::surface_value_rgb_curve_sampled_bit,
+                          [&](std::uint32_t sampled) noexcept {
+                            evaluate_curve(sampled != 0u);
+                          });
                     } else {
-                        mapped = rgb_curve_control(
-                            services, table, input, factor);
+                      evaluate_curve((instruction.static_u0 & 1u) != 0u);
                     }
                     value = make_float4(mapped, 1.0f);
                     break;
                 }
                 case compiler::ValueOperation::separate_r:
-                    value = make_float4(
-                        separate_color(
-                            services,
-                            vector(
-                                instruction.operand(
-                                    operand::separate_color::color),
-                                result),
-                            instruction.static_u0)
-                            .x);
-                    break;
                 case compiler::ValueOperation::separate_g:
-                    value = make_float4(
-                        separate_color(
-                            services,
-                            vector(
-                                instruction.operand(
-                                    operand::separate_color::color),
-                                result),
-                            instruction.static_u0)
-                            .y);
-                    break;
-                case compiler::ValueOperation::separate_b:
-                    value = make_float4(
-                        separate_color(
-                            services,
-                            vector(
-                                instruction.operand(
-                                    operand::separate_color::color),
-                                result),
-                            instruction.static_u0)
-                            .z);
-                    break;
+                case compiler::ValueOperation::separate_b: {
+                  const auto color = vector(
+                      instruction.operand(operand::separate_color::color),
+                      result);
+                  Float3 channels = make_float3(0.0f);
+                  if (context.svm_immediate_override != nullptr) {
+                    dispatch_surface_value_immediate<3u>(
+                        *context.svm_immediate_override,
+                        context.svm_immediate_domain,
+                        compiler::surface_value_color_mode_mask,
+                        [&](std::uint32_t mode) noexcept {
+                          channels = separate_color(services, color, mode);
+                        });
+                  } else {
+                    channels =
+                        separate_color(services, color, instruction.static_u0);
+                  }
+                  const auto channel =
+                      instruction.operation ==
+                              compiler::ValueOperation::separate_r
+                          ? channels.x
+                      : instruction.operation ==
+                              compiler::ValueOperation::separate_g
+                          ? channels.y
+                          : channels.z;
+                  value = make_float4(channel);
+                  break;
+                }
                 case compiler::ValueOperation::combine_color: {
                     auto channels = make_float3(
                         scalar(
@@ -656,12 +699,20 @@ public:
                         scalar(
                             instruction.operand(operand::combine_color::b),
                             result));
-                    value = make_float4(
-                        combine_color(
-                            services,
-                            channels,
-                            instruction.static_u0),
-                        1.0f);
+                    Float3 combined = make_float3(0.0f);
+                    if (context.svm_immediate_override != nullptr) {
+                      dispatch_surface_value_immediate<3u>(
+                          *context.svm_immediate_override,
+                          context.svm_immediate_domain,
+                          compiler::surface_value_color_mode_mask,
+                          [&](std::uint32_t mode) noexcept {
+                            combined = combine_color(services, channels, mode);
+                          });
+                    } else {
+                      combined = combine_color(services, channels,
+                                               instruction.static_u0);
+                    }
+                    value = make_float4(combined, 1.0f);
                     break;
                 }
                 case compiler::ValueOperation::hosek_wilkie_sky: {
@@ -744,25 +795,25 @@ public:
                     value = make_float4(
                         services.nishita_sky(
                             point.parameter_block,
-                            static_cast<std::uint32_t>(
-                                instruction.static_u0),
+                            context.static_u0_override != nullptr
+                                ? Expr<std::uint32_t>{context
+                                                          .static_u0_override
+                                                          ->expression()}
+                                : Expr<std::uint32_t>{static_cast<
+                                      std::uint32_t>(instruction.static_u0)},
                             direction,
+                            scalar(instruction.operand(
+                                       operand::nishita_sky::elevation),
+                                   result),
+                            scalar(instruction.operand(
+                                       operand::nishita_sky::rotation),
+                                   result),
                             scalar(
-                                instruction.operand(
-                                    operand::nishita_sky::elevation),
+                                instruction.operand(operand::nishita_sky::size),
                                 result),
-                            scalar(
-                                instruction.operand(
-                                    operand::nishita_sky::rotation),
-                                result),
-                            scalar(
-                                instruction.operand(
-                                    operand::nishita_sky::size),
-                                result),
-                            scalar(
-                                instruction.operand(
-                                    operand::nishita_sky::intensity),
-                                result)),
+                            scalar(instruction.operand(
+                                       operand::nishita_sky::intensity),
+                                   result)),
                         1.0f);
                     break;
                 }

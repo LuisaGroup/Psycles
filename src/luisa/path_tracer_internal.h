@@ -12,11 +12,11 @@
 #include <psycles/luisa/surface_value_runtime_limits.h>
 #include <psycles/luisa/volume_majorant_hierarchy.h>
 
-#include "path_tracer_types.h"
 #include "path_kernel_executor.h"
+#include "path_tracer_types.h"
 #include "path_tracer_volume_metadata.h"
-#include "volume_guiding_filter.h"
 #include "surface_math_constants.h"
+#include "volume_guiding_filter.h"
 
 #include <algorithm>
 #include <array>
@@ -110,24 +110,6 @@ using luisa::compute::BufferFloat3;
 using luisa::compute::BufferFloat4;
 using luisa::compute::BufferUInt;
 using luisa::compute::Callable;
-using luisa::compute::Expr;
-using luisa::compute::Float;
-using luisa::compute::Float2;
-using luisa::compute::Float3;
-using luisa::compute::Float4;
-using luisa::compute::ImageFloat;
-using luisa::compute::Int;
-using luisa::compute::Kernel1D;
-using luisa::compute::Kernel2D;
-using luisa::compute::Image;
-using luisa::compute::Mesh;
-using luisa::compute::ProceduralPrimitive;
-using luisa::compute::Shader1D;
-using luisa::compute::Stream;
-using luisa::compute::Triangle;
-using luisa::compute::UInt;
-using luisa::compute::UInt2;
-using luisa::compute::Var;
 using luisa::compute::cast;
 using luisa::compute::clamp;
 using luisa::compute::cross;
@@ -135,23 +117,41 @@ using luisa::compute::def;
 using luisa::compute::dispatch_id;
 using luisa::compute::dispatch_x;
 using luisa::compute::dot;
+using luisa::compute::Expr;
+using luisa::compute::Float;
+using luisa::compute::Float2;
+using luisa::compute::Float3;
+using luisa::compute::Float4;
+using luisa::compute::Image;
+using luisa::compute::ImageFloat;
+using luisa::compute::Int;
 using luisa::compute::inverse;
+using luisa::compute::Kernel1D;
+using luisa::compute::Kernel2D;
 using luisa::compute::length_squared;
 using luisa::compute::make_float2;
 using luisa::compute::make_float3;
 using luisa::compute::make_float4;
 using luisa::compute::make_float4x4;
-using luisa::compute::make_uint2;
 using luisa::compute::make_ray;
+using luisa::compute::make_uint2;
 using luisa::compute::max;
+using luisa::compute::Mesh;
 using luisa::compute::min;
 using luisa::compute::normalize;
 using luisa::compute::offset_ray_origin;
+using luisa::compute::ProceduralPrimitive;
 using luisa::compute::select;
 using luisa::compute::set_block_size;
+using luisa::compute::Shader1D;
+using luisa::compute::Stream;
 using luisa::compute::synchronize;
 using luisa::compute::transpose;
+using luisa::compute::Triangle;
 using luisa::compute::triangle_interpolate;
+using luisa::compute::UInt;
+using luisa::compute::UInt2;
+using luisa::compute::Var;
 
 constexpr auto ray_maximum = 1.0e30f;
 // Slot 9 stores the Cycles intersection representation of positions. It
@@ -333,15 +333,15 @@ struct SurfaceSvmClosureVariant {
 // device view. The view has scene-independent shape, so adding material
 // programs changes data only; it does not grow the path-kernel resource ABI.
 enum class SurfaceValueRuntimeBufferSlot : std::uint32_t {
-    svm_program,
-    svm_instruction,
-    svm_value_operand,
-    svm_instruction_variant,
-    svm_metadata_parameter,
-    svm_metadata_static_range,
-    svm_static_data,
-    svm_closure_operand,
-    count,
+  svm_program,
+  svm_instruction,
+  svm_value_operand,
+  svm_metadata_static_u0,
+  svm_metadata_parameter,
+  svm_metadata_static_range,
+  svm_static_data,
+  svm_closure_operand,
+  count,
 };
 
 [[nodiscard]] constexpr std::uint32_t
@@ -369,11 +369,10 @@ struct SurfaceValueRuntime {
     // source-provenance relation. No split-stream executable participates in
     // production handler selection.
     std::vector<compiler::SurfaceValueStaticVariant> value_variants;
-    // Executed single-stream image. No unified SVM instruction is allowed to
-    // infer a handler from its opcode alone:
-    // `svm_instruction_variants` is a total, scene-parallel proof side stream
-    // for value records and the invalid sentinel for every control/closure
-    // record.
+    // Executed single-stream image. `svm_instruction_variants` is retained
+    // strictly as a host-side construction proof and domain projection. The
+    // device instruction selects its typed handler from its own control word;
+    // no scene-parallel evaluator side stream is uploaded or read.
     compiler::SurfaceSvmSceneImage svm_scene;
     std::vector<std::uint32_t> svm_instruction_variants;
     std::vector<SurfaceSvmClosureVariant>
@@ -420,7 +419,10 @@ struct SurfaceValueRuntime {
     luisa::vector<luisa::uint4> svm_program_descriptors;
     luisa::vector<luisa::uint4> svm_instructions;
     luisa::vector<luisa::uint> svm_value_operands;
-    luisa::vector<luisa::uint> svm_variants;
+    // Exact device projection of the only unbounded static_u0 consumer:
+    // Nishita sky indices. Other metadata records carry zero here because no
+    // value handler observes their static_u0 through this buffer.
+    luisa::vector<luisa::uint> svm_metadata_static_u0;
     luisa::vector<luisa::uint> svm_metadata_parameters;
     luisa::vector<luisa::uint2> svm_metadata_static_ranges;
     luisa::vector<float> svm_static_data;
@@ -429,7 +431,7 @@ struct SurfaceValueRuntime {
     Buffer<luisa::uint4> svm_program_buffer;
     Buffer<luisa::uint4> svm_instruction_buffer;
     Buffer<luisa::uint> svm_value_operand_buffer;
-    Buffer<luisa::uint> svm_instruction_variant_buffer;
+    Buffer<luisa::uint> svm_metadata_static_u0_buffer;
     Buffer<luisa::uint> svm_metadata_parameter_buffer;
     Buffer<luisa::uint2> svm_metadata_static_range_buffer;
     Buffer<float> svm_static_data_buffer;

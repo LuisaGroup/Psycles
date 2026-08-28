@@ -28,15 +28,10 @@ using luisa::compute::Float;
 using luisa::compute::Float2;
 using luisa::compute::Float3;
 using luisa::compute::Float4;
-using luisa::compute::Polymorphic;
-using luisa::compute::UInt;
-using luisa::compute::ULong;
 using luisa::compute::make_float2;
 using luisa::compute::make_float3;
 using luisa::compute::make_float4;
 
-using contract::SurfaceEvent;
-using contract::TransportMode;
 using contract::event_diffuse;
 using contract::event_glossy;
 using contract::event_none;
@@ -45,6 +40,11 @@ using contract::event_singular;
 using contract::event_subsurface;
 using contract::event_transmission;
 using contract::event_transparent;
+using contract::SurfaceEvent;
+using contract::TransportMode;
+using luisa::compute::Polymorphic;
+using luisa::compute::UInt;
+using luisa::compute::ULong;
 
 struct SurfaceCapabilities {
     std::uint64_t features{};
@@ -1203,17 +1203,13 @@ public:
         Expr<luisa::float3> rec709) const noexcept = 0;
 
     // Cycles Nishita is a precomputed 512x128 spectral LUT, not an analytic
-    // color approximation. The host/JIT-stage sky index identifies the LUT
-    // associated with this material parameter block; direction-dependent
-    // sampling and the solar disc remain Luisa expressions.
-    [[nodiscard]] virtual Float3 nishita_sky(
-        Expr<std::uint32_t> block,
-        std::uint32_t sky_index,
-        Expr<luisa::float3> direction,
-        Expr<float> sun_elevation,
-        Expr<float> sun_rotation,
-        Expr<float> angular_diameter,
-        Expr<float> sun_intensity) const noexcept = 0;
+    // color approximation. Both the material block and sky index are SVM
+    // instruction data; neither may specialize a material-specific handler.
+    [[nodiscard]] virtual Float3
+    nishita_sky(Expr<std::uint32_t> block, Expr<std::uint32_t> sky_index,
+                Expr<luisa::float3> direction, Expr<float> sun_elevation,
+                Expr<float> sun_rotation, Expr<float> angular_diameter,
+                Expr<float> sun_intensity) const noexcept = 0;
 };
 
 class Surface {

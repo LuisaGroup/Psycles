@@ -1,7 +1,6 @@
 #include "surface_value_variant_interner.h"
 
 #include <algorithm>
-#include <bit>
 #include <cstddef>
 #include <limits>
 #include <optional>
@@ -18,7 +17,7 @@ namespace {
 make_static_variant_key(const SurfaceProgram &program,
                         const ValueInstruction &instruction) {
   std::vector<std::uint64_t> key;
-  key.reserve(9u + instruction.operands.size());
+  key.reserve(6u + instruction.operands.size());
   auto result_bank = SurfaceValueBank::scalar;
   [[maybe_unused]] const auto result_supported =
       classify_surface_value_type(instruction.result_type, result_bank);
@@ -28,18 +27,6 @@ make_static_variant_key(const SurfaceProgram &program,
       instruction.operation, instruction.static_u0));
   key.emplace_back(surface_value_svm_evaluator_static_u1(
       instruction.operation, instruction.static_u1));
-  key.emplace_back(std::bit_cast<std::uint32_t>(instruction.static_f0));
-  key.emplace_back(std::bit_cast<std::uint32_t>(instruction.static_f1));
-
-  // Color-ramp and RGB-curve table addresses are instruction metadata. For
-  // every other operation ParameterId remains part of evaluator identity so a
-  // future operation cannot silently acquire host-side parameter semantics.
-  const auto dynamic_parameter =
-      instruction.operation == ValueOperation::color_ramp ||
-      instruction.operation == ValueOperation::rgb_curve;
-  key.emplace_back(!dynamic_parameter && instruction.parameter.valid()
-                       ? instruction.parameter.value
-                       : ~std::uint64_t{0u});
   key.emplace_back(instruction.operands.size());
   for (const auto operand : instruction.operands) {
     auto bank = SurfaceValueBank::scalar;
@@ -47,11 +34,8 @@ make_static_variant_key(const SurfaceProgram &program,
         program.value_instructions()[operand.value].result_type, bank);
     key.emplace_back(type_key(bank));
   }
-
-  // Table contents are bytecode data. Shape remains in the JIT identity
-  // because current evaluators have statically indexed 16- and 33-float
-  // layouts.
-  key.emplace_back(instruction.static_table.size());
+  key.emplace_back(
+      surface_value_handler_static_table_size(instruction.operation));
   return key;
 }
 
@@ -223,6 +207,12 @@ bool SurfaceValueVariantInterner::intern(const SurfaceProgram &program,
         "a value evaluator has immutable fields outside its SVM contract";
     return false;
   }
+  if (!surface_value_static_table_shape_valid(
+          instruction.operation, instruction.static_table.size())) {
+    diagnostic =
+        "a value evaluator has an invalid statically indexed table shape";
+    return false;
+  }
   auto result_bank = SurfaceValueBank::scalar;
   if (!classify_surface_value_type(instruction.result_type, result_bank)) {
     diagnostic = "a value evaluator has an unsupported result execution type";
@@ -251,6 +241,19 @@ bool SurfaceValueVariantInterner::intern(const SurfaceProgram &program,
   const auto immediate =
       static_cast<std::uint16_t>(make_surface_value_svm_immediate(
           instruction.operation, instruction.static_u0, instruction.static_u1));
+  const auto device_key = make_surface_value_handler_key(
+      instruction.operation, result_bank, immediate);
+  const auto [handler, handler_inserted] =
+      _handler_indices.try_emplace(device_key, variant_index);
+  if (handler->second != variant_index) {
+    diagnostic =
+        "two distinct typed evaluator shapes have the same device handler "
+        "key";
+    if (inserted) {
+      _indices.erase(iter);
+    }
+    return false;
+  }
   if (!inserted) {
     auto &immediates = _variants[variant_index].svm_immediates;
     if (std::find(immediates.begin(), immediates.end(), immediate) ==
@@ -262,21 +265,27 @@ bool SurfaceValueVariantInterner::intern(const SurfaceProgram &program,
   if (_variants.size() >= std::numeric_limits<std::uint32_t>::max()) {
     diagnostic = "the scene has too many immutable value variants";
     _indices.erase(iter);
+    if (handler_inserted) {
+      _handler_indices.erase(handler);
+    }
     return false;
   }
 
   auto normalized = instruction;
   normalized.result_type = canonical_surface_value_type(result_bank);
-  if (normalized.operation == ValueOperation::color_ramp ||
-      normalized.operation == ValueOperation::rgb_curve) {
-    normalized.parameter = {};
-  }
+  // Every executable ParameterId and float/static-table payload is bytecode
+  // data. None of these fields changes the handler AST. The only statically
+  // indexed tables retain a zero-filled shape witness so ValueNode records the
+  // exact fixed number of accesses without capturing material contents.
+  normalized.parameter = {};
+  normalized.static_f0 = 0.0f;
+  normalized.static_f1 = 0.0f;
   normalized.static_u0 = surface_value_svm_evaluator_static_u0(
       normalized.operation, normalized.static_u0);
   normalized.static_u1 = surface_value_svm_evaluator_static_u1(
       normalized.operation, normalized.static_u1);
-  std::fill(normalized.static_table.begin(), normalized.static_table.end(),
-            0.0f);
+  normalized.static_table.assign(
+      surface_value_handler_static_table_size(normalized.operation), 0.0f);
 
   std::vector<contract::SocketType> operand_types;
   operand_types.reserve(normalized.operands.size());

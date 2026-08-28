@@ -498,6 +498,10 @@ struct ValueEvaluationContext {
     // variant interning. Expanded evaluation leaves this null and reads the
     // original instruction payload.
     const ValueStaticTableView *static_table_override{};
+    // Rare unbounded opcode data which cannot fit the 14-bit hot immediate.
+    // The unified SVM currently uses this only for Nishita's scene texture
+    // binding index. It remains instruction data, never handler identity.
+    const UInt *static_u0_override{};
     // Compact SVM execution owns selected immutable node fields as a validated
     // opcode-local instruction immediate. The exact host domain is supplied
     // so a dynamic handler records only modes reachable by its equivalence
