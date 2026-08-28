@@ -675,6 +675,13 @@ int main(int argc, char **argv) {
   scene->subsurface_accel->emplace_back(mesh, make_float4x4(1.0f), 0xffu, false,
                                         0u);
   scene->subsurface_instance_count = 2u;
+  scene->ambient_occlusion_local_accel.emplace(device.create_accel());
+  scene->ambient_occlusion_local_accel->emplace_back(
+      mesh, make_float4x4(1.0f), 0xffu, false, 0u);
+  scene->ambient_occlusion_local_accel->emplace_back(
+      mesh, coincident_transform, 0xffu, false, 2u);
+  scene->ambient_occlusion_local_accel->emplace_back(
+      mesh, coincident_transform, 0xffu, false, 3u);
 
   const auto empty_shape = traversal_xir_shape(scene, {});
   const auto triangle_shape =
@@ -925,6 +932,41 @@ int main(int argc, char **argv) {
   // storage analysis instead of hiding an accidental complexity regression.
   auto shader = device.compile(
       evaluate, luisa::compute::ShaderOption{.enable_cache = false});
+
+  constexpr auto ambient_occlusion_record_count = std::size_t{6u};
+  auto ambient_occlusion_output =
+      device.create_buffer<luisa::uint>(ambient_occlusion_record_count);
+  const auto triangle_traversal = make_scene_traversal_component(
+      {.primitives = {.triangles = true}});
+  Kernel1D evaluate_ambient_occlusion =
+      [scene, traversal, triangle_traversal](BufferUInt records) noexcept {
+        const auto test = dispatch_x();
+        const auto local = (test >= 1u) & (test <= 3u);
+        const auto at_coincident_instances = (test == 3u) | (test == 4u);
+        const auto short_curve_probe = test <= 1u;
+        const auto origin = select(
+            make_float3(0.0f), make_float3(5.0f, 0.0f, 0.0f),
+            at_coincident_instances);
+        const auto ray = make_ray(
+            origin, make_float3(0.0f, 0.0f, 1.0f), 0.0f,
+            select(10.0f, 3.0f, short_curve_probe));
+        ScenePrimitiveIdentity source{
+            .object = select(11u, 489u, at_coincident_instances),
+            .primitive = select(999u, 100u, at_coincident_instances)};
+        Bool occluded;
+        $if(test == 5u) {
+          source = {.object = 11u, .primitive = 100u};
+          occluded = triangle_traversal->ambient_occluded(
+              scene, ray, source, false);
+        }
+        $else {
+          occluded = traversal->ambient_occluded(scene, ray, source, local);
+        };
+        records.write(test, select(0u, 1u, occluded));
+      };
+  auto ambient_occlusion_shader = device.compile(
+      evaluate_ambient_occlusion,
+      luisa::compute::ShaderOption{.enable_cache = false});
 
   constexpr auto shadow_batch_lane_count = std::size_t{257u};
   constexpr auto shadow_test_block_size = std::uint32_t{256u};
@@ -1181,6 +1223,8 @@ int main(int argc, char **argv) {
       device, shadow_coro, shadow_coro_config};
 
   std::array<luisa::float4, record_count> actual{};
+  std::array<std::uint32_t, ambient_occlusion_record_count>
+      ambient_occlusion_actual{};
   std::vector<luisa::float4> shadow_batch_actual(shadow_batch_output_count);
   std::vector<luisa::float4> shadow_storage_identity_actual(
       shadow_batch_lane_count);
@@ -1214,7 +1258,11 @@ int main(int argc, char **argv) {
          << scene->heap.update() << mesh.build() << bottle_mesh.build()
          << overlap_mesh.build() << curves.build() << scene->accel.build()
          << scene->subsurface_accel->build()
+         << scene->ambient_occlusion_local_accel->build()
          << shader(output).dispatch(record_count)
+         << ambient_occlusion_shader(ambient_occlusion_output)
+                .dispatch(static_cast<std::uint32_t>(
+                    ambient_occlusion_record_count))
          << shadow_batch_shader(
                 shadow_batch_output,
                 static_cast<std::uint32_t>(shadow_batch_lane_count),
@@ -1240,6 +1288,8 @@ int main(int argc, char **argv) {
       shadow_test_block_size)
       .dispatch(static_cast<std::uint32_t>(shadow_batch_lane_count))(stream);
   stream << output.copy_to(luisa::span{actual})
+         << ambient_occlusion_output.copy_to(
+                luisa::span{ambient_occlusion_actual})
          << shadow_batch_output.copy_to(luisa::span{shadow_batch_actual})
          << shadow_storage_identity_output.copy_to(
                 luisa::span{shadow_storage_identity_actual})
@@ -1273,6 +1323,17 @@ int main(int argc, char **argv) {
       luisa::float4{3.0f, 0.0f, 0.0f, 4.0f},
       luisa::float4{0.0f, 1.0f, 0.0f, 4.0f}};
   auto failed = false;
+  constexpr std::array<std::uint32_t, ambient_occlusion_record_count>
+      ambient_occlusion_expected{1u, 0u, 1u, 0u, 1u, 0u};
+  if (ambient_occlusion_actual != ambient_occlusion_expected) {
+    std::cerr << "ambient-occlusion traversal semantics failed on " << backend
+              << ": got";
+    for (const auto value : ambient_occlusion_actual) {
+      std::cerr << ' ' << value;
+    }
+    std::cerr << "\n";
+    failed = true;
+  }
   for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
     if (!valid_backend_native_record(index, actual[index], expected[index])) {
       std::cerr << "scene traversal failed on " << backend << " at record "

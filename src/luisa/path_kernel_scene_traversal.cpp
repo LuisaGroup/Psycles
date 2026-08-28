@@ -475,6 +475,104 @@ private:
     return reducer.summary();
   }
 
+  [[nodiscard]] Bool trace_ambient_occlusion(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<luisa::compute::Ray> &ray,
+      const ScenePrimitiveIdentity &source,
+      Expr<bool> only_local) const noexcept {
+    Bool occluded = false;
+
+    const auto handle_surface = [&](
+        luisa::compute::SurfaceCandidate &candidate,
+        Expr<std::uint32_t> primary_instance,
+        Expr<bool> restrict_to_source_object) noexcept {
+          const auto hit = candidate.hit();
+          const auto metadata =
+              emit_primitive_metadata(scene, primary_instance);
+          const auto object = metadata.instance.cycles_object_index;
+          const auto primitive =
+              metadata.instance.cycles_primitive_offset + hit->prim;
+          const auto accepted =
+              (!source.matches(object, primitive)) &
+              ((!restrict_to_source_object) |
+               (object == source.object));
+          $if(accepted) {
+            occluded = true;
+            candidate.terminate();
+          };
+        };
+    const auto handle_global_surface =
+        [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+          const auto hit = candidate.hit();
+          handle_surface(candidate, hit->inst, false);
+        };
+    const auto handle_local_surface =
+        [&](luisa::compute::SurfaceCandidate &candidate) noexcept {
+          const auto hit = candidate.hit();
+          const auto primary_instance =
+              (*scene->ambient_occlusion_local_accel)
+                  ->instance_user_id(hit->inst);
+          handle_surface(candidate, primary_instance, true);
+        };
+    const auto handle_procedural =
+        [&](luisa::compute::ProceduralCandidate &candidate) noexcept {
+          const auto hit = candidate.hit();
+          const auto curve = emit_curve_metadata(scene, hit->inst, hit->prim);
+          $if((!only_local) &
+              (curve.primitive.primitive_kind == geometry_kind_curve)) {
+            const auto object =
+                curve.primitive.instance.cycles_object_index;
+            const auto primitive = curve.segment.cycles_curve_index;
+            $if(!source.matches(object, primitive)) {
+              const auto exact = _ribbons->intersect(
+                  candidate.object_ray(),
+                  emit_curve_control_points(scene, curve),
+                  curve.primitive.curve_subdivision_level);
+              $if(exact.valid) {
+                occluded = true;
+                candidate.terminate();
+              };
+            };
+          };
+        };
+
+    $if(only_local) {
+      if (scene->ambient_occlusion_local_accel) {
+        const auto ignored = (*scene->ambient_occlusion_local_accel)->traverse(
+            ray, {.visibility_mask = 0xffu})
+                                 .on_surface_candidate(handle_local_surface)
+                                 .trace();
+        static_cast<void>(ignored);
+      }
+    }
+    $else {
+      if (_plan.primitives.mixed()) {
+        const auto ignored =
+            scene->accel->traverse(
+                ray, {.visibility_mask = shadow_visibility})
+                .on_surface_candidate(handle_global_surface)
+                .on_procedural_candidate(handle_procedural)
+                .trace();
+        static_cast<void>(ignored);
+      } else if (_plan.primitives.triangles) {
+        const auto ignored =
+            scene->accel->traverse(
+                ray, {.visibility_mask = shadow_visibility})
+                .on_surface_candidate(handle_global_surface)
+                .trace();
+        static_cast<void>(ignored);
+      } else if (_plan.primitives.curves) {
+        const auto ignored =
+            scene->accel->traverse(
+                ray, {.visibility_mask = shadow_visibility})
+                .on_procedural_candidate(handle_procedural)
+                .trace();
+        static_cast<void>(ignored);
+      }
+    };
+    return occluded;
+  }
+
 public:
   explicit UnifiedSceneTraversalComponent(SceneTraversalStagePlan plan)
       : _plan{plan},
@@ -498,6 +596,15 @@ public:
                  const ScenePrimitiveIdentity &light) const noexcept override {
     return trace(scene, ray, visibility_mask, source, light);
   }
+
+  Bool ambient_occluded(
+      const std::shared_ptr<LuisaSceneData> &scene,
+      const Var<luisa::compute::Ray> &ray,
+      const ScenePrimitiveIdentity &source,
+      Expr<bool> only_local) const noexcept override {
+    return trace_ambient_occlusion(scene, ray, source, only_local);
+  }
+
   Var<ShadowIntersectionBatchCall> collect_shadow(
       const std::shared_ptr<LuisaSceneData> &scene,
       const Var<luisa::compute::Ray> &ray, Expr<std::uint32_t> visibility_mask,

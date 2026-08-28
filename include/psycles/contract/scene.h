@@ -486,6 +486,10 @@ struct SceneSnapshot {
     // CyclesWorldSettings::max_bounces follows the same inclusive NEE limit
     // as analytic lamps.
     std::uint32_t world_max_bounces{1024u};
+    // Blender World.light_settings.distance. Cycles mirrors this scene value
+    // into kernel_data.integrator.ao_bounces_distance; shader AO nodes with
+    // Global Radius enabled read it instead of their authored Distance.
+    float ambient_occlusion_distance{10.0f};
 };
 
 struct UpsertMaterial {

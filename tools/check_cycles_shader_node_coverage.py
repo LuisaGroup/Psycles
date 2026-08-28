@@ -74,6 +74,15 @@ CYCLES_VERIFIED = {
 # Cycles linear-EXR probes before they can move to ``cycles_verified``.
 DEVICE_IMPLEMENTED_UNVERIFIED: set[str] = set()
 
+# Complete device routes with a focused newer-Blender oracle, retained
+# separately until the repository's whole-node inventory and baseline are
+# regenerated for that same Blender release. This avoids both claiming that a
+# 5.2 result belongs to the checked-in 4.5.10 baseline and reporting a proven
+# implementation as "no supported lowering".
+DEVICE_VERIFIED_UNVERSIONED = {
+    "AMBIENT_OCCLUSION",
+}
+
 # These nodes have a device implementation with known missing modes, inputs, or
 # exact Cycles math. Keeping this list separate prevents "works in Lone Monk"
 # from being mistaken for full node support.
@@ -220,6 +229,12 @@ def _status(node: dict[str, Any]) -> tuple[str, str]:
             "device_implemented_unverified",
             "runs in Luisa; dedicated Cycles node probe still required",
         )
+    if node_type in DEVICE_VERIFIED_UNVERSIONED:
+        return (
+            "device_verified_unversioned",
+            "verified by a newer-Blender probe; inventory-version baseline "
+            "still needs regeneration",
+        )
     if node_type in DEVICE_PARTIAL:
         return (
             "device_partial",
@@ -245,6 +260,7 @@ def _report(inventory: dict[str, Any]) -> dict[str, Any]:
     declared = (
         CYCLES_VERIFIED
         | DEVICE_IMPLEMENTED_UNVERIFIED
+        | DEVICE_VERIFIED_UNVERSIONED
         | DEVICE_PARTIAL
         | STRUCTURAL_ADAPTER
     )

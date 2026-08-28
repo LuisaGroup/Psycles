@@ -492,6 +492,11 @@ def _cycles_settings(scene: Any) -> dict[str, Any]:
             "seed_subframe": subframe,
         }
     )
+    world = scene.world
+    lighting = getattr(world, "light_settings", None) if world else None
+    result["ao_distance"] = float(
+        getattr(lighting, "distance", 10.0)
+    )
     return result
 
 

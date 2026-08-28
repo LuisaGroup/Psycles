@@ -23,6 +23,96 @@ def _background_world(scene: Any) -> None:
     _world(scene, (0.16, 0.48, 0.77, 1.0), 2.3)
 
 
+def _ambient_occlusion_matrix(scene: Any) -> None:
+    configurations = (
+        ("Explicit Distance", 0.5, False, False, None, None),
+        (
+            "Only Local Color",
+            0.5,
+            False,
+            True,
+            None,
+            (0.23, 0.51, 0.79, 1.0),
+        ),
+        ("Global Radius", 0.0, False, False, None, None),
+        ("Inside", 0.5, True, False, None, None),
+        ("Linked Side Normal", 0.5, False, False, (1.0, 0.0, 0.0), None),
+        (
+            "Explicit Distance Color",
+            0.5,
+            False,
+            False,
+            None,
+            (0.81, 0.37, 0.19, 1.0),
+        ),
+    )
+    materials = []
+    for name, distance, inside, only_local, normal, color in configurations:
+        material, tree, output = _material(f"AO {name}")
+        ambient_occlusion = tree.nodes.new("ShaderNodeAmbientOcclusion")
+        ambient_occlusion.name = name
+        ambient_occlusion.samples = 16
+        ambient_occlusion.inside = inside
+        ambient_occlusion.only_local = only_local
+        _input(ambient_occlusion, "Distance").default_value = distance
+        if color is not None:
+            _input(ambient_occlusion, "Color").default_value = color
+        if normal is not None:
+            tree.links.new(
+                _linked_vector(tree, f"{name} Normal", normal),
+                _input(ambient_occlusion, "Normal"),
+            )
+        emission = tree.nodes.new("ShaderNodeEmission")
+        emission.name = f"{name} Emission"
+        if color is None:
+            _input(emission, "Color").default_value = (1.0, 1.0, 1.0, 1.0)
+            tree.links.new(
+                _output(ambient_occlusion, "AO"),
+                _input(emission, "Strength"),
+            )
+        else:
+            _input(emission, "Strength").default_value = 1.0
+            tree.links.new(
+                _output(ambient_occlusion, "Color"),
+                _input(emission, "Color"),
+            )
+        tree.links.new(
+            _output(emission, "Emission"),
+            _input(output, "Surface"),
+        )
+        materials.append(material)
+
+    _material_matrix(
+        scene,
+        materials,
+        columns=3,
+        rows=2,
+        name="Ambient Occlusion Matrix",
+        frame_bleed=0.1,
+    )
+
+    # One camera-invisible plane covers the complete matrix at z=0.2. Global
+    # AO sees it through the ordinary shadow-visible TLAS; Only Local must
+    # ignore it because it is a distinct object. Global Radius uses the World
+    # distance below (0.1), which is deliberately too short to reach it.
+    blocker_mesh = bpy.data.meshes.new("AO Blocker Mesh")
+    blocker_mesh.from_pydata(
+        [(-4.0, -4.0, 0.2),
+         (4.0, -4.0, 0.2),
+         (4.0, 4.0, 0.2),
+         (-4.0, 4.0, 0.2)],
+        [],
+        [(0, 1, 2, 3)],
+    )
+    blocker = bpy.data.objects.new("AO Blocker", blocker_mesh)
+    scene.collection.objects.link(blocker)
+    blocker.visible_camera = False
+    blocker.visible_shadow = True
+    if scene.world is None:
+        raise RuntimeError("Ambient Occlusion probe requires a World")
+    scene.world.light_settings.distance = 0.1
+
+
 def _node_group_color(scene: Any) -> None:
     material, tree, output = _material("Node Group Probe")
 

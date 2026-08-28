@@ -606,6 +606,11 @@ BlenderSceneImport load_blender_scene_bundle(
                 member(cycles, "blur_glossy"),
                 result.integrator.filter_glossy),
             0.0f);
+        scene.ambient_occlusion_distance = std::max(
+            number(
+                member(cycles, "ao_distance"),
+                scene.ambient_occlusion_distance),
+            0.0f);
         result.integrator.film_exposure = std::max(
             number(
                 member(cycles, "film_exposure"),

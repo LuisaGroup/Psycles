@@ -753,6 +753,31 @@ public:
         const SurfaceBumpInput &input) const noexcept = 0;
 };
 
+// One Ambient Occlusion query remains a typed shader operation. The provider
+// owns path RNG and scene-traversal state which is unavailable to a standalone
+// material graph; the node supplies only values and immutable configuration
+// selected by the graph. This boundary also makes absence of ray-traced
+// shader nodes a host/JIT fact instead of adding dormant traversal arguments
+// to every surface callable.
+struct SurfaceAmbientOcclusionInput {
+    Float3 normal;
+    Float distance;
+    UInt samples;
+    Bool only_local;
+    Bool inside;
+    Bool global_radius;
+};
+
+class SurfaceAmbientOcclusionProvider {
+
+public:
+    virtual ~SurfaceAmbientOcclusionProvider() noexcept = default;
+
+    [[nodiscard]] virtual Float evaluate(
+        const SurfacePoint &point,
+        const SurfaceAmbientOcclusionInput &input) const noexcept = 0;
+};
+
 struct SurfaceShaderTableView {
     UInt offset;
     UInt count;
@@ -1125,6 +1150,11 @@ public:
 
     [[nodiscard]] virtual const SurfaceBumpProvider *
     surface_bump_provider() const noexcept {
+        return nullptr;
+    }
+
+    [[nodiscard]] virtual const SurfaceAmbientOcclusionProvider *
+    surface_ambient_occlusion_provider() const noexcept {
         return nullptr;
     }
 

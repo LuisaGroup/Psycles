@@ -192,6 +192,9 @@ std::string validate_compact_surface_value_program_abi(
     const auto callable = make_surface_value_program_callable(
         scene, texture_sampling, attribute_lookup,
         SurfaceValueProgramDomain::preparation);
+    if (callable.requires_ambient_occlusion()) {
+        return "AO-free compact value program changed callable ABI";
+    }
     const auto &function = callable.function();
     auto surface_point_arguments = std::size_t{0u};
     auto surface_point_is_reference = false;

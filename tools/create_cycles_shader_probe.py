@@ -50,6 +50,7 @@ from cycles_shader_probe import (  # noqa: E402
 
 _PROBES: dict[str, Callable[[Any], None]] = {
     "add_shader_emission": closures._add_shader_emission,
+    "ambient_occlusion_matrix": values._ambient_occlusion_matrix,
     "area_light": lights_camera._area_light,
     "area_light_ellipse": lights_camera._area_light_ellipse,
     "area_light_spread": lights_camera._area_light_spread,

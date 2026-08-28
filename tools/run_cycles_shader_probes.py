@@ -18,6 +18,7 @@ import os
 
 _ALL_PROBES = (
     "add_shader_emission",
+    "ambient_occlusion_matrix",
     "area_light",
     "area_light_ellipse",
     "area_light_spread",
@@ -162,6 +163,12 @@ _REPORT_PASSES = (
 # mappings are valid. A probe may additionally require a relative-RMSE gate
 # when its purpose is to preserve Cycles' exact sample mapping.
 _PROBE_RATIO_GATES = {
+    "ambient_occlusion_matrix": {
+        # The probe shares Cycles' branched Sobol dimensions and therefore
+        # compares the full spatial estimator, not merely expected energy.
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
     "geometry_attribute_outputs": {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
@@ -386,6 +393,10 @@ _PROBE_RATIO_GATES = {
 }
 
 _PROBE_RELATIVE_RMSE_GATES = {
+    "ambient_occlusion_matrix": {
+        "Combined": 0.000001,
+        "Emit": 0.000001,
+    },
     "geometry_attribute_outputs": {
         "Combined": 0.00001,
         "Emit": 0.00001,

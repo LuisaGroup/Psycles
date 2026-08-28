@@ -537,6 +537,89 @@ void test_surface_value_storage_plan() {
           "region symbolic data flow retained colored slots instead of "
           "definition identities");
 
+  const SurfaceProgram external_query_program{
+      25u,
+      {ParameterDesc{.id = ParameterId{0u},
+                     .node = NodeId{1u},
+                     .socket = "Distance",
+                     .type = SocketType::floating,
+                     .default_value = SocketValue::floating(1.0f),
+                     .source = ParameterSource::input},
+       ParameterDesc{.id = ParameterId{1u},
+                     .node = NodeId{1u},
+                     .socket = "Normal",
+                     .type = SocketType::normal,
+                     .default_value =
+                         SocketValue::normal({0.0f, 0.0f, 1.0f}),
+                     .source = ParameterSource::input},
+       ParameterDesc{.id = ParameterId{2u},
+                     .node = NodeId{1u},
+                     .socket = "Samples",
+                     .type = SocketType::unsigned_integer,
+                     .default_value = SocketValue::unsigned_integer(4u),
+                     .source = ParameterSource::property}},
+      {ValueInstruction{.operation = ValueOperation::parameter,
+                        .result_type = SocketType::floating,
+                        .parameter = ParameterId{0u}},
+       ValueInstruction{.operation = ValueOperation::parameter,
+                        .result_type = SocketType::normal,
+                        .parameter = ParameterId{1u}},
+       ValueInstruction{.operation = ValueOperation::parameter,
+                        .result_type = SocketType::unsigned_integer,
+                        .parameter = ParameterId{2u}},
+       ValueInstruction{
+           .operation = ValueOperation::absolute,
+           .result_type = SocketType::floating,
+           .operands = make_value_operands<value_operand::unary>(
+               {{value_operand::unary::input, ValueExpressionId{0u}}})},
+       ValueInstruction{
+           .operation = ValueOperation::ambient_occlusion,
+           .result_type = SocketType::floating,
+           .operands = make_value_operands<value_operand::ambient_occlusion>(
+               {{value_operand::ambient_occlusion::distance,
+                 ValueExpressionId{3u}},
+                {value_operand::ambient_occlusion::normal,
+                 ValueExpressionId{1u}},
+                {value_operand::ambient_occlusion::samples,
+                 ValueExpressionId{2u}}})},
+       ValueInstruction{
+           .operation = ValueOperation::absolute,
+           .result_type = SocketType::floating,
+           .operands = make_value_operands<value_operand::unary>(
+               {{value_operand::unary::input, ValueExpressionId{4u}}})}},
+      {},
+      {}};
+  const auto external_query_plan = plan_surface_value_storage(
+      external_query_program, std::vector<bool>(6u, true),
+      std::vector<bool>{false, false, false, false, false, true});
+  const auto external_query_image =
+      lower_surface_value_program(external_query_program, external_query_plan);
+  require(external_query_image.valid &&
+              external_query_image.instructions.size() == 3u,
+          "failed to construct the external-query region fixture");
+  const auto external_query_scene = build_surface_value_scene_image(
+      std::vector{external_query_image});
+  require(external_query_scene.valid &&
+              external_query_scene.programs.size() == 1u,
+          "failed to aggregate the external-query region fixture");
+  const auto external_query_forwarding = plan_surface_value_forwarding(
+      external_query_scene, external_query_scene.programs.front());
+  const auto external_query_regions = plan_surface_value_regions(
+      external_query_scene, external_query_scene.programs.front());
+  require(
+      external_query_forwarding.valid && external_query_regions.valid &&
+          external_query_forwarding.successor_operand_masks ==
+              std::vector<std::uint32_t>{0u, 0u, 0u} &&
+          external_query_regions.regions.size() == 3u &&
+          std::all_of(
+              external_query_regions.regions.begin(),
+              external_query_regions.regions.end(),
+              [](const auto &region) noexcept {
+                return region.instruction_count == 1u;
+              }),
+      "external query crossed an adjacent forwarding or region-callable "
+      "boundary");
+
   auto duplicate_successor_use_image = scene_image;
   auto &duplicate_successor =
       duplicate_successor_use_image.instructions[

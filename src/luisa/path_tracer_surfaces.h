@@ -4,6 +4,8 @@
 
 namespace psycles::luisa_backend::detail {
 
+struct PathSurfaceAmbientOcclusionContext;
+
 using SurfacePreparationCallable = Callable<SurfacePreparationCall(
     Buffer<float>,
     Buffer<luisa::float3>,
@@ -143,7 +145,9 @@ class SurfacePopulationProgram {
         const ShaderServices &services,
         const SurfacePoint &point,
         const SurfacePopulationQuery &query,
-        SurfaceClosureCollector &collector) const noexcept = 0;
+        SurfaceClosureCollector &collector,
+        const PathSurfaceAmbientOcclusionContext
+            *ambient_occlusion = nullptr) const noexcept = 0;
 };
 
 class SurfacePopulationComponent {
@@ -154,7 +158,9 @@ class SurfacePopulationComponent {
     [[nodiscard]] virtual std::shared_ptr<PopulatedSurfaceShader> populate(
         Expr<std::uint32_t> surface_tag,
         const SurfacePoint &point,
-        const SurfacePopulationQuery &query) const noexcept = 0;
+        const SurfacePopulationQuery &query,
+        const PathSurfaceAmbientOcclusionContext
+            *ambient_occlusion) const noexcept = 0;
 };
 
 struct SurfaceCallables {

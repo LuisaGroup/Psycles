@@ -1105,6 +1105,17 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
          surface_value_operation_uses_image_immediate(operation);
 }
 
+// External queries are referentially transparent with respect to their full
+// explicit shader/path context, but they cross a backend service boundary and
+// may contain data-dependent traversal loops. They remain individual SVM
+// transactions: adjacent bank forwarding is valid only inside the ordinary
+// pure-expression domain whose region callables have no path-service ABI.
+[[nodiscard]] constexpr bool
+surface_value_operation_is_external_query(
+    ValueOperation operation) noexcept {
+  return operation == ValueOperation::ambient_occlusion;
+}
+
 [[nodiscard]] constexpr bool surface_value_operation_uses_noise_normalize(
     ValueOperation operation) noexcept {
   return operation == ValueOperation::noise_factor ||
