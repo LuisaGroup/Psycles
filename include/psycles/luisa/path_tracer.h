@@ -204,11 +204,45 @@ struct LuisaSurfaceClosureLeafVisitCount {
       default;
 };
 
+// Dynamic execution counts for the product of the evaluator's proven route
+// and the bytecode operand's concrete storage class. A direct route must agree
+// with the concrete class; any disagreement makes the enclosing histogram
+// inexact instead of silently placing the read in an impossible cell.
+struct LuisaSurfaceValueOperandExecutionCounts {
+  std::uint64_t direct_local{};
+  std::uint64_t direct_parameter{};
+  std::uint64_t dynamic_local{};
+  std::uint64_t dynamic_parameter{};
+
+  auto operator<=>(
+      const LuisaSurfaceValueOperandExecutionCounts &) const noexcept =
+      default;
+};
+
+// Hit-weighted cardinality of the distinct parameter addresses consumed by
+// each preparation program. For bank b this is exactly
+//   sum_t topology_populations[t] * |unique_parameter_addresses[t][b]|.
+// It is therefore the semantic-load lower bound for a hypothetical per-hit
+// parameter cache, not an observed hardware transaction count. Comparing it
+// with the parameter operand execution count quantifies reusable reads without
+// assuming that retaining the values is profitable for a particular backend.
+struct LuisaSurfaceValueUniqueParameterCounts {
+  std::uint64_t scalar{};
+  std::uint64_t vector{};
+  std::uint64_t unsigned_integer{};
+
+  auto operator<=>(
+      const LuisaSurfaceValueUniqueParameterCounts &) const noexcept =
+      default;
+};
+
 struct LuisaSurfaceProgramExecutionHistogram {
   std::vector<std::uint64_t> topology_surface_populations;
   std::vector<LuisaSurfaceValueHandlerExecutionCount> value_handlers;
   std::uint64_t value_instruction_executions{};
   std::uint64_t surface_normal_transition_executions{};
+  LuisaSurfaceValueOperandExecutionCounts value_operand_executions;
+  LuisaSurfaceValueUniqueParameterCounts unique_parameter_values;
   // Dense SurfaceClosureInstructionKind order: leaf, mix_both, mix_left,
   // mix_right. These are first-traversal instruction visits. A zero-weight
   // leaf is visited but does not invoke its decoder, so leaf visits are not

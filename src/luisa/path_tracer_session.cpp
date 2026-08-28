@@ -3,6 +3,10 @@
 
 #include <psycles/luisa/volume_guiding.h>
 
+#include <array>
+#include <cstdint>
+#include <set>
+
 namespace psycles::luisa_backend::detail {
 
 PathDiagnosticBufferLayout path_diagnostic_buffer_layout(
@@ -215,6 +219,11 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
       histogram.exact = false;
       continue;
     }
+    struct UniqueParameterAddresses {
+      std::set<std::uint32_t> scalars;
+      std::set<std::uint32_t> vectors;
+      std::set<std::uint32_t> unsigned_integers;
+    } unique_parameter_addresses;
     for (auto offset = std::uint32_t{0u}; offset < program.instruction_count;
          ++offset) {
       const auto instruction_index = program.instruction_begin + offset;
@@ -235,6 +244,75 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
         histogram.exact = false;
         continue;
       }
+      const auto &static_variant = runtime.executable.variants[variant];
+      const auto operand_count =
+          compiler::surface_value_operand_count(instruction);
+      if (operand_count != static_variant.operand_routes.size()) {
+        histogram.exact = false;
+        continue;
+      }
+      for (auto operand_index = std::size_t{};
+           operand_index < operand_count; ++operand_index) {
+        const auto word_index =
+            operand_index / compiler::surface_value_operands_per_word;
+        const auto lane =
+            operand_index % compiler::surface_value_operands_per_word;
+        auto word = instruction.operand_payload;
+        if (operand_count > compiler::surface_value_inline_operand_capacity) {
+          if (instruction.operand_payload >= image.operands.size() ||
+              word_index >=
+                  image.operands.size() - instruction.operand_payload) {
+            histogram.exact = false;
+            break;
+          }
+          word = image.operands[instruction.operand_payload + word_index];
+        }
+        const auto operand =
+            compiler::surface_value_operand_from_word(word, lane);
+        if (!operand.valid()) {
+          histogram.exact = false;
+          break;
+        }
+        const auto concrete_parameter = operand.parameter();
+        if (concrete_parameter) {
+          switch (operand.bank()) {
+          case compiler::SurfaceValueBank::scalar:
+            unique_parameter_addresses.scalars.emplace(operand.index());
+            break;
+          case compiler::SurfaceValueBank::vector:
+            unique_parameter_addresses.vectors.emplace(operand.index());
+            break;
+          case compiler::SurfaceValueBank::unsigned_integer:
+            unique_parameter_addresses.unsigned_integers.emplace(
+                operand.index());
+            break;
+          }
+        }
+        switch (static_variant.operand_routes[operand_index]) {
+        case compiler::SurfaceValueOperandRoute::local:
+          if (concrete_parameter) {
+            histogram.exact = false;
+          } else {
+            checked_add(histogram.value_operand_executions.direct_local,
+                        populations);
+          }
+          break;
+        case compiler::SurfaceValueOperandRoute::parameter:
+          if (!concrete_parameter) {
+            histogram.exact = false;
+          } else {
+            checked_add(histogram.value_operand_executions.direct_parameter,
+                        populations);
+          }
+          break;
+        case compiler::SurfaceValueOperandRoute::dynamic:
+          checked_add(concrete_parameter
+                          ? histogram.value_operand_executions.dynamic_parameter
+                          : histogram.value_operand_executions.dynamic_local,
+                      populations);
+          break;
+        }
+      }
       checked_add(value_counts[ValueKey{
                       variant, compiler::surface_value_handler_key(instruction),
                       static_cast<std::uint32_t>(
@@ -244,6 +322,21 @@ void LuisaRenderSession::deliver_surface_program_execution_histogram() {
                       compiler::surface_value_svm_immediate(instruction)}],
                   populations);
     }
+    const auto accumulate_unique_parameters =
+        [&](const std::set<std::uint32_t> &addresses,
+            std::uint64_t &destination) noexcept {
+      for (const auto address : addresses) {
+        static_cast<void>(address);
+        checked_add(destination, populations);
+      }
+    };
+    accumulate_unique_parameters(unique_parameter_addresses.scalars,
+                                 histogram.unique_parameter_values.scalar);
+    accumulate_unique_parameters(unique_parameter_addresses.vectors,
+                                 histogram.unique_parameter_values.vector);
+    accumulate_unique_parameters(
+        unique_parameter_addresses.unsigned_integers,
+        histogram.unique_parameter_values.unsigned_integer);
     for (auto offset = std::uint32_t{0u}; offset < program.closure_count;
          ++offset) {
       const auto &instruction =

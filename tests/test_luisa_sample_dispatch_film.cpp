@@ -60,14 +60,47 @@ constexpr std::array pass_kinds{PassKind::combined,
     ShaderGraph graph;
     const auto geometry =
         graph.add_node(node_type::geometry, "Per-sample dispatch geometry");
+    const auto normal_vector = graph.add_node(
+        node_type::normal_to_vector,
+        "Per-sample dispatch normal vector");
+    const auto normal_projection = graph.add_node(
+        node_type::vector_math, "Per-sample dispatch normal projection");
+    const auto shared_color = graph.add_node(
+        node_type::constant_color, "Per-sample dispatch shared color");
+    const auto parameter_mix = graph.add_node(
+        node_type::mix_color, "Per-sample dispatch parameter mix");
+    const auto local_mix = graph.add_node(
+        node_type::mix_color, "Per-sample dispatch local mix");
     const auto principled = graph.add_node(node_type::principled_bsdf,
                                            "Per-sample dispatch surface");
     const auto configured =
-        graph.set_input(principled, "BaseColor",
+        graph.set_property(normal_projection, "Operation",
+                           SocketValue::string("DOT_PRODUCT")) &&
+        graph.set_input(normal_projection, "B",
+                        SocketValue::vector({0.0f, 0.0f, 0.31f})) &&
+        graph.set_input(shared_color, "Color",
                         SocketValue::color({0.23f, 0.51f, 0.71f})) &&
+        graph.set_input(parameter_mix, "Factor",
+                        SocketValue::floating(0.25f)) &&
+        graph.set_input(local_mix, "Factor",
+                        SocketValue::floating(0.5f)) &&
+        graph.connect({.node = geometry, .socket = "Normal"}, normal_vector,
+                      "Normal") &&
+        graph.connect({.node = normal_vector, .socket = "Vector"},
+                      normal_projection, "A") &&
+        graph.connect({.node = normal_projection, .socket = "Value"},
+                      principled, "Roughness") &&
+        graph.connect({.node = shared_color, .socket = "Color"},
+                      parameter_mix, "A") &&
+        graph.connect({.node = shared_color, .socket = "Color"},
+                      parameter_mix, "B") &&
+        graph.connect({.node = parameter_mix, .socket = "Color"}, local_mix,
+                      "A") &&
+        graph.connect({.node = shared_color, .socket = "Color"}, local_mix,
+                      "B") &&
+        graph.connect({.node = local_mix, .socket = "Color"}, principled,
+                      "BaseColor") &&
         graph.set_input(principled, "Metallic", SocketValue::floating(0.17f)) &&
-        graph.set_input(principled, "Roughness",
-                        SocketValue::floating(0.31f)) &&
         graph.set_input(principled, "EmissionColor",
                         SocketValue::color({0.04f, 0.015f, 0.007f})) &&
         graph.set_input(principled, "EmissionStrength",
@@ -550,6 +583,19 @@ validate_surface_program_histograms(const RenderResult &single_request,
       return false;
     }
   }
+  const auto &operand_executions = expected.value_operand_executions;
+  const auto total_operand_executions =
+      operand_executions.direct_local +
+      operand_executions.direct_parameter +
+      operand_executions.dynamic_local +
+      operand_executions.dynamic_parameter;
+  const auto &unique_parameters = expected.unique_parameter_values;
+  const auto unique_parameter_values =
+      unique_parameters.scalar + unique_parameters.vector +
+      unique_parameters.unsigned_integer;
+  const auto parameter_operand_executions =
+      operand_executions.direct_parameter +
+      operand_executions.dynamic_parameter;
   auto closure_kind_visits = std::uint64_t{0u};
   for (const auto visits : expected.closure_instruction_kind_visits) {
     closure_kind_visits += visits;
@@ -565,6 +611,14 @@ validate_surface_program_histograms(const RenderResult &single_request,
   }
   if (surface_events != expected_surface_events ||
       expected.value_instruction_executions == 0u ||
+      total_operand_executions == 0u ||
+      operand_executions.direct_local == 0u ||
+      operand_executions.direct_parameter == 0u ||
+      operand_executions.dynamic_local == 0u ||
+      operand_executions.dynamic_parameter == 0u ||
+      unique_parameter_values == 0u ||
+      unique_parameter_values % expected_surface_events != 0u ||
+      parameter_operand_executions <= unique_parameter_values ||
       value_handler_executions +
               expected.surface_normal_transition_executions !=
           expected.value_instruction_executions ||
