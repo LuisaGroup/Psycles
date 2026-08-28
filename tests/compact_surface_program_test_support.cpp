@@ -250,7 +250,6 @@ std::string validate_compact_surface_value_program_abi(
 std::string validate_surface_value_fresh_lifetime_seed() {
     Callable<void()> seed_callable{[]() noexcept {
         SurfaceValueLocals locals;
-        locals.define_all();
     }};
     auto stack_seeds = std::size_t{0u};
     auto malformed_seeds = std::size_t{0u};

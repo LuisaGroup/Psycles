@@ -18,6 +18,17 @@
 
 namespace psycles::luisa_backend::detail {
 
+SurfaceValueLocals::SurfaceValueLocals() noexcept {
+    // The host bytecode verifier proves read-before-write for every legal
+    // operand. This one aggregate must-definition starts a fresh device-side
+    // lifetime wherever the interpreter stack is instantiated. Encoding the
+    // invariant in construction prevents a caller from accidentally exposing
+    // the undefined root-scope contents to coroutine liveness.
+    auto storage = luisa::compute::detail::Ref<SurfaceValueStackBank>{
+        stack.expression()};
+    storage = luisa::compute::undefined<SurfaceValueStackBank>();
+}
+
 SurfaceValueLocalsView SurfaceValueLocals::view() const noexcept {
     const auto storage =
         luisa::compute::detail::Ref<SurfaceValueStackBank>{stack.expression()};
@@ -25,16 +36,6 @@ SurfaceValueLocalsView SurfaceValueLocals::view() const noexcept {
         .scalars = {storage},
         .vectors = {storage},
         .unsigned_integers = {storage}};
-}
-
-void SurfaceValueLocals::define_all() const noexcept {
-    // The host compiler proves read-before-write for every legal bytecode
-    // operand. These aggregate assignments are therefore lifetime witnesses,
-    // not observable values: XIR can move each alloca below shade_surface and
-    // native backends can erase the seed instead of materializing 255 zeros.
-    auto storage = luisa::compute::detail::Ref<SurfaceValueStackBank>{
-        stack.expression()};
-    storage = luisa::compute::undefined<SurfaceValueStackBank>();
 }
 
 Float read_scalar_dynamic(
