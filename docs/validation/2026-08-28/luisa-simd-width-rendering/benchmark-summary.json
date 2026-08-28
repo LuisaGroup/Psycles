@@ -1,0 +1,97 @@
+{
+  "schema": "psycles.luisa-simd-width-rendering.v1",
+  "date": "2026-08-28",
+  "host": {
+    "soc": "Apple M1 Max",
+    "cpu_cores": 10,
+    "memory_gib": 64,
+    "os": "macOS 26.6.2 (25G83)",
+    "architecture": "arm64"
+  },
+  "build": {
+    "type": "Release",
+    "compiler": "AppleClang 21",
+    "llvm": "22.1.8",
+    "embree": "4.4.1",
+    "luisa_branch": "next",
+    "luisa_commit": "6af205704c58eac3f01a488d47ce74ffb324db31",
+    "simd_workers": 10,
+    "embree_native_packets": {
+      "w4": true,
+      "w8": true,
+      "w16": false
+    }
+  },
+  "method": {
+    "rounds": 6,
+    "runs_per_workload": 36,
+    "order": "balanced Williams order",
+    "speedup": "paired geometric mean versus fallback",
+    "confidence_interval": "log-space Student-t 95%, df=5"
+  },
+  "workloads": {
+    "path_tracing": {
+      "executable": "example_path_tracing",
+      "resolution": [1024, 1024],
+      "spp": 32,
+      "max_spp_per_dispatch": 32,
+      "metric": "fps",
+      "results": {
+        "fallback": {"median": 14.617805, "speedup": 1.0},
+        "w1": {"median": 13.972426, "speedup": 1.031898, "ci95": [0.895012, 1.189721], "wins": 3, "psnr_db": 31.622377},
+        "w2": {"median": 12.779937, "speedup": 0.908947, "ci95": [0.842293, 0.980875], "wins": 0, "psnr_db": 36.525812},
+        "w4": {"median": 18.134671, "speedup": 1.259012, "ci95": [1.116669, 1.419501], "wins": 6, "psnr_db": 35.558134},
+        "w8": {"median": 14.597064, "speedup": 0.993112, "ci95": [0.772852, 1.276145], "wins": 2, "psnr_db": 34.546101},
+        "w16": {"median": 12.683578, "speedup": 0.912116, "ci95": [0.766157, 1.085881], "wins": 1, "psnr_db": 31.622377}
+      }
+    },
+    "cutout_query": {
+      "executable": "example_path_tracing_cutout",
+      "resolution": [1024, 1024],
+      "spp": 64,
+      "max_spp_per_dispatch": 1,
+      "metric": "fps",
+      "results": {
+        "fallback": {"median": 13.082785, "speedup": 1.0},
+        "w1": {"median": 9.930783, "speedup": 0.764247, "ci95": [0.713792, 0.818268], "wins": 0, "psnr_db": 41.467423},
+        "w2": {"median": 9.270429, "speedup": 0.712688, "ci95": [0.670683, 0.757323], "wins": 0, "psnr_db": 46.831224},
+        "w4": {"median": 10.857362, "speedup": 0.837546, "ci95": [0.754108, 0.930215], "wins": 0, "psnr_db": 46.182564},
+        "w8": {"median": 7.886317, "speedup": 0.612824, "ci95": [0.586126, 0.640738], "wins": 0, "psnr_db": 45.491079},
+        "w16": {"median": 5.744705, "speedup": 0.430817, "ci95": [0.388793, 0.477383], "wins": 0, "psnr_db": 42.486203}
+      }
+    },
+    "voxel": {
+      "executable": "example_voxel_raytracer",
+      "resolution": [1024, 1024],
+      "iterations": 64,
+      "metric": "milliseconds_per_frame",
+      "results": {
+        "fallback": {"median": 30.0375, "speedup": 1.0},
+        "w1": {"median": 43.0255, "speedup": 0.707275, "ci95": [0.652017, 0.767216], "wins": 0, "psnr_db": 45.388328},
+        "w2": {"median": 61.605, "speedup": 0.482539, "ci95": [0.459274, 0.506983], "wins": 0, "psnr_db": 45.388328},
+        "w4": {"median": 29.4935, "speedup": 1.00488, "ci95": [0.934691, 1.08034], "wins": 3, "psnr_db": 45.388328},
+        "w8": {"median": 39.3035, "speedup": 0.769908, "ci95": [0.735867, 0.805524], "wins": 0, "psnr_db": 45.388328},
+        "w16": {"median": 54.7065, "speedup": 0.549997, "ci95": [0.529404, 0.57139], "wins": 0, "psnr_db": 45.388328}
+      }
+    },
+    "spacex": {
+      "executable": "example_shader_toy_spacex",
+      "resolution": [1280, 720],
+      "iterations": 4,
+      "metric": "milliseconds_per_frame",
+      "results": {
+        "fallback": {"median": 535.5795, "speedup": 1.0},
+        "w1": {"median": 504.477, "speedup": 1.010002, "ci95": [0.938724, 1.086692], "wins": 3, "psnr_db": 70.207333},
+        "w2": {"median": 234.3785, "speedup": 2.180345, "ci95": [2.033259, 2.338071], "wins": 6, "psnr_db": 70.207333},
+        "w4": {"median": 139.256, "speedup": 3.808163, "ci95": [3.671275, 3.950155], "wins": 6, "psnr_db": 70.207333},
+        "w8": {"median": 99.951, "speedup": 5.135331, "ci95": [4.818054, 5.473501], "wins": 6, "psnr_db": 70.207333},
+        "w16": {"median": 102.9165, "speedup": 5.043901, "ci95": [4.46455, 5.698433], "wins": 6, "psnr_db": 70.207333}
+      }
+    }
+  },
+  "validation": {
+    "simd_accel_tests": {"passed": 11, "failed": 0},
+    "final_w16_cutout_psnr_db": 42.486203,
+    "final_w16_cutout_comparison": "passed"
+  }
+}
