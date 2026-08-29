@@ -13,12 +13,6 @@ namespace {
 
 namespace operand = compiler::value_operand;
 
-[[nodiscard]] UInt
-surface_value_immediate(Var<luisa::uint4> instruction) noexcept {
-    return (instruction.x & compiler::surface_value_svm_immediate_mask) >>
-           compiler::surface_value_svm_immediate_shift;
-}
-
 void require_immediate_subset(
     const compiler::SurfaceValueStaticVariant &variant,
     std::uint16_t mask) noexcept {
@@ -80,7 +74,7 @@ void emit_uv_coordinate(
         value = services.attribute(map, point).value.xyz();
     } else if (has_named) {
         const auto named =
-            (surface_value_immediate(instruction) &
+            (surface_value_runtime_immediate(instruction) &
              compiler::surface_value_uv_named_immediate_bit) != 0u;
         $if(named) {
             const auto map = operands.unsigned_integer(map_operand);
@@ -249,7 +243,7 @@ void emit_bump_support_family(
                 operands.scalar(operand::bump_samples::filter_width);
             const auto linked_normal =
                 operands.vector(operand::bump_samples::normal);
-            const auto encoded = surface_value_immediate(instruction);
+            const auto encoded = surface_value_runtime_immediate(instruction);
             const auto configuration = SurfaceBumpSvmConfiguration{
                 .invert = (encoded & 1u) != 0u,
                 .normal_linked = (encoded & 2u) != 0u,

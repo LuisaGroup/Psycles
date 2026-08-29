@@ -14,12 +14,6 @@ namespace {
 
 namespace operand = compiler::value_operand;
 
-[[nodiscard]] UInt
-surface_value_immediate(Var<luisa::uint4> instruction) noexcept {
-    return (instruction.x & compiler::surface_value_svm_immediate_mask) >>
-           compiler::surface_value_svm_immediate_shift;
-}
-
 [[nodiscard]] compiler::SurfaceValueBank
 result_bank(const compiler::SurfaceValueStaticVariant &variant) noexcept {
     auto bank = compiler::SurfaceValueBank::scalar;
@@ -84,7 +78,7 @@ void emit_math_family(
             const auto b = operands.scalar(operand::ternary::b);
             const auto c = operands.scalar(operand::ternary::c);
             result = evaluate_surface_math_svm(
-                surface_value_immediate(instruction), variant.svm_immediates,
+                surface_value_runtime_immediate(instruction), variant.svm_immediates,
                 a, b, c);
             break;
         }
@@ -123,12 +117,12 @@ void emit_vector_math_family(
     const auto scale = operands.scalar(operand::vector_math::scale);
     if (value_output) {
         const auto value = evaluate_surface_vector_math_value_svm(
-            surface_value_immediate(instruction), variant.svm_immediates, a, b,
+            surface_value_runtime_immediate(instruction), variant.svm_immediates, a, b,
             c, scale);
         write_surface_value_scalar(locals, instruction, value);
     } else {
         const auto value = evaluate_surface_vector_math_vector_svm(
-            surface_value_immediate(instruction), variant.svm_immediates, a, b,
+            surface_value_runtime_immediate(instruction), variant.svm_immediates, a, b,
             c, scale);
         write_surface_value_vector(locals, instruction, value);
     }
@@ -153,7 +147,7 @@ void emit_clamp_family(
             const auto minimum = operands.scalar(operand::clamp_range::minimum);
             const auto maximum = operands.scalar(operand::clamp_range::maximum);
             value = evaluate_surface_clamp_svm(
-                surface_value_immediate(instruction), variant.svm_immediates,
+                surface_value_runtime_immediate(instruction), variant.svm_immediates,
                 input, minimum, maximum);
             break;
         }

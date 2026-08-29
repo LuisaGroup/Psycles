@@ -1,5 +1,6 @@
 #include "path_tracer_surface_value_family.h"
 #include "path_tracer_surface_value_numeric_family.h"
+#include "path_tracer_surface_value_procedural_family.h"
 #include "path_tracer_surface_value_state_family.h"
 #include "path_tracer_surface_value_texture_family.h"
 
@@ -274,6 +275,10 @@ bool emit_direct_surface_value_variant(
             emit_direct_surface_texture_family(family, runtime, bytecode_slots,
                                                services, point, locals,
                                                instruction, variant, operands);
+            return true;
+        case compiler::SurfaceSvmValueOpcode::noise:
+            emit_direct_surface_procedural_family(
+                family, locals, instruction, variant, operands);
             return true;
         default:
             std::abort();

@@ -162,6 +162,7 @@ target_sources(
     psycles_luisa_compact_surface_preparation_tests
     PRIVATE
         tests/compact_surface_program_test_support.cpp
+        tests/compact_surface_procedural_family_test_support.cpp
         tests/compact_surface_state_family_test_support.cpp)
 target_include_directories(
     psycles_luisa_compact_surface_preparation_tests

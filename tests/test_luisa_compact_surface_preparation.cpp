@@ -66,7 +66,7 @@ static_assert(surface_value_family_has_direct_evaluator(
 static_assert(surface_value_family_has_direct_evaluator(
     SurfaceSvmValueOpcode::tex_image_box));
 static_assert(
-    !surface_value_family_has_direct_evaluator(SurfaceSvmValueOpcode::noise));
+    surface_value_family_has_direct_evaluator(SurfaceSvmValueOpcode::noise));
 
 static_assert([] {
     auto next = std::size_t{};
@@ -893,6 +893,9 @@ int main(int argc, char **argv) {
         }
         fixtures.emplace_back(std::move(direct_texture));
     }
+    for (auto &noise_graph : make_direct_noise_graphs()) {
+        fixtures.emplace_back(compile_fixture(compiler, noise_graph));
+    }
     fixtures.emplace_back(
         compile_fixture(compiler, make_direct_state_bump_graph()));
     const auto weighted_bssrdf_topology =
@@ -1018,6 +1021,12 @@ int main(int argc, char **argv) {
             *scene->surface_values);
         !state_diagnostic.empty()) {
         std::cerr << state_diagnostic << " on " << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    if (auto noise_diagnostic = validate_direct_noise_surface_runtime(
+            *scene->surface_values);
+        !noise_diagnostic.empty()) {
+        std::cerr << noise_diagnostic << " on " << backend << '\n';
         return EXIT_FAILURE;
     }
     const auto has_closure_weight_program = std::any_of(
