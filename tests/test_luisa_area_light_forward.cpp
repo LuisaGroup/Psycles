@@ -77,7 +77,9 @@ using EnvironmentProposalFunction =
         const std::shared_ptr<LuisaSceneData> &,
         Float3,
         Float2,
-        Float) const noexcept;
+        Float,
+        UInt,
+        UInt) const noexcept;
 using EnvironmentEvaluationFunction =
     Float3 (EnvironmentLightComponent::*)(
         PathSampleContext &,

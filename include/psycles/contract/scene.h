@@ -389,6 +389,9 @@ struct LightDesc {
     bool normalize{true};
     bool ellipse{};
     bool is_sphere{true};
+    // Cycles area-light portal. Portals are environment sampling geometry,
+    // never ordinary analytic emitters.
+    bool is_portal{};
     std::optional<MaterialId> shader;
     bool use_mis{true};
     bool cast_shadow{true};

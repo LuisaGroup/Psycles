@@ -45,7 +45,11 @@ class EnvironmentDirectLightProvider final : public DirectLightProvider {
                         surface.hit_position,
                         light_sample.xy(),
                         selected_light
-                            .selection_pdf);
+                            .selection_pdf,
+                        sample.invocation.parameters
+                            .analytic_light_count,
+                        sample.invocation.parameters
+                            .portal_count);
             const auto reached_max_bounces =
                 cycles_light::select_reached_max_bounces(
                     sample.path_depth,

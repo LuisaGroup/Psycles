@@ -1459,6 +1459,8 @@ BlenderSceneImport load_blender_scene_bundle(
                     .is_sphere = !boolean(
                         member(light, "use_soft_falloff"),
                         false),
+                    .is_portal = boolean(
+                        member(light, "is_portal"), false),
                     .shader = light_shader,
                     .use_mis = boolean(
                         member(

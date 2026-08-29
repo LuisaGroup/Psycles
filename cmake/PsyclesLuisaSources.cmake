@@ -109,6 +109,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/adapter/blender_scene_json.cpp
     src/luisa/path_tracer.cpp
     src/luisa/path_tracer_attribute_lookup.cpp
+    src/luisa/path_tracer_analytic_light_scene.cpp
     src/luisa/path_tracer_camera.cpp
     src/luisa/path_tracer_bump.cpp
     src/luisa/path_tracer_color_transforms.cpp
@@ -124,6 +125,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_generated_coordinates.cpp
     src/luisa/path_tracer_geometry.cpp
     src/luisa/path_kernel_background_event.cpp
+    src/luisa/path_kernel_background_portal.cpp
     src/luisa/path_kernel_bounce_random.cpp
     src/luisa/path_kernel_bounce_setup.cpp
     src/luisa/path_kernel_closest_event.cpp

@@ -30,7 +30,9 @@ class EnvironmentLightComponent {
             LuisaSceneData> &scene,
         Float3 reference,
         Float2 random,
-        Float selection_pdf)
+        Float selection_pdf,
+        UInt portal_offset,
+        UInt portal_count)
         const noexcept = 0;
 
     [[nodiscard]] virtual Float3
@@ -53,7 +55,9 @@ class EnvironmentLightComponent {
             LuisaSceneData> &scene,
         Float3 reference,
         Float3 direction,
-        Float selection_pdf)
+        Float selection_pdf,
+        UInt portal_offset,
+        UInt portal_count)
         const noexcept = 0;
 };
 

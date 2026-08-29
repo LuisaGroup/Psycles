@@ -79,7 +79,11 @@ class BackgroundEventStageImpl final
                     scene,
                     ray->origin(),
                     ray->direction(),
-                    environment_selection_pdf);
+                    environment_selection_pdf,
+                    invocation.parameters
+                        .analytic_light_count,
+                    invocation.parameters
+                        .portal_count);
         Float environment_weight =
             forward_light_weight(
                 previous_bsdf_pdf,

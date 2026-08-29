@@ -510,6 +510,7 @@ struct LuisaSceneData {
     Buffer<luisa::float2> background_marginal_cdf;
     std::uint32_t background_map_width{1u};
     std::uint32_t background_map_height{1u};
+    float background_portal_weight{};
     float background_map_weight{};
     float background_guided_sun_weight{};
     luisa::float3 background_guided_sun_axis{
@@ -533,6 +534,9 @@ struct LuisaSceneData {
     std::uint32_t attribute_range_slot{};
     Buffer<LightGpu> light_buffer;
     std::uint32_t light_count{};
+    // Portal records follow regular lights in light_buffer and never enter
+    // the direct-light distribution. Their offset is exactly light_count.
+    std::uint32_t portal_count{};
     Buffer<EmissiveTriangleGpu> emissive_triangle_buffer;
     std::uint32_t emissive_triangle_count{};
     Buffer<LightDistributionGpu> light_distribution_buffer;

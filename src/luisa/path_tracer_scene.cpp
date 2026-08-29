@@ -13,6 +13,7 @@
 #include "path_tracer_shader_services.h"
 #include "path_tracer_subsurface_scene.h"
 #include "path_tracer_ambient_occlusion_scene.h"
+#include "path_tracer_analytic_light_scene.h"
 #include "path_tracer_attribute_residency.h"
 #include "path_tracer_surface_route_policy.h"
 #include "path_tracer_surfaces.h"
@@ -1725,171 +1726,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             0u);
     }
 
-    luisa::vector<LightGpu> lights;
-    Vec3f background{};
-    for (const auto &[light_id, light] :
-         snapshot.lights) {
-        static_cast<void>(light_id);
-        if (light.type == LightType::background) {
-            background.x += light.color.x * light.power;
-            background.y += light.color.y * light.power;
-            background.z += light.color.z * light.power;
-            continue;
-        }
-        auto normalized_axis = [](Vec3f axis) noexcept {
-            const auto length = std::sqrt(
-                axis.x * axis.x +
-                axis.y * axis.y +
-                axis.z * axis.z);
-            if (length <= 1.0e-20f) {
-                return std::pair{
-                    Vec3f{0.0f, 0.0f, 0.0f},
-                    0.0f};
-            }
-            return std::pair{
-                Vec3f{
-                    axis.x / length,
-                    axis.y / length,
-                    axis.z / length},
-                length};
-        };
-        const auto [axis_x, axis_x_length] =
-            normalized_axis(matrix_axis(light.transform, 0u));
-        const auto [axis_y, axis_y_length] =
-            normalized_axis(matrix_axis(light.transform, 1u));
-        auto [axis_z, axis_z_length] =
-            normalized_axis(matrix_axis(light.transform, 2u));
-        if (axis_z == Vec3f{}) {
-            axis_z = {0.0f, 0.0f, 1.0f};
-        }
-        std::uint32_t flags = 0u;
-        flags |= light.normalize
-                     ? light_flag_normalize
-                     : 0u;
-        flags |= light.ellipse
-                     ? light_flag_ellipse
-                     : 0u;
-        flags |= light.is_sphere
-                     ? light_flag_sphere
-                     : 0u;
-        flags |=
-            light.type == LightType::area &&
-                    light.spread >= pi - 1.0e-6f
-                ? light_flag_full_spread
-                : 0u;
-        MaterialBinding light_binding{
-            .surface_tag = ~std::uint32_t{0u},
-            .parameter_block = 0u,
-            .cycles_shader_index =
-                cycles_shader_identity::invalid_index};
-        if (light.shader) {
-            if (const auto iter =
-                    data->material_bindings.find(
-                        *light.shader);
-                iter != data->material_bindings.end()) {
-                light_binding = iter->second;
-            }
-        }
-        const auto effective_light_mis =
-            light.use_mis &&
-            (light.type == LightType::point ||
-             light.type == LightType::spot
-                 ? light.size > 0.0f
-                 : light.type == LightType::area
-                       ? light.size * axis_x_length != 0.0f &&
-                             (light.size_y > 0.0f
-                                  ? light.size_y
-                                  : light.size) *
-                                     axis_y_length !=
-                                 0.0f &&
-                             light.spread > 0.0f
-                       : light.type == LightType::distant
-                             ? light.angle > 0.0f
-                             : true);
-        const auto cycles_shader_id =
-            light.cycles_shader_index
-                ? cycles_shader_identity::analytic_light(
-                      *light.cycles_shader_index,
-                      light.cast_shadow,
-                      light.visibility_mask,
-                      light.is_shadow_catcher,
-                      effective_light_mis)
-                : cycles_shader_identity::invalid_index;
-        const auto cycles_shader_flags =
-            cycles_shader_identity::analytic_light_flags(
-                light.cast_shadow,
-                light.visibility_mask,
-                light.is_shadow_catcher,
-                effective_light_mis);
-        flags |= effective_light_mis
-                     ? light_flag_use_mis
-                     : 0u;
-        flags |=
-            effective_light_mis &&
-                    (light.type == LightType::area ||
-                     light.type == LightType::point ||
-                     light.type == LightType::spot)
-                ? light_flag_forward_intersectable
-                : 0u;
-        flags |=
-            (light_binding.surface_tag ==
-                 ~std::uint32_t{0u} ||
-             (light_binding.flags &
-              material_flag_constant_emission) != 0u)
-                ? light_flag_constant_emission
-                : 0u;
-        lights.emplace_back(LightGpu{
-            .type =
-                static_cast<std::uint32_t>(light.type),
-            .position =
-                to_luisa(matrix_translation(light.transform)),
-            .axis_x = to_luisa(axis_x),
-            .axis_y = to_luisa(axis_y),
-            .axis_z = to_luisa(axis_z),
-            .axis_scale = luisa::make_float3(
-                axis_x_length,
-                axis_y_length,
-                axis_z_length),
-            .color = to_luisa(light.color),
-            .power = light.power,
-            .radius = light.size,
-            .size_u =
-                light.size * axis_x_length,
-            .size_v =
-                (light.size_y > 0.0f
-                     ? light.size_y
-                     : light.size) *
-                axis_y_length,
-            .spread = light.spread,
-            .spot_angle = light.spot_angle,
-            .spot_smooth = light.spot_smooth,
-            .angle = light.angle,
-            .flags = flags,
-            .surface_tag =
-                light_binding.surface_tag,
-            .parameter_block =
-                light_binding.parameter_block,
-            .cycles_object_index =
-                light.cycles_object_index.value_or(
-                    cycles_shader_identity::
-                        invalid_index),
-            .cycles_light_group =
-                light.cycles_light_group,
-            .cycles_shader_id =
-                cycles_shader_id,
-            .cycles_shader_flags =
-                cycles_shader_flags,
-            .cycles_type =
-                cycles_shader_identity::light_type(
-                    light.type),
-            .visibility_mask =
-                light.visibility_mask,
-            .max_bounces =
-                light.max_bounces});
+    auto analytic_lights =
+        AnalyticLightSceneComponent{}.build(snapshot, *data);
+    if (!analytic_lights.ok()) {
+        diagnose(result.diagnostics, analytic_lights.diagnostic);
+        return result;
     }
-    data->background = to_luisa(background);
-    data->light_count =
-        static_cast<std::uint32_t>(lights.size());
+    data->background = to_luisa(analytic_lights.background);
+    data->light_count = analytic_lights.regular_count;
+    data->portal_count = analytic_lights.portal_count;
     data->emissive_triangle_count =
         static_cast<std::uint32_t>(
             emissive_triangles.size());
@@ -1913,21 +1758,20 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     .has_spatial_values;
         }
     }
-    // Cycles LightManager::test_enabled_lights only enables a background
-    // emitter when MIS is requested and the raw surface graph is spatially
-    // varying (or a portal exists). MANUAL controls map resolution; it does
-    // not force a constant graph into the distribution. Portals are outside
-    // the currently supported subset.
+    // Cycles LightManager::test_enabled_lights enables the background when a
+    // portal exists, independently of the world's MIS policy. Without a
+    // portal it requires both MIS and a spatially varying raw surface graph.
     const auto include_environment =
         data->world_surface.has_value() &&
-        snapshot.world_sampling !=
-            contract::WorldSampling::none &&
-        world_is_spatially_varying;
+        (data->portal_count != 0u ||
+         (snapshot.world_sampling != contract::WorldSampling::none &&
+          world_is_spatially_varying));
     auto light_sampling = build_light_sampling_scene_upload(
         snapshot,
         *data,
         uploads,
-        lights,
+        analytic_lights.regular_lights(),
+        analytic_lights.regular_shader_emission_estimates,
         emissive_triangles,
         emissive_triangle_areas,
         include_environment);
@@ -1956,7 +1800,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
          .instances = instances,
          .geometry_materials = geometry_materials,
          .override_materials = override_materials,
-         .lights = lights,
+         .lights = analytic_lights.device_lights,
          .emissive_triangles = emissive_triangles,
          .light_distribution = light_sampling.distribution,
          .light_tree_nodes = light_sampling.tree_nodes,

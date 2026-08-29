@@ -105,9 +105,16 @@ def _main() -> None:
     finally:
         evaluated_curve.to_mesh_clear()
 
-    def add_light(name: str, group: str, max_bounces: int) -> None:
-        data = bpy.data.lights.new(f"{name} Data", type="POINT")
-        data.shadow_soft_size = 0.0
+    def add_light(
+        name: str, group: str, max_bounces: int, *, portal: bool = False
+    ) -> None:
+        data = bpy.data.lights.new(
+            f"{name} Data", type="AREA" if portal else "POINT"
+        )
+        if portal:
+            data.cycles.is_portal = True
+        else:
+            data.shadow_soft_size = 0.0
         data.cycles.max_bounces = max_bounces
         obj = bpy.data.objects.new(name, data)
         obj.visible_camera = False
@@ -118,7 +125,7 @@ def _main() -> None:
     # Deliberately insert the reverse of lexical order. Cycles consumes the
     # dependency-graph object iterator; sorting these names changes which
     # emitter a fixed random number selects.
-    add_light("Zulu Light", "Group B", 3)
+    add_light("Zulu Light", "Group B", 3, portal=True)
     add_light("Alpha Light", "Group A", 7)
 
     with tempfile.TemporaryDirectory(
@@ -201,6 +208,11 @@ def _main() -> None:
             raise AssertionError(
                 f"{light['name']} max-bounces policy changed: "
                 f"{light['max_bounces']}"
+            )
+        if light["is_portal"] != (light["name"] == "Zulu Light"):
+            raise AssertionError(
+                f"{light['name']} portal policy changed: "
+                f"{light['is_portal']}"
             )
         if (
             light["visibility"]["camera"]

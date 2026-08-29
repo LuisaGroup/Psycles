@@ -139,6 +139,7 @@ LightSamplingSceneUpload build_light_sampling_scene_upload(
     const LuisaSceneData &scene,
     std::span<const GeometryUpload> geometry_uploads,
     std::span<const LightGpu> lights,
+    std::span<const Vec3f> analytic_light_emission_estimates,
     std::span<const EmissiveTriangleGpu> emissive_triangles,
     std::span<const float> emissive_triangle_areas,
     bool include_environment) noexcept {
@@ -147,6 +148,11 @@ LightSamplingSceneUpload build_light_sampling_scene_upload(
         if (emissive_triangles.size() != emissive_triangle_areas.size()) {
             result.diagnostic =
                 "emissive triangle identities and areas have different sizes";
+            return result;
+        }
+        if (lights.size() != analytic_light_emission_estimates.size()) {
+            result.diagnostic =
+                "analytic lights and emission estimates have different sizes";
             return result;
         }
         if (emissive_triangles.size() + lights.size() +
@@ -225,31 +231,13 @@ LightSamplingSceneUpload build_light_sampling_scene_upload(
                     emitter.emission_sampling)));
         }
 
-        std::vector<const contract::LightDesc *> source_lights;
-        source_lights.reserve(lights.size());
-        for (const auto &[id, light] : snapshot.lights) {
-            static_cast<void>(id);
-            if (light.type != contract::LightType::background) {
-                source_lights.emplace_back(&light);
-            }
-        }
-        if (source_lights.size() != lights.size()) {
-            result.diagnostic =
-                "analytic light upload order does not match the source scene";
-            return result;
-        }
         for (std::size_t light_index = 0u;
              light_index < lights.size();
              ++light_index) {
-            const auto *source = source_lights[light_index];
-            const auto shader_estimate = source->shader
-                                             ? emission_estimate(
-                                                   scene, *source->shader)
-                                             : Vec3f{1.0f, 1.0f, 1.0f};
             emitters.emplace_back(make_analytic_light_tree_emitter(
                 static_cast<std::uint32_t>(emitters.size()),
                 lights[light_index],
-                shader_estimate));
+                analytic_light_emission_estimates[light_index]));
         }
         if (include_environment) {
             emitters.emplace_back(make_environment_light_tree_emitter(
