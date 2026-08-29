@@ -33,6 +33,7 @@ from cycles_shader_probe import (  # noqa: E402
     lights_camera,
     magic_inputs,
     metallic_closures,
+    normal_inputs,
     normal_maps,
     procedural_textures,
     refraction_closures,
@@ -146,6 +147,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "noise_ridged_multifractal_matrix": (
         texture_inputs._noise_ridged_multifractal_matrix
     ),
+    "normal_node_matrix": normal_inputs._normal_node_matrix,
     "normal_map_surface": normal_maps._normal_map_surface,
     "normal_map_matrix": normal_maps._normal_map_matrix,
     "normal_map_named_uv_matrix": normal_maps._normal_map_named_uv_matrix,

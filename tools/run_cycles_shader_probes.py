@@ -90,6 +90,7 @@ _ALL_PROBES = (
     "noise_hybrid_multifractal_matrix",
     "noise_multifractal_matrix",
     "noise_ridged_multifractal_matrix",
+    "normal_node_matrix",
     "normal_map_surface",
     "normal_map_matrix",
     "normal_map_named_uv_matrix",
@@ -190,6 +191,10 @@ _PROBE_RATIO_GATES = {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
         "Normal": (0.9995, 1.0005),
+    },
+    "normal_node_matrix": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
     },
     "geometry_position_color_conversion": {
         "Combined": (0.99999, 1.00001),
@@ -419,6 +424,15 @@ _PROBE_RELATIVE_RMSE_GATES = {
         "Emit": 0.00005,
         "Normal": 0.00005,
     },
+    "normal_node_matrix": {
+        # At 64 spp, four isolated material-boundary pixels differ by exactly
+        # one camera sample (maximum 1/64); every cell interior is exact and
+        # the mean-energy error is below 4e-7. Bound the global contribution
+        # here and pair it with the p99 gate below so no authored Normal-node
+        # case can hide behind those ray/triangle edge ties.
+        "Combined": 0.0001,
+        "Emit": 0.0001,
+    },
     "geometry_position_color_conversion": {
         "Combined": 0.000001,
         "Emit": 0.000001,
@@ -586,6 +600,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
 # otherwise deterministic direct-light comparison. Normalize by Cycles RMS so
 # the gate remains independent of exposure and Sun energy.
 _PROBE_NORMALIZED_P99_RMSE_GATES = {
+    "normal_node_matrix": {
+        "Combined": 0.000001,
+        "Emit": 0.000001,
+    },
     "thin_film_surface": {
         "Combined": 0.0001,
         "GlossCol": 0.0001,
