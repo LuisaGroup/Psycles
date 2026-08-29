@@ -25,6 +25,18 @@ const CompiledMaterial *MaterialLibrary::find(
 MaterialLibraryUpdate MaterialLibrary::update(
     const contract::SceneSnapshot &scene,
     const ShaderCompiler &shader_compiler) {
+    std::set<contract::MaterialId> material_domain;
+    for (const auto &[id, material] : scene.materials) {
+        static_cast<void>(material);
+        material_domain.emplace(id);
+    }
+    return update(scene, shader_compiler, material_domain);
+}
+
+MaterialLibraryUpdate MaterialLibrary::update(
+    const contract::SceneSnapshot &scene,
+    const ShaderCompiler &shader_compiler,
+    const std::set<contract::MaterialId> &material_domain) {
     MaterialLibraryUpdate result{
         .committed = false,
         .source_revision = _source_revision,
@@ -41,7 +53,21 @@ MaterialLibraryUpdate MaterialLibrary::update(
                 .message = std::move(message)});
     };
 
+    for (const auto id : material_domain) {
+        if (!scene.materials.contains(id)) {
+            diagnose(
+                id,
+                "selected material is absent from the source scene");
+        }
+    }
+    if (!result.diagnostics.empty()) {
+        return result;
+    }
+
     for (const auto &[id, material] : scene.materials) {
+        if (!material_domain.contains(id)) {
+            continue;
+        }
         auto shader = shader_compiler.compile(material.shader);
         if (!shader.ok()) {
             for (const auto &diagnostic : shader.diagnostics) {
@@ -123,7 +149,7 @@ MaterialLibraryUpdate MaterialLibrary::update(
     }
 
     for (auto iter = candidate.begin(); iter != candidate.end();) {
-        if (!scene.materials.contains(iter->first)) {
+        if (!material_domain.contains(iter->first)) {
             updates.emplace_back(MaterialUpdate{
                 .id = iter->first,
                 .kind = MaterialUpdateKind::removed});

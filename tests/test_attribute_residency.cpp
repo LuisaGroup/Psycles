@@ -1,4 +1,5 @@
 #include "../src/luisa/path_tracer_attribute_residency.h"
+#include "../src/luisa/path_tracer_scene_geometry.h"
 
 #include <psycles/compiler/core_nodes.h>
 
@@ -128,7 +129,9 @@ void require(bool condition, std::string_view message) {
 [[nodiscard]] MeshAttribute<Vec4f> one_color() {
     return {
         .domain = MeshAttributeDomain::face,
-        .values = {{1.0f, 0.5f, 0.25f, 1.0f}}};
+        .values = {
+            {1.0f, 0.5f, 0.25f, 1.0f},
+            {1.0f, 0.5f, 0.25f, 1.0f}}};
 }
 
 void test_per_geometry_union_and_tangent_dependency_closure() {
@@ -137,7 +140,8 @@ void test_per_geometry_union_and_tangent_dependency_closure() {
     constexpr MaterialId override_material{3u};
     constexpr MaterialId unreachable_material{4u};
     constexpr GeometryId geometry_id{10u};
-    constexpr InstanceId instance_id{11u};
+    constexpr InstanceId base_instance_id{11u};
+    constexpr InstanceId override_instance_id{12u};
     constexpr std::string_view kept_uv = "KeptUV";
     constexpr std::string_view tangent_uv = "TangentUV";
     constexpr std::string_view dropped_uv = "DroppedUV";
@@ -175,8 +179,11 @@ void test_per_geometry_union_and_tangent_dependency_closure() {
         {0.0f, 0.0f, 0.0f},
         {1.0f, 0.0f, 0.0f},
         {0.0f, 1.0f, 0.0f}};
-    geometry.triangles = {{0u, 1u, 2u}};
+    geometry.triangles = {
+        {0u, 1u, 2u},
+        {0u, 1u, 2u}};
     geometry.material_slots = {uv_material, tangent_material};
+    geometry.triangle_material_slots = {0u, 1u};
     geometry.color_attributes.emplace(
         override_color, one_color());
     geometry.color_attributes.emplace(
@@ -194,7 +201,12 @@ void test_per_geometry_union_and_tangent_dependency_closure() {
     geometry.pointiness_source.emplace();
     snapshot.geometries.emplace(geometry_id, std::move(geometry));
     snapshot.instances.emplace(
-        instance_id,
+        base_instance_id,
+        InstanceDesc{
+            .name = "base user",
+            .geometry = geometry_id});
+    snapshot.instances.emplace(
+        override_instance_id,
         InstanceDesc{
             .name = "override user",
             .geometry = geometry_id,
@@ -202,8 +214,15 @@ void test_per_geometry_union_and_tangent_dependency_closure() {
 
     MaterialLibrary materials;
     ShaderCompiler compiler{make_core_node_registry()};
-    const auto update = materials.update(snapshot, compiler);
+    const auto reachability =
+        build_scene_material_reachability(snapshot);
+    const auto update = materials.update(
+        snapshot, compiler, reachability.shader_materials);
     require(update.committed, "material fixture did not compile");
+    require(
+        materials.materials().size() == 3u &&
+            materials.find(unreachable_material) == nullptr,
+        "unreachable material entered the compiled attribute domain");
 
     const auto plan = build_scene_attribute_residency_plan(
         snapshot, materials);
@@ -234,8 +253,12 @@ void test_per_geometry_union_and_tangent_dependency_closure() {
             plan.resident_binding_count == 4u,
         "binding residency census is not exact");
     require(
-        plan.source_device_bytes == 416u &&
-            plan.resident_device_bytes == 160u,
+        // Source: 2 colors * 2 faces + 3 UVs * 3 corners +
+        // 2 tangent layers * 2 variants * 6 corners + 3 pointiness values
+        // = 640 B. Resident: 1 color * 2 faces + 2 UVs * 3 corners +
+        // 1 original-tangent variant * 6 corners = 224 B.
+        plan.source_device_bytes == 640u &&
+            plan.resident_device_bytes == 224u,
         "device-byte residency census is not exact");
 }
 

@@ -111,8 +111,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
 
     ShaderCompiler shader_compiler{
         compiler::make_core_node_registry()};
+    const auto material_reachability =
+        build_scene_material_reachability(snapshot);
     auto material_update =
-        data->materials.update(snapshot, shader_compiler);
+        data->materials.update(
+            snapshot,
+            shader_compiler,
+            material_reachability.shader_materials);
     if (!material_update.committed) {
         for (const auto &diagnostic :
              material_update.diagnostics) {
@@ -126,8 +131,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
     std::set<contract::MaterialId> surface_bssrdf_materials;
     std::set<contract::MaterialId> surface_bssrdf_bump_materials;
-    const auto reachable_surface_materials =
-        collect_reachable_surface_materials(snapshot);
+    const auto &reachable_surface_materials =
+        material_reachability.surface_materials;
     for (const auto &[material_id, material] :
          data->materials.materials()) {
         if (!reachable_surface_materials.contains(material_id)) {
@@ -1253,26 +1258,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
              geometry.material_slots) {
             const auto material_iter =
                 data->material_bindings.find(material_id);
-            if (material_iter ==
-                data->material_bindings.end()) {
-                diagnose(
-                    result.diagnostics,
-                    "Geometry '" + geometry.name +
-                        "' references an unavailable material.");
-                break;
-            }
             geometry_materials.emplace_back(
-                to_luisa(material_iter->second));
+                material_iter != data->material_bindings.end()
+                    ? to_luisa(material_iter->second)
+                    : inert_material_binding());
         }
         if (geometry.material_slots.empty()) {
-            geometry_materials.emplace_back(
-                MaterialBindingGpu{
-                    .cycles_shader_index =
-                        cycles_shader_identity::
-                            invalid_index});
-        }
-        if (!result.diagnostics.empty()) {
-            continue;
+            geometry_materials.emplace_back(inert_material_binding());
         }
 
         auto &resource =
@@ -1492,20 +1484,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
              instance.material_overrides) {
             const auto material_iter =
                 data->material_bindings.find(material_id);
-            if (material_iter ==
-                data->material_bindings.end()) {
-                diagnose(
-                    result.diagnostics,
-                    "Instance '" + instance.name +
-                        "' references unavailable override "
-                        "material.");
-                break;
-            }
             override_materials.emplace_back(
-                to_luisa(material_iter->second));
-        }
-        if (!result.diagnostics.empty()) {
-            continue;
+                material_iter != data->material_bindings.end()
+                    ? to_luisa(material_iter->second)
+                    : inert_material_binding());
         }
         const auto instance_index =
             static_cast<std::uint32_t>(instances.size());

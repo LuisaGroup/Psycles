@@ -1,6 +1,5 @@
 #include "path_tracer_curve_scene.h"
 
-#include "cycles_shader_identity.h"
 #include "path_tracer_scene_geometry.h"
 
 #include <array>
@@ -189,16 +188,13 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
         static_cast<std::uint32_t>(geometry_materials.size());
     for (const auto material_id : geometry.material_slots) {
       const auto material = data->material_bindings.find(material_id);
-      if (material == data->material_bindings.end()) {
-        result.diagnostic = "Curve geometry '" + geometry.name +
-                            "' references an unavailable material.";
-        return result;
-      }
-      geometry_materials.emplace_back(to_luisa(material->second));
+      geometry_materials.emplace_back(
+          material != data->material_bindings.end()
+              ? to_luisa(material->second)
+              : inert_material_binding());
     }
     if (geometry.material_slots.empty()) {
-      geometry_materials.emplace_back(MaterialBindingGpu{
-          .cycles_shader_index = cycles_shader_identity::invalid_index});
+      geometry_materials.emplace_back(inert_material_binding());
     }
 
     const auto resource_index =

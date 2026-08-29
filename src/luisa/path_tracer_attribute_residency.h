@@ -44,10 +44,12 @@ struct SceneAttributeResidencyPlan {
         contract::GeometryId id) const noexcept;
 };
 
-// Computes the least conservative per-geometry union allowed by the scene's
-// material dispatch relation. Base slots and every instance override are
-// included. Missing/unknown material programs raise the affected geometry to
-// the conservative top element rather than making pruning unsound.
+// Computes the least conservative per-geometry union allowed by the exact
+// primitive material image: only slots selected by real triangle primitives,
+// resolved through each instance's overrides and Cycles' last-slot clamp, are
+// roots. Missing programs inside that reachable image raise the affected
+// geometry to the conservative top element rather than making pruning
+// unsound.
 [[nodiscard]] SceneAttributeResidencyPlan
 build_scene_attribute_residency_plan(
     const contract::SceneSnapshot &snapshot,

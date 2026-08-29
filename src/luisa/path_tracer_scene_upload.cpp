@@ -42,12 +42,10 @@ void provide_inert_storage(SceneTableUploadInput input) {
         input.emissive_triangles.emplace_back(EmissiveTriangleGpu{});
     }
     if (input.geometry_materials.empty()) {
-        input.geometry_materials.emplace_back(MaterialBindingGpu{
-            .cycles_shader_index = cycles_shader_identity::invalid_index});
+        input.geometry_materials.emplace_back(inert_material_binding());
     }
     if (input.override_materials.empty()) {
-        input.override_materials.emplace_back(MaterialBindingGpu{
-            .cycles_shader_index = cycles_shader_identity::invalid_index});
+        input.override_materials.emplace_back(inert_material_binding());
     }
     // Empty-world renders are valid Cycles scenes. Luisa buffers cannot be
     // zero-sized; these records stay unreachable without a committed hit.
