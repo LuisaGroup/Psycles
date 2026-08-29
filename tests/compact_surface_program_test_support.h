@@ -17,7 +17,7 @@ struct SurfaceEvaluationCall;
 struct SurfacePreparationCall;
 struct SurfaceSampleTraceCall;
 struct SurfaceValueRuntime;
-}
+} // namespace psycles::luisa_backend::detail
 
 namespace psycles::test_support {
 
@@ -32,6 +32,17 @@ struct CompactSurfaceProgramEvidence {
 };
 
 [[nodiscard]] contract::ShaderGraph make_minimal_principled_graph();
+
+// Forces the direct Convert and Math families through observable Principled
+// inputs; in particular Scalar to Boolean uses the Cycles float-to-int
+// truncation boundary.
+[[nodiscard]] contract::ShaderGraph make_direct_math_convert_graph();
+
+// One closed texture trunk exercising Mapping, Image Color/Alpha, sampled RGB
+// Ramp Color/Alpha, and Mix Color. The Boolean selects Cycles' distinct BOX
+// execution shape without changing the graph dataflow.
+[[nodiscard]] contract::ShaderGraph
+make_direct_texture_trunk_graph(bool box_projection);
 
 // A depth-three Mix tree. `restore_after` appends an Add emission sibling;
 // otherwise the Mix consumes the root tail. The transparent leaf also forces

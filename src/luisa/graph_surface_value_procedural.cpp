@@ -19,9 +19,6 @@ namespace {
 
 namespace operand = compiler::value_operand;
 
-inline constexpr std::uint64_t color_ramp_constant_bit = 1u;
-inline constexpr std::uint64_t color_ramp_sampled_bit = 2u;
-
 template <std::size_t DomainSize, typename Evaluate>
 void dispatch_surface_value_immediate(
     UInt immediate, std::span<const std::uint16_t> immediate_domain,
@@ -48,24 +45,6 @@ void dispatch_surface_value_immediate(
           "invalid compact surface opcode immediate");
     };
   };
-}
-
-// Variable-length node tables are material data. The descriptor keeps payload
-// cardinality out of shader structure; sampled and legacy representations are
-// selected from immutable instruction metadata while recording the graph.
-[[nodiscard]] SurfaceShaderTableView shader_table_view(
-    const ShaderServices &services,
-    const SurfacePoint &point,
-    Expr<std::uint32_t> parameter) noexcept {
-    const auto descriptor = services
-                                .parameter_float3(
-                                    point.parameter_block,
-                                    parameter)
-                                .template bitcast<luisa::uint3>();
-    return {
-        .offset = descriptor.x,
-        .count = descriptor.y,
-        .width = descriptor.z};
 }
 
 [[nodiscard]] Float evaluate_gradient_mode(
@@ -125,64 +104,6 @@ void dispatch_surface_value_immediate(
         };
     };
     return gradient;
-}
-
-[[nodiscard]] Float4 evaluate_color_ramp_mode(
-    const ShaderServices &services,
-    const SurfaceShaderTableView &table,
-    Float factor,
-    std::uint32_t mode) noexcept {
-    const auto sampled = (mode & color_ramp_sampled_bit) != 0u;
-    const auto constant = (mode & color_ramp_constant_bit) != 0u;
-    if (sampled && constant) {
-        return color_ramp_sampled_constant(services, table, factor);
-    }
-    if (sampled) {
-        return color_ramp_sampled_linear(services, table, factor);
-    }
-    if (constant) {
-        return color_ramp_control_constant(services, table, factor);
-    }
-    return color_ramp_control_linear(services, table, factor);
-}
-
-[[nodiscard]] Float4 evaluate_color_ramp_svm(
-    const ShaderServices &services,
-    UInt mode,
-    std::span<const std::uint16_t> immediate_domain,
-    const SurfaceShaderTableView &table,
-    Float factor) noexcept {
-    std::array<bool, 4u> active{};
-    for (const auto encoded : immediate_domain) {
-      const auto mode = static_cast<std::uint32_t>(encoded) &
-                        compiler::surface_value_color_ramp_mode_mask;
-      if (mode >= active.size()) {
-        std::abort();
-      }
-      active[mode] = true;
-    }
-    Float4 ramp = make_float4(0.0f);
-    luisa::compute::detail::SwitchStmtBuilder{
-        mode & compiler::surface_value_color_ramp_mode_mask} %
-        [&] {
-          for (auto index = std::size_t{0u}; index < active.size(); ++index) {
-            if (!active[index]) {
-              continue;
-            }
-            luisa::compute::detail::SwitchCaseStmtBuilder{
-                static_cast<luisa::uint>(index)} %
-                [&, index] {
-                    ramp = evaluate_color_ramp_mode(
-                        services, table, factor,
-                        static_cast<std::uint32_t>(index));
-                };
-          }
-          luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
-            luisa::compute::dsl::unreachable(
-                "invalid compact surface Color Ramp mode");
-          };
-        };
-    return ramp;
 }
 
 [[nodiscard]] bool supports_procedural_value(
@@ -591,20 +512,15 @@ public:
                             ? *context.parameter_override
                             : Expr<std::uint32_t>{
                                   instruction.parameter.value};
-                    const auto table = shader_table_view(
-                        services, point, parameter);
+                    const auto table =
+                        surface_shader_table_view(services, point, parameter);
                     const auto ramp =
                         context.svm_immediate_override != nullptr
-                            ? evaluate_color_ramp_svm(
-                                  services,
-                                  *context.svm_immediate_override,
-                                  context.svm_immediate_domain,
-                                  table,
-                                  factor)
-                            : evaluate_color_ramp_mode(
-                                  services,
-                                  table,
-                                  factor,
+                            ? evaluate_surface_color_ramp_svm(
+                                  services, *context.svm_immediate_override,
+                                  context.svm_immediate_domain, table, factor)
+                            : evaluate_surface_color_ramp(
+                                  services, table, factor,
                                   static_cast<std::uint32_t>(
                                       instruction.static_u0));
                     const auto alpha_output =
@@ -627,8 +543,8 @@ public:
                             ? *context.parameter_override
                             : Expr<std::uint32_t>{
                                   instruction.parameter.value};
-                    const auto table = shader_table_view(
-                        services, point, parameter);
+                    const auto table =
+                        surface_shader_table_view(services, point, parameter);
                     const auto min_x = scalar(
                         instruction.operand(operand::rgb_curve::min_x), result);
                     const auto max_x = scalar(

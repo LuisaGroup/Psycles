@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstdint>
+#include <span>
+
+#include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/luisa/surface.h>
 
 namespace psycles::luisa_backend::detail {
@@ -52,5 +56,11 @@ namespace psycles::luisa_backend::detail {
     Float3 input,
     Float3 rotation,
     Float3 scale) noexcept;
+
+[[nodiscard]] Float3
+evaluate_surface_mapping_svm(const ShaderServices &services, UInt immediate,
+                             std::span<const std::uint16_t> immediate_domain,
+                             Float3 input, Float3 location, Float3 rotation,
+                             Float3 scale) noexcept;
 
 }// namespace psycles::luisa_backend::detail

@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -50,8 +51,18 @@ static_assert(surface_value_family_has_direct_evaluator(
     SurfaceSvmValueOpcode::convert));
 static_assert(surface_value_family_has_direct_evaluator(
     SurfaceSvmValueOpcode::math));
-static_assert(!surface_value_family_has_direct_evaluator(
+static_assert(surface_value_family_has_direct_evaluator(
+    SurfaceSvmValueOpcode::mix_color));
+static_assert(
+    surface_value_family_has_direct_evaluator(SurfaceSvmValueOpcode::rgb_ramp));
+static_assert(
+    surface_value_family_has_direct_evaluator(SurfaceSvmValueOpcode::mapping));
+static_assert(surface_value_family_has_direct_evaluator(
     SurfaceSvmValueOpcode::tex_image));
+static_assert(surface_value_family_has_direct_evaluator(
+    SurfaceSvmValueOpcode::tex_image_box));
+static_assert(
+    !surface_value_family_has_direct_evaluator(SurfaceSvmValueOpcode::noise));
 
 constexpr auto scenario_count = 8u;
 constexpr auto population_closure_capacity = 12u;
@@ -330,56 +341,6 @@ struct FixtureProgram {
   graph.set_root(ShaderDomain::surface,
                  OutputRef{.node = diffuse, .socket = "Closure"});
   return graph;
-}
-
-[[nodiscard]] ShaderGraph make_direct_math_convert_graph() {
-    ShaderGraph graph;
-    const auto geometry =
-        graph.add_node(node_type::geometry, "Direct SVM Geometry");
-    const auto normal_to_vector = graph.add_node(node_type::normal_to_vector,
-                                                 "Direct SVM Normal to Vector");
-    const auto vector_to_scalar = graph.add_node(node_type::vector_to_scalar,
-                                                 "Direct SVM Vector to Scalar");
-    const auto math = graph.add_node(node_type::math, "Direct SVM Multiply Add");
-    const auto scalar_to_color =
-        graph.add_node(node_type::scalar_to_color, "Direct SVM Scalar to Color");
-    const auto color_to_scalar =
-        graph.add_node(node_type::color_to_scalar, "Direct SVM Color to Scalar");
-    const auto scalar_to_boolean = graph.add_node(node_type::scalar_to_boolean,
-                                                  "Direct SVM Scalar to Boolean");
-    const auto principled =
-        graph.add_node(node_type::principled_bsdf, "Direct SVM Principled");
-    const auto configured =
-        graph.connect({.node = geometry, .socket = "Normal"}, normal_to_vector,
-                      "Normal") &&
-        graph.connect({.node = normal_to_vector, .socket = "Vector"},
-                      vector_to_scalar, "Vector") &&
-        graph.connect({.node = vector_to_scalar, .socket = "Value"}, math, "A") &&
-        graph.set_input(math, "B", SocketValue::floating(2.5f)) &&
-        graph.set_input(math, "C", SocketValue::floating(0.1f)) &&
-        graph.set_property(math, "Operation",
-                           SocketValue::string("MULTIPLY_ADD")) &&
-        graph.connect({.node = math, .socket = "Value"}, scalar_to_color,
-                      "Value") &&
-        graph.connect({.node = scalar_to_color, .socket = "Color"},
-                      color_to_scalar, "Color") &&
-        graph.connect({.node = math, .socket = "Value"}, scalar_to_boolean,
-                      "Value") &&
-        graph.connect({.node = scalar_to_color, .socket = "Color"}, principled,
-                      "BaseColor") &&
-        graph.connect({.node = color_to_scalar, .socket = "Value"}, principled,
-                      "Roughness") &&
-        graph.connect({.node = scalar_to_boolean, .socket = "Boolean"},
-                      principled, "ThinWall") &&
-        graph.set_input(principled, "TransmissionWeight",
-                        SocketValue::floating(0.65f));
-    if (!configured) {
-        throw std::runtime_error{
-            "failed to configure direct Math/Convert SVM graph"};
-    }
-    graph.set_root(ShaderDomain::surface,
-                   OutputRef{.node = principled, .socket = "Closure"});
-    return graph;
 }
 
 [[nodiscard]] ShaderGraph make_capacity_transparency_graph(
@@ -858,6 +819,27 @@ int main(int argc, char **argv) {
         }
     }
     fixtures.emplace_back(std::move(direct_math_convert));
+    constexpr std::array direct_texture_operations{
+        ValueOperation::mapping, ValueOperation::image_color,
+        ValueOperation::image_alpha, ValueOperation::color_ramp,
+        ValueOperation::mix};
+    for (const auto box_projection : {false, true}) {
+        auto direct_texture = compile_fixture(
+            compiler, make_direct_texture_trunk_graph(box_projection));
+        for (const auto operation : direct_texture_operations) {
+            if (std::none_of(
+                    direct_texture.program->value_instructions().begin(),
+                    direct_texture.program->value_instructions().end(),
+                    [operation](const auto &instruction) noexcept {
+                        return instruction.operation == operation;
+                    })) {
+                std::cerr << "direct texture compact fixture lost operation "
+                          << static_cast<std::uint32_t>(operation) << '\n';
+                return EXIT_FAILURE;
+            }
+        }
+        fixtures.emplace_back(std::move(direct_texture));
+    }
     const auto weighted_bssrdf_topology =
         static_cast<std::uint32_t>(fixtures.size());
     fixtures.emplace_back(
@@ -1131,6 +1113,10 @@ int main(int argc, char **argv) {
     scene->cycles_bsdf_table_buffer =
         device.create_buffer<float>(cycles_values.size());
     scene->texture_heap = device.create_bindless_array(1u);
+    scene->images.emplace_back(
+        device.create_image<float>(PixelStorage::BYTE4, 2u, 2u));
+    scene->texture_heap.emplace_on_update(0u, scene->images.back(),
+                                          Sampler::linear_point_repeat());
     scene->heap = device.create_bindless_array(2u);
     scene->attribute_binding_slot = 0u;
     scene->attribute_range_slot = 1u;
@@ -1655,9 +1641,16 @@ int main(int argc, char **argv) {
     std::vector<luisa::float3> expected_bssrdf_normals(invocation_count);
     std::vector<luisa::float3> actual_bssrdf_normals(invocation_count);
     auto collector_begin_normal = luisa::make_float3(0.0f);
+    constexpr std::array texture_pixels{
+        std::byte{32u},  std::byte{96u},  std::byte{224u}, std::byte{64u},
+        std::byte{208u}, std::byte{48u},  std::byte{112u}, std::byte{160u},
+        std::byte{80u},  std::byte{240u}, std::byte{24u},  std::byte{208u},
+        std::byte{176u}, std::byte{128u}, std::byte{72u},  std::byte{240u}};
     stream << scalar_buffer.copy_from(luisa::span{scalar_parameters})
            << vector_buffer.copy_from(luisa::span{vector_parameters})
            << cycles_buffer.copy_from(luisa::span{cycles_values})
+           << scene->images.front().copy_from(luisa::span{texture_pixels})
+           << scene->texture_heap.update()
            << parameter_base_buffer.copy_from(luisa::span{parameter_bases});
     upload_surface_value_runtime(stream, *scene->surface_values);
     stream << collector_begin_shader(collector_begin_buffer).dispatch(1u)

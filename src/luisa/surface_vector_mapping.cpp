@@ -1,5 +1,10 @@
 #include "surface_vector_mapping.h"
 
+#include <array>
+#include <cstdlib>
+
+#include <luisa/dsl/sugar.h>
+
 namespace psycles::luisa_backend::detail {
 
 Float3 rotate_euler(
@@ -161,6 +166,70 @@ Float3 map_vector_normal(
     }
     return map_vector_normal_inline(
         input, rotation, scale);
+}
+
+Float3
+evaluate_surface_mapping_svm(const ShaderServices &services, UInt immediate,
+                             std::span<const std::uint16_t> immediate_domain,
+                             Float3 input, Float3 location, Float3 rotation,
+                             Float3 scale) noexcept {
+    const auto axes = (immediate & compiler::surface_value_mapping_axes_mask) >>
+                      compiler::surface_value_mapping_axes_shift;
+    $if(axes != 0u) {
+        const auto component = [&input](UInt axis) noexcept -> Float {
+            Float selected = 0.0f;
+            selected = select(selected, input.x, axis == 1u);
+            selected = select(selected, input.y, axis == 2u);
+            selected = select(selected, input.z, axis == 3u);
+            return selected;
+        };
+        input =
+            make_float3(component(axes & 0x3u), component((axes >> 2u) & 0x3u),
+                        component((axes >> 4u) & 0x3u));
+    };
+
+    Float3 mapped = make_float3(0.0f);
+    const auto mode = immediate & compiler::surface_value_mapping_type_mask;
+    luisa::compute::detail::SwitchStmtBuilder{mode} % [&] {
+        std::array<bool, 4u> emitted{};
+        for (const auto encoded : immediate_domain) {
+            const auto static_mode = static_cast<std::uint32_t>(encoded) &
+                                     compiler::surface_value_mapping_type_mask;
+            if (static_mode >= emitted.size()) {
+                std::abort();
+            }
+            if (emitted[static_mode]) {
+                continue;
+            }
+            emitted[static_mode] = true;
+            luisa::compute::detail::SwitchCaseStmtBuilder{static_mode} %
+                [&, static_mode] {
+                    switch (
+                        static_cast<compiler::MappingVectorType>(static_mode)) {
+                    case compiler::MappingVectorType::point:
+                        mapped = map_vector_point(services, input, location,
+                                                  rotation, scale);
+                        break;
+                    case compiler::MappingVectorType::texture:
+                        mapped = map_vector_texture(services, input, location,
+                                                    rotation, scale);
+                        break;
+                    case compiler::MappingVectorType::normal:
+                        mapped =
+                            map_vector_normal(services, input, rotation, scale);
+                        break;
+                    case compiler::MappingVectorType::vector:
+                        mapped = map_vector_direction(services, input, rotation,
+                                                      scale);
+                        break;
+                    }
+                };
+        }
+        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+            luisa::compute::dsl::unreachable("invalid Mapping SVM immediate");
+        };
+    };
+    return mapped;
 }
 
 }// namespace psycles::luisa_backend::detail
