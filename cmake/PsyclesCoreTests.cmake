@@ -337,6 +337,7 @@ if(PSYCLES_BUILD_TESTS)
                 generated_images
                 particle_hair
                 cycles_identity
+                cycles_output
                 muted_nodes)
             psycles_add_blender_test(
                 NAME "psycles.blender_export_${test}"
