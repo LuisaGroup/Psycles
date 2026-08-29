@@ -1,8 +1,9 @@
 # Current-head full-resolution HIP scene matrix
 
 This checkpoint re-renders Classroom, Lone Monk, Monster Under the Bed, the
-official Blender benchmark, and the Blender 4.1 Splash from fresh Blender
-5.2.1 exports after the Cycles Fast GI and emission-endpoint implementation at
+official Blender benchmark, the Blender 4.1 Splash, and Barbershop Interior
+from fresh Blender 5.2.1 exports after the Cycles Fast GI and emission-endpoint
+implementation at
 `debbadb`. The measured renderer head is `6096751`. Every Cycles reference
 comes from commit
 `9e2066aef7ef7e20c142ad7bd3303138a4304c93` on the same Radeon RX 9070 XT.
@@ -33,6 +34,11 @@ until the HIP scene gate is complete.
   OOM. Camera, object support, textures, and major closure classes align, but
   the broad indirect-light residual and glossy fireflies leave Combined at
   13.6901% relative RMSE. It therefore does not pass the strict quality gate.
+- Barbershop Interior completes at native resolution. The previously disputed
+  floor gaps and texture, left cabinets, tiled wall, ceiling, right cabinet,
+  and glossy support now align under full-resolution inspection. Combined is
+  4.3986% relative RMSE, with nearly exact first-hit Glossy and Transmission
+  Color; remaining error is concentrated in indirect transport.
 - The separate Flat Archiviz Fast GI gate passes at native 1800x1100/1024 with
   Combined relative RMSE 1.9567%; see the
   [Fast GI report](../flat-archiviz-fast-gi/README.md).
@@ -49,6 +55,7 @@ shader JIT, image writing, and destruction are excluded.
 | Monster | 1024x1024 | 79.001 s | 58.191 s | 1.3576x | +35.76% |
 | Benchmark | 2048x858 | 128.532 s | 119.565 s | 1.0750x | +7.50% |
 | Blender 4.1 Splash | 1920x1080 | 377.518 s | 208.763 s | 1.8084x | +80.84% |
+| Barbershop Interior | 2048x858 | 219.418 s | 127.422 s | 1.7220x | +72.20% |
 | Flat Archiviz staged | 1800x1100 | 172.750 s | 114.927 s | 1.5031x | +50.31% |
 
 The exact Cycles repeats are stable against the prior checkpoint: Classroom
@@ -74,6 +81,7 @@ attribution.
 | Monster | 38 / 369 | 48 | 22 | 496 B / 120 fields / 9 stages |
 | Benchmark | 150 / 2,907 | 143 | 38 | 520 B / 126 fields / 9 stages |
 | Blender 4.1 Splash | 98 / 947 | 79 | 21 | 464 B / 111 fields / 8 stages |
+| Barbershop Interior | 380 / 10,177 | 210 | 33 | 864 B / 182 fields / 9 stages |
 
 ## Numerical comparison
 
@@ -87,12 +95,14 @@ invalid-pixel accounting are linked for each scene.
 | Monster | 1.8148% | 1.002918 | 0 | 0 |
 | Benchmark | 21.0322% | 0.969818 | 0 | 0 |
 | Blender 4.1 Splash | 13.6901% | 0.991474 | 0 | 0 |
+| Barbershop Interior | 4.3986% | 1.004774 | 0 | 0 |
 
 Reports: [Classroom](classroom/all-pass-report.json),
 [Lone Monk](lone-monk/all-pass-report.json),
 [Monster](monster/all-pass-report.json),
-[Benchmark](benchmark/all-pass-report.json), and
-[Blender 4.1 Splash](splash-4.1/all-pass-report.json).
+[Benchmark](benchmark/all-pass-report.json),
+[Blender 4.1 Splash](splash-4.1/all-pass-report.json), and
+[Barbershop Interior](barbershop/all-pass-report.json).
 
 Classroom Diffuse Color relative RMSE is 0.5916% and Normal is 0.9866%.
 Cycles itself contains 74 invalid Diffuse Direct and 77 invalid Glossy Direct
@@ -115,6 +125,15 @@ energy remains within 0.81% of Cycles. The full-resolution difference panel is
 broadly noisy rather than displaced, but the indirect energy allocation is
 still a renderer gap and is not classified as an acceptable floating-point
 residual.
+
+Barbershop Diffuse Color is 4.6098%, Normal is 3.2009%, Glossy Color is
+0.8109%, and Transmission Color is 0.0743% relative RMSE. Mean absolute error
+for Diffuse Color is only 0.000967; its relative RMS is raised by localized
+high-contrast support. Diffuse Indirect is 14.9160% and Glossy Indirect is
+32.7797%, while their mean energy differs by only +0.59% and +0.63%. Both
+renderers produce exactly zero Volume Direct and Volume Indirect for this
+scene, so Barbershop does not validate active volume transport despite its
+legacy Smoke warnings.
 
 ## Visual inspection
 
@@ -193,6 +212,27 @@ support but has an energy mismatch.
 
 ![Blender 4.1 Splash Transmission Indirect](splash-4.1/transind.png)
 
+### Barbershop Interior
+
+Full-resolution crops were inspected in addition to the complete triptychs.
+The wood-floor pattern and the black glossy gaps occur in both renderers. The
+left cabinet is not a diffuse replacement: its Glossy Color support, knobs,
+glass, bottles, and wood grain align. The tiled upper-left wall, ceiling beams,
+back wall, picture frames, right cabinet, chair, and foreground newspaper also
+register without a UV, transform, or texture shuffle. The amplified Combined
+and indirect panels remain noisy, but they do not reproduce the earlier
+coherent floor/cabinet mismatch.
+
+![Barbershop Combined](barbershop/combined.png)
+
+![Barbershop Diffuse Color](barbershop/diffcol.png)
+
+![Barbershop Normal](barbershop/normal.png)
+
+![Barbershop Glossy Color](barbershop/glosscol.png)
+
+![Barbershop Diffuse Indirect](barbershop/diffind.png)
+
 ## Input caveats
 
 The downloaded benchmark reports legacy Blender 5.2 dependency-graph warnings
@@ -215,6 +255,18 @@ only about 5.08 GB of VRAM remained and used 86% VRAM during the steady render;
 the scene nevertheless completed with no invalid output pixels. The source has
 adaptive sampling and denoising enabled, but the exact Cycles golden metadata
 confirms that both were disabled for this comparison.
+
+Barbershop's Blender 5.2 load reports deprecated Smoke modifiers and old color
+management names. Cycles itself cannot load `generic_scratches.png` or
+`guilder_ornament.png`; Psycles preserves those two shared missing-asset
+conditions. The fresh export contains 1,055 meshes, four curve geometries,
+1,109 instances, 547 authored materials, and 190 available images. It also
+reveals a separate engineering issue: the unreferenced `agent_skin` material
+and its four unavailable `agent_face_*` images enter surface-program
+construction even though no exported geometry uses material index 51. This
+does not affect the visible comparison, but it violates the used-closure-only
+design goal and is retained as a pruning regression target rather than hidden
+as an asset caveat.
 
 ## Command topology
 
