@@ -18,6 +18,7 @@
 
 #include "graph_surface_value_expression.h"
 #include "surface_color_transforms.h"
+#include "surface_fresnel.h"
 #include "surface_math.h"
 #include "surface_math_constants.h"
 #include "surface_vector_mapping.h"
@@ -326,8 +327,6 @@ template <typename Id, typename Values>
     Float3 channels,
     std::uint64_t mode) noexcept;
 
-[[nodiscard]] Float fresnel_dielectric_cos(
-    Float cosine, Float eta) noexcept;
 [[nodiscard]] Float f0_from_ior(Float ior) noexcept;
 [[nodiscard]] Float ior_from_f0(Float f0) noexcept;
 [[nodiscard]] Float fresnel_dielectric_fss(Float eta) noexcept;

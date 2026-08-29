@@ -1,4 +1,5 @@
 #include "path_tracer_surface_value_family.h"
+#include "path_tracer_surface_value_context_family.h"
 #include "path_tracer_surface_value_numeric_family.h"
 #include "path_tracer_surface_value_procedural_family.h"
 #include "path_tracer_surface_value_state_family.h"
@@ -266,6 +267,16 @@ bool emit_direct_surface_value_variant(
             emit_direct_surface_state_family(
                 family, runtime, bytecode_slots, services, point, locals,
                 instruction, variant, operands);
+            return true;
+        case compiler::SurfaceSvmValueOpcode::tangent:
+        case compiler::SurfaceSvmValueOpcode::fresnel:
+        case compiler::SurfaceSvmValueOpcode::layer_weight:
+        case compiler::SurfaceSvmValueOpcode::light_path:
+        case compiler::SurfaceSvmValueOpcode::object_info:
+        case compiler::SurfaceSvmValueOpcode::particle_info:
+        case compiler::SurfaceSvmValueOpcode::hair_info:
+            emit_direct_surface_context_family(
+                family, point, locals, instruction, variant, operands);
             return true;
         case compiler::SurfaceSvmValueOpcode::mix_color:
         case compiler::SurfaceSvmValueOpcode::rgb_ramp:

@@ -85,6 +85,21 @@ psycles_add_luisa_backend_test(
     LIBRARIES Psycles::luisa)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_surface_geometry_context_tests
+    SOURCE tests/test_luisa_surface_geometry_context.cpp
+    TEST_STEM luisa_surface_geometry_context
+    LIBRARIES Psycles::luisa)
+target_include_directories(
+    psycles_luisa_surface_geometry_context_tests
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+if(TEST psycles.luisa_surface_geometry_context_vk)
+    set_tests_properties(
+        psycles.luisa_surface_geometry_context_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_film_light_tests
     SOURCE tests/test_luisa_cycles_film_light.cpp
     TEST_STEM luisa_cycles_film_light
@@ -163,6 +178,7 @@ target_sources(
     PRIVATE
         tests/compact_surface_program_test_support.cpp
         tests/compact_surface_procedural_family_test_support.cpp
+        tests/compact_surface_context_family_test_support.cpp
         tests/compact_surface_state_family_test_support.cpp)
 target_include_directories(
     psycles_luisa_compact_surface_preparation_tests
