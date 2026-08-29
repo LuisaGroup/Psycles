@@ -649,7 +649,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     std::vector<luisa::vector<luisa::float4>>
         float_texture_uploads;
     float_texture_uploads.reserve(
-        snapshot.environment ? 1u : 0u);
+        snapshot.images.size() +
+        (snapshot.environment ? 1u : 0u));
 
     auto &dummy_pixels = texture_uploads.emplace_back(4u);
     dummy_pixels[0u] = std::byte{255u};
@@ -677,7 +678,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     "' has no decodable payload.");
             continue;
         }
-        auto decoded = decode_scene_image_rgba8(
+        auto decoded = decode_scene_image(
             image.encoded_data, image.name);
         if (!decoded) {
             diagnose(
@@ -685,55 +686,60 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 "Failed to decode image '" + image.name + "'.");
             continue;
         }
-        const auto pixel_bytes = decoded->pixels.size();
-        auto &pixels =
-            texture_uploads.emplace_back(pixel_bytes);
-        std::memcpy(
-            pixels.data(), decoded->pixels.data(), pixel_bytes);
-        if (image.alpha_type ==
-                contract::ImageAlphaType::straight &&
-            image.color_space !=
-                contract::ImageColorSpace::data) {
-            for (std::size_t offset = 0u;
-                 offset < pixel_bytes;
-                 offset += 4u) {
-                const auto alpha =
-                    static_cast<std::uint32_t>(
-                        std::to_integer<std::uint8_t>(
-                            pixels[offset + 3u]));
-                for (std::size_t channel = 0u;
-                     channel < 3u;
-                     ++channel) {
-                    const auto value =
-                        static_cast<std::uint32_t>(
-                            std::to_integer<std::uint8_t>(
-                                pixels[offset + channel]));
-                    pixels[offset + channel] =
-                        static_cast<std::byte>(
-                            (value * alpha) / 255u);
-                }
+        apply_scene_image_alpha(
+            *decoded,
+            image.alpha_type,
+            image.color_space);
+        if (decoded->storage ==
+            io::DecodedImageStorage::unorm8) {
+            const auto pixel_bytes =
+                decoded->unorm8_pixels.size();
+            auto &pixels =
+                texture_uploads.emplace_back(pixel_bytes);
+            std::memcpy(
+                pixels.data(),
+                decoded->unorm8_pixels.data(),
+                pixel_bytes);
+            auto &resource = data->images.emplace_back(
+                data->device.create_image<float>(
+                    luisa::compute::PixelStorage::BYTE4,
+                    decoded->width,
+                    decoded->height));
+            data->texture_heap.emplace_on_update(
+                static_cast<std::uint32_t>(image_id.value),
+                resource,
+                luisa::compute::Sampler::linear_point_repeat());
+            stream << resource.copy_from(
+                luisa::span{pixels});
+        } else {
+            const auto pixel_count =
+                decoded->float_pixels.size() / 4u;
+            auto &pixels =
+                float_texture_uploads.emplace_back();
+            pixels.reserve(pixel_count);
+            for (std::size_t pixel = 0u;
+                 pixel < pixel_count;
+                 ++pixel) {
+                const auto offset = pixel * 4u;
+                pixels.emplace_back(
+                    luisa::make_float4(
+                        decoded->float_pixels[offset],
+                        decoded->float_pixels[offset + 1u],
+                        decoded->float_pixels[offset + 2u],
+                        decoded->float_pixels[offset + 3u]));
             }
-        } else if (
-            image.alpha_type ==
-            contract::ImageAlphaType::ignore) {
-            for (std::size_t offset = 3u;
-                 offset < pixel_bytes;
-                 offset += 4u) {
-                pixels[offset] =
-                    static_cast<std::byte>(255u);
-            }
+            auto &resource = data->images.emplace_back(
+                data->device.create_image<float>(
+                    luisa::compute::PixelStorage::FLOAT4,
+                    decoded->width,
+                    decoded->height));
+            data->texture_heap.emplace_on_update(
+                static_cast<std::uint32_t>(image_id.value),
+                resource,
+                luisa::compute::Sampler::linear_point_repeat());
+            stream << resource.copy_from(
+                luisa::span{pixels});
         }
-
-        auto &resource = data->images.emplace_back(
-            data->device.create_image<float>(
-                luisa::compute::PixelStorage::BYTE4,
-                decoded->width,
-                decoded->height));
-        data->texture_heap.emplace_on_update(
-            static_cast<std::uint32_t>(image_id.value),
-            resource,
-            luisa::compute::Sampler::linear_point_repeat());
-        stream << resource.copy_from(luisa::span{pixels});
     }
     const auto has_nishita_environment =
         snapshot.environment &&
