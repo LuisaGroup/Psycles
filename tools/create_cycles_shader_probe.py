@@ -161,6 +161,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "point_light_shadow_limit": lights_camera._point_light_shadow_limit,
     "point_light_soft_disk": lights_camera._point_light_soft_disk,
     "point_light_soft_sphere": lights_camera._point_light_soft_sphere,
+    "transmission_light_path_visibility": (
+        lights_camera._transmission_light_path_visibility
+    ),
     "principled_alpha_surface": closures._principled_alpha_surface,
     "principled_bump_glossy": closures._principled_bump_glossy,
     "principled_coat_surface": closures._principled_coat_surface,

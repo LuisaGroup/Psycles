@@ -393,6 +393,72 @@ def _point_light_light_path(scene: Any) -> None:
     )
 
 
+def _transmission_light_path_visibility(scene: Any) -> None:
+    """Keep shader path visibility distinct from traversal visibility.
+
+    Cycles classifies a singular transmission as both TRANSMIT and GLOSSY.
+    Its BVH projection removes GLOSSY, but the shader behind the refractive
+    plane must still observe Is Glossy Ray.  A full-frame, normal-incidence
+    refraction makes this a deterministic one-path state transition rather
+    than a noisy transport comparison.
+    """
+    refractive, tree, output = _material(
+        "Transmission Visibility Boundary"
+    )
+    refraction = tree.nodes.new("ShaderNodeBsdfRefraction")
+    refraction.name = "Singular Refraction"
+    _input(refraction, "Color").default_value = (1.0, 1.0, 1.0, 1.0)
+    _input(refraction, "Roughness").default_value = 0.0
+    _input(refraction, "IOR").default_value = 1.45
+    tree.links.new(
+        _output(refraction, "BSDF"),
+        _input(output, "Surface"),
+    )
+    bpy.ops.mesh.primitive_plane_add(
+        size=8.0,
+        enter_editmode=False,
+        align="WORLD",
+        location=(0.0, 0.0, 1.0),
+    )
+    boundary = bpy.context.object
+    boundary.name = "Transmission Visibility Boundary"
+    boundary.data.materials.append(refractive)
+
+    emitter, tree, output = _material(
+        "Transmission Visibility Observer"
+    )
+    light_path = tree.nodes.new("ShaderNodeLightPath")
+    light_path.name = "Uncontracted Path Visibility"
+    scale = tree.nodes.new("ShaderNodeMath")
+    scale.operation = "MULTIPLY"
+    scale.inputs[1].default_value = 0.75
+    tree.links.new(
+        _output(light_path, "Is Glossy Ray"),
+        scale.inputs[0],
+    )
+    bias = tree.nodes.new("ShaderNodeMath")
+    bias.operation = "ADD"
+    bias.inputs[1].default_value = 0.25
+    tree.links.new(_output(scale, "Value"), bias.inputs[0])
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Visibility-coded Emission"
+    _input(emission, "Color").default_value = (0.71, 0.37, 0.19, 1.0)
+    tree.links.new(
+        _output(bias, "Value"),
+        _input(emission, "Strength"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(emitter)
+
+    scene.cycles.max_bounces = 2
+    scene.cycles.diffuse_bounces = 0
+    scene.cycles.glossy_bounces = 2
+    scene.cycles.transmission_bounces = 2
+
+
 def _shadow_depth_transparency_material(
     name: str,
     base: float,

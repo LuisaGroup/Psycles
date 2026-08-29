@@ -180,6 +180,37 @@ class ShaderProbeRunnerContract(unittest.TestCase):
         )
         self.assertEqual(len(failures), 8)
 
+    def test_transmission_light_path_gate_rejects_traversal_projection(
+        self,
+    ) -> None:
+        report = {
+            "passes": {
+                pass_name: {
+                    "luminance_mean_ratio": 1.0,
+                    "relative_rmse": 0.0,
+                }
+                for pass_name in ("Combined", "TransDir")
+            }
+        }
+        self.assertEqual(
+            self.runner._probe_gate_failures(
+                "transmission_light_path_visibility", report
+            ),
+            [],
+        )
+        # The invalid implementation fed path_state_ray_visibility() into
+        # shader evaluation, losing GLOSSY on a TRANSMIT path. The probe's
+        # encoded emission then falls from 1.0 to its 0.25 bias.
+        for pass_name in ("Combined", "TransDir"):
+            report["passes"][pass_name] = {
+                "luminance_mean_ratio": 0.25,
+                "relative_rmse": 0.75,
+            }
+        failures = self.runner._probe_gate_failures(
+            "transmission_light_path_visibility", report
+        )
+        self.assertEqual(len(failures), 4)
+
     def test_triangle_solid_angle_gate_requires_sample_alignment(
         self,
     ) -> None:

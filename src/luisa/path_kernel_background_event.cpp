@@ -24,8 +24,10 @@ class BackgroundEventStageImpl final
             invocation.config;
         const auto &scene = config.scene;
         auto &ray = sample.ray;
-        const auto ray_visibility =
-            sample.contracted_ray_visibility();
+        const auto traversal_ray_visibility =
+            sample.traversal_ray_visibility();
+        const auto shader_ray_visibility =
+            sample.shader_ray_visibility();
         const auto mis_competition_skipped =
             sample.mis_competition_skipped();
         auto &previous_bsdf_pdf =
@@ -86,7 +88,7 @@ class BackgroundEventStageImpl final
                 environment_pdf > 0.0f);
         const auto world_visible =
             (scene->world_visibility_mask &
-             ray_visibility) != 0u;
+             traversal_ray_visibility) != 0u;
         Float3 environment_radiance;
         if (scene->environment_emission_is_constant) {
             environment_radiance =
@@ -101,7 +103,7 @@ class BackgroundEventStageImpl final
                         ray->direction(),
                         cycles_path_state::
                             background_emission_shader_state(
-                                ray_visibility,
+                                shader_ray_visibility,
                                 ray_events,
                                 path_depth,
                                 diffuse_depth,

@@ -31,7 +31,7 @@ public:
     auto &ray = sample.ray;
     auto &ray_dP = sample.ray_dP;
     auto &ray_dD = sample.ray_dD;
-    const auto ray_visibility = sample.contracted_ray_visibility();
+    const auto shader_ray_visibility = sample.shader_ray_visibility();
     auto &ray_events = sample.ray_events;
     auto &path_depth = sample.path_depth;
     auto &diffuse_depth = sample.diffuse_depth;
@@ -50,7 +50,7 @@ public:
     auto primitive =
         _geometry->emit(scene, hit, ray, ray_dP, ray_dD, safe_normalize);
     auto point = std::move(primitive.point);
-    point.ray_visibility = ray_visibility;
+    point.ray_visibility = shader_ray_visibility;
     point.ray_events = ray_events;
     point.ray_depth = path_depth;
     point.diffuse_depth = diffuse_depth;
