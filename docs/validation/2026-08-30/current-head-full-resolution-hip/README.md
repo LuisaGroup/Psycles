@@ -265,8 +265,9 @@ reveals a separate engineering issue: the unreferenced `agent_skin` material
 and its four unavailable `agent_face_*` images enter surface-program
 construction even though no exported geometry uses material index 51. This
 does not affect the visible comparison, but it violates the used-closure-only
-design goal and is retained as a pruning regression target rather than hidden
-as an asset caveat.
+design goal. Follow-up commit `4671bc5` resolves that target with a formally
+closed runtime material domain; see the
+[reachable-material HIP validation](../reachable-material-domain-hip/README.md).
 
 ## Command topology
 

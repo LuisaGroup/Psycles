@@ -1,0 +1,193 @@
+{
+  "commands": {
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "/home/mike/Projects/Psycles/assets/official-blender-scenes/barbershop-interior/barbershop_interior.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-fullres-hip-20260830/barbershop/reachable-materials-4671bc5/cycles/hip.exr",
+        "2048",
+        "858",
+        "1024",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "RX 9070 XT"
+      ],
+      "log": "/var/tmp/psycles-fullres-hip-20260830/barbershop/reachable-materials-4671bc5/logs/cycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 130.39661784499185
+    },
+    "export": {
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "/home/mike/Projects/Psycles/assets/official-blender-scenes/barbershop-interior/barbershop_interior.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+        "--",
+        "/var/tmp/psycles-fullres-hip-20260830/exports/barbershop-reachable-materials-4671bc5"
+      ],
+      "log": "/var/tmp/psycles-fullres-hip-20260830/barbershop/reachable-materials-4671bc5/logs/export.log",
+      "returncode": 0,
+      "wall_seconds": 138.3109855199873
+    },
+    "psycles_hip-wavefront-staged": {
+      "command": [
+        "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-fullres-hip-20260830/exports/barbershop-reachable-materials-4671bc5",
+        "/var/tmp/psycles-fullres-hip-20260830/barbershop/reachable-materials-4671bc5/psycles/hip-wavefront-staged.ppm",
+        "hip",
+        "2048",
+        "858",
+        "1024",
+        "64",
+        "-",
+        "1024",
+        "429",
+        "0",
+        "0",
+        "1024",
+        "-",
+        "1",
+        "0",
+        "wavefront-staged",
+        "32",
+        "32768",
+        "32",
+        "1",
+        "1",
+        "0",
+        "4",
+        "2",
+        "auto",
+        "0",
+        "0",
+        "0",
+        "1",
+        "1048576"
+      ],
+      "log": "/var/tmp/psycles-fullres-hip-20260830/barbershop/reachable-materials-4671bc5/logs/psycles-hip-wavefront-staged.log",
+      "returncode": 0,
+      "wall_seconds": 246.5963391599944
+    }
+  },
+  "comparisons": {
+    "psycles-hip-wavefront-staged-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-fullres-hip-20260830/barbershop/reachable-materials-4671bc5/psycles/hip-wavefront-staged.exr",
+      "process_wall_seconds": 13.098970154998824,
+      "reference": "/var/tmp/psycles-fullres-hip-20260830/barbershop/reachable-materials-4671bc5/cycles/hip.exr",
+      "report": "/var/tmp/psycles-fullres-hip-20260830/barbershop/reachable-materials-4671bc5/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/report.json"
+    }
+  },
+  "compiler_tmp": "/var/tmp/psycles-fullres-hip-20260830/compiler-tmp",
+  "matrix": {
+    "cycles": [
+      "hip"
+    ],
+    "psycles": [
+      "hip-wavefront-staged"
+    ]
+  },
+  "relative_performance": {
+    "hip-wavefront-staged": {
+      "slowdown_vs_cycles_hip": 1.6875856693102924,
+      "speedup_over_cycles_hip": 0.592562509972424
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-fullres-hip-20260830/barbershop/reachable-materials-4671bc5/cycles/hip.json",
+        "metadata_sha256": "907c40800e65fb5a3aa6585e5b6b18dd0e796ba1d1d2352837888b2698905c1d",
+        "output": "/var/tmp/psycles-fullres-hip-20260830/barbershop/reachable-materials-4671bc5/cycles/hip.exr",
+        "process_wall_seconds": 130.39661784499185,
+        "render_seconds": 129.14959161099978,
+        "sha256": "1ce53fea73fd8ced16e278bea7fdac8a81c9809db9bc1e5b9ca1256a9d82080b"
+      }
+    },
+    "psycles": {
+      "hip-wavefront-staged": {
+        "backend": "hip",
+        "output": "/var/tmp/psycles-fullres-hip-20260830/barbershop/reachable-materials-4671bc5/psycles/hip-wavefront-staged.exr",
+        "process_wall_seconds": 246.5963391599944,
+        "render_seconds": 217.951,
+        "scene_compile_seconds": 15.8172,
+        "scheduler": "wavefront-staged",
+        "sha256": "2cbe8c2601941fea0a309c46f9fb3028a3d9937a1b03fbbd7d641f553c2ed96d",
+        "shader_jit_seconds": 10.352
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": false,
+    "requested": false,
+    "reused_stages": []
+  },
+  "scene": {
+    "blend": "/home/mike/Projects/Psycles/assets/official-blender-scenes/barbershop-interior/barbershop_interior.blend",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "bundle": "/var/tmp/psycles-fullres-hip-20260830/exports/barbershop-reachable-materials-4671bc5",
+    "geometry_bin_sha256": "896b4c034213aa606ad648dfc7bf2494d93cad4952f4288301c6499149770404",
+    "scene_json_sha256": "e5751528143d651fe31ded17cff63462f75fbb76b34f67d7b34414c7252dafd9",
+    "sha256": "95972b56180462cac47ec82f3a755bd9111ec18ca37a6196a319c013db994130"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "RX 9070 XT",
+    "height": 858,
+    "max_samples_per_dispatch": 64,
+    "psycles_environment": {
+      "PSYCLES_COMPACT_SURFACE_VALUES": null,
+      "PSYCLES_POPULATE_SURFACE_ONCE": null
+    },
+    "psycles_scheduler_config": {
+      "fast_math": true,
+      "persistent_block_size": 32,
+      "persistent_fetch_size": 1,
+      "persistent_worker_count": 32768,
+      "staged_direct_light_queue": false,
+      "staged_surface_sorting": true,
+      "wavefront_counter_readback_batch_size": 4,
+      "wavefront_counter_readback_pipeline_depth": 2,
+      "wavefront_execution_block_size": 32,
+      "wavefront_frame_capacity": 1048576,
+      "wavefront_graph_refill_threshold": 0,
+      "wavefront_graph_selective": false,
+      "wavefront_graph_worker_count": 0,
+      "wavefront_tail_megakernel_threshold": "auto"
+    },
+    "psycles_schedulers": [
+      "wavefront-staged"
+    ],
+    "samples": 1024,
+    "width": 2048
+  },
+  "status": "complete"
+}
