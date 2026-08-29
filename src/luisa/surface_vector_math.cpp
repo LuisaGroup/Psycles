@@ -218,6 +218,12 @@ SurfaceVectorMathResult evaluate_surface_vector_math_operation(
         case compiler::VectorMathOperation::round:
             result.vector = floor(a + 0.5f);
             break;
+        case compiler::VectorMathOperation::cycles_normalize:
+            // Cycles NormalNode uses normalize(), not safe_normalize(). Keep
+            // the division explicit: the zero-vector result is non-finite and
+            // is intentionally sanitized later by the shared film boundary.
+            result.vector = a / sqrt(dot(a, a));
+            break;
         default:
             std::abort();
     }

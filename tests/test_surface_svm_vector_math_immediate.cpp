@@ -134,7 +134,8 @@ void test_vector_math_immediate_quotient() {
          VectorMathOperation::refract,
          VectorMathOperation::power,
          VectorMathOperation::tangent,
-         VectorMathOperation::round});
+         VectorMathOperation::round,
+         VectorMathOperation::cycles_normalize});
     require_exact_quotient(
         ValueOperation::vector_math_value,
         {VectorMathOperation::dot_product,
@@ -235,12 +236,59 @@ void test_vector_math_round_graph_lowering() {
     require(found, "Vector Math Round producer was not retained");
 }
 
+void test_cycles_normalize_graph_lowering() {
+    ShaderGraph graph;
+    const auto vector_math = graph.add_node(
+        node_type::vector_math, "Cycles unchecked normalize");
+    const auto diffuse = graph.add_node(
+        node_type::diffuse_bsdf, "Cycles normalize consumer");
+    require(
+        graph.set_property(
+            vector_math,
+            "Operation",
+            SocketValue::string("CYCLES_NORMALIZE")) &&
+            graph.set_input(
+                vector_math,
+                "A",
+                SocketValue::vector({1.0f, 2.0f, 3.0f})),
+        "failed to construct Cycles normalize graph");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = diffuse, .socket = "Closure"});
+    graph.set_root(
+        ShaderDomain::surface_normal,
+        OutputRef{.node = vector_math, .socket = "Vector"});
+
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto shader = compiler.compile(graph);
+    require(shader.ok(), "Cycles normalize graph failed to compile");
+    const auto lowered = compile_surface_program(*shader.program);
+    require(lowered.ok(), "Cycles normalize graph failed to lower");
+
+    const auto expected = static_cast<std::uint64_t>(
+        VectorMathOperation::cycles_normalize);
+    auto found = false;
+    for (const auto &instruction :
+         lowered.program->value_instructions()) {
+        if (instruction.operation !=
+            ValueOperation::vector_math_vector) {
+            continue;
+        }
+        found = true;
+        require(
+            instruction.static_u0 == expected,
+            "Cycles normalize silently lowered as safe Vector Math Normalize");
+    }
+    require(found, "Cycles normalize producer was not retained");
+}
+
 } // namespace
 
 int main() {
     try {
         test_vector_math_immediate_quotient();
         test_vector_math_round_graph_lowering();
+        test_cycles_normalize_graph_lowering();
         return EXIT_SUCCESS;
     } catch (const std::exception &error) {
         std::cerr << "Surface Vector Math immediate test failure: "

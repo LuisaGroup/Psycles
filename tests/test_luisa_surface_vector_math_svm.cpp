@@ -3,6 +3,7 @@
 #include "surface_vector_math.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -36,6 +37,8 @@ inline constexpr std::array<std::uint16_t, 1u> add_only_domain{
 inline constexpr std::array<std::uint16_t, 2u> power_round_domain{
     static_cast<std::uint16_t>(VectorMathOperation::power),
     static_cast<std::uint16_t>(VectorMathOperation::round)};
+inline constexpr std::array<std::uint16_t, 1u> cycles_normalize_domain{
+    static_cast<std::uint16_t>(VectorMathOperation::cycles_normalize)};
 inline constexpr auto input_a = luisa::float3{0.75f, -0.4f, 1.2f};
 inline constexpr auto input_b = luisa::float3{0.5f, 1.25f, -0.8f};
 inline constexpr auto input_c = luisa::float3{-0.2f, 0.7f, 0.3f};
@@ -172,6 +175,22 @@ make_cycles_boundary_kernel() {
     };
 }
 
+[[nodiscard]] Kernel1D<Buffer<luisa::float3>>
+make_cycles_normalize_zero_kernel() {
+    return [](BufferFloat3 output) noexcept {
+        output.write(
+            0u,
+            evaluate_surface_vector_math_vector_svm(
+                static_cast<std::uint32_t>(
+                    VectorMathOperation::cycles_normalize),
+                cycles_normalize_domain,
+                make_float3(0.0f),
+                make_float3(0.0f),
+                make_float3(0.0f),
+                1.0f));
+    };
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -210,6 +229,8 @@ int main(int argc, char **argv) {
         device.compile(make_static_reference_kernel(), uncached);
     auto cycles_boundary_shader =
         device.compile(make_cycles_boundary_kernel(), uncached);
+    auto cycles_normalize_zero_shader =
+        device.compile(make_cycles_normalize_zero_kernel(), uncached);
     auto actual_buffer =
         device.create_buffer<luisa::float4>(vector_math_operation_count);
     auto expected_buffer =
@@ -219,13 +240,20 @@ int main(int argc, char **argv) {
     std::array<luisa::float3, 2u> cycles_boundary{};
     auto cycles_boundary_buffer =
         device.create_buffer<luisa::float3>(cycles_boundary.size());
+    std::array<luisa::float3, 1u> cycles_normalize_zero{};
+    auto cycles_normalize_zero_buffer =
+        device.create_buffer<luisa::float3>(cycles_normalize_zero.size());
     stream << runtime_shader(actual_buffer).dispatch(vector_math_operation_count)
            << reference_shader(expected_buffer)
                   .dispatch(vector_math_operation_count)
            << cycles_boundary_shader(cycles_boundary_buffer).dispatch(1u)
+           << cycles_normalize_zero_shader(cycles_normalize_zero_buffer)
+                  .dispatch(1u)
            << actual_buffer.copy_to(luisa::span{actual})
            << expected_buffer.copy_to(luisa::span{expected})
            << cycles_boundary_buffer.copy_to(luisa::span{cycles_boundary})
+           << cycles_normalize_zero_buffer.copy_to(
+                  luisa::span{cycles_normalize_zero})
            << synchronize();
 
     for (auto index = std::uint32_t{0u};
@@ -252,6 +280,14 @@ int main(int argc, char **argv) {
                       << ", case=" << index << '\n';
             return EXIT_FAILURE;
         }
+    }
+    const auto &zero = cycles_normalize_zero.front();
+    if (!std::isnan(zero.x) || !std::isnan(zero.y) ||
+        !std::isnan(zero.z)) {
+        std::cerr << "Cycles unchecked normalize lost its zero-vector "
+                     "non-finite boundary on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }

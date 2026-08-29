@@ -280,6 +280,9 @@ vector_math_operation(const contract::ShaderNode &node) {
   if (operation == "NORMALIZE") {
     return VectorMathOperation::normalize;
   }
+  if (operation == "CYCLES_NORMALIZE") {
+    return VectorMathOperation::cycles_normalize;
+  }
   if (operation == "ABSOLUTE") {
     return VectorMathOperation::absolute;
   }

@@ -835,11 +835,15 @@ enum class VectorMathOperation : std::uint8_t {
   sine,
   cosine,
   tangent,
-  round
+  round,
+  // Internal Cycles NormalNode primitive. Unlike the public Vector Math
+  // NORMALIZE operation, Cycles deliberately performs a / len(a) without a
+  // zero guard here; non-finite results are sanitized only at film commit.
+  cycles_normalize
 };
 
 inline constexpr std::uint32_t vector_math_operation_count =
-    static_cast<std::uint32_t>(VectorMathOperation::round) + 1u;
+    static_cast<std::uint32_t>(VectorMathOperation::cycles_normalize) + 1u;
 
 enum class BlendOperation : std::uint8_t {
   mix,
