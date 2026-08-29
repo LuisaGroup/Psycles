@@ -313,8 +313,13 @@ void configure_background_sampling(
     bool include_environment) noexcept {
     data.background_map_width = 1u;
     data.background_map_height = 1u;
+    data.background_portal_weight =
+        data.portal_count > 0u ? 1.0f : 0.0f;
     data.background_map_weight =
-        include_environment ? 1.0f : 0.0f;
+        include_environment &&
+                snapshot.world_sampling != contract::WorldSampling::none
+            ? 1.0f
+            : 0.0f;
     data.background_guided_sun_weight = 0.0f;
     data.background_guided_sun_axis =
         luisa::make_float3(0.0f, 0.0f, 1.0f);

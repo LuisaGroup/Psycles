@@ -1,3 +1,5 @@
+#include "../src/luisa/path_kernel_background_portal.h"
+
 #include <psycles/luisa/background_sampling.h>
 #include <psycles/sampling/background_distribution.h>
 
@@ -14,6 +16,9 @@ namespace {
 
 using namespace luisa::compute;
 namespace background_sampling = psycles::luisa_backend::background_sampling;
+using psycles::luisa_backend::detail::BackgroundPortalSampling;
+using psycles::luisa_backend::detail::light_flag_full_spread;
+using psycles::luisa_backend::detail::LightGpu;
 
 [[nodiscard]] bool
 near(float actual, float expected, float tolerance) noexcept {
@@ -65,15 +70,34 @@ int main(int argc, char **argv) {
     auto round_trip_buffer = device.create_buffer<luisa::float4>(random.size());
     auto pole_uv_buffer = device.create_buffer<luisa::float2>(2u);
     auto cycles_sun_oracle_buffer = device.create_buffer<luisa::float4>(1u);
+    constexpr std::array portal_lights{
+        LightGpu{.position = luisa::float3{0.0f, 0.0f, 0.0f},
+                 .axis_x = luisa::float3{1.0f, 0.0f, 0.0f},
+                 .axis_y = luisa::float3{0.0f, 1.0f, 0.0f},
+                 .axis_z = luisa::float3{0.0f, 0.0f, -1.0f},
+                 .size_u = 2.0f,
+                 .size_v = 2.0f,
+                 .flags = light_flag_full_spread},
+        LightGpu{.position = luisa::float3{0.0f, 0.0f, 0.0f},
+                 .axis_x = luisa::float3{1.0f, 0.0f, 0.0f},
+                 .axis_y = luisa::float3{0.0f, 1.0f, 0.0f},
+                 .axis_z = luisa::float3{0.0f, 0.0f, 1.0f},
+                 .size_u = 2.0f,
+                 .size_v = 2.0f,
+                 .flags = light_flag_full_spread}};
+    auto portal_light_buffer =
+        device.create_buffer<LightGpu>(portal_lights.size());
+    auto portal_result_buffer = device.create_buffer<luisa::float4>(3u);
 
     constexpr auto sun_radius = 0.01f;
-    Kernel1D evaluate = [](BufferFloat2 conditional_cdf,
+    Kernel1D evaluate = [&portal_light_buffer](BufferFloat2 conditional_cdf,
                            BufferFloat2 marginal_cdf,
                            BufferFloat2 randoms,
                            BufferFloat4 direction_pdf,
                            BufferFloat4 round_trip,
                            BufferFloat2 pole_uv,
-                           BufferFloat4 cycles_sun_oracle) noexcept {
+                           BufferFloat4 cycles_sun_oracle,
+                           BufferFloat4 portal_results) noexcept {
         const auto index = dispatch_x();
         const auto sample = background_sampling::sample(conditional_cdf,
                                                         marginal_cdf,
@@ -145,6 +169,43 @@ int main(int argc, char **argv) {
                         lone_monk_axis,
                         lone_monk_radius,
                         oracle_sample.direction)));
+
+            const BackgroundPortalSampling portals;
+            const auto reference = make_float3(0.0f, 0.0f, 1.0f);
+            const auto portal = portals.sample(
+                portal_light_buffer,
+                0u,
+                2u,
+                reference,
+                make_float2(0.25f, 0.75f));
+            const auto portal_forward_pdf = portals.pdf(
+                portal_light_buffer,
+                0u,
+                2u,
+                reference,
+                portal.direction);
+            portal_results.write(
+                0u, make_float4(portal.direction, portal.pdf));
+            portal_results.write(
+                1u,
+                make_float4(
+                    portal_forward_pdf,
+                    cast<float>(portals.count_possible(
+                        portal_light_buffer, 0u, 2u, reference)),
+                    cast<float>(portals.count_possible(
+                        portal_light_buffer,
+                        0u,
+                        2u,
+                        make_float3(0.0f, 0.0f, -1.0f))),
+                    cast<float>(portal.valid)));
+            portal_results.write(
+                2u,
+                make_float4(portals.pdf(
+                    portal_light_buffer,
+                    0u,
+                    2u,
+                    reference,
+                    make_float3(0.0f, 0.0f, 1.0f))));
         };
     };
     auto shader = device.compile(evaluate);
@@ -152,22 +213,26 @@ int main(int argc, char **argv) {
     std::array<luisa::float4, random.size()> round_trip{};
     std::array<luisa::float2, 2u> pole_uv{};
     std::array<luisa::float4, 1u> cycles_sun_oracle{};
+    std::array<luisa::float4, 3u> portal_results{};
     stream << conditional_buffer.copy_from(luisa::span{conditional})
            << marginal_buffer.copy_from(luisa::span{marginal})
            << random_buffer.copy_from(luisa::span{random})
+           << portal_light_buffer.copy_from(luisa::span{portal_lights})
            << shader(conditional_buffer,
                      marginal_buffer,
                      random_buffer,
                      direction_pdf_buffer,
                      round_trip_buffer,
                      pole_uv_buffer,
-                     cycles_sun_oracle_buffer)
+                     cycles_sun_oracle_buffer,
+                     portal_result_buffer)
                   .dispatch(static_cast<std::uint32_t>(random.size()))
            << direction_pdf_buffer.copy_to(luisa::span{direction_pdf})
            << round_trip_buffer.copy_to(luisa::span{round_trip})
            << pole_uv_buffer.copy_to(luisa::span{pole_uv})
            << cycles_sun_oracle_buffer.copy_to(
                   luisa::span{cycles_sun_oracle})
+           << portal_result_buffer.copy_to(luisa::span{portal_results})
            << synchronize();
 
     if (!near(pole_uv[0u].x, 0.5f, 1.0e-7f) ||
@@ -178,6 +243,29 @@ int main(int argc, char **argv) {
                   << ": north {" << pole_uv[0u].x << ", "
                   << pole_uv[0u].y << "}, south {" << pole_uv[1u].x
                   << ", " << pole_uv[1u].y << "}\n";
+        return EXIT_FAILURE;
+    }
+
+    constexpr auto square_solid_angle_pdf = 0.477464829275686f;
+    const auto portal_direction_length =
+        std::sqrt(portal_results[0u].x * portal_results[0u].x +
+                  portal_results[0u].y * portal_results[0u].y +
+                  portal_results[0u].z * portal_results[0u].z);
+    if (!near(portal_direction_length, 1.0f, 2.0e-5f) ||
+        !near(portal_results[0u].w, square_solid_angle_pdf, 2.0e-5f) ||
+        !near(portal_results[1u].x, portal_results[0u].w, 2.0e-5f) ||
+        portal_results[1u].y != 1.0f ||
+        portal_results[1u].z != 1.0f ||
+        portal_results[1u].w != 1.0f ||
+        portal_results[2u].x != 0.0f) {
+        std::cerr << "Cycles portal proposal failed on " << backend
+                  << ": sample {" << portal_results[0u].x << ", "
+                  << portal_results[0u].y << ", " << portal_results[0u].z
+                  << ", " << portal_results[0u].w << "}, pdf/counts {"
+                  << portal_results[1u].x << ", " << portal_results[1u].y
+                  << ", " << portal_results[1u].z << ", "
+                  << portal_results[1u].w << "}, outside "
+                  << portal_results[2u].x << '\n';
         return EXIT_FAILURE;
     }
 

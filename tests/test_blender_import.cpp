@@ -401,6 +401,7 @@ void test_integrator_settings_round_trip() {
       "size": 1.3,
       "size_y": 0.25,
       "use_multiple_importance_sampling": false,
+      "is_portal": true,
       "max_bounces": 13,
       "cast_shadow": false,
       "visibility": {
@@ -766,6 +767,7 @@ void test_integrator_settings_round_trip() {
              imported_light->second.type ==
                  psycles::contract::LightType::area &&
              imported_light->second.ellipse &&
+             imported_light->second.is_portal &&
              std::abs(imported_light->second.size - 1.3f) <= 1.0e-6f &&
              std::abs(imported_light->second.size_y - 1.3f) <= 1.0e-6f &&
              !imported_light->second.use_mis &&

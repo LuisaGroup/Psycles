@@ -84,7 +84,13 @@ class EnvironmentVolumeLightProvider final
                             .xy(),
                         _event.bounce.random()
                             .selected_light
-                            .selection_pdf);
+                            .selection_pdf,
+                        _event.bounce.sample
+                            .invocation.parameters
+                            .analytic_light_count,
+                        _event.bounce.sample
+                            .invocation.parameters
+                            .portal_count);
             _sample_valid = light.valid;
             $if(light.valid) {
                 _result.direction =

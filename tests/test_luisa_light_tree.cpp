@@ -1,3 +1,4 @@
+#include "../src/luisa/path_tracer_analytic_light_scene.h"
 #include "../src/luisa/path_tracer_light_tree.h"
 #include "../src/luisa/path_tracer_light_tree_scene.h"
 #include "../src/luisa/path_tracer_light_sampling_scene.h"
@@ -113,6 +114,8 @@ constexpr std::uint32_t sample_count = 8192u;
             .color = make_float3(1.0f),
             .power = 1.0f,
             .flags = light_flag_normalize}};
+    constexpr std::array light_emission_estimates{
+        Vec3f{1.0f, 1.0f, 1.0f}};
     const std::array triangles{
         EmissiveTriangleGpu{
             .instance_index = 0u,
@@ -128,6 +131,7 @@ constexpr std::uint32_t sample_count = 8192u;
         scene,
         uploads,
         lights,
+        light_emission_estimates,
         triangles,
         triangle_areas,
         false);
@@ -163,6 +167,102 @@ constexpr std::uint32_t sample_count = 8192u;
     return true;
 }
 
+[[nodiscard]] bool verify_analytic_light_population() {
+    constexpr MaterialId dark_shader{1u};
+    SceneSnapshot snapshot;
+    snapshot.materials.emplace(
+        dark_shader,
+        MaterialDesc{
+            .name = "proven dark light shader",
+            .shader = emission_graph({1.0f, 1.0f, 1.0f}, 0.0f)});
+
+    LightDesc regular{
+        .name = "regular",
+        .type = LightType::point,
+        .cycles_object_index = 11u};
+    LightDesc portal{
+        .name = "portal",
+        .type = LightType::area,
+        .size = 2.0f,
+        .size_y = 3.0f,
+        .is_portal = true,
+        .cycles_object_index = 12u};
+    LightDesc zero_strength{
+        .name = "zero strength",
+        .type = LightType::point,
+        .power = 0.0f};
+    LightDesc degenerate_area{
+        .name = "degenerate area",
+        .type = LightType::area,
+        .size = 0.0f};
+    LightDesc zero_shader{
+        .name = "zero shader",
+        .type = LightType::point,
+        .shader = dark_shader};
+    LightDesc background{
+        .name = "background",
+        .type = LightType::background,
+        .color = {0.25f, 0.5f, 1.0f},
+        .power = 2.0f};
+    snapshot.lights.emplace(LightId{1u}, regular);
+    snapshot.lights.emplace(LightId{2u}, portal);
+    snapshot.lights.emplace(LightId{3u}, zero_strength);
+    snapshot.lights.emplace(LightId{4u}, degenerate_area);
+    snapshot.lights.emplace(LightId{5u}, zero_shader);
+    snapshot.lights.emplace(LightId{6u}, background);
+
+    LuisaSceneData scene;
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto material_update = scene.materials.update(snapshot, compiler);
+    if (!material_update.committed) {
+        std::cerr << "analytic-light material compilation failed\n";
+        return false;
+    }
+    const auto upload =
+        AnalyticLightSceneComponent{}.build(snapshot, scene);
+    if (!upload.ok() || upload.regular_count != 1u ||
+        upload.portal_count != 1u || upload.device_lights.size() != 2u ||
+        upload.regular_shader_emission_estimates.size() != 1u ||
+        upload.device_lights[0u].cycles_object_index != 11u ||
+        upload.device_lights[1u].cycles_object_index != 12u ||
+        upload.background != Vec3f{0.5f, 1.0f, 2.0f}) {
+        std::cerr << "analytic-light L/P/B partition failed: "
+                  << upload.diagnostic << '\n';
+        return false;
+    }
+    if (classify_analytic_light(portal, Vec3f{}) !=
+            AnalyticLightRole::portal ||
+        classify_analytic_light(zero_strength, Vec3f{1.0f}) !=
+            AnalyticLightRole::disabled ||
+        classify_analytic_light(degenerate_area, Vec3f{1.0f}) !=
+            AnalyticLightRole::disabled ||
+        classify_analytic_light(regular, Vec3f{}) !=
+            AnalyticLightRole::disabled ||
+        classify_analytic_light(background, Vec3f{}) !=
+            AnalyticLightRole::background) {
+        std::cerr << "analytic-light contribution classification failed\n";
+        return false;
+    }
+
+    const auto sampling = build_light_sampling_scene_upload(
+        snapshot,
+        scene,
+        std::span<const GeometryUpload>{},
+        upload.regular_lights(),
+        upload.regular_shader_emission_estimates,
+        std::span<const EmissiveTriangleGpu>{},
+        std::span<const float>{},
+        false);
+    if (!sampling.ok() || sampling.distribution_count != 1u ||
+        sampling.tree_emitters.size() != 1u ||
+        sampling.distribution.front().index != 0u) {
+        std::cerr << "portal entered the direct-light population: "
+                  << sampling.diagnostic << '\n';
+        return false;
+    }
+    return true;
+}
+
 [[nodiscard]] LightTreeEmitter local_emitter(
     std::uint32_t id,
     float x,
@@ -192,7 +292,7 @@ constexpr std::uint32_t sample_count = 8192u;
 }// namespace
 
 int main(int argc, char **argv) {
-    if (!verify_scene_upload()) {
+    if (!verify_scene_upload() || !verify_analytic_light_population()) {
         return 1;
     }
     const std::string backend = argc > 1 ? argv[1] : "fallback";

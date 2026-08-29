@@ -255,6 +255,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
           _options.path_trace ? _options.path_trace->pixel_y : 0u,
         .path_trace_sample =
           _options.path_trace ? _options.path_trace->sample : 0u,
+      .analytic_light_count = scene->light_count,
+      .portal_count = scene->portal_count,
       .wavefront_frame_capacity = wavefront_frame_capacity,
       .shadow_storage_capacity = 1u,
       .shadow_storage_block_size = 1u,
