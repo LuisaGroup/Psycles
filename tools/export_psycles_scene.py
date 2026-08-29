@@ -197,12 +197,11 @@ def _socket_links(tree: Any) -> dict[tuple[str, str], tuple[str, str]]:
     return result
 
 
-def _active_output(
+def _cycles_output(
     tree: Any,
-    socket: str,
     world: bool = False,
     light: bool = False,
-) -> dict[str, str] | None:
+) -> Any | None:
     expected = (
         "ShaderNodeOutputLight"
         if light
@@ -212,13 +211,28 @@ def _active_output(
             else "ShaderNodeOutputMaterial"
         )
     )
-    for node in tree.nodes:
-        if node.bl_idname == expected and getattr(node, "is_active_output", True):
-            links = _socket_links(tree)
-            source = links.get((node.name, socket))
-            if source:
-                return {"node": source[0], "socket": source[1]}
-    return None
+    # This is the same target-aware selection primitive used by Cycles through
+    # ntreeShaderOutputNode(..., SHD_OUTPUT_CYCLES): an exact CYCLES target is
+    # preferred over an ALL target, and is_active_output only breaks ties
+    # between nodes with the same target. Looking for the globally active node
+    # instead makes versioned files silently export their EEVEE graph.
+    node = tree.get_output_node("CYCLES")
+    if node is None or node.bl_idname != expected:
+        return None
+    return node
+
+
+def _output_root(
+    output: Any | None,
+    links: dict[tuple[str, str], tuple[str, str]],
+    socket: str,
+) -> dict[str, str] | None:
+    if output is None:
+        return None
+    source = links.get((output.name, socket))
+    if source is None:
+        return None
+    return {"node": source[0], "socket": source[1]}
 
 
 def _tree(
@@ -228,18 +242,18 @@ def _tree(
 ) -> dict[str, Any] | None:
     data = manifest._node_tree_manifest(tree)
     if data is not None:
-        data["surface_root"] = _active_output(
-            tree, "Surface", world, light
-        )
+        output = _cycles_output(tree, world, light)
+        links = _socket_links(tree)
+        data["surface_root"] = _output_root(output, links, "Surface")
         data["volume_root"] = (
             None
             if light
-            else _active_output(tree, "Volume", world)
+            else _output_root(output, links, "Volume")
         )
         data["displacement_root"] = (
             None
             if world or light
-            else _active_output(tree, "Displacement", world)
+            else _output_root(output, links, "Displacement")
         )
     return data
 
