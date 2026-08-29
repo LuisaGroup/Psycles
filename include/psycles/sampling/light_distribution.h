@@ -34,7 +34,7 @@ struct CyclesLightDistribution {
     [[nodiscard]] bool usable() const noexcept;
 };
 
-// Build Cycles 4.5's flat light distribution (light tree disabled).
+// Build Cycles 5.2's flat light distribution (light tree disabled).
 // Emissive triangles are ordered first and weighted by world-space area.
 // Analytic lights follow in index order, with the optional environment
 // treated as the last lamp. When both emitter classes are present, triangles
