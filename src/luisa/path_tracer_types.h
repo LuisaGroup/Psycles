@@ -283,10 +283,38 @@ inline constexpr std::uint32_t light_tree_emitter_kind_mask =
            light_tree_emitter_kind_shift;
 }
 
+// A tree emitter has two independent identities. LightTreeEmitterKind
+// describes how traversal resolves it (direct distribution entry, mesh
+// instance proxy, or mesh-local triangle); LightTreeEmitterSource describes
+// which exact Cycles leaf-importance equation supplies its radiometric
+// measure. Keeping these axes orthogonal prevents hierarchy metadata from
+// being overloaded with an implicit light subtype.
+enum class LightTreeEmitterSource : std::uint32_t {
+    measure,
+    triangle,
+    analytic_light,
+    environment
+};
+
+inline constexpr std::uint32_t light_tree_emitter_source_shift = 5u;
+inline constexpr std::uint32_t light_tree_emitter_source_mask =
+    0x3u << light_tree_emitter_source_shift;
+
+[[nodiscard]] constexpr std::uint32_t light_tree_emitter_source_bits(
+    LightTreeEmitterSource source) noexcept {
+    return static_cast<std::uint32_t>(source) <<
+           light_tree_emitter_source_shift;
+}
+
 static_assert(sizeof(LightTreeNodeGpu) == 80u);
 static_assert(sizeof(LightTreeEmitterGpu) == 64u);
 static_assert((light_tree_emitter_kind_mask &
                (light_tree_measure_has_bounds |
+                light_tree_measure_has_orientation |
+                light_tree_measure_is_distant)) == 0u);
+static_assert((light_tree_emitter_source_mask &
+               (light_tree_emitter_kind_mask |
+                light_tree_measure_has_bounds |
                 light_tree_measure_has_orientation |
                 light_tree_measure_is_distant)) == 0u);
 

@@ -156,6 +156,11 @@ constexpr std::uint32_t sample_count = 8192u;
             (emitter.identity.y & light_tree_emitter_kind_mask) >>
             light_tree_emitter_kind_shift);
     };
+    const auto source = [](const LightTreeEmitterGpu &emitter) noexcept {
+        return static_cast<LightTreeEmitterSource>(
+            (emitter.identity.y & light_tree_emitter_source_mask) >>
+            light_tree_emitter_source_shift);
+    };
     const auto triangle = std::find_if(
         result.tree_emitters.begin(),
         result.tree_emitters.end(),
@@ -168,10 +173,22 @@ constexpr std::uint32_t sample_count = 8192u;
         [kind](const LightTreeEmitterGpu &emitter) noexcept {
             return kind(emitter) == LightTreeEmitterKind::mesh_instance;
         });
+    const auto direct = std::find_if(
+        result.tree_emitters.begin(),
+        result.tree_emitters.end(),
+        [kind](const LightTreeEmitterGpu &emitter) noexcept {
+            return kind(emitter) == LightTreeEmitterKind::direct;
+        });
     const auto &lookup = result.tree_triangle_lookup.front();
     const auto expected_energy = 2.0f * (1.0f + 2.0f + 4.0f) / 3.0f;
     if (triangle == result.tree_emitters.end() ||
         proxy == result.tree_emitters.end() ||
+        direct == result.tree_emitters.end() ||
+        source(*triangle) != LightTreeEmitterSource::triangle ||
+        triangle->identity.z != 0u ||
+        source(*proxy) != LightTreeEmitterSource::measure ||
+        source(*direct) != LightTreeEmitterSource::analytic_light ||
+        direct->identity.z != 0u ||
         !close(triangle->bounds_min_energy.x, 0.0f, 1.0e-6f) ||
         !close(triangle->bounds_min_energy.z, 3.0f, 1.0e-6f) ||
         !close(triangle->bounds_max_theta_o.x, 2.0f, 1.0e-6f) ||

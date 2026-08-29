@@ -176,6 +176,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_light_distribution.cpp
     src/luisa/path_tracer_light_sampling_scene.cpp
     src/luisa/path_tracer_light_tree.cpp
+    src/luisa/path_tracer_light_tree_importance.cpp
     src/luisa/path_tracer_light_tree_scene.cpp
     src/luisa/path_tracer_mesh_light_scene.cpp
     src/luisa/path_tracer_lighting.cpp

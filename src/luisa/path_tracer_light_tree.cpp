@@ -1,4 +1,5 @@
 #include "path_tracer_light_tree.h"
+#include "path_tracer_light_tree_importance.h"
 
 #include <psycles/sampling/light_distribution.h>
 #include <psycles/sampling/light_tree.h>
@@ -11,9 +12,6 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
-constexpr auto pi = 3.14159265358979323846f;
-constexpr auto half_pi = 0.5f * pi;
-constexpr auto finite_volume_limit = 1.0e30f;
 constexpr auto safe_distance = 1.0e-20f;
 
 [[nodiscard]] Float3 safe_normalize(
@@ -66,361 +64,63 @@ void to_mesh_local_space(
     }
 }
 
-[[nodiscard]] Float sin_from_cos(Float cosine) noexcept {
-    return sqrt(max(1.0f - cosine * cosine, 0.0f));
-}
-
-[[nodiscard]] Float safe_divide(Float numerator, Float denominator) noexcept {
-    return select(
-        0.0f,
-        numerator / denominator,
-        abs(denominator) > safe_distance);
-}
-
-[[nodiscard]] Float cos_bound_subtended_angle(
-    Float3 bounds_max,
-    Float3 centroid,
-    Float3 point) noexcept {
-    const auto distance_squared = dot(point - centroid, point - centroid);
-    const auto radius_squared =
-        dot(bounds_max - centroid, bounds_max - centroid);
-    return select(
-        sqrt(max(1.0f - radius_squared /
-                           max(distance_squared, safe_distance),
-                 0.0f)),
-        -1.0f,
-        distance_squared <= radius_squared);
-}
-
-[[nodiscard]] Float3 compute_v(
-    Float3 centroid,
-    Float3 point,
-    Float3 direction,
-    Float3 cone_axis,
-    Float distance) noexcept {
-    const auto v0 = safe_normalize(
-        point - centroid, make_float3(0.0f, 0.0f, 1.0f));
-    const auto v1 = safe_normalize(
-        point - centroid + direction * min(distance, 1.0e12f), v0);
-    const auto o2 = safe_normalize(
-        cross(v0, v1),
-        safe_normalize(
-            cross(v0, make_float3(1.0f, 0.0f, 0.0f)),
-            make_float3(0.0f, 1.0f, 0.0f)));
-    const auto o1 = cross(o2, v0);
-    const auto dot_o0_axis = dot(v0, cone_axis);
-    const auto dot_o1_axis = dot(o1, cone_axis);
-    const auto inverse_length = rsqrt(max(
-        dot_o0_axis * dot_o0_axis + dot_o1_axis * dot_o1_axis,
-        safe_distance));
-    const auto cos_phi0 = dot_o0_axis * inverse_length;
-    const auto endpoint = select(
-        v1,
-        v0,
-        dot_o0_axis > dot(v1, cone_axis));
-    return select(
-        cos_phi0 * v0 + dot_o1_axis * inverse_length * o1,
-        endpoint,
-        (dot_o1_axis < 0.0f) | (dot(v0, v1) > cos_phi0));
-}
-
-[[nodiscard]] Float2 bounded_importance(
-    Float3 normal_or_direction,
-    Bool has_transmission,
-    Float3 point_to_centroid,
-    Float cos_theta_u,
-    Float3 cone_axis,
-    Float theta_o,
-    Float theta_e,
-    Float maximum_distance,
-    Float minimum_distance,
-    Float energy,
-    Float theta_d,
-    bool in_volume) noexcept {
-    cos_theta_u = clamp(cos_theta_u, -1.0f, 1.0f);
-    const auto sin_theta_u = sin_from_cos(cos_theta_u);
-
-    Float minimum_incidence = 1.0f;
-    Float maximum_incidence = 1.0f;
-    Bool visible = energy > 0.0f;
-    if (!in_volume) {
-        const auto incidence_cosine = select(
-            dot(point_to_centroid, normal_or_direction),
-            abs(dot(point_to_centroid, normal_or_direction)),
-            has_transmission);
-        const auto incidence_sine = sin_from_cos(
-            clamp(incidence_cosine, -1.0f, 1.0f));
-        minimum_incidence = select(
-            incidence_cosine * cos_theta_u +
-                incidence_sine * sin_theta_u,
-            1.0f,
-            incidence_cosine >= cos_theta_u);
-        maximum_incidence = max(
-            incidence_cosine * cos_theta_u -
-                incidence_sine * sin_theta_u,
-            0.0f);
-        visible &= has_transmission | (minimum_incidence >= 0.0f);
-    }
-
-    const auto theta_cosine = clamp(
-        dot(cone_axis, -point_to_centroid), -1.0f, 1.0f);
-    const auto theta_sine = sin_from_cos(theta_cosine);
-    const auto theta_minus_u_cosine =
-        theta_cosine * cos_theta_u + theta_sine * sin_theta_u;
-    const auto theta_o_cosine = cos(theta_o);
-    const auto theta_o_sine = sin(theta_o);
-    const auto fully_covered =
-        (theta_cosine >= cos_theta_u) |
-        (theta_minus_u_cosine >= theta_o_cosine);
-    const auto partially_covered =
-        !fully_covered &
-        ((theta_o + theta_e > pi) |
-         (theta_minus_u_cosine > cos(theta_o + theta_e)));
-    const auto theta_minus_u_sine =
-        sin_from_cos(clamp(theta_minus_u_cosine, -1.0f, 1.0f));
-    const auto minimum_outgoing = select(
-        select(
-            0.0f,
-            theta_minus_u_cosine * theta_o_cosine +
-                theta_minus_u_sine * theta_o_sine,
-            partially_covered),
-        1.0f,
-        fully_covered);
-    visible &= fully_covered | partially_covered;
-
-    minimum_distance = max(minimum_distance, safe_distance);
-    maximum_distance = max(maximum_distance, safe_distance);
-    const auto geometric_factor = in_volume
-                                      ? theta_d / minimum_distance
-                                      : 1.0f /
-                                            (minimum_distance *
-                                             minimum_distance);
-    const auto maximum = select(
-        0.0f,
-        abs(minimum_incidence * energy * minimum_outgoing *
-            geometric_factor),
-        visible);
-    if (in_volume) {
-        return make_float2(maximum, 0.0f);
-    }
-
-    const auto theta_plus_u_cosine =
-        theta_cosine * cos_theta_u - theta_sine * sin_theta_u;
-    const auto minimum_is_zero =
-        (theta_e - theta_o < 0.0f) |
-        (theta_cosine < 0.0f) |
-        (cos_theta_u < 0.0f) |
-        (theta_plus_u_cosine < cos(theta_e - theta_o));
-    const auto theta_plus_u_sine =
-        sin_from_cos(clamp(theta_plus_u_cosine, -1.0f, 1.0f));
-    const auto maximum_outgoing =
-        theta_plus_u_cosine * theta_o_cosine -
-        theta_plus_u_sine * theta_o_sine;
-    const auto minimum = select(
-        abs(maximum_incidence * energy * maximum_outgoing /
-            (maximum_distance * maximum_distance)),
-        0.0f,
-        minimum_is_zero | !visible);
-    return make_float2(maximum, minimum);
-}
-
-template<typename PackedMeasure>
-[[nodiscard]] Float2 measure_importance(
-    const PackedMeasure &measure,
-    UInt flags,
-    Float3 point,
-    Float3 normal_or_direction,
-    Float distance,
-    Bool has_transmission,
-    bool in_volume) noexcept {
-    Float2 result = make_float2(0.0f);
-    const auto has_orientation =
-        (flags & light_tree_measure_has_orientation) != 0u;
-    const auto has_bounds =
-        (flags & light_tree_measure_has_bounds) != 0u;
-    const auto distant =
-        (flags & light_tree_measure_is_distant) != 0u;
-    $if (has_orientation & (measure.bounds_min_energy.w > 0.0f)) {
-        const auto cone_axis = safe_normalize(
-            measure.cone_axis_theta_e.xyz(),
-            make_float3(0.0f, 0.0f, 1.0f));
-        Float3 point_to_centroid = -cone_axis;
-        Float cos_theta_u = cos(
-            measure.bounds_max_theta_o.w +
-            measure.cone_axis_theta_e.w);
-        Float emitter_distance = 1.0f;
-        Float theta_d = select(
-            distance,
-            1.0f,
-            distance >= finite_volume_limit);
-        Bool measure_visible = true;
-        $if (!distant) {
-            measure_visible = has_bounds;
-            const auto bounds_min = measure.bounds_min_energy.xyz();
-            const auto bounds_max = measure.bounds_max_theta_o.xyz();
-            const auto centroid = 0.5f * (bounds_min + bounds_max);
-            const auto extent = bounds_max - centroid;
-            if (in_volume) {
-                const auto closest_t =
-                    dot(centroid - point, normal_or_direction);
-                const auto closest_point =
-                    point + normal_or_direction *
-                                clamp(closest_t, 0.0f, distance);
-                emitter_distance = length(
-                    centroid - point -
-                    normal_or_direction * closest_t);
-                theta_d = select(
-                    atan2(closest_t, emitter_distance) + half_pi,
-                    atan2(
-                        distance,
-                        emitter_distance -
-                            closest_t * safe_divide(
-                                            distance - closest_t,
-                                            emitter_distance)),
-                    distance < finite_volume_limit);
-                point_to_centroid = -compute_v(
-                    centroid,
-                    point,
-                    normal_or_direction,
-                    cone_axis,
-                    distance);
-                cos_theta_u = cos_bound_subtended_angle(
-                    bounds_max, centroid, closest_point);
-            } else {
-                measure_visible =
-                    has_transmission |
-                    (dot(normal_or_direction, centroid - point) +
-                         dot(abs(normal_or_direction), abs(extent)) >
-                     0.0f);
-                const auto delta = centroid - point;
-                emitter_distance = length(delta);
-                point_to_centroid = safe_normalize(delta, -cone_axis);
-                cos_theta_u = cos_bound_subtended_angle(
-                    bounds_max, centroid, point);
-                theta_d = 1.0f;
-            }
-            emitter_distance = max(
-                0.5f * length(centroid - bounds_max),
-                emitter_distance);
-        };
-        $if (measure_visible) {
-            result = bounded_importance(
-                normal_or_direction,
-                has_transmission,
-                point_to_centroid,
-                cos_theta_u,
-                cone_axis,
-                measure.bounds_max_theta_o.w,
-                measure.cone_axis_theta_e.w,
-                emitter_distance,
-                emitter_distance,
-                measure.bounds_min_energy.w,
-                theta_d,
-                in_volume);
-        };
-    };
-    return result;
-}
-
-[[nodiscard]] Float2 emitter_importance(
-    const std::shared_ptr<LuisaSceneData> &scene,
-    UInt emitter_index,
-    Float3 point,
-    Float3 normal_or_direction,
-    Float distance,
-    Bool has_transmission,
-    bool in_volume) noexcept {
-    Var<LightTreeEmitterGpu> emitter =
-        scene->light_tree_emitter_buffer->read(emitter_index);
-    return measure_importance(
-        emitter,
-        emitter.identity.y,
-        point,
-        normal_or_direction,
-        distance,
-        has_transmission,
-        in_volume);
-}
-
-[[nodiscard]] Float2 node_importance(
-    const std::shared_ptr<LuisaSceneData> &scene,
-    Var<LightTreeNodeGpu> node,
-    Float3 point,
-    Float3 normal_or_direction,
-    Float distance,
-    Bool has_transmission,
-    bool in_volume) noexcept {
-    return measure_importance(
-        node,
-        node.emitters.z,
-        point,
-        normal_or_direction,
-        distance,
-        has_transmission,
-        in_volume);
-}
-
 [[nodiscard]] Float2 child_importance(
+    const LightTreeImportanceComponent &importance,
     const std::shared_ptr<LuisaSceneData> &scene,
     UInt node_index,
     Float3 point,
     Float3 normal_or_direction,
     Float distance,
-    Bool has_transmission,
-    bool in_volume) noexcept {
+    Bool has_transmission) noexcept {
     Var<LightTreeNodeGpu> node =
         scene->light_tree_node_buffer->read(node_index);
     Float2 result = make_float2(0.0f);
     const auto inner = node.topology.w == static_cast<std::uint32_t>(
         sampling::LightTreeNodeKind::inner);
     $if (inner | (node.emitters.y > 1u)) {
-        result = node_importance(
-            scene,
+        result = importance.node(
             node,
             point,
             normal_or_direction,
             distance,
-            has_transmission,
-            in_volume);
+            has_transmission);
     }
     $elif (node.emitters.y == 1u) {
-        result = emitter_importance(
-            scene,
+        result = importance.emitter(
             node.emitters.x,
             point,
             normal_or_direction,
             distance,
-            has_transmission,
-            in_volume);
+            has_transmission);
     };
     return result;
 }
 
 [[nodiscard]] Float2 left_probability(
+    const LightTreeImportanceComponent &importance,
     const std::shared_ptr<LuisaSceneData> &scene,
     UInt left,
     UInt right,
     Float3 point,
     Float3 normal_or_direction,
     Float distance,
-    Bool has_transmission,
-    bool in_volume) noexcept {
+    Bool has_transmission) noexcept {
     const auto left_importance = child_importance(
+        importance,
         scene,
         left,
         point,
         normal_or_direction,
         distance,
-        has_transmission,
-        in_volume);
+        has_transmission);
     const auto right_importance = child_importance(
+        importance,
         scene,
         right,
         point,
         normal_or_direction,
         distance,
-        has_transmission,
-        in_volume);
+        has_transmission);
     const auto maximum_total =
         left_importance.x + right_importance.x;
     const auto minimum_total =
@@ -467,13 +167,12 @@ void reservoir_update(
 }
 
 void select_leaf_emitter(
-    const std::shared_ptr<LuisaSceneData> &scene,
+    const LightTreeImportanceComponent &importance_component,
     Var<LightTreeNodeGpu> node,
     Float3 point,
     Float3 normal_or_direction,
     Float distance,
     Bool has_transmission,
-    bool in_volume,
     Float &random,
     UInt &selected,
     Float &selection_pdf) noexcept {
@@ -489,14 +188,12 @@ void select_leaf_emitter(
 
     $for (i, node.emitters.y) {
         const auto emitter_index = node.emitters.x + i;
-        const auto importance = emitter_importance(
-            scene,
+        const auto importance = importance_component.emitter(
             emitter_index,
             point,
             normal_or_direction,
             distance,
-            has_transmission,
-            in_volume);
+            has_transmission);
         total_maximum += importance.x;
         total_minimum += importance.y;
         positive_count += cast<uint>(importance.x > 0.0f);
@@ -538,14 +235,12 @@ void select_leaf_emitter(
             Float total_uniform = 0.0f;
             $for (i, node.emitters.y) {
                 const auto emitter_index = node.emitters.x + i;
-                const auto importance = emitter_importance(
-                    scene,
+                const auto importance = importance_component.emitter(
                     emitter_index,
                     point,
                     normal_or_direction,
                     distance,
-                    has_transmission,
-                    in_volume);
+                    has_transmission);
                 reservoir_update(
                     emitter_index,
                     cast<float>(importance.x > 0.0f),
@@ -587,7 +282,9 @@ void initialize_invalid_light_selection(
 [[nodiscard]] LightTreeSampleCallable make_sample_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
     bool in_volume) noexcept {
-    return [scene, in_volume](
+    const auto importance =
+        LightTreeImportanceComponent{scene, in_volume};
+    return [scene, in_volume, importance](
                Float sample,
                Float3 point,
                Float3 normal_or_direction,
@@ -618,13 +315,12 @@ void initialize_invalid_light_selection(
                     sampling::LightTreeNodeKind::inner);
             $if (leaf) {
                 select_leaf_emitter(
-                    scene,
+                    importance,
                     node,
                     point,
                     normal_or_direction,
                     distance,
                     has_transmission,
-                    in_volume,
                     random,
                     selected,
                     selection_pdf);
@@ -654,14 +350,14 @@ void initialize_invalid_light_selection(
             }
             $else {
                 const auto probability = left_probability(
+                    importance,
                     scene,
                     node.topology.y,
                     node.topology.z,
                     point,
                     normal_or_direction,
                     distance,
-                    has_transmission,
-                    in_volume);
+                    has_transmission);
                 $if (probability.y <= 0.0f) {
                     active = false;
                 }
@@ -719,6 +415,7 @@ void initialize_invalid_light_selection(
 }
 
 [[nodiscard]] Float tree_path_pdf(
+    const LightTreeImportanceComponent &importance_component,
     const std::shared_ptr<LuisaSceneData> &scene,
     UInt target_emitter,
     UInt leaf_index,
@@ -726,8 +423,7 @@ void initialize_invalid_light_selection(
     Float3 point,
     Float3 normal_or_direction,
     Float distance,
-    Bool has_transmission,
-    bool in_volume) noexcept {
+    Bool has_transmission) noexcept {
     Float result = 0.0f;
     $if ((target_emitter < scene->light_tree_emitter_count) &
          (leaf_index < scene->light_tree_node_count) &
@@ -740,14 +436,12 @@ void initialize_invalid_light_selection(
         UInt positive_count = 0u;
         $for (i, leaf.emitters.y) {
             const auto current_emitter = leaf.emitters.x + i;
-            const auto importance = emitter_importance(
-                scene,
+            const auto importance = importance_component.emitter(
                 current_emitter,
                 point,
                 normal_or_direction,
                 distance,
-                has_transmission,
-                in_volume);
+                has_transmission);
             total_maximum += importance.x;
             total_minimum += importance.y;
             positive_count += cast<uint>(importance.x > 0.0f);
@@ -782,14 +476,14 @@ void initialize_invalid_light_selection(
                     const auto parent =
                         scene->light_tree_node_buffer->read(parent_index);
                     const auto probability = left_probability(
+                        importance_component,
                         scene,
                         parent.topology.y,
                         parent.topology.z,
                         point,
                         normal_or_direction,
                         distance,
-                        has_transmission,
-                        in_volume);
+                        has_transmission);
                     $if (probability.y <= 0.0f) {
                         valid = false;
                         result = 0.0f;
@@ -814,7 +508,9 @@ void initialize_invalid_light_selection(
 [[nodiscard]] LightTreePdfCallable make_pdf_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
     bool in_volume) noexcept {
-    return [scene, in_volume](
+    const auto importance =
+        LightTreeImportanceComponent{scene, in_volume};
+    return [scene, in_volume, importance](
                UInt emitter_id,
                Float3 point,
                Float3 normal_or_direction,
@@ -830,6 +526,7 @@ void initialize_invalid_light_selection(
             const auto top =
                 scene->light_tree_emitter_mapping_buffer->read(emitter_id);
             result = tree_path_pdf(
+                importance,
                 scene,
                 top.x,
                 top.y,
@@ -837,8 +534,7 @@ void initialize_invalid_light_selection(
                 point,
                 normal_or_direction,
                 distance,
-                has_transmission,
-                in_volume);
+                has_transmission);
             if (scene->emissive_triangle_count > 0u) {
                 $if (emitter_id < scene->emissive_triangle_count) {
                     const auto proxy =
@@ -857,6 +553,7 @@ void initialize_invalid_light_selection(
                         local_distance,
                         in_volume);
                     const auto local_pdf = tree_path_pdf(
+                        importance,
                         scene,
                         local.x,
                         local.y,
@@ -864,8 +561,7 @@ void initialize_invalid_light_selection(
                         local_point,
                         local_normal_or_direction,
                         local_distance,
-                        has_transmission,
-                        in_volume);
+                        has_transmission);
                     const auto proxy_is_mesh =
                         emitter_kind(proxy) == static_cast<std::uint32_t>(
                                                    LightTreeEmitterKind::mesh_instance);

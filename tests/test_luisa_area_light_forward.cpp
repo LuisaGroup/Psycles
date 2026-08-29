@@ -17,6 +17,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -226,6 +227,53 @@ constexpr std::string_view zero_emission_attribute{
     graph.set_root(
         ShaderDomain::surface,
         OutputRef{.node = diffuse, .socket = "Closure"});
+    return graph;
+}
+
+[[nodiscard]] ShaderGraph diffuse_glass_shader() {
+    ShaderGraph graph;
+    const auto diffuse =
+        graph.add_node(node_type::diffuse_bsdf, "Diffuse NEE lobe");
+    const auto glass =
+        graph.add_node(node_type::glass_bsdf, "Transmission capability");
+    const auto add =
+        graph.add_node(node_type::add_closure, "Diffuse plus glass");
+    const auto configured =
+        graph.set_input(
+            diffuse,
+            "Color",
+            SocketValue::color({0.8f, 0.8f, 0.8f})) &&
+        graph.set_input(
+            diffuse,
+            "Roughness",
+            SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            glass,
+            "Color",
+            SocketValue::color({1.0f, 1.0f, 1.0f})) &&
+        graph.set_input(
+            glass,
+            "Roughness",
+            SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            glass,
+            "IOR",
+            SocketValue::floating(1.45f)) &&
+        graph.set_property(
+            glass,
+            "Distribution",
+            SocketValue::string("GGX")) &&
+        graph.connect(
+            {.node = diffuse, .socket = "Closure"}, add, "A") &&
+        graph.connect(
+            {.node = glass, .socket = "Closure"}, add, "B");
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to construct transmission-capable NEE fixture"};
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = add, .socket = "Closure"});
     return graph;
 }
 
@@ -462,6 +510,13 @@ constexpr std::string_view zero_emission_attribute{
 [[nodiscard]] SceneSnapshot make_rejected_light_scene() {
     auto scene = make_scene();
     scene.revision = 9u;
+    // The actual Splash surface at this sample has a transmission closure.
+    // Cycles therefore preserves the Light Tree proposal even though the
+    // selected one-sided area lies behind the geometric normal; exact area
+    // shape sampling rejects it in the following stage. A pure diffuse
+    // fixture would test a different predicate and be pruned in the tree.
+    scene.materials.begin()->second.shader =
+        diffuse_glass_shader();
     constexpr auto surface_p = Vec3f{
         -17.131805419921875f,
         -1.9431736469268799f,
@@ -521,6 +576,31 @@ constexpr std::string_view zero_emission_attribute{
     light.is_shadow_catcher = true;
     light.cycles_shader_index = 20u;
     light.cycles_object_index = 256u;
+    return scene;
+}
+
+[[nodiscard]] SceneSnapshot make_two_light_importance_scene() {
+    constexpr LightId point_light_id{6u};
+    auto scene = make_scene();
+    scene.revision = 10u;
+    scene.lights.emplace(
+        point_light_id,
+        LightDesc{
+            .name = "Cycles point-light importance oracle",
+            .type = LightType::point,
+            .transform = translated(-0.9f, 0.75f, 1.1f),
+            .color = {1.0f, 0.25f, 0.125f},
+            .power = 11.0f,
+            .size = 0.25f,
+            .normalize = true,
+            .is_sphere = true,
+            .use_mis = true,
+            .cast_shadow = true,
+            .visibility_mask =
+                all_ray_visibility &
+                ~visibility_bit(RayVisibility::camera),
+            .cycles_shader_index = 6u,
+            .cycles_object_index = 2u});
     return scene;
 }
 
@@ -652,6 +732,7 @@ struct DirectLightTraceOracle {
     float shader_low;
     float shader_high;
     bool environment;
+    std::optional<float> selection_pdf{};
 };
 
 [[nodiscard]] bool validate_direct_light_trace(
@@ -703,11 +784,15 @@ struct DirectLightTraceOracle {
                 shader[0u] == oracle.shader_low &&
                 shader[1u] == oracle.shader_high,
             "light_shader");
-    require(pdf[3u] == 1.0f &&
-                pdf[0u] > 0.0f &&
-                approximately_equal(pdf[1u], 1.0f) &&
-                pdf[2u] > 0.0f,
-            "light_pdf");
+    const auto expected_selection_pdf =
+        oracle.selection_pdf.value_or(1.0f);
+    require(
+        pdf[3u] == 1.0f &&
+            pdf[0u] > 0.0f &&
+            approximately_equal(
+                pdf[1u], expected_selection_pdf) &&
+            pdf[2u] > 0.0f,
+        "light_pdf");
     const auto direction_length =
         std::sqrt(direction[0u] * direction[0u] +
                   direction[1u] * direction[1u] +
@@ -1202,6 +1287,34 @@ int main(int argc, char **argv) {
              .shader_low = 5.0f,
              .shader_high = 20736.0f,
              .environment = false})) {
+        return EXIT_FAILURE;
+    }
+
+    // Blender 5.2.1/Cycles 9e2066aef7ef, instrumented kernel 67786427f,
+    // Tabulated Sobol sample 0 at pixel (20, 14). The captured 0.981049...
+    // is an external Cycles oracle for the exact area-vs-point leaf
+    // importance quotient; it is not computed by a Psycles host model.
+    psycles::io::MemoryOutputSink two_light_sink;
+    trace_sink->reset();
+    if (!render_fixture(
+            renderer,
+            make_two_light_importance_scene(),
+            light_tree_settings,
+            "exact area-point Light Tree importance",
+            two_light_sink) ||
+        !validate_direct_light_trace(
+            *trace_sink,
+            backend,
+            "exact area-point Light Tree importance",
+            {.type = 3.0f,
+             .emitter = 0.0f,
+             .primitive = 0.0f,
+             .object = 1.0f,
+             .light_group = -1.0f,
+             .shader_low = 5.0f,
+             .shader_high = 20736.0f,
+             .environment = false,
+             .selection_pdf = 0.9810490608215332f})) {
         return EXIT_FAILURE;
     }
 

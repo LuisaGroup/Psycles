@@ -128,6 +128,7 @@ constexpr auto light_tree_half_pi = 0.5f * light_tree_pi;
 
 struct DeviceEmitterIdentity {
     LightTreeEmitterKind kind{LightTreeEmitterKind::direct};
+    LightTreeEmitterSource source{LightTreeEmitterSource::measure};
     std::uint32_t payload_0{};
     std::uint32_t payload_1{};
     std::uint32_t payload_2{};
@@ -195,7 +196,8 @@ struct AppendedTree {
             .identity = luisa::make_uint4(
                 identity.payload_0,
                 measure_flags(emitter.measure, emitter.distant) |
-                    light_tree_emitter_kind_bits(identity.kind),
+                    light_tree_emitter_kind_bits(identity.kind) |
+                    light_tree_emitter_source_bits(identity.source),
                 identity.payload_1,
                 identity.payload_2)});
     }
@@ -429,6 +431,12 @@ LightTreeSceneUpload make_light_tree_hierarchy_scene_upload(
         std::vector<AppendedTree> subtrees;
         subtrees.reserve(input.subtrees.size());
         for (const auto &subtree_input : input.subtrees) {
+            if (!subtree_input.representative_triangles.empty() &&
+                subtree_input.representative_triangles.size() !=
+                    subtree_input.emitters.size()) {
+                throw std::invalid_argument(
+                    "mesh light subtree source population mismatch");
+            }
             const auto tree = sampling::build_cycles_light_subtree(
                 subtree_input.emitters);
             if (!tree.valid()) {
@@ -441,7 +449,16 @@ LightTreeSceneUpload make_light_tree_hierarchy_scene_upload(
                  ++emitter) {
                 identities[emitter] = {
                     .kind = LightTreeEmitterKind::mesh_triangle,
-                    .payload_0 = static_cast<std::uint32_t>(emitter)};
+                    .source =
+                        subtree_input.representative_triangles.empty()
+                            ? LightTreeEmitterSource::measure
+                            : LightTreeEmitterSource::triangle,
+                    .payload_0 = static_cast<std::uint32_t>(emitter),
+                    .payload_1 =
+                        subtree_input.representative_triangles.empty()
+                            ? 0u
+                            : subtree_input
+                                  .representative_triangles[emitter]};
             }
             subtrees.emplace_back(append_tree(result, tree, identities));
         }
@@ -466,10 +483,13 @@ LightTreeSceneUpload make_light_tree_hierarchy_scene_upload(
                 }
                 top_identities.emplace_back(DeviceEmitterIdentity{
                     .kind = source.kind,
-                    .payload_0 = source.payload});
+                    .source = source.source,
+                    .payload_0 = source.payload,
+                    .payload_1 = source.source_index});
                 continue;
             }
             if (source.kind != LightTreeEmitterKind::mesh_instance ||
+                source.source != LightTreeEmitterSource::measure ||
                 source.subtree >= subtrees.size() ||
                 source.triangle_emitters.size() !=
                     input.subtrees[source.subtree].emitters.size()) {
