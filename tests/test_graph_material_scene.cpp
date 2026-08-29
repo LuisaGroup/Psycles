@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <ranges>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -183,6 +184,81 @@ void test_incremental_material_library() {
                     ->surface_program()
                     .get() == mixed_program.get(),
         "rejected material update partially mutated the library");
+}
+
+void test_material_library_compiles_only_the_selected_domain() {
+    ShaderCompiler shader_compiler{make_core_node_registry()};
+    MaterialLibrary library;
+    constexpr MaterialId reachable{1u};
+    constexpr MaterialId unreachable{2u};
+
+    SceneSnapshot scene;
+    scene.revision = 1u;
+    scene.materials.emplace(
+        reachable,
+        MaterialDesc{
+            .name = "reachable",
+            .shader = make_diffuse_graph({0.2f, 0.4f, 0.8f})});
+    ShaderGraph invalid_graph;
+    const auto unknown =
+        invalid_graph.add_node("cycles.future.unreachable");
+    invalid_graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = unknown, .socket = "Closure"});
+    scene.materials.emplace(
+        unreachable,
+        MaterialDesc{
+            .name = "unreachable invalid graph",
+            .shader = std::move(invalid_graph)});
+
+    const auto selected = library.update(
+        scene, shader_compiler, std::set{reachable});
+    expect(
+        selected.committed && selected.diagnostics.empty() &&
+            library.materials().size() == 1u &&
+            library.find(reachable) != nullptr &&
+            library.find(unreachable) == nullptr,
+        "unselected invalid graph entered the compiled material domain");
+
+    scene.revision = 2u;
+    const auto rejected = library.update(
+        scene, shader_compiler, std::set{unreachable});
+    expect(
+        !rejected.committed && !rejected.diagnostics.empty() &&
+            library.source_revision() == 1u &&
+            library.find(reachable) != nullptr &&
+            library.find(unreachable) == nullptr,
+        "failed selected-domain update partially mutated the library");
+
+    const auto missing = MaterialId{99u};
+    const auto missing_root = library.update(
+        scene, shader_compiler, std::set{missing});
+    expect(
+        !missing_root.committed &&
+            missing_root.diagnostics.size() == 1u &&
+            missing_root.diagnostics.front().material == missing &&
+            library.find(reachable) != nullptr,
+        "missing material root was not rejected transactionally");
+
+    scene.materials.at(unreachable).shader =
+        make_diffuse_graph({0.8f, 0.3f, 0.1f});
+    const auto switched = library.update(
+        scene, shader_compiler, std::set{unreachable});
+    expect(
+        switched.committed && library.materials().size() == 1u &&
+            library.find(reachable) == nullptr &&
+            library.find(unreachable) != nullptr,
+        "selected-domain switch did not remove the former root");
+
+    scene.revision = 3u;
+    const auto emptied = library.update(
+        scene,
+        shader_compiler,
+        std::set<MaterialId>{});
+    expect(
+        emptied.committed && library.materials().empty() &&
+            library.source_revision() == 3u,
+        "empty selected domain did not remove every compiled material");
 }
 
 void test_graph_errors_are_explicit() {
@@ -459,6 +535,7 @@ void test_scene_delta_is_atomic() {
 int main() {
     try {
         test_incremental_material_library();
+        test_material_library_compiles_only_the_selected_domain();
         test_graph_errors_are_explicit();
         test_sampled_color_ramp_is_part_of_the_graph_contract();
         test_point_to_vector_conversion_lowers();
@@ -473,4 +550,3 @@ int main() {
         return EXIT_FAILURE;
     }
 }
-

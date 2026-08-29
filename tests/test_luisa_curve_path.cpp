@@ -57,6 +57,7 @@ using namespace psycles::contract;
 
 [[nodiscard]] SceneSnapshot make_emissive_curve_scene() {
     constexpr MaterialId material_id{1u};
+    constexpr MaterialId unused_material_id{5u};
     constexpr GeometryId geometry_id{2u};
     constexpr InstanceId instance_id{3u};
     constexpr CameraId camera_id{4u};
@@ -69,6 +70,12 @@ using namespace psycles::contract;
             .name = "Hair Intercept emission",
             .shader = hair_intercept_emission(),
             .cycles_shader_index = 11u});
+    scene.materials.emplace(
+        unused_material_id,
+        MaterialDesc{
+            .name = "Unused curve slot",
+            .shader = diffuse_shader(),
+            .cycles_shader_index = 15u});
     scene.curve_geometries.emplace(
         geometry_id,
         CurveGeometryDesc{
@@ -79,7 +86,7 @@ using namespace psycles::contract;
                 {-1.0f, 0.0f, 0.0f, 0.4f},
                 {1.0f, 0.0f, 0.0f, 0.4f}},
             .curve_first_key = {0u},
-            .material_slots = {material_id},
+            .material_slots = {material_id, unused_material_id},
             .curve_material_slots = {0u},
             .intercept = {0.375f, 0.375f},
             .length = {2.0f},

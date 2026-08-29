@@ -44,19 +44,6 @@ CyclesPrimitiveIntervalResolver::resolve(
 
 namespace {
 
-void include_resolved_material(
-    std::set<contract::MaterialId> &result,
-    std::span<const contract::MaterialId> geometry_materials,
-    std::span<const contract::MaterialId> material_overrides,
-    std::uint32_t slot) {
-    if (slot < material_overrides.size()) {
-        result.emplace(material_overrides[slot]);
-    } else if (!geometry_materials.empty()) {
-        result.emplace(geometry_materials[std::min<std::size_t>(
-            slot, geometry_materials.size() - 1u)]);
-    }
-}
-
 [[nodiscard]] std::optional<contract::MaterialId>
 resolve_surface_material(
     std::span<const contract::MaterialId> geometry_materials,
@@ -135,14 +122,22 @@ collect_curve_material_slot_image(
     return result;
 }
 
-void include_material_slot_image(
-    std::set<contract::MaterialId> &result,
+void include_geometry_material_slot_image(
+    std::map<
+        contract::GeometryId,
+        std::set<contract::MaterialId>> &result,
+    contract::GeometryId geometry,
     std::span<const std::uint32_t> slots,
     std::span<const contract::MaterialId> geometry_materials,
     std::span<const contract::MaterialId> material_overrides) {
+    // The map is the sparse canonical representation of non-empty images.
+    // Defer operator[] until a slot resolves so empty/unbound geometry cannot
+    // create an observationally meaningless entry or perturb cache identity.
     for (const auto slot : slots) {
-        include_resolved_material(
-            result, geometry_materials, material_overrides, slot);
+        if (const auto material = resolve_surface_material(
+                geometry_materials, material_overrides, slot)) {
+            result[geometry].emplace(*material);
+        }
     }
 }
 
@@ -216,10 +211,9 @@ void include_material_slot_image(
 
 }// namespace
 
-std::set<contract::MaterialId>
-collect_reachable_surface_materials(
+SceneMaterialReachability build_scene_material_reachability(
     const contract::SceneSnapshot &scene) {
-    std::set<contract::MaterialId> result;
+    SceneMaterialReachability result;
     std::map<contract::GeometryId, std::vector<std::uint32_t>>
         triangle_slot_images;
     std::map<contract::GeometryId, std::vector<std::uint32_t>>
@@ -238,8 +232,10 @@ collect_reachable_surface_materials(
                 slots->second =
                     collect_curve_material_slot_image(curve->second);
             }
-            include_material_slot_image(
-                result, slots->second, curve->second.material_slots,
+            include_geometry_material_slot_image(
+                result.surface_by_geometry, instance.geometry,
+                slots->second,
+                curve->second.material_slots,
                 instance.material_overrides);
         } else if (const auto mesh =
                        scene.geometries.find(instance.geometry);
@@ -250,12 +246,36 @@ collect_reachable_surface_materials(
                 slots->second =
                     collect_triangle_material_slot_image(mesh->second);
             }
-            include_material_slot_image(
-                result, slots->second, mesh->second.material_slots,
+            include_geometry_material_slot_image(
+                result.surface_by_geometry, instance.geometry,
+                slots->second,
+                mesh->second.material_slots,
                 instance.material_overrides);
         }
     }
+    for (const auto &[geometry, materials] :
+         result.surface_by_geometry) {
+        static_cast<void>(geometry);
+        result.surface_materials.insert(
+            materials.begin(), materials.end());
+    }
+    result.shader_materials = result.surface_materials;
+    for (const auto &[light_id, light] : scene.lights) {
+        static_cast<void>(light_id);
+        if (light.shader) {
+            result.shader_materials.emplace(*light.shader);
+        }
+    }
+    if (scene.world_shader) {
+        result.shader_materials.emplace(*scene.world_shader);
+    }
     return result;
+}
+
+std::set<contract::MaterialId>
+collect_reachable_surface_materials(
+    const contract::SceneSnapshot &scene) {
+    return build_scene_material_reachability(scene).surface_materials;
 }
 
 std::vector<std::uint32_t>

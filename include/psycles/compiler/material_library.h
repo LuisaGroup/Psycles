@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -91,6 +92,17 @@ public:
     [[nodiscard]] MaterialLibraryUpdate update(
         const contract::SceneSnapshot &scene,
         const ShaderCompiler &shader_compiler);
+
+    // Compile exactly the closed material domain supplied by the scene
+    // consumer. The transaction removes previously compiled entries outside
+    // the domain and rejects missing roots without mutating the library.
+    // This is a semantic reachability boundary, not a heuristic shader cache:
+    // callers must include every MaterialId that their runtime can
+    // dereference.
+    [[nodiscard]] MaterialLibraryUpdate update(
+        const contract::SceneSnapshot &scene,
+        const ShaderCompiler &shader_compiler,
+        const std::set<contract::MaterialId> &material_domain);
 };
 
 }// namespace psycles::compiler

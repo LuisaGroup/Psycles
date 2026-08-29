@@ -49,6 +49,26 @@ class CyclesPrimitiveIntervalResolver {
     Vec3f p1,
     Vec3f p2) noexcept;
 
+// Exact host image of every MaterialId dereference in one immutable scene.
+// For each instanced geometry G, surface_by_geometry[G] is
+// image(R_G,I o S_G) unioned over its instances I. surface_materials is the
+// union of those images. shader_materials adds the only non-primitive roots:
+// analytic-light shaders and the world shader. Consequently compiling exactly
+// shader_materials is complete, while adding or editing a material outside
+// this domain cannot affect any renderer observation.
+struct SceneMaterialReachability {
+    std::map<
+        contract::GeometryId,
+        std::set<contract::MaterialId>>
+        surface_by_geometry;
+    std::set<contract::MaterialId> surface_materials;
+    std::set<contract::MaterialId> shader_materials;
+};
+
+[[nodiscard]] SceneMaterialReachability
+build_scene_material_reachability(
+    const contract::SceneSnapshot &scene);
+
 // Computes the exact host-side image of material bindings that a surface
 // primitive can produce. World and analytic-light shaders are intentionally
 // excluded: they cannot enter surface transport. Primitive slot selection,

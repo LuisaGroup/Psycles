@@ -11,10 +11,13 @@ namespace {
 using psycles::contract::GeometryId;
 using psycles::contract::InstanceDesc;
 using psycles::contract::InstanceId;
+using psycles::contract::LightDesc;
+using psycles::contract::LightId;
 using psycles::contract::MaterialId;
 using psycles::contract::SceneSnapshot;
 using psycles::contract::TriangleMeshDesc;
 using psycles::luisa_backend::detail::build_cycles_instance_intersection_plan;
+using psycles::luisa_backend::detail::build_scene_material_reachability;
 using psycles::luisa_backend::detail::collect_reachable_surface_materials;
 using psycles::luisa_backend::detail::
     collect_triangle_instances_with_surface_materials;
@@ -82,14 +85,34 @@ void test_reachable_surface_materials() {
       InstanceDesc{
           .name = "empty instance",
           .geometry = GeometryId{4u}});
+  LightDesc light;
+  light.name = "rooted light shader";
+  light.shader = MaterialId{12u};
+  scene.lights.emplace(LightId{11u}, light);
+  scene.world_shader = MaterialId{13u};
 
-  const auto reachable = collect_reachable_surface_materials(scene);
+  const auto reachability = build_scene_material_reachability(scene);
+  const auto &reachable = reachability.surface_materials;
   require(
       reachable ==
           std::set<MaterialId>{
               MaterialId{3u}, MaterialId{4u},
               MaterialId{7u}, MaterialId{8u}},
       "surface material reachability diverged from primitive resolution");
+  require(
+      reachability.surface_by_geometry.at(GeometryId{1u}) ==
+              std::set<MaterialId>{MaterialId{3u}, MaterialId{4u}} &&
+          reachability.surface_by_geometry.at(GeometryId{3u}) ==
+              std::set<MaterialId>{MaterialId{7u}, MaterialId{8u}} &&
+          !reachability.surface_by_geometry.contains(GeometryId{2u}) &&
+          !reachability.surface_by_geometry.contains(GeometryId{4u}),
+      "per-geometry material images are not exact");
+  auto expected_shaders = reachable;
+  expected_shaders.emplace(MaterialId{12u});
+  expected_shaders.emplace(MaterialId{13u});
+  require(
+      reachability.shader_materials == expected_shaders,
+      "light/world shader roots were not closed over surface reachability");
 }
 
 void test_triangle_instances_with_surface_materials() {

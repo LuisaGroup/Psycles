@@ -1,4 +1,5 @@
 #include "path_tracer_attribute_residency.h"
+#include "path_tracer_scene_geometry.h"
 
 #include <psycles/compiler/surface_execution_plan.h>
 
@@ -256,17 +257,15 @@ SceneAttributeResidencyPlan build_scene_attribute_residency_plan(
     }
 
     SceneAttributeResidencyPlan result;
+    const auto reachability =
+        build_scene_material_reachability(snapshot);
     for (const auto &[geometry_id, geometry] : snapshot.geometries) {
         auto &residency = result.geometries[geometry_id];
-        for (const auto material : geometry.material_slots) {
-            merge_material(residency.demand, material, material_demands);
-        }
-        for (const auto &[instance_id, instance] : snapshot.instances) {
-            static_cast<void>(instance_id);
-            if (instance.geometry != geometry_id) {
-                continue;
-            }
-            for (const auto material : instance.material_overrides) {
+        const auto reachable =
+            reachability.surface_by_geometry.find(geometry_id);
+        if (reachable !=
+            reachability.surface_by_geometry.end()) {
+            for (const auto material : reachable->second) {
                 merge_material(residency.demand, material, material_demands);
             }
         }

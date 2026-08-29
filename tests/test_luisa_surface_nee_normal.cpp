@@ -227,7 +227,8 @@ struct CompiledSubsurfaceCapability {
     std::uint32_t local_instance_count{};
 };
 
-[[nodiscard]] CompiledSubsurfaceCapability compiled_scene_subsurface(
+[[nodiscard]] const psycles::luisa_backend::detail::LuisaSceneData &
+compiled_scene_data(
     const SceneCompilation &compilation) {
     const auto *compiled = dynamic_cast<
         const psycles::luisa_backend::detail::LuisaCompiledScene *>(
@@ -236,10 +237,16 @@ struct CompiledSubsurfaceCapability {
         throw std::runtime_error{
             "compiled scene does not expose Luisa scene data"};
     }
+    return *compiled->data();
+}
+
+[[nodiscard]] CompiledSubsurfaceCapability compiled_scene_subsurface(
+    const SceneCompilation &compilation) {
+    const auto &data = compiled_scene_data(compilation);
     return {
-        .enabled = compiled->data()->has_subsurface,
+        .enabled = data.has_subsurface,
         .local_instance_count =
-            compiled->data()->subsurface_instance_count};
+            data.subsurface_instance_count};
 }
 
 }// namespace
@@ -262,15 +269,29 @@ int main(int argc, char **argv) {
                 .name = "Unreachable BSSRDF",
                 .shader = subsurface_shader(),
                 .cycles_shader_index = 2u});
+        // Material 99 occupies both an unused geometry slot and an unused
+        // instance-override slot. Slot 0 is the only primitive image, so the
+        // table holes must remain inert without entering the SVM domain.
+        unreachable.geometries.at(GeometryId{2u})
+            .material_slots.emplace_back(MaterialId{99u});
+        unreachable.instances.at(InstanceId{3u}).material_overrides = {
+            MaterialId{1u}, MaterialId{99u}};
         const auto capability =
             renderer.compile_scene(unreachable);
         const auto subsurface = capability.ok()
                                     ? compiled_scene_subsurface(capability)
                                     : CompiledSubsurfaceCapability{};
+        const auto compiled_material_domain_is_exact =
+            capability.ok() &&
+            compiled_scene_data(capability).materials.materials().size() ==
+                1u &&
+            compiled_scene_data(capability).materials.find(
+                MaterialId{99u}) == nullptr;
         if (!capability.ok() || subsurface.enabled ||
-            subsurface.local_instance_count != 0u) {
+            subsurface.local_instance_count != 0u ||
+            !compiled_material_domain_is_exact) {
             std::cerr
-                << "unreachable BSSRDF enabled path transport on "
+                << "unreachable BSSRDF entered compiled path transport on "
                 << backend << '\n';
             return EXIT_FAILURE;
         }

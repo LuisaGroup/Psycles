@@ -1580,8 +1580,20 @@ def _export_scene(
                     f"file size {geometry_size}"
                 )
 
+    # The exported geometry records are the complete surface root set. A
+    # Blender material outside their slot image cannot be dereferenced by any
+    # exported instance; serializing its graph would make unrelated datablocks
+    # alter SVM size, diagnostics, and shader-cache identity.
+    used_material_names = {
+        name
+        for geometry in (*geometries, *curve_geometries)
+        for name in geometry["material_slots"]
+        if name is not None
+    }
     materials = []
     for material in sorted(bpy.data.materials, key=lambda item: item.name):
+        if material.name not in used_material_names:
+            continue
         cycles = getattr(material, "cycles", None)
         shader_index = material_shader_indices.get(_id_key(material))
         materials.append(

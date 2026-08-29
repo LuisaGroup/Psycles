@@ -68,6 +68,9 @@ def _main() -> None:
     material.displacement_method = "BUMP"
     material.cycles.volume_sampling = "EQUIANGULAR"
     material.cycles.use_bump_map_correction = False
+    # This datablock exists in the .blend but is outside the dependency-graph
+    # surface image. It must not perturb the exported SVM input domain.
+    bpy.data.materials.new("Unused Material")
     mesh = bpy.data.meshes.new("Surface Mesh")
     mesh.from_pydata(
         [(-1.0, -1.0, 0.0), (1.0, -1.0, 0.0), (0.0, 1.0, 0.0)],
@@ -147,6 +150,10 @@ def _main() -> None:
         item["name"]: item
         for item in payload["materials"]
     }
+    if "Unused Material" in materials:
+        raise AssertionError(
+            "unreferenced Blender material entered the exported graph domain"
+        )
     material_sync = materials["Middle Material"]["cycles_sync"]
     if material_sync != {"shader_index": 7}:
         raise AssertionError(

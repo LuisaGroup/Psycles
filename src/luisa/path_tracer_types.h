@@ -182,6 +182,20 @@ struct MaterialBindingGpu {
     luisa::uint volume_sampling{};
 };
 
+// Preserve authored slot-table indices without compiling unreachable shader
+// graphs. A hole can only be emitted after host reachability proved that no
+// runtime primitive resolves to it; all identity-bearing fields are poisoned
+// so the record cannot accidentally masquerade as material/program zero.
+[[nodiscard]] constexpr MaterialBindingGpu
+inert_material_binding() noexcept {
+    constexpr auto invalid = ~luisa::uint{0u};
+    return {
+        .surface_tag = invalid,
+        .parameter_block = invalid,
+        .cycles_shader_index = invalid,
+        .material_identity = invalid};
+}
+
 static_assert(sizeof(MaterialBindingGpu) == 24u);
 static_assert(alignof(MaterialBindingGpu) == alignof(luisa::uint));
 static_assert(offsetof(MaterialBindingGpu, flags) == 16u);
