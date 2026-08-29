@@ -751,6 +751,47 @@ def _cycles_shape_radius(
     )
 
 
+def _cycles_particle_hair_positions(
+    particle_system: Any,
+    evaluated: Any,
+    particle_no: int,
+    key_count: int,
+) -> list[np.ndarray[Any, np.dtype[np.float32]]]:
+    """Recover Cycles' prefix-preserving BKE_particle_co_hair contract.
+
+    A particle cache defines keys on the prefix ``[0, segments]``. The BKE
+    function leaves its output untouched outside that prefix, and Cycles seeds
+    the output with the preceding coordinate before every call. Blender's RNA
+    wrapper instead zero-initializes the output-only parameter, so a shortened
+    path appears to jump to world origin. Because the unwritten domain is a
+    suffix, propagate the last written coordinate only across the trailing
+    all-zero RNA results. Interior zero coordinates remain observable.
+    """
+
+    positions = [
+        np.asarray(
+            particle_system.co_hair(
+                object=evaluated,
+                particle_no=particle_no,
+                step=step,
+            ),
+            dtype=np.float32,
+        )
+        for step in range(key_count)
+    ]
+    suffix_begin = len(positions)
+    while suffix_begin > 0 and not np.any(
+        positions[suffix_begin - 1] != np.float32(0.0)
+    ):
+        suffix_begin -= 1
+    if 0 < suffix_begin < len(positions):
+        positions[suffix_begin:] = [
+            positions[suffix_begin - 1].copy()
+            for _ in range(len(positions) - suffix_begin)
+        ]
+    return positions
+
+
 def _particle_hair_geometry(
     obj: Any,
     depsgraph: Any,
@@ -812,16 +853,17 @@ def _particle_hair_geometry(
 
         for particle_no in range(first_particle, particle_end):
             curve_first_key.append(len(keys) // 4)
+            world_positions = _cycles_particle_hair_positions(
+                particle_system,
+                evaluated,
+                particle_no,
+                key_count,
+            )
             positions: list[np.ndarray[Any, np.dtype[np.float32]]] = []
             curve_times: list[np.float32] = []
             curve_length = np.float32(0.0)
             previous: np.ndarray[Any, np.dtype[np.float32]] | None = None
-            for step in range(key_count):
-                coordinate = particle_system.co_hair(
-                    object=evaluated,
-                    particle_no=particle_no,
-                    step=step,
-                )
+            for coordinate in world_positions:
                 world = np.asarray(
                     (
                         float(coordinate[0]),
