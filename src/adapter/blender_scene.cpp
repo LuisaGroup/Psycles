@@ -418,6 +418,11 @@ BlenderSceneImport load_blender_scene_bundle(
                         image_alpha_types,
                         node_groups,
                         result.diagnostics),
+                    .use_transparent_shadow =
+                        boolean(member(
+                                    material,
+                                    "use_transparent_shadow"),
+                                true),
                     .use_bump_map_correction =
                         boolean(member(
                                     material,
@@ -591,6 +596,34 @@ BlenderSceneImport load_blender_scene_bundle(
             static_cast<std::uint32_t>(unsigned_number(
                 member(cycles, "transparent_max_bounces"),
                 result.integrator.transparent_max_bounces));
+        const auto use_fast_gi = boolean(
+            member(cycles, "use_fast_gi"), false);
+        const auto fast_gi_method = text(
+            member(cycles, "fast_gi_method"), "REPLACE");
+        const auto ambient_occlusion_factor = std::max(
+            number(member(cycles, "ao_factor"), 1.0f), 0.0f);
+        if (use_fast_gi && fast_gi_method == "REPLACE") {
+            result.integrator.ambient_occlusion_factor =
+                ambient_occlusion_factor;
+            if (ambient_occlusion_factor != 0.0f) {
+                result.integrator.ambient_occlusion_bounces =
+                    static_cast<std::uint32_t>(unsigned_number(
+                        member(cycles, "ao_bounces_render")));
+            }
+        } else if (use_fast_gi && fast_gi_method == "ADD") {
+            result.integrator.ambient_occlusion_additive_factor =
+                ambient_occlusion_factor;
+            if (ambient_occlusion_factor != 0.0f) {
+                warning(
+                    "Cycles Fast GI ADD is preserved in the scene contract, "
+                    "but additive surface AO transport is not implemented "
+                    "by the Luisa path tracer");
+            }
+        } else if (use_fast_gi) {
+            warning(
+                "unsupported Cycles Fast GI method '" +
+                fast_gi_method + "'; Fast GI is disabled");
+        }
         result.integrator.sample_clamp_direct = std::max(
             number(
                 member(cycles, "sample_clamp_direct"),
@@ -611,6 +644,8 @@ BlenderSceneImport load_blender_scene_bundle(
                 member(cycles, "ao_distance"),
                 scene.ambient_occlusion_distance),
             0.0f);
+        result.integrator.ambient_occlusion_distance =
+            scene.ambient_occlusion_distance;
         result.integrator.film_exposure = std::max(
             number(
                 member(cycles, "film_exposure"),
@@ -1336,6 +1371,13 @@ BlenderSceneImport load_blender_scene_bundle(
                                 member(
                                     instance,
                                     "shadow_terminator_geometry_offset")),
+                            0.0f),
+                    .ambient_occlusion_distance =
+                        std::max(
+                            number(
+                                member(
+                                    instance,
+                                    "ambient_occlusion_distance")),
                             0.0f),
                     .visibility_mask =
                         ray_visibility_mask(visibility),

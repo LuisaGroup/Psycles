@@ -455,6 +455,10 @@ def _cycles_settings(scene: Any) -> dict[str, Any]:
         "transparent_max_bounces",
         "sample_clamp_direct",
         "sample_clamp_indirect",
+        "use_fast_gi",
+        "fast_gi_method",
+        "ao_bounces",
+        "ao_bounces_render",
         "blur_glossy",
         "caustics_reflective",
         "caustics_refractive",
@@ -494,6 +498,9 @@ def _cycles_settings(scene: Any) -> dict[str, Any]:
     )
     world = scene.world
     lighting = getattr(world, "light_settings", None) if world else None
+    result["ao_factor"] = float(
+        getattr(lighting, "ao_factor", 1.0) if world else 0.0
+    )
     result["ao_distance"] = float(
         getattr(lighting, "distance", 10.0)
     )

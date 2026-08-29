@@ -108,6 +108,10 @@ enum class DisplacementMethod : std::uint8_t {
 struct MaterialDesc {
     std::string name;
     ShaderGraph shader;
+    // Cycles Shader::use_transparent_shadow. This gates shadow-ray
+    // transmission only; the original Transparent closure remains available
+    // to camera and indirect surface evaluation.
+    bool use_transparent_shadow{true};
     // Cycles Shader::use_bump_map_correction. This remains material
     // metadata beside the raw closure graph because structurally identical
     // graphs may use different correction policies at runtime.
@@ -315,6 +319,9 @@ struct InstanceDesc {
     // Cycles Object::shadow_terminator_geometry_offset. This is evaluated per
     // instance because objects sharing a mesh may author different values.
     float shadow_terminator_geometry_offset{};
+    // Cycles Object::ao_distance. Zero inherits the world Fast GI distance;
+    // non-zero values replace it for the ray leaving this exact object.
+    float ambient_occlusion_distance{};
     std::uint32_t visibility_mask{all_ray_visibility};
     // Stable indices produced by BlenderSync/ObjectManager and Film's
     // light-group map. They are source-scene identities, not Psycles map or

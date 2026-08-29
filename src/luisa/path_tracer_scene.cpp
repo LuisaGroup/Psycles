@@ -242,9 +242,16 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             compiler::resolve_cycles_emission_sampling(
                 snapshot.materials.at(id).emission_sampling,
                 emission_estimate);
-        const auto may_emit =
-            effective_emission_sampling !=
-            contract::EmissionSampling::none;
+        // Cycles' SD_HAS_EMISSION describes endpoint shader evaluation and is
+        // independent of whether the same closure participates in NEE. An
+        // authored NONE/AUTO-below-threshold emitter must still be visible to
+        // indirect rays.
+        const auto may_emit = emission_estimate != Vec3f{};
+        const auto transparent_shadow =
+            capabilities.may_be_transparent &&
+            snapshot.materials.at(id).use_transparent_shadow;
+        const auto has_transparent_shadow =
+            transparent_shadow || capabilities.may_have_volume;
         const auto emission_is_constant =
             material.surface_program()
                 ->emission_evaluation() !=
@@ -275,11 +282,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     (snapshot.materials.at(id).use_bump_map_correction
                          ? material_flag_use_bump_map_correction
                          : 0u) |
-                    (capabilities.may_be_transparent
-                         ? material_flag_may_be_transparent
-                         : 0u) |
                     (surface_bssrdf_bump_materials.contains(id)
                          ? material_flag_has_bssrdf_bump
+                         : 0u) |
+                    (has_transparent_shadow
+                         ? material_flag_has_transparent_shadow
                          : 0u),
                 .emission_sampling =
                     effective_emission_sampling,
@@ -1455,6 +1462,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         collect_emission_sampling_materials(*data);
 
     luisa::vector<InstanceGpu> instances;
+    luisa::vector<float> ambient_occlusion_object_distances;
+    bool has_ambient_occlusion_object_distance = false;
     luisa::vector<MaterialBindingGpu> override_materials;
     luisa::vector<EmissiveTriangleGpu> emissive_triangles;
     std::vector<float> emissive_triangle_areas;
@@ -1500,6 +1509,18 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         const auto instance_index =
             static_cast<std::uint32_t>(instances.size());
+        const auto cycles_object_index =
+            instance.cycles_object_index.value_or(instance_index);
+        if (ambient_occlusion_object_distances.size() <=
+            cycles_object_index) {
+            ambient_occlusion_object_distances.resize(
+                static_cast<std::size_t>(cycles_object_index) + 1u,
+                0.0f);
+        }
+        ambient_occlusion_object_distances[cycles_object_index] =
+            std::max(instance.ambient_occlusion_distance, 0.0f);
+        has_ambient_occlusion_object_distance |=
+            instance.ambient_occlusion_distance > 0.0f;
         const auto normalized_visibility =
             instance.visibility_mask ==
                     ~std::uint32_t{0u}
@@ -1694,6 +1715,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     if (!result.diagnostics.empty()) {
         return result;
     }
+    data->ambient_occlusion_object_distance_count =
+        has_ambient_occlusion_object_distance
+            ? static_cast<std::uint32_t>(
+                  ambient_occlusion_object_distances.size())
+            : 0u;
 
     if (instances.empty()) {
         // Luisa requires at least one TLAS instance. Represent an empty
@@ -1817,6 +1843,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
          .attribute_bindings = attribute_bindings,
          .attribute_ranges = attribute_ranges,
          .instances = instances,
+         .ambient_occlusion_object_distances =
+             ambient_occlusion_object_distances,
          .geometry_materials = geometry_materials,
          .override_materials = override_materials,
          .lights = analytic_lights.device_lights,

@@ -15,6 +15,7 @@ class ClosestEventStageImpl final
 
   private:
     bool _analytic_light_endpoints;
+    bool _ambient_occlusion_bounce_approximation;
     ScenePrimitiveStagePlan _primitive_plan;
     std::shared_ptr<const TrianglePrimitiveComponent>
         _triangles;
@@ -24,9 +25,12 @@ class ClosestEventStageImpl final
   public:
     explicit ClosestEventStageImpl(
         bool analytic_light_endpoints,
-        ScenePrimitiveStagePlan primitive_plan) noexcept
+        ScenePrimitiveStagePlan primitive_plan,
+        bool ambient_occlusion_bounce_approximation) noexcept
         : _analytic_light_endpoints{
               analytic_light_endpoints},
+          _ambient_occlusion_bounce_approximation{
+              ambient_occlusion_bounce_approximation},
           _primitive_plan{primitive_plan},
           _triangles{
               primitive_plan.triangles
@@ -247,6 +251,7 @@ class ClosestEventStageImpl final
             (!light_hit) &
             bounce.hit->miss();
         Bool surface_may_emit = false;
+        Bool surface_has_transparent_shadow = false;
         if (!_primitive_plan.empty()) {
             const auto resolve_curve = [&] {
                 const auto primitive =
@@ -256,6 +261,8 @@ class ClosestEventStageImpl final
                         bounce.hit->prim);
                 surface_may_emit =
                     primitive.may_emit;
+                surface_has_transparent_shadow =
+                    primitive.has_transparent_shadow;
             };
             const auto resolve_triangle = [&] {
                 const auto primitive =
@@ -265,6 +272,8 @@ class ClosestEventStageImpl final
                         bounce.hit->prim);
                 surface_may_emit =
                     primitive.may_emit;
+                surface_has_transparent_shadow =
+                    primitive.has_transparent_shadow;
             };
             $if(surface) {
                 if (_primitive_plan.mixed()) {
@@ -286,10 +295,27 @@ class ClosestEventStageImpl final
             inside_volume = !sample.volume.stack->empty();
         }
         Bool terminated = false;
+        if (_ambient_occlusion_bounce_approximation) {
+            const auto ambient_occlusion_bounce =
+                cycles_path_state::ambient_occlusion_bounce(
+                    path_depth,
+                    sample.transmission_depth,
+                    sample.glossy_depth,
+                    parameters.ambient_occlusion_bounces);
+            const auto ambient_occlusion_decision =
+                cycles_path_state::decide_ambient_occlusion_continuation(
+                    ambient_occlusion_bounce,
+                    surface,
+                    surface_may_emit | surface_has_transparent_shadow,
+                    inside_volume);
+            path_flags |= ambient_occlusion_decision.deferred_flags;
+            terminated =
+                ambient_occlusion_decision.terminate_immediately;
+        }
         // This is Cycles' integrator_intersect_terminate transfer. A surface
         // needs the decision even in vacuum; a lamp or background endpoint
         // needs it only while an active volume segment still contributes.
-        $if(surface | inside_volume) {
+        $if((surface | inside_volume) & !terminated) {
             continuation_probability =
                 cycles_path_state::continuation_probability(
                     path_flags,
@@ -330,11 +356,13 @@ class ClosestEventStageImpl final
 std::unique_ptr<ClosestEventStage>
 make_closest_event_stage(
     bool analytic_light_endpoints,
-    ScenePrimitiveStagePlan primitive_plan) {
+    ScenePrimitiveStagePlan primitive_plan,
+    bool ambient_occlusion_bounce_approximation) {
     return std::make_unique<
         ClosestEventStageImpl>(
         analytic_light_endpoints,
-        primitive_plan);
+        primitive_plan,
+        ambient_occlusion_bounce_approximation);
 }
 
 }// namespace psycles::luisa_backend::detail

@@ -257,9 +257,17 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
           _options.path_trace ? _options.path_trace->sample : 0u,
       .analytic_light_count = scene->light_count,
       .portal_count = scene->portal_count,
+      .ambient_occlusion_object_distance_count =
+          scene->ambient_occlusion_object_distance_count,
       .wavefront_frame_capacity = wavefront_frame_capacity,
       .shadow_storage_capacity = 1u,
       .shadow_storage_block_size = 1u,
+      .ambient_occlusion_bounces =
+          integrator.ambient_occlusion_bounces,
+      .ambient_occlusion_factor =
+          integrator.ambient_occlusion_factor,
+      .ambient_occlusion_distance =
+          integrator.ambient_occlusion_distance,
         .sample_clamp_direct = sample_clamp_direct,
         .sample_clamp_indirect = sample_clamp_indirect,
         .filter_glossy = filter_glossy,
@@ -305,6 +313,8 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .reflective_caustics = reflective_caustics,
         .refractive_caustics = refractive_caustics,
         .has_subsurface = scene->has_subsurface,
+        .ambient_occlusion_bounce_approximation =
+            integrator.ambient_occlusion_bounces != 0u,
         .path_trace_enabled = path_trace_enabled,
         .surface_closure_count_histogram_enabled =
             static_cast<bool>(_options.surface_closure_count_histogram),

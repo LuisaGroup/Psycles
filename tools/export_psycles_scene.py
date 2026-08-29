@@ -1138,6 +1138,22 @@ def _cycles_shadow_catcher(object_instance: Any) -> bool:
     return result
 
 
+def _cycles_object_ao_distance(object_instance: Any) -> float:
+    """Match BlenderSync's child-then-instancer AO-distance lookup."""
+
+    obj = object_instance.object
+    cycles = getattr(obj, "cycles", None)
+    result = float(getattr(cycles, "ao_distance", 0.0))
+    if result == 0.0 and object_instance.is_instance:
+        parent = object_instance.parent
+        if parent is not None and parent != obj:
+            parent_cycles = getattr(parent, "cycles", None)
+            result = float(
+                getattr(parent_cycles, "ao_distance", 0.0)
+            )
+    return max(result, 0.0)
+
+
 def _light(
     obj: Any,
     *,
@@ -1271,6 +1287,9 @@ def _geometry_instance(
         & cycles_hash.UINT32_MASK,
         "shadow_terminator_geometry_offset": float(
             original.cycles.shadow_terminator_geometry_offset
+        ),
+        "ambient_occlusion_distance": _cycles_object_ao_distance(
+            object_instance
         ),
         "visibility": _instance_ray_visibility(object_instance),
         "is_shadow_catcher": _cycles_shadow_catcher(object_instance),
@@ -1568,6 +1587,9 @@ def _export_scene(
         materials.append(
             {
                 "name": material.name,
+                "use_transparent_shadow": bool(
+                    getattr(material, "use_transparent_shadow", True)
+                ),
                 "use_bump_map_correction": bool(
                     getattr(cycles, "use_bump_map_correction", True)
                 ),

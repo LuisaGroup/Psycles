@@ -422,15 +422,100 @@ int main(int argc, char **argv) {
                 26u, 0.0f, 0.0f, false, false);
             write_continuation_decision(
                 27u, 0.0f, 0.0f, false, true);
+            output.write(
+                28u,
+                make_float4(
+                    cast<float>(cycles_path_state::ambient_occlusion_bounce(
+                        0u, 0u, 0u, 2u)),
+                    cast<float>(cycles_path_state::ambient_occlusion_bounce(
+                        1u, 0u, 0u, 2u)),
+                    cast<float>(cycles_path_state::ambient_occlusion_bounce(
+                        2u, 0u, 0u, 2u)),
+                    cast<float>(cycles_path_state::ambient_occlusion_bounce(
+                        4u, 2u, 0u, 2u))));
+            output.write(
+                29u,
+                make_float4(
+                    cast<float>(cycles_path_state::ambient_occlusion_bounce(
+                        4u, 2u, 1u, 2u)),
+                    cast<float>(cycles_path_state::ambient_occlusion_bounce(
+                        99u, 0u, 0u, 0u)),
+                    cast<float>(cycles_path_state::ambient_occlusion_bounce(
+                        5u, 5u, 0u, 1u)),
+                    cast<float>(cycles_path_state::ambient_occlusion_bounce(
+                        5u, 4u, 0u, 1u))));
+            const auto write_ambient_occlusion_decision =
+                [&](std::uint32_t index,
+                    Bool enabled,
+                    Bool surface,
+                    Bool surface_may_continue,
+                    Bool inside_volume) noexcept {
+                    const auto decision =
+                        cycles_path_state::
+                            decide_ambient_occlusion_continuation(
+                                enabled,
+                                surface,
+                                surface_may_continue,
+                                inside_volume);
+                    output.write(
+                        index,
+                        make_float4(
+                            cast<float>(decision.terminate_immediately),
+                            cast<float>(decision.deferred_flags),
+                            0.0f,
+                            0.0f));
+                };
+            write_ambient_occlusion_decision(
+                30u, false, true, false, false);
+            write_ambient_occlusion_decision(
+                31u, true, false, false, false);
+            write_ambient_occlusion_decision(
+                32u, true, true, false, false);
+            write_ambient_occlusion_decision(
+                33u, true, true, true, false);
+            write_ambient_occlusion_decision(
+                34u, true, true, false, true);
+            write_ambient_occlusion_decision(
+                35u, true, true, true, true);
+            write_ambient_occlusion_decision(
+                36u, true, false, false, true);
+            output.write(
+                37u,
+                make_float4(
+                    cast<float>(cycles_path_state::volume_segment_terminates(
+                        0u, false)),
+                    cast<float>(cycles_path_state::volume_segment_terminates(
+                        cycles_path_state::flag_terminate_after_transparent,
+                        false)),
+                    cast<float>(cycles_path_state::volume_segment_terminates(
+                        cycles_path_state::flag_terminate_after_volume,
+                        false)),
+                    cast<float>(cycles_path_state::volume_segment_terminates(
+                        cycles_path_state::flag_terminate_in_next_volume,
+                        false))));
+            output.write(
+                38u,
+                make_float4(
+                    cast<float>(cycles_path_state::volume_segment_terminates(
+                        0u, true)),
+                    cast<float>(cycles_path_state::volume_segment_terminates(
+                        cycles_path_state::flag_terminate_after_volume,
+                        true)),
+                    cast<float>(cycles_path_state::volume_segment_terminates(
+                        cycles_path_state::flag_terminate_after_transparent,
+                        true)),
+                    cast<float>(cycles_path_state::volume_segment_terminates(
+                        cycles_path_state::flag_terminate_on_next_surface,
+                        false))));
         };
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
     auto output =
-        device.create_buffer<luisa::float4>(28u);
+        device.create_buffer<luisa::float4>(39u);
     auto kernel = device.compile(evaluate);
-    std::array<luisa::float4, 28u> actual{};
+    std::array<luisa::float4, 39u> actual{};
     stream << kernel(output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
            << synchronize();
@@ -539,7 +624,43 @@ int main(int argc, char **argv) {
             0.0f,
             static_cast<float>(
                 cycles_path_state::flag_terminate_in_next_volume),
-            0.0f}};
+            0.0f},
+        // Fast GI begins strictly after the configured diffuse-like bounce.
+        // Transmission and one glossy ancestor are subtracted exactly as in
+        // Cycles; a zero limit disables the approximation altogether.
+        luisa::float4{0.0f, 0.0f, 1.0f, 1.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 1.0f},
+        // Background misses bypass endpoint termination. At a surface,
+        // emission/transparency has priority over the active-volume fallback.
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{0.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{1.0f, 0.0f, 0.0f, 0.0f},
+        luisa::float4{
+            0.0f,
+            static_cast<float>(
+                cycles_path_state::flag_terminate_after_transparent),
+            0.0f,
+            0.0f},
+        luisa::float4{
+            0.0f,
+            static_cast<float>(
+                cycles_path_state::flag_terminate_after_volume),
+            0.0f,
+            0.0f},
+        luisa::float4{
+            0.0f,
+            static_cast<float>(
+                cycles_path_state::flag_terminate_after_transparent),
+            0.0f,
+            0.0f},
+        luisa::float4{
+            0.0f,
+            static_cast<float>(
+                cycles_path_state::flag_terminate_after_volume),
+            0.0f,
+            0.0f},
+        luisa::float4{0.0f, 0.0f, 1.0f, 1.0f},
+        luisa::float4{1.0f, 1.0f, 1.0f, 0.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

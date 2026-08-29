@@ -444,7 +444,7 @@ int main(int argc, char **argv) {
       MaterialBindingGpu{.surface_tag = 78u,
                          .cycles_shader_index = 10u,
                          .material_identity = 110u,
-                         .flags = material_flag_may_be_transparent},
+                         .flags = material_flag_has_transparent_shadow},
       MaterialBindingGpu{.surface_tag = 79u,
                          .cycles_shader_index = 11u,
                          .material_identity = 111u}};
@@ -464,7 +464,7 @@ int main(int argc, char **argv) {
           pack_scene_traversal_primitive(geometry_kind_curve, 2u) ||
       traversal_tables.instances[8u].override_material_offset != 3u ||
       (traversal_tables.material_flags[3u] &
-       material_flag_may_be_transparent) == 0u) {
+       material_flag_has_transparent_shadow) == 0u) {
     std::cerr << "scene traversal quotient construction failed\n";
     return EXIT_FAILURE;
   }

@@ -14,8 +14,14 @@ class BackgroundEventStageImpl final
         const EnvironmentLightComponent>
         _environment_light{
             make_environment_light_component()};
+    bool _ambient_occlusion_bounce_approximation;
 
   public:
+    explicit BackgroundEventStageImpl(
+        bool ambient_occlusion_bounce_approximation) noexcept
+        : _ambient_occlusion_bounce_approximation{
+              ambient_occlusion_bounce_approximation} {}
+
     void emit(ClosestPathEvent &event)
         const noexcept override {
         auto &sample = event.bounce.sample;
@@ -115,6 +121,18 @@ class BackgroundEventStageImpl final
                                 transparent_depth,
                                 transmission_depth));
         }
+        if (_ambient_occlusion_bounce_approximation) {
+            const auto ambient_occlusion_bounce =
+                cycles_path_state::ambient_occlusion_bounce(
+                    path_depth,
+                    transmission_depth,
+                    glossy_depth,
+                    invocation.parameters.ambient_occlusion_bounces);
+            environment_radiance *= select(
+                1.0f,
+                invocation.parameters.ambient_occlusion_factor,
+                ambient_occlusion_bounce);
+        }
         Float3 environment_contribution =
             invocation
                 .clamp_emission_contribution(
@@ -167,9 +185,11 @@ class BackgroundEventStageImpl final
 }// namespace
 
 std::unique_ptr<BackgroundEventStage>
-make_background_event_stage() {
+make_background_event_stage(
+    bool ambient_occlusion_bounce_approximation) {
     return std::make_unique<
-        BackgroundEventStageImpl>();
+        BackgroundEventStageImpl>(
+            ambient_occlusion_bounce_approximation);
 }
 
 }// namespace psycles::luisa_backend::detail

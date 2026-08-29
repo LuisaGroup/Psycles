@@ -16,6 +16,7 @@ struct PrimitiveMaterialContext {
   // non-NONE only when this exact primitive belongs to the sampled mesh-light
   // population and therefore competes in forward-hit MIS.
   Bool may_emit;
+  Bool has_transparent_shadow;
   UInt triangle_emission_sampling;
 };
 

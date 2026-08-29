@@ -29,6 +29,7 @@ struct CurvePrimitiveContext {
   UInt cycles_primitive_index;
   Bool has_volume;
   Bool may_emit;
+  Bool has_transparent_shadow;
   UInt triangle_emission_sampling;
 
   [[nodiscard]] VolumeStackEntry volume_stack_entry() const noexcept;

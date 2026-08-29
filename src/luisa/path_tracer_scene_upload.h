@@ -47,6 +47,7 @@ struct SceneTableUploadInput {
     luisa::vector<AttributeBindingGpu> &attribute_bindings;
     luisa::vector<AttributeRangeGpu> &attribute_ranges;
     luisa::vector<InstanceGpu> &instances;
+    luisa::vector<float> &ambient_occlusion_object_distances;
     luisa::vector<MaterialBindingGpu> &geometry_materials;
     luisa::vector<MaterialBindingGpu> &override_materials;
     luisa::vector<LightGpu> &lights;

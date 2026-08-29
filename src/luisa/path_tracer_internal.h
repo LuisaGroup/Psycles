@@ -521,6 +521,11 @@ struct LuisaSceneData {
     BindlessArray heap;
     Buffer<GeometryGpu> geometry_buffer;
     Buffer<InstanceGpu> instance_buffer;
+    // Sparse-in-use, dense-by-Cycles-object table for Fast GI ray-length
+    // overrides. It stays separate from hot InstanceGpu/traversal records so
+    // ordinary closest-hit traffic pays no stride increase.
+    Buffer<float> ambient_occlusion_object_distance_buffer;
+    std::uint32_t ambient_occlusion_object_distance_count{};
     Buffer<MaterialBindingGpu> geometry_material_buffer;
     Buffer<MaterialBindingGpu> override_material_buffer;
     // Read-only traversal quotient. These tables project the immutable scene

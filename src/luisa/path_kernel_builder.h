@@ -70,6 +70,10 @@ struct PathKernelConfig {
     bool reflective_caustics{};
     bool refractive_caustics{};
     bool has_subsurface{};
+    // Host/JIT capability only: the authored bounce count remains a kernel
+    // parameter, while a scene with replacement Fast GI disabled records no
+    // AO-bounce predicate, object-distance load, or endpoint transfer at all.
+    bool ambient_occlusion_bounce_approximation{};
     bool path_trace_enabled{};
     // Host/JIT diagnostic policy. When false, no histogram operation or
     // device-side enable predicate is recorded. The base addresses a private
@@ -805,17 +809,19 @@ class SubsurfaceTransportStage {
 };
 
 [[nodiscard]] std::unique_ptr<PathBounceSetupStage>
-make_path_bounce_setup_stage(SceneTraversalStagePlan plan, bool has_subsurface);
+make_path_bounce_setup_stage(SceneTraversalStagePlan plan, bool has_subsurface,
+                             bool ambient_occlusion_bounce_approximation);
 [[nodiscard]] std::unique_ptr<PathBounceRandomStage>
 make_path_bounce_random_stage();
 [[nodiscard]] std::unique_ptr<ClosestEventStage>
 make_closest_event_stage(bool analytic_light_endpoints,
-    ScenePrimitiveStagePlan primitive_plan);
+    ScenePrimitiveStagePlan primitive_plan,
+    bool ambient_occlusion_bounce_approximation);
 [[nodiscard]] std::unique_ptr<ForwardLightStage> make_forward_light_stage();
 [[nodiscard]] std::unique_ptr<PathVolumeSegmentStage>
 make_path_volume_segment_stage(const PathKernelConfig &config);
 [[nodiscard]] std::unique_ptr<BackgroundEventStage>
-make_background_event_stage();
+make_background_event_stage(bool ambient_occlusion_bounce_approximation);
 [[nodiscard]] std::unique_ptr<SurfaceGeometryStage>
 make_surface_geometry_stage(ScenePrimitiveStagePlan plan);
 [[nodiscard]] std::unique_ptr<SurfaceShadingStage> make_surface_shading_stage();

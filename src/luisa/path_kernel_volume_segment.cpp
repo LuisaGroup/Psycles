@@ -538,11 +538,9 @@ class PathVolumeSegmentStageImpl final
 
         const auto terminates_in_volume =
             inside_volume &
-            (((path_flags &
-               cycles_path_state::
-                   flag_terminate_in_next_volume) !=
-              0u) |
-             result_phase_failed);
+            cycles_path_state::volume_segment_terminates(
+                path_flags,
+                result_phase_failed);
         const auto scattered =
             inside_volume &
             result_scattered &
