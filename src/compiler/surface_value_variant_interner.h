@@ -10,10 +10,11 @@
 
 namespace psycles::compiler::detail {
 
-// Exact typed-handler equivalence classes for value evaluators. The primary
-// key is an ordered AST-shape tuple, not a hash. A second map proves that the
-// device-decodable handler key is injective over those tuples; an opcode ABI
-// collision is rejected instead of repaired with a material-variant switch.
+// Exact host provenance classes for value evaluators. The primary key is an
+// ordered semantic tuple, not a hash. Several such tuples may intentionally
+// inhabit one device SVM family: the family-local semantic/result-bank subtype
+// is the complete discriminator, exactly as in Cycles' multi-mode and
+// multi-output node handlers.
 class SurfaceValueVariantInterner {
 public:
   [[nodiscard]] bool intern(const SurfaceProgram &program,
@@ -27,7 +28,12 @@ public:
 
 private:
   std::map<std::vector<std::uint64_t>, std::uint32_t> _indices;
-  std::map<std::uint32_t, std::uint32_t> _handler_indices;
+  // The device-visible product (family, semantic operation, result bank) must
+  // select one and only one typed evaluator shape. Unlike the removed
+  // family-only map, this relation permits Cycles-style multi-operation and
+  // multi-output families while rejecting an actually incomplete bytecode
+  // discriminator at compile time.
+  std::map<std::uint64_t, std::uint32_t> _family_subtype_indices;
   std::vector<SurfaceValueStaticVariant> _variants;
   bool _finished{};
 };

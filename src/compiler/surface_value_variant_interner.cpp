@@ -13,6 +13,15 @@ namespace {
   return static_cast<std::uint64_t>(bank);
 }
 
+[[nodiscard]] std::uint64_t make_device_family_subtype_key(
+    ValueOperation operation, SurfaceValueBank result_bank,
+    std::uint32_t immediate) noexcept {
+  return (static_cast<std::uint64_t>(make_surface_value_handler_key(
+              operation, result_bank, immediate))
+          << 32u) |
+         make_surface_value_family_subtype_key(operation, result_bank);
+}
+
 [[nodiscard]] std::vector<std::uint64_t>
 make_static_variant_key(const SurfaceProgram &program,
                         const ValueInstruction &instruction) {
@@ -241,21 +250,25 @@ bool SurfaceValueVariantInterner::intern(const SurfaceProgram &program,
   const auto immediate =
       static_cast<std::uint16_t>(make_surface_value_svm_immediate(
           instruction.operation, instruction.static_u0, instruction.static_u1));
-  const auto device_key = make_surface_value_handler_key(
+  const auto device_subtype = make_device_family_subtype_key(
       instruction.operation, result_bank, immediate);
-  const auto [handler, handler_inserted] =
-      _handler_indices.try_emplace(device_key, variant_index);
-  if (handler->second != variant_index) {
-    diagnostic =
-        "two distinct typed evaluator shapes have the same device handler "
-        "key";
-    if (inserted) {
-      _indices.erase(iter);
-    }
-    return false;
-  }
   if (!inserted) {
     auto &immediates = _variants[variant_index].svm_immediates;
+    if (immediates.empty() ||
+        make_surface_value_handler_key(instruction.operation, result_bank,
+                                       immediates.front()) !=
+            make_surface_value_handler_key(instruction.operation, result_bank,
+                                           immediate)) {
+      diagnostic = "one typed evaluator shape crossed device SVM families";
+      return false;
+    }
+    const auto device = _family_subtype_indices.find(device_subtype);
+    if (device == _family_subtype_indices.end() ||
+        device->second != variant_index) {
+      diagnostic =
+          "the device SVM family/subtype proof is internally inconsistent";
+      return false;
+    }
     if (std::find(immediates.begin(), immediates.end(), immediate) ==
         immediates.end()) {
       immediates.emplace_back(immediate);
@@ -265,9 +278,14 @@ bool SurfaceValueVariantInterner::intern(const SurfaceProgram &program,
   if (_variants.size() >= std::numeric_limits<std::uint32_t>::max()) {
     diagnostic = "the scene has too many immutable value variants";
     _indices.erase(iter);
-    if (handler_inserted) {
-      _handler_indices.erase(handler);
-    }
+    return false;
+  }
+  const auto [device, device_inserted] =
+      _family_subtype_indices.try_emplace(device_subtype, variant_index);
+  if (!device_inserted && device->second != variant_index) {
+    diagnostic =
+        "two typed evaluator shapes have the same device SVM family/subtype";
+    _indices.erase(iter);
     return false;
   }
 

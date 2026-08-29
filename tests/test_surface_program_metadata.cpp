@@ -804,23 +804,24 @@ void test_surface_value_storage_plan() {
                       .eliminated_bank_accesses == 8u,
           "the exact region knapsack did not select the repeated linear "
           "shape");
-  require(surface_value_region_specialization_has_inline_tag(0u) &&
-              surface_value_region_specialization_has_inline_tag(254u) &&
-              !surface_value_region_specialization_has_inline_tag(255u) &&
-              make_surface_value_region_specialization_tag(0u) == (1u << 8u) &&
-              make_surface_value_region_specialization_tag(254u) ==
-                  (255u << 8u) &&
-              surface_value_region_specialization_tag(
-                  make_surface_value_region_specialization_tag(73u)) == 74u &&
-              (surface_value_region_specialization_tag_mask &
-               surface_value_control_mask) == 0u &&
+  constexpr auto box_immediate =
+      1u << surface_value_image_projection_shift;
+  constexpr SurfaceValueBytecodeInstruction box_record{
+      .control = make_surface_value_control(
+          ValueOperation::image_color, SurfaceValueBank::vector,
+          box_immediate)};
+  require(surface_value_control_mask == ~std::uint32_t{0u} &&
               surface_value_runtime_control_mask ==
-                  (surface_value_control_mask |
-                   surface_value_region_specialization_tag_mask) &&
-              make_surface_value_region_handler_key(0x30031u, 73u) ==
-                  (0x30031u | (74u << 8u)),
-          "the inline region dispatch tag is not an injective, disjoint "
-          "one-based encoding");
+                  surface_value_control_mask &&
+              surface_value_control_is_well_formed(box_record) &&
+              surface_value_opcode(box_record) ==
+                  SurfaceSvmValueOpcode::tex_image_box &&
+              surface_value_operation(box_record) ==
+                  ValueOperation::image_color &&
+              surface_value_result_bank(box_record) ==
+                  SurfaceValueBank::vector &&
+              surface_value_svm_immediate(box_record) == box_immediate,
+          "the family/subtype control word did not round-trip exactly");
   const auto &selected_shape =
       selected_region_specializations.specializations[0u].shape;
   require(selected_shape.variant_indices ==
@@ -1911,15 +1912,18 @@ void test_surface_value_storage_plan() {
                   "without an immediate contract") != std::string::npos,
           "scene aggregation accepted or partially committed a malformed "
           "instruction stream");
-  auto malformed_reserved_control = image;
-  malformed_reserved_control.instructions.front().control ^= 1u << 8u;
-  const auto malformed_reserved_control_scene =
+  auto malformed_family_control = image;
+  malformed_family_control.instructions.front().control =
+      (malformed_family_control.instructions.front().control &
+       ~surface_value_opcode_mask) |
+      static_cast<std::uint32_t>(SurfaceSvmValueOpcode::count);
+  const auto malformed_family_control_scene =
       build_surface_value_scene_image(
-          std::vector{malformed_reserved_control});
-  require(!malformed_reserved_control_scene.valid &&
-              malformed_reserved_control_scene.diagnostic.find(
+          std::vector{malformed_family_control});
+  require(!malformed_family_control_scene.valid &&
+              malformed_family_control_scene.diagnostic.find(
                   "control word") != std::string::npos,
-          "scene aggregation accepted a nonzero reserved control bit");
+          "scene aggregation accepted a mismatched SVM family opcode");
 
   std::vector<ValueInstruction> invalid_values;
   invalid_values.emplace_back(ValueInstruction{

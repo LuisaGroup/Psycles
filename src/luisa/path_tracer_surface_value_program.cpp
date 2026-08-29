@@ -83,12 +83,10 @@ namespace {
 using SurfaceValueNodes =
     std::vector<std::unique_ptr<ValueNode>>;
 
-// A compact value instruction has one statically selected semantic handler.
-// Keeping that handler as a real Luisa callable exposes the same control/data
-// boundary to every device compiler: the interpreter owns program order and
-// typed-bank addresses, while a handler owns only the temporaries needed to
-// evaluate one instruction. LLVM remains free to inline profitable handlers;
-// no inline/noinline policy is encoded here.
+// One callable owns one Cycles-aligned SVM execution family. Semantic
+// operations within that family are runtime subtypes in the instruction, not
+// separate callable identities. LLVM remains free to inline profitable
+// handlers; no inline/noinline policy is encoded here.
 template<std::size_t StackCapacity>
 using SurfaceValueHandlerCallable = Callable<void(
     Buffer<float>, Buffer<luisa::float3>, Buffer<float>, BindlessArray,
@@ -112,7 +110,7 @@ using SurfaceValueAmbientOcclusionHandlers = std::vector<std::optional<
 
 struct SurfaceValueHandlerGroup {
     std::uint32_t key{};
-    std::uint32_t variant{};
+    std::vector<std::uint32_t> variants;
 };
 
 struct SurfaceValueBytecodeSlots {
@@ -164,6 +162,17 @@ inline constexpr SurfaceValueBytecodeSlots svm_value_bytecode_slots{
     return key;
 }
 
+[[nodiscard]] std::uint32_t family_subtype_key(
+    const compiler::SurfaceValueStaticVariant &variant) noexcept {
+    compiler::SurfaceValueBank result_bank{};
+    if (!compiler::classify_surface_value_type(
+            variant.instruction.result_type, result_bank)) {
+        std::abort();
+    }
+    return compiler::make_surface_value_family_subtype_key(
+        variant.instruction.operation, result_bank);
+}
+
 [[nodiscard]] std::vector<SurfaceValueHandlerGroup>
 make_handler_groups(
     const SurfaceValueRuntime &runtime,
@@ -181,52 +190,65 @@ make_handler_groups(
                 return candidate.key == key;
             });
         if (group == groups.end()) {
-          groups.emplace_back(
-              SurfaceValueHandlerGroup{.key = key, .variant = variant_index});
+            groups.emplace_back(SurfaceValueHandlerGroup{
+                .key = key, .variants = {variant_index}});
         } else {
-          // The compiler proves make_surface_value_handler_key is injective
-          // over typed AST shapes. A second variant here would mean that
-          // proof and the device dispatch ABI disagree; never repair such a
-          // compiler bug with a material-dependent secondary switch.
-          std::abort();
+            const auto candidate_subtype = family_subtype_key(
+                runtime.value_variants[variant_index]);
+            const auto duplicate = std::find_if(
+                group->variants.begin(), group->variants.end(),
+                [&](std::uint32_t existing) noexcept {
+                    return family_subtype_key(
+                               runtime.value_variants[existing]) ==
+                           candidate_subtype;
+                });
+            if (duplicate != group->variants.end()) {
+                // A semantic subtype must name one fixed typed ABI within its
+                // family. Reaching two host provenance variants for one
+                // subtype means the bytecode omitted an execution-shape
+                // discriminator.
+                const auto &existing = runtime.value_variants[*duplicate];
+                const auto &candidate =
+                    runtime.value_variants[variant_index];
+                LUISA_ERROR_WITH_LOCATION(
+                    "Surface SVM family {} semantic subtype {} has multiple "
+                    "typed ABIs: variants {} and {}, result types {} and {}, "
+                    "operand counts {} and {}, evaluator fields ({}, {}) and "
+                    "({}, {}).",
+                    key, candidate_subtype, *duplicate,
+                    variant_index,
+                    static_cast<std::uint32_t>(
+                        existing.instruction.result_type),
+                    static_cast<std::uint32_t>(
+                        candidate.instruction.result_type),
+                    existing.operand_types.size(),
+                    candidate.operand_types.size(),
+                    existing.instruction.static_u0,
+                    existing.instruction.static_u1,
+                    candidate.instruction.static_u0,
+                    candidate.instruction.static_u1);
+            }
+            group->variants.emplace_back(variant_index);
         }
     }
     std::sort(groups.begin(), groups.end(), [](const auto &lhs,
                                                 const auto &rhs) {
         return lhs.key < rhs.key;
     });
+    for (auto &group : groups) {
+        std::sort(group.variants.begin(), group.variants.end(),
+                  [&](std::uint32_t lhs, std::uint32_t rhs) noexcept {
+                      return family_subtype_key(
+                                 runtime.value_variants[lhs]) <
+                             family_subtype_key(
+                                 runtime.value_variants[rhs]);
+                  });
+    }
     return groups;
 }
 
 [[nodiscard]] UInt device_handler_key(UInt control) noexcept {
-    const auto operation = control & compiler::surface_value_opcode_mask;
-    UInt key = control &
-               (compiler::surface_value_opcode_mask |
-                compiler::surface_value_result_bank_mask);
-    const auto image =
-        (operation == static_cast<std::uint32_t>(
-                          compiler::ValueOperation::image_color)) |
-        (operation == static_cast<std::uint32_t>(
-                          compiler::ValueOperation::image_alpha));
-    const auto immediate =
-        (control & compiler::surface_value_svm_immediate_mask) >>
-        compiler::surface_value_svm_immediate_shift;
-    const auto projection =
-        (immediate & compiler::surface_value_image_projection_mask) >>
-        compiler::surface_value_image_projection_shift;
-    key |= select(
-        0u,
-        compiler::surface_value_handler_image_box_bit,
-        image & (projection == 1u));
-    const auto mix_vector =
-        operation ==
-        static_cast<std::uint32_t>(compiler::ValueOperation::mix_vector);
-    key |= select(
-        0u, compiler::surface_value_handler_mix_vector_non_uniform_bit,
-        mix_vector &
-            ((immediate & compiler::surface_value_mix_vector_non_uniform_bit) !=
-             0u));
-    return key;
+    return control & compiler::surface_value_opcode_mask;
 }
 
 [[nodiscard]] ULong read_unsigned_integer_dynamic(
@@ -538,6 +560,32 @@ void write_dynamic_value(
 }
 
 template<std::size_t StackCapacity>
+void emit_surface_value_variant(
+    const SurfaceValueRuntime &runtime,
+    const SurfaceValueNodes &nodes,
+    SurfaceValueBytecodeSlots bytecode_slots,
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    Var<luisa::uint4> instruction,
+    Var<SurfaceValueStackBankFor<StackCapacity>> &stack,
+    std::uint32_t variant_index) noexcept {
+    if (variant_index >= runtime.value_variants.size() ||
+        variant_index >= nodes.size()) {
+      std::abort();
+    }
+    SurfaceValueLocalsView locals{stack.expression()};
+    const auto &variant = runtime.value_variants[variant_index];
+    auto operands = load_variant_operands(
+        variant, runtime, bytecode_slots, services, point, locals,
+        instruction);
+    const auto value = evaluate_non_bump_variant(
+        variant, *nodes[variant_index], runtime, bytecode_slots, services,
+        point, operands, instruction);
+    write_dynamic_value(
+        variant.instruction.result_type, locals, instruction.y, value);
+}
+
+template<std::size_t StackCapacity>
 [[nodiscard]] SurfaceValueHandlerCallable<StackCapacity>
 make_surface_value_handler_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
@@ -545,18 +593,21 @@ make_surface_value_handler_callable(
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
     SurfaceValueBytecodeSlots bytecode_slots,
-    std::uint32_t variant_index) noexcept {
-    if (!scene->surface_values ||
-        variant_index >= scene->surface_values->value_variants.size() ||
-        variant_index >= nodes->size()) {
+    const SurfaceValueHandlerGroup &group) noexcept {
+    if (!scene->surface_values || group.variants.empty()) {
         std::abort();
     }
     const auto *runtime = scene->surface_values.get();
-    const auto operation =
-        runtime->value_variants[variant_index].instruction.operation;
+    for (const auto variant : group.variants) {
+        if (variant >= runtime->value_variants.size() ||
+            variant >= nodes->size() ||
+            handler_key(runtime->value_variants[variant]) != group.key) {
+        std::abort();
+      }
+    }
     SurfaceValueHandlerCallable<StackCapacity> handler =
         [scene, nodes, texture_sampling, attribute_lookup, bytecode_slots,
-         variant_index, runtime](BufferFloat scalar_parameters,
+         group, runtime](BufferFloat scalar_parameters,
                   BufferFloat3 vector_parameters,
                   BufferFloat cycles_bsdf_tables,
                   BindlessVar textures,
@@ -583,26 +634,36 @@ make_surface_value_handler_callable(
                 nullptr,
                 &texture_provider,
                 &attribute_provider};
-            SurfaceValueLocalsView locals{stack.expression()};
-            const auto &variant =
-                runtime->value_variants[variant_index];
             const auto point = surface_value_point(
                 packed_base_point,
                 transaction_shading_normal,
                 use_undisplaced_geometry);
-            auto operands = load_variant_operands(
-                variant, *runtime, bytecode_slots, services, point, locals,
-                instruction);
-            const auto value = evaluate_non_bump_variant(
-                variant, *(*nodes)[variant_index], *runtime, bytecode_slots,
-                services, point, operands, instruction);
-            write_dynamic_value(
-                variant.instruction.result_type, locals, instruction.y,
-                value);
+            const auto emit_variant = [&](std::uint32_t variant) noexcept {
+              emit_surface_value_variant<StackCapacity>(
+                  *runtime, *nodes, bytecode_slots, services, point,
+                  instruction, stack, variant);
+            };
+            if (group.variants.size() == 1u) {
+              emit_variant(group.variants.front());
+            } else {
+              const auto subtype =
+                  instruction.x & compiler::surface_value_family_subtype_mask;
+              luisa::compute::detail::SwitchStmtBuilder{subtype} % [&] {
+                for (const auto variant : group.variants) {
+                  const auto semantic = family_subtype_key(
+                      runtime->value_variants[variant]);
+                  luisa::compute::detail::SwitchCaseStmtBuilder{semantic} %
+                      [&] { emit_variant(variant); };
+                }
+                luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+                  luisa::compute::dsl::unreachable(
+                      "invalid surface SVM family subtype");
+                };
+              };
+            }
         };
     handler.set_name(luisa::format(
-        "surface_value_handler_{}_{}",
-        static_cast<std::uint32_t>(operation), variant_index));
+        "surface_value_family_{}", group.key));
     return handler;
 }
 
@@ -700,25 +761,30 @@ make_surface_value_handlers(
     const std::shared_ptr<SurfaceValueNodes> &nodes,
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
-    std::span<const std::uint32_t> active_variants,
+    std::span<const SurfaceValueHandlerGroup> groups,
     SurfaceValueBytecodeSlots bytecode_slots,
     bool include_external_queries) noexcept {
-    SurfaceValueHandlers<StackCapacity> handlers(
-        scene->surface_values->value_variants.size());
-    for (const auto variant_index : active_variants) {
-        if (surface_value_variant_is_external_query(
-                *scene->surface_values, variant_index) &&
+    SurfaceValueHandlers<StackCapacity> handlers(groups.size());
+    for (auto group_index = std::size_t{}; group_index < groups.size();
+         ++group_index) {
+        const auto &group = groups[group_index];
+        const auto external = std::any_of(
+            group.variants.begin(), group.variants.end(),
+            [&](std::uint32_t variant) noexcept {
+              return surface_value_variant_is_external_query(
+                  *scene->surface_values, variant);
+            });
+        if (external &&
             !include_external_queries) {
             continue;
         }
-        if (variant_index >= handlers.size() ||
-            handlers[variant_index].has_value()) {
+        if (handlers[group_index].has_value()) {
             std::abort();
         }
-        handlers[variant_index].emplace(
+        handlers[group_index].emplace(
             make_surface_value_handler_callable<StackCapacity>(
                 scene, nodes, texture_sampling, attribute_lookup,
-                bytecode_slots, variant_index));
+                bytecode_slots, group));
     }
     return handlers;
 }
@@ -730,26 +796,33 @@ make_surface_ambient_occlusion_handlers(
     const std::shared_ptr<SurfaceValueNodes> &nodes,
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
-    std::span<const std::uint32_t> active_variants,
+    std::span<const SurfaceValueHandlerGroup> groups,
     SurfaceValueBytecodeSlots bytecode_slots) noexcept {
-    SurfaceValueAmbientOcclusionHandlers<StackCapacity> handlers(
-        scene->surface_values->value_variants.size());
+    SurfaceValueAmbientOcclusionHandlers<StackCapacity> handlers(groups.size());
     const auto traversal = make_scene_traversal_component(
         make_scene_traversal_stage_plan(
             scene->geometries.size(), scene->curve_geometries.size()));
-    for (const auto variant_index : active_variants) {
-        if (!surface_value_variant_is_external_query(
-                *scene->surface_values, variant_index)) {
+    for (auto group_index = std::size_t{}; group_index < groups.size();
+         ++group_index) {
+        const auto &group = groups[group_index];
+        const auto external = std::count_if(
+            group.variants.begin(), group.variants.end(),
+            [&](std::uint32_t variant) noexcept {
+              return surface_value_variant_is_external_query(
+                  *scene->surface_values, variant);
+            });
+        if (external == 0) {
             continue;
         }
-        if (variant_index >= handlers.size() ||
-            handlers[variant_index].has_value()) {
+        if (static_cast<std::size_t>(external) != group.variants.size() ||
+            group.variants.size() != 1u ||
+            handlers[group_index].has_value()) {
             std::abort();
         }
-        handlers[variant_index].emplace(
+        handlers[group_index].emplace(
             make_surface_ambient_occlusion_handler_callable<StackCapacity>(
                 scene, nodes, texture_sampling, attribute_lookup, traversal,
-                bytecode_slots, variant_index));
+                bytecode_slots, group.variants.front()));
     }
     return handlers;
 }
@@ -841,7 +914,7 @@ struct SurfaceValueInstructionDispatcherImpl final
       }
       auto stack =
           luisa::compute::detail::Ref<Stack>{locals.storage_expression()};
-      const auto emit_variant =
+      const auto emit_group =
           [&](std::uint32_t index) noexcept {
             if (index >= handlers.size()) {
               std::abort();
@@ -878,9 +951,13 @@ struct SurfaceValueInstructionDispatcherImpl final
       const auto primary_key = device_handler_key(instruction.x);
       luisa::compute::detail::SwitchStmtBuilder{primary_key} %
           [&] {
-            for (const auto &group : handler_groups) {
+            for (auto group_index = std::size_t{};
+                 group_index < handler_groups.size(); ++group_index) {
+              const auto &group = handler_groups[group_index];
               luisa::compute::detail::SwitchCaseStmtBuilder{group.key} %
-                  [&] { emit_variant(group.variant); };
+                  [&] {
+                    emit_group(static_cast<std::uint32_t>(group_index));
+                  };
             }
             luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
                 luisa::compute::dsl::unreachable(
@@ -899,18 +976,18 @@ make_surface_value_instruction_dispatcher_with_capacity(
     const SurfaceAttributeLookupCallable &attribute_lookup,
     std::span<const std::uint32_t> variants,
     bool needs_ambient_occlusion) noexcept {
+    auto groups = make_handler_groups(*scene->surface_values, variants);
     auto handlers = make_surface_value_handlers<StackCapacity>(
-        scene, nodes, texture_sampling, attribute_lookup, variants,
+        scene, nodes, texture_sampling, attribute_lookup, groups,
         svm_value_bytecode_slots, !needs_ambient_occlusion);
     SurfaceValueAmbientOcclusionHandlers<StackCapacity>
         ambient_occlusion_handlers;
     if (needs_ambient_occlusion) {
         ambient_occlusion_handlers =
             make_surface_ambient_occlusion_handlers<StackCapacity>(
-                scene, nodes, texture_sampling, attribute_lookup, variants,
+                scene, nodes, texture_sampling, attribute_lookup, groups,
                 svm_value_bytecode_slots);
     }
-    auto groups = make_handler_groups(*scene->surface_values, variants);
     return SurfaceValueInstructionDispatcher{std::make_shared<
         SurfaceValueInstructionDispatcherImpl<StackCapacity>>(
         scene->surface_values.get(), std::move(handlers),

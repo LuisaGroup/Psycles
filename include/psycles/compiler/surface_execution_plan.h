@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <psycles/compiler/surface_program.h>
+#include <psycles/compiler/surface_svm_value_opcode.h>
 #include <psycles/compiler/surface_value_immediate_domains.h>
 
 namespace psycles::compiler {
@@ -709,11 +710,10 @@ struct SurfaceClosureProgramImage {
 // agree.
 struct SurfaceValueBytecodeInstruction {
   // Serialized as [opcode-owned immediate:14 | result bank:2 |
-  // reserved-zero:8 | opcode:8]. After the serialized image has been
-  // validated, the runtime may use the reserved byte as a one-based region
-  // specialization tag. Keeping this dispatch hint in the instruction that
-  // the interpreter already fetches avoids a second global read on every
-  // ordinary instruction.
+  // semantic subtype:8 | SVM family opcode:8]. The family byte is the sole
+  // primary device dispatch key. The subtype preserves the exact frontend
+  // ValueOperation within that family and is consumed only by families that
+  // implement more than one semantic operation.
   std::uint32_t control{};
   std::uint32_t result{};
   std::uint32_t operand_payload{surface_value_invalid_operand_word};
@@ -721,45 +721,17 @@ struct SurfaceValueBytecodeInstruction {
 };
 
 inline constexpr std::uint32_t surface_value_opcode_mask = 0xffu;
+inline constexpr std::uint32_t surface_value_semantic_operation_shift = 8u;
+inline constexpr std::uint32_t surface_value_semantic_operation_mask =
+    0xffu << surface_value_semantic_operation_shift;
 inline constexpr std::uint32_t surface_value_result_bank_shift = 16u;
 inline constexpr std::uint32_t surface_value_result_bank_mask =
     0x3u << surface_value_result_bank_shift;
+inline constexpr std::uint32_t surface_value_family_subtype_mask =
+    surface_value_semantic_operation_mask | surface_value_result_bank_mask;
 inline constexpr std::uint32_t surface_value_svm_immediate_shift = 18u;
 inline constexpr std::uint32_t surface_value_svm_immediate_mask =
     surface_value_svm_immediate_value_mask << surface_value_svm_immediate_shift;
-inline constexpr std::uint32_t
-    surface_value_region_specialization_tag_shift = 8u;
-inline constexpr std::uint32_t
-    surface_value_region_specialization_tag_value_mask = 0xffu;
-inline constexpr std::uint32_t surface_value_region_specialization_tag_mask =
-    surface_value_region_specialization_tag_value_mask
-    << surface_value_region_specialization_tag_shift;
-inline constexpr std::uint32_t
-    surface_value_region_specialization_tag_capacity =
-        surface_value_region_specialization_tag_value_mask;
-
-[[nodiscard]] constexpr bool
-surface_value_region_specialization_has_inline_tag(
-    std::uint32_t specialization_index) noexcept {
-  return specialization_index <
-         surface_value_region_specialization_tag_capacity;
-}
-
-// Zero means ordinary interpretation; specialization i is represented by
-// i + 1. The caller must first prove has_inline_tag(i).
-[[nodiscard]] constexpr std::uint32_t
-make_surface_value_region_specialization_tag(
-    std::uint32_t specialization_index) noexcept {
-  return (specialization_index + 1u)
-         << surface_value_region_specialization_tag_shift;
-}
-
-[[nodiscard]] constexpr std::uint32_t
-surface_value_region_specialization_tag(std::uint32_t control) noexcept {
-  return (control & surface_value_region_specialization_tag_mask) >>
-         surface_value_region_specialization_tag_shift;
-}
-
 // Reserved internal opcode separating the automatic-normal prefix from the
 // endpoint root in one transaction stream. It is not a ValueOperation: the
 // record consumes no operands, writes no typed slot, and commits `result` as
@@ -768,7 +740,7 @@ surface_value_region_specialization_tag(std::uint32_t control) noexcept {
 // loop-unrolling choices.
 inline constexpr std::uint32_t surface_value_surface_normal_transition_control =
     surface_value_opcode_mask;
-static_assert(static_cast<std::uint32_t>(ValueOperation::ambient_occlusion) <
+static_assert(surface_svm_value_opcode_count <
               surface_value_surface_normal_transition_control);
 
 [[nodiscard]] constexpr bool is_surface_value_surface_normal_transition(
@@ -833,6 +805,12 @@ inline constexpr std::uint32_t surface_value_image_extension_mode_count = 4u;
 inline constexpr std::uint32_t surface_value_image_sampling_key_count =
     surface_value_image_interpolation_family_count *
     surface_value_image_extension_mode_count;
+static_assert(surface_svm_opcode_image_projection_shift ==
+              surface_value_image_projection_shift);
+static_assert(surface_svm_opcode_image_projection_mask ==
+              surface_value_image_projection_mask);
+static_assert(surface_svm_opcode_mix_vector_non_uniform_bit ==
+              surface_value_mix_vector_non_uniform_bit);
 
 // Cycles gives Cubic and Smart the same texture-filter implementation. This is
 // the sole quotient used by Image Texture sampling; extension modes remain
@@ -903,41 +881,11 @@ static_assert((surface_value_image_configuration_mask &
                ~surface_value_svm_immediate_value_mask) == 0u);
 static_assert(surface_value_image_sampling_quotient_contract_holds());
 inline constexpr std::uint32_t surface_value_control_mask =
-    surface_value_opcode_mask | surface_value_result_bank_mask |
-    surface_value_svm_immediate_mask;
+    surface_value_opcode_mask | surface_value_semantic_operation_mask |
+    surface_value_result_bank_mask | surface_value_svm_immediate_mask;
 inline constexpr std::uint32_t surface_value_runtime_control_mask =
-    surface_value_control_mask | surface_value_region_specialization_tag_mask;
-
-// Primary interpreter dispatch is derived from the instruction itself. The
-// opcode and result bank select the typed handler. Image BOX records a
-// normal-weighted multi-sample AST, while non-uniform Mix Vector consumes a
-// float3 factor instead of a scalar. These are sub-opcode typed execution
-// families; their bits live only in the handler-key namespace.
-inline constexpr std::uint32_t surface_value_handler_image_box_bit = 1u << 18u;
-inline constexpr std::uint32_t
-    surface_value_handler_mix_vector_non_uniform_bit = 1u << 19u;
-static_assert(((surface_value_handler_image_box_bit |
-                surface_value_handler_mix_vector_non_uniform_bit) &
-               (surface_value_opcode_mask | surface_value_result_bank_mask)) ==
-              0u);
-static_assert(
-    (surface_value_region_specialization_tag_mask &
-     (surface_value_opcode_mask | surface_value_result_bank_mask |
-      surface_value_handler_image_box_bit |
-      surface_value_handler_mix_vector_non_uniform_bit)) == 0u,
-    "region tags and ordinary handler keys must occupy disjoint bit fields");
-
-// For a tagged region beginning, the exact region identity and the ordinary
-// first-instruction family form a direct product. The disjoint-field proof
-// above makes bitwise union injective, while tag zero remains precisely the
-// ordinary-interpreter key space.
-[[nodiscard]] constexpr std::uint32_t
-make_surface_value_region_handler_key(
-    std::uint32_t ordinary_handler_key,
-    std::uint32_t specialization_index) noexcept {
-  return ordinary_handler_key |
-         make_surface_value_region_specialization_tag(specialization_index);
-}
+    surface_value_control_mask;
+static_assert(surface_value_control_mask == ~std::uint32_t{0u});
 
 // Graph-expanded Bump operations retain the immutable contract of the source
 // evaluator. Canonicalizing only for metadata/immediate validation keeps their
@@ -1406,52 +1354,60 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
   return 0u;
 }
 
-[[nodiscard]] constexpr bool surface_value_operation_uses_image_box_family(
-    ValueOperation operation) noexcept {
-  return operation == ValueOperation::image_color ||
-         operation == ValueOperation::image_alpha;
-}
-
-// Exact typed-handler identity. All remaining immutable fields are instruction
-// data decoded by that handler; there is no secondary material/evaluator
-// dispatch. Equality of keys therefore means equality of the Luisa AST ABI,
-// not merely a coarse first-level projection.
+// Primary device-handler identity is the Cycles-aligned SVM family. Result
+// banks and semantic subtypes are family payload, not callable identity. The
+// two typed execution refinements (Image BOX and non-uniform Mix Vector) are
+// already represented by distinct family opcodes.
 [[nodiscard]] constexpr std::uint32_t make_surface_value_handler_key(
     ValueOperation operation,
-    SurfaceValueBank result_bank,
+    [[maybe_unused]] SurfaceValueBank result_bank,
     std::uint32_t svm_immediate) noexcept {
-  auto key = static_cast<std::uint32_t>(operation) |
-             (static_cast<std::uint32_t>(result_bank)
-              << surface_value_result_bank_shift);
-  if (surface_value_operation_uses_image_box_family(operation)) {
-    const auto projection =
-        (svm_immediate & surface_value_image_projection_mask) >>
-        surface_value_image_projection_shift;
-    if (projection == 1u) {
-      key |= surface_value_handler_image_box_bit;
-    }
-  }
-  if (operation == ValueOperation::mix_vector &&
-      (svm_immediate & surface_value_mix_vector_non_uniform_bit) != 0u) {
-    key |= surface_value_handler_mix_vector_non_uniform_bit;
-  }
-  return key;
+  return static_cast<std::uint32_t>(
+      surface_svm_value_opcode(operation, svm_immediate));
 }
 
 [[nodiscard]] constexpr std::uint32_t make_surface_value_control(
     ValueOperation operation, SurfaceValueBank result_bank,
     std::uint32_t svm_immediate) noexcept {
-  return static_cast<std::uint32_t>(operation) |
+  return static_cast<std::uint32_t>(
+             surface_svm_value_opcode(operation, svm_immediate)) |
+         (static_cast<std::uint32_t>(operation)
+          << surface_value_semantic_operation_shift) |
          (static_cast<std::uint32_t>(result_bank)
           << surface_value_result_bank_shift) |
          ((svm_immediate & surface_value_svm_immediate_value_mask)
           << surface_value_svm_immediate_shift);
 }
 
+// A family callable may implement several frontend operations and result
+// banks. Their direct product is the complete typed subtype visible to the
+// family; operands retain their own statically proven bank signature. Keeping
+// this selector separate from the low family byte prevents result storage
+// from multiplying the outer callable set.
+[[nodiscard]] constexpr std::uint32_t make_surface_value_family_subtype_key(
+    ValueOperation operation, SurfaceValueBank result_bank) noexcept {
+  return (static_cast<std::uint32_t>(operation)
+          << surface_value_semantic_operation_shift) |
+         (static_cast<std::uint32_t>(result_bank)
+          << surface_value_result_bank_shift);
+}
+
+[[nodiscard]] constexpr std::uint32_t surface_value_family_subtype_key(
+    const SurfaceValueBytecodeInstruction &instruction) noexcept {
+  return instruction.control & surface_value_family_subtype_mask;
+}
+
 [[nodiscard]] constexpr ValueOperation surface_value_operation(
     const SurfaceValueBytecodeInstruction &instruction) noexcept {
-  return static_cast<ValueOperation>(instruction.control &
-                                     surface_value_opcode_mask);
+  return static_cast<ValueOperation>(
+      (instruction.control & surface_value_semantic_operation_mask) >>
+      surface_value_semantic_operation_shift);
+}
+
+[[nodiscard]] constexpr SurfaceSvmValueOpcode surface_value_opcode(
+    const SurfaceValueBytecodeInstruction &instruction) noexcept {
+  return static_cast<SurfaceSvmValueOpcode>(instruction.control &
+                                            surface_value_opcode_mask);
 }
 
 [[nodiscard]] constexpr std::uint32_t surface_value_operand_count(
@@ -1483,12 +1439,24 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
       surface_value_svm_immediate_shift);
 }
 
+[[nodiscard]] constexpr bool surface_value_control_is_well_formed(
+    const SurfaceValueBytecodeInstruction &instruction) noexcept {
+  const auto raw_operation =
+      static_cast<std::uint32_t>(surface_value_operation(instruction));
+  const auto raw_bank =
+      static_cast<std::uint32_t>(surface_value_result_bank(instruction));
+  return raw_operation < surface_value_operation_count &&
+         raw_bank <=
+             static_cast<std::uint32_t>(SurfaceValueBank::unsigned_integer) &&
+         surface_value_opcode(instruction) ==
+             surface_svm_value_opcode(
+                 surface_value_operation(instruction),
+                 surface_value_svm_immediate(instruction));
+}
+
 [[nodiscard]] constexpr std::uint32_t surface_value_handler_key(
     const SurfaceValueBytecodeInstruction &instruction) noexcept {
-  return make_surface_value_handler_key(
-      surface_value_operation(instruction),
-      surface_value_result_bank(instruction),
-      surface_value_svm_immediate(instruction));
+  return static_cast<std::uint32_t>(surface_value_opcode(instruction));
 }
 
 // Ordered largest-to-smallest alignment. A metadata record exists only when
@@ -1583,14 +1551,15 @@ struct SurfaceValueSceneImage {
   PrincipledClosureFeatureMask used_principled_closure_features{};
 };
 
-// One AST body per exact execution-equivalence class. Operands are renumbered
-// to [0, arity), and nominal socket types are quotiented to their
-// scalar/float3/uint64 execution banks, exactly matching the runtime load and
-// projection semantics. Finite semantic fields covered by an opcode's SVM
-// immediate are data in the instruction stream, not host/JIT identity.
-// Source-node identity and static-table payloads are likewise absent: they are
-// provenance/runtime data, not executable semantics. Static-table shape and
-// every unrepresented semantic field remain part of the variant contract.
+// Exact host evaluator-provenance class. Operands are renumbered to [0,
+// arity), and nominal socket types are quotiented to their
+// scalar/float3/uint64 execution banks, exactly matching runtime load and
+// projection semantics. Several provenance classes may inhabit one device SVM
+// family; the compiler separately proves that the family-local typed subtype
+// selects one shape. Finite semantic fields covered by an opcode's SVM
+// immediate are instruction data. Source-node identity and static-table
+// payloads are likewise absent; static-table shape and every unrepresented
+// semantic field remain part of this host proof contract.
 struct SurfaceValueStaticVariant {
   ValueInstruction instruction;
   std::vector<contract::SocketType> operand_types;
