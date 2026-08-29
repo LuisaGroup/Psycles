@@ -167,6 +167,10 @@ ShaderGraph make_nested_mix_replay_graph(bool restore_after) {
 
 SurfacePoint make_surface_value_transaction_test_point() noexcept {
     auto point = make_surface_point();
+    // Geometry Tangent requests Cycles' Generated attribute. Keep the shared
+    // compact/expanded fixture away from its exact radial singularity so the
+    // differential test observes a finite, non-trivial tangent projection.
+    point.generated = make_float3(0.75f, 0.75f, 0.5f);
     // Keep the displaced projection at the established fixture values. This
     // isolates the phase transition: ordinary programs remain unchanged,
     // while an automatic-normal prefix sees different undisplaced geometry.

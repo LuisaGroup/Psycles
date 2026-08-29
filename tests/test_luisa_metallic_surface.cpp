@@ -183,6 +183,9 @@ struct CompiledSurface {
     point.object_shading_normal = point.geometric_normal;
     point.undisplaced_shading_normal = point.geometric_normal;
     point.undisplaced_object_shading_normal = point.geometric_normal;
+    // Cycles Geometry Tangent is radial in Generated space for meshes. This
+    // coordinate preserves the +X tangent assumed by the Metallic oracle.
+    point.generated = make_float3(0.5f, 0.25f, 0.5f);
     point.dpdu = make_float3(1.0f, 0.0f, 0.0f);
     point.incoming = make_float3(0.0f, 0.0f, 1.0f);
     return point;

@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "surface_geometry_context.h"
 
 #include <luisa/dsl/sugar.h>
 #include <psycles/compiler/surface_execution_plan.h>
@@ -195,7 +196,7 @@ public:
       value = make_float4(point.incoming, 0.0f);
       break;
     case compiler::ValueOperation::tangent:
-      value = make_float4(point.dpdu, 0.0f);
+      value = make_float4(surface_geometry_tangent(point), 0.0f);
       break;
     case compiler::ValueOperation::uv:
       value = make_float4(point.uv.x, point.uv.y, 0.0f, 0.0f);

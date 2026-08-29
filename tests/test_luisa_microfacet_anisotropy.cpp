@@ -172,6 +172,9 @@ struct CompiledSurface {
 [[nodiscard]] SurfacePoint anisotropic_point() noexcept {
   auto point = make_surface_point();
   point.incoming = make_float3(0.0f, 0.0f, 1.0f);
+  // Cycles Geometry Tangent is radial in Generated space for meshes. This
+  // coordinate produces the +X tangent used by the anisotropy oracle.
+  point.generated = make_float3(0.5f, 0.25f, 0.5f);
   point.dpdu = make_float3(1.0f, 0.0f, 0.0f);
   return point;
 }

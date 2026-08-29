@@ -38,6 +38,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/graph_surface_state.cpp
     src/luisa/surface_bump.cpp
     src/luisa/surface_color_transforms.cpp
+    src/luisa/surface_geometry_context.cpp
     src/luisa/surface_image_box.cpp
     src/luisa/surface_image_sampling.cpp
     src/luisa/surface_image_svm.cpp
@@ -190,6 +191,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_surface_svm.cpp
     src/luisa/path_tracer_surface_svm_consumers.cpp
     src/luisa/path_tracer_surface_value_family.cpp
+    src/luisa/path_tracer_surface_value_context_family.cpp
     src/luisa/path_tracer_surface_value_numeric_family.cpp
     src/luisa/path_tracer_surface_value_procedural_family.cpp
     src/luisa/path_tracer_surface_value_state_family.cpp

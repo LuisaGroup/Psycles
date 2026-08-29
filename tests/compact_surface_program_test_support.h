@@ -71,6 +71,15 @@ make_direct_texture_trunk_graph(bool box_projection);
 [[nodiscard]] std::string validate_direct_noise_surface_runtime(
     const luisa_backend::detail::SurfaceValueRuntime &runtime);
 
+// Covers the complete Cycles ShaderData/path context projection, including
+// linked and unlinked Fresnel/Layer Weight records in one immediate domain.
+[[nodiscard]] std::vector<contract::ShaderGraph> make_direct_context_graphs();
+
+// Proves the exact operation/family/bank/arity/immediate relation. Empty means
+// success.
+[[nodiscard]] std::string validate_direct_context_surface_runtime(
+    const luisa_backend::detail::SurfaceValueRuntime &runtime);
+
 // A depth-three Mix tree. `restore_after` appends an Add emission sibling;
 // otherwise the Mix consumes the root tail. The transparent leaf also forces
 // physical replay, so the paired device tests cover both scalar tail frames

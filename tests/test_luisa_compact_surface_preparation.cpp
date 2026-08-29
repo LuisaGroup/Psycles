@@ -896,6 +896,9 @@ int main(int argc, char **argv) {
     for (auto &noise_graph : make_direct_noise_graphs()) {
         fixtures.emplace_back(compile_fixture(compiler, noise_graph));
     }
+    for (auto &context_graph : make_direct_context_graphs()) {
+        fixtures.emplace_back(compile_fixture(compiler, context_graph));
+    }
     fixtures.emplace_back(
         compile_fixture(compiler, make_direct_state_bump_graph()));
     const auto weighted_bssrdf_topology =
@@ -1027,6 +1030,12 @@ int main(int argc, char **argv) {
             *scene->surface_values);
         !noise_diagnostic.empty()) {
         std::cerr << noise_diagnostic << " on " << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    if (auto context_diagnostic = validate_direct_context_surface_runtime(
+            *scene->surface_values);
+        !context_diagnostic.empty()) {
+        std::cerr << context_diagnostic << " on " << backend << '\n';
         return EXIT_FAILURE;
     }
     const auto has_closure_weight_program = std::any_of(
