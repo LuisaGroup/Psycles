@@ -1,0 +1,96 @@
+{
+  "schema": "psycles.direct-surface-context-svm.v1",
+  "commit": "0e24299",
+  "device": "AMD Radeon RX 9070 XT",
+  "rocm": "7.2.4",
+  "rocprofv3": "1.1.0",
+  "hip_tests": {
+    "passed": 85,
+    "total": 85,
+    "seconds": 20.14
+  },
+  "barbershop_program": {
+    "programs": 380,
+    "records": 10177,
+    "value_records": 8808,
+    "stack_lanes": 33,
+    "new_direct_context_executions": 163311856,
+    "direct_dynamic_records": 4648208851,
+    "total_dynamic_records": 4818350450,
+    "direct_dynamic_fraction": 0.9646888285180668,
+    "remaining_dynamic_records": 170141599
+  },
+  "shade_surface_profile": {
+    "resolution": [640, 480],
+    "samples": 64,
+    "run_ns_per_item": [
+      26.64771253531423,
+      26.245146162574652,
+      26.446817724314673,
+      26.234647086199413
+    ],
+    "mean_ns_per_item": 26.393580877100742,
+    "median_ns_per_item": 26.345981943444663,
+    "previous_mean_ns_per_item": 26.05546984566219,
+    "raw_delta_percent": 1.2976585470971358,
+    "closest_run_ns_per_item": [
+      4.789184946147313,
+      4.739916210359536,
+      4.762036048595628,
+      4.754113090316422
+    ],
+    "shade_over_closest_mean": 5.543293981178781,
+    "previous_shade_over_closest_mean": 5.517215198064627,
+    "same_capture_normalized_delta_percent": 0.4726801869773478,
+    "static_private_bytes_per_thread": 3412,
+    "previous_static_private_bytes_per_thread": 3380,
+    "vgpr": 256,
+    "sgpr": 128,
+    "block_size": 64
+  },
+  "coroutine_frame": {
+    "subroutines": 9,
+    "fields": 176,
+    "bytes": 848,
+    "capacity": 1048576
+  },
+  "shade_surface_code_object": {
+    "bytes": 311800,
+    "previous_bytes": 311032,
+    "delta_bytes": 768
+  },
+  "full_resolution": {
+    "resolution": [1920, 1080],
+    "samples": 1024,
+    "adaptive_sampling": false,
+    "denoising": false,
+    "sampling_pattern": "TABULATED_SOBOL",
+    "scrambling_distance": 1.0,
+    "blender_version": "5.2.1 LTS",
+    "blender_build_hash": "9e2066aef7ef",
+    "psycles_seconds": 232.382,
+    "previous_psycles_seconds": 232.417,
+    "delta_percent": -0.015059139391693233,
+    "cycles_hip_seconds": 144.36795800300024,
+    "psycles_over_cycles_ratio": 1.609650806276353,
+    "psycles_slower_percent": 60.9650806276353,
+    "cold_capacity_specific_jit_seconds": 10.3073,
+    "warm_profile_jit_seconds": [2.48173, 2.32623, 2.18461, 2.20202],
+    "stable_gpu_busy_percent": 100,
+    "stable_power_watts": [215, 225],
+    "vram_percent": 67
+  },
+  "image_validation": {
+    "build_identity_verified": true,
+    "passes": 15,
+    "invalid_pixels": 0,
+    "smoke_byte_exact_pfm_passes": 7,
+    "combined_rmse_vs_cycles": 0.01098365243524313,
+    "previous_combined_rmse_vs_cycles": 0.01107572577893734,
+    "combined_relative_rmse_vs_cycles": 0.05705452217775534,
+    "combined_luminance_mean_ratio_vs_cycles": 1.0032621167177513,
+    "volume_direct_rmse": 0.0,
+    "volume_indirect_rmse": 0.0,
+    "native_triptych_resolution": [5776, 1150]
+  }
+}
