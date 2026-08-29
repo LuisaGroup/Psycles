@@ -52,12 +52,76 @@ namespace {
     return "C" + std::to_string(component);
 }
 
+[[nodiscard]] bool source_is_uint8(
+    const OIIO::ImageSpec &specification,
+    int channel_count) noexcept {
+    for (auto channel = 0; channel < channel_count; ++channel) {
+        const auto format =
+            static_cast<std::size_t>(channel) >=
+                    specification.channelformats.size()
+                ? specification.format
+                : specification.channelformats[
+                      static_cast<std::size_t>(channel)];
+        if (format != OIIO::TypeDesc::UINT8) {
+            return false;
+        }
+    }
+    return true;
+}
+
+template<typename Source, typename Destination>
+void expand_rgba(
+    std::span<const Source> source,
+    int source_channels,
+    std::span<Destination> destination,
+    Destination alpha_one) noexcept {
+    const auto pixel_count =
+        destination.size() / 4u;
+    const auto channels =
+        static_cast<std::size_t>(source_channels);
+    for (std::size_t pixel = 0u;
+         pixel < pixel_count; ++pixel) {
+        const auto source_offset = pixel * channels;
+        const auto destination_offset = pixel * 4u;
+        if (source_channels == 1) {
+            destination[destination_offset] =
+                source[source_offset];
+            destination[destination_offset + 1u] =
+                source[source_offset];
+            destination[destination_offset + 2u] =
+                source[source_offset];
+            destination[destination_offset + 3u] =
+                alpha_one;
+        } else if (source_channels == 2) {
+            destination[destination_offset] =
+                source[source_offset];
+            destination[destination_offset + 1u] =
+                source[source_offset];
+            destination[destination_offset + 2u] =
+                source[source_offset];
+            destination[destination_offset + 3u] =
+                source[source_offset + 1u];
+        } else {
+            destination[destination_offset] =
+                source[source_offset];
+            destination[destination_offset + 1u] =
+                source[source_offset + 1u];
+            destination[destination_offset + 2u] =
+                source[source_offset + 2u];
+            destination[destination_offset + 3u] =
+                source_channels == 4
+                    ? source[source_offset + 3u]
+                    : alpha_one;
+        }
+    }
+}
+
 }// namespace
 
-bool decode_image_rgba8(
+bool decode_image_rgba(
     std::span<const std::uint8_t> encoded,
     std::string_view filename_hint,
-    DecodedImageRgba8 &image,
+    DecodedImageRgba &image,
     std::string *error) {
     image = {};
     if (error != nullptr) {
@@ -92,54 +156,100 @@ bool decode_image_rgba8(
         return fail("the encoded image is too large", error);
     }
     const auto pixel_count = width * height;
-    const auto source_channels = std::min(specification.nchannels, 4);
-    std::vector<std::uint8_t> source_pixels(
-        pixel_count * static_cast<std::size_t>(source_channels));
-    if (!input->read_image(
-            0,
-            0,
-            0,
-            source_channels,
-            OIIO::TypeDesc::UINT8,
-            source_pixels.data())) {
-        auto message = input->geterror();
-        return fail(
-            message.empty()
-                ? "OpenImageIO could not read the encoded image"
-                : std::move(message),
-            error);
-    }
-
+    const auto source_channels =
+        std::min(specification.nchannels, 4);
     image.width = static_cast<std::uint32_t>(width);
     image.height = static_cast<std::uint32_t>(height);
-    image.pixels.resize(pixel_count * 4u);
-    for (std::size_t pixel = 0u; pixel < pixel_count; ++pixel) {
-        const auto source =
-            pixel * static_cast<std::size_t>(source_channels);
-        const auto destination = pixel * 4u;
-        if (source_channels == 1) {
-            image.pixels[destination] = source_pixels[source];
-            image.pixels[destination + 1u] = source_pixels[source];
-            image.pixels[destination + 2u] = source_pixels[source];
-            image.pixels[destination + 3u] = 255u;
-        } else if (source_channels == 2) {
-            image.pixels[destination] = source_pixels[source];
-            image.pixels[destination + 1u] = source_pixels[source];
-            image.pixels[destination + 2u] = source_pixels[source];
-            image.pixels[destination + 3u] =
-                source_pixels[source + 1u];
-        } else {
-            image.pixels[destination] = source_pixels[source];
-            image.pixels[destination + 1u] =
-                source_pixels[source + 1u];
-            image.pixels[destination + 2u] =
-                source_pixels[source + 2u];
-            image.pixels[destination + 3u] =
-                source_channels == 4
-                    ? source_pixels[source + 3u]
-                    : 255u;
+    if (source_is_uint8(
+            specification,
+            source_channels)) {
+        image.storage =
+            DecodedImageStorage::unorm8;
+        std::vector<std::uint8_t> source_pixels(
+            pixel_count *
+            static_cast<std::size_t>(source_channels));
+        if (!input->read_image(
+                0, 0, 0, source_channels,
+                OIIO::TypeDesc::UINT8,
+                source_pixels.data())) {
+            auto message = input->geterror();
+            return fail(
+                message.empty()
+                    ? "OpenImageIO could not read the encoded image"
+                    : std::move(message),
+                error);
         }
+        image.unorm8_pixels.resize(
+            pixel_count * 4u);
+        expand_rgba<std::uint8_t, std::uint8_t>(
+            std::span<const std::uint8_t>{source_pixels},
+            source_channels,
+            std::span<std::uint8_t>{image.unorm8_pixels},
+            std::uint8_t{255u});
+    } else {
+        image.storage =
+            DecodedImageStorage::float32;
+        std::vector<float> source_pixels(
+            pixel_count *
+            static_cast<std::size_t>(source_channels));
+        if (!input->read_image(
+                0, 0, 0, source_channels,
+                OIIO::TypeDesc::FLOAT,
+                source_pixels.data())) {
+            auto message = input->geterror();
+            return fail(
+                message.empty()
+                    ? "OpenImageIO could not read the encoded image"
+                    : std::move(message),
+                error);
+        }
+        image.float_pixels.resize(
+            pixel_count * 4u);
+        expand_rgba<float, float>(
+            std::span<const float>{source_pixels},
+            source_channels,
+            std::span<float>{image.float_pixels},
+            1.0f);
     }
+    return true;
+}
+
+bool decode_image_rgba8(
+    std::span<const std::uint8_t> encoded,
+    std::string_view filename_hint,
+    DecodedImageRgba8 &image,
+    std::string *error) {
+    DecodedImageRgba decoded;
+    if (!decode_image_rgba(
+            encoded,
+            filename_hint,
+            decoded,
+            error)) {
+        image = {};
+        return false;
+    }
+    image.width = decoded.width;
+    image.height = decoded.height;
+    if (decoded.storage ==
+        DecodedImageStorage::unorm8) {
+        image.pixels =
+            std::move(decoded.unorm8_pixels);
+        return true;
+    }
+    image.pixels.resize(
+        decoded.float_pixels.size());
+    std::transform(
+        decoded.float_pixels.begin(),
+        decoded.float_pixels.end(),
+        image.pixels.begin(),
+        [](float value) noexcept {
+            const auto scaled =
+                std::clamp(
+                    value, 0.0f, 1.0f) *
+                    255.0f;
+            return static_cast<std::uint8_t>(
+                scaled + 0.5f);
+        });
     return true;
 }
 

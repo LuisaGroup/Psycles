@@ -898,7 +898,15 @@ def _image_extension(image: Any) -> str:
     if image.source == "GENERATED":
         return ".png"
     suffix = pathlib.Path(image.filepath).suffix.lower()
-    if suffix in {".jpg", ".jpeg", ".png", ".tga", ".bmp", ".hdr"}:
+    if suffix in {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".tga",
+        ".bmp",
+        ".hdr",
+        ".exr",
+    }:
         return suffix
     return {
         "JPEG": ".jpg",
@@ -906,6 +914,8 @@ def _image_extension(image: Any) -> str:
         "TARGA": ".tga",
         "BMP": ".bmp",
         "HDR": ".hdr",
+        "OPEN_EXR": ".exr",
+        "OPEN_EXR_MULTILAYER": ".exr",
     }.get(image.file_format, ".bin")
 
 

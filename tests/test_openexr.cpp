@@ -131,6 +131,27 @@ int main() {
         decoded.pixels == expected_rgba,
         "in-memory EXR decoding changed channel conversion or alpha");
 
+    psycles::io::DecodedImageRgba precise;
+    require(
+        psycles::io::decode_image_rgba(
+            encoded, "packed-texture.exr", precise, &error),
+        error);
+    require(
+        precise.width == 2u && precise.height == 2u &&
+            precise.storage ==
+                psycles::io::DecodedImageStorage::float32 &&
+            precise.unorm8_pixels.empty() &&
+            precise.float_pixels.size() == 16u,
+        "float OpenEXR was not retained as an RGBA32F texture");
+    const std::vector<float> expected_precise{
+        1.0f, 2.0f, 3.0f, 0.25f,
+        4.0f, 5.0f, 6.0f, 0.50f,
+        7.0f, 8.0f, 9.0f, 0.75f,
+        10.0f, 11.0f, 12.0f, 1.0f};
+    require(
+        precise.float_pixels == expected_precise,
+        "precision-preserving OpenEXR decode clipped HDR radiance");
+
     const std::vector<float> expected{
         1.0f, 2.0f, 3.0f, 0.25f, -1.0f, 0.0f, 1.0f,
         4.0f, 5.0f, 6.0f, 0.50f, -0.5f, 0.5f, 1.0f,

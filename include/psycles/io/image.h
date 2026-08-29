@@ -53,6 +53,24 @@ struct DecodedImageRgba8 {
     std::vector<std::uint8_t> pixels;
 };
 
+enum class DecodedImageStorage : std::uint8_t {
+    unorm8,
+    float32
+};
+
+// Precision-preserving decoded texture payload. Exactly one pixel vector is
+// populated: native UINT8 sources remain compact UNORM8, while every source
+// with a wider or floating-point channel domain is represented as float32.
+// This prevents HDR radiance and 16-bit texture data from being silently
+// projected onto [0, 1] at the image-I/O boundary.
+struct DecodedImageRgba {
+    std::uint32_t width{};
+    std::uint32_t height{};
+    DecodedImageStorage storage{DecodedImageStorage::unorm8};
+    std::vector<std::uint8_t> unorm8_pixels;
+    std::vector<float> float_pixels;
+};
+
 [[nodiscard]] bool write_ppm(
     const PassImage &image,
     const std::filesystem::path &path,
@@ -65,10 +83,18 @@ struct DecodedImageRgba8 {
     const std::filesystem::path &path);
 
 #if defined(PSYCLES_WITH_OPENIMAGEIO)
+// Decodes an encoded image from memory without reducing its native numeric
+// domain. UINT8 sources use RGBA8; all wider integer and floating-point
+// sources use RGBA32F. The filename is a format hint only.
+[[nodiscard]] bool decode_image_rgba(
+    std::span<const std::uint8_t> encoded,
+    std::string_view filename_hint,
+    DecodedImageRgba &image,
+    std::string *error = nullptr);
+
 // Decodes an encoded image from memory through OpenImageIO and expands it to
-// tightly packed RGBA8. The filename is only a format hint; packed Blender
-// bundles deliberately store the original bytes under content-addressed
-// paths whose on-disk extension may be .bin.
+// tightly packed RGBA8. This explicitly quantizing compatibility API is for
+// presentation/tests; renderer texture upload uses decode_image_rgba().
 [[nodiscard]] bool decode_image_rgba8(
     std::span<const std::uint8_t> encoded,
     std::string_view filename_hint,
