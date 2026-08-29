@@ -16,7 +16,7 @@ import bpy
 
 _PARENT_COUNT = 4
 _CHILDREN_PER_PARENT = 2
-_RENDER_STEP = 2
+_RENDER_STEP = 3
 _KEYS_PER_CURVE = (1 << _RENDER_STEP) + 1
 
 
@@ -66,6 +66,7 @@ def _fixture() -> Any:
     settings.child_type = "SIMPLE"
     settings.child_percent = _CHILDREN_PER_PARENT
     settings.rendered_child_count = _CHILDREN_PER_PARENT
+    settings.child_length = 0.4
     settings.render_step = _RENDER_STEP
     settings.radius_scale = 0.08
     settings.root_radius = 0.75
@@ -98,31 +99,36 @@ def _read_section(
     )
 
 
-def _expected_first_child(emitter: Any) -> tuple[list[Any], float]:
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    evaluated = emitter.evaluated_get(depsgraph)
-    modifier = next(
-        modifier
-        for modifier in evaluated.modifiers
-        if modifier.type == "PARTICLE_SYSTEM"
-    )
-    particle_system = modifier.particle_system
-    expected_children = _PARENT_COUNT * _CHILDREN_PER_PARENT
-    if len(particle_system.child_particles) != expected_children:
-        raise AssertionError(
-            "fixture did not create the expected child-strand cache: "
-            f"{len(particle_system.child_particles)} != {expected_children}"
-        )
+def _cycles_expected_positions(
+    particle_system: Any,
+    evaluated: Any,
+    particle_no: int,
+) -> tuple[list[Any], float]:
     inverse = evaluated.matrix_world.inverted()
-    positions = [
-        inverse
-        @ particle_system.co_hair(
+    world_positions = [
+        particle_system.co_hair(
             object=evaluated,
-            particle_no=_PARENT_COUNT,
+            particle_no=particle_no,
             step=step,
         )
         for step in range(_KEYS_PER_CURVE)
     ]
+    # Child-length clipping makes BKE_particle_co_hair leave a suffix of the
+    # output slots untouched. RNA exposes those slots as zero, whereas Cycles
+    # seeds every call with the preceding coordinate. Require the fixture to
+    # exercise that distinction and construct the exact Cycles expectation.
+    suffix_begin = len(world_positions)
+    while suffix_begin > 0 and world_positions[suffix_begin - 1].length == 0.0:
+        suffix_begin -= 1
+    if not 0 < suffix_begin < len(world_positions):
+        raise AssertionError(
+            "fixture did not produce a shortened child-particle path"
+        )
+    world_positions[suffix_begin:] = [
+        world_positions[suffix_begin - 1].copy()
+        for _ in range(len(world_positions) - suffix_begin)
+    ]
+    positions = [inverse @ position for position in world_positions]
     length = sum(
         (positions[index] - positions[index - 1]).length
         for index in range(1, len(positions))
@@ -142,8 +148,38 @@ def _main() -> None:
     exporter = pathlib.Path(args[0]).resolve()
 
     _clear_scene()
-    emitter = _fixture()
-    expected_positions, expected_length = _expected_first_child(emitter)
+    _fixture()
+    exporter_module = runpy.run_path(
+        str(exporter), run_name="psycles_particle_hair_exporter_test"
+    )
+    original_positions = exporter_module[
+        "_cycles_particle_hair_positions"
+    ]
+    captured_expected: list[tuple[list[Any], float]] = []
+
+    def capture_positions(
+        particle_system: Any,
+        evaluated: Any,
+        particle_no: int,
+        key_count: int,
+    ) -> Any:
+        positions = original_positions(
+            particle_system,
+            evaluated,
+            particle_no,
+            key_count,
+        )
+        if particle_no == _PARENT_COUNT and not captured_expected:
+            captured_expected.append(
+                _cycles_expected_positions(
+                    particle_system, evaluated, particle_no
+                )
+            )
+        return positions
+
+    exporter_module["_particle_hair_geometry"].__globals__[
+        "_cycles_particle_hair_positions"
+    ] = capture_positions
     with tempfile.TemporaryDirectory(
         prefix="psycles-blender-particle-hair-"
     ) as temporary:
@@ -151,9 +187,15 @@ def _main() -> None:
         old_argv = sys.argv
         try:
             sys.argv = [str(exporter), "--", str(output)]
-            runpy.run_path(str(exporter), run_name="__main__")
+            exporter_module["_main"]()
         finally:
             sys.argv = old_argv
+
+        if len(captured_expected) != 1:
+            raise AssertionError(
+                "final-render dependency graph did not expose the first child"
+            )
+        expected_positions, expected_length = captured_expected[0]
 
         scene = json.loads(
             (output / "scene.json").read_text(encoding="utf-8")
