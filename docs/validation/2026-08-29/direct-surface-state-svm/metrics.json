@@ -1,0 +1,77 @@
+{
+  "schema": "psycles.direct-surface-state-svm.v1",
+  "commit": "4fc57da",
+  "device": "AMD Radeon RX 9070 XT",
+  "rocm": "7.2.4",
+  "rocprofv3": "1.1.0",
+  "hip_tests": {
+    "passed": 84,
+    "total": 84,
+    "seconds": 19.66
+  },
+  "barbershop_program": {
+    "programs": 380,
+    "records": 10177,
+    "value_records": 8808,
+    "guards": 356,
+    "closure_leaves": 381,
+    "stack_lanes": 33,
+    "direct_dynamic_records": 4348631446,
+    "total_dynamic_records": 4818350450,
+    "direct_dynamic_fraction": 0.90251456201,
+    "added_direct_dynamic_records": 724115649
+  },
+  "shade_surface_profile": {
+    "resolution": [640, 480],
+    "samples": 64,
+    "run_ns_per_item": [26.0311416, 26.0664938],
+    "mean_ns_per_item": 26.0488177,
+    "previous_mean_ns_per_item": 26.0569164,
+    "static_private_bytes_per_thread": 3380,
+    "vgpr": 256,
+    "sgpr": 128,
+    "block_size": 64
+  },
+  "coroutine_frame": {
+    "subroutines": 9,
+    "fields": 176,
+    "bytes": 848,
+    "capacity": 1048576
+  },
+  "shade_surface_code_object": {
+    "bytes": 312735,
+    "previous_bytes": 312479,
+    "delta_bytes": 256
+  },
+  "full_resolution": {
+    "resolution": [1920, 1080],
+    "samples": 1024,
+    "adaptive_sampling": false,
+    "denoising": false,
+    "sampling_pattern": "TABULATED_SOBOL",
+    "scrambling_distance": 1.0,
+    "blender_version": "5.2.1 LTS",
+    "blender_build_hash": "9e2066aef7ef",
+    "psycles_seconds": 232.073,
+    "cycles_hip_seconds": 144.36795800300024,
+    "psycles_over_cycles_ratio": 1.607510442,
+    "psycles_slower_percent": 60.7510442,
+    "previous_psycles_seconds": 232.554,
+    "previous_cycles_hip_seconds": 164.048323649,
+    "jit_seconds": 2.05353,
+    "stable_gpu_busy_percent": 100,
+    "stable_power_watts": [222, 225],
+    "vram_percent": 66
+  },
+  "image_validation": {
+    "build_identity_verified": true,
+    "passes": 15,
+    "invalid_pixels": 0,
+    "same_export_exact_pfm_passes": 15,
+    "combined_rmse": 0.01107572577893734,
+    "combined_relative_rmse": 0.05753279665528028,
+    "combined_luminance_mean_ratio": 1.0032079630738011,
+    "volume_direct_rmse": 0.0,
+    "volume_indirect_rmse": 0.0
+  }
+}
