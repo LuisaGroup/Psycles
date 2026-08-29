@@ -3,6 +3,7 @@
 #include "graph_surface_internal.h"
 #include "path_tracer_ambient_occlusion.h"
 #include "path_tracer_shader_services.h"
+#include "path_tracer_surface_value_family.h"
 #include "path_tracer_surfaces.h"
 
 #include <algorithm>
@@ -575,6 +576,11 @@ void emit_surface_value_variant(
     }
     SurfaceValueLocalsView locals{stack.expression()};
     const auto &variant = runtime.value_variants[variant_index];
+    if (emit_direct_surface_value_variant(
+            runtime, bytecode_slots.operand, services, point, locals,
+            instruction, variant)) {
+        return;
+    }
     auto operands = load_variant_operands(
         variant, runtime, bytecode_slots, services, point, locals,
         instruction);
