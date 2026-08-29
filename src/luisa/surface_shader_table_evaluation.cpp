@@ -1,11 +1,18 @@
 #include "surface_shader_table_evaluation.h"
 
+#include <array>
+#include <cstdlib>
 #include <utility>
 
 #include <luisa/dsl/sugar.h>
 
+#include <psycles/compiler/surface_execution_plan.h>
+
 namespace psycles::luisa_backend::detail {
 namespace {
+
+inline constexpr std::uint32_t color_ramp_constant_bit = 1u;
+inline constexpr std::uint32_t color_ramp_sampled_bit = 2u;
 
 [[nodiscard]] Float4 color_ramp_sampled_impl(
     const SurfaceShaderTableReader &table,
@@ -101,6 +108,17 @@ namespace {
 }
 
 }// namespace
+
+SurfaceShaderTableView
+surface_shader_table_view(const ShaderServices &services,
+                          const SurfacePoint &point,
+                          Expr<std::uint32_t> parameter) noexcept {
+    const auto descriptor =
+        services.parameter_float3(point.parameter_block, parameter)
+            .template bitcast<luisa::uint3>();
+    return {
+        .offset = descriptor.x, .count = descriptor.y, .width = descriptor.z};
+}
 
 ServiceSurfaceShaderTableReader::
     ServiceSurfaceShaderTableReader(
@@ -302,6 +320,61 @@ Float4 color_ramp_control_constant(
     }
     ServiceSurfaceShaderTableReader reader{services, table};
     return color_ramp_control_constant_inline(reader, factor);
+}
+
+Float4 evaluate_surface_color_ramp(const ShaderServices &services,
+                                   const SurfaceShaderTableView &table,
+                                   Float factor, std::uint32_t mode) noexcept {
+    const auto sampled = (mode & color_ramp_sampled_bit) != 0u;
+    const auto constant = (mode & color_ramp_constant_bit) != 0u;
+    if (sampled && constant) {
+        return color_ramp_sampled_constant(services, table, factor);
+    }
+    if (sampled) {
+        return color_ramp_sampled_linear(services, table, factor);
+    }
+    if (constant) {
+        return color_ramp_control_constant(services, table, factor);
+    }
+    return color_ramp_control_linear(services, table, factor);
+}
+
+Float4
+evaluate_surface_color_ramp_svm(const ShaderServices &services, UInt immediate,
+                                std::span<const std::uint16_t> immediate_domain,
+                                const SurfaceShaderTableView &table,
+                                Float factor) noexcept {
+    std::array<bool, 4u> active{};
+    for (const auto encoded : immediate_domain) {
+        const auto mode = static_cast<std::uint32_t>(encoded) &
+                          compiler::surface_value_color_ramp_mode_mask;
+        if (mode >= active.size()) {
+            std::abort();
+        }
+        active[mode] = true;
+    }
+    Float4 ramp = make_float4(0.0f);
+    luisa::compute::detail::SwitchStmtBuilder{
+        immediate & compiler::surface_value_color_ramp_mode_mask} %
+        [&] {
+            for (auto index = std::size_t{}; index < active.size(); ++index) {
+                if (!active[index]) {
+                    continue;
+                }
+                luisa::compute::detail::SwitchCaseStmtBuilder{
+                    static_cast<luisa::uint>(index)} %
+                    [&, index] {
+                        ramp = evaluate_surface_color_ramp(
+                            services, table, factor,
+                            static_cast<std::uint32_t>(index));
+                    };
+            }
+            luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+                luisa::compute::dsl::unreachable(
+                    "invalid compact surface Color Ramp mode");
+            };
+        };
+    return ramp;
 }
 
 Float3 rgb_curve_sampled(

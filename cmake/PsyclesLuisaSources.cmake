@@ -40,6 +40,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/surface_color_transforms.cpp
     src/luisa/surface_image_box.cpp
     src/luisa/surface_image_sampling.cpp
+    src/luisa/surface_image_svm.cpp
     src/luisa/surface_math.cpp
     src/luisa/surface_map_range.cpp
     src/luisa/surface_mix.cpp
@@ -189,6 +190,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_surface_svm.cpp
     src/luisa/path_tracer_surface_svm_consumers.cpp
     src/luisa/path_tracer_surface_value_family.cpp
+    src/luisa/path_tracer_surface_value_texture_family.cpp
     src/luisa/path_tracer_surface_value_runtime.cpp
     src/luisa/path_tracer_surface_value_program.cpp
     src/luisa/path_tracer_surfaces.cpp

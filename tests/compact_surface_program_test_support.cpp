@@ -404,6 +404,123 @@ ShaderGraph make_minimal_principled_graph() {
     return graph;
 }
 
+ShaderGraph make_direct_math_convert_graph() {
+    ShaderGraph graph;
+    const auto geometry =
+        graph.add_node(node_type::geometry, "Direct SVM Geometry");
+    const auto normal_to_vector = graph.add_node(node_type::normal_to_vector,
+                                                 "Direct SVM Normal to Vector");
+    const auto vector_to_scalar = graph.add_node(node_type::vector_to_scalar,
+                                                 "Direct SVM Vector to Scalar");
+    const auto math =
+        graph.add_node(node_type::math, "Direct SVM Multiply Add");
+    const auto scalar_to_color = graph.add_node(node_type::scalar_to_color,
+                                                "Direct SVM Scalar to Color");
+    const auto color_to_scalar = graph.add_node(node_type::color_to_scalar,
+                                                "Direct SVM Color to Scalar");
+    const auto scalar_to_boolean = graph.add_node(
+        node_type::scalar_to_boolean, "Direct SVM Scalar to Boolean");
+    const auto principled =
+        graph.add_node(node_type::principled_bsdf, "Direct SVM Principled");
+    const auto configured =
+        graph.connect({.node = geometry, .socket = "Normal"}, normal_to_vector,
+                      "Normal") &&
+        graph.connect({.node = normal_to_vector, .socket = "Vector"},
+                      vector_to_scalar, "Vector") &&
+        graph.connect({.node = vector_to_scalar, .socket = "Value"}, math,
+                      "A") &&
+        graph.set_input(math, "B", SocketValue::floating(2.5f)) &&
+        graph.set_input(math, "C", SocketValue::floating(0.1f)) &&
+        graph.set_property(math, "Operation",
+                           SocketValue::string("MULTIPLY_ADD")) &&
+        graph.connect({.node = math, .socket = "Value"}, scalar_to_color,
+                      "Value") &&
+        graph.connect({.node = scalar_to_color, .socket = "Color"},
+                      color_to_scalar, "Color") &&
+        graph.connect({.node = math, .socket = "Value"}, scalar_to_boolean,
+                      "Value") &&
+        graph.connect({.node = scalar_to_color, .socket = "Color"}, principled,
+                      "BaseColor") &&
+        graph.connect({.node = color_to_scalar, .socket = "Value"}, principled,
+                      "Roughness") &&
+        graph.connect({.node = scalar_to_boolean, .socket = "Boolean"},
+                      principled, "ThinWall") &&
+        graph.set_input(principled, "TransmissionWeight",
+                        SocketValue::floating(0.65f));
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure direct Math/Convert SVM graph"};
+    }
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
+}
+
+ShaderGraph make_direct_texture_trunk_graph(bool box_projection) {
+    ShaderGraph graph;
+    const auto coordinates = graph.add_node(node_type::texture_coordinate,
+                                            "Direct SVM texture coordinates");
+    const auto mapping =
+        graph.add_node(node_type::mapping, "Direct SVM Mapping");
+    const auto image =
+        graph.add_node(node_type::image_texture, "Direct SVM Image");
+    const auto ramp =
+        graph.add_node(node_type::color_ramp, "Direct SVM RGB Ramp");
+    const auto mix =
+        graph.add_node(node_type::mix_color, "Direct SVM Mix Color");
+    const auto principled = graph.add_node(node_type::principled_bsdf,
+                                           "Direct texture SVM Principled");
+    const auto configured =
+        graph.connect({.node = coordinates, .socket = "Generated"}, mapping,
+                      "Vector") &&
+        graph.set_input(mapping, "Location",
+                        SocketValue::vector({0.13f, -0.07f, 0.21f})) &&
+        graph.set_input(mapping, "Rotation",
+                        SocketValue::vector({0.17f, -0.23f, 0.31f})) &&
+        graph.set_input(mapping, "Scale",
+                        SocketValue::vector({1.2f, 0.8f, 1.1f})) &&
+        graph.set_property(mapping, "VectorType",
+                           SocketValue::string("TEXTURE")) &&
+        graph.set_property(mapping, "XMapping", SocketValue::string("Z")) &&
+        graph.set_property(mapping, "YMapping", SocketValue::string("X")) &&
+        graph.set_property(mapping, "ZMapping", SocketValue::string("Y")) &&
+        graph.connect({.node = mapping, .socket = "Vector"}, image, "Vector") &&
+        graph.set_property(image, "Image", SocketValue::unsigned_integer(0u)) &&
+        graph.set_property(image, "ProjectionBlend",
+                           SocketValue::floating(0.37f)) &&
+        graph.set_property(
+            image, "Projection",
+            SocketValue::string(box_projection ? "BOX" : "FLAT")) &&
+        graph.set_property(image, "Extension", SocketValue::string("REPEAT")) &&
+        graph.set_property(image, "Interpolation",
+                           SocketValue::string("Linear")) &&
+        graph.set_property(image, "ColorSpace",
+                           SocketValue::string("Non-Color")) &&
+        graph.set_property(ramp, "Sampled", SocketValue::boolean(true)) &&
+        graph.set_property(
+            ramp, "Table",
+            SocketValue::string(
+                "0,0.1,0.3,0.8,0.2;0.5,0.8,0.2,0.1,0.6;1,0.2,0.9,0.4,0.9")) &&
+        graph.connect({.node = image, .socket = "Alpha"}, ramp, "Factor") &&
+        graph.connect({.node = ramp, .socket = "Color"}, mix, "A") &&
+        graph.connect({.node = image, .socket = "Color"}, mix, "B") &&
+        graph.connect({.node = ramp, .socket = "Alpha"}, mix, "Factor") &&
+        graph.set_property(mix, "BlendMode", SocketValue::string("OVERLAY")) &&
+        graph.set_property(mix, "ClampFactor", SocketValue::boolean(true)) &&
+        graph.set_property(mix, "ClampResult", SocketValue::boolean(true)) &&
+        graph.connect({.node = mix, .socket = "Color"}, principled,
+                      "BaseColor") &&
+        graph.connect({.node = image, .socket = "Alpha"}, principled,
+                      "Roughness");
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure direct texture-family SVM graph"};
+    }
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
+}
+
 ShaderGraph make_sampled_color_ramp_graph(
     std::string table, bool shifted_parameter) {
     ShaderGraph graph;
@@ -711,10 +828,22 @@ bool has_typed_map_range_record_domains(
 
 bool has_color_ramp_record_product(
     const SurfaceValueRuntime &runtime) noexcept {
+    // The family subtype is the direct product of semantic operation and
+    // physical result bank.  A graph that consumes both Color and Alpha must
+    // therefore add a scalar provenance class without invalidating the
+    // independently shared vector class proved by this regression.  Project
+    // both sides of the relation to the vector subtype before checking that
+    // table ParameterId remains late-bound rather than entering handler
+    // identity.
     const auto variant_count = std::count_if(
         runtime.value_variants.begin(), runtime.value_variants.end(),
         [](const auto &variant) noexcept {
-            return variant.instruction.operation == ValueOperation::color_ramp;
+            auto bank = SurfaceValueBank::scalar;
+            return variant.instruction.operation ==
+                       ValueOperation::color_ramp &&
+                   classify_surface_value_type(variant.instruction.result_type,
+                                               bank) &&
+                   bank == SurfaceValueBank::vector;
         });
     std::vector<std::uint32_t> parameters;
     for (const auto &instruction : runtime.svm_scene.instructions) {
@@ -723,8 +852,8 @@ bool has_color_ramp_record_product(
             continue;
         }
         const auto value = surface_svm_value_instruction(instruction);
-        if (surface_value_operation(value) !=
-            ValueOperation::color_ramp) {
+        if (surface_value_operation(value) != ValueOperation::color_ramp ||
+            surface_value_result_bank(value) != SurfaceValueBank::vector) {
             continue;
         }
         if (value.metadata_index >=

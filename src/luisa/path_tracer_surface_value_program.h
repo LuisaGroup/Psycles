@@ -140,6 +140,17 @@ struct SurfaceValueLocals {
     [[nodiscard]] SurfaceValueLocalsView view() const noexcept;
 };
 
+// One immutable description of the buffers addressed by a unified value
+// record. Passing this aggregate into family emitters keeps bytecode decoding
+// independent of physical bindless slot numbers.
+struct SurfaceValueBytecodeSlots {
+    SurfaceValueRuntimeBufferSlot operand;
+    SurfaceValueRuntimeBufferSlot metadata_static_u0;
+    SurfaceValueRuntimeBufferSlot metadata_parameter;
+    SurfaceValueRuntimeBufferSlot metadata_static_range;
+    SurfaceValueRuntimeBufferSlot static_data;
+};
+
 template<typename T>
 [[nodiscard]] auto surface_value_runtime_buffer(
     const SurfaceValueRuntime &runtime,
@@ -190,6 +201,10 @@ class SurfaceValueInstructionDispatcher {
     const SurfacePoint &point,
     const SurfaceValueLocalsView &locals,
     UInt address) noexcept;
+
+[[nodiscard]] ULong read_unsigned_integer_dynamic(
+    const ShaderServices &services, const SurfacePoint &point,
+    const SurfaceValueLocalsView &locals, UInt address) noexcept;
 
 [[nodiscard]] SurfaceValueInstructionDispatcher
 make_surface_value_instruction_dispatcher(

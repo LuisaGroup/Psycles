@@ -79,6 +79,23 @@ Float3 read_vector_dynamic(
     return result;
 }
 
+ULong read_unsigned_integer_dynamic(const ShaderServices &services,
+                                    const SurfacePoint &point,
+                                    const SurfaceValueLocalsView &locals,
+                                    UInt address) noexcept {
+    ULong result = 0ull;
+    $if((address & compiler::SurfaceValueAddress::parameter_bit) != 0u) {
+        result = services.parameter_uint64(
+            point.parameter_block,
+            address & compiler::SurfaceValueAddress::index_mask);
+    }
+    $else {
+        result = locals.unsigned_integers.read(
+            address & compiler::SurfaceValueAddress::index_mask);
+    };
+    return result;
+}
+
 namespace {
 
 using SurfaceValueNodes =
@@ -112,14 +129,6 @@ using SurfaceValueAmbientOcclusionHandlers = std::vector<std::optional<
 struct SurfaceValueHandlerGroup {
     std::uint32_t key{};
     std::vector<std::uint32_t> variants;
-};
-
-struct SurfaceValueBytecodeSlots {
-    SurfaceValueRuntimeBufferSlot operand;
-    SurfaceValueRuntimeBufferSlot metadata_static_u0;
-    SurfaceValueRuntimeBufferSlot metadata_parameter;
-    SurfaceValueRuntimeBufferSlot metadata_static_range;
-    SurfaceValueRuntimeBufferSlot static_data;
 };
 
 inline constexpr SurfaceValueBytecodeSlots svm_value_bytecode_slots{
@@ -250,25 +259,6 @@ make_handler_groups(
 
 [[nodiscard]] UInt device_handler_key(UInt control) noexcept {
     return control & compiler::surface_value_opcode_mask;
-}
-
-[[nodiscard]] ULong read_unsigned_integer_dynamic(
-    const ShaderServices &services,
-    const SurfacePoint &point,
-    const SurfaceValueLocalsView &locals,
-    UInt address) noexcept {
-    ULong result = 0ull;
-    $if((address &
-         compiler::SurfaceValueAddress::parameter_bit) != 0u) {
-        result = services.parameter_uint64(
-            point.parameter_block,
-            address & compiler::SurfaceValueAddress::index_mask);
-    }
-    $else {
-        result = locals.unsigned_integers.read(
-            address & compiler::SurfaceValueAddress::index_mask);
-    };
-    return result;
 }
 
 [[nodiscard]] Float read_scalar_routed(
@@ -576,9 +566,9 @@ void emit_surface_value_variant(
     }
     SurfaceValueLocalsView locals{stack.expression()};
     const auto &variant = runtime.value_variants[variant_index];
-    if (emit_direct_surface_value_variant(
-            runtime, bytecode_slots.operand, services, point, locals,
-            instruction, variant)) {
+    if (emit_direct_surface_value_variant(runtime, bytecode_slots, services,
+                                          point, locals, instruction,
+                                          variant)) {
         return;
     }
     auto operands = load_variant_operands(
