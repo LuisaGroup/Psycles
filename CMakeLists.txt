@@ -45,6 +45,7 @@ endif()
 add_library(psycles_core
     src/adapter/cycles_shader_graph.cpp
     src/compiler/core_nodes.cpp
+    src/compiler/cycles_emission_sampling.cpp
     src/compiler/hosek_sky.cpp
     src/compiler/material_library.cpp
     src/compiler/shader_program.cpp

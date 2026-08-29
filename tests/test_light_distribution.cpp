@@ -1,3 +1,4 @@
+#include <psycles/compiler/cycles_emission_sampling.h>
 #include <psycles/sampling/light_distribution.h>
 
 #include <cmath>
@@ -27,7 +28,59 @@ void require_near(
 }// namespace
 
 int main() {
+    using psycles::Vec3f;
+    using psycles::compiler::resolve_cycles_emission_sampling;
+    using psycles::contract::EmissionSampling;
     using namespace psycles::sampling;
+
+    require(
+        resolve_cycles_emission_sampling(
+            EmissionSampling::automatic,
+            Vec3f{0.5f, 0.0f, 0.0f}) ==
+            EmissionSampling::none,
+        "AUTO accepted Cycles' strict threshold endpoint");
+    require(
+        resolve_cycles_emission_sampling(
+            EmissionSampling::automatic,
+            Vec3f{0.0f, -0.5001f, 0.0f}) ==
+            EmissionSampling::front_back,
+        "AUTO did not use the absolute maximum emission estimate");
+    require(
+        resolve_cycles_emission_sampling(
+            EmissionSampling::front,
+            Vec3f{}) == EmissionSampling::none,
+        "zero emission did not disable an explicit sampling policy");
+    require(
+        resolve_cycles_emission_sampling(
+            EmissionSampling::back,
+            Vec3f{0.01f, 0.0f, 0.0f}) ==
+            EmissionSampling::back,
+        "non-zero emission changed an explicit sampling policy");
+    require(
+        resolve_cycles_emission_sampling(
+            EmissionSampling::automatic,
+            Vec3f{5.0f, 0.0f, 0.0f},
+            true) == EmissionSampling::none &&
+            resolve_cycles_emission_sampling(
+                EmissionSampling::automatic,
+                Vec3f{5.001f, 0.0f, 0.0f},
+                true) == EmissionSampling::front_back,
+        "automatic value-to-closure importance scale diverged from Cycles");
+
+    // Flat Archiviz exposed this exact population bug: a large display with
+    // AUTO emission 0.3 must be absent, while the following unit-estimate
+    // lamp remains emitter zero. Keeping the policy projection separate from
+    // CDF construction makes the ordering proof explicit.
+    const auto display_policy = resolve_cycles_emission_sampling(
+        EmissionSampling::automatic,
+        Vec3f{0.3f, 0.3f, 0.3f});
+    const auto lamp_policy = resolve_cycles_emission_sampling(
+        EmissionSampling::automatic,
+        Vec3f{1.0f, 1.0f, 1.0f});
+    require(
+        display_policy == EmissionSampling::none &&
+            lamp_policy == EmissionSampling::front_back,
+        "effective sampling policies do not reproduce Cycles emitter discovery");
 
     const float triangle_areas[]{1.0f, 3.0f};
     const auto mixed = build_cycles_light_distribution(

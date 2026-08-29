@@ -24,6 +24,7 @@
 #include "shader_table_data.h"
 
 #include <psycles/compiler/core_nodes.h>
+#include <psycles/compiler/cycles_emission_sampling.h>
 #include <psycles/contract/cycles_pointiness.h>
 #include <psycles/luisa/cycles_nishita.h>
 
@@ -237,8 +238,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             compiler::estimate_surface_emission(
                 *material.surface_program(),
                 material.parameters());
+        const auto effective_emission_sampling =
+            compiler::resolve_cycles_emission_sampling(
+                snapshot.materials.at(id).emission_sampling,
+                emission_estimate);
         const auto may_emit =
-            emission_estimate != Vec3f{};
+            effective_emission_sampling !=
+            contract::EmissionSampling::none;
         const auto emission_is_constant =
             material.surface_program()
                 ->emission_evaluation() !=
@@ -276,7 +282,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                          ? material_flag_has_bssrdf_bump
                          : 0u),
                 .emission_sampling =
-                    snapshot.materials.at(id).emission_sampling,
+                    effective_emission_sampling,
                 .volume_sampling = snapshot.materials.at(id).volume_sampling});
         const auto &program = *material.surface_program();
         const auto scalar_parameter =
@@ -1793,6 +1799,17 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         light_sampling.tree_triangle_lookup.size());
     data->light_tree_mesh_triangle_count = static_cast<std::uint32_t>(
         light_sampling.tree_mesh_triangles.size());
+    LUISA_INFO(
+        "Psycles light-sampling scene: emissive_triangles={}, "
+        "analytic_lights={}, portals={}, environment={}, flat_emitters={}, "
+        "light_tree_nodes={}, light_tree_emitters={}.",
+        data->emissive_triangle_count,
+        data->light_count,
+        data->portal_count,
+        data->environment_in_light_distribution,
+        data->light_distribution_count,
+        data->light_tree_node_count,
+        data->light_tree_emitter_count);
     const auto table_upload = SceneTableUploadComponent{}.upload(
         data,
         stream,
