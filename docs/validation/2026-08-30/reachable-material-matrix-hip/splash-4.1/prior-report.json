@@ -1,0 +1,125 @@
+{
+  "actual_label": "Psycles 4671bc5",
+  "build_identity": {
+    "actual_metadata": "/var/tmp/psycles-fullres-hip-20260830/exports/splash-4.1-reachable-materials-4671bc5/scene.json",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "reference_metadata": "/var/tmp/psycles-fullres-hip-20260830/exports/splash-4.1-current/scene.json",
+    "verified": true
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.VolumeDir.R",
+    "ViewLayer.VolumeDir.G",
+    "ViewLayer.VolumeDir.B",
+    "ViewLayer.VolumeInd.R",
+    "ViewLayer.VolumeInd.G",
+    "ViewLayer.VolumeInd.B"
+  ],
+  "passes": {
+    "Combined": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0000067949295044,
+        0.9999944567680359,
+        0.9999982714653015
+      ],
+      "cycles": "/var/tmp/psycles-fullres-hip-20260830/splash-4.1/native-1920x1080-1024/psycles/hip-wavefront-staged.exr",
+      "cycles_channel_mean": [
+        0.5021841526031494,
+        0.42138105630874634,
+        0.36085325479507446
+      ],
+      "cycles_luminance_mean": 0.4342292845249176,
+      "cycles_rms": 0.522112250328064,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.03947296738624573,
+      "mean_absolute_error": 0.00017695693532004952,
+      "orientation_rmse": {
+        "flip_x": 0.3566478192806244,
+        "flip_xy": 0.4415836036205292,
+        "flip_y": 0.4328666627407074,
+        "identity": 0.000754955573938787
+      },
+      "p95_pixel_rmse": 0.000983113655820489,
+      "p99_pixel_rmse": 0.0033361641690135,
+      "psycles": "/var/tmp/psycles-fullres-hip-20260830/splash-4.1/reachable-materials-4671bc5/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.5021875500679016,
+        0.4213787317276001,
+        0.3608526289463043
+      ],
+      "psycles_luminance_mean": 0.4342292845249176,
+      "psycles_rms": 0.5221126928799134,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0014459641072670068,
+      "rmse": 0.000754955573938787,
+      "shape": [
+        1080,
+        1920,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 188.15803810639386,
+        "display_scale": 0.6013317514990986,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-fullres-hip-20260830/splash-4.1/reachable-materials-4671bc5/comparisons/new-vs-old-psycles/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 2073600
+    }
+  },
+  "reference_label": "Psycles before reachability pruning",
+  "schema": "psycles.cycles-differential.v2"
+}

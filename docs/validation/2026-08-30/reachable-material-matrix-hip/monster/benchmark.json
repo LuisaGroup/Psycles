@@ -1,0 +1,193 @@
+{
+  "commands": {
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-fullres-hip-20260830/monster/reachable-materials-4671bc5/cycles/hip.exr",
+        "1024",
+        "1024",
+        "1024",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "RX 9070 XT"
+      ],
+      "log": "/var/tmp/psycles-fullres-hip-20260830/monster/reachable-materials-4671bc5/logs/cycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 58.76502834400162
+    },
+    "export": {
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+        "--",
+        "/var/tmp/psycles-fullres-hip-20260830/exports/monster-reachable-materials-4671bc5"
+      ],
+      "log": "/var/tmp/psycles-fullres-hip-20260830/monster/reachable-materials-4671bc5/logs/export.log",
+      "returncode": 0,
+      "wall_seconds": 12.115062793993275
+    },
+    "psycles_hip-wavefront-staged": {
+      "command": [
+        "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-fullres-hip-20260830/exports/monster-reachable-materials-4671bc5",
+        "/var/tmp/psycles-fullres-hip-20260830/monster/reachable-materials-4671bc5/psycles/hip-wavefront-staged.ppm",
+        "hip",
+        "1024",
+        "1024",
+        "1024",
+        "64",
+        "-",
+        "512",
+        "512",
+        "0",
+        "0",
+        "1024",
+        "-",
+        "1",
+        "0",
+        "wavefront-staged",
+        "32",
+        "32768",
+        "32",
+        "1",
+        "1",
+        "0",
+        "4",
+        "2",
+        "auto",
+        "0",
+        "0",
+        "0",
+        "1",
+        "1048576"
+      ],
+      "log": "/var/tmp/psycles-fullres-hip-20260830/monster/reachable-materials-4671bc5/logs/psycles-hip-wavefront-staged.log",
+      "returncode": 0,
+      "wall_seconds": 86.2016175710014
+    }
+  },
+  "comparisons": {
+    "psycles-hip-wavefront-staged-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-fullres-hip-20260830/monster/reachable-materials-4671bc5/psycles/hip-wavefront-staged.exr",
+      "process_wall_seconds": 7.5455788590043085,
+      "reference": "/var/tmp/psycles-fullres-hip-20260830/monster/reachable-materials-4671bc5/cycles/hip.exr",
+      "report": "/var/tmp/psycles-fullres-hip-20260830/monster/reachable-materials-4671bc5/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/report.json"
+    }
+  },
+  "compiler_tmp": "/var/tmp/psycles-fullres-hip-20260830/compiler-tmp",
+  "matrix": {
+    "cycles": [
+      "hip"
+    ],
+    "psycles": [
+      "hip-wavefront-staged"
+    ]
+  },
+  "relative_performance": {
+    "hip-wavefront-staged": {
+      "slowdown_vs_cycles_hip": 1.3204219457880466,
+      "speedup_over_cycles_hip": 0.7573336713993993
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-fullres-hip-20260830/monster/reachable-materials-4671bc5/cycles/hip.json",
+        "metadata_sha256": "2842451bb67a46e4c537fa6615c3f773b5c0526d9be9427ade258de31be24743",
+        "output": "/var/tmp/psycles-fullres-hip-20260830/monster/reachable-materials-4671bc5/cycles/hip.exr",
+        "process_wall_seconds": 58.76502834400162,
+        "render_seconds": 58.178599837003276,
+        "sha256": "600e54eefdf816a6cd57e6270e8989345a36a495f3a62aef42e24dcaa7a56e23"
+      }
+    },
+    "psycles": {
+      "hip-wavefront-staged": {
+        "backend": "hip",
+        "output": "/var/tmp/psycles-fullres-hip-20260830/monster/reachable-materials-4671bc5/psycles/hip-wavefront-staged.exr",
+        "process_wall_seconds": 86.2016175710014,
+        "render_seconds": 76.8203,
+        "scene_compile_seconds": 1.3539,
+        "scheduler": "wavefront-staged",
+        "sha256": "3e0c3db3710f1d6777c42e96349b0d7328f60ecfd6a0b72d2a8bfafecb750655",
+        "shader_jit_seconds": 7.17468
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": false,
+    "requested": false,
+    "reused_stages": []
+  },
+  "scene": {
+    "blend": "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "bundle": "/var/tmp/psycles-fullres-hip-20260830/exports/monster-reachable-materials-4671bc5",
+    "geometry_bin_sha256": "52e950ec3a98904c1d411abdb627fc6328467048a68572d316705167dbcf2124",
+    "scene_json_sha256": "ffd145c8e076ff48dc7b504dd6125a298faf6f0471c54c65b7a7fbb89cbfd499",
+    "sha256": "9463082f8d365ad8ae19c1ba86429deb3b532c5a2d0db0b9492c3c759f64d28d"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "RX 9070 XT",
+    "height": 1024,
+    "max_samples_per_dispatch": 64,
+    "psycles_environment": {
+      "PSYCLES_COMPACT_SURFACE_VALUES": null,
+      "PSYCLES_POPULATE_SURFACE_ONCE": null
+    },
+    "psycles_scheduler_config": {
+      "fast_math": true,
+      "persistent_block_size": 32,
+      "persistent_fetch_size": 1,
+      "persistent_worker_count": 32768,
+      "staged_direct_light_queue": false,
+      "staged_surface_sorting": true,
+      "wavefront_counter_readback_batch_size": 4,
+      "wavefront_counter_readback_pipeline_depth": 2,
+      "wavefront_execution_block_size": 32,
+      "wavefront_frame_capacity": 1048576,
+      "wavefront_graph_refill_threshold": 0,
+      "wavefront_graph_selective": false,
+      "wavefront_graph_worker_count": 0,
+      "wavefront_tail_megakernel_threshold": "auto"
+    },
+    "psycles_schedulers": [
+      "wavefront-staged"
+    ],
+    "samples": 1024,
+    "width": 1024
+  },
+  "status": "complete"
+}
