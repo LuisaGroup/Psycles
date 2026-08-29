@@ -36,6 +36,7 @@ if str(_TOOLS) not in sys.path:
     sys.path.insert(0, str(_TOOLS))
 
 import blender_build_identity  # noqa: E402
+import exporter_identity  # noqa: E402
 
 
 _LUISA_BACKENDS = ("fallback", "hip", "vk")
@@ -785,17 +786,30 @@ def _can_resume_export(
     manifest: dict[str, Any],
     expected_command: list[str],
     bundle: pathlib.Path,
+    export_script: pathlib.Path,
 ) -> bool:
     commands = manifest.get("commands")
     if not isinstance(commands, dict):
         return False
     record = commands.get("export")
-    return (
+    if not (
         isinstance(record, dict)
         and record.get("returncode") == 0
         and record.get("command") == expected_command
         and _bundle_matches_manifest(manifest, bundle)
-    )
+    ):
+        return False
+    scene_path = bundle / "scene.json"
+    try:
+        document = json.loads(scene_path.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            return False
+        exporter_identity.require_current(
+            document, scene_path, export_script
+        )
+    except (OSError, ValueError, RuntimeError):
+        return False
+    return True
 
 
 def _write_manifest(
@@ -1114,6 +1128,17 @@ def _main() -> int:
         if arguments.reuse_export:
             _require_output(bundle / "scene.json")
             _require_output(bundle / "geometry.bin")
+            reused_scene_path = bundle / "scene.json"
+            reused_scene = json.loads(
+                reused_scene_path.read_text(encoding="utf-8")
+            )
+            if not isinstance(reused_scene, dict):
+                raise RuntimeError(
+                    f"scene bundle root is not an object: {reused_scene_path}"
+                )
+            exporter_identity.require_current(
+                reused_scene, reused_scene_path, export_script
+            )
             if (
                 resumed_existing_manifest
                 and not _bundle_matches_manifest(manifest, bundle)
@@ -1130,6 +1155,7 @@ def _main() -> int:
             manifest,
             export_command,
             bundle,
+            export_script,
         ):
             manifest["resume"]["reused_stages"].append("export")
             print("Reusing validated benchmark stage: export")

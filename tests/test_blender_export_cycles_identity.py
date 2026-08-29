@@ -133,6 +133,16 @@ def _main() -> None:
     ) as temporary:
         payload = _export(exporter, pathlib.Path(temporary))
 
+    identity_module = sys.modules.get("exporter_identity")
+    if identity_module is None:
+        raise AssertionError("exporter did not load its identity contract")
+    expected_exporter = identity_module.current(exporter)
+    if payload.get("exporter") != expected_exporter:
+        raise AssertionError(
+            "scene bundle did not record the complete exporter closure: "
+            f"{payload.get('exporter')} != {expected_exporter}"
+        )
+
     materials = {
         item["name"]: item
         for item in payload["materials"]
