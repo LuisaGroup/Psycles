@@ -188,6 +188,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_surface_closure_decode.cpp
     src/luisa/path_tracer_surface_svm.cpp
     src/luisa/path_tracer_surface_svm_consumers.cpp
+    src/luisa/path_tracer_surface_value_family.cpp
     src/luisa/path_tracer_surface_value_runtime.cpp
     src/luisa/path_tracer_surface_value_program.cpp
     src/luisa/path_tracer_surfaces.cpp

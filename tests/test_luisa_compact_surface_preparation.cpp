@@ -13,6 +13,7 @@
 #include "path_tracer_shader_services.h"
 #include "path_tracer_surface_closure_setup.h"
 #include "path_tracer_surface_execution_domain.h"
+#include "path_tracer_surface_value_family.h"
 #include "path_tracer_surface_values.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_texture_sampling.h"
@@ -44,6 +45,13 @@ using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 using namespace psycles::luisa_backend::detail;
 using namespace psycles::test_support;
+
+static_assert(surface_value_family_has_direct_evaluator(
+    SurfaceSvmValueOpcode::convert));
+static_assert(surface_value_family_has_direct_evaluator(
+    SurfaceSvmValueOpcode::math));
+static_assert(!surface_value_family_has_direct_evaluator(
+    SurfaceSvmValueOpcode::tex_image));
 
 constexpr auto scenario_count = 8u;
 constexpr auto population_closure_capacity = 12u;
@@ -322,6 +330,56 @@ struct FixtureProgram {
   graph.set_root(ShaderDomain::surface,
                  OutputRef{.node = diffuse, .socket = "Closure"});
   return graph;
+}
+
+[[nodiscard]] ShaderGraph make_direct_math_convert_graph() {
+    ShaderGraph graph;
+    const auto geometry =
+        graph.add_node(node_type::geometry, "Direct SVM Geometry");
+    const auto normal_to_vector = graph.add_node(node_type::normal_to_vector,
+                                                 "Direct SVM Normal to Vector");
+    const auto vector_to_scalar = graph.add_node(node_type::vector_to_scalar,
+                                                 "Direct SVM Vector to Scalar");
+    const auto math = graph.add_node(node_type::math, "Direct SVM Multiply Add");
+    const auto scalar_to_color =
+        graph.add_node(node_type::scalar_to_color, "Direct SVM Scalar to Color");
+    const auto color_to_scalar =
+        graph.add_node(node_type::color_to_scalar, "Direct SVM Color to Scalar");
+    const auto scalar_to_boolean = graph.add_node(node_type::scalar_to_boolean,
+                                                  "Direct SVM Scalar to Boolean");
+    const auto principled =
+        graph.add_node(node_type::principled_bsdf, "Direct SVM Principled");
+    const auto configured =
+        graph.connect({.node = geometry, .socket = "Normal"}, normal_to_vector,
+                      "Normal") &&
+        graph.connect({.node = normal_to_vector, .socket = "Vector"},
+                      vector_to_scalar, "Vector") &&
+        graph.connect({.node = vector_to_scalar, .socket = "Value"}, math, "A") &&
+        graph.set_input(math, "B", SocketValue::floating(2.5f)) &&
+        graph.set_input(math, "C", SocketValue::floating(0.1f)) &&
+        graph.set_property(math, "Operation",
+                           SocketValue::string("MULTIPLY_ADD")) &&
+        graph.connect({.node = math, .socket = "Value"}, scalar_to_color,
+                      "Value") &&
+        graph.connect({.node = scalar_to_color, .socket = "Color"},
+                      color_to_scalar, "Color") &&
+        graph.connect({.node = math, .socket = "Value"}, scalar_to_boolean,
+                      "Value") &&
+        graph.connect({.node = scalar_to_color, .socket = "Color"}, principled,
+                      "BaseColor") &&
+        graph.connect({.node = color_to_scalar, .socket = "Value"}, principled,
+                      "Roughness") &&
+        graph.connect({.node = scalar_to_boolean, .socket = "Boolean"},
+                      principled, "ThinWall") &&
+        graph.set_input(principled, "TransmissionWeight",
+                        SocketValue::floating(0.65f));
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure direct Math/Convert SVM graph"};
+    }
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
 }
 
 [[nodiscard]] ShaderGraph make_capacity_transparency_graph(
@@ -782,6 +840,24 @@ int main(int argc, char **argv) {
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_automatic_normal_graph()));
+    auto direct_math_convert =
+        compile_fixture(compiler, make_direct_math_convert_graph());
+    constexpr std::array direct_operations{
+        ValueOperation::vector_to_scalar, ValueOperation::math,
+        ValueOperation::scalar_to_color, ValueOperation::color_to_scalar,
+        ValueOperation::scalar_to_boolean};
+    for (const auto operation : direct_operations) {
+        if (std::none_of(direct_math_convert.program->value_instructions().begin(),
+                         direct_math_convert.program->value_instructions().end(),
+                         [operation](const auto &instruction) noexcept {
+                             return instruction.operation == operation;
+                         })) {
+            std::cerr << "direct Math/Convert compact fixture lost operation "
+                      << static_cast<std::uint32_t>(operation) << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+    fixtures.emplace_back(std::move(direct_math_convert));
     const auto weighted_bssrdf_topology =
         static_cast<std::uint32_t>(fixtures.size());
     fixtures.emplace_back(
