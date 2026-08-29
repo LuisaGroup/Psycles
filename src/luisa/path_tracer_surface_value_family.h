@@ -7,6 +7,19 @@
 
 namespace psycles::luisa_backend::detail {
 
+// Direct SVM evaluators materialize device loads while C++ executes on the
+// host. This cursor defines the canonical partial operand order: a family may
+// skip operands it does not observe, but it may neither recompute an operand
+// nor move a later bytecode operand ahead of an earlier observed one.
+[[nodiscard]] constexpr bool advance_surface_value_operand_read_order(
+    std::size_t index, std::size_t &next_index) noexcept {
+    if (index < next_index) {
+        return false;
+    }
+    next_index = index + 1u;
+    return true;
+}
+
 // Transitional capability boundary for the Cycles-aligned direct SVM
 // evaluator. A supported family reads its packed operands and writes the
 // typed stack directly; it never constructs TracedValues, a
@@ -35,6 +48,7 @@ class SurfaceValueOperandReader {
     const SurfacePoint &_point;
     const SurfaceValueLocalsView &_locals;
     std::vector<UInt> _addresses;
+    mutable std::size_t _next_operand_index{};
 
   private:
     [[nodiscard]] compiler::SurfaceValueBank
@@ -42,6 +56,7 @@ class SurfaceValueOperandReader {
     [[nodiscard]] compiler::SurfaceValueOperandRoute
     route(std::size_t index) const noexcept;
     [[nodiscard]] UInt address(std::size_t index) const noexcept;
+    void begin_read(std::size_t index) const noexcept;
 
   public:
     SurfaceValueOperandReader(

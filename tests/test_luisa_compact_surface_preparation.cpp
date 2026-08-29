@@ -64,6 +64,23 @@ static_assert(surface_value_family_has_direct_evaluator(
 static_assert(
     !surface_value_family_has_direct_evaluator(SurfaceSvmValueOpcode::noise));
 
+static_assert([] {
+    auto next = std::size_t{};
+    return advance_surface_value_operand_read_order(0u, next) &&
+           advance_surface_value_operand_read_order(1u, next) &&
+           advance_surface_value_operand_read_order(3u, next) && next == 4u;
+}());
+static_assert([] {
+    auto next = std::size_t{};
+    return advance_surface_value_operand_read_order(0u, next) &&
+           !advance_surface_value_operand_read_order(0u, next);
+}());
+static_assert([] {
+    auto next = std::size_t{};
+    return advance_surface_value_operand_read_order(1u, next) &&
+           !advance_surface_value_operand_read_order(0u, next);
+}());
+
 constexpr auto scenario_count = 8u;
 constexpr auto population_closure_capacity = 12u;
 

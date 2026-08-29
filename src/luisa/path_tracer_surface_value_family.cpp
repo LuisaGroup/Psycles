@@ -38,6 +38,17 @@ UInt SurfaceValueOperandReader::address(std::size_t index) const noexcept {
     return UInt{_addresses[index].expression()};
 }
 
+void SurfaceValueOperandReader::begin_read(std::size_t index) const noexcept {
+    // Luisa DSL calls below construct the device AST on the host. Requiring a
+    // monotonically increasing, single read of each logical operand makes the
+    // emitted load order equal to the bytecode ABI instead of depending on the
+    // host compiler's unspecified expression-operand evaluation order.
+    if (!advance_surface_value_operand_read_order(index,
+                                                  _next_operand_index)) {
+        std::abort();
+    }
+}
+
 SurfaceValueOperandReader::SurfaceValueOperandReader(
     const SurfaceValueRuntime &runtime,
     SurfaceValueRuntimeBufferSlot operand_slot, const ShaderServices &services,
@@ -90,6 +101,7 @@ SurfaceValueOperandReader::SurfaceValueOperandReader(
 }
 
 Float SurfaceValueOperandReader::scalar(std::size_t index) const noexcept {
+    begin_read(index);
     if (bank(index) != compiler::SurfaceValueBank::scalar) {
         std::abort();
     }
@@ -110,6 +122,7 @@ Float SurfaceValueOperandReader::scalar(std::size_t index) const noexcept {
 }
 
 Float3 SurfaceValueOperandReader::vector(std::size_t index) const noexcept {
+    begin_read(index);
     if (bank(index) != compiler::SurfaceValueBank::vector) {
         std::abort();
     }
@@ -131,6 +144,7 @@ Float3 SurfaceValueOperandReader::vector(std::size_t index) const noexcept {
 
 ULong SurfaceValueOperandReader::unsigned_integer(
     std::size_t index) const noexcept {
+    begin_read(index);
     if (bank(index) != compiler::SurfaceValueBank::unsigned_integer) {
         std::abort();
     }
@@ -214,44 +228,58 @@ void emit_math_family(
     namespace operand = compiler::value_operand;
     Float result = 0.0f;
     switch (variant.instruction.operation) {
-        case compiler::ValueOperation::add:
-            result = operands.scalar(operand::binary::a) +
-                     operands.scalar(operand::binary::b);
+        case compiler::ValueOperation::add: {
+            const auto a = operands.scalar(operand::binary::a);
+            const auto b = operands.scalar(operand::binary::b);
+            result = a + b;
             break;
-        case compiler::ValueOperation::subtract:
-            result = operands.scalar(operand::binary::a) -
-                     operands.scalar(operand::binary::b);
+        }
+        case compiler::ValueOperation::subtract: {
+            const auto a = operands.scalar(operand::binary::a);
+            const auto b = operands.scalar(operand::binary::b);
+            result = a - b;
             break;
-        case compiler::ValueOperation::multiply:
-            result = operands.scalar(operand::binary::a) *
-                     operands.scalar(operand::binary::b);
+        }
+        case compiler::ValueOperation::multiply: {
+            const auto a = operands.scalar(operand::binary::a);
+            const auto b = operands.scalar(operand::binary::b);
+            result = a * b;
             break;
+        }
         case compiler::ValueOperation::divide: {
+            const auto numerator = operands.scalar(operand::binary::a);
             const auto denominator = operands.scalar(operand::binary::b);
-            result = select(0.0f, operands.scalar(operand::binary::a) / denominator,
+            result = select(0.0f, numerator / denominator,
                             abs(denominator) > 1.0e-20f);
             break;
         }
-        case compiler::ValueOperation::minimum:
-            result = min(operands.scalar(operand::binary::a),
-                         operands.scalar(operand::binary::b));
+        case compiler::ValueOperation::minimum: {
+            const auto a = operands.scalar(operand::binary::a);
+            const auto b = operands.scalar(operand::binary::b);
+            result = min(a, b);
             break;
-        case compiler::ValueOperation::maximum:
-            result = max(operands.scalar(operand::binary::a),
-                         operands.scalar(operand::binary::b));
+        }
+        case compiler::ValueOperation::maximum: {
+            const auto a = operands.scalar(operand::binary::a);
+            const auto b = operands.scalar(operand::binary::b);
+            result = max(a, b);
             break;
-        case compiler::ValueOperation::power:
-            result = pow(max(operands.scalar(operand::binary::a), 0.0f),
-                         operands.scalar(operand::binary::b));
+        }
+        case compiler::ValueOperation::power: {
+            const auto a = operands.scalar(operand::binary::a);
+            const auto b = operands.scalar(operand::binary::b);
+            result = pow(max(a, 0.0f), b);
             break;
+        }
         case compiler::ValueOperation::math: {
             const auto immediate =
                 (instruction.x & compiler::surface_value_svm_immediate_mask) >>
                 compiler::surface_value_svm_immediate_shift;
-            result = evaluate_surface_math_svm(immediate, variant.svm_immediates,
-                                               operands.scalar(operand::ternary::a),
-                                               operands.scalar(operand::ternary::b),
-                                               operands.scalar(operand::ternary::c));
+            const auto a = operands.scalar(operand::ternary::a);
+            const auto b = operands.scalar(operand::ternary::b);
+            const auto c = operands.scalar(operand::ternary::c);
+            result = evaluate_surface_math_svm(
+                immediate, variant.svm_immediates, a, b, c);
             break;
         }
         case compiler::ValueOperation::absolute:
