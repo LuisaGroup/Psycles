@@ -444,10 +444,32 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
 
     def test_resume_export_rejects_changed_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            bundle = pathlib.Path(directory)
+            root = pathlib.Path(directory)
+            tools = root / "tools"
+            tools.mkdir()
+            for name in (
+                "export_psycles_scene.py",
+                "blender_scene_manifest.py",
+                "blender_build_identity.py",
+                "cycles_hash.py",
+                "exporter_identity.py",
+            ):
+                (tools / name).write_text(name, encoding="utf-8")
+            export_script = tools / "export_psycles_scene.py"
+            bundle = root / "bundle"
+            bundle.mkdir()
             scene = bundle / "scene.json"
             geometry = bundle / "geometry.bin"
-            scene.write_text("{}", encoding="utf-8")
+            scene.write_text(
+                json.dumps(
+                    {
+                        "exporter": self.runner.exporter_identity.current(
+                            export_script
+                        )
+                    }
+                ),
+                encoding="utf-8",
+            )
             geometry.write_bytes(b"geometry")
             command = ["blender", "export.py", str(bundle)]
             manifest = {
@@ -464,15 +486,66 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             }
             self.assertTrue(
                 self.runner._can_resume_export(
-                    manifest, command, bundle
+                    manifest, command, bundle, export_script
                 )
             )
             geometry.write_bytes(b"changed geometry")
             self.assertFalse(
                 self.runner._can_resume_export(
-                    manifest, command, bundle
+                    manifest, command, bundle, export_script
                 )
             )
+
+            geometry.write_bytes(b"geometry")
+            self.assertTrue(
+                self.runner._can_resume_export(
+                    manifest, command, bundle, export_script
+                )
+            )
+            export_script.write_text("changed exporter", encoding="utf-8")
+            self.assertFalse(
+                self.runner._can_resume_export(
+                    manifest, command, bundle, export_script
+                )
+            )
+
+    def test_reused_export_requires_current_exporter_closure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for name in (
+                "export_psycles_scene.py",
+                "blender_scene_manifest.py",
+                "blender_build_identity.py",
+                "cycles_hash.py",
+                "exporter_identity.py",
+            ):
+                (root / name).write_text(name, encoding="utf-8")
+            export_script = root / "export_psycles_scene.py"
+            document = {
+                "exporter": self.runner.exporter_identity.current(
+                    export_script
+                )
+            }
+            self.runner.exporter_identity.require_current(
+                document, root / "scene.json", export_script
+            )
+
+            (root / "cycles_hash.py").write_text(
+                "changed dependency", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "different exporter implementation"
+            ):
+                self.runner.exporter_identity.require_current(
+                    document, root / "scene.json", export_script
+                )
+
+            with self.assertRaisesRegex(
+                RuntimeError, "no exact exporter identity"
+            ):
+                self.runner.exporter_identity.require_current(
+                    {}, root / "legacy-scene.json", export_script
+                )
 
     def test_reused_export_requires_exact_blender_build(self) -> None:
         identity = {
