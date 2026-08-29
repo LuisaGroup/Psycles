@@ -11,6 +11,7 @@ constexpr auto pi = 3.14159265358979323846f;
 constexpr auto half_pi = 0.5f * pi;
 constexpr auto inverse_sqrt_two = 0.70710678118654752440f;
 constexpr auto ray_infinity = 1.0e30f;
+constexpr auto volume_projection_limit = 1.0e12f;
 constexpr auto safe_distance = 1.0e-20f;
 
 struct ExactEmitterState {
@@ -98,7 +99,8 @@ struct ExactEmitterState {
     const auto v0 = safe_normalize(
         point - centroid, make_float3(0.0f, 0.0f, 1.0f));
     const auto v1 = safe_normalize(
-        point - centroid + direction * min(distance, ray_infinity), v0);
+        point - centroid + direction * min(distance, volume_projection_limit),
+        v0);
     const auto o2 = safe_normalize(
         cross(v0, v1),
         safe_normalize(
@@ -353,8 +355,8 @@ void prepare_volume_query(
 }
 
 void triangle_parameters(
-    const std::shared_ptr<LuisaSceneData> &scene,
     Var<EmissiveTriangleGpu> reference,
+    Var<InstanceGpu> representative_instance,
     Float3 p0,
     Float3 p1,
     Float3 p2,
@@ -376,8 +378,6 @@ void triangle_parameters(
         triangle_axis,
         -triangle_axis,
         back_only);
-    const auto representative_instance =
-        scene->instance_buffer->read(reference.instance_index);
     const auto inverse_x =
         (representative_instance.cycles_world_to_object *
          make_float4(1.0f, 0.0f, 0.0f, 0.0f))
@@ -660,9 +660,25 @@ void analytic_parameters(
                     .read(reference.primitive_index);
             const auto positions = scene->heap->buffer<luisa::float3>(
                 geometry.bindless_base + 1u);
-            const auto p0 = positions.read(triangle.i0);
-            const auto p1 = positions.read(triangle.i1);
-            const auto p2 = positions.read(triangle.i2);
+            const auto applied_positions =
+                scene->heap->buffer<luisa::float3>(
+                    geometry.bindless_base + 9u);
+            const auto representative_instance =
+                scene->instance_buffer->read(reference.instance_index);
+            const auto transform_applied =
+                representative_instance.cycles_transform_applied != 0u;
+            const auto p0 = select(
+                positions.read(triangle.i0),
+                applied_positions.read(triangle.i0),
+                transform_applied);
+            const auto p1 = select(
+                positions.read(triangle.i1),
+                applied_positions.read(triangle.i1),
+                transform_applied);
+            const auto p2 = select(
+                positions.read(triangle.i2),
+                applied_positions.read(triangle.i2),
+                transform_applied);
             state.centroid = (p0 + p1 + p2) * (1.0f / 3.0f);
             prepare_volume_query(
                 state,
@@ -672,8 +688,8 @@ void analytic_parameters(
                 evaluation_point,
                 in_volume);
             triangle_parameters(
-                scene,
                 reference,
+                representative_instance,
                 p0,
                 p1,
                 p2,
@@ -785,6 +801,16 @@ void analytic_parameters(
 }
 
 }// namespace
+
+Float3 cycles_light_tree_volume_projection_direction(
+    Float3 centroid,
+    Float3 point,
+    Float3 direction,
+    Float3 cone_axis,
+    Float distance) noexcept {
+    return compute_v(
+        centroid, point, direction, cone_axis, distance);
+}
 
 LightTreeImportanceComponent::LightTreeImportanceComponent(
     std::shared_ptr<LuisaSceneData> scene,

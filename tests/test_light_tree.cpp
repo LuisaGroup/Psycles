@@ -1,6 +1,7 @@
 #include <psycles/sampling/light_tree.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -35,6 +36,49 @@ emitter(std::uint32_t identity, psycles::Vec3f position, float energy,
           .distant = distant};
 }
 
+[[nodiscard]] psycles::sampling::LightTreeEmitter oriented_emitter(
+    std::uint32_t identity, psycles::Vec3f position, psycles::Vec3f axis,
+    float theta_o, float theta_e, float energy = 1.0f) {
+  using namespace psycles::sampling;
+  return {.measure = {.bounds = {.minimum = position,
+                                 .maximum = position,
+                                 .empty = false},
+                      .orientation = {.axis = axis,
+                                      .theta_o = theta_o,
+                                      .theta_e = theta_e,
+                                      .empty = false},
+                      .energy = energy},
+          .centroid = position,
+          .emitter_id = identity,
+          .distant = false};
+}
+
+[[nodiscard]] bool close(float a, float b, float tolerance = 1.0e-6f) {
+  return std::abs(a - b) <= tolerance;
+}
+
+[[nodiscard]] bool close(psycles::Vec3f a, psycles::Vec3f b,
+                         float tolerance = 1.0e-6f) {
+  return close(a.x, b.x, tolerance) && close(a.y, b.y, tolerance) &&
+         close(a.z, b.z, tolerance);
+}
+
+[[nodiscard]] bool close(
+    const psycles::sampling::LightTreeMeasure &a,
+    const psycles::sampling::LightTreeMeasure &b,
+    float tolerance = 1.0e-6f) {
+  return a.bounds.empty == b.bounds.empty &&
+         (a.bounds.empty ||
+          (close(a.bounds.minimum, b.bounds.minimum, tolerance) &&
+           close(a.bounds.maximum, b.bounds.maximum, tolerance))) &&
+         a.orientation.empty == b.orientation.empty &&
+         (a.orientation.empty ||
+          (close(a.orientation.axis, b.orientation.axis, tolerance) &&
+           close(a.orientation.theta_o, b.orientation.theta_o, tolerance) &&
+           close(a.orientation.theta_e, b.orientation.theta_e, tolerance))) &&
+         close(a.energy, b.energy, tolerance);
+}
+
 } // namespace
 
 int main() {
@@ -66,6 +110,98 @@ int main() {
               std::abs(cone.axis.y - 0.70710677f) < 1.0e-6f,
           "orientation axis mismatch");
   require(cone.theta_e == 0.5f, "emission cone was not enclosed");
+
+  // Captured directly from Cycles' make_orthonormals branch for opposed
+  // orientation bounds. This branch chooses the orthogonal axis itself; it
+  // does not rotate the wide axis by theta_o - wide.theta_o.
+  const LightTreeOrientationBounds opposed_x{
+      .axis = {-1.0f, 0.0f, 0.0f},
+      .theta_o = 0.0f,
+      .theta_e = 0.125f,
+      .empty = false};
+  const auto opposed =
+      merge_light_tree_orientation_bounds(cone_x, opposed_x);
+  require(close(opposed.axis,
+                {0.0f, 0.707106769f, -0.707106769f}) &&
+              close(opposed.theta_o, 1.570796371f) &&
+              close(opposed.theta_e, 0.25f),
+          "opposed orientation merge diverges from Cycles");
+
+  // Cycles defines every recursive node measure through the dimension-zero
+  // bucket reduction, not through the incidental input order. The relation is
+  // observable because orientation-cone merge is intentionally non-associative.
+  std::array<LightTreeEmitter, 4u> bucket_inputs{
+      oriented_emitter(0u, {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, 0.05f,
+                       0.2f),
+      oriented_emitter(1u, {30.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, 0.15f,
+                       0.3f),
+      oriented_emitter(2u, {20.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, 0.25f,
+                       0.4f),
+      oriented_emitter(3u, {10.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, 0.35f,
+                       0.5f)};
+  LightTreeMeasure bucket_order_measure;
+  for (const auto index : {0u, 3u, 2u, 1u}) {
+    bucket_order_measure = merge_light_tree_measures(
+        bucket_order_measure, bucket_inputs[index].measure);
+  }
+  LightTreeMeasure input_order_measure;
+  for (const auto &input : bucket_inputs) {
+    input_order_measure =
+        merge_light_tree_measures(input_order_measure, input.measure);
+  }
+  require(!close(bucket_order_measure, input_order_measure, 1.0e-4f),
+          "bucket-order regression fixture is accidentally associative");
+  const auto bucket_tree = build_cycles_light_subtree(bucket_inputs, 8u);
+  require(close(bucket_tree.nodes[bucket_tree.root].measure,
+                bucket_order_measure),
+          "node measure does not follow Cycles' fixed bucket reduction");
+
+  // Emitter IDs are a reverse mapping label, not a spatial construction key.
+  // Relabeling the same population by any dense permutation must leave every
+  // node and measure unchanged, including equal-centroid partitions.
+  constexpr std::array<psycles::Vec3f, 12u> rename_axes{
+      psycles::Vec3f{1.0f, 0.0f, 0.0f},
+      psycles::Vec3f{0.0f, 1.0f, 0.0f},
+      psycles::Vec3f{0.0f, 0.0f, 1.0f},
+      psycles::Vec3f{-1.0f, 0.0f, 0.0f},
+      psycles::Vec3f{0.0f, -1.0f, 0.0f},
+      psycles::Vec3f{0.0f, 0.0f, -1.0f},
+      psycles::Vec3f{1.0f, 1.0f, 0.0f},
+      psycles::Vec3f{-1.0f, 1.0f, 0.0f},
+      psycles::Vec3f{1.0f, 0.0f, 1.0f},
+      psycles::Vec3f{-1.0f, 0.0f, 1.0f},
+      psycles::Vec3f{0.0f, 1.0f, 1.0f},
+      psycles::Vec3f{0.0f, -1.0f, 1.0f}};
+  std::vector<LightTreeEmitter> rename_inputs;
+  rename_inputs.reserve(rename_axes.size());
+  for (std::uint32_t index = 0u; index < rename_axes.size(); ++index) {
+    rename_inputs.emplace_back(oriented_emitter(
+        index,
+        {index < 8u ? 0.0f : 100.0f, 0.0f, 0.0f},
+        rename_axes[index],
+        0.025f * static_cast<float>(index % 5u),
+        0.1f + 0.02f * static_cast<float>(index % 4u),
+        1.0f + static_cast<float>(index)));
+  }
+  auto renamed_inputs = rename_inputs;
+  for (std::uint32_t index = 0u; index < renamed_inputs.size(); ++index) {
+    renamed_inputs[index].emitter_id =
+        static_cast<std::uint32_t>(renamed_inputs.size() - 1u - index);
+  }
+  const auto rename_tree = build_cycles_light_subtree(rename_inputs, 3u);
+  const auto renamed_tree = build_cycles_light_subtree(renamed_inputs, 3u);
+  require(rename_tree.nodes.size() == renamed_tree.nodes.size(),
+          "emitter relabeling changed light-tree topology");
+  for (std::size_t index = 0u; index < rename_tree.nodes.size(); ++index) {
+    const auto &a_node = rename_tree.nodes[index];
+    const auto &b_node = renamed_tree.nodes[index];
+    require(a_node.kind == b_node.kind && a_node.parent == b_node.parent &&
+                a_node.left == b_node.left && a_node.right == b_node.right &&
+                a_node.first_emitter == b_node.first_emitter &&
+                a_node.emitter_count == b_node.emitter_count &&
+                close(a_node.measure, b_node.measure),
+            "emitter identity leaked into spatial construction");
+  }
 
   std::vector<LightTreeEmitter> inputs;
   for (std::uint32_t index = 0u; index < 10u; ++index) {

@@ -151,6 +151,7 @@ struct TriangleSemantic {
 
 struct MeshSemantic {
     std::uint32_t geometry{};
+    bool transform_applied{};
     std::vector<TriangleSemantic> triangles;
 
     auto operator<=>(const MeshSemantic &) const noexcept = default;
@@ -249,6 +250,19 @@ MeshLightTreeScene MeshLightTreeSceneComponent::build(
                 return result;
             }
             const auto &upload = geometry_uploads[geometry_index];
+            const auto transform_applied =
+                !upload.cycles_intersection_positions.empty();
+            if (transform_applied &&
+                upload.cycles_intersection_positions.size() !=
+                    upload.positions.size()) {
+                result.diagnostic =
+                    "transform-applied light support has inconsistent cardinality";
+                return result;
+            }
+            const auto &light_positions =
+                transform_applied
+                    ? upload.cycles_intersection_positions
+                    : upload.positions;
             std::sort(
                 emitter_ids.begin(), emitter_ids.end(),
                 [&triangles](std::uint32_t a, std::uint32_t b) noexcept {
@@ -280,7 +294,9 @@ MeshLightTreeScene MeshLightTreeSceneComponent::build(
                     .emission = emission_estimate(scene, *material)});
             }
 
-            MeshSemantic key{.geometry = geometry_index};
+            MeshSemantic key{
+                .geometry = geometry_index,
+                .transform_applied = transform_applied};
             key.triangles.reserve(local_triangles.size());
             std::vector<sampling::LightTreeEmitter> local_emitters;
             local_emitters.reserve(local_triangles.size());
@@ -290,9 +306,9 @@ MeshLightTreeScene MeshLightTreeSceneComponent::build(
                 const auto &entry = local_triangles[local];
                 const auto primitive = entry.triangle->primitive_index;
                 const auto indices = geometry.triangles[primitive];
-                if (indices[0u] >= upload.positions.size() ||
-                    indices[1u] >= upload.positions.size() ||
-                    indices[2u] >= upload.positions.size()) {
+                if (indices[0u] >= light_positions.size() ||
+                    indices[1u] >= light_positions.size() ||
+                    indices[2u] >= light_positions.size()) {
                     result.diagnostic =
                         "emissive triangle is outside final displaced support";
                     return result;
@@ -300,13 +316,14 @@ MeshLightTreeScene MeshLightTreeSceneComponent::build(
                 key.triangles.emplace_back(semantic(entry));
                 local_emitters.emplace_back(make_triangle_light_tree_emitter(
                     static_cast<std::uint32_t>(local),
-                    Mat4f{},
-                    from_luisa(upload.positions[indices[0u]]),
-                    from_luisa(upload.positions[indices[1u]]),
-                    from_luisa(upload.positions[indices[2u]]),
+                    transform_applied ? instance.transform : Mat4f{},
+                    from_luisa(light_positions[indices[0u]]),
+                    from_luisa(light_positions[indices[1u]]),
+                    from_luisa(light_positions[indices[2u]]),
                     entry.emission,
                     static_cast<contract::EmissionSampling>(
-                        entry.triangle->emission_sampling)));
+                        entry.triangle->emission_sampling),
+                    transform_applied));
             }
 
             auto [subtree_iter, inserted] = unique_subtrees.try_emplace(
@@ -314,7 +331,12 @@ MeshLightTreeScene MeshLightTreeSceneComponent::build(
                 static_cast<std::uint32_t>(result.subtrees.size()));
             if (inserted) {
                 LightTreeSubtreeInput subtree{
-                    .emitters = local_emitters};
+                    .tree = sampling::build_cycles_light_subtree(
+                        local_emitters)};
+                if (!subtree.tree.valid()) {
+                    throw std::invalid_argument(
+                        "failed to construct mesh-local light tree");
+                }
                 subtree.representative_triangles.reserve(
                     local_triangles.size());
                 for (const auto &triangle : local_triangles) {
@@ -324,34 +346,36 @@ MeshLightTreeScene MeshLightTreeSceneComponent::build(
                 result.subtrees.emplace_back(std::move(subtree));
             }
             const auto subtree = subtree_iter->second;
-            sampling::LightTreeMeasure proxy_measure;
-            for (const auto &emitter : local_emitters) {
-                proxy_measure = sampling::merge_light_tree_measures(
-                    proxy_measure, emitter.measure);
-            }
-            float scale_squared = 0.0f;
-            if (uniform_scale_squared(instance.transform, scale_squared)) {
-                proxy_measure = transform_uniform_measure(
-                    proxy_measure, instance.transform, scale_squared);
-            } else {
-                proxy_measure = {};
-                for (std::size_t local = 0u;
-                     local < local_triangles.size();
-                     ++local) {
-                    const auto &entry = local_triangles[local];
-                    const auto indices =
-                        geometry.triangles[entry.triangle->primitive_index];
-                    const auto world = make_triangle_light_tree_emitter(
-                        static_cast<std::uint32_t>(local),
-                        instance.transform,
-                        from_luisa(upload.positions[indices[0u]]),
-                        from_luisa(upload.positions[indices[1u]]),
-                        from_luisa(upload.positions[indices[2u]]),
-                        entry.emission,
-                        static_cast<contract::EmissionSampling>(
-                            entry.triangle->emission_sampling));
-                    proxy_measure = sampling::merge_light_tree_measures(
-                        proxy_measure, world.measure);
+            const auto &shared_tree = result.subtrees[subtree].tree;
+            auto proxy_measure = shared_tree.nodes[shared_tree.root].measure;
+            // Cycles has already applied the object transform to a
+            // transform-applied subtree. Its root is the world-space proxy;
+            // applying the transform again would square it.
+            if (!transform_applied) {
+                float scale_squared = 0.0f;
+                if (uniform_scale_squared(instance.transform, scale_squared)) {
+                    proxy_measure = transform_uniform_measure(
+                        proxy_measure, instance.transform, scale_squared);
+                } else {
+                    proxy_measure = {};
+                    for (std::size_t local = 0u;
+                         local < local_triangles.size();
+                         ++local) {
+                        const auto &entry = local_triangles[local];
+                        const auto indices =
+                            geometry.triangles[entry.triangle->primitive_index];
+                        const auto world = make_triangle_light_tree_emitter(
+                            static_cast<std::uint32_t>(local),
+                            instance.transform,
+                            from_luisa(upload.positions[indices[0u]]),
+                            from_luisa(upload.positions[indices[1u]]),
+                            from_luisa(upload.positions[indices[2u]]),
+                            entry.emission,
+                            static_cast<contract::EmissionSampling>(
+                                entry.triangle->emission_sampling));
+                        proxy_measure = sampling::merge_light_tree_measures(
+                            proxy_measure, world.measure);
+                    }
                 }
             }
 
