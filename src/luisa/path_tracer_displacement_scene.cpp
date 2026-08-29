@@ -684,17 +684,18 @@ MeshDisplacementSceneComponent::build(
                 << resource.uv_tangents.copy_from(
                        luisa::span{upload.uv_tangents});
             for (const auto &layer : upload.uv_tangent_layers) {
-                if (layer.tangent_attribute_index >=
+                if (!layer.tangent_attribute_index ||
+                    *layer.tangent_attribute_index >=
                         upload.attributes.size() ||
-                    layer.tangent_attribute_index >=
+                    *layer.tangent_attribute_index >=
                         resource.attributes.size()) {
                     continue;
                 }
                 stream << resource.attributes[
-                              layer.tangent_attribute_index]
+                              *layer.tangent_attribute_index]
                               .copy_from(luisa::span{
                                   upload.attributes[
-                                      layer.tangent_attribute_index]
+                                      *layer.tangent_attribute_index]
                                       .values});
             }
         }
