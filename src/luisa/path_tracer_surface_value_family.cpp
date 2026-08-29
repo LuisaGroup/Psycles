@@ -1,5 +1,6 @@
 #include "path_tracer_surface_value_family.h"
 #include "path_tracer_surface_value_numeric_family.h"
+#include "path_tracer_surface_value_state_family.h"
 #include "path_tracer_surface_value_texture_family.h"
 
 #include <cstdlib>
@@ -255,6 +256,15 @@ bool emit_direct_surface_value_variant(
         case compiler::SurfaceSvmValueOpcode::clamp:
             emit_direct_surface_numeric_family(family, locals, instruction,
                                                variant, operands);
+            return true;
+        case compiler::SurfaceSvmValueOpcode::geometry:
+        case compiler::SurfaceSvmValueOpcode::geometry_derivative:
+        case compiler::SurfaceSvmValueOpcode::tex_coord:
+        case compiler::SurfaceSvmValueOpcode::tex_coord_derivative:
+        case compiler::SurfaceSvmValueOpcode::bump_support:
+            emit_direct_surface_state_family(
+                family, runtime, bytecode_slots, services, point, locals,
+                instruction, variant, operands);
             return true;
         case compiler::SurfaceSvmValueOpcode::mix_color:
         case compiler::SurfaceSvmValueOpcode::rgb_ramp:

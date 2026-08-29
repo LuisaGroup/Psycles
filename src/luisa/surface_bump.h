@@ -24,6 +24,15 @@ struct SurfaceBumpEvaluationDomain {
     SurfacePoint point_y;
 };
 
+// First-order projection used by Cycles' derivative Geometry, Texture
+// Coordinate, Attribute and Normal Map SVM nodes. The two coefficients are an
+// explicit SSA representation of Cycles' bump_offset/filter_width pair; nested
+// bump expansion composes them additively before this function is called.
+[[nodiscard]] SurfacePoint surface_differential_sample_point(
+    const SurfacePoint &point,
+    Float dx,
+    Float dy) noexcept;
+
 [[nodiscard]] SurfaceBumpConfiguration
 decode_surface_bump_configuration(
     std::uint64_t encoded) noexcept;

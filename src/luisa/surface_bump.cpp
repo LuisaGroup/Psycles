@@ -44,6 +44,24 @@ namespace {
 
 }// namespace
 
+SurfacePoint surface_differential_sample_point(
+    const SurfacePoint &point,
+    Float dx,
+    Float dy) noexcept {
+    auto sampled = point;
+    sampled.position = point.position + point.dPdx * dx + point.dPdy * dy;
+    sampled.object_position =
+        point.object_position + point.object_dPdx * dx +
+        point.object_dPdy * dy;
+    sampled.generated =
+        point.generated + point.generated_dx * dx + point.generated_dy * dy;
+    sampled.uv = point.uv + point.uv_dx * dx + point.uv_dy * dy;
+    sampled.barycentric =
+        point.barycentric + point.barycentric_dx * dx +
+        point.barycentric_dy * dy;
+    return sampled;
+}
+
 SurfaceBumpConfiguration decode_surface_bump_configuration(
     std::uint64_t encoded) noexcept {
     return {.invert = (encoded & 1u) != 0u,
