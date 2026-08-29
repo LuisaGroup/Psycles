@@ -893,6 +893,8 @@ int main(int argc, char **argv) {
         }
         fixtures.emplace_back(std::move(direct_texture));
     }
+    fixtures.emplace_back(
+        compile_fixture(compiler, make_direct_state_bump_graph()));
     const auto weighted_bssrdf_topology =
         static_cast<std::uint32_t>(fixtures.size());
     fixtures.emplace_back(
@@ -1010,6 +1012,12 @@ int main(int argc, char **argv) {
     if (!scene->surface_values) {
         std::cerr << "failed to build compact surface runtime on "
                   << backend << ": " << diagnostic << '\n';
+        return EXIT_FAILURE;
+    }
+    if (auto state_diagnostic = validate_direct_state_surface_runtime(
+            *scene->surface_values);
+        !state_diagnostic.empty()) {
+        std::cerr << state_diagnostic << " on " << backend << '\n';
         return EXIT_FAILURE;
     }
     const auto has_closure_weight_program = std::any_of(
@@ -1130,32 +1138,6 @@ int main(int argc, char **argv) {
                   << backend << '\n';
         return EXIT_FAILURE;
     }
-    const auto transform_variant_count = std::count_if(
-        scene->surface_values->value_variants.begin(),
-        scene->surface_values->value_variants.end(),
-        [](const auto &variant) noexcept {
-            return variant.instruction.operation ==
-                   ValueOperation::object_position_with_transform;
-        });
-    const auto transform_payload_count = std::count_if(
-        scene->surface_values->svm_scene.value_metadata.begin(),
-        scene->surface_values->svm_scene.value_metadata.end(),
-        [](const auto &metadata) noexcept {
-            return metadata.static_table_count == 16u;
-        });
-    // Preparation and emission are independent invocation domains, so each
-    // exact program keeps its own metadata record. The executable semantic
-    // variant is still interned once across both projections and both authored
-    // table payloads.
-    if (transform_variant_count != 1u || transform_payload_count != 4u) {
-        std::cerr
-            << "compact runtime did not share one transform evaluator over "
-               "the preparation/emission projections on "
-            << backend << " (variants=" << transform_variant_count
-            << ", payloads=" << transform_payload_count << ")\n";
-        return EXIT_FAILURE;
-    }
-
     const auto cycles_values = make_cycles_bsdf_table_values(scene->shader_color_space);
     const auto invocation_count =
         static_cast<std::uint32_t>(fixtures.size()) * scenario_count;

@@ -49,6 +49,17 @@ struct CompactSurfaceProgramEvidence {
 [[nodiscard]] contract::ShaderGraph
 make_direct_texture_trunk_graph(bool box_projection);
 
+// Forces the Cycles ShaderData projection families through a coordinate-driven
+// Bump height. The expanded stream must contain both ordinary Geometry/
+// Texture Coordinate records and their explicit derivative counterparts,
+// including plain and transformed Object coordinates.
+[[nodiscard]] contract::ShaderGraph make_direct_state_bump_graph();
+
+// Validates the direct-family semantic domain and the injective executable
+// record -> PackedTransform metadata ownership relation. Empty means success.
+[[nodiscard]] std::string validate_direct_state_surface_runtime(
+    const luisa_backend::detail::SurfaceValueRuntime &runtime);
+
 // A depth-three Mix tree. `restore_after` appends an Add emission sibling;
 // otherwise the Mix consumes the root tail. The transparent leaf also forces
 // physical replay, so the paired device tests cover both scalar tail frames

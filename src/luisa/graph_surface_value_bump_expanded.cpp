@@ -41,24 +41,6 @@ base_sampled_operation(compiler::ValueOperation operation) noexcept {
     }
 }
 
-[[nodiscard]] SurfacePoint differential_sample_point(
-    const SurfacePoint &point,
-    Float dx,
-    Float dy) noexcept {
-    auto sampled = point;
-    sampled.position = point.position + point.dPdx * dx + point.dPdy * dy;
-    sampled.object_position =
-        point.object_position + point.object_dPdx * dx +
-        point.object_dPdy * dy;
-    sampled.generated =
-        point.generated + point.generated_dx * dx + point.generated_dy * dy;
-    sampled.uv = point.uv + point.uv_dx * dx + point.uv_dy * dy;
-    sampled.barycentric =
-        point.barycentric + point.barycentric_dx * dx +
-        point.barycentric_dy * dy;
-    return sampled;
-}
-
 class BumpOffsetZeroValueNode final : public ValueNode {
 
 public:
@@ -153,7 +135,7 @@ public:
     [[nodiscard]] SurfaceValueExpression evaluate(
         ValueEvaluationContext &context) const noexcept override {
         const auto &sampled = instruction();
-        auto point = differential_sample_point(
+        auto point = surface_differential_sample_point(
             context.point,
             scalar(sampled.operand(operand::sampled_nullary::dx),
                    context.result),

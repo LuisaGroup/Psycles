@@ -29,6 +29,11 @@ namespace psycles::luisa_backend::detail {
 [[nodiscard]] constexpr bool surface_value_family_has_direct_evaluator(
     compiler::SurfaceSvmValueOpcode opcode) noexcept {
     return opcode == compiler::SurfaceSvmValueOpcode::convert ||
+           opcode == compiler::SurfaceSvmValueOpcode::geometry ||
+           opcode == compiler::SurfaceSvmValueOpcode::geometry_derivative ||
+           opcode == compiler::SurfaceSvmValueOpcode::tex_coord ||
+           opcode == compiler::SurfaceSvmValueOpcode::tex_coord_derivative ||
+           opcode == compiler::SurfaceSvmValueOpcode::bump_support ||
            opcode == compiler::SurfaceSvmValueOpcode::math ||
            opcode == compiler::SurfaceSvmValueOpcode::vector_math ||
            opcode == compiler::SurfaceSvmValueOpcode::clamp ||
