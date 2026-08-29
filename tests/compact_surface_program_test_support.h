@@ -60,6 +60,17 @@ make_direct_texture_trunk_graph(bool box_projection);
 [[nodiscard]] std::string validate_direct_state_surface_runtime(
     const luisa_backend::detail::SurfaceValueRuntime &runtime);
 
+// Covers every Cycles Noise type and dimension, with both Normalize values
+// sharing one factor shape and one color shape. Each graph keeps its coordinate
+// dynamic so the direct typed-stack evaluator cannot be constant-folded away.
+[[nodiscard]] std::vector<contract::ShaderGraph> make_direct_noise_graphs();
+
+// Proves that factor/color each form one exact evaluator class and that their
+// finite instruction-immediate images preserve every authored Noise semantic.
+// Empty means success.
+[[nodiscard]] std::string validate_direct_noise_surface_runtime(
+    const luisa_backend::detail::SurfaceValueRuntime &runtime);
+
 // A depth-three Mix tree. `restore_after` appends an Add emission sibling;
 // otherwise the Mix consumes the root tail. The transparent leaf also forces
 // physical replay, so the paired device tests cover both scalar tail frames

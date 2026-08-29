@@ -14,12 +14,6 @@ namespace {
 
 namespace operand = compiler::value_operand;
 
-[[nodiscard]] UInt
-surface_value_immediate(Var<luisa::uint4> instruction) noexcept {
-    return (instruction.x & compiler::surface_value_svm_immediate_mask) >>
-           compiler::surface_value_svm_immediate_shift;
-}
-
 [[nodiscard]] compiler::SurfaceValueBank
 result_bank(const compiler::SurfaceValueStaticVariant &variant) noexcept {
     auto bank = compiler::SurfaceValueBank::scalar;
@@ -42,7 +36,7 @@ void emit_mix_color_family(const ShaderServices &services,
     switch (variant.instruction.operation) {
     case compiler::ValueOperation::mix:
         mixed = evaluate_surface_mix_svm(services,
-                                         surface_value_immediate(instruction),
+                                         surface_value_runtime_immediate(instruction),
                                          variant.svm_immediates, factor, a, b);
         break;
     case compiler::ValueOperation::multiply_color:
@@ -90,7 +84,7 @@ void emit_rgb_ramp_family(const SurfaceValueRuntime &runtime,
     const auto table = surface_shader_table_view(
         services, point, Expr<std::uint32_t>{parameter.expression()});
     const auto ramp = evaluate_surface_color_ramp_svm(
-        services, surface_value_immediate(instruction), variant.svm_immediates,
+        services, surface_value_runtime_immediate(instruction), variant.svm_immediates,
         table, operands.scalar(operand::color_ramp::factor));
     if (alpha_output) {
         write_surface_value_scalar(locals, instruction, ramp.w);
@@ -113,7 +107,7 @@ void emit_mapping_family(const ShaderServices &services,
     const auto rotation = operands.vector(operand::mapping::rotation);
     const auto scale = operands.vector(operand::mapping::scale);
     const auto mapped = evaluate_surface_mapping_svm(
-        services, surface_value_immediate(instruction), variant.svm_immediates,
+        services, surface_value_runtime_immediate(instruction), variant.svm_immediates,
         vector, location, rotation, scale);
     write_surface_value_vector(locals, instruction, std::move(mapped));
 }
@@ -153,7 +147,7 @@ void emit_image_family(compiler::SurfaceSvmValueOpcode family,
             operands.scalar(operand::image_texture::projection_blend);
     }
     const auto sampled = evaluate_surface_image_svm(
-        services, point, shape, surface_value_immediate(instruction),
+        services, point, shape, surface_value_runtime_immediate(instruction),
         variant.svm_immediates, coordinate, texture_handle, projection_blend);
     if (color_output) {
         write_surface_value_vector(locals, instruction, sampled.xyz());

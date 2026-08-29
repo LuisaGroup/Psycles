@@ -41,7 +41,17 @@ namespace psycles::luisa_backend::detail {
            opcode == compiler::SurfaceSvmValueOpcode::rgb_ramp ||
            opcode == compiler::SurfaceSvmValueOpcode::mapping ||
            opcode == compiler::SurfaceSvmValueOpcode::tex_image ||
-           opcode == compiler::SurfaceSvmValueOpcode::tex_image_box;
+           opcode == compiler::SurfaceSvmValueOpcode::tex_image_box ||
+           opcode == compiler::SurfaceSvmValueOpcode::noise;
+}
+
+// Extracts the complete operation-local immediate from one device record.
+// Keeping this in the common typed-family layer makes all direct evaluators
+// use exactly the compiler-owned control-word projection.
+[[nodiscard]] inline UInt surface_value_runtime_immediate(
+    Var<luisa::uint4> instruction) noexcept {
+    return (instruction.x & compiler::surface_value_svm_immediate_mask) >>
+           compiler::surface_value_svm_immediate_shift;
 }
 
 // A host/JIT typed cursor over one static family subtype. Operand words are
