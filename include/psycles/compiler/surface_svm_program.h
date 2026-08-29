@@ -66,7 +66,7 @@ inline constexpr std::uint32_t surface_svm_root_weight_slot =
 inline constexpr std::uint32_t surface_svm_packed_weight_slot_mask = 0xffffu;
 inline constexpr std::uint32_t surface_svm_invalid_packed_weight_slot = 0xffffu;
 
-static_assert(static_cast<std::uint32_t>(ValueOperation::ambient_occlusion) <
+static_assert(surface_svm_value_opcode_count <
               surface_svm_mix_closure_opcode);
 static_assert((surface_closure_control_mask
                << surface_svm_closure_control_shift) >>
@@ -76,7 +76,7 @@ static_assert((surface_closure_control_mask
 [[nodiscard]] constexpr SurfaceSvmBytecodeKind surface_svm_bytecode_kind(
     const SurfaceSvmBytecodeInstruction &instruction) noexcept {
   const auto opcode = instruction.control & surface_svm_opcode_mask;
-  if (opcode <= static_cast<std::uint32_t>(ValueOperation::ambient_occlusion)) {
+  if (opcode < surface_svm_value_opcode_count) {
     return SurfaceSvmBytecodeKind::value;
   }
   switch (opcode) {

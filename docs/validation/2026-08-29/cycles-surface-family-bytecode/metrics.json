@@ -1,0 +1,32 @@
+{
+  "scene": "barbershop-5.2",
+  "device": "AMD Radeon RX 9070 XT",
+  "backend": "hip",
+  "programs": 380,
+  "records": 10177,
+  "value_records": 8808,
+  "semantic_provenance_variants": 67,
+  "device_svm_families": 34,
+  "hip_cache_bytes": {
+    "retained_pre_family": 390784,
+    "family_abi": 312991
+  },
+  "barbershop_smoke": {
+    "resolution": [320, 180],
+    "spp": 1,
+    "exact_pfm_passes": 15
+  },
+  "profile": {
+    "resolution": [640, 480],
+    "spp": 64,
+    "scheduler": "wavefront-staged",
+    "shade_surface_items": 53665984,
+    "shade_surface_calls": 294,
+    "shade_surface_ns_per_item": [26.0107351055, 26.0055900028],
+    "shade_surface_total_ms": [1395.891694, 1395.615577],
+    "render_only_seconds": [2.47945, 2.45251],
+    "static_scratch_bytes": 3380,
+    "vgpr": 256,
+    "sgpr": 128
+  }
+}

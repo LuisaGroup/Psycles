@@ -720,8 +720,51 @@ void test_primary_handler_projection() {
         ValueOperation::passthrough, SurfaceValueBank::scalar, 0u);
     const auto vector_key = make_surface_value_handler_key(
         ValueOperation::passthrough, SurfaceValueBank::vector, 0u);
-    require(scalar_key != vector_key,
-            "primary handler projection omitted the typed result bank");
+    require(scalar_key == vector_key &&
+                scalar_key == static_cast<std::uint32_t>(
+                                  SurfaceSvmValueOpcode::convert),
+            "a result bank incorrectly multiplied the fixed Convert family");
+
+    constexpr SurfaceValueBytecodeInstruction add_record{
+        .control = make_surface_value_control(
+            ValueOperation::add, SurfaceValueBank::scalar, 0u)};
+    constexpr SurfaceValueBytecodeInstruction power_record{
+        .control = make_surface_value_control(
+            ValueOperation::power, SurfaceValueBank::scalar, 0u)};
+    require(surface_value_control_is_well_formed(add_record) &&
+                surface_value_control_is_well_formed(power_record) &&
+                surface_value_handler_key(add_record) ==
+                    surface_value_handler_key(power_record) &&
+                surface_value_opcode(add_record) ==
+                    SurfaceSvmValueOpcode::math &&
+                surface_value_opcode(power_record) ==
+                    SurfaceSvmValueOpcode::math &&
+                surface_value_operation(add_record) == ValueOperation::add &&
+                surface_value_operation(power_record) ==
+                    ValueOperation::power &&
+                surface_value_family_subtype_key(add_record) ==
+                    make_surface_value_family_subtype_key(
+                        ValueOperation::add, SurfaceValueBank::scalar) &&
+                surface_value_family_subtype_key(add_record) !=
+                    surface_value_family_subtype_key(power_record) &&
+                add_record.control != power_record.control,
+            "the Math family either multiplied callables or lost its exact "
+            "semantic subtype");
+
+    constexpr SurfaceValueBytecodeInstruction color_ramp_color{
+        .control = make_surface_value_control(
+            ValueOperation::color_ramp, SurfaceValueBank::vector, 0u)};
+    constexpr SurfaceValueBytecodeInstruction color_ramp_alpha{
+        .control = make_surface_value_control(
+            ValueOperation::color_ramp, SurfaceValueBank::scalar, 0u)};
+    require(surface_value_handler_key(color_ramp_color) ==
+                surface_value_handler_key(color_ramp_alpha) &&
+                surface_value_opcode(color_ramp_color) ==
+                    SurfaceSvmValueOpcode::rgb_ramp &&
+                surface_value_family_subtype_key(color_ramp_color) !=
+                    surface_value_family_subtype_key(color_ramp_alpha),
+            "the RGB Ramp family did not preserve its typed Color/Alpha "
+            "subtypes");
 }
 
 } // namespace

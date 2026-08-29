@@ -3,6 +3,8 @@
 #include <psycles/compiler/surface_bump_expansion.h>
 
 #include <algorithm>
+#include <array>
+#include <cstdlib>
 #include <limits>
 #include <memory>
 #include <string>
@@ -719,19 +721,56 @@ std::unique_ptr<SurfaceValueRuntime> build_surface_value_runtime(
     provide_dummy_if_empty(runtime->svm_closure_operands,
                            compiler::SurfaceValueAddress::invalid_value);
 
+    const auto count_value_families = [&](const auto &variant_indices) {
+        std::array<bool, compiler::surface_svm_value_opcode_count> reached{};
+        for (const auto variant_index : variant_indices) {
+            if (variant_index >= runtime->value_variants.size()) {
+                std::abort();
+            }
+            const auto &variant = runtime->value_variants[variant_index];
+            for (const auto immediate : variant.svm_immediates) {
+                const auto opcode = compiler::surface_svm_value_opcode(
+                    variant.instruction.operation, immediate);
+                if (!compiler::surface_svm_value_opcode_valid(opcode)) {
+                    std::abort();
+                }
+                reached[static_cast<std::size_t>(opcode)] = true;
+            }
+        }
+        return static_cast<std::size_t>(
+            std::count(reached.begin(), reached.end(), true));
+    };
+    std::vector<std::uint32_t> all_value_variants(
+        runtime->value_variants.size());
+    for (auto index = std::size_t{}; index < all_value_variants.size();
+         ++index) {
+        all_value_variants[index] = static_cast<std::uint32_t>(index);
+    }
+    const auto all_value_family_count =
+        count_value_families(all_value_variants);
+    const auto preparation_value_family_count = count_value_families(
+        runtime->preparation_value_static_variants);
+    const auto emission_value_family_count = count_value_families(
+        runtime->emission_value_static_variants);
+    const auto bssrdf_value_family_count = count_value_families(
+        runtime->bssrdf_value_static_variants);
+
     LUISA_INFO(
         "Built unified surface SVM runtime: {} programs, {} records, {} value "
-        "operands, {} metadata records, {} static floats, {} semantic "
-        "evaluators (preparation {}, emission {}, BSSRDF {} tags / {} "
-        "evaluators), {} closure leaves "
+        "operands, {} metadata records, {} static floats, {} SVM families / "
+        "{} semantic provenance variants (preparation {}/{}, emission {}/{}, "
+        "BSSRDF {} tags / {}/{}), {} closure leaves "
         "(preparation/emission/BSSRDF variants {}/{}/{}), maximum program "
         "length {}, stack lanes {}, typed colors {}/{}/{}.",
         image.programs.size(), image.instructions.size(),
         image.value_operands.size(), image.value_metadata.size(),
-        image.static_data.size(), runtime->value_variants.size(),
+        image.static_data.size(), all_value_family_count,
+        runtime->value_variants.size(), preparation_value_family_count,
         runtime->preparation_value_static_variants.size(),
+        emission_value_family_count,
         runtime->emission_value_static_variants.size(),
-        bssrdf_topology_count, runtime->bssrdf_value_static_variants.size(),
+        bssrdf_topology_count, bssrdf_value_family_count,
+        runtime->bssrdf_value_static_variants.size(),
         svm_leaf_count, runtime->preparation_svm_closure_variants.size(),
         runtime->emission_svm_closure_variants.size(),
         runtime->bssrdf_svm_closure_variants.size(),

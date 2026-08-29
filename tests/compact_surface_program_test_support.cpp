@@ -226,14 +226,49 @@ template<std::size_t StackCapacity>
         return "unified value dispatcher lost its narrow point ABI";
     }
     const auto handler_call_count =
-        count_named_custom_calls(function, "surface_value_handler_");
-    const auto expected =
-        scene->surface_values->preparation_value_static_variants.size();
+        count_named_custom_calls(function, "surface_value_family_");
+    std::vector<std::uint32_t> families;
+    families.reserve(
+        scene->surface_values->preparation_value_static_variants.size());
+    for (const auto variant :
+         scene->surface_values->preparation_value_static_variants) {
+        if (variant >= scene->surface_values->value_variants.size()) {
+            return "preparation domain contains an invalid value variant";
+        }
+        const auto &static_variant =
+            scene->surface_values->value_variants[variant];
+        if (static_variant.svm_immediates.empty()) {
+            return "preparation variant has no SVM immediate domain";
+        }
+        auto bank = SurfaceValueBank::scalar;
+        if (!classify_surface_value_type(
+                static_variant.instruction.result_type, bank)) {
+            return "preparation variant has no result bank";
+        }
+        const auto family = make_surface_value_handler_key(
+            static_variant.instruction.operation, bank,
+            static_variant.svm_immediates.front());
+        for (const auto immediate : static_variant.svm_immediates) {
+            if (make_surface_value_handler_key(
+                    static_variant.instruction.operation, bank, immediate) !=
+                family) {
+                return "one provenance variant crossed SVM families";
+            }
+        }
+        families.emplace_back(family);
+    }
+    std::sort(families.begin(), families.end());
+    families.erase(std::unique(families.begin(), families.end()),
+                   families.end());
+    const auto expected = families.size();
     if (handler_call_count != expected) {
-        return "unified value dispatcher lost its per-variant callable "
+        return "unified value dispatcher lost its per-family callable "
                "boundary (calls=" +
                std::to_string(handler_call_count) + ", variants=" +
-               std::to_string(expected) + ")";
+               std::to_string(
+                   scene->surface_values
+                       ->preparation_value_static_variants.size()) +
+               ", families=" + std::to_string(expected) + ")";
     }
     return {};
 }
