@@ -1843,6 +1843,19 @@ if(PSYCLES_ENABLE_LUISA)
                 COMMAND psycles_cycles_tangent_space_tests)
 
             add_executable(
+                psycles_attribute_residency_tests
+                tests/test_attribute_residency.cpp)
+            target_link_libraries(
+                psycles_attribute_residency_tests
+                PRIVATE Psycles::luisa_runtime)
+            target_compile_features(
+                psycles_attribute_residency_tests
+                PRIVATE cxx_std_20)
+            add_test(
+                NAME psycles.attribute_residency
+                COMMAND psycles_attribute_residency_tests)
+
+            add_executable(
                 psycles_normal_map_semantics_tests
                 tests/test_normal_map_semantics.cpp)
             target_link_libraries(

@@ -131,9 +131,34 @@ void test_current_and_original_frames_are_distinct() {
     }
 }
 
+void test_original_only_named_tangent_has_no_current_dependency() {
+    auto upload = make_triangle();
+    upload.attributes.erase(upload.attributes.begin() + 1u);
+    auto &layer = upload.uv_tangent_layers.front();
+    layer.tangent_attribute_index.reset();
+    layer.undisplaced_tangent_attribute_index = 1u;
+
+    // An ORIGINAL-only material must not force a redundant current tangent
+    // allocation. Its immutable frame is constructed directly from the named
+    // UV layer while the mesh is still undisplaced.
+    initialize_cycles_undisplaced_tangent_space(upload);
+    const auto &original = upload.attributes[1u];
+    require(original.values.size() == 3u,
+            "ORIGINAL-only named tangent was not generated");
+    for (const auto tangent : original.values) {
+        require(near_equal(tangent.x, 1.0f) &&
+                    near_equal(tangent.y, 0.0f) &&
+                    near_equal(tangent.z, 0.0f),
+                "ORIGINAL-only named tangent differs from Cycles MikkTSpace");
+        require_unit_sign(tangent.w,
+                          "ORIGINAL-only tangent sign is invalid");
+    }
+}
+
 } // namespace
 
 int main() {
     test_current_and_original_frames_are_distinct();
+    test_original_only_named_tangent_has_no_current_dependency();
     return EXIT_SUCCESS;
 }

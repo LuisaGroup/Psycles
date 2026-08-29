@@ -257,13 +257,14 @@ void recompute_cycles_tangent_space(GeometryUpload &upload) {
 
     for (const auto &layer : upload.uv_tangent_layers) {
         if (layer.uv_attribute_index >= upload.attributes.size() ||
-            layer.tangent_attribute_index >= upload.attributes.size()) {
+            !layer.tangent_attribute_index ||
+            *layer.tangent_attribute_index >= upload.attributes.size()) {
             continue;
         }
         const auto &uv =
             upload.attributes[layer.uv_attribute_index];
         auto &tangent =
-            upload.attributes[layer.tangent_attribute_index];
+            upload.attributes[*layer.tangent_attribute_index];
         compute_tangents(
             upload,
             UvView{
@@ -280,17 +281,33 @@ void recompute_cycles_tangent_space(GeometryUpload &upload) {
 void initialize_cycles_undisplaced_tangent_space(
     GeometryUpload &upload) {
     for (const auto &layer : upload.uv_tangent_layers) {
-        if (layer.tangent_attribute_index >= upload.attributes.size() ||
-            layer.undisplaced_tangent_attribute_index >=
+        if (!layer.undisplaced_tangent_attribute_index ||
+            layer.uv_attribute_index >= upload.attributes.size() ||
+            *layer.undisplaced_tangent_attribute_index >=
                 upload.attributes.size()) {
             continue;
         }
-        const auto &current =
-            upload.attributes[layer.tangent_attribute_index];
         auto &undisplaced = upload.attributes[
-            layer.undisplaced_tangent_attribute_index];
-        undisplaced.domain = current.domain;
-        undisplaced.values = current.values;
+            *layer.undisplaced_tangent_attribute_index];
+        if (layer.tangent_attribute_index &&
+            *layer.tangent_attribute_index < upload.attributes.size()) {
+            const auto &current =
+                upload.attributes[*layer.tangent_attribute_index];
+            undisplaced.domain = current.domain;
+            undisplaced.values = current.values;
+            continue;
+        }
+        const auto &uv = upload.attributes[layer.uv_attribute_index];
+        compute_tangents(
+            upload,
+            UvView{
+                .attributes = {
+                    uv.values.data(),
+                    uv.values.size()},
+                .domain = uv.domain,
+                .available = true},
+            undisplaced.values);
+        undisplaced.domain = attribute_domain_corner;
     }
 }
 

@@ -13,6 +13,7 @@
 #include "path_tracer_shader_services.h"
 #include "path_tracer_subsurface_scene.h"
 #include "path_tracer_ambient_occlusion_scene.h"
+#include "path_tracer_attribute_residency.h"
 #include "path_tracer_surface_route_policy.h"
 #include "path_tracer_surfaces.h"
 #include "path_tracer_surface_values.h"
@@ -200,8 +201,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     surface_programs_by_tag.reserve(closure_plans_by_signature.size());
     surface_closure_plans_by_tag.reserve(closure_plans_by_signature.size());
     std::set<std::uint32_t> surface_bssrdf_bump_tags;
-    std::set<contract::MaterialId>
-        pointiness_materials;
     for (const auto &[id, material] :
          data->materials.materials()) {
         const auto base = static_cast<std::uint32_t>(
@@ -279,16 +278,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     snapshot.materials.at(id).emission_sampling,
                 .volume_sampling = snapshot.materials.at(id).volume_sampling});
         const auto &program = *material.surface_program();
-        if (program.root().valid() &&
-            std::any_of(
-                program.value_instructions().begin(),
-                program.value_instructions().end(),
-                [](const auto &instruction) noexcept {
-                    return instruction.operation ==
-                           compiler::ValueOperation::pointiness;
-                })) {
-            pointiness_materials.emplace(id);
-        }
         const auto scalar_parameter =
             [&](compiler::ValueExpressionId expression)
             -> std::optional<float> {
@@ -502,31 +491,14 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->device.create_buffer<float>(
             cycles_bsdf_values.size());
 
-    std::set<contract::GeometryId>
-        override_pointiness_geometries;
-    for (const auto &[instance_id, instance] : snapshot.instances) {
-        static_cast<void>(instance_id);
-        if (std::any_of(
-                instance.material_overrides.begin(),
-                instance.material_overrides.end(),
-                [&](const auto material) noexcept {
-                    return pointiness_materials.contains(material);
-                })) {
-            override_pointiness_geometries.emplace(
-                instance.geometry);
-        }
-    }
-    std::size_t attribute_count = 0u;
+    const auto attribute_residency =
+        build_scene_attribute_residency_plan(
+            snapshot, data->materials);
     for (const auto &[id, geometry] :
          snapshot.geometries) {
         const auto requires_pointiness =
-            override_pointiness_geometries.contains(id) ||
-            std::any_of(
-                geometry.material_slots.begin(),
-                geometry.material_slots.end(),
-                [&](const auto material) noexcept {
-                    return pointiness_materials.contains(material);
-                });
+            attribute_residency.geometry(id).contains(
+                contract::cycles_pointiness_attribute_id);
         if (requires_pointiness && !geometry.pointiness_source) {
             diagnose(
                 result.diagnostics,
@@ -534,15 +506,19 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     "' uses Geometry.Pointiness but has no evaluated "
                     "point normals and original edges.");
         }
-        attribute_count +=
-            geometry.color_attributes.size() +
-            geometry.uv_layers.size() +
-            geometry.uv_tangent_layers.size() * 2u +
-            (geometry.pointiness_source ? 1u : 0u);
     }
     if (!result.diagnostics.empty()) {
         return result;
     }
+    const auto attribute_count =
+        attribute_residency.resident_binding_count;
+    LUISA_INFO(
+        "Psycles named-attribute residency: bindings={}/{} "
+        "device_bytes={}/{}.",
+        attribute_count,
+        attribute_residency.source_binding_count,
+        attribute_residency.resident_device_bytes,
+        attribute_residency.source_device_bytes);
     const auto fixed_geometry_slots =
         (snapshot.geometries.size() +
          snapshot.curve_geometries.size()) *
@@ -902,6 +878,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
 
     for (const auto &[geometry_id, geometry] :
          snapshot.geometries) {
+        const auto &geometry_attribute_residency =
+            attribute_residency.geometry(geometry_id);
         if (geometry.positions.empty() ||
             geometry.triangles.empty()) {
             diagnose(
@@ -911,7 +889,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             continue;
         }
         std::vector<float> pointiness_values;
-        if (geometry.pointiness_source) {
+        if (geometry.pointiness_source &&
+            geometry_attribute_residency.contains(
+                contract::cycles_pointiness_attribute_id)) {
             try {
                 pointiness_values =
                     contract::make_cycles_pointiness_attribute(
@@ -1107,9 +1087,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         for (const auto &[name, source] :
              geometry.color_attributes) {
+            const auto id = contract::attribute_id(name);
+            if (!geometry_attribute_residency.contains(id)) {
+                continue;
+            }
             auto &attribute =
                 upload.attributes.emplace_back();
-            attribute.id = contract::attribute_id(name);
+            attribute.id = id;
             attribute.domain =
                 encode_attribute_domain(source.domain);
             attribute.values.reserve(source.values.size());
@@ -1126,12 +1110,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             uv_attribute_indices;
         for (const auto &[name, source] :
              geometry.uv_layers) {
+            const auto id = contract::uv_attribute_id(name);
+            if (!geometry_attribute_residency.contains(id)) {
+                continue;
+            }
             uv_attribute_indices.emplace(
                 name, upload.attributes.size());
             auto &attribute =
                 upload.attributes.emplace_back();
-            attribute.id =
-                contract::uv_attribute_id(name);
+            attribute.id = id;
             attribute.domain =
                 encode_attribute_domain(source.domain);
             attribute.values.reserve(source.values.size());
@@ -1143,6 +1130,18 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
         for (const auto &[name, source] :
              geometry.uv_tangent_layers) {
+            const auto tangent_id =
+                contract::uv_tangent_attribute_id(name);
+            const auto undisplaced_tangent_id =
+                contract::uv_undisplaced_tangent_attribute_id(name);
+            const auto retain_tangent =
+                geometry_attribute_residency.contains(tangent_id);
+            const auto retain_undisplaced =
+                geometry_attribute_residency.contains(
+                    undisplaced_tangent_id);
+            if (!retain_tangent && !retain_undisplaced) {
+                continue;
+            }
             const auto uv = uv_attribute_indices.find(name);
             if (uv == uv_attribute_indices.end()) {
                 diagnose(
@@ -1151,30 +1150,24 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         "' has a named tangent layer without its UV layer.");
                 break;
             }
-            const auto tangent_index = upload.attributes.size();
-            auto &attribute =
-                upload.attributes.emplace_back();
-            attribute.id =
-                contract::uv_tangent_attribute_id(name);
-            attribute.domain =
-                encode_attribute_domain(source.domain);
-            attribute.values.reserve(source.values.size());
-            for (const auto value : source.values) {
-                attribute.values.emplace_back(
-                    luisa::make_float4(
-                        value.x,
-                        value.y,
-                        value.z,
-                        value.w));
+            std::optional<std::size_t> tangent_index;
+            if (retain_tangent) {
+                tangent_index = upload.attributes.size();
+                auto &attribute =
+                    upload.attributes.emplace_back();
+                attribute.id = tangent_id;
+                attribute.domain =
+                    encode_attribute_domain(source.domain);
             }
-            const auto tangent_domain = attribute.domain;
-            const auto undisplaced_index =
-                upload.attributes.size();
-            auto &undisplaced =
-                upload.attributes.emplace_back();
-            undisplaced.id =
-                contract::uv_undisplaced_tangent_attribute_id(name);
-            undisplaced.domain = tangent_domain;
+            std::optional<std::size_t> undisplaced_index;
+            if (retain_undisplaced) {
+                undisplaced_index = upload.attributes.size();
+                auto &undisplaced =
+                    upload.attributes.emplace_back();
+                undisplaced.id = undisplaced_tangent_id;
+                undisplaced.domain =
+                    encode_attribute_domain(source.domain);
+            }
             upload.uv_tangent_layers.emplace_back(
                 UvTangentLayerUpload{
                     .uv_attribute_index = uv->second,

@@ -273,8 +273,8 @@ struct AttributeUpload {
 
 struct UvTangentLayerUpload {
     std::size_t uv_attribute_index{};
-    std::size_t tangent_attribute_index{};
-    std::size_t undisplaced_tangent_attribute_index{};
+    std::optional<std::size_t> tangent_attribute_index;
+    std::optional<std::size_t> undisplaced_tangent_attribute_index;
 };
 
 struct GeometryUpload {
