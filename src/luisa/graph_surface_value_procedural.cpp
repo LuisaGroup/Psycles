@@ -552,26 +552,25 @@ public:
                     const auto extrapolate = scalar(
                         instruction.operand(operand::rgb_curve::extrapolate),
                         result);
-                    Float3 mapped = make_float3(0.0f);
-                    const auto evaluate_curve = [&](bool sampled) noexcept {
-                      mapped = sampled ? rgb_curve_sampled(services, table,
-                                                           input, factor, min_x,
-                                                           max_x, extrapolate)
-                                       : rgb_curve_control(services, table,
-                                                           input, factor);
-                    };
                     if (context.svm_immediate_override != nullptr) {
-                      dispatch_surface_value_immediate<2u>(
-                          *context.svm_immediate_override,
-                          context.svm_immediate_domain,
-                          compiler::surface_value_rgb_curve_sampled_bit,
-                          [&](std::uint32_t sampled) noexcept {
-                            evaluate_curve(sampled != 0u);
-                          });
+                      value = make_float4(evaluate_surface_rgb_curve_svm(
+                                              services,
+                                              *context.svm_immediate_override,
+                                              context.svm_immediate_domain,
+                                              table, input, factor, min_x,
+                                              max_x, extrapolate),
+                                          1.0f);
                     } else {
-                      evaluate_curve((instruction.static_u0 & 1u) != 0u);
+                      const auto mapped = (instruction.static_u0 & 1u) != 0u
+                                              ? rgb_curve_sampled(
+                                                    services, table, input,
+                                                    factor, min_x, max_x,
+                                                    extrapolate)
+                                              : rgb_curve_control(
+                                                    services, table, input,
+                                                    factor);
+                      value = make_float4(mapped, 1.0f);
                     }
-                    value = make_float4(mapped, 1.0f);
                     break;
                 }
                 case compiler::ValueOperation::separate_r:
@@ -580,28 +579,33 @@ public:
                   const auto color = vector(
                       instruction.operand(operand::separate_color::color),
                       result);
-                  Float3 channels = make_float3(0.0f);
                   if (context.svm_immediate_override != nullptr) {
-                    dispatch_surface_value_immediate<3u>(
-                        *context.svm_immediate_override,
-                        context.svm_immediate_domain,
-                        compiler::surface_value_color_mode_mask,
-                        [&](std::uint32_t mode) noexcept {
-                          channels = separate_color(services, color, mode);
-                        });
+                    const auto channels = separate_color_svm(
+                        services, *context.svm_immediate_override,
+                        context.svm_immediate_domain, color);
+                    const auto channel =
+                        instruction.operation ==
+                                compiler::ValueOperation::separate_r
+                            ? channels.x
+                        : instruction.operation ==
+                                compiler::ValueOperation::separate_g
+                            ? channels.y
+                            : channels.z;
+                    value = make_float4(channel);
                   } else {
-                    channels =
-                        separate_color(services, color, instruction.static_u0);
+                    const auto channels = separate_color(
+                        services, color,
+                        static_cast<std::uint32_t>(instruction.static_u0));
+                    const auto channel =
+                        instruction.operation ==
+                                compiler::ValueOperation::separate_r
+                            ? channels.x
+                        : instruction.operation ==
+                                compiler::ValueOperation::separate_g
+                            ? channels.y
+                            : channels.z;
+                    value = make_float4(channel);
                   }
-                  const auto channel =
-                      instruction.operation ==
-                              compiler::ValueOperation::separate_r
-                          ? channels.x
-                      : instruction.operation ==
-                              compiler::ValueOperation::separate_g
-                          ? channels.y
-                          : channels.z;
-                  value = make_float4(channel);
                   break;
                 }
                 case compiler::ValueOperation::combine_color: {
@@ -615,20 +619,20 @@ public:
                         scalar(
                             instruction.operand(operand::combine_color::b),
                             result));
-                    Float3 combined = make_float3(0.0f);
                     if (context.svm_immediate_override != nullptr) {
-                      dispatch_surface_value_immediate<3u>(
-                          *context.svm_immediate_override,
-                          context.svm_immediate_domain,
-                          compiler::surface_value_color_mode_mask,
-                          [&](std::uint32_t mode) noexcept {
-                            combined = combine_color(services, channels, mode);
-                          });
+                      value = make_float4(
+                          combine_color_svm(
+                              services, *context.svm_immediate_override,
+                              context.svm_immediate_domain, channels),
+                          1.0f);
                     } else {
-                      combined = combine_color(services, channels,
-                                               instruction.static_u0);
+                      value = make_float4(
+                          combine_color(
+                              services, channels,
+                              static_cast<std::uint32_t>(
+                                  instruction.static_u0)),
+                          1.0f);
                     }
-                    value = make_float4(combined, 1.0f);
                     break;
                 }
                 case compiler::ValueOperation::hosek_wilkie_sky: {

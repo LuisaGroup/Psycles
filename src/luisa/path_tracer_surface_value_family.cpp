@@ -1,4 +1,5 @@
 #include "path_tracer_surface_value_family.h"
+#include "path_tracer_surface_value_color_family.h"
 #include "path_tracer_surface_value_context_family.h"
 #include "path_tracer_surface_value_numeric_family.h"
 #include "path_tracer_surface_value_procedural_family.h"
@@ -256,8 +257,26 @@ bool emit_direct_surface_value_variant(
         case compiler::SurfaceSvmValueOpcode::math:
         case compiler::SurfaceSvmValueOpcode::vector_math:
         case compiler::SurfaceSvmValueOpcode::clamp:
+        case compiler::SurfaceSvmValueOpcode::map_range:
+        case compiler::SurfaceSvmValueOpcode::vector_map_range:
+        case compiler::SurfaceSvmValueOpcode::mix_float:
+        case compiler::SurfaceSvmValueOpcode::mix_vector:
+        case compiler::SurfaceSvmValueOpcode::mix_vector_non_uniform:
             emit_direct_surface_numeric_family(family, locals, instruction,
                                                variant, operands);
+            return true;
+        case compiler::SurfaceSvmValueOpcode::hsv:
+        case compiler::SurfaceSvmValueOpcode::invert:
+        case compiler::SurfaceSvmValueOpcode::gamma:
+        case compiler::SurfaceSvmValueOpcode::brightness_contrast:
+        case compiler::SurfaceSvmValueOpcode::blackbody:
+        case compiler::SurfaceSvmValueOpcode::wavelength:
+        case compiler::SurfaceSvmValueOpcode::rgb_curve:
+        case compiler::SurfaceSvmValueOpcode::separate_color:
+        case compiler::SurfaceSvmValueOpcode::combine_color:
+            emit_direct_surface_color_family(
+                family, runtime, bytecode_slots, services, point, locals,
+                instruction, variant, operands);
             return true;
         case compiler::SurfaceSvmValueOpcode::geometry:
         case compiler::SurfaceSvmValueOpcode::geometry_derivative:

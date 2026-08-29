@@ -38,7 +38,6 @@
 #include <luisa/luisa-compute.h>
 
 namespace {
-
 using namespace luisa::compute;
 using namespace psycles;
 using namespace psycles::compiler;
@@ -899,6 +898,8 @@ int main(int argc, char **argv) {
     for (auto &context_graph : make_direct_context_graphs()) {
         fixtures.emplace_back(compile_fixture(compiler, context_graph));
     }
+    for (auto &graph : make_direct_color_algebra_graphs())
+        fixtures.emplace_back(compile_fixture(compiler, graph));
     fixtures.emplace_back(
         compile_fixture(compiler, make_direct_state_bump_graph()));
     const auto weighted_bssrdf_topology =
@@ -947,7 +948,6 @@ int main(int argc, char **argv) {
         static_cast<std::uint32_t>(fixtures.size());
     fixtures.emplace_back(compile_fixture(
         compiler, make_light_path_depth_emission_graph(false)));
-
     std::vector<std::shared_ptr<const SurfaceProgram>> programs;
     std::vector<SurfaceClosurePlan> closure_plans;
     std::vector<std::uint32_t> parameter_bases;
@@ -957,7 +957,6 @@ int main(int argc, char **argv) {
     programs.reserve(fixtures.size());
     closure_plans.reserve(fixtures.size());
     parameter_bases.reserve(fixtures.size());
-
     auto scene = std::make_shared<LuisaSceneData>();
     for (const auto &fixture : fixtures) {
         parameter_bases.emplace_back(
@@ -993,7 +992,6 @@ int main(int argc, char **argv) {
             "failed to finalize compact preparation shader tables: " +
             shader_table_diagnostic};
     }
-
     std::string diagnostic;
     const std::array invalid_bssrdf_tags{
         static_cast<std::uint32_t>(programs.size())};
@@ -1038,6 +1036,12 @@ int main(int argc, char **argv) {
         std::cerr << context_diagnostic << " on " << backend << '\n';
         return EXIT_FAILURE;
     }
+    if (auto color_diagnostic =
+            validate_direct_color_algebra_surface_runtime(*scene->surface_values);
+        !color_diagnostic.empty()) {
+        std::cerr << color_diagnostic << " on " << backend << '\n';
+        return EXIT_FAILURE;
+    }
     const auto has_closure_weight_program = std::any_of(
         scene->surface_values->svm_scene.instructions.begin(),
         scene->surface_values->svm_scene.instructions.end(),
@@ -1051,9 +1055,6 @@ int main(int argc, char **argv) {
                   << backend << " (tail_fast_path=" << tail_fast_path << ")\n";
         return EXIT_FAILURE;
     }
-    // The two exact Clamp modes now inhabit one typed record domain. The
-    // compact-vs-expanded comparison below proves that the shared device
-    // handler observes each instruction immediate on every backend.
     if (!has_typed_clamp_record_domain(*scene->surface_values)) {
         std::cerr << "compact runtime did not preserve the typed Clamp "
                      "record domain on "

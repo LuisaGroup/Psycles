@@ -44,6 +44,20 @@ namespace psycles::luisa_backend::detail {
            opcode == compiler::SurfaceSvmValueOpcode::math ||
            opcode == compiler::SurfaceSvmValueOpcode::vector_math ||
            opcode == compiler::SurfaceSvmValueOpcode::clamp ||
+           opcode == compiler::SurfaceSvmValueOpcode::map_range ||
+           opcode == compiler::SurfaceSvmValueOpcode::vector_map_range ||
+           opcode == compiler::SurfaceSvmValueOpcode::mix_float ||
+           opcode == compiler::SurfaceSvmValueOpcode::mix_vector ||
+           opcode == compiler::SurfaceSvmValueOpcode::mix_vector_non_uniform ||
+           opcode == compiler::SurfaceSvmValueOpcode::hsv ||
+           opcode == compiler::SurfaceSvmValueOpcode::invert ||
+           opcode == compiler::SurfaceSvmValueOpcode::gamma ||
+           opcode == compiler::SurfaceSvmValueOpcode::brightness_contrast ||
+           opcode == compiler::SurfaceSvmValueOpcode::blackbody ||
+           opcode == compiler::SurfaceSvmValueOpcode::wavelength ||
+           opcode == compiler::SurfaceSvmValueOpcode::rgb_curve ||
+           opcode == compiler::SurfaceSvmValueOpcode::separate_color ||
+           opcode == compiler::SurfaceSvmValueOpcode::combine_color ||
            opcode == compiler::SurfaceSvmValueOpcode::mix_color ||
            opcode == compiler::SurfaceSvmValueOpcode::rgb_ramp ||
            opcode == compiler::SurfaceSvmValueOpcode::mapping ||

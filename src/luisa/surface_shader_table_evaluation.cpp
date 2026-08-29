@@ -420,4 +420,44 @@ Float3 rgb_curve_control(
         reader, input, factor);
 }
 
+Float3 evaluate_surface_rgb_curve_svm(
+    const ShaderServices &services, UInt immediate,
+    std::span<const std::uint16_t> immediate_domain,
+    const SurfaceShaderTableView &table, Float3 input, Float factor,
+    Float min_x, Float max_x, Float extrapolate) noexcept {
+    std::array<bool, 2u> active{};
+    if (immediate_domain.empty()) {
+        std::abort();
+    }
+    for (const auto encoded : immediate_domain) {
+        if ((encoded & ~compiler::surface_value_rgb_curve_sampled_bit) != 0u) {
+            std::abort();
+        }
+        active[(encoded & compiler::surface_value_rgb_curve_sampled_bit) != 0u] =
+            true;
+    }
+    Float3 result = make_float3(0.0f);
+    const UInt sampled =
+        immediate & compiler::surface_value_rgb_curve_sampled_bit;
+    luisa::compute::detail::SwitchStmtBuilder{sampled} % [&] {
+        if (active[0u]) {
+            luisa::compute::detail::SwitchCaseStmtBuilder{0u} % [&] {
+                result = rgb_curve_control(services, table, input, factor);
+            };
+        }
+        if (active[1u]) {
+            luisa::compute::detail::SwitchCaseStmtBuilder{
+                compiler::surface_value_rgb_curve_sampled_bit} % [&] {
+                result = rgb_curve_sampled(services, table, input, factor,
+                                           min_x, max_x, extrapolate);
+            };
+        }
+        luisa::compute::detail::SwitchDefaultStmtBuilder{} % [] {
+            luisa::compute::dsl::unreachable(
+                "invalid compact surface RGB Curve mode");
+        };
+    };
+    return result;
+}
+
 }// namespace psycles::luisa_backend::detail
