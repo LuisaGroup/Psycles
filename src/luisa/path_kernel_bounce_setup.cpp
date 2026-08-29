@@ -34,7 +34,7 @@ class PathBounceSetupStageImpl final
             sample.continuation_probability;
         auto &ray = sample.ray;
         const auto ray_visibility =
-            sample.contracted_ray_visibility();
+            sample.traversal_ray_visibility();
         auto &ray_source_object =
             sample.ray_source_object;
         auto &ray_source_primitive =

@@ -87,18 +87,26 @@ int main(int argc, char **argv) {
                 make_float4(
                     cast<float>(
                         cycles_path_state::
-                            contract_visibility(
+                            to_contract_traversal_visibility(
                                 diffuse.visibility)),
                     cast<float>(
                         cycles_path_state::
-                            contract_visibility(
+                            to_contract_traversal_visibility(
                                 cycles_path_state::
                                     visibility_transmit |
                                 cycles_path_state::
                                     visibility_diffuse |
                                 cycles_path_state::
                                     visibility_glossy)),
-                    0.0f,
+                    cast<float>(
+                        cycles_path_state::
+                            to_contract_shader_visibility(
+                                cycles_path_state::
+                                    visibility_transmit |
+                                cycles_path_state::
+                                    visibility_diffuse |
+                                cycles_path_state::
+                                    visibility_glossy)),
                     0.0f));
 
             const auto transparent =
@@ -130,7 +138,7 @@ int main(int argc, char **argv) {
                         transparent.rng_offset),
                     cast<float>(
                         cycles_path_state::
-                            contract_visibility(
+                            to_contract_traversal_visibility(
                                 transparent.visibility)),
                     0.0f,
                     0.0f));
@@ -437,7 +445,7 @@ int main(int argc, char **argv) {
         // Cycles classifies diffuse/glossy transmission for shader/pass
         // state, but path_state_ray_visibility() exposes only TRANSMIT to
         // object traversal.
-        luisa::float4{2.0f, 8.0f, 0.0f, 0.0f},
+        luisa::float4{2.0f, 8.0f, 14.0f, 0.0f},
         luisa::float4{1668.0f, 1.0f, 0.0f, 1.0f},
         luisa::float4{32.0f, 1.0f, 0.0f, 0.0f},
         luisa::float4{

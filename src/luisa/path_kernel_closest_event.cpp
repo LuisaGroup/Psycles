@@ -49,7 +49,7 @@ class ClosestEventStageImpl final
         const auto &scene = config.scene;
         auto &ray = sample.ray;
         const auto ray_visibility =
-            sample.contracted_ray_visibility();
+            sample.traversal_ray_visibility();
         auto &previous_mis_origin_normal =
             sample.previous_mis_origin_normal;
         auto &path_flags = sample.path_flags;

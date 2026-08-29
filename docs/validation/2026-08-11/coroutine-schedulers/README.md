@@ -2148,7 +2148,7 @@ artifacts are under `/var/tmp/psycles-frame240-timing-{1,2,3}-*`.
 ## Canonical visibility and typed pending-surface state
 
 `ray_visibility` was a duplicate cache of
-`contract_visibility(cycles_path_visibility)`. Initially the two values are
+`to_contract_traversal_visibility(cycles_path_visibility)`. Initially the two values are
 equal by construction. Every path-state transition updated the canonical
 Cycles visibility and immediately assigned the same projection to the cache;
 there was no independent cache transition. Induction over path transitions

@@ -103,8 +103,8 @@ class PathVolumeSegmentStageImpl final
             sample.cycles_path_visibility;
         auto &cycles_rng_offset =
             sample.cycles_rng_offset;
-        const auto ray_visibility =
-            sample.contracted_ray_visibility();
+        const auto shader_ray_visibility =
+            sample.shader_ray_visibility();
         auto &ray_events = sample.ray_events;
         auto &volume_bounce =
             sample.volume_bounce;
@@ -227,7 +227,7 @@ class PathVolumeSegmentStageImpl final
             .incoming =
                 -ray->direction(),
             .ray_visibility =
-                ray_visibility,
+                shader_ray_visibility,
             .ray_events = ray_events,
             .ray_depth = path_depth,
             .diffuse_depth =

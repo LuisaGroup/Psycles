@@ -517,8 +517,14 @@ Float3 PathKernelInvocation::constant_environment() const noexcept {
         parameters.background);
 }
 
-UInt PathSampleContext::contracted_ray_visibility() const noexcept {
-    return cycles_path_state::contract_visibility(cycles_path_visibility);
+UInt PathSampleContext::traversal_ray_visibility() const noexcept {
+    return cycles_path_state::to_contract_traversal_visibility(
+        cycles_path_visibility);
+}
+
+UInt PathSampleContext::shader_ray_visibility() const noexcept {
+    return cycles_path_state::to_contract_shader_visibility(
+        cycles_path_visibility);
 }
 
 Bool PathSampleContext::single_pass_recorded() const noexcept {
@@ -954,7 +960,7 @@ PathSampleContext::analytic_light_shader(Var<LightGpu> light,
             .curve_thickness = 0.0f,
             .curve_tangent_normal = make_float3(0.0f),
             .curve_random = 0.0f,
-            .ray_visibility = contracted_ray_visibility(),
+            .ray_visibility = shader_ray_visibility(),
             .ray_events = ray_events,
             .ray_depth = path_depth,
             .diffuse_depth = diffuse_depth,

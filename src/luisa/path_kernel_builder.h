@@ -378,7 +378,11 @@ struct PathSampleContext {
     // Traversal visibility is a pure projection of the canonical Cycles path
     // visibility. Re-materializing it at each use prevents a duplicate frame
     // field from drifting away from the state that defines it.
-    [[nodiscard]] UInt contracted_ray_visibility() const noexcept;
+    [[nodiscard]] UInt traversal_ray_visibility() const noexcept;
+    // Shader evaluation observes the canonical path classification. In
+    // particular, TRANSMIT does not erase DIFFUSE/GLOSSY as it does for BVH
+    // visibility; Cycles Light Path nodes consume this projection.
+    [[nodiscard]] UInt shader_ray_visibility() const noexcept;
     // These predicates are projections of the canonical Cycles path flags,
     // not independently mutable path state. Keeping one source of truth also
     // preserves PATH_RAY_MIS_SKIP for transparent ray-portal transitions.
