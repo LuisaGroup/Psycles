@@ -1791,6 +1791,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->light_tree_root = light_sampling.tree_root;
     data->light_tree_triangle_lookup_count = static_cast<std::uint32_t>(
         light_sampling.tree_triangle_lookup.size());
+    data->light_tree_mesh_triangle_count = static_cast<std::uint32_t>(
+        light_sampling.tree_mesh_triangles.size());
     const auto table_upload = SceneTableUploadComponent{}.upload(
         data,
         stream,
@@ -1807,6 +1809,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
          .light_tree_emitters = light_sampling.tree_emitters,
          .light_tree_emitter_mappings =
              light_sampling.tree_emitter_mappings,
+         .light_tree_triangle_emitter_mappings =
+             light_sampling.tree_triangle_emitter_mappings,
+         .light_tree_mesh_triangles =
+             light_sampling.tree_mesh_triangles,
          .light_tree_triangle_lookup =
              light_sampling.tree_triangle_lookup});
     if (!table_upload.ok()) {

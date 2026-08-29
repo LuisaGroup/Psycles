@@ -1,6 +1,7 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_direct_light_trace.h"
 #include "path_kernel_emissive_triangle.h"
+#include "cycles_shader_identity.h"
 
 #include <psycles/luisa/surface_ray.h>
 
@@ -143,8 +144,20 @@ class EmissiveMeshDirectLightProvider final : public DirectLightProvider {
                 };
             }
             $else {
+                const auto emitter =
+                    config.scene->emissive_triangle_buffer->read(
+                        selected_light.index);
                 _trace->record_failed_sample(
-                    bounce);
+                    bounce,
+                    {.emitter_id = selected_light.emitter_id,
+                     .primitive = cast<int>(
+                         emitter.cycles_primitive_index),
+                     .object = cast<int>(
+                         emitter.cycles_object_index),
+                     .visibility_flag =
+                         emitter.cycles_shader_flags &
+                         cycles_shader_identity::exclude_any,
+                     .selection_pdf = selected_light.selection_pdf});
             };
         };
     }

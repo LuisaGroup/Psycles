@@ -6,22 +6,53 @@
 
 #include <span>
 #include <string>
+#include <vector>
 
 namespace psycles::luisa_backend::detail {
 
 struct LightTreeSceneUpload {
     luisa::vector<LightTreeNodeGpu> nodes;
     luisa::vector<LightTreeEmitterGpu> emitters;
+    // Flat-distribution emitter -> top emitter/leaf.
     luisa::vector<luisa::uint2> emitter_mappings;
+    // Emissive-triangle emitter -> mesh-local emitter/leaf.
+    luisa::vector<luisa::uint2> triangle_emitter_mappings;
+    // Concatenated per-proxy local-emitter -> flat triangle emitter maps.
+    luisa::vector<luisa::uint> mesh_triangles;
     std::uint32_t root{sampling::invalid_light_tree_index};
     std::string diagnostic;
 
     [[nodiscard]] bool usable() const noexcept {
         return diagnostic.empty() &&
                root < nodes.size() &&
-               !emitters.empty() &&
-               emitter_mappings.size() == emitters.size();
+               !emitters.empty();
     }
+};
+
+struct LightTreeSubtreeInput {
+    // Local triangle ids must be a dense permutation. The hierarchy uploader
+    // retains this identity after spatial reordering.
+    std::vector<sampling::LightTreeEmitter> emitters;
+};
+
+struct LightTreeTopEmitterInput {
+    sampling::LightTreeEmitter emitter;
+    LightTreeEmitterKind kind{LightTreeEmitterKind::direct};
+    // Direct: flat distribution id. Mesh: instance index.
+    std::uint32_t payload{};
+    // Mesh-only subtree and one actual triangle id per local emitter id.
+    std::uint32_t subtree{sampling::invalid_light_tree_index};
+    std::vector<std::uint32_t> triangle_emitters;
+};
+
+struct LightTreeHierarchyInput {
+    std::vector<LightTreeSubtreeInput> subtrees;
+    // Cycles order before spatial construction: local analytic lights, mesh
+    // proxies, then distant/background emitters. Emitter ids are reassigned to
+    // this dense order by the uploader.
+    std::vector<LightTreeTopEmitterInput> top_emitters;
+    std::uint32_t distribution_emitter_count{};
+    std::uint32_t triangle_emitter_count{};
 };
 
 // Converts the renderer-neutral hierarchy into the compact device ABI. The
@@ -30,6 +61,13 @@ struct LightTreeSceneUpload {
 [[nodiscard]] LightTreeSceneUpload
 make_light_tree_scene_upload(
     std::span<const sampling::LightTreeEmitter> emitters) noexcept;
+
+// Flattens the two-level Cycles light-tree quotient. Unique mesh subtrees are
+// stored once; every mesh instance remains a distinct top-level emitter whose
+// mapping slice resolves a local triangle to the actual sampled instance.
+[[nodiscard]] LightTreeSceneUpload
+make_light_tree_hierarchy_scene_upload(
+    const LightTreeHierarchyInput &input) noexcept;
 
 [[nodiscard]] sampling::LightTreeEmitter
 make_triangle_light_tree_emitter(

@@ -94,6 +94,22 @@ private:
   CyclesLightTree _tree;
   std::uint32_t _maximum_leaf_size;
 
+  void initialize_mappings() {
+    std::vector<bool> identities(_tree.emitters.size(), false);
+    for (const auto &emitter : _tree.emitters) {
+      if (emitter.emitter_id >= identities.size() ||
+          identities[emitter.emitter_id]) {
+        throw std::invalid_argument(
+            "light-tree emitter identities must be a dense permutation");
+      }
+      identities[emitter.emitter_id] = true;
+    }
+    _tree.emitter_to_tree.assign(_tree.emitters.size(),
+                                 invalid_light_tree_index);
+    _tree.emitter_to_leaf.assign(_tree.emitters.size(),
+                                 invalid_light_tree_index);
+  }
+
   [[nodiscard]] std::uint32_t append_node(std::uint32_t parent) {
     if (_tree.nodes.size() >=
         static_cast<std::size_t>(invalid_light_tree_index)) {
@@ -235,23 +251,11 @@ public:
     }
   }
 
-  [[nodiscard]] CyclesLightTree build() {
+  [[nodiscard]] CyclesLightTree build_top_level() {
     if (_tree.emitters.empty()) {
       return std::move(_tree);
     }
-    std::vector<bool> identities(_tree.emitters.size(), false);
-    for (const auto &emitter : _tree.emitters) {
-      if (emitter.emitter_id >= identities.size() ||
-          identities[emitter.emitter_id]) {
-        throw std::invalid_argument(
-            "light-tree emitter identities must be a dense permutation");
-      }
-      identities[emitter.emitter_id] = true;
-    }
-    _tree.emitter_to_tree.assign(_tree.emitters.size(),
-                                 invalid_light_tree_index);
-    _tree.emitter_to_leaf.assign(_tree.emitters.size(),
-                                 invalid_light_tree_index);
+    initialize_mappings();
 
     const auto distant_begin = static_cast<std::uint32_t>(
         std::stable_partition(_tree.emitters.begin(), _tree.emitters.end(),
@@ -282,15 +286,36 @@ public:
         _tree.nodes[local].measure, distant_node.measure);
     return std::move(_tree);
   }
+
+  [[nodiscard]] CyclesLightTree build_subtree() {
+    if (_tree.emitters.empty()) {
+      return std::move(_tree);
+    }
+    initialize_mappings();
+    if (std::any_of(_tree.emitters.begin(), _tree.emitters.end(),
+                    [](const LightTreeEmitter &emitter) noexcept {
+                      return emitter.distant;
+                    })) {
+      throw std::invalid_argument(
+          "mesh light subtrees cannot contain distant emitters");
+    }
+    _tree.root = build_local(
+        0u, static_cast<std::uint32_t>(_tree.emitters.size()),
+        invalid_light_tree_index);
+    return std::move(_tree);
+  }
 };
 
 } // namespace
 
-bool CyclesLightTree::usable() const noexcept {
+bool CyclesLightTree::valid() const noexcept {
   return root < nodes.size() && !emitters.empty() &&
          emitter_to_tree.size() == emitters.size() &&
-         emitter_to_leaf.size() == emitters.size() &&
-         nodes[root].measure.energy > 0.0f;
+         emitter_to_leaf.size() == emitters.size();
+}
+
+bool CyclesLightTree::usable() const noexcept {
+  return valid() && nodes[root].measure.energy > 0.0f;
 }
 
 LightTreeBounds merge_light_tree_bounds(const LightTreeBounds &a,
@@ -402,7 +427,13 @@ float light_tree_measure_cost(const LightTreeMeasure &measure) noexcept {
 CyclesLightTree
 build_cycles_light_tree(std::span<const LightTreeEmitter> emitters,
                         std::uint32_t max_emitters_per_leaf) {
-  return Builder{emitters, max_emitters_per_leaf}.build();
+  return Builder{emitters, max_emitters_per_leaf}.build_top_level();
+}
+
+CyclesLightTree
+build_cycles_light_subtree(std::span<const LightTreeEmitter> emitters,
+                           std::uint32_t max_emitters_per_leaf) {
+  return Builder{emitters, max_emitters_per_leaf}.build_subtree();
 }
 
 } // namespace psycles::sampling

@@ -59,6 +59,7 @@ struct CyclesLightTree {
   std::vector<std::uint32_t> emitter_to_leaf;
   std::uint32_t root{invalid_light_tree_index};
 
+  [[nodiscard]] bool valid() const noexcept;
   [[nodiscard]] bool usable() const noexcept;
 };
 
@@ -83,5 +84,12 @@ light_tree_measure_cost(const LightTreeMeasure &measure) noexcept;
 [[nodiscard]] CyclesLightTree
 build_cycles_light_tree(std::span<const LightTreeEmitter> emitters,
                         std::uint32_t max_emitters_per_leaf = 8u);
+
+// Builds one mesh-local subtree. Unlike the top-level hierarchy this has no
+// synthetic local/distant fork: every input must be local, and root is the
+// actual recursive-build root used after a mesh-instance transition.
+[[nodiscard]] CyclesLightTree
+build_cycles_light_subtree(std::span<const LightTreeEmitter> emitters,
+                           std::uint32_t max_emitters_per_leaf = 8u);
 
 } // namespace psycles::sampling

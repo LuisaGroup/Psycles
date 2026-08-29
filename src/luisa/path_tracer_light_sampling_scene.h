@@ -16,6 +16,8 @@ struct LightSamplingSceneUpload {
     luisa::vector<LightTreeNodeGpu> tree_nodes;
     luisa::vector<LightTreeEmitterGpu> tree_emitters;
     luisa::vector<luisa::uint2> tree_emitter_mappings;
+    luisa::vector<luisa::uint2> tree_triangle_emitter_mappings;
+    luisa::vector<luisa::uint> tree_mesh_triangles;
     luisa::vector<luisa::uint4> tree_triangle_lookup;
     std::uint32_t distribution_count{};
     float triangle_area_pdf{};
@@ -31,7 +33,7 @@ struct LightSamplingSceneUpload {
     [[nodiscard]] bool tree_usable() const noexcept {
         return tree_root < tree_nodes.size() &&
                !tree_emitters.empty() &&
-               tree_emitter_mappings.size() == tree_emitters.size();
+               tree_emitter_mappings.size() == distribution_count;
     }
 };
 

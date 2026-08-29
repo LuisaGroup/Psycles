@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <exception>
-#include <limits>
+#include <stdexcept>
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -124,6 +124,96 @@ constexpr auto light_tree_half_pi = 0.5f * light_tree_pi;
         measure.orientation.axis.y,
         measure.orientation.axis.z,
         measure.orientation.theta_e);
+}
+
+struct DeviceEmitterIdentity {
+    LightTreeEmitterKind kind{LightTreeEmitterKind::direct};
+    std::uint32_t payload_0{};
+    std::uint32_t payload_1{};
+    std::uint32_t payload_2{};
+};
+
+struct AppendedTree {
+    std::uint32_t root{sampling::invalid_light_tree_index};
+    std::vector<luisa::uint2> mappings;
+};
+
+[[nodiscard]] std::uint32_t offset_index(
+    std::uint32_t index,
+    std::uint32_t offset) noexcept {
+    return index == sampling::invalid_light_tree_index
+               ? sampling::invalid_light_tree_index
+               : index + offset;
+}
+
+[[nodiscard]] AppendedTree append_tree(
+    LightTreeSceneUpload &result,
+    const sampling::CyclesLightTree &tree,
+    std::span<const DeviceEmitterIdentity> identities) {
+    if (!tree.valid() || identities.size() != tree.emitters.size()) {
+        throw std::invalid_argument("invalid light-tree append input");
+    }
+    if (result.nodes.size() + tree.nodes.size() >=
+            static_cast<std::size_t>(sampling::invalid_light_tree_index) ||
+        result.emitters.size() + tree.emitters.size() >=
+            static_cast<std::size_t>(sampling::invalid_light_tree_index)) {
+        throw std::length_error("light tree exceeds the 32-bit Luisa device ABI");
+    }
+
+    const auto node_offset = static_cast<std::uint32_t>(result.nodes.size());
+    const auto emitter_offset =
+        static_cast<std::uint32_t>(result.emitters.size());
+    result.nodes.reserve(result.nodes.size() + tree.nodes.size());
+    for (const auto &node : tree.nodes) {
+        const auto distant =
+            node.kind == sampling::LightTreeNodeKind::distant;
+        result.nodes.emplace_back(LightTreeNodeGpu{
+            .bounds_min_energy = pack_min_energy(node.measure),
+            .bounds_max_theta_o = pack_max_theta_o(node.measure),
+            .cone_axis_theta_e = pack_cone_theta_e(node.measure),
+            .topology = luisa::make_uint4(
+                offset_index(node.parent, node_offset),
+                offset_index(node.left, node_offset),
+                offset_index(node.right, node_offset),
+                static_cast<std::uint32_t>(node.kind)),
+            .emitters = luisa::make_uint4(
+                node.emitter_count == 0u
+                    ? 0u
+                    : node.first_emitter + emitter_offset,
+                node.emitter_count,
+                measure_flags(node.measure, distant),
+                0u)});
+    }
+
+    result.emitters.reserve(result.emitters.size() + tree.emitters.size());
+    for (const auto &emitter : tree.emitters) {
+        const auto &identity = identities[emitter.emitter_id];
+        result.emitters.emplace_back(LightTreeEmitterGpu{
+            .bounds_min_energy = pack_min_energy(emitter.measure),
+            .bounds_max_theta_o = pack_max_theta_o(emitter.measure),
+            .cone_axis_theta_e = pack_cone_theta_e(emitter.measure),
+            .identity = luisa::make_uint4(
+                identity.payload_0,
+                measure_flags(emitter.measure, emitter.distant) |
+                    light_tree_emitter_kind_bits(identity.kind),
+                identity.payload_1,
+                identity.payload_2)});
+    }
+
+    AppendedTree appended;
+    appended.root = tree.root + node_offset;
+    appended.mappings.resize(tree.emitters.size());
+    for (std::size_t emitter = 0u; emitter < tree.emitters.size(); ++emitter) {
+        appended.mappings[emitter] = luisa::make_uint2(
+            tree.emitter_to_tree[emitter] + emitter_offset,
+            tree.emitter_to_leaf[emitter] + node_offset);
+    }
+    return appended;
+}
+
+[[nodiscard]] bool mapping_is_invalid(luisa::uint2 mapping) noexcept {
+    return mapping.x == sampling::invalid_light_tree_index ||
+           mapping.y == sampling::invalid_light_tree_index;
 }
 
 }// namespace
@@ -300,62 +390,165 @@ luisa::vector<luisa::uint4> make_light_tree_triangle_lookup(
 
 LightTreeSceneUpload make_light_tree_scene_upload(
     std::span<const sampling::LightTreeEmitter> emitters) noexcept {
+    if (emitters.size() >=
+        static_cast<std::size_t>(sampling::invalid_light_tree_index)) {
+        LightTreeSceneUpload result;
+        result.diagnostic = "light tree exceeds the 32-bit emitter ABI";
+        return result;
+    }
+    LightTreeHierarchyInput input;
+    input.distribution_emitter_count =
+        static_cast<std::uint32_t>(emitters.size());
+    input.top_emitters.reserve(emitters.size());
+    for (std::size_t index = 0u; index < emitters.size(); ++index) {
+        auto emitter = emitters[index];
+        emitter.emitter_id = static_cast<std::uint32_t>(index);
+        input.top_emitters.emplace_back(LightTreeTopEmitterInput{
+            .emitter = emitter,
+            .kind = LightTreeEmitterKind::direct,
+            .payload = static_cast<std::uint32_t>(index)});
+    }
+    return make_light_tree_hierarchy_scene_upload(input);
+}
+
+LightTreeSceneUpload make_light_tree_hierarchy_scene_upload(
+    const LightTreeHierarchyInput &input) noexcept {
     LightTreeSceneUpload result;
     try {
-        const auto tree = sampling::build_cycles_light_tree(emitters);
-        if (!tree.usable()) {
+        if (input.distribution_emitter_count >=
+                sampling::invalid_light_tree_index ||
+            input.triangle_emitter_count >
+                input.distribution_emitter_count) {
+            result.diagnostic = "invalid light-tree emitter population";
             return result;
         }
-        if (tree.nodes.size() >
-                std::numeric_limits<std::uint32_t>::max() ||
-            tree.emitters.size() >
-                std::numeric_limits<std::uint32_t>::max()) {
-            result.diagnostic =
-                "light tree exceeds the 32-bit Luisa device ABI";
+        if (input.top_emitters.empty()) {
             return result;
         }
 
-        result.root = tree.root;
-        result.nodes.reserve(tree.nodes.size());
-        for (const auto &node : tree.nodes) {
-            const auto distant =
-                node.kind == sampling::LightTreeNodeKind::distant;
-            result.nodes.emplace_back(LightTreeNodeGpu{
-                .bounds_min_energy = pack_min_energy(node.measure),
-                .bounds_max_theta_o = pack_max_theta_o(node.measure),
-                .cone_axis_theta_e = pack_cone_theta_e(node.measure),
-                .topology = luisa::make_uint4(
-                    node.parent,
-                    node.left,
-                    node.right,
-                    static_cast<std::uint32_t>(node.kind)),
-                .emitters = luisa::make_uint4(
-                    node.first_emitter,
-                    node.emitter_count,
-                    measure_flags(node.measure, distant),
-                    0u)});
+        std::vector<AppendedTree> subtrees;
+        subtrees.reserve(input.subtrees.size());
+        for (const auto &subtree_input : input.subtrees) {
+            const auto tree = sampling::build_cycles_light_subtree(
+                subtree_input.emitters);
+            if (!tree.valid()) {
+                throw std::invalid_argument("empty mesh light subtree");
+            }
+            std::vector<DeviceEmitterIdentity> identities(
+                subtree_input.emitters.size());
+            for (std::size_t emitter = 0u;
+                 emitter < identities.size();
+                 ++emitter) {
+                identities[emitter] = {
+                    .kind = LightTreeEmitterKind::mesh_triangle,
+                    .payload_0 = static_cast<std::uint32_t>(emitter)};
+            }
+            subtrees.emplace_back(append_tree(result, tree, identities));
         }
 
-        result.emitters.reserve(tree.emitters.size());
-        for (const auto &emitter : tree.emitters) {
-            result.emitters.emplace_back(LightTreeEmitterGpu{
-                .bounds_min_energy = pack_min_energy(emitter.measure),
-                .bounds_max_theta_o = pack_max_theta_o(emitter.measure),
-                .cone_axis_theta_e = pack_cone_theta_e(emitter.measure),
-                .identity = luisa::make_uint4(
-                    emitter.emitter_id,
-                    measure_flags(emitter.measure, emitter.distant),
-                    0u,
-                    0u)});
+        std::vector<sampling::LightTreeEmitter> top_emitters;
+        std::vector<DeviceEmitterIdentity> top_identities;
+        top_emitters.reserve(input.top_emitters.size());
+        top_identities.reserve(input.top_emitters.size());
+        for (std::size_t index = 0u;
+             index < input.top_emitters.size();
+             ++index) {
+            const auto &source = input.top_emitters[index];
+            auto emitter = source.emitter;
+            emitter.emitter_id = static_cast<std::uint32_t>(index);
+            top_emitters.emplace_back(emitter);
+            if (source.kind == LightTreeEmitterKind::direct) {
+                if (source.payload >= input.distribution_emitter_count ||
+                    source.subtree != sampling::invalid_light_tree_index ||
+                    !source.triangle_emitters.empty()) {
+                    throw std::invalid_argument(
+                        "invalid direct light-tree emitter metadata");
+                }
+                top_identities.emplace_back(DeviceEmitterIdentity{
+                    .kind = source.kind,
+                    .payload_0 = source.payload});
+                continue;
+            }
+            if (source.kind != LightTreeEmitterKind::mesh_instance ||
+                source.subtree >= subtrees.size() ||
+                source.triangle_emitters.size() !=
+                    input.subtrees[source.subtree].emitters.size()) {
+                throw std::invalid_argument(
+                    "invalid mesh light-tree emitter metadata");
+            }
+            if (result.mesh_triangles.size() +
+                    source.triangle_emitters.size() >=
+                static_cast<std::size_t>(sampling::invalid_light_tree_index)) {
+                throw std::length_error(
+                    "mesh light mapping exceeds the 32-bit device ABI");
+            }
+            const auto mapping_offset =
+                static_cast<std::uint32_t>(result.mesh_triangles.size());
+            result.mesh_triangles.insert(
+                result.mesh_triangles.end(),
+                source.triangle_emitters.begin(),
+                source.triangle_emitters.end());
+            top_identities.emplace_back(DeviceEmitterIdentity{
+                .kind = source.kind,
+                .payload_0 = source.payload,
+                .payload_1 = subtrees[source.subtree].root,
+                .payload_2 = mapping_offset});
         }
 
-        result.emitter_mappings.reserve(tree.emitters.size());
-        for (std::size_t emitter_id = 0u;
-             emitter_id < tree.emitters.size();
-             ++emitter_id) {
-            result.emitter_mappings.emplace_back(
-                tree.emitter_to_tree[emitter_id],
-                tree.emitter_to_leaf[emitter_id]);
+        const auto top_tree =
+            sampling::build_cycles_light_tree(top_emitters);
+        if (!top_tree.valid()) {
+            throw std::invalid_argument("invalid top-level light tree");
+        }
+        const auto top = append_tree(result, top_tree, top_identities);
+        result.root = top.root;
+        const auto invalid_mapping = luisa::make_uint2(
+            sampling::invalid_light_tree_index,
+            sampling::invalid_light_tree_index);
+        result.emitter_mappings.assign(
+            input.distribution_emitter_count, invalid_mapping);
+        result.triangle_emitter_mappings.assign(
+            input.triangle_emitter_count, invalid_mapping);
+
+        for (std::size_t index = 0u;
+             index < input.top_emitters.size();
+             ++index) {
+            const auto &source = input.top_emitters[index];
+            if (source.kind == LightTreeEmitterKind::direct) {
+                auto &mapping = result.emitter_mappings[source.payload];
+                if (!mapping_is_invalid(mapping)) {
+                    throw std::invalid_argument(
+                        "duplicate direct light-tree emitter mapping");
+                }
+                mapping = top.mappings[index];
+                continue;
+            }
+            for (std::size_t local = 0u;
+                 local < source.triangle_emitters.size();
+                 ++local) {
+                const auto triangle = source.triangle_emitters[local];
+                if (triangle >= input.triangle_emitter_count ||
+                    !mapping_is_invalid(result.emitter_mappings[triangle]) ||
+                    !mapping_is_invalid(
+                        result.triangle_emitter_mappings[triangle])) {
+                    throw std::invalid_argument(
+                        "invalid or duplicate mesh triangle mapping");
+                }
+                result.emitter_mappings[triangle] = top.mappings[index];
+                result.triangle_emitter_mappings[triangle] =
+                    subtrees[source.subtree].mappings[local];
+            }
+        }
+        if (std::any_of(
+                result.emitter_mappings.begin(),
+                result.emitter_mappings.end(),
+                mapping_is_invalid) ||
+            std::any_of(
+                result.triangle_emitter_mappings.begin(),
+                result.triangle_emitter_mappings.end(),
+                mapping_is_invalid)) {
+            throw std::invalid_argument(
+                "light-tree hierarchy does not cover every emitter");
         }
     } catch (const std::exception &error) {
         result = {};

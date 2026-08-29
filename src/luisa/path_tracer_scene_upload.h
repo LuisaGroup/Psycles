@@ -55,6 +55,8 @@ struct SceneTableUploadInput {
     luisa::vector<LightTreeNodeGpu> &light_tree_nodes;
     luisa::vector<LightTreeEmitterGpu> &light_tree_emitters;
     luisa::vector<luisa::uint2> &light_tree_emitter_mappings;
+    luisa::vector<luisa::uint2> &light_tree_triangle_emitter_mappings;
+    luisa::vector<luisa::uint> &light_tree_mesh_triangles;
     luisa::vector<luisa::uint4> &light_tree_triangle_lookup;
 };
 

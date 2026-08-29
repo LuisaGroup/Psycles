@@ -459,6 +459,71 @@ constexpr std::string_view zero_emission_attribute{
     return scene;
 }
 
+[[nodiscard]] SceneSnapshot make_rejected_light_scene() {
+    auto scene = make_scene();
+    scene.revision = 9u;
+    constexpr auto surface_p = Vec3f{
+        -17.131805419921875f,
+        -1.9431736469268799f,
+        3.219893217086792f};
+    constexpr auto surface_n = Vec3f{
+        0.7072972059249878f,
+        -0.7069162726402283f,
+        0.0f};
+    constexpr auto surface_x = Vec3f{0.0f, 0.0f, 1.0f};
+    constexpr auto surface_y = Vec3f{
+        -0.7069162726402283f,
+        -0.7072972059249878f,
+        0.0f};
+    auto surface_transform = Mat4f{};
+    surface_transform.elements = {
+        surface_x.x, surface_x.y, surface_x.z, 0.0f,
+        surface_y.x, surface_y.y, surface_y.z, 0.0f,
+        surface_n.x, surface_n.y, surface_n.z, 0.0f,
+        surface_p.x, surface_p.y, surface_p.z, 1.0f};
+    scene.instances.begin()->second.transform = surface_transform;
+
+    auto &camera = scene.cameras.begin()->second;
+    camera.transform = surface_transform;
+    camera.transform.elements[12u] += 0.25f * surface_n.x;
+    camera.transform.elements[13u] += 0.25f * surface_n.y;
+    camera.transform.elements[14u] += 0.25f * surface_n.z;
+    camera.orthographic_scale = 1.0e-4f;
+
+    auto &light = scene.lights.begin()->second;
+    light.name = "Splash Filler Stairs failed area proposal";
+    light.transform.elements = {
+        4.243810280968319e-08f,
+        -0.9708706140518188f,
+        3.00082696469417e-08f,
+        0.0f,
+        -2.6090259552001953f,
+        -1.7050986400590773e-07f,
+        -1.826859712600708f,
+        0.0f,
+        -0.6497278809547424f,
+        2.798337950249419e-10f,
+        0.9279075860977173f,
+        0.0f,
+        -14.516785621643066f,
+        1.505018711090088f,
+        3.6264808177948f,
+        1.0f};
+    light.color = {1.0f, 1.0f, 1.0f};
+    light.power = 20.0f;
+    light.size = 1.0f;
+    light.size_y = 1.0f;
+    light.spread = pi;
+    light.normalize = true;
+    light.ellipse = false;
+    light.use_mis = false;
+    light.max_bounces = 1024u;
+    light.is_shadow_catcher = true;
+    light.cycles_shader_index = 20u;
+    light.cycles_object_index = 256u;
+    return scene;
+}
+
 [[nodiscard]] SceneSnapshot make_mesh_light_scene() {
     constexpr MaterialId emitter_material{6u};
     constexpr GeometryId emitter_geometry{7u};
@@ -742,6 +807,63 @@ struct DirectLightTraceOracle {
                       << field.name << '\n';
             passed = false;
         }
+    }
+    return passed;
+}
+
+[[nodiscard]] bool validate_direct_light_failed_sample(
+    const CapturingPathTraceSink &sink,
+    std::string_view backend,
+    std::string_view label) {
+    using psycles::luisa_backend::path_trace_schema::EventSlot;
+    using psycles::luisa_backend::path_trace_schema::index;
+    if (!sink.trace()) {
+        std::cerr << label
+                  << " path trace was not delivered on "
+                  << backend << '\n';
+        return false;
+    }
+    const auto &trace = *sink.trace();
+    const auto &slot = [&](EventSlot field) -> const auto & {
+        return trace.slots[index(0u, field)];
+    };
+    auto passed = true;
+    const auto require = [&](bool condition,
+                             std::string_view field) {
+        if (!condition) {
+            std::cerr << "Cycles " << label
+                      << " failed-sample trace regression on "
+                      << backend << " field " << field
+                      << '\n';
+            passed = false;
+        }
+    };
+    const auto &meta = slot(EventSlot::light_meta);
+    const auto &identity = slot(EventSlot::light_id);
+    const auto &pdf = slot(EventSlot::light_pdf);
+    require(meta[3u] == 1.0f &&
+                meta[0u] == -1.0f &&
+                meta[1u] == 0.0f &&
+                meta[2u] == -1.0f,
+            "light_meta");
+    require(identity[3u] == 1.0f &&
+                identity[0u] == 256.0f &&
+                identity[1u] == 0.0f,
+            "light_id");
+    require(pdf[3u] == 1.0f &&
+                pdf[0u] == 0.0f &&
+                approximately_equal(pdf[1u], 1.0f) &&
+                pdf[2u] == 0.0f,
+            "light_pdf");
+    constexpr std::array absent_fields{
+        EventSlot::light_shader,
+        EventSlot::light_d,
+        EventSlot::light_p,
+        EventSlot::light_ng,
+        EventSlot::light_eval};
+    for (const auto field : absent_fields) {
+        require(slot(field)[3u] == 0.0f,
+                "post-selection field");
     }
     return passed;
 }
@@ -1080,6 +1202,27 @@ int main(int argc, char **argv) {
              .shader_low = 5.0f,
              .shader_high = 20736.0f,
              .environment = false})) {
+        return EXIT_FAILURE;
+    }
+
+    // This is the actual Splash Filler Stairs relation from sample 591. The
+    // Light Tree conservatively assigns positive importance, then the exact
+    // one-sided area shape rejects the point. Cycles still exposes the
+    // selected emitter and selection PDF, while no shape, shader or transport
+    // record exists. This distinguishes a failed proposal from an NEE stage
+    // that was never attempted.
+    psycles::io::MemoryOutputSink rejected_light_sink;
+    trace_sink->reset();
+    if (!render_fixture(
+            renderer,
+            make_rejected_light_scene(),
+            light_tree_settings,
+            "Splash Filler Stairs failed area proposal",
+            rejected_light_sink) ||
+        !validate_direct_light_failed_sample(
+            *trace_sink,
+            backend,
+            "Splash Filler Stairs failed area proposal")) {
         return EXIT_FAILURE;
     }
 

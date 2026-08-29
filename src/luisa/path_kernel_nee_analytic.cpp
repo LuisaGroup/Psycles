@@ -227,7 +227,13 @@ class AnalyticDirectLightProvider final : public DirectLightProvider {
                      .valid = true});
             }
             $else {
-                _trace->record_failed_sample(bounce);
+                _trace->record_failed_sample(
+                    bounce,
+                    {.emitter_id = selected_light.emitter_id,
+                     .primitive = ~cast<int>(light_index),
+                     .object = cast<int>(light.cycles_object_index),
+                     .visibility_flag = 0u,
+                     .selection_pdf = selected_light.selection_pdf});
             };
         };
     }

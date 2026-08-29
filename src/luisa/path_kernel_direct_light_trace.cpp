@@ -15,7 +15,9 @@ class NullDirectLightTraceRecorder final
 
   public:
     void record_failed_sample(
-        PathBounceContext &) const noexcept override {}
+        PathBounceContext &,
+        const DirectLightFailedSampleRecord &)
+        const noexcept override {}
 
     void record_sample(
         PathBounceContext &,
@@ -51,12 +53,32 @@ class CyclesDirectLightTraceRecorder final
 
   public:
     void record_failed_sample(
-        PathBounceContext &bounce)
+        PathBounceContext &bounce,
+        const DirectLightFailedSampleRecord &record)
         const noexcept override {
-        bounce.sample.trace_write_event(
-            bounce.path_step,
+        auto &sample = bounce.sample;
+        const auto &event = bounce.path_step;
+        sample.trace_write_event(
+            event,
             path_trace_schema::EventSlot::light_meta,
-            make_float3(-1.0f));
+            make_float3(
+                -1.0f,
+                cast<float>(record.emitter_id),
+                cast<float>(record.primitive)));
+        sample.trace_write_event(
+            event,
+            path_trace_schema::EventSlot::light_id,
+            make_float3(
+                cast<float>(record.object),
+                cast<float>(record.visibility_flag),
+                0.0f));
+        sample.trace_write_event(
+            event,
+            path_trace_schema::EventSlot::light_pdf,
+            make_float3(
+                0.0f,
+                record.selection_pdf,
+                0.0f));
     }
 
     void record_sample(

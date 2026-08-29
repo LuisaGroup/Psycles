@@ -22,6 +22,19 @@ struct DirectLightSampleRecord {
     Float distance;
 };
 
+// Cycles exposes discrete Light Tree/CDF selection even when sampling the
+// selected emitter subsequently fails. Keeping this record separate from a
+// successful sample makes the boundary explicit: the fields below are
+// defined by selection, while position, direction, shader and conditional
+// shape PDF are not.
+struct DirectLightFailedSampleRecord {
+    UInt emitter_id;
+    Int primitive;
+    Int object;
+    UInt visibility_flag;
+    Float selection_pdf;
+};
+
 struct DirectLightEvaluationRecord {
     Float distance;
     Float bsdf_pdf;
@@ -68,7 +81,9 @@ class DirectLightTraceRecorder {
     // light_sample_from_position boundary but returned false. An NEE stage
     // which is disabled before that boundary must not call this method.
     virtual void record_failed_sample(
-        PathBounceContext &bounce) const noexcept = 0;
+        PathBounceContext &bounce,
+        const DirectLightFailedSampleRecord &record)
+        const noexcept = 0;
     virtual void record_sample(
         PathBounceContext &bounce,
         const DirectLightSampleRecord &record)

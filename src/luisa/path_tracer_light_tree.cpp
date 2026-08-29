@@ -26,6 +26,46 @@ constexpr auto safe_distance = 1.0e-20f;
         squared_length > safe_distance);
 }
 
+[[nodiscard]] UInt emitter_kind(
+    Var<LightTreeEmitterGpu> emitter) noexcept {
+    return (emitter.identity.y & light_tree_emitter_kind_mask) >>
+           light_tree_emitter_kind_shift;
+}
+
+void to_mesh_local_space(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    UInt instance_index,
+    Float3 &point,
+    Float3 &normal_or_direction,
+    Float &distance,
+    bool in_volume) noexcept {
+    const auto instance = scene->instance_buffer->read(instance_index);
+    const auto world_to_object = instance.cycles_world_to_object;
+    point = (world_to_object * make_float4(point, 1.0f)).xyz();
+    if (in_volume) {
+        const auto local_direction =
+            (world_to_object * make_float4(normal_or_direction, 0.0f)).xyz();
+        const auto scale = sqrt(dot(local_direction, local_direction));
+        normal_or_direction = select(
+            normal_or_direction,
+            local_direction / max(scale, safe_distance),
+            scale > safe_distance);
+        distance *= scale;
+    } else {
+        const auto object_to_world =
+            scene->accel->instance_transform(instance_index);
+        const auto local_normal =
+            (transpose(object_to_world) *
+             make_float4(normal_or_direction, 0.0f))
+                .xyz();
+        const auto squared_length = dot(local_normal, local_normal);
+        normal_or_direction = select(
+            normal_or_direction,
+            local_normal * rsqrt(max(squared_length, safe_distance)),
+            squared_length > safe_distance);
+    }
+}
+
 [[nodiscard]] Float sin_from_cos(Float cosine) noexcept {
     return sqrt(max(1.0f - cosine * cosine, 0.0f));
 }
@@ -565,6 +605,8 @@ void initialize_invalid_light_selection(
         Float selection_pdf = 1.0f;
         UInt node_index = scene->light_tree_root;
         UInt selected = sampling::invalid_light_tree_index;
+        UInt mesh_triangle_offset = 0u;
+        Bool inside_mesh = false;
         Bool active = true;
         UInt steps = 0u;
         $while (active & (steps <= scene->light_tree_node_count)) {
@@ -587,6 +629,28 @@ void initialize_invalid_light_selection(
                     selected,
                     selection_pdf);
                 active = false;
+                $if (selected != sampling::invalid_light_tree_index) {
+                    const auto emitter =
+                        scene->light_tree_emitter_buffer->read(selected);
+                    if (scene->light_tree_mesh_triangle_count > 0u) {
+                        $if (emitter_kind(emitter) ==
+                             static_cast<std::uint32_t>(
+                                 LightTreeEmitterKind::mesh_instance)) {
+                            to_mesh_local_space(
+                                scene,
+                                emitter.identity.x,
+                                point,
+                                normal_or_direction,
+                                distance,
+                                in_volume);
+                            node_index = emitter.identity.z;
+                            mesh_triangle_offset = emitter.identity.w;
+                            inside_mesh = true;
+                            selected = sampling::invalid_light_tree_index;
+                            active = node_index < scene->light_tree_node_count;
+                        };
+                    }
+                };
             }
             $else {
                 const auto probability = left_probability(
@@ -626,14 +690,125 @@ void initialize_invalid_light_selection(
         $if (selected != sampling::invalid_light_tree_index) {
             Var<LightTreeEmitterGpu> emitter =
                 scene->light_tree_emitter_buffer->read(selected);
-            $if (emitter.identity.x < scene->light_distribution_count) {
+            UInt distribution_emitter = sampling::invalid_light_tree_index;
+            const auto kind = emitter_kind(emitter);
+            $if (kind == static_cast<std::uint32_t>(
+                             LightTreeEmitterKind::direct)) {
+                distribution_emitter = emitter.identity.x;
+            };
+            if (scene->light_tree_mesh_triangle_count > 0u) {
+                $if (inside_mesh &
+                     (kind == static_cast<std::uint32_t>(
+                                  LightTreeEmitterKind::mesh_triangle))) {
+                    const auto mapping =
+                        mesh_triangle_offset + emitter.identity.x;
+                    $if (mapping < scene->light_tree_mesh_triangle_count) {
+                        distribution_emitter =
+                            scene->light_tree_mesh_triangle_buffer->read(mapping);
+                    };
+                };
+            }
+            $if (distribution_emitter < scene->light_distribution_count) {
                 result = scene->light_distribution_buffer->read(
-                    emitter.identity.x);
+                    distribution_emitter);
                 result.selection_pdf = selection_pdf;
             };
         };
         return result;
     };
+}
+
+[[nodiscard]] Float tree_path_pdf(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    UInt target_emitter,
+    UInt leaf_index,
+    UInt root_index,
+    Float3 point,
+    Float3 normal_or_direction,
+    Float distance,
+    Bool has_transmission,
+    bool in_volume) noexcept {
+    Float result = 0.0f;
+    $if ((target_emitter < scene->light_tree_emitter_count) &
+         (leaf_index < scene->light_tree_node_count) &
+         (root_index < scene->light_tree_node_count)) {
+        const auto leaf = scene->light_tree_node_buffer->read(leaf_index);
+        Float target_maximum = 0.0f;
+        Float target_minimum = 0.0f;
+        Float total_maximum = 0.0f;
+        Float total_minimum = 0.0f;
+        UInt positive_count = 0u;
+        $for (i, leaf.emitters.y) {
+            const auto current_emitter = leaf.emitters.x + i;
+            const auto importance = emitter_importance(
+                scene,
+                current_emitter,
+                point,
+                normal_or_direction,
+                distance,
+                has_transmission,
+                in_volume);
+            total_maximum += importance.x;
+            total_minimum += importance.y;
+            positive_count += cast<uint>(importance.x > 0.0f);
+            $if (current_emitter == target_emitter) {
+                target_maximum = importance.x;
+                target_minimum = importance.y;
+            };
+        };
+        $if (target_maximum > 0.0f) {
+            result = 0.5f *
+                     (target_maximum / max(total_maximum, safe_distance) +
+                      select(
+                          1.0f / max(cast<float>(positive_count), 1.0f),
+                          target_minimum /
+                              max(total_minimum, safe_distance),
+                          total_minimum > 0.0f));
+            UInt current_node = leaf_index;
+            UInt steps = 0u;
+            Bool valid = true;
+            $while (valid & (current_node != root_index) &
+                    (steps <= scene->light_tree_node_count)) {
+                steps += 1u;
+                const auto parent_index =
+                    scene->light_tree_node_buffer
+                        ->read(current_node)
+                        .topology.x;
+                $if (parent_index >= scene->light_tree_node_count) {
+                    valid = false;
+                    result = 0.0f;
+                }
+                $else {
+                    const auto parent =
+                        scene->light_tree_node_buffer->read(parent_index);
+                    const auto probability = left_probability(
+                        scene,
+                        parent.topology.y,
+                        parent.topology.z,
+                        point,
+                        normal_or_direction,
+                        distance,
+                        has_transmission,
+                        in_volume);
+                    $if (probability.y <= 0.0f) {
+                        valid = false;
+                        result = 0.0f;
+                    }
+                    $else {
+                        result *= select(
+                            1.0f - probability.x,
+                            probability.x,
+                            current_node == parent.topology.y);
+                        current_node = parent_index;
+                    };
+                };
+            };
+            $if (current_node != root_index) {
+                result = 0.0f;
+            };
+        };
+    };
+    return result;
 }
 
 [[nodiscard]] LightTreePdfCallable make_pdf_callable(
@@ -651,93 +826,52 @@ void initialize_invalid_light_selection(
             return result;
         }
 
-        $if (emitter_id < scene->light_tree_emitter_count) {
-            const auto mapping =
+        $if (emitter_id < scene->light_distribution_count) {
+            const auto top =
                 scene->light_tree_emitter_mapping_buffer->read(emitter_id);
-            const auto target_emitter = mapping.x;
-            UInt current_node = mapping.y;
-            $if ((target_emitter < scene->light_tree_emitter_count) &
-                 (current_node < scene->light_tree_node_count)) {
-                Var<LightTreeNodeGpu> leaf =
-                    scene->light_tree_node_buffer->read(current_node);
-                Float target_maximum = 0.0f;
-                Float target_minimum = 0.0f;
-                Float total_maximum = 0.0f;
-                Float total_minimum = 0.0f;
-                UInt positive_count = 0u;
-                $for (i, leaf.emitters.y) {
-                    const auto current_emitter = leaf.emitters.x + i;
-                    const auto importance = emitter_importance(
+            result = tree_path_pdf(
+                scene,
+                top.x,
+                top.y,
+                scene->light_tree_root,
+                point,
+                normal_or_direction,
+                distance,
+                has_transmission,
+                in_volume);
+            if (scene->emissive_triangle_count > 0u) {
+                $if (emitter_id < scene->emissive_triangle_count) {
+                    const auto proxy =
+                        scene->light_tree_emitter_buffer->read(top.x);
+                    const auto local = scene
+                                           ->light_tree_triangle_emitter_mapping_buffer
+                                           ->read(emitter_id);
+                    Float3 local_point = point;
+                    Float3 local_normal_or_direction = normal_or_direction;
+                    Float local_distance = distance;
+                    to_mesh_local_space(
                         scene,
-                        current_emitter,
-                        point,
-                        normal_or_direction,
-                        distance,
+                        proxy.identity.x,
+                        local_point,
+                        local_normal_or_direction,
+                        local_distance,
+                        in_volume);
+                    const auto local_pdf = tree_path_pdf(
+                        scene,
+                        local.x,
+                        local.y,
+                        proxy.identity.z,
+                        local_point,
+                        local_normal_or_direction,
+                        local_distance,
                         has_transmission,
                         in_volume);
-                    total_maximum += importance.x;
-                    total_minimum += importance.y;
-                    positive_count += cast<uint>(importance.x > 0.0f);
-                    $if (current_emitter == target_emitter) {
-                        target_maximum = importance.x;
-                        target_minimum = importance.y;
-                    };
+                    const auto proxy_is_mesh =
+                        emitter_kind(proxy) == static_cast<std::uint32_t>(
+                                                   LightTreeEmitterKind::mesh_instance);
+                    result = select(0.0f, result * local_pdf, proxy_is_mesh);
                 };
-                $if (target_maximum > 0.0f) {
-                    result = 0.5f *
-                             (target_maximum /
-                                  max(total_maximum, safe_distance) +
-                              select(
-                                  1.0f /
-                                      max(cast<float>(positive_count), 1.0f),
-                                  target_minimum /
-                                      max(total_minimum, safe_distance),
-                                  total_minimum > 0.0f));
-                    UInt steps = 0u;
-                    Bool valid = true;
-                    $while (valid &
-                            (current_node != scene->light_tree_root) &
-                            (steps <= scene->light_tree_node_count)) {
-                        steps += 1u;
-                        const auto parent_index =
-                            scene->light_tree_node_buffer
-                                ->read(current_node)
-                                .topology.x;
-                        $if (parent_index >= scene->light_tree_node_count) {
-                            valid = false;
-                            result = 0.0f;
-                        }
-                        $else {
-                            Var<LightTreeNodeGpu> parent =
-                                scene->light_tree_node_buffer->read(
-                                    parent_index);
-                            const auto probability = left_probability(
-                                scene,
-                                parent.topology.y,
-                                parent.topology.z,
-                                point,
-                                normal_or_direction,
-                                distance,
-                                has_transmission,
-                                in_volume);
-                            $if (probability.y <= 0.0f) {
-                                valid = false;
-                                result = 0.0f;
-                            }
-                            $else {
-                                result *= select(
-                                    1.0f - probability.x,
-                                    probability.x,
-                                    current_node == parent.topology.y);
-                                current_node = parent_index;
-                            };
-                        };
-                    };
-                    $if (current_node != scene->light_tree_root) {
-                        result = 0.0f;
-                    };
-                };
-            };
+            }
         };
         return result;
     };
