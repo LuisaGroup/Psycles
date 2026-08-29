@@ -1,7 +1,6 @@
 #include "path_tracer_surface_value_family.h"
+#include "path_tracer_surface_value_numeric_family.h"
 #include "path_tracer_surface_value_texture_family.h"
-
-#include "surface_math.h"
 
 #include <cstdlib>
 #include <utility>
@@ -221,76 +220,6 @@ void emit_convert_family(SurfaceValueOperandReader &operands,
     }
 }
 
-void emit_math_family(
-    SurfaceValueOperandReader &operands, const SurfaceValueLocalsView &locals,
-    Var<luisa::uint4> instruction,
-    const compiler::SurfaceValueStaticVariant &variant) noexcept {
-    namespace operand = compiler::value_operand;
-    Float result = 0.0f;
-    switch (variant.instruction.operation) {
-        case compiler::ValueOperation::add: {
-            const auto a = operands.scalar(operand::binary::a);
-            const auto b = operands.scalar(operand::binary::b);
-            result = a + b;
-            break;
-        }
-        case compiler::ValueOperation::subtract: {
-            const auto a = operands.scalar(operand::binary::a);
-            const auto b = operands.scalar(operand::binary::b);
-            result = a - b;
-            break;
-        }
-        case compiler::ValueOperation::multiply: {
-            const auto a = operands.scalar(operand::binary::a);
-            const auto b = operands.scalar(operand::binary::b);
-            result = a * b;
-            break;
-        }
-        case compiler::ValueOperation::divide: {
-            const auto numerator = operands.scalar(operand::binary::a);
-            const auto denominator = operands.scalar(operand::binary::b);
-            result = select(0.0f, numerator / denominator,
-                            abs(denominator) > 1.0e-20f);
-            break;
-        }
-        case compiler::ValueOperation::minimum: {
-            const auto a = operands.scalar(operand::binary::a);
-            const auto b = operands.scalar(operand::binary::b);
-            result = min(a, b);
-            break;
-        }
-        case compiler::ValueOperation::maximum: {
-            const auto a = operands.scalar(operand::binary::a);
-            const auto b = operands.scalar(operand::binary::b);
-            result = max(a, b);
-            break;
-        }
-        case compiler::ValueOperation::power: {
-            const auto a = operands.scalar(operand::binary::a);
-            const auto b = operands.scalar(operand::binary::b);
-            result = pow(max(a, 0.0f), b);
-            break;
-        }
-        case compiler::ValueOperation::math: {
-            const auto immediate =
-                (instruction.x & compiler::surface_value_svm_immediate_mask) >>
-                compiler::surface_value_svm_immediate_shift;
-            const auto a = operands.scalar(operand::ternary::a);
-            const auto b = operands.scalar(operand::ternary::b);
-            const auto c = operands.scalar(operand::ternary::c);
-            result = evaluate_surface_math_svm(
-                immediate, variant.svm_immediates, a, b, c);
-            break;
-        }
-        case compiler::ValueOperation::absolute:
-            result = abs(operands.scalar(operand::unary::input));
-            break;
-        default:
-            std::abort();
-    }
-    write_surface_value_scalar(locals, instruction, std::move(result));
-}
-
 } // namespace
 
 bool emit_direct_surface_value_variant(
@@ -322,7 +251,10 @@ bool emit_direct_surface_value_variant(
                                 variant.instruction.operation);
             return true;
         case compiler::SurfaceSvmValueOpcode::math:
-            emit_math_family(operands, locals, instruction, variant);
+        case compiler::SurfaceSvmValueOpcode::vector_math:
+        case compiler::SurfaceSvmValueOpcode::clamp:
+            emit_direct_surface_numeric_family(family, locals, instruction,
+                                               variant, operands);
             return true;
         case compiler::SurfaceSvmValueOpcode::mix_color:
         case compiler::SurfaceSvmValueOpcode::rgb_ramp:

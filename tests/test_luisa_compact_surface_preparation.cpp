@@ -52,6 +52,10 @@ static_assert(surface_value_family_has_direct_evaluator(
 static_assert(surface_value_family_has_direct_evaluator(
     SurfaceSvmValueOpcode::math));
 static_assert(surface_value_family_has_direct_evaluator(
+    SurfaceSvmValueOpcode::vector_math));
+static_assert(surface_value_family_has_direct_evaluator(
+    SurfaceSvmValueOpcode::clamp));
+static_assert(surface_value_family_has_direct_evaluator(
     SurfaceSvmValueOpcode::mix_color));
 static_assert(
     surface_value_family_has_direct_evaluator(SurfaceSvmValueOpcode::rgb_ramp));
@@ -796,9 +800,23 @@ int main(int argc, char **argv) {
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_minimal_principled_graph()));
-    fixtures.emplace_back(compile_fixture(
-        compiler,
-        make_typed_clamp_graph()));
+    auto direct_clamp = compile_fixture(compiler, make_typed_clamp_graph());
+    constexpr std::array direct_clamp_operations{
+        ValueOperation::clamp01,
+        ValueOperation::clamp_range};
+    for (const auto operation : direct_clamp_operations) {
+        if (std::none_of(
+                direct_clamp.program->value_instructions().begin(),
+                direct_clamp.program->value_instructions().end(),
+                [operation](const auto &instruction) noexcept {
+                    return instruction.operation == operation;
+                })) {
+            std::cerr << "direct Clamp compact fixture lost operation "
+                      << static_cast<std::uint32_t>(operation) << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+    fixtures.emplace_back(std::move(direct_clamp));
     for (const auto &graph : make_typed_map_range_graphs()) {
         fixtures.emplace_back(compile_fixture(compiler, graph));
     }
@@ -836,6 +854,24 @@ int main(int argc, char **argv) {
         }
     }
     fixtures.emplace_back(std::move(direct_math_convert));
+    auto direct_vector_math =
+        compile_fixture(compiler, make_direct_vector_math_graph());
+    constexpr std::array direct_vector_math_operations{
+        ValueOperation::vector_math_value,
+        ValueOperation::vector_math_vector};
+    for (const auto operation : direct_vector_math_operations) {
+        if (std::none_of(
+                direct_vector_math.program->value_instructions().begin(),
+                direct_vector_math.program->value_instructions().end(),
+                [operation](const auto &instruction) noexcept {
+                    return instruction.operation == operation;
+                })) {
+            std::cerr << "direct Vector Math compact fixture lost operation "
+                      << static_cast<std::uint32_t>(operation) << '\n';
+            return EXIT_FAILURE;
+        }
+    }
+    fixtures.emplace_back(std::move(direct_vector_math));
     constexpr std::array direct_texture_operations{
         ValueOperation::mapping, ValueOperation::image_color,
         ValueOperation::image_alpha, ValueOperation::color_ramp,
