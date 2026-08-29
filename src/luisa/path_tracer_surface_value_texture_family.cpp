@@ -108,12 +108,13 @@ void emit_mapping_family(const ShaderServices &services,
         result_bank(variant) != compiler::SurfaceValueBank::vector) {
         std::abort();
     }
+    const auto vector = operands.vector(operand::mapping::vector);
+    const auto location = operands.vector(operand::mapping::location);
+    const auto rotation = operands.vector(operand::mapping::rotation);
+    const auto scale = operands.vector(operand::mapping::scale);
     const auto mapped = evaluate_surface_mapping_svm(
         services, surface_value_immediate(instruction), variant.svm_immediates,
-        operands.vector(operand::mapping::vector),
-        operands.vector(operand::mapping::location),
-        operands.vector(operand::mapping::rotation),
-        operands.vector(operand::mapping::scale));
+        vector, location, rotation, scale);
     write_surface_value_vector(locals, instruction, std::move(mapped));
 }
 
@@ -138,6 +139,14 @@ void emit_image_family(compiler::SurfaceSvmValueOpcode family,
     const auto shape = family == compiler::SurfaceSvmValueOpcode::tex_image_box
                            ? SurfaceImageSvmShape::image_box
                            : SurfaceImageSvmShape::image;
+    // Emit operand reads in bytecode order. Callable argument evaluation order
+    // is unspecified in C++, and letting the host compiler choose it can keep
+    // the 64-bit texture handle live across the coordinate read in the shader
+    // AST. Explicit statements make the staged program independent of the host
+    // compiler's argument-order choice.
+    const auto coordinate = operands.vector(operand::image_texture::vector);
+    const auto texture_handle = cast<std::uint32_t>(
+        operands.unsigned_integer(operand::image_texture::image));
     Float projection_blend = 0.0f;
     if (shape == SurfaceImageSvmShape::image_box) {
         projection_blend =
@@ -145,10 +154,7 @@ void emit_image_family(compiler::SurfaceSvmValueOpcode family,
     }
     const auto sampled = evaluate_surface_image_svm(
         services, point, shape, surface_value_immediate(instruction),
-        variant.svm_immediates, operands.vector(operand::image_texture::vector),
-        cast<std::uint32_t>(
-            operands.unsigned_integer(operand::image_texture::image)),
-        projection_blend);
+        variant.svm_immediates, coordinate, texture_handle, projection_blend);
     if (color_output) {
         write_surface_value_vector(locals, instruction, sampled.xyz());
     } else {
