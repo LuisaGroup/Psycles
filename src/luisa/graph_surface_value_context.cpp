@@ -4,7 +4,6 @@
 #include <luisa/dsl/sugar.h>
 #include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/contract/scene.h>
-#include <psycles/luisa/cycles_color_nodes.h>
 #include <psycles/luisa/cycles_noise.h>
 
 #include <array>
@@ -99,33 +98,19 @@ public:
       break;
     }
     case compiler::ValueOperation::hue_saturation: {
-      // Cycles' NODE_HSV contract: adjust in HSV space,
-      // wrap hue with fract(), clamp only saturation, blend
-      // with the unmodified input, and clamp the final RGB
-      // against negative oversaturation artifacts. Fac is
-      // intentionally not clamped.
-      auto color = vector(
+      const auto color = vector(
           instruction.operand(operand::hue_saturation::color), result);
-      auto adjusted = rgb_to_hsv(services, color);
-      adjusted.x = fract(
-          adjusted.x +
-          scalar(instruction.operand(operand::hue_saturation::hue), result) +
-          0.5f);
-      adjusted.y =
-          clamp(
-              adjusted.y *
-                  scalar(
-                      instruction.operand(
-                          operand::hue_saturation::saturation),
-                      result),
-              0.0f,
-              1.0f);
-      adjusted.z *= scalar(
+      const auto hue = scalar(
+          instruction.operand(operand::hue_saturation::hue), result);
+      const auto saturation = scalar(
+          instruction.operand(operand::hue_saturation::saturation), result);
+      const auto adjusted_value = scalar(
           instruction.operand(operand::hue_saturation::value), result);
-      adjusted = hsv_to_rgb(services, adjusted);
-      auto factor = scalar(
+      const auto factor = scalar(
           instruction.operand(operand::hue_saturation::factor), result);
-      value = make_float4(max(lerp(color, adjusted, factor), make_float3(0.0f)),
+      value = make_float4(evaluate_surface_hsv(
+                              services, color, hue, saturation, adjusted_value,
+                              factor),
                           1.0f);
       break;
     }
@@ -134,19 +119,14 @@ public:
           instruction.operand(operand::color_factor::color), result);
       auto factor = scalar(
           instruction.operand(operand::color_factor::factor), result);
-      value = make_float4(lerp(color, make_float3(1.0f) - color, factor), 1.0f);
+      value = make_float4(evaluate_surface_invert(color, factor), 1.0f);
       break;
     }
     case compiler::ValueOperation::gamma: {
       auto color = vector(instruction.operand(operand::gamma::color), result);
       auto exponent = scalar(
           instruction.operand(operand::gamma::exponent), result);
-      auto adjusted = make_float3(
-          select(color.x, pow(max(color.x, 0.0f), exponent), color.x > 0.0f),
-          select(color.y, pow(max(color.y, 0.0f), exponent), color.y > 0.0f),
-          select(color.z, pow(max(color.z, 0.0f), exponent), color.z > 0.0f));
-      adjusted = select(adjusted, make_float3(1.0f), exponent == 0.0f);
-      value = make_float4(adjusted, 1.0f);
+      value = make_float4(evaluate_surface_gamma(color, exponent), 1.0f);
       break;
     }
     case compiler::ValueOperation::brightness_contrast: {
@@ -158,30 +138,26 @@ public:
       auto contrast = scalar(
           instruction.operand(operand::brightness_contrast::contrast),
           result);
-      auto a = 1.0f + contrast;
-      auto b = brightness - contrast * 0.5f;
-      value =
-          make_float4(max(a * color + make_float3(b), make_float3(0.0f)), 1.0f);
+      value = make_float4(
+          evaluate_surface_brightness_contrast(color, brightness, contrast),
+          1.0f);
       break;
     }
     case compiler::ValueOperation::blackbody:
-      value = make_float4(
-          max(services.rec709_to_rgb(cycles_color_nodes::blackbody_rec709(
-                  scalar(
-                      instruction.operand(operand::blackbody::temperature),
-                      result))),
-              make_float3(0.0f)),
-          1.0f);
+      value = make_float4(evaluate_surface_blackbody(
+                              services,
+                              scalar(instruction.operand(
+                                         operand::blackbody::temperature),
+                                     result)),
+                          1.0f);
       break;
     case compiler::ValueOperation::wavelength:
-      value = make_float4(
-          max(services.xyz_to_rgb(cycles_color_nodes::wavelength_xyz(
-                  scalar(
-                      instruction.operand(operand::wavelength::nanometers),
-                      result))) *
-                  (1.0f / 2.52f),
-              make_float3(0.0f)),
-          1.0f);
+      value = make_float4(evaluate_surface_wavelength(
+                              services,
+                              scalar(instruction.operand(
+                                         operand::wavelength::nanometers),
+                                     result)),
+                          1.0f);
       break;
     case compiler::ValueOperation::surface_position:
       value = make_float4(point.position, 1.0f);

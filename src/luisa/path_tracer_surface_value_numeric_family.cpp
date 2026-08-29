@@ -157,6 +157,114 @@ void emit_clamp_family(
     write_surface_value_scalar(locals, instruction, std::move(value));
 }
 
+void emit_map_range_family(
+    compiler::SurfaceSvmValueOpcode family,
+    const SurfaceValueLocalsView &locals, Var<luisa::uint4> instruction,
+    const compiler::SurfaceValueStaticVariant &variant,
+    SurfaceValueOperandReader &operands) noexcept {
+    const auto immediate = surface_value_runtime_immediate(instruction);
+    if (family == compiler::SurfaceSvmValueOpcode::map_range) {
+        if (variant.instruction.operation !=
+                compiler::ValueOperation::map_range_float ||
+            result_bank(variant) != compiler::SurfaceValueBank::scalar) {
+            std::abort();
+        }
+        const auto value = operands.scalar(operand::map_range::value);
+        const auto from_min = operands.scalar(operand::map_range::from_min);
+        const auto from_max = operands.scalar(operand::map_range::from_max);
+        const auto to_min = operands.scalar(operand::map_range::to_min);
+        const auto to_max = operands.scalar(operand::map_range::to_max);
+        const auto steps = operands.scalar(operand::map_range::steps);
+        write_surface_value_scalar(
+            locals, instruction,
+            evaluate_surface_map_range_float_svm(
+                immediate, variant.svm_immediates, value, from_min, from_max,
+                to_min, to_max, steps));
+        return;
+    }
+    if (family == compiler::SurfaceSvmValueOpcode::vector_map_range) {
+        if (variant.instruction.operation !=
+                compiler::ValueOperation::map_range_vector ||
+            result_bank(variant) != compiler::SurfaceValueBank::vector) {
+            std::abort();
+        }
+        const auto value = operands.vector(operand::map_range::value);
+        const auto from_min = operands.vector(operand::map_range::from_min);
+        const auto from_max = operands.vector(operand::map_range::from_max);
+        const auto to_min = operands.vector(operand::map_range::to_min);
+        const auto to_max = operands.vector(operand::map_range::to_max);
+        const auto steps = operands.vector(operand::map_range::steps);
+        write_surface_value_vector(
+            locals, instruction,
+            evaluate_surface_map_range_vector_svm(
+                immediate, variant.svm_immediates, value, from_min, from_max,
+                to_min, to_max, steps));
+        return;
+    }
+    std::abort();
+}
+
+void emit_mix_float_family(
+    const SurfaceValueLocalsView &locals, Var<luisa::uint4> instruction,
+    const compiler::SurfaceValueStaticVariant &variant,
+    SurfaceValueOperandReader &operands) noexcept {
+    if (variant.instruction.operation != compiler::ValueOperation::mix_float ||
+        result_bank(variant) != compiler::SurfaceValueBank::scalar ||
+        variant.svm_immediates.empty()) {
+        std::abort();
+    }
+    for (const auto immediate : variant.svm_immediates) {
+        if ((immediate & ~compiler::surface_value_mix_float_clamp_bit) != 0u) {
+            std::abort();
+        }
+    }
+    const auto a = operands.scalar(operand::mix::a);
+    const auto b = operands.scalar(operand::mix::b);
+    auto factor = operands.scalar(operand::mix::factor);
+    factor = select(
+        factor, clamp(factor, 0.0f, 1.0f),
+        (surface_value_runtime_immediate(instruction) &
+         compiler::surface_value_mix_float_clamp_bit) != 0u);
+    write_surface_value_scalar(locals, instruction, lerp(a, b, factor));
+}
+
+void emit_mix_vector_family(
+    compiler::SurfaceSvmValueOpcode family,
+    const SurfaceValueLocalsView &locals, Var<luisa::uint4> instruction,
+    const compiler::SurfaceValueStaticVariant &variant,
+    SurfaceValueOperandReader &operands) noexcept {
+    const auto non_uniform =
+        family == compiler::SurfaceSvmValueOpcode::mix_vector_non_uniform;
+    if ((!non_uniform && family !=
+                             compiler::SurfaceSvmValueOpcode::mix_vector) ||
+        variant.instruction.operation != compiler::ValueOperation::mix_vector ||
+        result_bank(variant) != compiler::SurfaceValueBank::vector ||
+        variant.svm_immediates.empty()) {
+        std::abort();
+    }
+    constexpr auto configuration_mask =
+        compiler::surface_value_mix_vector_non_uniform_bit |
+        compiler::surface_value_mix_vector_clamp_bit;
+    for (const auto immediate : variant.svm_immediates) {
+        if ((immediate & ~configuration_mask) != 0u ||
+            ((immediate &
+              compiler::surface_value_mix_vector_non_uniform_bit) != 0u) !=
+                non_uniform) {
+            std::abort();
+        }
+    }
+    const auto a = operands.vector(operand::mix::a);
+    const auto b = operands.vector(operand::mix::b);
+    auto factor = non_uniform
+                      ? operands.vector(operand::mix::factor)
+                      : make_float3(operands.scalar(operand::mix::factor));
+    factor = select(
+        factor, clamp(factor, 0.0f, 1.0f),
+        (surface_value_runtime_immediate(instruction) &
+         compiler::surface_value_mix_vector_clamp_bit) != 0u);
+    write_surface_value_vector(locals, instruction, lerp(a, b, factor));
+}
+
 } // namespace
 
 void emit_direct_surface_numeric_family(
@@ -174,6 +282,19 @@ void emit_direct_surface_numeric_family(
             return;
         case compiler::SurfaceSvmValueOpcode::clamp:
             emit_clamp_family(operands, locals, instruction, variant);
+            return;
+        case compiler::SurfaceSvmValueOpcode::map_range:
+        case compiler::SurfaceSvmValueOpcode::vector_map_range:
+            emit_map_range_family(family, locals, instruction, variant,
+                                  operands);
+            return;
+        case compiler::SurfaceSvmValueOpcode::mix_float:
+            emit_mix_float_family(locals, instruction, variant, operands);
+            return;
+        case compiler::SurfaceSvmValueOpcode::mix_vector:
+        case compiler::SurfaceSvmValueOpcode::mix_vector_non_uniform:
+            emit_mix_vector_family(family, locals, instruction, variant,
+                                   operands);
             return;
         default:
             std::abort();

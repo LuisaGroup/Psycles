@@ -80,6 +80,17 @@ make_direct_texture_trunk_graph(bool box_projection);
 [[nodiscard]] std::string validate_direct_context_surface_runtime(
     const luisa_backend::detail::SurfaceValueRuntime &runtime);
 
+// Four graphs span the ClampFactor x uniformity product for Cycles Mix,
+// sampled/control RGB Curve, and all RGB/HSV/HSL Separate/Combine modes while
+// keeping every value dependent on runtime geometry.
+[[nodiscard]] std::vector<contract::ShaderGraph>
+make_direct_color_algebra_graphs();
+
+// Proves operation/family/bank/arity/immediate domains for the complete pure
+// color/algebra direct-SVM boundary. Empty means success.
+[[nodiscard]] std::string validate_direct_color_algebra_surface_runtime(
+    const luisa_backend::detail::SurfaceValueRuntime &runtime);
+
 // A depth-three Mix tree. `restore_after` appends an Add emission sibling;
 // otherwise the Mix consumes the root tail. The transparent leaf also forces
 // physical replay, so the paired device tests cover both scalar tail frames

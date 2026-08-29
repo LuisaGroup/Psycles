@@ -137,4 +137,10 @@ evaluate_surface_color_ramp_svm(const ShaderServices &services, UInt immediate,
     Float3 input,
     Float factor) noexcept;
 
+[[nodiscard]] Float3 evaluate_surface_rgb_curve_svm(
+    const ShaderServices &services, UInt immediate,
+    std::span<const std::uint16_t> immediate_domain,
+    const SurfaceShaderTableView &table, Float3 input, Float factor,
+    Float min_x, Float max_x, Float extrapolate) noexcept;
+
 }// namespace psycles::luisa_backend::detail

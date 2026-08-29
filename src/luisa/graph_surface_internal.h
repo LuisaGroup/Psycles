@@ -17,7 +17,7 @@
 #include <psycles/luisa/surface_closure_reachability.h>
 
 #include "graph_surface_value_expression.h"
-#include "surface_color_transforms.h"
+#include "surface_color_nodes.h"
 #include "surface_fresnel.h"
 #include "surface_math.h"
 #include "surface_math_constants.h"
@@ -310,23 +310,6 @@ template <typename Id, typename Values>
     std::uint32_t x_size,
     std::uint32_t y_size,
     std::uint32_t z_size) noexcept;
-[[nodiscard]] Float3 rgb_to_hsv(
-    const ShaderServices &services, Float3 rgb) noexcept;
-[[nodiscard]] Float3 hsv_to_rgb(
-    const ShaderServices &services, Float3 hsv) noexcept;
-[[nodiscard]] Float3 rgb_to_hsl(
-    const ShaderServices &services, Float3 rgb) noexcept;
-[[nodiscard]] Float3 hsl_to_rgb(
-    const ShaderServices &services, Float3 hsl) noexcept;
-[[nodiscard]] Float3 separate_color(
-    const ShaderServices &services,
-    Float3 color,
-    std::uint64_t mode) noexcept;
-[[nodiscard]] Float3 combine_color(
-    const ShaderServices &services,
-    Float3 channels,
-    std::uint64_t mode) noexcept;
-
 [[nodiscard]] Float f0_from_ior(Float ior) noexcept;
 [[nodiscard]] Float ior_from_f0(Float f0) noexcept;
 [[nodiscard]] Float fresnel_dielectric_fss(Float eta) noexcept;
