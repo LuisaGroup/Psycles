@@ -88,6 +88,13 @@ struct Bucket {
           .count = a.count + b.count};
 }
 
+struct SplitAnalysis {
+  LightTreeMeasure measure;
+  std::uint32_t middle{};
+  std::size_t axis{std::numeric_limits<std::size_t>::max()};
+  bool should_split{};
+};
+
 class Builder {
 
 private:
@@ -122,12 +129,114 @@ private:
     return index;
   }
 
+  [[nodiscard]] SplitAnalysis analyze_split(
+      std::uint32_t begin, std::uint32_t end,
+      const LightTreeBounds &centroid_bounds) const noexcept {
+    SplitAnalysis result;
+    const auto count = end - begin;
+    result.middle = begin + count / 2u;
+    if (count == 0u) {
+      return result;
+    }
+    if (count == 1u) {
+      result.measure = _tree.emitters[begin].measure;
+      return result;
+    }
+
+    const auto extent =
+        subtract(centroid_bounds.maximum, centroid_bounds.minimum);
+    const auto maximum_extent = std::max({extent.x, extent.y, extent.z, 0.0f});
+    auto total_cost = 0.0f;
+    auto minimum_cost = std::numeric_limits<float>::infinity();
+
+    // This is deliberately isomorphic to Cycles' LightTree::should_split.
+    // In particular, dimension zero defines the node measure through a fixed
+    // bucket reduction order. Orientation-cone union is not associative, so
+    // replacing this relation with an input-order reduction changes both the
+    // stored hierarchy and later split decisions.
+    for (std::size_t axis = 0u; axis < 3u; ++axis) {
+      std::array<Bucket, bucket_count> buckets{};
+      const auto axis_extent = component(extent, axis);
+      float inverse_extent;
+      if (axis_extent == 0.0f) {
+        if (axis != 0u) {
+          continue;
+        }
+        inverse_extent = std::numeric_limits<float>::max();
+        for (auto index = begin; index < end; ++index) {
+          buckets.front().measure = merge_light_tree_measures(
+              buckets.front().measure, _tree.emitters[index].measure);
+          ++buckets.front().count;
+        }
+      } else {
+        inverse_extent = 1.0f / axis_extent;
+        for (auto index = begin; index < end; ++index) {
+          const auto scaled =
+              static_cast<float>(bucket_count) *
+              (component(_tree.emitters[index].centroid, axis) -
+               component(centroid_bounds.minimum, axis)) *
+              inverse_extent;
+          const auto bucket = static_cast<std::size_t>(std::clamp(
+              static_cast<int>(scaled), 0, static_cast<int>(bucket_count - 1u)));
+          buckets[bucket].measure = merge_light_tree_measures(
+              buckets[bucket].measure, _tree.emitters[index].measure);
+          ++buckets[bucket].count;
+        }
+      }
+
+      std::array<Bucket, bucket_count - 1u> left{};
+      left.front() = buckets.front();
+      for (std::size_t bucket = 1u; bucket + 1u < bucket_count; ++bucket) {
+        left[bucket] = merge_buckets(left[bucket - 1u], buckets[bucket]);
+      }
+
+      if (axis == 0u) {
+        result.measure =
+            merge_light_tree_measures(left.back().measure,
+                                      buckets.back().measure);
+        if (extent.x == 0.0f && extent.y == 0.0f && extent.z == 0.0f) {
+          break;
+        }
+        if (axis_extent == 0.0f) {
+          continue;
+        }
+        total_cost = light_tree_measure_cost(result.measure);
+        if (total_cost == 0.0f) {
+          break;
+        }
+      }
+
+      std::array<Bucket, bucket_count - 1u> right{};
+      right.back() = buckets.back();
+      for (std::size_t bucket = bucket_count - 2u; bucket-- > 0u;) {
+        right[bucket] =
+            merge_buckets(right[bucket + 1u], buckets[bucket + 1u]);
+      }
+
+      const auto regularization = maximum_extent * inverse_extent;
+      for (std::size_t split = 0u; split + 1u < bucket_count; ++split) {
+        const auto cost =
+            regularization *
+            (light_tree_measure_cost(left[split].measure) +
+             light_tree_measure_cost(right[split].measure));
+        if (cost < total_cost && cost < minimum_cost) {
+          minimum_cost = cost;
+          result.axis = axis;
+          result.middle = begin + left[split].count;
+        }
+      }
+    }
+    result.should_split =
+        minimum_cost < total_cost || count > _maximum_leaf_size;
+    return result;
+  }
+
   [[nodiscard]] std::uint32_t
   build_local(std::uint32_t begin, std::uint32_t end, std::uint32_t parent) {
     const auto node_index = append_node(parent);
-    auto &node = _tree.nodes[node_index];
     const auto count = end - begin;
     if (count == 0u) {
+      auto &node = _tree.nodes[node_index];
       node.kind = LightTreeNodeKind::leaf;
       return node_index;
     }
@@ -135,75 +244,15 @@ private:
     LightTreeBounds centroid_bounds;
     for (auto index = begin; index < end; ++index) {
       const auto &emitter = _tree.emitters[index];
-      node.measure = merge_light_tree_measures(node.measure, emitter.measure);
       const LightTreeBounds point{.minimum = emitter.centroid,
                                   .maximum = emitter.centroid,
                                   .empty = false};
       centroid_bounds = merge_light_tree_bounds(centroid_bounds, point);
     }
-
-    auto split_axis = std::numeric_limits<std::size_t>::max();
-    auto split_middle = begin + count / 2u;
-    auto best_cost = std::numeric_limits<float>::infinity();
-    const auto parent_cost = light_tree_measure_cost(node.measure);
-    const auto extent =
-        subtract(centroid_bounds.maximum, centroid_bounds.minimum);
-    const auto maximum_extent = std::max({extent.x, extent.y, extent.z});
-
-    if (count > 1u && parent_cost > 0.0f && maximum_extent > 0.0f) {
-      for (std::size_t axis = 0u; axis < 3u; ++axis) {
-        const auto axis_extent = component(extent, axis);
-        if (!(axis_extent > 0.0f)) {
-          continue;
-        }
-        std::array<Bucket, bucket_count> buckets{};
-        for (auto index = begin; index < end; ++index) {
-          const auto relative =
-              (component(_tree.emitters[index].centroid, axis) -
-               component(centroid_bounds.minimum, axis)) /
-              axis_extent;
-          const auto bucket = std::min<std::size_t>(
-              static_cast<std::size_t>(std::max(relative, 0.0f) *
-                                       static_cast<float>(bucket_count)),
-              bucket_count - 1u);
-          buckets[bucket].measure = merge_light_tree_measures(
-              buckets[bucket].measure, _tree.emitters[index].measure);
-          ++buckets[bucket].count;
-        }
-
-        std::array<Bucket, bucket_count - 1u> left{};
-        std::array<Bucket, bucket_count - 1u> right{};
-        left.front() = buckets.front();
-        for (std::size_t bucket = 1u; bucket + 1u < bucket_count; ++bucket) {
-          left[bucket] = merge_buckets(left[bucket - 1u], buckets[bucket]);
-        }
-        right.back() = buckets.back();
-        for (std::size_t bucket = bucket_count - 2u; bucket-- > 0u;) {
-          right[bucket] =
-              merge_buckets(right[bucket + 1u], buckets[bucket + 1u]);
-        }
-
-        const auto regularization = maximum_extent / axis_extent;
-        for (std::size_t split = 0u; split + 1u < bucket_count; ++split) {
-          if (left[split].count == 0u || right[split].count == 0u) {
-            continue;
-          }
-          const auto cost =
-              regularization * (light_tree_measure_cost(left[split].measure) +
-                                light_tree_measure_cost(right[split].measure));
-          if (cost < parent_cost && cost < best_cost) {
-            best_cost = cost;
-            split_axis = axis;
-            split_middle = begin + left[split].count;
-          }
-        }
-      }
-    }
-
-    const auto should_split =
-        count > _maximum_leaf_size ||
-        split_axis != std::numeric_limits<std::size_t>::max();
-    if (!should_split) {
+    const auto analysis = analyze_split(begin, end, centroid_bounds);
+    _tree.nodes[node_index].measure = analysis.measure;
+    if (!analysis.should_split) {
+      auto &node = _tree.nodes[node_index];
       node.kind = LightTreeNodeKind::leaf;
       node.first_emitter = begin;
       node.emitter_count = count;
@@ -214,20 +263,19 @@ private:
       return node_index;
     }
 
-    if (split_axis != std::numeric_limits<std::size_t>::max()) {
+    if (analysis.axis != std::numeric_limits<std::size_t>::max()) {
       std::nth_element(
-          _tree.emitters.begin() + begin, _tree.emitters.begin() + split_middle,
+          _tree.emitters.begin() + begin,
+          _tree.emitters.begin() + analysis.middle,
           _tree.emitters.begin() + end,
-          [split_axis](const LightTreeEmitter &a,
-                       const LightTreeEmitter &b) noexcept {
-            const auto av = component(a.centroid, split_axis);
-            const auto bv = component(b.centroid, split_axis);
-            return av < bv || (av == bv && a.emitter_id < b.emitter_id);
+          [axis = analysis.axis](const LightTreeEmitter &a,
+                                 const LightTreeEmitter &b) noexcept {
+            return component(a.centroid, axis) < component(b.centroid, axis);
           });
     }
     _tree.nodes[node_index].kind = LightTreeNodeKind::inner;
-    const auto left = build_local(begin, split_middle, node_index);
-    const auto right = build_local(split_middle, end, node_index);
+    const auto left = build_local(begin, analysis.middle, node_index);
+    const auto right = build_local(analysis.middle, end, node_index);
     _tree.nodes[node_index].left = left;
     _tree.nodes[node_index].right = right;
     return node_index;
@@ -363,22 +411,22 @@ LightTreeOrientationBounds merge_light_tree_orientation_bounds(
             .empty = false};
   }
   const auto rotation = theta_o - wide->theta_o;
-  auto orthogonal = subtract(narrow->axis, multiply(wide->axis, cosine));
   if (cosine < -0.9995f) {
-    const auto candidate = std::abs(wide->axis.x) < 0.9f
-                               ? Vec3f{1.0f, 0.0f, 0.0f}
-                               : Vec3f{0.0f, 1.0f, 0.0f};
-    orthogonal =
-        normalize_or({wide->axis.y * candidate.z - wide->axis.z * candidate.y,
-                      wide->axis.z * candidate.x - wide->axis.x * candidate.z,
-                      wide->axis.x * candidate.y - wide->axis.y * candidate.x},
-                     {0.0f, 0.0f, 1.0f});
-  } else {
-    orthogonal = normalize_or(orthogonal, {0.0f, 0.0f, 1.0f});
+    const auto axis = wide->axis;
+    const auto orthogonal =
+        axis.x != axis.y || axis.x != axis.z
+            ? Vec3f{axis.z - axis.y, axis.x - axis.z, axis.y - axis.x}
+            : Vec3f{axis.z - axis.y, axis.x + axis.z, -axis.y - axis.x};
+    return {.axis = normalize_or(orthogonal, {0.0f, 0.0f, 1.0f}),
+            .theta_o = theta_o,
+            .theta_e = emission_angle,
+            .empty = false};
   }
-  return {.axis = normalize_or(add(multiply(wide->axis, std::cos(rotation)),
-                                   multiply(orthogonal, std::sin(rotation))),
-                               wide->axis),
+  const auto orthogonal = normalize_or(
+      subtract(narrow->axis, multiply(wide->axis, cosine)),
+      {0.0f, 0.0f, 1.0f});
+  return {.axis = add(multiply(wide->axis, std::cos(rotation)),
+                      multiply(orthogonal, std::sin(rotation))),
           .theta_o = theta_o,
           .theta_e = emission_angle,
           .empty = false};

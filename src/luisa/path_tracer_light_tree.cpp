@@ -30,7 +30,9 @@ constexpr auto safe_distance = 1.0e-20f;
            light_tree_emitter_kind_shift;
 }
 
-void to_mesh_local_space(
+}// namespace
+
+void cycles_light_tree_to_mesh_local_space(
     const std::shared_ptr<LuisaSceneData> &scene,
     UInt instance_index,
     Float3 &point,
@@ -38,31 +40,35 @@ void to_mesh_local_space(
     Float &distance,
     bool in_volume) noexcept {
     const auto instance = scene->instance_buffer->read(instance_index);
-    const auto world_to_object = instance.cycles_world_to_object;
-    point = (world_to_object * make_float4(point, 1.0f)).xyz();
-    if (in_volume) {
-        const auto local_direction =
-            (world_to_object * make_float4(normal_or_direction, 0.0f)).xyz();
-        const auto scale = sqrt(dot(local_direction, local_direction));
-        normal_or_direction = select(
-            normal_or_direction,
-            local_direction / max(scale, safe_distance),
-            scale > safe_distance);
-        distance *= scale;
-    } else {
-        const auto object_to_world =
-            scene->accel->instance_transform(instance_index);
-        const auto local_normal =
-            (transpose(object_to_world) *
-             make_float4(normal_or_direction, 0.0f))
-                .xyz();
-        const auto squared_length = dot(local_normal, local_normal);
-        normal_or_direction = select(
-            normal_or_direction,
-            local_normal * rsqrt(max(squared_length, safe_distance)),
-            squared_length > safe_distance);
-    }
+    $if (instance.cycles_transform_applied == 0u) {
+        const auto world_to_object = instance.cycles_world_to_object;
+        point = (world_to_object * make_float4(point, 1.0f)).xyz();
+        if (in_volume) {
+            const auto local_direction =
+                (world_to_object * make_float4(normal_or_direction, 0.0f)).xyz();
+            const auto scale = sqrt(dot(local_direction, local_direction));
+            normal_or_direction = select(
+                normal_or_direction,
+                local_direction / max(scale, safe_distance),
+                scale > safe_distance);
+            distance *= scale;
+        } else {
+            const auto object_to_world =
+                scene->accel->instance_transform(instance_index);
+            const auto local_normal =
+                (transpose(object_to_world) *
+                 make_float4(normal_or_direction, 0.0f))
+                    .xyz();
+            const auto squared_length = dot(local_normal, local_normal);
+            normal_or_direction = select(
+                normal_or_direction,
+                local_normal * rsqrt(max(squared_length, safe_distance)),
+                squared_length > safe_distance);
+        }
+    };
 }
+
+namespace {
 
 [[nodiscard]] Float2 child_importance(
     const LightTreeImportanceComponent &importance,
@@ -332,7 +338,7 @@ void initialize_invalid_light_selection(
                         $if (emitter_kind(emitter) ==
                              static_cast<std::uint32_t>(
                                  LightTreeEmitterKind::mesh_instance)) {
-                            to_mesh_local_space(
+                            cycles_light_tree_to_mesh_local_space(
                                 scene,
                                 emitter.identity.x,
                                 point,
@@ -545,7 +551,7 @@ void initialize_invalid_light_selection(
                     Float3 local_point = point;
                     Float3 local_normal_or_direction = normal_or_direction;
                     Float local_distance = distance;
-                    to_mesh_local_space(
+                    cycles_light_tree_to_mesh_local_space(
                         scene,
                         proxy.identity.x,
                         local_point,

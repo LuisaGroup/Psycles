@@ -27,6 +27,17 @@ struct LightTreeCallables {
     LightTreeTriangleEmitterCallable triangle_emitter;
 };
 
+// Maps a world-space query into the coordinate space of a mesh-light subtree.
+// A Cycles transform-applied subtree already lives in world space and is the
+// identity branch of this relation.
+void cycles_light_tree_to_mesh_local_space(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    UInt instance_index,
+    Float3 &point,
+    Float3 &normal_or_direction,
+    Float &distance,
+    bool in_volume) noexcept;
+
 // The surface and volume callables are built separately, so Luisa specializes
 // the two importance equations while tracing the kernel AST. No per-query
 // volume-mode branch remains in generated code.

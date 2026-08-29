@@ -30,9 +30,11 @@ struct LightTreeSceneUpload {
 };
 
 struct LightTreeSubtreeInput {
-    // Local triangle ids must be a dense permutation. The hierarchy uploader
-    // retains this identity after spatial reordering.
-    std::vector<sampling::LightTreeEmitter> emitters;
+    // Constructed once and shared by every semantic mesh instance. Local
+    // triangle ids are the tree's dense emitter identity, retained after its
+    // private spatial reordering. Keeping the actual tree here also makes the
+    // top-level proxy consume exactly the same root measure that is uploaded.
+    sampling::CyclesLightTree tree;
     // One representative flat emissive-triangle id for every local emitter.
     // Cycles shares a subtree only between instances of the same semantic
     // mesh, so any representative contains the same local primitive and
@@ -88,7 +90,8 @@ make_triangle_light_tree_emitter(
     Vec3f p1,
     Vec3f p2,
     Vec3f emission_estimate,
-    contract::EmissionSampling emission_sampling) noexcept;
+    contract::EmissionSampling emission_sampling,
+    bool transform_applied = false) noexcept;
 
 [[nodiscard]] sampling::LightTreeEmitter
 make_analytic_light_tree_emitter(

@@ -1,5 +1,6 @@
 #include "../src/luisa/path_tracer_analytic_light_scene.h"
 #include "../src/luisa/path_tracer_light_tree.h"
+#include "../src/luisa/path_tracer_light_tree_importance.h"
 #include "../src/luisa/path_tracer_light_tree_scene.h"
 #include "../src/luisa/path_tracer_light_sampling_scene.h"
 #include "../src/luisa/path_tracer_mesh_light_scene.h"
@@ -34,6 +35,28 @@ constexpr std::uint32_t emitter_count = 4u;
 constexpr std::uint32_t sample_count = 8192u;
 
 [[nodiscard]] bool close(float a, float b, float tolerance);
+
+[[nodiscard]] bool close(Vec3f a, Vec3f b, float tolerance) {
+    return close(a.x, b.x, tolerance) &&
+           close(a.y, b.y, tolerance) &&
+           close(a.z, b.z, tolerance);
+}
+
+[[nodiscard]] bool close(
+    const LightTreeMeasure &a,
+    const LightTreeMeasure &b,
+    float tolerance) {
+    return a.bounds.empty == b.bounds.empty &&
+           (a.bounds.empty ||
+            (close(a.bounds.minimum, b.bounds.minimum, tolerance) &&
+             close(a.bounds.maximum, b.bounds.maximum, tolerance))) &&
+           a.orientation.empty == b.orientation.empty &&
+           (a.orientation.empty ||
+            (close(a.orientation.axis, b.orientation.axis, tolerance) &&
+             close(a.orientation.theta_o, b.orientation.theta_o, tolerance) &&
+             close(a.orientation.theta_e, b.orientation.theta_e, tolerance))) &&
+           close(a.energy, b.energy, tolerance);
+}
 
 [[nodiscard]] ShaderGraph emission_graph(Vec3f color, float strength) {
     ShaderGraph graph;
@@ -403,6 +426,163 @@ constexpr std::uint32_t sample_count = 8192u;
     return true;
 }
 
+[[nodiscard]] bool verify_mesh_proxy_uses_built_subtree_measure() {
+    constexpr MaterialId material_id{1u};
+    constexpr GeometryId geometry_id{2u};
+    SceneSnapshot snapshot;
+    snapshot.materials.emplace(
+        material_id,
+        MaterialDesc{
+            .name = "non-associative mesh emission",
+            .shader = emission_graph({1.0f, 1.0f, 1.0f}, 1.0f),
+            .emission_sampling = EmissionSampling::front});
+
+    TriangleMeshDesc mesh;
+    const auto append_triangle = [&](Vec3f centroid, Vec3f u, Vec3f v) {
+        const auto first = static_cast<std::uint32_t>(mesh.positions.size());
+        const auto p0 = Vec3f{
+            centroid.x - (u.x + v.x) / 3.0f,
+            centroid.y - (u.y + v.y) / 3.0f,
+            centroid.z - (u.z + v.z) / 3.0f};
+        mesh.positions.emplace_back(p0);
+        mesh.positions.emplace_back(Vec3f{p0.x + u.x, p0.y + u.y, p0.z + u.z});
+        mesh.positions.emplace_back(Vec3f{p0.x + v.x, p0.y + v.y, p0.z + v.z});
+        mesh.triangles.push_back({first, first + 1u, first + 2u});
+        mesh.triangle_material_slots.emplace_back(0u);
+    };
+    // Deliberately scrambled spatial order and distinct normal cones make the
+    // orientation union non-associative. Cycles defines the proxy from the
+    // already-built subtree root, whose dimension-zero bucket reduction is
+    // [x=0, x=10, x=20, x=30], rather than this primitive input order.
+    append_triangle({0.0f, 0.0f, 0.0f},
+                    {0.0f, 1.0f, 0.0f},
+                    {0.0f, 0.0f, 1.0f});
+    append_triangle({30.0f, 0.0f, 0.0f},
+                    {0.0f, 0.0f, 1.0f},
+                    {1.0f, 0.0f, 0.0f});
+    append_triangle({20.0f, 0.0f, 0.0f},
+                    {1.0f, 0.0f, 0.0f},
+                    {0.0f, 1.0f, 0.0f});
+    append_triangle({10.0f, 0.0f, 0.0f},
+                    {0.0f, 0.0f, 1.0f},
+                    {0.0f, 1.0f, 0.0f});
+    mesh.material_slots = {material_id};
+    snapshot.geometries.emplace(geometry_id, mesh);
+    snapshot.instances.emplace(
+        InstanceId{3u},
+        InstanceDesc{.geometry = geometry_id, .transform = Mat4f{}});
+
+    LuisaSceneData scene;
+    ShaderCompiler compiler{make_core_node_registry()};
+    if (!scene.materials.update(snapshot, compiler).committed) {
+        std::cerr << "mesh-proxy material compilation failed\n";
+        return false;
+    }
+    std::array<GeometryUpload, 1u> uploads;
+    for (const auto position : mesh.positions) {
+        uploads.front().positions.emplace_back(to_luisa(position));
+    }
+    std::array<EmissiveTriangleGpu, 4u> triangles;
+    for (std::uint32_t primitive = 0u; primitive < triangles.size(); ++primitive) {
+        triangles[primitive] = {
+            .instance_index = 0u,
+            .geometry_index = 0u,
+            .primitive_index = primitive,
+            .emission_sampling =
+                static_cast<std::uint32_t>(EmissionSampling::front)};
+    }
+
+    const auto result = MeshLightTreeSceneComponent{}.build(
+        snapshot, scene, uploads, triangles);
+    if (!result.ok() || result.subtrees.size() != 1u ||
+        result.mesh_emitters.size() != 1u ||
+        !result.subtrees.front().tree.valid()) {
+        std::cerr << "mesh-proxy fixture construction failed: "
+                  << result.diagnostic << '\n';
+        return false;
+    }
+    const auto &tree = result.subtrees.front().tree;
+    const auto &root_measure = tree.nodes[tree.root].measure;
+    const auto &proxy_measure = result.mesh_emitters.front().emitter.measure;
+
+    LightTreeMeasure primitive_order_measure;
+    for (std::uint32_t primitive = 0u; primitive < mesh.triangles.size(); ++primitive) {
+        const auto indices = mesh.triangles[primitive];
+        const auto emitter = make_triangle_light_tree_emitter(
+            primitive,
+            Mat4f{},
+            mesh.positions[indices[0u]],
+            mesh.positions[indices[1u]],
+            mesh.positions[indices[2u]],
+            {1.0f, 1.0f, 1.0f},
+            EmissionSampling::front);
+        primitive_order_measure = merge_light_tree_measures(
+            primitive_order_measure, emitter.measure);
+    }
+    if (close(root_measure, primitive_order_measure, 1.0e-4f)) {
+        std::cerr << "mesh-proxy regression fixture is accidentally associative\n";
+        return false;
+    }
+    if (!close(proxy_measure, root_measure, 1.0e-6f)) {
+        std::cerr << "mesh proxy was not derived from its uploaded subtree root\n";
+        return false;
+    }
+
+    Mat4f applied_transform;
+    applied_transform.elements[0u] = -2.0f;
+    applied_transform.elements[5u] = 3.0f;
+    applied_transform.elements[10u] = 4.0f;
+    applied_transform.elements[12u] = 5.0f;
+    applied_transform.elements[13u] = 7.0f;
+    applied_transform.elements[14u] = 11.0f;
+    snapshot.instances.at(InstanceId{3u}).transform = applied_transform;
+    uploads.front().cycles_intersection_positions.clear();
+    std::vector<LightTreeEmitter> expected_applied_emitters;
+    expected_applied_emitters.reserve(mesh.triangles.size());
+    for (std::uint32_t primitive = 0u; primitive < mesh.triangles.size(); ++primitive) {
+        const auto indices = mesh.triangles[primitive];
+        const auto p0 = cycles_transform_point(
+            applied_transform, mesh.positions[indices[0u]]);
+        const auto p1 = cycles_transform_point(
+            applied_transform, mesh.positions[indices[1u]]);
+        const auto p2 = cycles_transform_point(
+            applied_transform, mesh.positions[indices[2u]]);
+        uploads.front().cycles_intersection_positions.emplace_back(to_luisa(p0));
+        uploads.front().cycles_intersection_positions.emplace_back(to_luisa(p1));
+        uploads.front().cycles_intersection_positions.emplace_back(to_luisa(p2));
+        expected_applied_emitters.emplace_back(
+            make_triangle_light_tree_emitter(
+                primitive,
+                applied_transform,
+                p0,
+                p1,
+                p2,
+                {1.0f, 1.0f, 1.0f},
+                EmissionSampling::front,
+                true));
+    }
+    const auto expected_applied_tree =
+        build_cycles_light_subtree(expected_applied_emitters);
+    const auto applied = MeshLightTreeSceneComponent{}.build(
+        snapshot, scene, uploads, triangles);
+    if (!applied.ok() || applied.subtrees.size() != 1u ||
+        applied.mesh_emitters.size() != 1u ||
+        !applied.subtrees.front().tree.valid() ||
+        !close(applied.subtrees.front()
+                   .tree.nodes[applied.subtrees.front().tree.root]
+                   .measure,
+               expected_applied_tree.nodes[expected_applied_tree.root].measure,
+               1.0e-6f) ||
+        !close(applied.mesh_emitters.front().emitter.measure,
+               expected_applied_tree.nodes[expected_applied_tree.root].measure,
+               1.0e-6f)) {
+        std::cerr << "transform-applied mesh subtree/proxy space mismatch: "
+                  << applied.diagnostic << '\n';
+        return false;
+    }
+    return true;
+}
+
 [[nodiscard]] LightTreeEmitter local_emitter(
     std::uint32_t id,
     float x,
@@ -433,7 +613,8 @@ constexpr std::uint32_t sample_count = 8192u;
 
 int main(int argc, char **argv) {
     if (!verify_scene_upload() || !verify_analytic_light_population() ||
-        !verify_mesh_scene_quotient()) {
+        !verify_mesh_scene_quotient() ||
+        !verify_mesh_proxy_uses_built_subtree_measure()) {
         return 1;
     }
     const std::string backend = argc > 1 ? argv[1] : "fallback";
@@ -460,7 +641,8 @@ int main(int argc, char **argv) {
     hierarchy.distribution_emitter_count = emitter_count;
     hierarchy.triangle_emitter_count = 3u;
     hierarchy.subtrees.emplace_back(LightTreeSubtreeInput{
-        .emitters = {local_emitter(0u, 0.0f, 1.0f)}});
+        .tree = build_cycles_light_subtree(
+            std::array{local_emitter(0u, 0.0f, 1.0f)})});
     for (std::uint32_t instance = 0u; instance < 3u; ++instance) {
         hierarchy.top_emitters.emplace_back(LightTreeTopEmitterInput{
             .emitter = emitters[instance],
@@ -533,11 +715,19 @@ int main(int argc, char **argv) {
     std::array<Mat4f, 3u> transforms;
     transforms[0u].elements[12u] = -1.5f;
     transforms[2u].elements[12u] = 1.5f;
-    std::array<InstanceGpu, 3u> instances;
-    for (std::size_t index = 0u; index < instances.size(); ++index) {
+    std::array<InstanceGpu, 4u> instances;
+    for (std::size_t index = 0u; index < transforms.size(); ++index) {
         instances[index].cycles_world_to_object =
             to_luisa(cycles_inverse_transform(transforms[index]));
     }
+    Mat4f applied_probe_transform;
+    applied_probe_transform.elements[0u] = 2.0f;
+    applied_probe_transform.elements[5u] = 3.0f;
+    applied_probe_transform.elements[10u] = 4.0f;
+    applied_probe_transform.elements[12u] = 5.0f;
+    instances[3u].cycles_world_to_object =
+        to_luisa(cycles_inverse_transform(applied_probe_transform));
+    instances[3u].cycles_transform_applied = 1u;
     scene->instance_buffer =
         device.create_buffer<InstanceGpu>(instances.size());
     constexpr std::array accel_vertices{
@@ -577,7 +767,7 @@ int main(int argc, char **argv) {
 
     auto callables = make_light_tree_callables(scene);
     auto samples = device.create_buffer<float4>(sample_count * 2u);
-    auto probabilities = device.create_buffer<float>(emitter_count + 5u);
+    auto probabilities = device.create_buffer<float>(emitter_count + 7u);
     Kernel1D sample_kernel = [=](BufferFloat4 output) noexcept {
         const auto index = dispatch_x();
         const auto random =
@@ -703,6 +893,43 @@ int main(int argc, char **argv) {
                     make_float3(0.0f, 0.0f, 1.0f),
                     3.0f,
                     false));
+        }
+        $elif (index == emitter_count + 5u) {
+            // Cycles clamps only the geometric projection to 1e12; its
+            // FLT_MAX-style ray sentinel remains independent. The off-axis
+            // centroid makes the old min(t, ray_infinity) implementation
+            // produce a macroscopically different direction at 1e30.
+            const auto finite =
+                cycles_light_tree_volume_projection_direction(
+                    make_float3(1.0e15f, 0.0f, 0.0f),
+                    make_float3(0.0f),
+                    make_float3(0.0f, 0.0f, 1.0f),
+                    make_float3(0.0f, 0.0f, 1.0f),
+                    1.0e12f);
+            const auto unbounded =
+                cycles_light_tree_volume_projection_direction(
+                    make_float3(1.0e15f, 0.0f, 0.0f),
+                    make_float3(0.0f),
+                    make_float3(0.0f, 0.0f, 1.0f),
+                    make_float3(0.0f, 0.0f, 1.0f),
+                    1.0e18f);
+            output.write(index, length(finite - unbounded));
+        }
+        $elif (index == emitter_count + 6u) {
+            const auto expected_point = make_float3(1.0f, 2.0f, 3.0f);
+            const auto expected_direction =
+                normalize(make_float3(1.0f, 2.0f, 4.0f));
+            const auto expected_distance = 7.0f;
+            Float3 point = expected_point;
+            Float3 direction = expected_direction;
+            Float distance = expected_distance;
+            cycles_light_tree_to_mesh_local_space(
+                scene, 3u, point, direction, distance, true);
+            output.write(
+                index,
+                length(point - expected_point) +
+                    length(direction - expected_direction) +
+                    abs(distance - expected_distance));
         };
     };
     const ShaderOption test_shader_options{
@@ -713,9 +940,9 @@ int main(int argc, char **argv) {
     auto probability_shader = device.compile(
         probability_kernel, test_shader_options);
     std::vector<float4> sample_results(sample_count * 2u);
-    std::array<float, emitter_count + 5u> pdf_results{};
+    std::array<float, emitter_count + 7u> pdf_results{};
     stream << sample_shader(samples).dispatch(sample_count * 2u)
-           << probability_shader(probabilities).dispatch(emitter_count + 5u)
+           << probability_shader(probabilities).dispatch(emitter_count + 7u)
            << samples.copy_to(sample_results.data())
            << probabilities.copy_to(pdf_results.data())
            << synchronize();
@@ -756,7 +983,9 @@ int main(int argc, char **argv) {
         !close(
             pdf_results[emitter_count + 3u],
             pdf_results[emitter_count + 4u],
-            2.0e-6f)) {
+            2.0e-6f) ||
+        !close(pdf_results[emitter_count + 5u], 0.0f, 1.0e-7f) ||
+        !close(pdf_results[emitter_count + 6u], 0.0f, 1.0e-7f)) {
         std::cerr << "normalization/visibility contract failed on " << backend
                   << ": sum=" << pdf_sum
                   << " behind=" << pdf_results[emitter_count]
@@ -767,6 +996,10 @@ int main(int argc, char **argv) {
                   << pdf_results[emitter_count + 3u]
                   << " forward_volume_expected="
                   << pdf_results[emitter_count + 4u]
+                  << " projection_cap_error="
+                  << pdf_results[emitter_count + 5u]
+                  << " transform_applied_query_error="
+                  << pdf_results[emitter_count + 6u]
                   << '\n';
         return 1;
     }

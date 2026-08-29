@@ -227,11 +227,12 @@ sampling::LightTreeEmitter make_triangle_light_tree_emitter(
     Vec3f p1,
     Vec3f p2,
     Vec3f emission_estimate,
-    contract::EmissionSampling emission_sampling) noexcept {
+    contract::EmissionSampling emission_sampling,
+    bool transform_applied) noexcept {
     std::array vertices{
-        cycles_transform_point(object_to_world, p0),
-        cycles_transform_point(object_to_world, p1),
-        cycles_transform_point(object_to_world, p2)};
+        transform_applied ? p0 : cycles_transform_point(object_to_world, p0),
+        transform_applied ? p1 : cycles_transform_point(object_to_world, p1),
+        transform_applied ? p2 : cycles_transform_point(object_to_world, p2)};
     const auto cross = cross_product(
         subtract(vertices[1u], vertices[0u]),
         subtract(vertices[2u], vertices[0u]));
@@ -433,17 +434,16 @@ LightTreeSceneUpload make_light_tree_hierarchy_scene_upload(
         for (const auto &subtree_input : input.subtrees) {
             if (!subtree_input.representative_triangles.empty() &&
                 subtree_input.representative_triangles.size() !=
-                    subtree_input.emitters.size()) {
+                    subtree_input.tree.emitters.size()) {
                 throw std::invalid_argument(
                     "mesh light subtree source population mismatch");
             }
-            const auto tree = sampling::build_cycles_light_subtree(
-                subtree_input.emitters);
+            const auto &tree = subtree_input.tree;
             if (!tree.valid()) {
                 throw std::invalid_argument("empty mesh light subtree");
             }
             std::vector<DeviceEmitterIdentity> identities(
-                subtree_input.emitters.size());
+                tree.emitters.size());
             for (std::size_t emitter = 0u;
                  emitter < identities.size();
                  ++emitter) {
@@ -492,7 +492,7 @@ LightTreeSceneUpload make_light_tree_hierarchy_scene_upload(
                 source.source != LightTreeEmitterSource::measure ||
                 source.subtree >= subtrees.size() ||
                 source.triangle_emitters.size() !=
-                    input.subtrees[source.subtree].emitters.size()) {
+                    input.subtrees[source.subtree].tree.emitters.size()) {
                 throw std::invalid_argument(
                     "invalid mesh light-tree emitter metadata");
             }
