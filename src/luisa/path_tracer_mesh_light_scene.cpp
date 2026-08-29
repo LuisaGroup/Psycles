@@ -313,8 +313,15 @@ MeshLightTreeScene MeshLightTreeSceneComponent::build(
                 std::move(key),
                 static_cast<std::uint32_t>(result.subtrees.size()));
             if (inserted) {
-                result.subtrees.emplace_back(
-                    LightTreeSubtreeInput{.emitters = local_emitters});
+                LightTreeSubtreeInput subtree{
+                    .emitters = local_emitters};
+                subtree.representative_triangles.reserve(
+                    local_triangles.size());
+                for (const auto &triangle : local_triangles) {
+                    subtree.representative_triangles.emplace_back(
+                        triangle.emitter);
+                }
+                result.subtrees.emplace_back(std::move(subtree));
             }
             const auto subtree = subtree_iter->second;
             sampling::LightTreeMeasure proxy_measure;

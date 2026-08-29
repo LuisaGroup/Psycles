@@ -172,7 +172,9 @@ LightSamplingSceneUpload build_light_sampling_scene_upload(
                 .emitter = emitter,
                 .kind = LightTreeEmitterKind::direct,
                 .payload = static_cast<std::uint32_t>(
-                    emissive_triangles.size() + light_index)};
+                    emissive_triangles.size() + light_index),
+                .source = LightTreeEmitterSource::analytic_light,
+                .source_index = static_cast<std::uint32_t>(light_index)};
             if (emitter.distant) {
                 distant.emplace_back(std::move(direct));
             } else {
@@ -193,7 +195,8 @@ LightSamplingSceneUpload build_light_sampling_scene_upload(
                     0u, environment_emission_estimate(snapshot, scene)),
                 .kind = LightTreeEmitterKind::direct,
                 .payload = static_cast<std::uint32_t>(
-                    emissive_triangles.size() + lights.size())});
+                    emissive_triangles.size() + lights.size()),
+                .source = LightTreeEmitterSource::environment});
         }
 
         const auto tree = make_light_tree_hierarchy_scene_upload(hierarchy);

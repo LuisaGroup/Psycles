@@ -33,6 +33,12 @@ struct LightTreeSubtreeInput {
     // Local triangle ids must be a dense permutation. The hierarchy uploader
     // retains this identity after spatial reordering.
     std::vector<sampling::LightTreeEmitter> emitters;
+    // One representative flat emissive-triangle id for every local emitter.
+    // Cycles shares a subtree only between instances of the same semantic
+    // mesh, so any representative contains the same local primitive and
+    // emission-side contract. Empty retains the generic packed-measure path
+    // for renderer-neutral synthetic trees.
+    std::vector<std::uint32_t> representative_triangles;
 };
 
 struct LightTreeTopEmitterInput {
@@ -40,6 +46,11 @@ struct LightTreeTopEmitterInput {
     LightTreeEmitterKind kind{LightTreeEmitterKind::direct};
     // Direct: flat distribution id. Mesh: instance index.
     std::uint32_t payload{};
+    // Exact leaf source is explicit instead of inferred from distribution
+    // ranges. source_index is a LightGpu index for analytic lights; other
+    // direct sources do not consume it.
+    LightTreeEmitterSource source{LightTreeEmitterSource::measure};
+    std::uint32_t source_index{};
     // Mesh-only subtree and one actual triangle id per local emitter id.
     std::uint32_t subtree{sampling::invalid_light_tree_index};
     std::vector<std::uint32_t> triangle_emitters;
