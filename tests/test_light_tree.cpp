@@ -1,5 +1,6 @@
 #include <psycles/sampling/light_tree.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -119,6 +120,32 @@ int main() {
     rejected_sparse_identity = true;
   }
   require(rejected_sparse_identity, "sparse emitter identity was accepted");
+
+  std::vector<LightTreeEmitter> subtree_inputs;
+  for (std::uint32_t index = 0u; index < 5u; ++index) {
+    subtree_inputs.emplace_back(
+        emitter(index, {static_cast<float>(index), 0.0f, 0.0f}, 1.0f));
+  }
+  const auto subtree = build_cycles_light_subtree(subtree_inputs, 2u);
+  require(subtree.valid() && subtree.usable(),
+          "mesh-local subtree is invalid");
+  require(subtree.nodes[subtree.root].parent == invalid_light_tree_index,
+          "mesh-local subtree root unexpectedly has a parent");
+  require(std::none_of(subtree.nodes.begin(), subtree.nodes.end(),
+                       [](const LightTreeNode &node) noexcept {
+                         return node.kind == LightTreeNodeKind::distant;
+                       }),
+          "mesh-local subtree contains a top-level distant fork");
+
+  bool rejected_distant_subtree = false;
+  try {
+    static_cast<void>(build_cycles_light_subtree(
+        std::vector{emitter(0u, {}, 1.0f, true)}, 8u));
+  } catch (const std::invalid_argument &) {
+    rejected_distant_subtree = true;
+  }
+  require(rejected_distant_subtree,
+          "mesh-local subtree accepted a distant emitter");
 
   std::cout << "Cycles light-tree construction tests passed.\n";
   return EXIT_SUCCESS;

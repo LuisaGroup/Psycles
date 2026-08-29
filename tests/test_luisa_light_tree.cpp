@@ -2,6 +2,8 @@
 #include "../src/luisa/path_tracer_light_tree.h"
 #include "../src/luisa/path_tracer_light_tree_scene.h"
 #include "../src/luisa/path_tracer_light_sampling_scene.h"
+#include "../src/luisa/path_tracer_mesh_light_scene.h"
+#include "../src/luisa/path_tracer_scene_geometry.h"
 
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/luisa/cycles_path_state.h>
@@ -137,7 +139,11 @@ constexpr std::uint32_t sample_count = 8192u;
         false);
     if (!result.ok() || !result.tree_usable() ||
         result.distribution_count != 2u ||
-        result.tree_emitters.size() != 2u ||
+        result.tree_emitters.size() != 3u ||
+        result.tree_emitter_mappings.size() != 2u ||
+        result.tree_triangle_emitter_mappings.size() != 1u ||
+        result.tree_mesh_triangles !=
+            luisa::vector<luisa::uint>{0u} ||
         result.tree_triangle_lookup.size() != 1u ||
         !close(result.distribution[0u].selection_pdf, 0.5f, 1.0e-6f) ||
         !close(result.distribution[1u].selection_pdf, 0.5f, 1.0e-6f)) {
@@ -145,21 +151,43 @@ constexpr std::uint32_t sample_count = 8192u;
                   << result.diagnostic << '\n';
         return false;
     }
+    const auto kind = [](const LightTreeEmitterGpu &emitter) noexcept {
+        return static_cast<LightTreeEmitterKind>(
+            (emitter.identity.y & light_tree_emitter_kind_mask) >>
+            light_tree_emitter_kind_shift);
+    };
     const auto triangle = std::find_if(
         result.tree_emitters.begin(),
         result.tree_emitters.end(),
-        [](const LightTreeEmitterGpu &emitter) noexcept {
-            return emitter.identity.x == 0u;
+        [kind](const LightTreeEmitterGpu &emitter) noexcept {
+            return kind(emitter) == LightTreeEmitterKind::mesh_triangle;
+        });
+    const auto proxy = std::find_if(
+        result.tree_emitters.begin(),
+        result.tree_emitters.end(),
+        [kind](const LightTreeEmitterGpu &emitter) noexcept {
+            return kind(emitter) == LightTreeEmitterKind::mesh_instance;
         });
     const auto &lookup = result.tree_triangle_lookup.front();
     const auto expected_energy = 2.0f * (1.0f + 2.0f + 4.0f) / 3.0f;
     if (triangle == result.tree_emitters.end() ||
-        !close(triangle->bounds_min_energy.x, 10.0f, 1.0e-6f) ||
+        proxy == result.tree_emitters.end() ||
+        !close(triangle->bounds_min_energy.x, 0.0f, 1.0e-6f) ||
         !close(triangle->bounds_min_energy.z, 3.0f, 1.0e-6f) ||
-        !close(triangle->bounds_max_theta_o.x, 12.0f, 1.0e-6f) ||
+        !close(triangle->bounds_max_theta_o.x, 2.0f, 1.0e-6f) ||
         !close(triangle->bounds_max_theta_o.z, 3.0f, 1.0e-6f) ||
         !close(
             triangle->bounds_min_energy.w, expected_energy, 1.0e-5f) ||
+        !close(proxy->bounds_min_energy.x, 10.0f, 1.0e-6f) ||
+        !close(proxy->bounds_max_theta_o.x, 12.0f, 1.0e-6f) ||
+        !close(proxy->bounds_min_energy.w, expected_energy, 1.0e-5f) ||
+        proxy->identity.x != 0u ||
+        proxy->identity.z >= result.tree_nodes.size() ||
+        proxy->identity.w != 0u ||
+        result.tree_emitter_mappings[0u].x !=
+            static_cast<std::uint32_t>(proxy - result.tree_emitters.begin()) ||
+        result.tree_triangle_emitter_mappings[0u].x !=
+            static_cast<std::uint32_t>(triangle - result.tree_emitters.begin()) ||
         lookup.x != 9u || lookup.y != 17u || lookup.z != 0u) {
         std::cerr << "final-support/material-override light-tree regression failed\n";
         return false;
@@ -263,6 +291,101 @@ constexpr std::uint32_t sample_count = 8192u;
     return true;
 }
 
+[[nodiscard]] bool verify_mesh_scene_quotient() {
+    constexpr MaterialId base_material{1u};
+    constexpr MaterialId override_material{2u};
+    constexpr GeometryId geometry_id{3u};
+    SceneSnapshot snapshot;
+    snapshot.materials.emplace(
+        base_material,
+        MaterialDesc{
+            .name = "shared mesh emission",
+            .shader = emission_graph({1.0f, 1.0f, 1.0f}, 1.0f),
+            .emission_sampling = EmissionSampling::front});
+    snapshot.materials.emplace(
+        override_material,
+        MaterialDesc{
+            .name = "non-shared override emission",
+            .shader = emission_graph({2.0f, 4.0f, 6.0f}, 1.0f),
+            .emission_sampling = EmissionSampling::front});
+    TriangleMeshDesc mesh;
+    mesh.positions = {
+        {0.0f, 0.0f, 0.0f},
+        {1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f}};
+    mesh.triangles = {{0u, 1u, 2u}};
+    mesh.material_slots = {base_material};
+    mesh.triangle_material_slots = {0u};
+    snapshot.geometries.emplace(geometry_id, std::move(mesh));
+
+    Mat4f identity;
+    Mat4f uniform;
+    uniform.elements[0u] = 2.0f;
+    uniform.elements[5u] = 2.0f;
+    uniform.elements[10u] = 2.0f;
+    uniform.elements[12u] = 3.0f;
+    Mat4f nonuniform;
+    nonuniform.elements[0u] = 2.0f;
+    nonuniform.elements[12u] = 6.0f;
+    snapshot.instances.emplace(
+        InstanceId{1u},
+        InstanceDesc{.geometry = geometry_id, .transform = identity});
+    snapshot.instances.emplace(
+        InstanceId{2u},
+        InstanceDesc{.geometry = geometry_id, .transform = uniform});
+    snapshot.instances.emplace(
+        InstanceId{3u},
+        InstanceDesc{.geometry = geometry_id,
+                     .transform = nonuniform,
+                     .material_overrides = {override_material}});
+
+    LuisaSceneData scene;
+    ShaderCompiler compiler{make_core_node_registry()};
+    if (!scene.materials.update(snapshot, compiler).committed) {
+        std::cerr << "mesh-light quotient material compilation failed\n";
+        return false;
+    }
+    std::array<GeometryUpload, 1u> uploads;
+    uploads[0u].positions = {
+        make_float3(0.0f, 0.0f, 0.0f),
+        make_float3(1.0f, 0.0f, 0.0f),
+        make_float3(0.0f, 1.0f, 0.0f)};
+    std::array<EmissiveTriangleGpu, 3u> triangles;
+    for (std::uint32_t instance = 0u; instance < triangles.size(); ++instance) {
+        triangles[instance] = {
+            .instance_index = instance,
+            .geometry_index = 0u,
+            .primitive_index = 0u,
+            .emission_sampling =
+                static_cast<std::uint32_t>(EmissionSampling::front)};
+    }
+    const auto quotient = MeshLightTreeSceneComponent{}.build(
+        snapshot, scene, uploads, triangles);
+    if (!quotient.ok() || quotient.subtrees.size() != 2u ||
+        quotient.mesh_emitters.size() != 3u ||
+        quotient.mesh_emitters[0u].subtree !=
+            quotient.mesh_emitters[1u].subtree ||
+        quotient.mesh_emitters[2u].subtree ==
+            quotient.mesh_emitters[0u].subtree ||
+        quotient.mesh_emitters[0u].triangle_emitters !=
+            std::vector<std::uint32_t>{0u} ||
+        quotient.mesh_emitters[1u].triangle_emitters !=
+            std::vector<std::uint32_t>{1u} ||
+        quotient.mesh_emitters[2u].triangle_emitters !=
+            std::vector<std::uint32_t>{2u} ||
+        !close(quotient.mesh_emitters[0u].emitter.measure.energy,
+               0.5f, 1.0e-6f) ||
+        !close(quotient.mesh_emitters[1u].emitter.measure.energy,
+               2.0f, 1.0e-6f) ||
+        !close(quotient.mesh_emitters[2u].emitter.measure.energy,
+               4.0f, 1.0e-6f)) {
+        std::cerr << "mesh-light semantic quotient failed: "
+                  << quotient.diagnostic << '\n';
+        return false;
+    }
+    return true;
+}
+
 [[nodiscard]] LightTreeEmitter local_emitter(
     std::uint32_t id,
     float x,
@@ -292,7 +415,8 @@ constexpr std::uint32_t sample_count = 8192u;
 }// namespace
 
 int main(int argc, char **argv) {
-    if (!verify_scene_upload() || !verify_analytic_light_population()) {
+    if (!verify_scene_upload() || !verify_analytic_light_population() ||
+        !verify_mesh_scene_quotient()) {
         return 1;
     }
     const std::string backend = argc > 1 ? argv[1] : "fallback";
@@ -302,8 +426,8 @@ int main(int argc, char **argv) {
 
     std::array<LightTreeEmitter, emitter_count> emitters{
         local_emitter(0u, -1.5f, 1.0f),
-        local_emitter(1u, 0.0f, 2.0f),
-        local_emitter(2u, 1.5f, 4.0f),
+        local_emitter(1u, 0.0f, 1.0f),
+        local_emitter(2u, 1.5f, 1.0f),
         LightTreeEmitter{
             .measure = {
                 .orientation = {
@@ -315,16 +439,52 @@ int main(int argc, char **argv) {
             .centroid = {0.0f, 0.0f, 1.0f},
             .emitter_id = 3u,
             .distant = true}};
-    auto upload = make_light_tree_scene_upload(emitters);
+    LightTreeHierarchyInput hierarchy;
+    hierarchy.distribution_emitter_count = emitter_count;
+    hierarchy.triangle_emitter_count = 3u;
+    hierarchy.subtrees.emplace_back(LightTreeSubtreeInput{
+        .emitters = {local_emitter(0u, 0.0f, 1.0f)}});
+    for (std::uint32_t instance = 0u; instance < 3u; ++instance) {
+        hierarchy.top_emitters.emplace_back(LightTreeTopEmitterInput{
+            .emitter = emitters[instance],
+            .kind = LightTreeEmitterKind::mesh_instance,
+            .payload = instance,
+            .subtree = 0u,
+            .triangle_emitters = {instance}});
+    }
+    hierarchy.top_emitters.emplace_back(LightTreeTopEmitterInput{
+        .emitter = emitters[3u],
+        .kind = LightTreeEmitterKind::direct,
+        .payload = 3u});
+    auto upload = make_light_tree_hierarchy_scene_upload(hierarchy);
     if (!upload.usable()) {
         std::cerr << "light-tree upload failed: " << upload.diagnostic << '\n';
+        return 1;
+    }
+    const auto same_mapping = [](luisa::uint2 a, luisa::uint2 b) noexcept {
+        return a.x == b.x && a.y == b.y;
+    };
+    if (upload.emitters.size() != 5u ||
+        upload.emitter_mappings.size() != emitter_count ||
+        upload.triangle_emitter_mappings.size() != 3u ||
+        upload.mesh_triangles != luisa::vector<luisa::uint>{0u, 1u, 2u} ||
+        !same_mapping(upload.triangle_emitter_mappings[0u],
+                      upload.triangle_emitter_mappings[1u]) ||
+        !same_mapping(upload.triangle_emitter_mappings[1u],
+                      upload.triangle_emitter_mappings[2u]) ||
+        same_mapping(upload.emitter_mappings[0u],
+                     upload.emitter_mappings[1u]) ||
+        same_mapping(upload.emitter_mappings[1u],
+                     upload.emitter_mappings[2u])) {
+        std::cerr << "mesh-instance light-tree quotient contract failed\n";
         return 1;
     }
 
     std::array<LightDistributionGpu, emitter_count> distribution{};
     for (std::uint32_t id = 0u; id < emitter_count; ++id) {
         distribution[id].kind = static_cast<std::uint32_t>(
-            LightDistributionEmitterKind::analytic_light);
+            id < 3u ? LightDistributionEmitterKind::emissive_triangle
+                    : LightDistributionEmitterKind::analytic_light);
         distribution[id].index = id;
         distribution[id].emitter_id = id;
     }
@@ -333,22 +493,70 @@ int main(int argc, char **argv) {
     scene->device = Device{device.impl_shared()};
     scene->light_tree_node_count =
         static_cast<std::uint32_t>(upload.nodes.size());
-    scene->light_tree_emitter_count = emitter_count;
+    scene->light_tree_emitter_count =
+        static_cast<std::uint32_t>(upload.emitters.size());
     scene->light_tree_root = upload.root;
     scene->light_distribution_count = emitter_count;
+    scene->emissive_triangle_count = 3u;
+    scene->light_tree_mesh_triangle_count =
+        static_cast<std::uint32_t>(upload.mesh_triangles.size());
     scene->light_tree_node_buffer =
         device.create_buffer<LightTreeNodeGpu>(upload.nodes.size());
     scene->light_tree_emitter_buffer =
         device.create_buffer<LightTreeEmitterGpu>(upload.emitters.size());
     scene->light_tree_emitter_mapping_buffer =
         device.create_buffer<uint2>(upload.emitter_mappings.size());
+    scene->light_tree_triangle_emitter_mapping_buffer =
+        device.create_buffer<uint2>(upload.triangle_emitter_mappings.size());
+    scene->light_tree_mesh_triangle_buffer =
+        device.create_buffer<uint>(upload.mesh_triangles.size());
     scene->light_distribution_buffer =
         device.create_buffer<LightDistributionGpu>(distribution.size());
+
+    std::array<Mat4f, 3u> transforms;
+    transforms[0u].elements[12u] = -1.5f;
+    transforms[2u].elements[12u] = 1.5f;
+    std::array<InstanceGpu, 3u> instances;
+    for (std::size_t index = 0u; index < instances.size(); ++index) {
+        instances[index].cycles_world_to_object =
+            to_luisa(cycles_inverse_transform(transforms[index]));
+    }
+    scene->instance_buffer =
+        device.create_buffer<InstanceGpu>(instances.size());
+    constexpr std::array accel_vertices{
+        luisa::float3{-1.0f, -1.0f, 0.0f},
+        luisa::float3{1.0f, -1.0f, 0.0f},
+        luisa::float3{0.0f, 1.0f, 0.0f}};
+    constexpr std::array accel_triangles{Triangle{0u, 1u, 2u}};
+    auto accel_vertex_buffer =
+        device.create_buffer<luisa::float3>(accel_vertices.size());
+    auto accel_triangle_buffer =
+        device.create_buffer<Triangle>(accel_triangles.size());
+    auto accel_mesh =
+        device.create_mesh(accel_vertex_buffer, accel_triangle_buffer);
+    scene->accel = device.create_accel();
+    for (std::size_t index = 0u; index < transforms.size(); ++index) {
+        scene->accel.emplace_back(
+            accel_mesh,
+            to_luisa(transforms[index]),
+            0xffu,
+            false,
+            static_cast<std::uint32_t>(index));
+    }
     stream << scene->light_tree_node_buffer.copy_from(span{upload.nodes})
            << scene->light_tree_emitter_buffer.copy_from(span{upload.emitters})
            << scene->light_tree_emitter_mapping_buffer.copy_from(
                   span{upload.emitter_mappings})
+           << scene->light_tree_triangle_emitter_mapping_buffer.copy_from(
+                  span{upload.triangle_emitter_mappings})
+           << scene->light_tree_mesh_triangle_buffer.copy_from(
+                  span{upload.mesh_triangles})
            << scene->light_distribution_buffer.copy_from(span{distribution});
+    stream << scene->instance_buffer.copy_from(span{instances})
+           << accel_vertex_buffer.copy_from(accel_vertices.data())
+           << accel_triangle_buffer.copy_from(accel_triangles.data())
+           << accel_mesh.build()
+           << scene->accel.build();
 
     auto callables = make_light_tree_callables(scene);
     auto samples = device.create_buffer<float4>(sample_count * 2u);

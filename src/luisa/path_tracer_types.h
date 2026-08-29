@@ -259,7 +259,7 @@ struct LightTreeEmitterGpu {
     luisa::float4 bounds_min_energy{};
     luisa::float4 bounds_max_theta_o{};
     luisa::float4 cone_axis_theta_e{};
-    // stable emitter id, measure flags, reserved, reserved
+    // payload 0, measure flags | LightTreeEmitterKind, payload 1, payload 2
     luisa::uint4 identity{};
 };
 
@@ -267,8 +267,28 @@ inline constexpr std::uint32_t light_tree_measure_has_bounds = 1u << 0u;
 inline constexpr std::uint32_t light_tree_measure_has_orientation = 1u << 1u;
 inline constexpr std::uint32_t light_tree_measure_is_distant = 1u << 2u;
 
+enum class LightTreeEmitterKind : std::uint32_t {
+    direct,
+    mesh_instance,
+    mesh_triangle
+};
+
+inline constexpr std::uint32_t light_tree_emitter_kind_shift = 3u;
+inline constexpr std::uint32_t light_tree_emitter_kind_mask =
+    0x3u << light_tree_emitter_kind_shift;
+
+[[nodiscard]] constexpr std::uint32_t light_tree_emitter_kind_bits(
+    LightTreeEmitterKind kind) noexcept {
+    return static_cast<std::uint32_t>(kind) <<
+           light_tree_emitter_kind_shift;
+}
+
 static_assert(sizeof(LightTreeNodeGpu) == 80u);
 static_assert(sizeof(LightTreeEmitterGpu) == 64u);
+static_assert((light_tree_emitter_kind_mask &
+               (light_tree_measure_has_bounds |
+                light_tree_measure_has_orientation |
+                light_tree_measure_is_distant)) == 0u);
 
 struct ShaderEvaluationStateCall {
     luisa::uint ray_visibility{};

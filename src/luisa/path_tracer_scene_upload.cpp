@@ -21,6 +21,13 @@ void provide_inert_storage(SceneTableUploadInput input) {
         input.light_tree_emitter_mappings.emplace_back(
             ~luisa::uint{0u}, ~luisa::uint{0u});
     }
+    if (input.light_tree_triangle_emitter_mappings.empty()) {
+        input.light_tree_triangle_emitter_mappings.emplace_back(
+            ~luisa::uint{0u}, ~luisa::uint{0u});
+    }
+    if (input.light_tree_mesh_triangles.empty()) {
+        input.light_tree_mesh_triangles.emplace_back(~luisa::uint{0u});
+    }
     if (input.light_tree_triangle_lookup.empty()) {
         input.light_tree_triangle_lookup.emplace_back(
             ~luisa::uint{0u},
@@ -235,6 +242,12 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
     scene->light_tree_emitter_mapping_buffer =
         scene->device.create_buffer<luisa::uint2>(
             input.light_tree_emitter_mappings.size());
+    scene->light_tree_triangle_emitter_mapping_buffer =
+        scene->device.create_buffer<luisa::uint2>(
+            input.light_tree_triangle_emitter_mappings.size());
+    scene->light_tree_mesh_triangle_buffer =
+        scene->device.create_buffer<luisa::uint>(
+            input.light_tree_mesh_triangles.size());
     scene->light_tree_triangle_lookup_buffer =
         scene->device.create_buffer<luisa::uint4>(
             input.light_tree_triangle_lookup.size());
@@ -264,6 +277,10 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
                   luisa::span{input.light_tree_emitters})
            << scene->light_tree_emitter_mapping_buffer.copy_from(
                   luisa::span{input.light_tree_emitter_mappings})
+           << scene->light_tree_triangle_emitter_mapping_buffer.copy_from(
+                  luisa::span{input.light_tree_triangle_emitter_mappings})
+           << scene->light_tree_mesh_triangle_buffer.copy_from(
+                  luisa::span{input.light_tree_mesh_triangles})
            << scene->light_tree_triangle_lookup_buffer.copy_from(
                   luisa::span{input.light_tree_triangle_lookup})
            << scene->texture_heap.update() << scene->heap.update()

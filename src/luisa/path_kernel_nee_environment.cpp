@@ -115,7 +115,14 @@ class EnvironmentDirectLightProvider final : public DirectLightProvider {
             }
             $else {
                 _trace->record_failed_sample(
-                    bounce);
+                    bounce,
+                    {.emitter_id = selected_light.emitter_id,
+                     .primitive =
+                         ~cast<int>(config.scene->light_count),
+                     .object = cast<int>(
+                         config.scene->cycles_background_object_index),
+                     .visibility_flag = 0u,
+                     .selection_pdf = selected_light.selection_pdf});
             };
         };
     }

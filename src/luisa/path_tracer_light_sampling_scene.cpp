@@ -1,6 +1,7 @@
 #include "path_tracer_light_sampling_scene.h"
 
 #include "path_tracer_light_tree_scene.h"
+#include "path_tracer_mesh_light_scene.h"
 
 #include <psycles/compiler/surface_program.h>
 #include <psycles/sampling/light_distribution.h>
@@ -9,35 +10,12 @@
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <iterator>
 #include <limits>
-#include <optional>
 #include <vector>
 
 namespace psycles::luisa_backend::detail {
 namespace {
-
-[[nodiscard]] Vec3f from_luisa(luisa::float3 value) noexcept {
-    return {value.x, value.y, value.z};
-}
-
-[[nodiscard]] std::optional<contract::MaterialId>
-triangle_material(
-    const contract::TriangleMeshDesc &geometry,
-    const contract::InstanceDesc &instance,
-    std::size_t primitive_index) noexcept {
-    const auto slot =
-        primitive_index < geometry.triangle_material_slots.size()
-            ? geometry.triangle_material_slots[primitive_index]
-            : 0u;
-    if (slot < instance.material_overrides.size()) {
-        return instance.material_overrides[slot];
-    }
-    if (geometry.material_slots.empty()) {
-        return std::nullopt;
-    }
-    return geometry.material_slots[std::min<std::size_t>(
-        slot, geometry.material_slots.size() - 1u)];
-}
 
 [[nodiscard]] Vec3f emission_estimate(
     const LuisaSceneData &scene,
@@ -169,91 +147,68 @@ LightSamplingSceneUpload build_light_sampling_scene_upload(
             static_cast<std::uint32_t>(lights.size()),
             include_environment);
 
-        std::vector<const contract::InstanceDesc *> source_instances;
-        source_instances.reserve(snapshot.instances.size());
-        for (const auto &[id, instance] : snapshot.instances) {
-            static_cast<void>(id);
-            source_instances.emplace_back(&instance);
+        auto meshes = MeshLightTreeSceneComponent{}.build(
+            snapshot, scene, geometry_uploads, emissive_triangles);
+        if (!meshes.ok()) {
+            result.diagnostic = meshes.diagnostic;
+            return result;
         }
-
-        std::vector<sampling::LightTreeEmitter> emitters;
-        emitters.reserve(
-            emissive_triangles.size() + lights.size() +
+        LightTreeHierarchyInput hierarchy;
+        hierarchy.subtrees = std::move(meshes.subtrees);
+        hierarchy.distribution_emitter_count = result.distribution_count;
+        hierarchy.triangle_emitter_count =
+            static_cast<std::uint32_t>(emissive_triangles.size());
+        hierarchy.top_emitters.reserve(
+            lights.size() + meshes.mesh_emitters.size() +
             (include_environment ? 1u : 0u));
-        for (std::size_t emitter_id = 0u;
-             emitter_id < emissive_triangles.size();
-             ++emitter_id) {
-            const auto &emitter = emissive_triangles[emitter_id];
-            if (emitter.instance_index >= source_instances.size() ||
-                emitter.geometry_index >= geometry_uploads.size()) {
-                result.diagnostic =
-                    "emissive triangle references an unavailable instance or geometry";
-                return result;
-            }
-            const auto &instance = *source_instances[emitter.instance_index];
-            const auto geometry_iter =
-                snapshot.geometries.find(instance.geometry);
-            if (geometry_iter == snapshot.geometries.end()) {
-                result.diagnostic =
-                    "emissive triangle references non-triangle source geometry";
-                return result;
-            }
-            const auto &geometry = geometry_iter->second;
-            if (emitter.primitive_index >= geometry.triangles.size()) {
-                result.diagnostic =
-                    "emissive triangle primitive is outside source geometry";
-                return result;
-            }
-            const auto material = triangle_material(
-                geometry, instance, emitter.primitive_index);
-            if (!material) {
-                result.diagnostic =
-                    "emissive triangle has no effective material";
-                return result;
-            }
-            const auto triangle = geometry.triangles[emitter.primitive_index];
-            const auto &upload = geometry_uploads[emitter.geometry_index];
-            if (triangle[0u] >= upload.positions.size() ||
-                triangle[1u] >= upload.positions.size() ||
-                triangle[2u] >= upload.positions.size()) {
-                result.diagnostic =
-                    "emissive triangle is outside final displaced support";
-                return result;
-            }
-            emitters.emplace_back(make_triangle_light_tree_emitter(
-                static_cast<std::uint32_t>(emitter_id),
-                instance.transform,
-                from_luisa(upload.positions[triangle[0u]]),
-                from_luisa(upload.positions[triangle[1u]]),
-                from_luisa(upload.positions[triangle[2u]]),
-                emission_estimate(scene, *material),
-                static_cast<contract::EmissionSampling>(
-                    emitter.emission_sampling)));
-        }
-
+        std::vector<LightTreeTopEmitterInput> distant;
         for (std::size_t light_index = 0u;
              light_index < lights.size();
              ++light_index) {
-            emitters.emplace_back(make_analytic_light_tree_emitter(
-                static_cast<std::uint32_t>(emitters.size()),
-                lights[light_index],
-                analytic_light_emission_estimates[light_index]));
+            auto emitter = make_analytic_light_tree_emitter(
+                0u, lights[light_index],
+                analytic_light_emission_estimates[light_index]);
+            LightTreeTopEmitterInput direct{
+                .emitter = emitter,
+                .kind = LightTreeEmitterKind::direct,
+                .payload = static_cast<std::uint32_t>(
+                    emissive_triangles.size() + light_index)};
+            if (emitter.distant) {
+                distant.emplace_back(std::move(direct));
+            } else {
+                hierarchy.top_emitters.emplace_back(std::move(direct));
+            }
         }
+        hierarchy.top_emitters.insert(
+            hierarchy.top_emitters.end(),
+            std::make_move_iterator(meshes.mesh_emitters.begin()),
+            std::make_move_iterator(meshes.mesh_emitters.end()));
+        hierarchy.top_emitters.insert(
+            hierarchy.top_emitters.end(),
+            std::make_move_iterator(distant.begin()),
+            std::make_move_iterator(distant.end()));
         if (include_environment) {
-            emitters.emplace_back(make_environment_light_tree_emitter(
-                static_cast<std::uint32_t>(emitters.size()),
-                environment_emission_estimate(snapshot, scene)));
+            hierarchy.top_emitters.emplace_back(LightTreeTopEmitterInput{
+                .emitter = make_environment_light_tree_emitter(
+                    0u, environment_emission_estimate(snapshot, scene)),
+                .kind = LightTreeEmitterKind::direct,
+                .payload = static_cast<std::uint32_t>(
+                    emissive_triangles.size() + lights.size())});
         }
 
-        const auto tree = make_light_tree_scene_upload(emitters);
+        const auto tree = make_light_tree_hierarchy_scene_upload(hierarchy);
         if (tree.usable()) {
             result.tree_nodes = tree.nodes;
             result.tree_emitters = tree.emitters;
             result.tree_emitter_mappings = tree.emitter_mappings;
+            result.tree_triangle_emitter_mappings =
+                tree.triangle_emitter_mappings;
+            result.tree_mesh_triangles = tree.mesh_triangles;
             result.tree_root = tree.root;
             result.tree_triangle_lookup =
                 make_light_tree_triangle_lookup(emissive_triangles);
-        } else if (!emitters.empty() && !tree.diagnostic.empty()) {
+        } else if (!hierarchy.top_emitters.empty() &&
+                   !tree.diagnostic.empty()) {
             result.diagnostic = tree.diagnostic;
         }
     } catch (const std::exception &error) {
