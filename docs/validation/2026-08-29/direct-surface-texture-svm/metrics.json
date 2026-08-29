@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "checkpoint": {
+    "psycles_commit": "fae8afc",
+    "cycles_version": "Blender 5.2",
+    "cycles_commit": "fbe6228777e7",
+    "scene": "/var/tmp/psycles-official-redownload-20260814/barbershop_interior.blend",
+    "device": "Radeon RX 9070 XT",
+    "backend": "hip"
+  },
+  "surface_program": {
+    "surface_populations": 53656078,
+    "value_instruction_executions": 4818350450,
+    "direct_instruction_executions": 3304545382,
+    "direct_fraction": 0.685987,
+    "programs": 380,
+    "records": 10177,
+    "value_records": 8808,
+    "reached_families": 34,
+    "semantic_variants": 67,
+    "stack_lanes": 33,
+    "direct_families": {
+      "convert": 881192619,
+      "mix_color": 773824881,
+      "math": 656448096,
+      "rgb_ramp": 395177469,
+      "mapping": 306726772,
+      "tex_image": 196165527,
+      "tex_image_box": 95010018
+    }
+  },
+  "shade_surface_ab": {
+    "resolution": [640, 480],
+    "samples": 64,
+    "scheduler": "wavefront-staged",
+    "block_size": 64,
+    "static_resources": {
+      "scratch_bytes_per_thread": 3380,
+      "vgpr": 256,
+      "sgpr": 128
+    },
+    "runs_ns_per_item": {
+      "retained_evaluator_baseline": [26.0182993, 26.0098914],
+      "direct_mix_only": [26.0200002],
+      "direct_rgb_ramp_only": [26.0077180],
+      "direct_mapping_only": [26.0256212],
+      "direct_image_box_unordered": [26.6707137],
+      "direct_image_box_ordered": [25.9922931],
+      "all_direct_ordered": [26.0637990, 26.0815637]
+    },
+    "artifact_directories": {
+      "retained_evaluator_baseline": "/var/tmp/psycles-direct-baseline-profile-20260829",
+      "direct_mix_only": "/var/tmp/psycles-direct-mix-profile-20260829",
+      "direct_rgb_ramp_only": "/var/tmp/psycles-direct-ramp-profile-20260829",
+      "direct_mapping_only": "/var/tmp/psycles-direct-mapping-profile-20260829",
+      "direct_image_box_unordered": "/var/tmp/psycles-direct-image-profile-20260829",
+      "direct_image_box_ordered": "/var/tmp/psycles-direct-image-ordered-profile-20260829",
+      "all_direct_ordered": "/var/tmp/psycles-ordered-operands-profile-20260829"
+    }
+  },
+  "full_resolution": {
+    "resolution": [1920, 1080],
+    "samples": 1024,
+    "adaptive_sampling": false,
+    "denoising": false,
+    "cycles_seconds": 164.048323649,
+    "psycles_seconds": 232.554,
+    "psycles_over_cycles": 1.417596,
+    "psycles_slowdown_fraction": 0.417596,
+    "psycles_scheduler": "wavefront-staged",
+    "psycles_frame_bytes": 848,
+    "psycles_frame_fields": 176,
+    "psycles_frame_capacity": 1048576,
+    "psycles_jit_orchestration_seconds": 2.1007,
+    "psycles_image": "/var/tmp/psycles-ordered-operands-fullres-20260829/psycles-hip-barbershop-1920x1080-1024.exr",
+    "cycles_image": "/var/tmp/psycles-ordered-operands-fullres-20260829/cycles-hip-barbershop-1920x1080-1024.exr",
+    "comparison_report": "all-pass-report.json"
+  },
+  "correctness": {
+    "hip_ctest": {
+      "passed": 84,
+      "failed": 0,
+      "seconds": 6.75
+    },
+    "small_exact_passes": {
+      "resolution": [320, 180],
+      "samples": 1,
+      "passes": 15,
+      "byte_identical_to_previous_checkpoint": true
+    },
+    "full_resolution_invalid_pixels_per_pass": 0
+  }
+}
