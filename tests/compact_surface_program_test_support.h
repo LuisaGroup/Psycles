@@ -38,6 +38,11 @@ struct CompactSurfaceProgramEvidence {
 // truncation boundary.
 [[nodiscard]] contract::ShaderGraph make_direct_math_convert_graph();
 
+// Exercises both output subtypes of the direct Cycles Vector Math family with
+// runtime geometry inputs, preventing constant folding from bypassing the
+// compact typed-stack handler.
+[[nodiscard]] contract::ShaderGraph make_direct_vector_math_graph();
+
 // One closed texture trunk exercising Mapping, Image Color/Alpha, sampled RGB
 // Ramp Color/Alpha, and Mix Color. The Boolean selects Cycles' distinct BOX
 // execution shape without changing the graph dataflow.

@@ -30,6 +30,8 @@ namespace psycles::luisa_backend::detail {
     compiler::SurfaceSvmValueOpcode opcode) noexcept {
     return opcode == compiler::SurfaceSvmValueOpcode::convert ||
            opcode == compiler::SurfaceSvmValueOpcode::math ||
+           opcode == compiler::SurfaceSvmValueOpcode::vector_math ||
+           opcode == compiler::SurfaceSvmValueOpcode::clamp ||
            opcode == compiler::SurfaceSvmValueOpcode::mix_color ||
            opcode == compiler::SurfaceSvmValueOpcode::rgb_ramp ||
            opcode == compiler::SurfaceSvmValueOpcode::mapping ||

@@ -456,6 +456,67 @@ ShaderGraph make_direct_math_convert_graph() {
     return graph;
 }
 
+ShaderGraph make_direct_vector_math_graph() {
+    ShaderGraph graph;
+    const auto geometry =
+        graph.add_node(node_type::geometry, "Direct Vector Math geometry");
+    const auto normal_to_vector = graph.add_node(
+        node_type::normal_to_vector, "Direct Vector Math normal input");
+    const auto dot =
+        graph.add_node(node_type::vector_math, "Direct Vector Math dot");
+    const auto multiply_add = graph.add_node(
+        node_type::vector_math, "Direct Vector Math multiply-add");
+    const auto vector_to_color = graph.add_node(
+        node_type::vector_to_color, "Direct Vector Math result color");
+    const auto principled = graph.add_node(
+        node_type::principled_bsdf, "Direct Vector Math Principled");
+    const auto configured =
+        graph.set_property(dot, "Operation",
+                           SocketValue::string("DOT_PRODUCT")) &&
+        graph.set_input(dot, "B",
+                        SocketValue::vector({0.31f, -0.47f, 0.79f})) &&
+        graph.set_input(dot, "C",
+                        SocketValue::vector({0.13f, 0.29f, -0.17f})) &&
+        graph.set_input(dot, "Scale", SocketValue::floating(0.73f)) &&
+        graph.set_property(multiply_add, "Operation",
+                           SocketValue::string("MULTIPLY_ADD")) &&
+        graph.set_input(multiply_add, "B",
+                        SocketValue::vector({0.17f, 0.23f, 0.41f})) &&
+        graph.set_input(multiply_add, "C",
+                        SocketValue::vector({0.37f, 0.19f, 0.11f})) &&
+        graph.set_input(multiply_add, "Scale",
+                        SocketValue::floating(0.61f)) &&
+        graph.connect({.node = geometry, .socket = "Incoming"}, dot, "A") &&
+        graph.connect({.node = geometry, .socket = "Normal"}, normal_to_vector,
+                      "Normal") &&
+        graph.connect({.node = normal_to_vector, .socket = "Vector"},
+                      multiply_add, "A") &&
+        graph.connect({.node = multiply_add, .socket = "Vector"},
+                      vector_to_color, "Vector") &&
+        graph.connect({.node = vector_to_color, .socket = "Color"}, principled,
+                      "BaseColor") &&
+        graph.connect({.node = dot, .socket = "Value"}, principled,
+                      "Roughness") &&
+        graph.set_input(principled, "TransmissionWeight",
+                        SocketValue::floating(0.0f)) &&
+        graph.set_input(principled, "SubsurfaceWeight",
+                        SocketValue::floating(0.0f)) &&
+        graph.set_input(principled, "SheenWeight",
+                        SocketValue::floating(0.0f)) &&
+        graph.set_input(principled, "CoatWeight",
+                        SocketValue::floating(0.0f)) &&
+        graph.set_input(principled, "Alpha", SocketValue::floating(1.0f)) &&
+        graph.set_input(principled, "EmissionStrength",
+                        SocketValue::floating(0.0f));
+    if (!configured) {
+        throw std::runtime_error{
+            "failed to configure direct Vector Math SVM graph"};
+    }
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = principled, .socket = "Closure"});
+    return graph;
+}
+
 ShaderGraph make_direct_texture_trunk_graph(bool box_projection) {
     ShaderGraph graph;
     const auto coordinates = graph.add_node(node_type::texture_coordinate,
@@ -581,6 +642,9 @@ ShaderGraph make_typed_clamp_graph() {
     const auto range = graph.add_node(
         node_type::clamp_range,
         "RANGE clamp");
+    const auto unit = graph.add_node(
+        node_type::clamp_float,
+        "Unit clamp");
     const auto principled = graph.add_node(
         node_type::principled_bsdf,
         "Typed-clamp Principled");
@@ -609,19 +673,22 @@ ShaderGraph make_typed_clamp_graph() {
         graph.set_input(
             principled, "CoatWeight", SocketValue::floating(0.0f)) &&
         graph.set_input(
-            principled, "Alpha", SocketValue::floating(1.0f)) &&
-        graph.set_input(
             principled, "EmissionStrength", SocketValue::floating(0.0f)) &&
         graph.connect(
             {.node = geometry, .socket = "Backfacing"}, minmax, "Value") &&
         graph.connect(
             {.node = geometry, .socket = "Backfacing"}, range, "Value") &&
         graph.connect(
+            {.node = geometry, .socket = "Backfacing"}, unit, "Value") &&
+        graph.connect(
             {.node = minmax, .socket = "Result"},
             principled, "Roughness") &&
         graph.connect(
             {.node = range, .socket = "Result"},
-            principled, "Metallic");
+            principled, "Metallic") &&
+        graph.connect(
+            {.node = unit, .socket = "Value"},
+            principled, "Alpha");
     if (!configured) {
         throw std::runtime_error{
             "failed to configure typed Clamp graph"};
