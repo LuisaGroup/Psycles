@@ -63,6 +63,9 @@ void provide_inert_storage(SceneTableUploadInput input) {
     if (input.instances.empty()) {
         input.instances.emplace_back(InstanceGpu{});
     }
+    if (input.ambient_occlusion_object_distances.empty()) {
+        input.ambient_occlusion_object_distances.emplace_back(0.0f);
+    }
 }
 
 }// namespace
@@ -213,6 +216,9 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
     }
     scene->instance_buffer =
         scene->device.create_buffer<InstanceGpu>(input.instances.size());
+    scene->ambient_occlusion_object_distance_buffer =
+        scene->device.create_buffer<float>(
+            input.ambient_occlusion_object_distances.size());
     scene->geometry_material_buffer =
         scene->device.create_buffer<MaterialBindingGpu>(
             input.geometry_materials.size());
@@ -258,6 +264,8 @@ SceneTableUploadComponent::upload(const std::shared_ptr<LuisaSceneData> &scene,
            << scene->attribute_range_buffer.copy_from(
                   luisa::span{input.attribute_ranges})
            << scene->instance_buffer.copy_from(luisa::span{input.instances})
+           << scene->ambient_occlusion_object_distance_buffer.copy_from(
+                  luisa::span{input.ambient_occlusion_object_distances})
            << scene->geometry_material_buffer.copy_from(
                   luisa::span{input.geometry_materials})
            << scene->override_material_buffer.copy_from(

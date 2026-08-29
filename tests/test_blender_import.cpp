@@ -75,7 +75,7 @@ void test_integrator_settings_round_trip() {
   "node_groups": [],
   "materials": [
     {
-      "name": "Raw Emissive",
+      "name": "Raw Emissive", "use_transparent_shadow": false,
       "use_bump_map_correction": false,
       "emission_sampling": "BACK",
       "volume_sampling": "EQUIANGULAR",
@@ -602,6 +602,8 @@ void test_integrator_settings_round_trip() {
       "transparent_max_bounces": 9,
       "sample_clamp_direct": 1.25,
       "sample_clamp_indirect": 2.5,
+      "use_fast_gi": true, "fast_gi_method": "REPLACE",
+      "ao_bounces": 3, "ao_bounces_render": 7, "ao_factor": 0.625,
       "blur_glossy": 0.75,
       "ao_distance": 4.25,
       "film_exposure": 0.75,
@@ -709,6 +711,7 @@ void test_integrator_settings_round_trip() {
   expect(default_is_principled,
          "Cycles default surface was replaced by a diagnostic material");
   expect(imported_material != imported.scene->materials.end() &&
+             !imported_material->second.use_transparent_shadow &&
              !imported_material->second.use_bump_map_correction &&
              imported_material->second.emission_sampling ==
                  EmissionSampling::back &&
@@ -828,9 +831,13 @@ void test_integrator_settings_round_trip() {
   expect_near(integrator.sample_clamp_direct, 1.25f, "direct clamp mismatch");
   expect_near(integrator.sample_clamp_indirect, 2.5f,
               "indirect clamp mismatch");
+  expect(integrator.ambient_occlusion_bounces == 7u, "Fast GI bounce mismatch");
+  expect_near(integrator.ambient_occlusion_factor, 0.625f, "Fast GI factor mismatch");
+  expect_near(integrator.ambient_occlusion_additive_factor, 0.0f,
+              "Fast GI additive mismatch");
   expect_near(integrator.filter_glossy, 0.75f, "filter glossy mismatch");
-  expect_near(imported.scene->ambient_occlusion_distance, 4.25f,
-              "world ambient-occlusion distance mismatch");
+  expect_near(imported.scene->ambient_occlusion_distance, 4.25f, "world AO distance mismatch");
+  expect_near(integrator.ambient_occlusion_distance, 4.25f, "Fast GI distance mismatch");
   expect_near(integrator.film_exposure, 0.75f, "film exposure mismatch");
   expect_near(integrator.light_sampling_threshold, 0.125f,
               "light sampling threshold mismatch");

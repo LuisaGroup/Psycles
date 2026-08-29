@@ -135,10 +135,12 @@ inline constexpr std::uint32_t material_emission_sampling_shift = 4u;
 inline constexpr std::uint32_t material_emission_sampling_mask =
     0x7u << material_emission_sampling_shift;
 
-// Conservative surface-program capability. A clear bit proves that the raw
-// closure graph cannot transmit a shadow ray; a set bit only requests deferred
-// closure evaluation and does not encode a sampled or precomputed opacity.
-inline constexpr std::uint32_t material_flag_may_be_transparent = 1u << 7u;
+// Exact Cycles SD_HAS_TRANSPARENT_SHADOW projection. A clear bit proves that
+// the material is opaque to shadow rays; a set bit requests deferred raw
+// closure evaluation and also includes volume boundaries. It does not encode
+// sampled or precomputed opacity.
+inline constexpr std::uint32_t material_flag_has_transparent_shadow =
+    1u << 7u;
 // Exact Cycles Shader::has_bssrdf_bump metadata for this parameter block.
 // Unlike surface_tag, this must remain material-specific: two materials can
 // share graph topology while direct parameters prove the BSSRDF unreachable
@@ -168,8 +170,8 @@ static_assert((material_emission_sampling_mask &
                (material_flag_has_volume | material_flag_may_emit |
                 material_flag_constant_emission |
                 material_flag_use_bump_map_correction |
-                material_flag_may_be_transparent |
-                material_flag_has_bssrdf_bump)) == 0u);
+                material_flag_has_bssrdf_bump |
+                material_flag_has_transparent_shadow)) == 0u);
 
 struct MaterialBindingGpu {
     luisa::uint surface_tag{};
@@ -588,6 +590,9 @@ struct RenderKernelParameters {
     // shader AST/cache identity or invite portal-loop unrolling.
     luisa::uint analytic_light_count{};
     luisa::uint portal_count{};
+    // Dense table indexed by Cycles object identity. A zero authored entry
+    // inherits ambient_occlusion_distance exactly as Cycles does.
+    luisa::uint ambient_occlusion_object_distance_count{};
     // Runtime allocation bound for coroutine-owned auxiliary queues. This is
     // deliberately a kernel argument: resolution and frame-pool capacity must
     // not specialize the shader AST or its cache identity.
@@ -600,6 +605,9 @@ struct RenderKernelParameters {
     // owner from (block_id.x, thread_id.x). A callable has no block size of
     // its own, so the enclosing kernel must provide this value explicitly.
     luisa::uint shadow_storage_block_size{};
+    luisa::uint ambient_occlusion_bounces{};
+    float ambient_occlusion_factor{};
+    float ambient_occlusion_distance{};
     float sample_clamp_direct{};
     float sample_clamp_indirect{};
     float filter_glossy{};
@@ -964,9 +972,13 @@ LUISA_STRUCT(
     path_trace_sample,
     analytic_light_count,
     portal_count,
+    ambient_occlusion_object_distance_count,
     wavefront_frame_capacity,
     shadow_storage_capacity,
     shadow_storage_block_size,
+    ambient_occlusion_bounces,
+    ambient_occlusion_factor,
+    ambient_occlusion_distance,
     sample_clamp_direct,
     sample_clamp_indirect,
     filter_glossy,

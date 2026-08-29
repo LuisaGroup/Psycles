@@ -14,15 +14,19 @@ class PathBounceSetupStageImpl final
   private:
     std::shared_ptr<const SceneTraversalComponent> _traversal;
     bool _has_subsurface;
+    bool _ambient_occlusion_bounce_approximation;
 
   public:
     explicit PathBounceSetupStageImpl(
         SceneTraversalStagePlan plan,
-        bool has_subsurface)
+        bool has_subsurface,
+        bool ambient_occlusion_bounce_approximation)
         : _traversal{
               make_scene_traversal_component(
                   plan)},
-          _has_subsurface{has_subsurface} {}
+          _has_subsurface{has_subsurface},
+          _ambient_occlusion_bounce_approximation{
+              ambient_occlusion_bounce_approximation} {}
 
     PathBounceContext
     emit(PathSampleContext &sample,
@@ -43,7 +47,6 @@ class PathBounceSetupStageImpl final
             sample.pending_subsurface_exit;
         auto &pending_subsurface_hit =
             sample.pending_subsurface_hit;
-
         continuation_probability = 1.0f;
         // `has_subsurface` is proved over all reachable material graphs and
         // their bound parameters while constructing the immutable scene. If
@@ -55,29 +58,66 @@ class PathBounceSetupStageImpl final
             "path_bounce_subsurface_exit");
         Var<luisa::compute::CommittedHit> hit;
         hit.set_name("path_bounce_hit");
-        if (_has_subsurface) {
-            subsurface_exit = pending_subsurface_exit;
-            $if(subsurface_exit) {
-                // The local BSSRDF traversal has already selected the exact
-                // intersection. Preserve it directly, as Cycles does between
-                // INTERSECT_SUBSURFACE and SHADE_SURFACE.
-                hit = pending_subsurface_hit.materialize_surface();
-                pending_subsurface_exit = false;
-            }
-            $else {
+        const auto trace = [&](const Var<luisa::compute::Ray> &trace_ray) {
+            if (_has_subsurface) {
+                subsurface_exit = pending_subsurface_exit;
+                $if(subsurface_exit) {
+                    // The local BSSRDF traversal has already selected the
+                    // exact intersection. Preserve it directly, as Cycles
+                    // does between INTERSECT_SUBSURFACE and SHADE_SURFACE.
+                    hit = pending_subsurface_hit.materialize_surface();
+                    pending_subsurface_exit = false;
+                }
+                $else {
+                    hit = _traversal->closest(
+                        scene, trace_ray, ray_visibility,
+                        {.object = ray_source_object,
+                         .primitive = ray_source_primitive});
+                };
+            } else {
+                // Match Cycles' RaySelfPrimitives contract: the previous
+                // committed primitive is rejected by identity during
+                // traversal. This remains independent of the geometric
+                // origin offset.
                 hit = _traversal->closest(
-                    scene, ray, ray_visibility,
+                    scene, trace_ray, ray_visibility,
                     {.object = ray_source_object,
                      .primitive = ray_source_primitive});
+            }
+        };
+        if (_ambient_occlusion_bounce_approximation) {
+            const auto &parameters = invocation.parameters;
+            const auto ambient_occlusion_bounce =
+                cycles_path_state::ambient_occlusion_bounce(
+                    sample.path_depth,
+                    sample.transmission_depth,
+                    sample.glossy_depth,
+                    parameters.ambient_occlusion_bounces);
+            Float ambient_occlusion_distance =
+                parameters.ambient_occlusion_distance;
+            const auto has_object_distance =
+                (parameters.ambient_occlusion_object_distance_count != 0u) &
+                (ray_source_object != surface_ray::invalid_primitive) &
+                (ray_source_object <
+                 parameters.ambient_occlusion_object_distance_count);
+            $if(ambient_occlusion_bounce & has_object_distance) {
+                const Expr<Buffer<float>> object_distances{
+                    scene->ambient_occlusion_object_distance_buffer};
+                const auto object_distance =
+                    object_distances->read(ray_source_object);
+                ambient_occlusion_distance = select(
+                    ambient_occlusion_distance,
+                    object_distance,
+                    object_distance != 0.0f);
             };
+            Var<luisa::compute::Ray> traversal_ray = make_ray(
+                ray->origin(), ray->direction(), ray->t_min(), ray->t_max());
+            $if(ambient_occlusion_bounce) {
+                traversal_ray->set_t_max(ambient_occlusion_distance);
+            };
+            trace(traversal_ray);
         } else {
-            // Match Cycles' RaySelfPrimitives contract: the previous
-            // committed primitive is rejected by identity during traversal.
-            // This remains independent of the geometric origin offset.
-            hit = _traversal->closest(
-                scene, ray, ray_visibility,
-                {.object = ray_source_object,
-                 .primitive = ray_source_primitive});
+            trace(ray);
         }
 
         return {
@@ -94,11 +134,13 @@ class PathBounceSetupStageImpl final
 std::unique_ptr<PathBounceSetupStage>
 make_path_bounce_setup_stage(
     SceneTraversalStagePlan plan,
-    bool has_subsurface) {
+    bool has_subsurface,
+    bool ambient_occlusion_bounce_approximation) {
     return std::make_unique<
         PathBounceSetupStageImpl>(
             plan,
-            has_subsurface);
+            has_subsurface,
+            ambient_occlusion_bounce_approximation);
 }
 
 }// namespace psycles::luisa_backend::detail

@@ -452,6 +452,88 @@ continuation_probability(
         before_minimum);
 }
 
+// Exact path_state_ao_bounce() projection. Cycles deliberately counts only
+// diffuse-like transport here: transmission bounces and the first glossy
+// ancestor are removed before comparing against the authored Fast GI limit.
+// Path-state construction proves the subtractions non-negative; use signed
+// arithmetic to retain Cycles' mathematical expression rather than relying
+// on unsigned wraparound as an implicit invariant check.
+[[nodiscard]] inline luisa::compute::Bool
+ambient_occlusion_bounce(
+    luisa::compute::UInt bounce,
+    luisa::compute::UInt transmission_bounce,
+    luisa::compute::UInt glossy_bounce,
+    luisa::compute::UInt ambient_occlusion_bounces) noexcept {
+    using namespace luisa::compute;
+    const auto effective_bounce =
+        cast<int>(bounce) -
+        cast<int>(transmission_bounce) -
+        cast<int>(glossy_bounce > 0u) + 1;
+    return (ambient_occlusion_bounces != 0u) &
+           (effective_bounce >
+            cast<int>(ambient_occlusion_bounces));
+}
+
+struct AmbientOcclusionContinuationDecision {
+    luisa::compute::Bool terminate_immediately;
+    luisa::compute::UInt deferred_flags;
+};
+
+// Cycles applies Fast GI termination before ordinary continuation roulette.
+// The endpoint partition is ordered: an emission/transparent surface wins,
+// otherwise an active volume wins, otherwise the path terminates without
+// evaluating a shader. Background misses are not endpoints in this transfer
+// and continue to the separately scaled background evaluation.
+[[nodiscard]] inline AmbientOcclusionContinuationDecision
+decide_ambient_occlusion_continuation(
+    luisa::compute::Bool ambient_occlusion,
+    luisa::compute::Bool surface,
+    luisa::compute::Bool surface_may_continue,
+    luisa::compute::Bool inside_volume) noexcept {
+    using namespace luisa::compute;
+    const auto endpoint = surface | inside_volume;
+    const auto considered = ambient_occlusion & endpoint;
+    const auto defer_to_surface =
+        considered & surface & surface_may_continue;
+    const auto defer_to_volume =
+        considered & !defer_to_surface & inside_volume;
+    UInt deferred_flags = 0u;
+    deferred_flags |= select(
+        0u,
+        flag_terminate_after_transparent,
+        defer_to_surface);
+    deferred_flags |= select(
+        0u,
+        flag_terminate_after_volume,
+        defer_to_volume);
+    return {
+        .terminate_immediately =
+            considered & !defer_to_surface & !defer_to_volume,
+        .deferred_flags = deferred_flags};
+}
+
+// Canonicalize Cycles' two volume-ending routes at the end of volume
+// transport. TERMINATE_IN_NEXT_VOLUME maps to a zero continuation
+// probability; TERMINATE_AFTER_VOLUME maps to attenuation/emission-only
+// transport followed by an endpoint shader with no emission or transparent
+// shadow capability. The latter premise is established by
+// decide_ambient_occlusion_continuation(), so terminating here is
+// observationally equivalent and avoids evaluating a known-empty surface.
+// TERMINATE_AFTER_TRANSPARENT is intentionally excluded: that route must
+// still evaluate the selected surface's emission/transparency after volume
+// attenuation.
+[[nodiscard]] inline luisa::compute::Bool
+volume_segment_terminates(
+    luisa::compute::UInt path_flag,
+    luisa::compute::Bool phase_failed) noexcept {
+    using namespace luisa::compute;
+    constexpr auto volume_termination_mask =
+        flag_terminate_in_next_volume |
+        flag_terminate_after_volume;
+    return phase_failed |
+           ((path_flag & volume_termination_mask) != 0u);
+}
+
 // Cycles resolves continuation roulette in INTERSECT_CLOSEST, after the
 // committed endpoint's static shader flags are known and before scheduling
 // any surface or volume shading. The outcomes below form a disjoint and

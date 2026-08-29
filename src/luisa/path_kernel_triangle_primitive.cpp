@@ -53,6 +53,8 @@ public:
             .cycles_primitive_index = std::move(cycles_primitive_index),
             .has_volume = std::move(material.has_volume),
             .may_emit = std::move(material.may_emit),
+            .has_transparent_shadow =
+                std::move(material.has_transparent_shadow),
             .triangle_emission_sampling =
                 std::move(material.triangle_emission_sampling)};
   }

@@ -75,6 +75,8 @@ public:
     UInt object_index = cycles_object_index(resolved_instance_id, instance);
     Bool has_volume = (binding.flags & material_flag_has_volume) != 0u;
     const Bool may_emit = (binding.flags & material_flag_may_emit) != 0u;
+    const Bool has_transparent_shadow =
+        (binding.flags & material_flag_has_transparent_shadow) != 0u;
     const UInt emission_sampling =
         (binding.flags &
          material_emission_sampling_mask) >>
@@ -94,6 +96,8 @@ public:
             .cycles_object_index = std::move(object_index),
             .has_volume = std::move(has_volume),
             .may_emit = std::move(may_emit),
+            .has_transparent_shadow =
+                std::move(has_transparent_shadow),
             .triangle_emission_sampling =
                 std::move(triangle_emission_sampling)};
   }

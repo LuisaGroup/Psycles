@@ -23,8 +23,7 @@ public:
   std::unique_ptr<ClosestEventStage> closest_event;
   std::unique_ptr<ForwardLightStage> forward_light;
   std::unique_ptr<PathVolumeSegmentStage> volume_segment;
-  std::unique_ptr<BackgroundEventStage> background{
-      make_background_event_stage()};
+  std::unique_ptr<BackgroundEventStage> background;
   std::unique_ptr<SurfaceGeometryStage> surface_geometry;
   std::unique_ptr<SurfaceQueueKeyStage> surface_queue_key;
   std::unique_ptr<SurfaceShadingStage> surface_shading;
@@ -45,9 +44,16 @@ public:
     const auto traversal_plan = stage_plan.traversal;
     const auto primitive_plan = traversal_plan.primitives;
     bounce_setup =
-        make_path_bounce_setup_stage(traversal_plan, config.has_subsurface);
+        make_path_bounce_setup_stage(
+            traversal_plan,
+            config.has_subsurface,
+            config.ambient_occlusion_bounce_approximation);
     closest_event = make_closest_event_stage(
-        stage_plan.analytic_light_endpoints, primitive_plan);
+        stage_plan.analytic_light_endpoints,
+        primitive_plan,
+        config.ambient_occlusion_bounce_approximation);
+    background = make_background_event_stage(
+        config.ambient_occlusion_bounce_approximation);
     if (stage_plan.analytic_light_endpoints) {
       forward_light = make_forward_light_stage();
     }

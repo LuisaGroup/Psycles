@@ -87,6 +87,14 @@ struct PathIntegratorSettings {
     std::uint32_t volume_bounces{};
     std::uint32_t transparent_min_bounces{};
     std::uint32_t transparent_max_bounces{8u};
+    // Effective Cycles Fast GI replacement state. Blender's authored
+    // use_fast_gi/method/world controls are resolved by the scene adapter so
+    // every backend observes the same transport contract as
+    // KernelIntegrator::ao_bounces rather than reinterpreting UI policy.
+    std::uint32_t ambient_occlusion_bounces{};
+    float ambient_occlusion_factor{};
+    float ambient_occlusion_additive_factor{};
+    float ambient_occlusion_distance{10.0f};
     float sample_clamp_direct{};
     float sample_clamp_indirect{};
     // Blender exposes this as `blur_glossy`; Cycles stores the same scene

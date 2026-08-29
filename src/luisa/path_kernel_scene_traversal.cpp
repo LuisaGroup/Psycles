@@ -192,11 +192,11 @@ public:
   template <typename Candidate>
   void reduce(Candidate &query_candidate,
               const Var<ShadowIntersectionCall> &intersection,
-              Expr<bool> may_be_transparent,
+              Expr<bool> has_transparent_shadow,
               Expr<std::uint32_t> transparent_maximum) noexcept {
     const auto duplicate = contains(intersection);
     $if(!duplicate) {
-      $if(!may_be_transparent) {
+      $if(!has_transparent_shadow) {
         _blocked = 1u;
         query_candidate.terminate();
       }
@@ -408,7 +408,7 @@ private:
             intersection->barycentric = hit->bary;
             reducer.reduce(
                 candidate, intersection,
-                (material_flags & material_flag_may_be_transparent) != 0u,
+                (material_flags & material_flag_has_transparent_shadow) != 0u,
                 transparent_maximum);
           };
         };
@@ -445,7 +445,7 @@ private:
             intersection->barycentric = make_float2(exact.u, exact.v);
             reducer.reduce(
                 candidate, intersection,
-                (material_flags & material_flag_may_be_transparent) != 0u,
+                (material_flags & material_flag_has_transparent_shadow) != 0u,
                 transparent_maximum);
           };
         };
