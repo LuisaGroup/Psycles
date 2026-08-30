@@ -1,0 +1,192 @@
+{
+  "commands": {
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "/var/tmp/psycles-intersect-subsurface-20260813/volume-heterogeneous-area/source.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/cycles/hip.exr",
+        "1920",
+        "1080",
+        "1024",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "RX 9070 XT"
+      ],
+      "log": "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/logs/cycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 80.18924783499097
+    },
+    "export": {
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "/var/tmp/psycles-intersect-subsurface-20260813/volume-heterogeneous-area/source.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+        "--",
+        "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/export"
+      ],
+      "log": "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/logs/export.log",
+      "returncode": 0,
+      "wall_seconds": 0.6809921399981249
+    },
+    "psycles_hip-wavefront-staged": {
+      "command": [
+        "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/export",
+        "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/psycles/hip-wavefront-staged.ppm",
+        "hip",
+        "1920",
+        "1080",
+        "1024",
+        "64",
+        "-",
+        "960",
+        "540",
+        "0",
+        "0",
+        "1024",
+        "-",
+        "1",
+        "0",
+        "wavefront-staged",
+        "32",
+        "32768",
+        "32",
+        "1",
+        "1",
+        "0",
+        "4",
+        "2",
+        "auto",
+        "0",
+        "0",
+        "0",
+        "1",
+        "1048576"
+      ],
+      "log": "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/logs/psycles-hip-wavefront-staged.log",
+      "returncode": 0,
+      "wall_seconds": 109.64488982700277
+    }
+  },
+  "comparisons": {
+    "psycles-hip-wavefront-staged-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/psycles/hip-wavefront-staged.exr",
+      "process_wall_seconds": 13.248729614992044,
+      "reference": "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/cycles/hip.exr",
+      "report": "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/report.json"
+    }
+  },
+  "matrix": {
+    "cycles": [
+      "hip"
+    ],
+    "psycles": [
+      "hip-wavefront-staged"
+    ]
+  },
+  "relative_performance": {
+    "hip-wavefront-staged": {
+      "slowdown_vs_cycles_hip": 1.2177836100640673,
+      "speedup_over_cycles_hip": 0.8211639504225141
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/cycles/hip.json",
+        "metadata_sha256": "b3197c62d5fc62750a109822ec244c5e736b700c9093d0ddd4b769ca7f19cc08",
+        "output": "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/cycles/hip.exr",
+        "process_wall_seconds": 80.18924783499097,
+        "render_seconds": 79.10600800000248,
+        "sha256": "8bc780a5fe57ea0828b759d726c7975a056e3f5d8c5d159264def5a6b73d7376"
+      }
+    },
+    "psycles": {
+      "hip-wavefront-staged": {
+        "backend": "hip",
+        "output": "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/psycles/hip-wavefront-staged.exr",
+        "process_wall_seconds": 109.64488982700277,
+        "render_seconds": 96.334,
+        "scene_compile_seconds": 0.0485966,
+        "scheduler": "wavefront-staged",
+        "sha256": "dea89d229254003a230b32239df7a9d2424f34aab418825c0d54a3d8fc9f15d9",
+        "shader_jit_seconds": 12.348
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": false,
+    "requested": false,
+    "reused_stages": []
+  },
+  "scene": {
+    "blend": "/var/tmp/psycles-intersect-subsurface-20260813/volume-heterogeneous-area/source.blend",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "bundle": "/var/tmp/psycles-fullres-hip-20260830/volume-heterogeneous-area/current-7e712d3-1920x1080-1024/export",
+    "geometry_bin_sha256": "1969383f362564ffaea90171609892e3d4057e307a73849e798d38b0f79bb198",
+    "scene_json_sha256": "561b702221779015ef816c328160ce50d6cd67a75a72664872c839c5d0be8616",
+    "sha256": "2696b4fb9e3f46b5c8e55b432a5d99081b26ae8e80ea1e45a35784ae6bdb3968"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "RX 9070 XT",
+    "height": 1080,
+    "max_samples_per_dispatch": 64,
+    "psycles_environment": {
+      "PSYCLES_COMPACT_SURFACE_VALUES": null,
+      "PSYCLES_POPULATE_SURFACE_ONCE": null
+    },
+    "psycles_scheduler_config": {
+      "fast_math": true,
+      "persistent_block_size": 32,
+      "persistent_fetch_size": 1,
+      "persistent_worker_count": 32768,
+      "staged_direct_light_queue": false,
+      "staged_surface_sorting": true,
+      "wavefront_counter_readback_batch_size": 4,
+      "wavefront_counter_readback_pipeline_depth": 2,
+      "wavefront_execution_block_size": 32,
+      "wavefront_frame_capacity": 1048576,
+      "wavefront_graph_refill_threshold": 0,
+      "wavefront_graph_selective": false,
+      "wavefront_graph_worker_count": 0,
+      "wavefront_tail_megakernel_threshold": "auto"
+    },
+    "psycles_schedulers": [
+      "wavefront-staged"
+    ],
+    "samples": 1024,
+    "width": 1920
+  },
+  "status": "complete"
+}
