@@ -19,4 +19,8 @@ namespace psycles::luisa_backend::cycles_transform {
     luisa::compute::Expr<luisa::float4x4> transform,
     luisa::compute::Expr<luisa::float3> value) noexcept;
 
+[[nodiscard]] luisa::compute::Float3
+direction_transposed(luisa::compute::Expr<luisa::float4x4> transform,
+                     luisa::compute::Expr<luisa::float3> value) noexcept;
+
 } // namespace psycles::luisa_backend::cycles_transform

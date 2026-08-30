@@ -73,6 +73,29 @@ static constexpr std::array vector_rotate_cases{
     VectorRotateCase{"AXIS_ANGLE", true, {}, {}, 0.71f},
 };
 
+struct VectorTransformCase {
+  std::string_view type;
+  std::string_view convert_from;
+  std::string_view convert_to;
+};
+
+[[nodiscard]] constexpr auto make_vector_transform_cases() {
+  constexpr std::array types{"VECTOR", "POINT", "NORMAL"};
+  constexpr std::array spaces{"WORLD", "OBJECT", "CAMERA"};
+  std::array<VectorTransformCase, 27u> result{};
+  auto index = std::size_t{};
+  for (const auto type : types) {
+    for (const auto convert_from : spaces) {
+      for (const auto convert_to : spaces) {
+        result[index++] = {type, convert_from, convert_to};
+      }
+    }
+  }
+  return result;
+}
+
+static constexpr auto vector_transform_cases = make_vector_transform_cases();
+
 [[nodiscard]] ShaderImage compile_dynamic_math() {
   ShaderGraph graph;
   const auto geometry_a = graph.add_node(node_type::geometry, "Geometry A");
@@ -361,6 +384,47 @@ compile_dynamic_vector_rotate(const VectorRotateCase &item) {
   return image;
 }
 
+[[nodiscard]] ShaderImage
+compile_dynamic_vector_transform(const VectorTransformCase &item,
+                                 Vec3f vector = {0.37f, -0.21f, 0.63f}) {
+  ShaderGraph graph;
+  const auto transform =
+      graph.add_node(node_type::vector_transform, "Vector Transform");
+  const auto vector_to_color =
+      graph.add_node(node_type::vector_to_color, "Vector to Color");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  const auto configured =
+      graph.set_input(transform, "Vector",
+                      contract::SocketValue::vector(vector)) &&
+      graph.set_property(
+          transform, "Type",
+          contract::SocketValue::string(std::string{item.type})) &&
+      graph.set_property(
+          transform, "Convert From",
+          contract::SocketValue::string(std::string{item.convert_from})) &&
+      graph.set_property(
+          transform, "Convert To",
+          contract::SocketValue::string(std::string{item.convert_to})) &&
+      graph.connect({transform, "Vector"}, vector_to_color, "Vector") &&
+      graph.connect({vector_to_color, "Color"}, emission, "Color");
+  if (!configured) {
+    throw std::runtime_error{"failed to create dynamic Vector Transform graph"};
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  if (!shader.ok()) {
+    throw std::runtime_error{"dynamic Vector Transform graph did not validate"};
+  }
+  auto image = compile_shader(*shader.program);
+  if (!image.valid) {
+    throw std::runtime_error{image.diagnostic};
+  }
+  return image;
+}
+
 [[nodiscard]] ShaderImage compile_dynamic_legacy_mix(std::string_view mode,
                                                      NodeMix type) {
   ShaderGraph graph;
@@ -603,6 +667,9 @@ compile_dynamic_vector_rotate(const VectorRotateCase &item) {
                                        BufferFloat4 floating_output,
                                        BufferUInt4 integer_output) noexcept {
         const UInt index = dispatch_x();
+        const auto identity = make_float4x4(1.0f);
+        const device_svm::TransformState transform_state{identity, identity,
+                                                         identity, identity};
         const UInt shader_flags =
             select(0u, device_svm::shader_data_backfacing, index != 0u);
         device_svm::ShaderData shader_data{
@@ -614,15 +681,21 @@ compile_dynamic_vector_rotate(const VectorRotateCase &item) {
             shader_flags,
             0.2f,
             0.3f,
-            4.0f};
+            4.0f,
+            0u,
+            0u,
+            identity,
+            identity};
         const device_svm::PathState path_state{
             device_svm::path_ray_visibility_camera, 0u};
         device_svm::EvaluationResult result;
         device_svm::eval_nodes(
             words, SHADER_TYPE_SURFACE,
+            0u,
             device_svm::kernel_feature_node_emission |
                 device_svm::kernel_feature_node_light_path,
-            node_types_used, shader_data, path_state, result);
+            node_types_used, transform_state, shader_data, path_state,
+            result);
         floating_output.write(
             index,
             make_float4(shader_data.closure_emission_background,
@@ -631,6 +704,85 @@ compile_dynamic_vector_rotate(const VectorRotateCase &item) {
             index,
             make_uint4(result.status, result.final_offset, shader_data.flag,
                        0u));
+      }};
+}
+
+[[nodiscard]] Float4x4 cycles_probe_camera_to_world() noexcept {
+  return make_float4x4(
+      make_float4(0.9386054873f, 0.3006611466f, 0.1691823304f, 0.0f),
+      make_float4(-0.3337566257f, 0.9154891968f, 0.2246911973f, 0.0f),
+      make_float4(0.08732868731f, 0.267362088f, -0.9596307874f, 0.0f),
+      make_float4(0.4199999869f, -0.3100000024f, 3.170000076f, 1.0f));
+}
+
+[[nodiscard]] Float4x4 cycles_probe_world_to_camera() noexcept {
+  return make_float4x4(
+      make_float4(0.9386054277f, -0.3337565958f, 0.08732867241f, 0.0f),
+      make_float4(0.3006611168f, 0.9154891372f, 0.267362088f, 0.0f),
+      make_float4(0.1691823304f, 0.2246911675f, -0.9596307278f, 0.0f),
+      make_float4(-0.8373172879f, -0.2882916033f, 3.088233709f, 1.0f));
+}
+
+[[nodiscard]] Float4x4 cycles_probe_object_to_world() noexcept {
+  return make_float4x4(
+      make_float4(1.283548594f, -0.2335667163f, -0.3470587134f, 0.0f),
+      make_float4(0.05432532355f, 0.6724135876f, -0.2516123056f, 0.0f),
+      make_float4(0.3546497822f, 0.3691779971f, 1.063170433f, 0.0f),
+      make_float4(-0.2800000012f, 0.4099999964f, -0.1899999976f, 1.0f));
+}
+
+[[nodiscard]] Float4x4 cycles_probe_world_to_object() noexcept {
+  return make_float4x4(
+      make_float4(0.7042790055f, 0.1047942117f, 0.2547039092f, 0.0f),
+      make_float4(-0.1281573027f, 1.297093987f, 0.2651378512f, 0.0f),
+      make_float4(-0.1904300004f, -0.4853632152f, 0.7635523081f, 0.0f),
+      make_float4(0.2135609239f, -0.5946851969f, 0.1076855212f, 1.0f));
+}
+
+[[nodiscard]] auto make_vector_transform_kernel(
+    std::array<bool, NODE_NUM> node_types_used, bool has_object,
+    bool object_motion_feature_enabled, bool object_has_motion) {
+  return Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>,
+                  Buffer<luisa::uint4>>{
+      [node_types_used, has_object, object_motion_feature_enabled,
+       object_has_motion](BufferUInt words, BufferFloat4 floating_output,
+                          BufferUInt4 integer_output) noexcept {
+        const auto identity = make_float4x4(1.0f);
+        const auto object_to_world = cycles_probe_object_to_world();
+        const auto world_to_object = cycles_probe_world_to_object();
+        const device_svm::TransformState transform_state{
+            cycles_probe_camera_to_world(), cycles_probe_world_to_camera(),
+            object_has_motion ? identity : object_to_world,
+            object_has_motion ? identity : world_to_object};
+        device_svm::ShaderData shader_data{
+            make_float3(1.0f, 2.0f, 3.0f),
+            make_float3(0.0f, 0.0f, 1.0f),
+            make_float3(0.0f, 0.0f, 1.0f),
+            make_float3(0.0f, 0.0f, -1.0f),
+            0u,
+            0u,
+            0.2f,
+            0.3f,
+            4.0f,
+            has_object ? 0u : device_svm::object_none,
+            object_has_motion ? device_svm::shader_data_object_motion : 0u,
+            object_has_motion ? object_to_world : identity,
+            object_has_motion ? world_to_object : identity};
+        const device_svm::PathState path_state{
+            device_svm::path_ray_visibility_camera, 0u};
+        device_svm::EvaluationResult result;
+        device_svm::eval_nodes(words, SHADER_TYPE_SURFACE,
+                               object_motion_feature_enabled
+                                   ? device_svm::kernel_feature_object_motion
+                                   : 0u,
+                               device_svm::kernel_feature_node_emission,
+                               node_types_used, transform_state, shader_data,
+                               path_state, result);
+        floating_output.write(
+            0u, make_float4(shader_data.closure_emission_background,
+                            result.closure_weight.x));
+        integer_output.write(0u, make_uint4(result.status, result.final_offset,
+                                            shader_data.flag, 0u));
       }};
 }
 
@@ -736,6 +888,14 @@ int main(int argc, char **argv) {
   for (const auto &item : vector_rotate_cases) {
     vector_rotate_images.emplace_back(compile_dynamic_vector_rotate(item));
   }
+  std::vector<ShaderImage> vector_transform_images;
+  vector_transform_images.reserve(vector_transform_cases.size());
+  for (const auto &item : vector_transform_cases) {
+    vector_transform_images.emplace_back(
+        compile_dynamic_vector_transform(item));
+  }
+  const auto vector_transform_zero_normal_image =
+      compile_dynamic_vector_transform(vector_transform_cases[19u], {});
   std::vector<ShaderImage> legacy_mix_images;
   legacy_mix_images.reserve(legacy_mix_modes.size());
   for (const auto &[mode, type] : legacy_mix_modes) {
@@ -946,6 +1106,135 @@ int main(int argc, char **argv) {
                 << integer[1].y << ", " << integer[1].z << ")\n";
       return EXIT_FAILURE;
     }
+  }
+
+  // Frozen from the square 36x36 Cycles 5.2.1 CPU Emission pass of
+  // `svm_vector_transform_matrix`. The probe uses a non-rigid object
+  // transform and Cycles' camera transform (including Blender's camera-Z
+  // conversion), and covers Type x Convert From x Convert To in that order.
+  static constexpr std::array cycles_vector_transform_emission{
+      luisa::float3{0.370000005f, -0.209999993f, 0.629999995f},
+      luisa::float3{0.167525366f, -0.539394736f, 0.519599497f},
+      luisa::float3{0.390730053f, -0.174187228f, -0.628401756f},
+      luisa::float3{0.686934054f, 0.004955605f, 0.594224215f},
+      luisa::float3{0.370000005f, -0.209999993f, 0.629999995f},
+      luisa::float3{0.746782243f, -0.091215044f, -0.508921802f},
+      luisa::float3{0.472389996f, 0.087430008f, -0.589155078f},
+      luisa::float3{0.433682352f, 0.448862910f, -0.306350172f},
+      luisa::float3{0.370000005f, -0.209999993f, 0.629999995f},
+      luisa::float3{0.370000005f, -0.209999993f, 0.629999995f},
+      luisa::float3{0.381086260f, -1.134079933f, 0.627285063f},
+      luisa::float3{-0.446587324f, -0.462478846f, 2.459831715f},
+      luisa::float3{0.406934023f, 0.414955586f, 0.404224187f},
+      luisa::float3{0.370000005f, -0.209999993f, 0.629999995f},
+      luisa::float3{-0.262218326f, 0.046604354f, 2.846807957f},
+      luisa::float3{0.892389953f, -0.222570002f, 2.580845118f},
+      luisa::float3{0.379106045f, -2.042509556f, 2.246579409f},
+      luisa::float3{0.370000005f, -0.209999993f, 0.629999995f},
+      luisa::float3{0.370000005f, -0.209999993f, 0.629999995f},
+      luisa::float3{0.366272509f, -0.335450113f, 0.867938697f},
+      luisa::float3{0.513985038f, -0.229134187f, -0.826629758f},
+      luisa::float3{0.598029315f, -0.228953525f, 0.768076301f},
+      luisa::float3{0.370000005f, -0.209999993f, 0.629999995f},
+      luisa::float3{0.622421086f, -0.236620739f, -0.746058047f},
+      luisa::float3{0.621404469f, 0.115009651f, -0.775002778f},
+      luisa::float3{0.851894081f, 0.250798553f, -0.459757060f},
+      luisa::float3{0.370000005f, -0.209999993f, 0.629999995f},
+  };
+  const auto vector_transform_static_kernel = make_vector_transform_kernel(
+      vector_transform_images.front().node_types_used, true, false, false);
+  const auto vector_transform_feature_static_kernel =
+      make_vector_transform_kernel(
+          vector_transform_images.front().node_types_used, true, true, false);
+  const auto vector_transform_motion_kernel = make_vector_transform_kernel(
+      vector_transform_images.front().node_types_used, true, true, true);
+  const auto vector_transform_no_object_kernel = make_vector_transform_kernel(
+      vector_transform_images.front().node_types_used, false, false, false);
+  auto vector_transform_static_shader = device.compile(
+      vector_transform_static_kernel, ShaderOption{.enable_cache = false});
+  auto vector_transform_feature_static_shader =
+      device.compile(vector_transform_feature_static_kernel,
+                     ShaderOption{.enable_cache = false});
+  auto vector_transform_motion_shader = device.compile(
+      vector_transform_motion_kernel, ShaderOption{.enable_cache = false});
+  auto vector_transform_no_object_shader = device.compile(
+      vector_transform_no_object_kernel, ShaderOption{.enable_cache = false});
+  auto run_vector_transform = [&](auto &shader, const ShaderImage &image,
+                                  const luisa::float3 &expected,
+                                  const std::string &label) {
+    auto word_buffer = device.create_buffer<std::uint32_t>(image.words.size());
+    auto floating_buffer = device.create_buffer<luisa::float4>(floating.size());
+    auto integer_buffer = device.create_buffer<luisa::uint4>(integer.size());
+    floating = {};
+    integer = {};
+    stream << word_buffer.copy_from(luisa::span{image.words})
+           << shader(word_buffer, floating_buffer, integer_buffer).dispatch(1u)
+           << floating_buffer.copy_to(luisa::span{floating})
+           << integer_buffer.copy_to(luisa::span{integer}) << synchronize();
+    return require_float3(floating[0], expected, label) &&
+           approximately_equal(floating[0].w, expected.x) &&
+           integer[0].x == ended && integer[0].y == 20u &&
+           integer[0].z == device_svm::shader_data_emission;
+  };
+  for (auto index = std::size_t{}; index < vector_transform_images.size();
+       ++index) {
+    const auto &item = vector_transform_cases[index];
+    const auto label = std::string{item.type} + " " +
+                       std::string{item.convert_from} + " to " +
+                       std::string{item.convert_to};
+    if (!run_vector_transform(
+            vector_transform_static_shader, vector_transform_images[index],
+            cycles_vector_transform_emission[index], label + " static") ||
+        !run_vector_transform(vector_transform_feature_static_shader,
+                              vector_transform_images[index],
+                              cycles_vector_transform_emission[index],
+                              label + " feature static") ||
+        !run_vector_transform(
+            vector_transform_motion_shader, vector_transform_images[index],
+            cycles_vector_transform_emission[index], label + " motion")) {
+      std::cerr << "dynamic Vector Transform Cycles SVM state mismatch for "
+                << label << " on " << backend << '\n';
+      return EXIT_FAILURE;
+    }
+  }
+
+  // The two world probes pack one component from each type into RGB. These
+  // six cases additionally execute Cycles' sd->object == OBJECT_NONE guards;
+  // their full vectors equal the corresponding world-space conversion.
+  static constexpr std::array no_object_cases{
+      std::pair{5u, 2u},   std::pair{7u, 6u},   std::pair{14u, 11u},
+      std::pair{16u, 15u}, std::pair{23u, 20u}, std::pair{25u, 24u},
+  };
+  for (const auto &[case_index, oracle_index] : no_object_cases) {
+    const auto &item = vector_transform_cases[case_index];
+    const auto label = std::string{item.type} + " " +
+                       std::string{item.convert_from} + " to " +
+                       std::string{item.convert_to} + " OBJECT_NONE";
+    if (!run_vector_transform(vector_transform_no_object_shader,
+                              vector_transform_images[case_index],
+                              cycles_vector_transform_emission[oracle_index],
+                              label)) {
+      std::cerr << "OBJECT_NONE Vector Transform mismatch for " << label
+                << " on " << backend << '\n';
+      return EXIT_FAILURE;
+    }
+  }
+
+  // Cycles' world-to-object normal branch alone uses safe_normalize(). The
+  // external zero-normal probe freezes its zero-length result as exactly zero.
+  if (!run_vector_transform(vector_transform_static_shader,
+                            vector_transform_zero_normal_image, {},
+                            "NORMAL WORLD to OBJECT zero length static") ||
+      !run_vector_transform(
+          vector_transform_feature_static_shader,
+          vector_transform_zero_normal_image, {},
+          "NORMAL WORLD to OBJECT zero length feature static") ||
+      !run_vector_transform(vector_transform_motion_shader,
+                            vector_transform_zero_normal_image, {},
+                            "NORMAL WORLD to OBJECT zero length motion")) {
+    std::cerr << "zero-length Vector Transform normal mismatch on " << backend
+              << '\n';
+    return EXIT_FAILURE;
   }
 
   static constexpr std::array legacy_front{

@@ -154,6 +154,16 @@ _PROBES: dict[str, Callable[[Any], None]] = {
         svm_vector._svm_sepcomb_vector_constant_fold
     ),
     "svm_vector_rotate_matrix": svm_vector._svm_vector_rotate_matrix,
+    "svm_vector_transform_matrix": svm_vector._svm_vector_transform_matrix,
+    "svm_vector_transform_zero_normal": (
+        svm_vector._svm_vector_transform_zero_normal
+    ),
+    "svm_vector_transform_no_object_from_camera": (
+        svm_vector._svm_vector_transform_no_object_from_camera
+    ),
+    "svm_vector_transform_no_object_to_camera": (
+        svm_vector._svm_vector_transform_no_object_to_camera
+    ),
     "mix_shader_emission": closures._mix_shader_emission,
     "negative_scale_surface": closures._negative_scale_surface,
     "nishita_diffuse_transport": closures._nishita_diffuse_transport,

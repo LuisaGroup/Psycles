@@ -41,7 +41,6 @@ if(PSYCLES_BUILD_TESTS)
     include(cmake/PsyclesBlenderTest.cmake)
     include(cmake/PsyclesLuisaBackendTest.cmake)
 endif()
-
 add_library(psycles_core
     src/adapter/cycles_shader_graph.cpp
     src/compiler/core_nodes.cpp
@@ -50,6 +49,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_compiler.cpp
     src/compiler/cycles_svm_graph.cpp
     src/compiler/cycles_svm_nodes.cpp
+    src/compiler/cycles_svm_vector_nodes.cpp
     src/compiler/cycles_emission_sampling.cpp
     src/compiler/hosek_sky.cpp
     src/compiler/material_library.cpp

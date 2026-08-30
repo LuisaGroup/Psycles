@@ -643,6 +643,19 @@ NodeRegistry make_core_node_registry() {
       .required_features = {}}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::vector_transform,
+                 .inputs = {input("Vector", SocketType::vector,
+                                  SocketValue::vector({0.0f, 0.0f, 0.0f}))},
+                 .outputs = {output("Vector", SocketType::vector)},
+                 .properties = {property("Type", SocketType::string,
+                                         SocketValue::string("VECTOR")),
+                                property("Convert From", SocketType::string,
+                                         SocketValue::string("WORLD")),
+                                property("Convert To", SocketType::string,
+                                         SocketValue::string("OBJECT"))},
+                 .required_features = {}}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::scalar_to_color,
                  .inputs = {input("Value", SocketType::floating,
                                   SocketValue::floating(0.0f))},
