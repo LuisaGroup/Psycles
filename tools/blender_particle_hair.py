@@ -12,6 +12,97 @@ from typing import Any
 import numpy as np
 
 
+def _cycles_srgb_channel_to_linear(value: np.float32) -> np.float32:
+    """Match Cycles color_srgb_to_linear in float32."""
+
+    if value < np.float32(0.04045):
+        return (
+            np.float32(0.0)
+            if value < np.float32(0.0)
+            else np.float32(value * np.float32(1.0 / 12.92))
+        )
+    base = np.float32(
+        np.float32(value + np.float32(0.055))
+        * np.float32(1.0 / 1.055)
+    )
+    return np.float32(np.power(base, np.float32(2.4)))
+
+
+def cycles_particle_hair_color_value(
+    srgb: np.ndarray[Any, np.dtype[np.float32]],
+) -> tuple[float, float, float, float]:
+    """Return Cycles' curve-domain linear-Rec.709 particle color.
+
+    `BKE_particle_mcol_on_emitter` returns the emitter's byte-color sample in
+    sRGB. Cycles converts it to a float4 on the host with
+    `color_srgb_to_linear_v4`. Unlike a mesh BYTE_COLOR fetch, the resulting
+    curve attribute is not tagged as byte data, so the kernel does not apply
+    `rec709_to_rgb` a second time.
+    """
+
+    linear = tuple(
+        _cycles_srgb_channel_to_linear(np.float32(component))
+        for component in srgb
+    )
+    return tuple(float(component) for component in linear) + (1.0,)
+
+
+def _node_tree_named_color_attributes(
+    tree: Any,
+    result: set[str],
+    visited: set[int],
+) -> None:
+    """Collect static named color-attribute requests from a shader tree."""
+
+    if tree is None:
+        return
+    identity = int(tree.as_pointer())
+    if identity in visited:
+        return
+    visited.add(identity)
+    for node in tree.nodes:
+        if node.bl_idname == "ShaderNodeVertexColor":
+            name = str(getattr(node, "layer_name", ""))
+            if name:
+                result.add(name)
+        elif (
+            node.bl_idname == "ShaderNodeAttribute"
+            and str(getattr(node, "attribute_type", "GEOMETRY"))
+            == "GEOMETRY"
+        ):
+            name = str(getattr(node, "attribute_name", ""))
+            if name:
+                result.add(name)
+        nested = getattr(node, "node_tree", None)
+        if nested is not None:
+            _node_tree_named_color_attributes(nested, result, visited)
+
+
+_NAMED_COLOR_ATTRIBUTE_CACHE: dict[int, frozenset[str]] = {}
+
+
+def material_named_color_attributes(material: Any) -> frozenset[str]:
+    """Return raw curve-color attributes demanded by one material.
+
+    This is a geometry-residency query only. Shader nodes and closures remain
+    untouched and are still evaluated by the Luisa SVM. Cycles performs the
+    same demand filtering before projecting emitter byte colors to the curve
+    domain.
+    """
+
+    if material is None or not material.use_nodes:
+        return frozenset()
+    identity = int(material.as_pointer())
+    cached = _NAMED_COLOR_ATTRIBUTE_CACHE.get(identity)
+    if cached is not None:
+        return cached
+    result: set[str] = set()
+    _node_tree_named_color_attributes(material.node_tree, result, set())
+    frozen = frozenset(result)
+    _NAMED_COLOR_ATTRIBUTE_CACHE[identity] = frozen
+    return frozen
+
+
 def particle_hair_systems(evaluated: Any) -> list[tuple[Any, Any, Any]]:
     """Return the final-render legacy hair systems consumed by Cycles."""
 
@@ -125,6 +216,39 @@ def cycles_particle_hair_uv(
             particle=particle,
             particle_no=particle_no,
             uv_no=uv_no,
+        ),
+        dtype=np.float32,
+    )
+
+
+def cycles_particle_hair_color(
+    modifier: Any,
+    particle_system: Any,
+    particle_no: int,
+    color_no: int,
+) -> np.ndarray[Any, np.dtype[np.float32]]:
+    """Evaluate Cycles' BKE_particle_mcol_on_emitter contract.
+
+    Cycles uses the same parent-pointer progression for particle color and UV
+    extraction. The RNA wrapper exposes the RGB payload written by BKE; the
+    alpha component is the unchanged one initialized by Cycles and is added by
+    the scene exporter after the sRGB-to-linear conversion.
+    """
+
+    parents = particle_system.particles
+    if not parents:
+        return np.zeros(3, dtype=np.float32)
+    particle = (
+        parents[particle_no]
+        if particle_no < len(parents)
+        else parents[0]
+    )
+    return np.asarray(
+        particle_system.mcol_on_emitter(
+            modifier=modifier,
+            particle=particle,
+            particle_no=particle_no,
+            vcol_no=color_no,
         ),
         dtype=np.float32,
     )

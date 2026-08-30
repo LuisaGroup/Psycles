@@ -272,6 +272,7 @@ struct CurveGeometryResource {
     Buffer<CurveSegmentGpu> segments;
     Buffer<luisa::float4> keys;
     std::vector<Buffer<luisa::float2>> uv_layers;
+    std::vector<Buffer<luisa::float4>> attributes;
     Buffer<luisa::uint> material_slots;
     Buffer<float> intercept;
     Buffer<float> length;

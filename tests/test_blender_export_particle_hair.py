@@ -36,8 +36,36 @@ def _hair_material() -> Any:
     hair_info = tree.nodes.new("ShaderNodeHairInfo")
     uv_map = tree.nodes.new("ShaderNodeUVMap")
     uv_map.uv_map = "RootUV"
+    attribute = tree.nodes.new("ShaderNodeAttribute")
+    attribute.attribute_name = "RootColor"
+    mix = tree.nodes.new("ShaderNodeMix")
+    mix.data_type = "RGBA"
+    next(
+        socket for socket in mix.inputs
+        if socket.identifier == "Factor_Float"
+    ).default_value = 0.25
     emission = tree.nodes.new("ShaderNodeEmission")
-    tree.links.new(uv_map.outputs["UV"], emission.inputs["Color"])
+    tree.links.new(
+        uv_map.outputs["UV"],
+        next(
+            socket for socket in mix.inputs
+            if socket.identifier == "A_Color"
+        ),
+    )
+    tree.links.new(
+        attribute.outputs["Color"],
+        next(
+            socket for socket in mix.inputs
+            if socket.identifier == "B_Color"
+        ),
+    )
+    tree.links.new(
+        next(
+            socket for socket in mix.outputs
+            if socket.identifier == "Result_Color"
+        ),
+        emission.inputs["Color"],
+    )
     tree.links.new(
         hair_info.outputs["Intercept"], emission.inputs["Strength"]
     )
@@ -68,6 +96,21 @@ def _fixture() -> Any:
         value.uv = (0.1 + 0.07 * index, 0.2 + 0.03 * index)
     for index, value in enumerate(detail_uv.data):
         value.uv = (0.8 - 0.04 * index, 0.6 - 0.02 * index)
+    root_color = emitter.data.color_attributes.new(
+        name="RootColor", type="BYTE_COLOR", domain="CORNER"
+    )
+    unused_color = emitter.data.color_attributes.new(
+        name="UnusedColor", type="BYTE_COLOR", domain="CORNER"
+    )
+    for index, value in enumerate(root_color.data):
+        value.color_srgb = (
+            0.15 + 0.05 * (index % 4),
+            0.25 + 0.04 * (index % 3),
+            0.35 + 0.03 * (index % 2),
+            1.0,
+        )
+    for value in unused_color.data:
+        value.color_srgb = (0.9, 0.8, 0.7, 1.0)
     emitter.data.materials.append(_hair_material())
     bpy.context.view_layer.objects.active = emitter
     emitter.select_set(True)
@@ -201,6 +244,67 @@ def _cycles_expected_uv_layers(
     return default, expected
 
 
+def _cycles_expected_color_attributes(
+    emitter: Any,
+) -> dict[str, list[Any]]:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = emitter.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh(
+        preserve_all_data_layers=True,
+        depsgraph=depsgraph,
+    )
+    try:
+        names = [
+            attribute.name
+            for attribute in mesh.attributes
+            if attribute.data_type == "BYTE_COLOR"
+            and attribute.domain == "CORNER"
+        ]
+    finally:
+        evaluated.to_mesh_clear()
+    expected = {"RootColor": []}
+    color_no = names.index("RootColor")
+    for modifier in evaluated.modifiers:
+        if modifier.type != "PARTICLE_SYSTEM" or not modifier.show_render:
+            continue
+        system = modifier.particle_system
+        settings = system.settings
+        if settings.type != "HAIR" or settings.render_type != "PATH":
+            continue
+        parents = system.particles
+        first = (
+            len(parents)
+            if settings.child_type != "NONE"
+            and len(system.child_particles) != 0
+            else 0
+        )
+        for particle_no in range(
+            first, len(parents) + len(system.child_particles)
+        ):
+            particle = (
+                parents[particle_no]
+                if particle_no < len(parents)
+                else parents[0]
+            )
+            expected["RootColor"].append(
+                tuple(
+                    system.mcol_on_emitter(
+                        modifier=modifier,
+                        particle=particle,
+                        particle_no=particle_no,
+                        vcol_no=color_no,
+                    )
+                )
+            )
+    return expected
+
+
+def _srgb_to_linear(value: float) -> float:
+    if value < 0.04045:
+        return 0.0 if value < 0.0 else value / 12.92
+    return ((value + 0.055) / 1.055) ** 2.4
+
+
 def _assert_near(actual: float, expected: float, message: str) -> None:
     if not math.isclose(actual, expected, rel_tol=2.0e-5, abs_tol=2.0e-6):
         raise AssertionError(f"{message}: {actual} != {expected}")
@@ -217,6 +321,7 @@ def _main() -> None:
     expected_default_uv, expected_uv_layers = (
         _cycles_expected_uv_layers(emitter)
     )
+    expected_color_attributes = _cycles_expected_color_attributes(emitter)
     exporter_module = runpy.run_path(
         str(exporter), run_name="psycles_particle_hair_exporter_test"
     )
@@ -344,6 +449,32 @@ def _main() -> None:
                 )
         if exported_uv_layers["RootUV"] == exported_uv_layers["DetailUV"]:
             raise AssertionError("named particle UV layers were aliased")
+        exported_color_attributes = {
+            attribute["name"]: _read_section(
+                binary, attribute["values"], "f"
+            )
+            for attribute in curves["color_attributes"]
+        }
+        if set(exported_color_attributes) != {"RootColor"}:
+            raise AssertionError(
+                "particle color demand did not match Cycles"
+            )
+        for name, expected_values in expected_color_attributes.items():
+            actual = exported_color_attributes[name]
+            if len(actual) != 4 * len(expected_values):
+                raise AssertionError("particle color curve domain changed")
+            for curve, expected_srgb in enumerate(expected_values):
+                expected_linear = [
+                    _srgb_to_linear(float(component))
+                    for component in expected_srgb
+                ]
+                expected = expected_linear + [1.0]
+                for channel, component in enumerate(expected):
+                    _assert_near(
+                        float(actual[curve * 4 + channel]),
+                        component,
+                        f"{name} curve {curve} channel {channel}",
+                    )
         expected_first_keys = tuple(
             index * _KEYS_PER_CURVE
             for index in range(expected_curve_count)

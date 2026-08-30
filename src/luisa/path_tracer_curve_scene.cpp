@@ -96,6 +96,14 @@ build_curve_geometry_upload(const contract::CurveGeometryDesc &geometry,
       destination.emplace_back(luisa::make_float2(value.x, value.y));
     }
   }
+  for (const auto &[name, source] : geometry.color_attributes) {
+    auto &destination = upload.color_attributes[name];
+    destination.reserve(source.size());
+    for (const auto value : source) {
+      destination.emplace_back(
+          luisa::make_float4(value.x, value.y, value.z, value.w));
+    }
+  }
   upload.length.reserve(geometry.curve_first_key.size());
   upload.random.reserve(geometry.curve_first_key.size());
   upload.intercept.reserve(geometry.keys.size());
@@ -258,6 +266,22 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
             .domain = pack_attribute_layout(
                 attribute_domain_curve, attribute_format_float2)});
       }
+    }
+    for (const auto &[name, values] : upload.color_attributes) {
+      const auto id = contract::attribute_id(name);
+      if (!resident.contains(id)) {
+        continue;
+      }
+      auto &buffer = resource.attributes.emplace_back(
+          data->device.create_buffer<luisa::float4>(values.size()));
+      const auto slot = next_attribute_slot++;
+      data->heap.emplace_on_update(slot, buffer);
+      stream << buffer.copy_from(luisa::span{values});
+      attribute_bindings.emplace_back(AttributeBindingGpu{
+          .id = id,
+          .value_slot = slot,
+          .domain = pack_attribute_layout(
+              attribute_domain_curve, attribute_format_float4)});
     }
     stream << resource.bounds.copy_from(luisa::span{upload.bounds})
            << resource.segments.copy_from(luisa::span{upload.segments})

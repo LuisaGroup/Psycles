@@ -284,6 +284,29 @@ template<typename Id>
                         name + "'");
             }
         }
+        for (const auto &[name, values] : curves.color_attributes) {
+            if (values.size() != curve_count) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_mesh,
+                    "curve geometry '" + curves.name +
+                        "' has a mismatched color attribute '" + name +
+                        "' count");
+            }
+            if (std::any_of(
+                    values.begin(), values.end(),
+                    [](const auto &color) noexcept {
+                        return !std::isfinite(color.x) ||
+                               !std::isfinite(color.y) ||
+                               !std::isfinite(color.z) ||
+                               !std::isfinite(color.w);
+                    })) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_mesh,
+                    "curve geometry '" + curves.name +
+                        "' contains a non-finite color attribute '" + name +
+                        "'");
+            }
+        }
         if (curves.default_uv_layer &&
             !curves.uv_layers.contains(*curves.default_uv_layer)) {
             diagnose(

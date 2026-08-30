@@ -281,19 +281,27 @@ void test_unknown_query_is_conservative_top() {
         "unresolved runtime attribute ID did not raise demand to top");
 }
 
-void test_curve_domain_uv_residency() {
-    constexpr MaterialId material_id{21u};
-    constexpr MaterialId unreachable_material{22u};
-    constexpr GeometryId geometry_id{23u};
+void test_curve_domain_attribute_residency() {
+    constexpr MaterialId uv_material{21u};
+    constexpr MaterialId color_material{22u};
+    constexpr MaterialId unreachable_material{23u};
+    constexpr GeometryId geometry_id{24u};
     constexpr std::string_view kept_uv = "CurveRootUV";
     constexpr std::string_view dropped_uv = "UnusedCurveUV";
+    constexpr std::string_view kept_color = "CurveRootColor";
+    constexpr std::string_view dropped_color = "UnusedCurveColor";
 
     SceneSnapshot snapshot;
     snapshot.materials.emplace(
-        material_id,
+        uv_material,
         MaterialDesc{
             .name = "curve UV",
             .shader = named_uv_graph(uv_attribute_id(kept_uv))});
+    snapshot.materials.emplace(
+        color_material,
+        MaterialDesc{
+            .name = "curve color",
+            .shader = attribute_graph(attribute_id(kept_color))});
     snapshot.materials.emplace(
         unreachable_material,
         MaterialDesc{
@@ -308,14 +316,21 @@ void test_curve_domain_uv_residency() {
                      {1.0f, 0.0f, 0.0f, 0.1f},
                      {1.0f, 0.0f, 1.0f, 0.1f}},
             .curve_first_key = {0u, 2u},
-            .material_slots = {material_id},
-            .curve_material_slots = {0u, 0u},
+            .material_slots = {uv_material, color_material},
+            .curve_material_slots = {0u, 1u},
             .default_uv_layer = std::string{kept_uv},
             .uv_layers = {
                 {std::string{kept_uv}, {{0.1f, 0.2f}, {0.3f, 0.4f}}},
-                {std::string{dropped_uv}, {{0.5f, 0.6f}, {0.7f, 0.8f}}}}});
+                {std::string{dropped_uv}, {{0.5f, 0.6f}, {0.7f, 0.8f}}}},
+            .color_attributes = {
+                {std::string{kept_color},
+                 {{0.1f, 0.2f, 0.3f, 1.0f},
+                  {0.4f, 0.5f, 0.6f, 1.0f}}},
+                {std::string{dropped_color},
+                 {{0.7f, 0.8f, 0.9f, 1.0f},
+                  {0.2f, 0.3f, 0.4f, 1.0f}}}}});
     snapshot.instances.emplace(
-        InstanceId{24u},
+        InstanceId{25u},
         InstanceDesc{.name = "curve UV user", .geometry = geometry_id});
 
     MaterialLibrary materials;
@@ -329,21 +344,23 @@ void test_curve_domain_uv_residency() {
     const auto &resident = plan.geometry(geometry_id);
     require(
         resident.contains(uv_attribute_id(kept_uv)) &&
-            !resident.contains(uv_attribute_id(dropped_uv)),
-        "curve-domain UV reachability was not exact");
+            resident.contains(attribute_id(kept_color)) &&
+            !resident.contains(uv_attribute_id(dropped_uv)) &&
+            !resident.contains(attribute_id(dropped_color)),
+        "curve-domain attribute reachability was not exact");
     require(
-        plan.source_binding_count == 2u &&
-            plan.resident_binding_count == 1u &&
-            plan.source_device_bytes == 32u &&
-            plan.resident_device_bytes == 16u,
-        "curve-domain UV residency census is not exact");
+        plan.source_binding_count == 4u &&
+            plan.resident_binding_count == 2u &&
+            plan.source_device_bytes == 96u &&
+            plan.resident_device_bytes == 48u,
+        "curve-domain attribute residency census is not exact");
 }
 
 }// namespace
 
 int main() {
     test_per_geometry_union_and_tangent_dependency_closure();
-    test_curve_domain_uv_residency();
+    test_curve_domain_attribute_residency();
     test_unknown_query_is_conservative_top();
     return EXIT_SUCCESS;
 }

@@ -173,6 +173,16 @@ void measure_geometry(
     SceneAttributeResidencyPlan &plan,
     const contract::CurveGeometryDesc &geometry,
     const GeometryAttributeResidency &residency) {
+    for (const auto &[name, values] : geometry.color_attributes) {
+        const auto id = contract::attribute_id(name);
+        const auto bytes = float4_bytes(values.size());
+        ++plan.source_binding_count;
+        add_bytes(plan.source_device_bytes, bytes);
+        if (residency.contains(id)) {
+            ++plan.resident_binding_count;
+            add_bytes(plan.resident_device_bytes, bytes);
+        }
+    }
     for (const auto &[name, values] : geometry.uv_layers) {
         const auto id = contract::uv_attribute_id(name);
         const auto bytes = float2_bytes(values.size());

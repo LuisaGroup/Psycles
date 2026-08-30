@@ -29,11 +29,14 @@ inline constexpr auto corner_value_slot = std::uint32_t{4u};
 inline constexpr auto face_value_slot = std::uint32_t{5u};
 inline constexpr auto curve_segment_slot = std::uint32_t{6u};
 inline constexpr auto curve_uv_slot = std::uint32_t{7u};
+inline constexpr auto curve_color_slot = std::uint32_t{8u};
 inline constexpr auto point_attribute = luisa::ulong{0x1020304050607080ull};
 inline constexpr auto corner_attribute = luisa::ulong{0x2131415161718191ull};
 inline constexpr auto face_attribute = luisa::ulong{0x32425262728292a2ull};
 inline constexpr auto curve_uv_attribute =
     luisa::ulong{0x435363738393a3b3ull};
+inline constexpr auto curve_color_attribute =
+    luisa::ulong{0x5464748494a4b4c4ull};
 inline constexpr auto missing_attribute = luisa::ulong{0xfedcba9876543210ull};
 
 [[nodiscard]] Kernel1D<BindlessArray, Buffer<luisa::float4>>
@@ -128,7 +131,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    constexpr auto query_count = std::uint32_t{7u};
+    constexpr auto query_count = std::uint32_t{9u};
     const auto callable = make_surface_attribute_lookup_callable(
         binding_slot, range_slot);
     Kernel1D compare = [callable](
@@ -185,7 +188,12 @@ int main(int argc, char **argv) {
             .id = curve_uv_attribute,
             .value_slot = curve_uv_slot,
             .domain = pack_attribute_layout(
-                attribute_domain_curve, attribute_format_float2)}};
+                attribute_domain_curve, attribute_format_float2)},
+        AttributeBindingGpu{
+            .id = curve_color_attribute,
+            .value_slot = curve_color_slot,
+            .domain = pack_attribute_layout(
+                attribute_domain_curve, attribute_format_float4)}};
     constexpr std::array ranges{
         AttributeRangeGpu{
             .offset = 0u,
@@ -193,7 +201,7 @@ int main(int argc, char **argv) {
             .primitive_slot = triangle_slot},
         AttributeRangeGpu{
             .offset = 3u,
-            .count = 1u,
+            .count = 2u,
             .primitive_slot = curve_segment_slot}};
     constexpr std::array triangles{Triangle{0u, 1u, 2u}};
     constexpr std::array point_values{
@@ -212,6 +220,9 @@ int main(int argc, char **argv) {
     constexpr std::array curve_uv_values{
         luisa::float2{0.11f, 0.22f},
         luisa::float2{0.77f, 0.88f}};
+    constexpr std::array curve_color_values{
+        luisa::float4{0.12f, 0.23f, 0.34f, 1.0f},
+        luisa::float4{0.67f, 0.78f, 0.89f, 1.0f}};
     constexpr std::array attribute_ids{
         point_attribute,
         corner_attribute,
@@ -219,13 +230,17 @@ int main(int argc, char **argv) {
         missing_attribute,
         point_attribute,
         curve_uv_attribute,
-        curve_uv_attribute};
+        curve_uv_attribute,
+        curve_color_attribute,
+        curve_color_attribute};
     constexpr std::array identities{
         luisa::uint2{0u, 0u},
         luisa::uint2{0u, 0u},
         luisa::uint2{0u, 0u},
         luisa::uint2{0u, 0u},
         luisa::uint2{~luisa::uint{0u}, 0u},
+        luisa::uint2{1u, 0u},
+        luisa::uint2{1u, 1u},
         luisa::uint2{1u, 0u},
         luisa::uint2{1u, 1u}};
     constexpr std::array barycentrics{
@@ -235,7 +250,9 @@ int main(int argc, char **argv) {
         luisa::float2{0.2f, 0.2f},
         luisa::float2{0.2f, 0.3f},
         luisa::float2{0.9f, 0.9f},
-        luisa::float2{0.1f, 0.8f}};
+        luisa::float2{0.1f, 0.8f},
+        luisa::float2{0.7f, 0.1f},
+        luisa::float2{0.3f, 0.6f}};
     // These values independently encode the semantic contract rather than
     // only comparing two implementations of it. Triangle interpolation uses
     // weights (1 - u - v, u, v); face values are constant by construction.
@@ -246,8 +263,11 @@ int main(int argc, char **argv) {
         luisa::float4{0.0f},
         luisa::float4{0.0f},
         luisa::float4{0.77f, 0.88f, 0.0f, 0.0f},
-        luisa::float4{0.11f, 0.22f, 0.0f, 0.0f}};
-    constexpr std::array expected_found{1u, 1u, 1u, 0u, 0u, 1u, 1u};
+        luisa::float4{0.11f, 0.22f, 0.0f, 0.0f},
+        luisa::float4{0.67f, 0.78f, 0.89f, 1.0f},
+        luisa::float4{0.12f, 0.23f, 0.34f, 1.0f}};
+    constexpr std::array expected_found{
+        1u, 1u, 1u, 0u, 0u, 1u, 1u, 1u, 1u};
 
     auto binding_buffer =
         device.create_buffer<AttributeBindingGpu>(bindings.size());
@@ -265,7 +285,9 @@ int main(int argc, char **argv) {
         device.create_buffer<CurveSegmentGpu>(curve_segments.size());
     auto curve_uv_buffer =
         device.create_buffer<luisa::float2>(curve_uv_values.size());
-    auto geometry_heap = device.create_bindless_array(8u);
+    auto curve_color_buffer =
+        device.create_buffer<luisa::float4>(curve_color_values.size());
+    auto geometry_heap = device.create_bindless_array(9u);
     geometry_heap.emplace_on_update(binding_slot, binding_buffer);
     geometry_heap.emplace_on_update(range_slot, range_buffer);
     geometry_heap.emplace_on_update(triangle_slot, triangle_buffer);
@@ -274,6 +296,7 @@ int main(int argc, char **argv) {
     geometry_heap.emplace_on_update(face_value_slot, face_value_buffer);
     geometry_heap.emplace_on_update(curve_segment_slot, curve_segment_buffer);
     geometry_heap.emplace_on_update(curve_uv_slot, curve_uv_buffer);
+    geometry_heap.emplace_on_update(curve_color_slot, curve_color_buffer);
 
     auto attribute_id_buffer =
         device.create_buffer<luisa::ulong>(query_count);
@@ -296,6 +319,7 @@ int main(int argc, char **argv) {
            << face_value_buffer.copy_from(luisa::span{face_values})
            << curve_segment_buffer.copy_from(luisa::span{curve_segments})
            << curve_uv_buffer.copy_from(luisa::span{curve_uv_values})
+           << curve_color_buffer.copy_from(luisa::span{curve_color_values})
            << attribute_id_buffer.copy_from(luisa::span{attribute_ids})
            << identity_buffer.copy_from(luisa::span{identities})
            << barycentric_buffer.copy_from(luisa::span{barycentrics})
