@@ -1,4 +1,5 @@
 #include "graph_surface_internal.h"
+#include "surface_light_falloff.h"
 #include "surface_map_range.h"
 #include "surface_math.h"
 #include "surface_mix.h"
@@ -28,6 +29,7 @@ namespace operand = compiler::value_operand;
         case compiler::ValueOperation::maximum:
         case compiler::ValueOperation::power:
         case compiler::ValueOperation::math:
+        case compiler::ValueOperation::light_falloff:
         case compiler::ValueOperation::absolute:
         case compiler::ValueOperation::clamp01:
         case compiler::ValueOperation::clamp_range:
@@ -213,6 +215,33 @@ public:
                             b,
                             c);
                     }
+                    value = make_float4(evaluated);
+                    break;
+                }
+                case compiler::ValueOperation::light_falloff: {
+                    const auto strength = scalar(
+                        instruction.operand(operand::light_falloff::strength),
+                        result);
+                    const auto smooth = scalar(
+                        instruction.operand(operand::light_falloff::smooth),
+                        result);
+                    const auto ray_length = scalar(
+                        instruction.operand(operand::light_falloff::ray_length),
+                        result);
+                    const auto evaluated =
+                        context.svm_immediate_override != nullptr
+                            ? evaluate_surface_light_falloff_svm(
+                                  *context.svm_immediate_override,
+                                  context.svm_immediate_domain,
+                                  strength,
+                                  smooth,
+                                  ray_length)
+                            : evaluate_surface_light_falloff(
+                                  static_cast<compiler::LightFalloffType>(
+                                      instruction.static_u0),
+                                  strength,
+                                  smooth,
+                                  ray_length);
                     value = make_float4(evaluated);
                     break;
                 }

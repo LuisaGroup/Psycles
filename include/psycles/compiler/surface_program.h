@@ -59,6 +59,15 @@ enum class MappingVectorType : std::uint8_t {
   normal = 3u
 };
 
+// Exact Cycles SVMNodeLightFalloff output selector. Numeric values follow
+// NodeLightFalloff so the compact immediate remains a direct semantic
+// projection rather than a backend-specific remapping.
+enum class LightFalloffType : std::uint8_t {
+  quadratic = 0u,
+  linear = 1u,
+  constant = 2u
+};
+
 struct ParameterDesc {
   ParameterId id;
   contract::NodeId node;
@@ -201,7 +210,11 @@ enum class ValueOperation : std::uint8_t {
   // before scaling and the object direction transform afterwards. Keep the
   // operation semantic in the IR so non-uniform instance transforms cannot
   // be lost during Blender graph normalization.
-  displacement
+  displacement,
+  // Light Falloff is not ordinary graph algebra. Cycles treats the exact
+  // FLT_MAX ShaderData::ray_length as a distant-light sentinel and returns
+  // Strength before evaluating distance products or smooth attenuation.
+  light_falloff
 };
 
 // Operand layouts are shared by lowering and backend AST construction. Named
@@ -338,6 +351,13 @@ struct displacement {
   static constexpr std::size_t scale = 2u;
   static constexpr std::size_t normal = 3u;
   static constexpr std::size_t count = 4u;
+};
+
+struct light_falloff {
+  static constexpr std::size_t strength = 0u;
+  static constexpr std::size_t smooth = 1u;
+  static constexpr std::size_t ray_length = 2u;
+  static constexpr std::size_t count = 3u;
 };
 
 // Differential sample offsets are scalar coefficients of SurfacePoint::dPdx
@@ -680,6 +700,8 @@ value_operation_operand_count(ValueOperation operation) noexcept {
       return value_operand::ambient_occlusion::count;
     case ValueOperation::displacement:
       return value_operand::displacement::count;
+    case ValueOperation::light_falloff:
+      return value_operand::light_falloff::count;
     case ValueOperation::mapping:
       return value_operand::mapping::count;
     case ValueOperation::image_color:

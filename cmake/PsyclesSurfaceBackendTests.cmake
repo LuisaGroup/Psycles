@@ -408,6 +408,15 @@ target_include_directories(
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_light_falloff_tests
+    SOURCE tests/test_luisa_light_falloff.cpp
+    TEST_STEM luisa_light_falloff
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_light_falloff_tests
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_surface_vector_math_svm_tests
     SOURCE tests/test_luisa_surface_vector_math_svm.cpp
     TEST_STEM luisa_surface_vector_math_svm

@@ -35,6 +35,7 @@ namespace psycles::luisa_backend::detail {
            opcode == compiler::SurfaceSvmValueOpcode::tex_coord_derivative ||
            opcode == compiler::SurfaceSvmValueOpcode::bump_support ||
            opcode == compiler::SurfaceSvmValueOpcode::displacement ||
+           opcode == compiler::SurfaceSvmValueOpcode::light_falloff ||
            opcode == compiler::SurfaceSvmValueOpcode::tangent ||
            opcode == compiler::SurfaceSvmValueOpcode::fresnel ||
            opcode == compiler::SurfaceSvmValueOpcode::layer_weight ||

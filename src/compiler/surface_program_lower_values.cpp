@@ -669,6 +669,33 @@ namespace operand = value_operand;
         }
         return true;
     }
+    if (node.type == node_type::light_falloff) {
+        auto strength = lower_value_input(node, "Strength");
+        auto smooth = lower_value_input(node, "Smooth");
+        auto ray_length = lower_value_input(node, "RayLength");
+        if (strength && smooth && ray_length) {
+            for (const auto [name, type] :
+                 {std::pair{"Quadratic", LightFalloffType::quadratic},
+                  std::pair{"Linear", LightFalloffType::linear},
+                  std::pair{"Constant", LightFalloffType::constant}}) {
+                publish(
+                    node.id,
+                    name,
+                    append(ValueInstruction{
+                        .operation = ValueOperation::light_falloff,
+                        .source_node = node.id,
+                        .result_type = SocketType::floating,
+                        .operands =
+                            make_value_operands<operand::light_falloff>({
+                                {operand::light_falloff::strength, *strength},
+                                {operand::light_falloff::smooth, *smooth},
+                                {operand::light_falloff::ray_length,
+                                 *ray_length}}),
+                        .static_u0 = static_cast<std::uint64_t>(type)}));
+            }
+        }
+        return true;
+    }
     return false;
 }
 

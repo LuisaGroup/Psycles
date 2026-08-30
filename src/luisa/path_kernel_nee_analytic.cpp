@@ -104,6 +104,7 @@ class AnalyticDirectLightProvider final : public DirectLightProvider {
                     (light.power * distant_sample.evaluation_factor);
                 light_position = -wi;
                 light_normal = -wi;
+                light_distance = cycles_light::distant_ray_length;
                 light_valid = true;
             }
             $else {

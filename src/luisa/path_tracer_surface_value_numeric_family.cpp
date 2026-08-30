@@ -1,5 +1,6 @@
 #include "path_tracer_surface_value_numeric_family.h"
 
+#include "surface_light_falloff.h"
 #include "surface_map_range.h"
 #include "surface_math.h"
 #include "surface_vector_math.h"
@@ -265,6 +266,31 @@ void emit_mix_vector_family(
     write_surface_value_vector(locals, instruction, lerp(a, b, factor));
 }
 
+void emit_light_falloff_family(
+    SurfaceValueOperandReader &operands,
+    const SurfaceValueLocalsView &locals,
+    Var<luisa::uint4> instruction,
+    const compiler::SurfaceValueStaticVariant &variant) noexcept {
+    if (variant.instruction.operation !=
+            compiler::ValueOperation::light_falloff ||
+        result_bank(variant) != compiler::SurfaceValueBank::scalar) {
+        std::abort();
+    }
+    const auto strength = operands.scalar(operand::light_falloff::strength);
+    const auto smooth = operands.scalar(operand::light_falloff::smooth);
+    const auto ray_length =
+        operands.scalar(operand::light_falloff::ray_length);
+    write_surface_value_scalar(
+        locals,
+        instruction,
+        evaluate_surface_light_falloff_svm(
+            surface_value_runtime_immediate(instruction),
+            variant.svm_immediates,
+            strength,
+            smooth,
+            ray_length));
+}
+
 } // namespace
 
 void emit_direct_surface_numeric_family(
@@ -295,6 +321,9 @@ void emit_direct_surface_numeric_family(
         case compiler::SurfaceSvmValueOpcode::mix_vector_non_uniform:
             emit_mix_vector_family(family, locals, instruction, variant,
                                    operands);
+            return;
+        case compiler::SurfaceSvmValueOpcode::light_falloff:
+            emit_light_falloff_family(operands, locals, instruction, variant);
             return;
         default:
             std::abort();

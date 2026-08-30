@@ -957,6 +957,7 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
          operation == ValueOperation::normal_map ||
          operation == ValueOperation::bump ||
          operation == ValueOperation::displacement ||
+         operation == ValueOperation::light_falloff ||
          operation == ValueOperation::wave_color ||
          operation == ValueOperation::wave_factor ||
          operation == ValueOperation::gradient ||
@@ -1018,6 +1019,7 @@ surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
                  operation == ValueOperation::normal_map ||
                  operation == ValueOperation::bump ||
                  operation == ValueOperation::displacement ||
+                 operation == ValueOperation::light_falloff ||
                  operation == ValueOperation::noise_factor ||
                  operation == ValueOperation::noise_color ||
                  operation == ValueOperation::white_noise_value ||
@@ -1177,6 +1179,11 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
     return (static_u0 & ~displacement_configuration_mask) == 0u &&
            static_u1 == 0u;
   }
+  if (operation == ValueOperation::light_falloff) {
+    return static_u0 <=
+               static_cast<std::uint64_t>(LightFalloffType::constant) &&
+           static_u1 == 0u;
+  }
   if (surface_value_operation_uses_noise_normalize(operation)) {
     const auto type = (static_u1 >> 8u) & 0xffu;
     return static_u0 >= 1u && static_u0 <= 4u && type <= 4u &&
@@ -1311,6 +1318,7 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
       operation == ValueOperation::normal_map ||
       operation == ValueOperation::bump ||
       operation == ValueOperation::displacement ||
+      operation == ValueOperation::light_falloff ||
       operation == ValueOperation::gradient) {
     return static_cast<std::uint32_t>(static_u0);
   }
