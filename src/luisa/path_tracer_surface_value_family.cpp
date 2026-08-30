@@ -262,6 +262,7 @@ bool emit_direct_surface_value_variant(
         case compiler::SurfaceSvmValueOpcode::mix_float:
         case compiler::SurfaceSvmValueOpcode::mix_vector:
         case compiler::SurfaceSvmValueOpcode::mix_vector_non_uniform:
+        case compiler::SurfaceSvmValueOpcode::light_falloff:
             emit_direct_surface_numeric_family(family, locals, instruction,
                                                variant, operands);
             return true;

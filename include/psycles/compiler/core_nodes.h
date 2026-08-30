@@ -54,6 +54,7 @@ inline constexpr auto object_info = "psycles.object_info";
 inline constexpr auto particle_info = "psycles.particle_info";
 inline constexpr auto hair_info = "psycles.hair_info";
 inline constexpr auto light_path = "psycles.light_path";
+inline constexpr auto light_falloff = "psycles.light_falloff";
 inline constexpr auto layer_weight = "psycles.layer_weight";
 inline constexpr auto fresnel = "psycles.fresnel";
 inline constexpr auto ambient_occlusion = "psycles.ambient_occlusion";

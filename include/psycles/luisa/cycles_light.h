@@ -4,9 +4,17 @@
 #error "Include <psycles/luisa/cycles_light.h> through the Psycles::luisa target."
 #endif
 
+#include <limits>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_light {
+
+// Cycles uses FLT_MAX as ShaderData::ray_length for distant lamps. This is a
+// shading sentinel, not a traversal endpoint: shadow rays continue to use the
+// backend's finite ray maximum.
+inline constexpr auto distant_ray_length =
+    std::numeric_limits<float>::max();
 
 // Cycles applies an authored lamp/world bounce limit after selecting an
 // analytic emitter from the flat distribution. The boundary is inclusive:

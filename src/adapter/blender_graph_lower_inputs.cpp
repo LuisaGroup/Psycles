@@ -163,57 +163,25 @@ public:
                                  : SocketType::floating});
     }
     if (type == "LIGHT_FALLOFF") {
-      // Cycles applies the selected distance law before its smooth
-      // near-light attenuation. Analytic-light shader points carry the
-      // sampled light distance through Light Path / Ray Length.
+      // Cycles gives Light Falloff a semantic distant-light branch: an exact
+      // FLT_MAX ShaderData::ray_length returns Strength without evaluating
+      // any distance algebra. Preserve that operation in the graph;
+      // decomposing it into multiply/divide nodes turns the distant branch
+      // into inf/inf under IEEE-754.
       const auto light_path = context.graph().add_node(
           compiler::node_type::light_path, node_name + " / Light Path");
-      const auto squared_distance =
-          context.graph().add_node(compiler::node_type::multiply_float,
-                                   node_name + " / Squared Distance");
-      static_cast<void>(context.graph().connect(
-          {.node = light_path, .socket = "RayLength"}, squared_distance, "A"));
-      static_cast<void>(context.graph().connect(
-          {.node = light_path, .socket = "RayLength"}, squared_distance, "B"));
-
-      const auto smooth_denominator = context.graph().add_node(
-          compiler::node_type::add_float, node_name + " / Smooth Denominator");
-      static_cast<void>(
-          context.graph().connect({.node = squared_distance, .socket = "Value"},
-                                  smooth_denominator, "A"));
-      static_cast<void>(context.bind(smooth_denominator, "B", node, "Smooth",
+      const auto falloff = context.graph().add_node(
+          compiler::node_type::light_falloff, node_name);
+      static_cast<void>(context.bind(falloff, "Strength", node, "Strength",
                                      SocketType::floating));
-      const auto smooth_factor = context.graph().add_node(
-          compiler::node_type::divide_float, node_name + " / Smooth Factor");
-      static_cast<void>(context.graph().connect(
-          {.node = squared_distance, .socket = "Value"}, smooth_factor, "A"));
-      static_cast<void>(context.graph().connect(
-          {.node = smooth_denominator, .socket = "Value"}, smooth_factor, "B"));
-
-      const auto distance_scaled =
-          context.graph().add_node(compiler::node_type::multiply_float,
-                                   node_name + " / Distance Falloff");
-      static_cast<void>(context.bind(distance_scaled, "A", node, "Strength",
+      static_cast<void>(context.bind(falloff, "Smooth", node, "Smooth",
                                      SocketType::floating));
-      if (socket == "Linear") {
-        static_cast<void>(context.graph().connect(
-            {.node = light_path, .socket = "RayLength"}, distance_scaled, "B"));
-      } else if (socket == "Constant") {
-        static_cast<void>(context.graph().connect(
-            {.node = squared_distance, .socket = "Value"}, distance_scaled,
-            "B"));
-      } else {
-        static_cast<void>(context.graph().set_input(
-            distance_scaled, "B", SocketValue::floating(1.0f)));
-      }
-
-      const auto result = context.graph().add_node(
-          compiler::node_type::multiply_float, node_name);
       static_cast<void>(context.graph().connect(
-          {.node = distance_scaled, .socket = "Value"}, result, "A"));
-      static_cast<void>(context.graph().connect(
-          {.node = smooth_factor, .socket = "Value"}, result, "B"));
-      return finish({.ref = {.node = result, .socket = "Value"},
+          {.node = light_path, .socket = "RayLength"}, falloff, "RayLength"));
+      const auto output = socket == "Linear"   ? std::string{"Linear"}
+                          : socket == "Constant" ? std::string{"Constant"}
+                                                 : std::string{"Quadratic"};
+      return finish({.ref = {.node = falloff, .socket = output},
                      .type = SocketType::floating});
     }
     if (type == "LIGHT_PATH") {

@@ -165,7 +165,7 @@ class AnalyticVolumeLightProvider final
             -direction,
             make_float2(0.5f),
             -direction,
-            ray_maximum,
+            cycles_light::distant_ray_length,
             valid);
         _result.direction =
             select(

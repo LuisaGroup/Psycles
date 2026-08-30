@@ -64,6 +64,7 @@ enum class SurfaceSvmValueOpcode : std::uint8_t {
   sky,
   ambient_occlusion,
   displacement,
+  light_falloff,
   count,
   invalid = 0xffu,
 };
@@ -71,7 +72,7 @@ enum class SurfaceSvmValueOpcode : std::uint8_t {
 inline constexpr std::uint32_t surface_svm_value_opcode_count =
     static_cast<std::uint32_t>(SurfaceSvmValueOpcode::count);
 inline constexpr std::uint32_t surface_value_operation_count =
-    static_cast<std::uint32_t>(ValueOperation::displacement) + 1u;
+    static_cast<std::uint32_t>(ValueOperation::light_falloff) + 1u;
 inline constexpr std::uint32_t surface_svm_opcode_image_projection_shift = 12u;
 inline constexpr std::uint32_t surface_svm_opcode_image_projection_mask =
     0x3u << surface_svm_opcode_image_projection_shift;
@@ -263,6 +264,8 @@ surface_svm_value_base_opcode(ValueOperation operation) noexcept {
     return SurfaceSvmValueOpcode::ambient_occlusion;
   case ValueOperation::displacement:
     return SurfaceSvmValueOpcode::displacement;
+  case ValueOperation::light_falloff:
+    return SurfaceSvmValueOpcode::light_falloff;
   }
   return SurfaceSvmValueOpcode::invalid;
 }

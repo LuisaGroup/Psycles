@@ -163,6 +163,22 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface) |
                                       feature_bit(ShaderFeature::ray_state)}));
 
+  static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::light_falloff,
+      .inputs =
+          {input("Strength", SocketType::floating,
+                 SocketValue::floating(100.0f)),
+           input("Smooth", SocketType::floating,
+                 SocketValue::floating(0.0f)),
+           input("RayLength", SocketType::floating,
+                 SocketValue::floating(0.0f))},
+      .outputs = {output("Quadratic", SocketType::floating),
+                  output("Linear", SocketType::floating),
+                  output("Constant", SocketType::floating)},
+      .properties = {},
+      .required_features = feature_bit(ShaderFeature::surface) |
+                           feature_bit(ShaderFeature::ray_state)}));
+
   static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::layer_weight,
                  .inputs = {input("Blend", SocketType::floating,

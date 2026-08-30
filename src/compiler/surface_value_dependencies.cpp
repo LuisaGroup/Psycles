@@ -454,6 +454,7 @@ bool value_instruction_observes_shading_normal(
   case ValueOperation::maximum:
   case ValueOperation::power:
   case ValueOperation::math:
+  case ValueOperation::light_falloff:
   case ValueOperation::absolute:
   case ValueOperation::clamp01:
   case ValueOperation::bump_offset_zero:
