@@ -180,6 +180,44 @@ def _dynamic_mix_shader(scene: Any) -> None:
     _plane(material)
 
 
+def _svm_mix_closure_fold(scene: Any) -> None:
+    """Expose Cycles' Fac=0 Mix Closure bypass during graph cleaning."""
+    material, tree, output = _material("SVM Mix Closure Fold Probe")
+    transparent = tree.nodes.new("ShaderNodeBsdfTransparent")
+    transparent.name = "Transparent BSDF"
+    _input(transparent, "Color").default_value = (
+        0.75,
+        0.9,
+        0.6,
+        1.0,
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Discarded Emission"
+    _input(emission, "Color").default_value = (
+        0.85,
+        0.08,
+        0.03,
+        1.0,
+    )
+    _input(emission, "Strength").default_value = 1.2
+    mix = tree.nodes.new("ShaderNodeMixShader")
+    mix.name = "Folded Mix Shader"
+    _input(mix, "Fac").default_value = 0.0
+    tree.links.new(
+        _output(transparent, "BSDF"),
+        mix.inputs[1],
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        mix.inputs[2],
+    )
+    tree.links.new(
+        _output(mix, "Shader"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
 def _transparent_mix(scene: Any) -> None:
     _world(scene, (0.04, 0.22, 0.7, 1.0), 1.8)
     material, tree, output = _material("Transparent Probe")

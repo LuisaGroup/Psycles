@@ -76,6 +76,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "diffuse_bsdf_matrix": closures._diffuse_bsdf_matrix,
     "diffuse_surface": closures._diffuse_surface,
     "dynamic_mix_shader": closures._dynamic_mix_shader,
+    "svm_mix_closure_fold": closures._svm_mix_closure_fold,
     "emission_surface": lights_camera._emission_surface,
     "environment_texture_projection_modes": (
         environment_inputs._environment_texture_projection_modes
@@ -125,6 +126,8 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "map_range_matrix": texture_inputs._map_range_matrix,
     "math_edge_cases": values._math_edge_cases,
     "math_operations": values._math_operations,
+    "svm_math_constant_fold": values._svm_math_constant_fold,
+    "svm_math_dedup": values._svm_math_dedup,
     "mapping_modes": texture_inputs._mapping_modes,
     "magic_texture_matrix": magic_inputs._magic_texture_matrix,
     "metallic_bsdf_matrix": metallic_closures._metallic_bsdf_matrix,

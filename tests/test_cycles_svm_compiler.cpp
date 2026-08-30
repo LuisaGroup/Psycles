@@ -204,6 +204,145 @@ void test_linked_mix_closure_jumps_match_cycles_5_2_1() {
           "linked Mix SVM peak stack usage differs from Cycles");
 }
 
+void test_dynamic_math_and_dedup_match_cycles_5_2_1() {
+  ShaderGraph graph;
+  const auto geometry_a = graph.add_node(node_type::geometry, "Geometry A");
+  const auto geometry_b = graph.add_node(node_type::geometry, "Geometry B");
+  const auto math = graph.add_node(node_type::math, "Dynamic Add");
+  require(graph.set_property(math, "Operation", SocketValue::string("ADD")),
+          "failed to set dynamic Math operation");
+  require(graph.connect(OutputRef{geometry_a, "Backfacing"}, math, "A"),
+          "failed to connect first duplicate Geometry");
+  require(graph.connect(OutputRef{geometry_b, "Backfacing"}, math, "B"),
+          "failed to connect second duplicate Geometry");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.set_input(emission, "Color",
+                          SocketValue::color({0.21f, 0.47f, 0.83f})),
+          "failed to set dynamic-Math Emission Color");
+  require(graph.connect(OutputRef{math, "Value"}, emission, "Strength"),
+          "failed to connect dynamic Math to Emission Strength");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(), "dynamic Math/dedup graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen from Cycles 5.2.1 `SVM Math Dedup Probe`. The two separately
+  // authored Geometry nodes are deduplicated before scheduling: NODE_MATH
+  // therefore reads lane 0 for both Value1 and Value2, and only one
+  // NODE_LIGHT_PATH instruction exists.
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x00000015u, 0x00000016u,
+      0x00000032u, 0x00000008u, 0x00000000u,
+      0x0000002cu, 0x00000000u, 0x7fc00000u, 0x7fc00000u,
+      0x00000000u, 0x00000001u,
+      0x00000007u, 0x3e570a3du, 0x3ef0a3d7u, 0x3f547ae1u,
+      0x7fc00001u,
+      0x00000003u, 0x000000ffu,
+      0x00000000u,
+      0x00000000u,
+      0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles dynamic Math/dedup SVM differs from Cycles");
+  require(image.peak_stack_usage == 2u,
+          "dynamic Math/dedup peak stack usage differs from Cycles");
+}
+
+void test_constant_math_fold_matches_cycles_5_2_1() {
+  ShaderGraph graph;
+  const auto math = graph.add_node(node_type::math, "Constant Add");
+  require(graph.set_property(math, "Operation", SocketValue::string("ADD")),
+          "failed to set constant Math operation");
+  require(graph.set_input(math, "A", SocketValue::floating(0.12f)) &&
+              graph.set_input(math, "B", SocketValue::floating(0.23f)) &&
+              graph.set_input(math, "C", SocketValue::floating(0.0f)),
+          "failed to set constant Math inputs");
+  const auto diffuse = graph.add_node(node_type::diffuse_bsdf, "Diffuse BSDF");
+  require(graph.set_input(diffuse, "Color",
+                          SocketValue::color({0.68f, 0.24f, 0.09f})),
+          "failed to set folded-Math Diffuse Color");
+  require(graph.connect(OutputRef{math, "Value"}, diffuse, "Roughness"),
+          "failed to connect constant Math to Diffuse Roughness");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = diffuse, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(), "constant Math graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen from Cycles 5.2.1 `SVM Math Constant Fold Probe`. NODE_MATH is
+  // absent and its exact float result, 0.35f (0x3eb33333), is embedded in the
+  // Diffuse payload after ShaderGraph::constant_fold.
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x00000014u, 0x00000015u,
+      0x0000000bu, 0x00000001u, 0x00000000u,
+      0x00000005u, 0x3f2e147bu, 0x3e75c28fu, 0x3db851ecu,
+      0x00000002u, 0x00000002u, 0x000000ffu,
+      0x3f2e147bu, 0x3e75c28fu, 0x3db851ecu, 0x3eb33333u,
+      0x00000000u, 0x00000000u,
+      0x00000000u,
+      0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles constant-folded Math SVM differs from Cycles");
+  require(!image.node_types_used[NODE_MATH],
+          "constant-folded Math still emitted NODE_MATH");
+}
+
+void test_zero_mix_closure_fold_matches_cycles_5_2_1() {
+  ShaderGraph graph;
+  const auto transparent =
+      graph.add_node(node_type::transparent_bsdf, "Transparent BSDF");
+  require(graph.set_input(transparent, "Color",
+                          SocketValue::color({0.75f, 0.9f, 0.6f})),
+          "failed to set folded Mix Transparent Color");
+  const auto emission =
+      graph.add_node(node_type::emission, "Discarded Emission");
+  require(graph.set_input(emission, "Color",
+                          SocketValue::color({0.85f, 0.08f, 0.03f})) &&
+              graph.set_input(emission, "Strength",
+                              SocketValue::floating(1.2f)),
+          "failed to set folded Mix Emission");
+  const auto mix = graph.add_node(node_type::mix_closure, "Folded Mix Shader");
+  require(graph.set_input(mix, "Factor", SocketValue::floating(0.0f)),
+          "failed to set folded Mix factor");
+  require(graph.connect(OutputRef{transparent, "Closure"}, mix, "A") &&
+              graph.connect(OutputRef{emission, "Closure"}, mix, "B"),
+          "failed to connect folded Mix branches");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = mix, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(), "zero-factor Mix graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen from Cycles 5.2.1 `SVM Mix Closure Fold Probe`. The Mix and its
+  // Emission branch disappear; the surviving Transparent closure has the
+  // invalid parent-weight offset because no closure-weight transform remains.
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x0000000eu, 0x0000000fu,
+      0x00000005u, 0x3f400000u, 0x3f666666u, 0x3f19999au,
+      0x00000002u, 0x0000001eu, 0x000000ffu, 0x00000000u,
+      0x00000000u,
+      0x00000000u,
+      0x00000000u,
+      0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles zero-factor Mix fold differs from Cycles");
+  require(!image.node_types_used[NODE_MIX_CLOSURE] &&
+              !image.node_types_used[NODE_CLOSURE_EMISSION],
+          "zero-factor Mix retained its discarded branch");
+}
+
 void test_unsupported_node_rejects_without_old_fallback() {
   ShaderGraph graph;
   const auto principled =
@@ -226,6 +365,9 @@ int main() {
   test_diffuse_surface_matches_cycles_5_2_1();
   test_constant_mix_closure_matches_cycles_5_2_1();
   test_linked_mix_closure_jumps_match_cycles_5_2_1();
+  test_dynamic_math_and_dedup_match_cycles_5_2_1();
+  test_constant_math_fold_matches_cycles_5_2_1();
+  test_zero_mix_closure_fold_matches_cycles_5_2_1();
   test_unsupported_node_rejects_without_old_fallback();
   return 0;
 }

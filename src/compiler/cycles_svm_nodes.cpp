@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0 */
 
 #include "cycles_svm_compiler_internal.h"
+#include "cycles_svm_constant_fold.h"
 
 #include <psycles/compiler/core_nodes.h>
 
@@ -29,6 +30,77 @@ template<typename T>
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::string_view> string_property(
+    const GraphNode *node, std::string_view name) noexcept {
+  const auto iter = node->properties.find(name);
+  if (iter == node->properties.end() ||
+      iter->second.type != contract::SocketType::string) {
+    return std::nullopt;
+  }
+  if (const auto *value = std::get_if<std::string>(&iter->second.value)) {
+    return *value;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<NodeMathType>
+math_type(const GraphNode *node) noexcept {
+  if (node->type == cycles_synthetic_math) {
+    return NODE_MATH_MULTIPLY;
+  }
+  const auto operation = string_property(node, "Operation");
+  if (!operation) {
+    return std::nullopt;
+  }
+#define PSYCLES_CYCLES_MATH_TYPE(name, value) \
+  if (*operation == name) {                   \
+    return value;                             \
+  }
+  PSYCLES_CYCLES_MATH_TYPE("ADD", NODE_MATH_ADD)
+  PSYCLES_CYCLES_MATH_TYPE("SUBTRACT", NODE_MATH_SUBTRACT)
+  PSYCLES_CYCLES_MATH_TYPE("MULTIPLY", NODE_MATH_MULTIPLY)
+  PSYCLES_CYCLES_MATH_TYPE("DIVIDE", NODE_MATH_DIVIDE)
+  PSYCLES_CYCLES_MATH_TYPE("MULTIPLY_ADD", NODE_MATH_MULTIPLY_ADD)
+  PSYCLES_CYCLES_MATH_TYPE("POWER", NODE_MATH_POWER)
+  PSYCLES_CYCLES_MATH_TYPE("LOGARITHM", NODE_MATH_LOGARITHM)
+  PSYCLES_CYCLES_MATH_TYPE("SQRT", NODE_MATH_SQRT)
+  PSYCLES_CYCLES_MATH_TYPE("INVERSE_SQRT", NODE_MATH_INV_SQRT)
+  PSYCLES_CYCLES_MATH_TYPE("ABSOLUTE", NODE_MATH_ABSOLUTE)
+  PSYCLES_CYCLES_MATH_TYPE("EXPONENT", NODE_MATH_EXPONENT)
+  PSYCLES_CYCLES_MATH_TYPE("MINIMUM", NODE_MATH_MINIMUM)
+  PSYCLES_CYCLES_MATH_TYPE("MAXIMUM", NODE_MATH_MAXIMUM)
+  PSYCLES_CYCLES_MATH_TYPE("LESS_THAN", NODE_MATH_LESS_THAN)
+  PSYCLES_CYCLES_MATH_TYPE("GREATER_THAN", NODE_MATH_GREATER_THAN)
+  PSYCLES_CYCLES_MATH_TYPE("SIGN", NODE_MATH_SIGN)
+  PSYCLES_CYCLES_MATH_TYPE("COMPARE", NODE_MATH_COMPARE)
+  PSYCLES_CYCLES_MATH_TYPE("SMOOTH_MIN", NODE_MATH_SMOOTH_MIN)
+  PSYCLES_CYCLES_MATH_TYPE("SMOOTH_MAX", NODE_MATH_SMOOTH_MAX)
+  PSYCLES_CYCLES_MATH_TYPE("ROUND", NODE_MATH_ROUND)
+  PSYCLES_CYCLES_MATH_TYPE("FLOOR", NODE_MATH_FLOOR)
+  PSYCLES_CYCLES_MATH_TYPE("CEIL", NODE_MATH_CEIL)
+  PSYCLES_CYCLES_MATH_TYPE("TRUNC", NODE_MATH_TRUNC)
+  PSYCLES_CYCLES_MATH_TYPE("FRACT", NODE_MATH_FRACTION)
+  PSYCLES_CYCLES_MATH_TYPE("MODULO", NODE_MATH_MODULO)
+  PSYCLES_CYCLES_MATH_TYPE("FLOORED_MODULO", NODE_MATH_FLOORED_MODULO)
+  PSYCLES_CYCLES_MATH_TYPE("WRAP", NODE_MATH_WRAP)
+  PSYCLES_CYCLES_MATH_TYPE("SNAP", NODE_MATH_SNAP)
+  PSYCLES_CYCLES_MATH_TYPE("PINGPONG", NODE_MATH_PINGPONG)
+  PSYCLES_CYCLES_MATH_TYPE("SINE", NODE_MATH_SINE)
+  PSYCLES_CYCLES_MATH_TYPE("COSINE", NODE_MATH_COSINE)
+  PSYCLES_CYCLES_MATH_TYPE("TANGENT", NODE_MATH_TANGENT)
+  PSYCLES_CYCLES_MATH_TYPE("ARCSINE", NODE_MATH_ARCSINE)
+  PSYCLES_CYCLES_MATH_TYPE("ARCCOSINE", NODE_MATH_ARCCOSINE)
+  PSYCLES_CYCLES_MATH_TYPE("ARCTANGENT", NODE_MATH_ARCTANGENT)
+  PSYCLES_CYCLES_MATH_TYPE("ARCTAN2", NODE_MATH_ARCTAN2)
+  PSYCLES_CYCLES_MATH_TYPE("SINH", NODE_MATH_SINH)
+  PSYCLES_CYCLES_MATH_TYPE("COSH", NODE_MATH_COSH)
+  PSYCLES_CYCLES_MATH_TYPE("TANH", NODE_MATH_TANH)
+  PSYCLES_CYCLES_MATH_TYPE("RADIANS", NODE_MATH_RADIANS)
+  PSYCLES_CYCLES_MATH_TYPE("DEGREES", NODE_MATH_DEGREES)
+#undef PSYCLES_CYCLES_MATH_TYPE
+  return std::nullopt;
+}
+
 class UnsupportedNode final : public GraphNode {
 public:
   void compile(SVMCompiler &compiler) override {
@@ -36,13 +108,115 @@ public:
   }
 };
 
-class EmptyNode final : public GraphNode {
+class UnsupportedVolumeNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    compiler.fail("Cycles SVM node family is not migrated: " + type);
+  }
+
+  [[nodiscard]] bool has_volume_support() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
+    return GraphNode::get_feature() | kernel_feature_node_volume;
+  }
+
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_CLOSURE_VOLUME;
+  }
+};
+
+class UnsupportedBsdfNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    compiler.fail("Cycles SVM node family is not migrated: " + type);
+  }
+
+  [[nodiscard]] bool equals(const GraphNode &) const noexcept override {
+    return false;
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
+    return GraphNode::get_feature() | kernel_feature_node_bsdf;
+  }
+
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_CLOSURE_BSDF;
+  }
+};
+
+class NullNode final : public GraphNode {
 public:
   void compile(SVMCompiler &) override {}
 };
 
+class AddClosureNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &) override {}
+
+  void constant_fold(const ConstantFolder &folder) override {
+    auto *closure1 = input("Closure1");
+    auto *closure2 = input("Closure2");
+    if (closure1->link == nullptr) {
+      folder.bypass_or_discard(closure2);
+    } else if (closure2->link == nullptr) {
+      folder.bypass_or_discard(closure1);
+    }
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    return true;
+  }
+};
+
+class MixClosureNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &) override {}
+
+  void constant_fold(const ConstantFolder &folder) override {
+    auto *factor = input("Fac");
+    auto *closure1 = input("Closure1");
+    auto *closure2 = input("Closure2");
+    if (closure1->link == closure2->link) {
+      folder.bypass_or_discard(closure1);
+    } else if (factor->link == nullptr) {
+      const auto value =
+          literal<float>(factor, contract::SocketType::floating);
+      if (!value) {
+        return;
+      }
+      if (*value <= 0.0f) {
+        folder.bypass_or_discard(closure1);
+      } else if (*value >= 1.0f) {
+        folder.bypass_or_discard(closure2);
+      }
+    }
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    return true;
+  }
+};
+
 class OutputNode final : public GraphNode {
 public:
+  [[nodiscard]] bool equals(const GraphNode &) const noexcept override {
+    return false;
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    return true;
+  }
+
   void compile(SVMCompiler &compiler) override {
     if (compiler.output_type() == SHADER_TYPE_DISPLACEMENT) {
       auto *displacement = input("Displacement");
@@ -72,7 +246,7 @@ public:
         {"Position", NODE_GEOM_P},
         {"Normal", NODE_GEOM_N},
         {"Tangent", NODE_GEOM_T},
-        {"GeometricNormal", NODE_GEOM_Ng},
+        {"True Normal", NODE_GEOM_Ng},
         {"Incoming", NODE_GEOM_I},
         {"Parametric", NODE_GEOM_uv},
     };
@@ -100,7 +274,7 @@ public:
                            .out_offset = compiler.output("Backfacing"),
                            ._pad = {0u, 0u, 0u}});
     }
-    for (const auto name : {"Pointiness", "RandomPerIsland"}) {
+    for (const auto name : {"Pointiness", "Random Per Island"}) {
       if (const auto *socket = output(name);
           socket != nullptr && !socket->links.empty()) {
         compiler.fail("Cycles Geometry output is not migrated: " +
@@ -127,18 +301,63 @@ public:
 class MathNode final : public GraphNode {
 public:
   void compile(SVMCompiler &compiler) override {
-    if (type != cycles_synthetic_math) {
+    const auto operation = math_type(this);
+    if (!operation) {
       compiler.fail("Cycles Math operation is not migrated exactly");
       return;
     }
     compiler.add_node(
         this, NODE_MATH,
-        SVMNodeMath{.math_type = NODE_MATH_MULTIPLY,
+        SVMNodeMath{.math_type = *operation,
                     .value1 = compiler.input_float("Value1"),
                     .value2 = compiler.input_float("Value2"),
                     .value3 = compiler.input_float("Value3"),
                     .result_offset = compiler.output("Value"),
                     ._pad = {0u, 0u, 0u}});
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    const auto operation = math_type(this);
+    if (!operation) {
+      return;
+    }
+    if (folder.all_inputs_constant()) {
+      const auto value1 =
+          literal<float>(input("Value1"), contract::SocketType::floating);
+      const auto value2 =
+          literal<float>(input("Value2"), contract::SocketType::floating);
+      const auto value3 =
+          literal<float>(input("Value3"), contract::SocketType::floating);
+      if (value1 && value2 && value3) {
+        folder.make_constant(
+            svm_math(*operation, *value1, *value2, *value3));
+      }
+    } else {
+      folder.fold_math(*operation);
+    }
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    const auto operation = math_type(this);
+    if (!operation) {
+      return false;
+    }
+    switch (*operation) {
+      case NODE_MATH_ADD:
+      case NODE_MATH_SUBTRACT:
+      case NODE_MATH_MULTIPLY:
+      case NODE_MATH_MULTIPLY_ADD:
+        break;
+      case NODE_MATH_DIVIDE:
+        return input("Value2")->link == nullptr;
+      default:
+        return false;
+    }
+    auto variable_inputs = 0u;
+    for (const auto &input_socket : inputs) {
+      variable_inputs += input_socket.link != nullptr ? 1u : 0u;
+    }
+    return variable_inputs <= 1u;
   }
 };
 
@@ -184,6 +403,12 @@ protected:
 public:
   [[nodiscard]] std::uint32_t get_feature() const noexcept override {
     return GraphNode::get_feature() | kernel_feature_node_bsdf;
+  }
+  [[nodiscard]] bool equals(const GraphNode &) const noexcept override {
+    return false;
+  }
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    return true;
   }
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_CLOSURE_BSDF;
@@ -237,6 +462,27 @@ public:
     return GraphNode::get_feature() | kernel_feature_node_emission;
   }
 
+  [[nodiscard]] bool has_volume_support() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    return true;
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    auto *color = input("Color");
+    auto *strength = input("Strength");
+    const auto color_value =
+        literal<Vec3f>(color, contract::SocketType::color);
+    const auto strength_value =
+        literal<float>(strength, contract::SocketType::floating);
+    if ((color_value && *color_value == Vec3f{}) ||
+        (strength_value && *strength_value == 0.0f)) {
+      folder.discard();
+    }
+  }
+
   void compile(SVMCompiler &compiler) override {
     auto *color = input("Color");
     auto *strength = input("Strength");
@@ -273,11 +519,44 @@ public:
 
 } // namespace
 
+void GraphNode::expand(CyclesGraph &) {}
+
+void GraphNode::constant_fold(const ConstantFolder &) {}
+
+void GraphNode::simplify_settings() {}
+
 std::uint32_t GraphNode::get_feature() const noexcept { return 0u; }
 
 ShaderNodeType GraphNode::shader_node_type() const noexcept {
   return NODE_NONE;
 }
+
+bool GraphNode::equals(const GraphNode &other) const noexcept {
+  if (type != other.type || properties != other.properties ||
+      inputs.size() != other.inputs.size()) {
+    return false;
+  }
+  for (auto index = std::size_t{}; index < inputs.size(); ++index) {
+    const auto &lhs = inputs[index];
+    const auto &rhs = other.inputs[index];
+    if (lhs.name != rhs.name || lhs.type != rhs.type) {
+      return false;
+    }
+    if (lhs.link == nullptr && rhs.link == nullptr) {
+      if (lhs.value != rhs.value) {
+        return false;
+      }
+    } else if (lhs.link == nullptr || rhs.link == nullptr ||
+               lhs.link != rhs.link) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool GraphNode::has_volume_support() const noexcept { return false; }
+
+bool GraphNode::is_linear_operation() const noexcept { return false; }
 
 std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   if (type == "cycles.synthetic.output") {
@@ -304,10 +583,28 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   if (type == node_type::emission) {
     return std::make_unique<EmissionNode>();
   }
-  if (type == node_type::null_closure || type == node_type::null_volume ||
-      type == node_type::add_closure || type == node_type::mix_closure ||
-      type == node_type::add_volume || type == node_type::mix_volume) {
-    return std::make_unique<EmptyNode>();
+  if (type == node_type::principled_bsdf ||
+      type == node_type::subsurface_scattering ||
+      type == node_type::glossy_bsdf || type == node_type::metallic_bsdf ||
+      type == node_type::sheen_bsdf || type == node_type::hair_bsdf ||
+      type == node_type::glass_bsdf || type == node_type::refraction_bsdf) {
+    return std::make_unique<UnsupportedBsdfNode>();
+  }
+  if (type == node_type::null_closure || type == node_type::null_volume) {
+    return std::make_unique<NullNode>();
+  }
+  if (type == node_type::add_closure || type == node_type::add_volume) {
+    return std::make_unique<AddClosureNode>();
+  }
+  if (type == node_type::mix_closure || type == node_type::mix_volume) {
+    return std::make_unique<MixClosureNode>();
+  }
+  if (type == node_type::volume_absorption ||
+      type == node_type::volume_scatter ||
+      type == node_type::volume_coefficients ||
+      type == node_type::volume_emission ||
+      type == node_type::principled_volume) {
+    return std::make_unique<UnsupportedVolumeNode>();
   }
   return std::make_unique<UnsupportedNode>();
 }

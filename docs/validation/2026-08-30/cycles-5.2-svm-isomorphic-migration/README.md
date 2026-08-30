@@ -257,10 +257,9 @@ still fail the new compiler; no legacy program is consulted.
 The audit also found that Psycles' generic Math schema initialized its third
 input to `0.5`, while Cycles `MathNode` declares `Value3 = 0.0`. The schema now
 uses exact positive zero and a bit-level regression locks it. Generic authored
-Math nodes remain rejected until Cycles' preceding `constant_fold` and
-`fold_math` graph stages are ported; only the post-finalize Multiply node that
-`transform_multi_closure` itself creates is currently accepted. This prevents
-an apparently plausible but non-Cycles word stream from becoming a fallback.
+Authored Math is accepted only through the subsequently ported Cycles
+graph-cleaning and constant-folding stages described below; it no longer
+bypasses those stages.
 
 ### Constant closure-mix oracle
 
@@ -337,3 +336,62 @@ empty because `SVMCompiler::generate_multi_closure` handles them, exactly as in
 Cycles. Unsupported node subclasses fail compilation and never select a
 different bytecode path. The constant and linked closure-mix word oracles above
 are unchanged across this refactor.
+
+## Cycles graph finalization and Math checkpoint
+
+The pre-SVM graph now copies this Cycles 5.2.1 sequence from
+`scene/shader_graph.cpp`:
+
+```text
+ShaderGraph::expand
+ShaderGraph::default_inputs
+ShaderGraph::clean
+  constant_fold
+  simplify_settings
+  deduplicate_nodes
+  optimize_volume_output
+  break_cycles and remove unreachable nodes
+ShaderGraph::transform_multi_closure
+```
+
+The mutable link lists, bottom-up ready queue, node-id ordering, multi-output
+fold boundary, dedup equality relation, relink behavior, and volume linearity
+walk follow the corresponding Cycles functions. `ConstantFolder` and
+`MathNode::{constant_fold,is_linear_operation,compile}` are direct adaptations
+of `scene/constant_fold.cpp`, `scene/shader_nodes.cpp`, and
+`kernel/svm/math_util.h`. In particular, clamp uses Cycles' ordered
+`min(max(x, lo), hi)` semantics; this preserves its NaN and signed-zero behavior
+instead of substituting `std::clamp`.
+
+Three new Blender probes freeze final SVM streams from the exact diagnostic
+Cycles build:
+
+- `svm_math_dedup`: two independently authored but equal Geometry nodes feed
+  one dynamic Add. Cycles emits one `NODE_LIGHT_PATH`, then one `NODE_MATH`
+  whose Value1 and Value2 both address lane 0. Its local image is 23 words and
+  peak stack use is 2 lanes.
+- `svm_math_constant_fold`: `0.12 + 0.23` feeds Diffuse Roughness. Cycles emits
+  no `NODE_MATH`; the Diffuse payload contains `0x3eb33333` directly. Its local
+  image is 22 words.
+- `svm_mix_closure_fold`: a zero-factor Mix selects Transparent and discards
+  its Emission branch before closure transformation. The local image is 16
+  words and contains neither `NODE_MIX_CLOSURE` nor
+  `NODE_CLOSURE_EMISSION`.
+
+The permanent word-for-word regressions are in
+`tests/test_cycles_svm_compiler.cpp`. The oracle was generated with:
+
+```bash
+blender --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/<probe>.blend <probe>
+PSYCLES_CYCLES_SVM_DUMP=/tmp/<probe>.svm52 \
+  blender /tmp/<probe>.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/<probe>.exr 1 1 1 0 --cycles-device CPU
+```
+
+Cycles restores a folded-away displacement root with a `ColorNode` followed
+by its automatic Color-to-Vector `ConvertNode`. Those two exact node compilers
+are not yet migrated, so that boundary currently rejects explicitly instead
+of inventing a replacement or silently dropping displacement.

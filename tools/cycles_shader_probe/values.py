@@ -530,6 +530,68 @@ def _math_operations(scene: Any) -> None:
     _plane(material)
 
 
+def _svm_math_dedup(scene: Any) -> None:
+    """Keep Math dynamic while exposing Cycles' bottom-up node dedup."""
+    material, tree, output = _material("SVM Math Dedup Probe")
+    geometry_a = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry_a.name = "Geometry A"
+    geometry_b = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry_b.name = "Geometry B"
+    math = tree.nodes.new("ShaderNodeMath")
+    math.name = "Dynamic Add"
+    math.operation = "ADD"
+    math.use_clamp = False
+    tree.links.new(
+        _output(geometry_a, "Backfacing"),
+        math.inputs[0],
+    )
+    tree.links.new(
+        _output(geometry_b, "Backfacing"),
+        math.inputs[1],
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    _input(emission, "Color").default_value = (
+        0.21,
+        0.47,
+        0.83,
+        1.0,
+    )
+    tree.links.new(
+        _output(math, "Value"),
+        _input(emission, "Strength"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _svm_math_constant_fold(scene: Any) -> None:
+    """Expose Cycles' all-constant Math fold before SVM scheduling."""
+    material, tree, output = _material("SVM Math Constant Fold Probe")
+    math = tree.nodes.new("ShaderNodeMath")
+    math.name = "Constant Add"
+    math.operation = "ADD"
+    math.use_clamp = False
+    math.inputs[0].default_value = 0.12
+    math.inputs[1].default_value = 0.23
+    math.inputs[2].default_value = 0.0
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+    diffuse.name = "Diffuse BSDF"
+    _input(diffuse, "Color").default_value = (0.68, 0.24, 0.09, 1.0)
+    tree.links.new(
+        _output(math, "Value"),
+        _input(diffuse, "Roughness"),
+    )
+    tree.links.new(
+        _output(diffuse, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
 def _math_edge_cases(scene: Any) -> None:
     """Cover Cycles guards, signed behavior, and Math output clamping."""
     material, tree, output = _material("Math Edge Cases Probe")
