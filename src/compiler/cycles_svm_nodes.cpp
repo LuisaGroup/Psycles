@@ -1506,6 +1506,90 @@ public:
   }
 };
 
+class CombineXYZNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    const auto vector_output = compiler.output("Vector");
+    compiler.add_node(
+        this, NODE_COMBINE_VECTOR,
+        SVMNodeCombineVector{.in = compiler.input_float("X"),
+                             .vector_index = 0u,
+                             .out_offset = vector_output,
+                             ._pad = {0u, 0u}});
+    compiler.add_node(
+        this, NODE_COMBINE_VECTOR,
+        SVMNodeCombineVector{.in = compiler.input_float("Y"),
+                             .vector_index = 1u,
+                             .out_offset = vector_output,
+                             ._pad = {0u, 0u}});
+    compiler.add_node(
+        this, NODE_COMBINE_VECTOR,
+        SVMNodeCombineVector{.in = compiler.input_float("Z"),
+                             .vector_index = 2u,
+                             .out_offset = vector_output,
+                             ._pad = {0u, 0u}});
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    if (!folder.all_inputs_constant()) {
+      return;
+    }
+    const auto x =
+        literal<float>(input("X"), contract::SocketType::floating);
+    const auto y =
+        literal<float>(input("Y"), contract::SocketType::floating);
+    const auto z =
+        literal<float>(input("Z"), contract::SocketType::floating);
+    if (x && y && z) {
+      folder.make_constant({*x, *y, *z});
+    }
+  }
+};
+
+class SeparateXYZNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    const auto vector_input = compiler.input_float3("Vector");
+    compiler.add_node(
+        this, NODE_SEPARATE_VECTOR,
+        SVMNodeSeparateVector{.vector = vector_input,
+                              .vector_index = 0u,
+                              .out_offset = compiler.output("X"),
+                              ._pad = {0u, 0u}});
+    compiler.add_node(
+        this, NODE_SEPARATE_VECTOR,
+        SVMNodeSeparateVector{.vector = vector_input,
+                              .vector_index = 1u,
+                              .out_offset = compiler.output("Y"),
+                              ._pad = {0u, 0u}});
+    compiler.add_node(
+        this, NODE_SEPARATE_VECTOR,
+        SVMNodeSeparateVector{.vector = vector_input,
+                              .vector_index = 2u,
+                              .out_offset = compiler.output("Z"),
+                              ._pad = {0u, 0u}});
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    if (!folder.all_inputs_constant()) {
+      return;
+    }
+    const auto vector =
+        literal<Vec3f>(input("Vector"), contract::SocketType::color);
+    if (!vector) {
+      return;
+    }
+    for (auto channel = std::size_t{}; channel < outputs.size(); ++channel) {
+      if (&outputs[channel] == folder.output) {
+        const auto value =
+            channel == 0u ? vector->x : channel == 1u ? vector->y : vector->z;
+        folder.make_constant(value);
+        return;
+      }
+    }
+  }
+};
+
 class BsdfNode : public GraphNode {
 private:
   ClosureType _closure;
@@ -1759,6 +1843,12 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   }
   if (type == node_type::combine_color) {
     return std::make_unique<CombineColorNode>();
+  }
+  if (type == node_type::combine_xyz) {
+    return std::make_unique<CombineXYZNode>();
+  }
+  if (type == node_type::separate_xyz) {
+    return std::make_unique<SeparateXYZNode>();
   }
   if (type == node_type::diffuse_bsdf) {
     return std::make_unique<DiffuseBsdfNode>();

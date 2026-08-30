@@ -791,3 +791,169 @@ explicit fallback and Vulkan test names excluded. Its test inventory was
 checked with the identical exclusion expression before execution. The
 canonical probe-list regression also covers all five modern Mix probes, and
 the source-size gate covers the probe split as ordinary project code.
+
+## Separate/Combine XYZ checkpoint
+
+Blender `SEPXYZ` and `COMBXYZ` are not aliases of Separate/Combine Color in
+Cycles 5.2.1. The previous Psycles importer conflated both families, which was
+a structural graph and bytecode error even when RGB component arithmetic
+happened to give the same result. This checkpoint follows these exact sources:
+
+| Stage | Cycles 5.2.1 source |
+|---|---|
+| Blender node mapping | `intern/cycles/blender/shader.cpp` |
+| Node schemas, folding, and emission | `intern/cycles/scene/shader_nodes.cpp::{SeparateXYZNode,CombineXYZNode}` |
+| Typed payloads | `intern/cycles/kernel/svm/node_types.h::{SVMNodeSeparateVector,SVMNodeCombineVector}` |
+| Plain and dual transitions | `intern/cycles/kernel/svm/sepcomb_vector.h` |
+| Interpreter case order | `intern/cycles/kernel/svm/svm.h` |
+
+The graph projection therefore keeps dedicated `separate_xyz` and
+`combine_xyz` nodes. It also preserves the non-obvious Cycles schema detail
+that `SeparateXYZNode::Vector` is declared with `SOCKET_IN_COLOR`, while
+`CombineXYZNode::Vector` is a vector output. The necessary socket conversions
+remain ordinary Cycles conversion aliases; they are not folded into the XYZ
+nodes.
+
+`CombineXYZNode::compile` emits three `NODE_COMBINE_VECTOR` records with one
+shared output base and vector indices 0, 1, and 2. `SeparateXYZNode::compile`
+emits three `NODE_SEPARATE_VECTOR` records with one shared input and the three
+corresponding outputs. Their constant folders run only when all inputs are
+constant and produce the same whole-vector or selected-component constant as
+Cycles.
+
+### Exact word-stream oracles
+
+The dynamic probe rotates a two-cell surface, feeds Geometry Normal through
+Separate XYZ, permutes `(Z, X, Y)` with Combine XYZ, and sends the result to
+Emission. Cycles shader 5 had global jump `(89,124,125)`. After only global
+jump relocation, its 41-word local stream is:
+
+```text
+00000001 00000004 00000027 00000028
+0000000b 00000001 00000000
+00000054 7fc00000 00000000 00000000 00000300
+00000054 7fc00000 00000000 00000000 00000401
+00000054 7fc00000 00000000 00000000 00000502
+00000056 7fc00005 00000000
+00000056 7fc00003 00000001
+00000056 7fc00004 00000002
+00000007 7fc00000 00000000 00000000 3f800000
+00000003 000000ff 00000000
+00000000 00000000 00000000
+```
+
+It uses six stack lanes. In particular, the stream contains opcodes `0x54`
+and `0x56`, not the Separate/Combine Color opcodes.
+
+The constant probe links Value nodes into Combine XYZ, passes the vector
+through Separate XYZ, permutes the components, and emits the result. Cycles
+shader 5 had global jump `(89,96,97)` and folded to this exact 13-word image:
+
+```text
+00000001 00000004 0000000b 0000000c
+00000005 3fa66666 bf333333 3e800000
+00000003 000000ff 00000000 00000000 00000000
+```
+
+No vector split/pack opcode survives the fold. The raw Blender import
+regression independently freezes the dynamic 41-word image and verifies that
+`SEPXYZ`/`COMBXYZ` remain distinct graph-node types with all links intact.
+
+### Plain and derivative transition relation
+
+For a plain vector at base `b`, Cycles stores its components in lanes
+`S[b+0..b+2]`. Separate writes component `i` to its scalar output, and Combine
+writes its scalar input to `S[out+i]`.
+
+For a dual vector, the exact lane relation is:
+
+```text
+value = S[b+0 .. b+2]
+dx    = S[b+3 .. b+5]
+dy    = S[b+6 .. b+8]
+```
+
+Separate maps component `i` to the adjacent dual-scalar lanes
+`(out, out+1, out+2)`. Combine is the inverse mapping and writes value, `dx`,
+and `dy` at offsets `i`, `i+3`, and `i+6` from the output base. Immediate
+inputs have zero derivatives. The Luisa handlers preserve this mapping and
+the Cycles validity test on the output offset directly.
+
+The ordinary transition is covered end to end by the external word stream and
+HIP oracle. The derivative opcodes are implemented from the same templated
+Cycles handler, but no end-to-end derivative graph is claimed yet: Cycles'
+bump graph derivative propagation has not yet been migrated. That later
+checkpoint must produce the derivative bytecode through the copied Cycles
+graph transform; this checkpoint does not synthesize a private test-only graph
+mode.
+
+### CPU and HIP results
+
+The authoritative clean render binary is Blender 5.2.1 hash
+`9e2066aef7ef`. The dump build's custom commit has that exact commit as its
+parent and does not change the Blender mapping, shader-node compiler, SVM
+payloads, or SVM interpreter; its only uncommitted SVM change copies the final
+global word stream to an environment-selected file before upload. A clean
+render and the dump build compared exactly across every EXR subimage with
+OpenImageIO `--diff` for both probes.
+
+Cycles CPU produced these linear emission values:
+
+```text
+dynamic:  ( 0.917831361, -0.191833034, -0.347542346)
+constant: ( 1.299999952, -0.699999988,  0.250000000)
+```
+
+The HIP interpreter receives the same rotated normal
+`(-0.191833034,-0.347542346,0.917831361)` and matches the dynamic value within
+`2e-6`, along with closure weight, front/back-facing flags, termination, and
+final PC 39.
+
+Oracle and validation commands:
+
+```text
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_sepcomb_vector_pipeline.blend \
+  svm_sepcomb_vector_pipeline                                  PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_sepcomb_vector_pipeline.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/svm_sepcomb_vector_pipeline.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_sepcomb_vector_pipeline-trace.exr 16 8 1 0 \
+  --cycles-device CPU                                          PASS
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  /tmp/svm_sepcomb_vector_pipeline.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_sepcomb_vector_pipeline.exr 16 8 1 0 \
+  --cycles-device CPU                                          PASS
+oiiotool -a /tmp/svm_sepcomb_vector_pipeline.exr \
+  /tmp/svm_sepcomb_vector_pipeline-trace.exr --diff            PASS
+
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_sepcomb_vector_constant_fold.blend \
+  svm_sepcomb_vector_constant_fold                             PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_sepcomb_vector_constant_fold.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/svm_sepcomb_vector_constant_fold.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_sepcomb_vector_constant_fold-trace.exr 4 4 1 0 \
+  --cycles-device CPU                                          PASS
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  /tmp/svm_sepcomb_vector_constant_fold.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_sepcomb_vector_constant_fold.exr 4 4 1 0 \
+  --cycles-device CPU                                          PASS
+oiiotool -a /tmp/svm_sepcomb_vector_constant_fold.exr \
+  /tmp/svm_sepcomb_vector_constant_fold-trace.exr --diff       PASS
+
+cmake --build build --parallel 32                              PASS
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.(cycles_svm_(abi|bytecode|compiler|modern_mix|vector)|graph_material_scene|blender_import|luisa_cycles_svm_hip|source_size|shader_probe_runner_contract|blender_export_render_settings)$' \
+                                                               11/11 PASS
+ctest --test-dir build --output-on-failure -Q -E \
+  '(_fallback|_vk)$'                                          161/161 PASS
+```

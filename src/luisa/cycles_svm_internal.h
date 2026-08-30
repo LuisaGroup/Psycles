@@ -76,6 +76,10 @@ void node_mix_vector(Cursor &cursor, Stack &stack) noexcept;
 void node_mix_vector_non_uniform(Cursor &cursor, Stack &stack) noexcept;
 void node_separate_color(Cursor &cursor, Stack &stack) noexcept;
 void node_combine_color(Cursor &cursor, Stack &stack) noexcept;
+void node_separate_vector(Cursor &cursor, Stack &stack,
+                          bool use_derivatives) noexcept;
+void node_combine_vector(Cursor &cursor, Stack &stack,
+                         bool use_derivatives) noexcept;
 void node_clamp(Cursor &cursor, Stack &stack) noexcept;
 
 void node_closure_set_weight(Cursor &cursor,

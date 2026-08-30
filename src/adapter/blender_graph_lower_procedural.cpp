@@ -497,18 +497,28 @@ public:
                 .ref = {.node = id, .socket = output},
                 .type = SocketType::floating});
         }
-        if (type == "SEPRGB" ||
-            type == "SEPHSV" ||
-            type == "SEPXYZ") {
+        if (type == "SEPXYZ") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::separate_xyz,
+                node_name);
+            static_cast<void>(context.bind(
+                id,
+                "Vector",
+                node,
+                "Vector",
+                SocketType::color));
+            return finish({
+                .ref = {.node = id, .socket = std::string{socket}},
+                .type = SocketType::floating});
+        }
+        if (type == "SEPRGB" || type == "SEPHSV") {
             const auto id = context.graph().add_node(
                 compiler::node_type::separate_color,
                 node_name);
             const auto input_name =
                 type == "SEPRGB"
                     ? "Image"
-                    : type == "SEPHSV"
-                          ? "Color"
-                          : "Vector";
+                    : "Color";
             static_cast<void>(context.bind(
                 id,
                 "Color",
@@ -521,11 +531,9 @@ public:
                 SocketValue::string(
                     type == "SEPHSV" ? "HSV" : "RGB")));
             const auto output =
-                socket == "R" || socket == "H" ||
-                        socket == "X"
+                socket == "R" || socket == "H"
                     ? "R"
-                    : socket == "G" || socket == "S" ||
-                              socket == "Y"
+                    : socket == "G" || socket == "S"
                           ? "G"
                           : "B";
             return finish({
@@ -552,24 +560,38 @@ public:
                 .ref = {.node = id, .socket = "Color"},
                 .type = SocketType::color});
         }
-        if (type == "COMBRGB" ||
-            type == "COMBHSV" ||
-            type == "COMBXYZ") {
+        if (type == "COMBXYZ") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::combine_xyz,
+                node_name);
+            for (const auto *component : {"X", "Y", "Z"}) {
+                static_cast<void>(context.bind(
+                    id,
+                    component,
+                    node,
+                    component,
+                    SocketType::floating));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Vector"},
+                .type = SocketType::vector});
+        }
+        if (type == "COMBRGB" || type == "COMBHSV") {
             const auto id = context.graph().add_node(
                 compiler::node_type::combine_color,
                 node_name);
             const auto first =
                 type == "COMBRGB"
                     ? "R"
-                    : type == "COMBHSV" ? "H" : "X";
+                    : "H";
             const auto second =
                 type == "COMBRGB"
                     ? "G"
-                    : type == "COMBHSV" ? "S" : "Y";
+                    : "S";
             const auto third =
                 type == "COMBRGB"
                     ? "B"
-                    : type == "COMBHSV" ? "V" : "Z";
+                    : "V";
             static_cast<void>(context.bind(
                 id,
                 "R",
@@ -596,11 +618,7 @@ public:
             TypedOutput result{
                 .ref = {.node = id, .socket = "Color"},
                 .type = SocketType::color};
-            return finish(
-                type == "COMBXYZ"
-                    ? context.conversion(
-                          result, SocketType::vector)
-                    : result);
+            return finish(result);
         }
         if (type == "TEX_SKY") {
             const auto sky_type = context.node_property_text(
