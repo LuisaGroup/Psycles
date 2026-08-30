@@ -3,18 +3,35 @@
  * SPDX-License-Identifier: Apache-2.0 */
 
 #include "cycles_svm_graph.h"
+#include "cycles_svm_constant_fold.h"
 
 #include <psycles/compiler/core_nodes.h>
 
 #include <algorithm>
 #include <cstddef>
 #include <limits>
+#include <queue>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
 namespace psycles::compiler::cycles_svm {
 namespace {
+
+[[nodiscard]] bool check_node_inputs_has_links(
+    const GraphNode *node) noexcept {
+  return std::any_of(node->inputs.begin(), node->inputs.end(),
+                     [](const auto &input) { return input.link != nullptr; });
+}
+
+[[nodiscard]] bool check_node_inputs_traversed(
+    const GraphNode *node, const GraphNodeSet &done) noexcept {
+  return std::all_of(node->inputs.begin(), node->inputs.end(),
+                     [&](const auto &input) {
+                       return input.link == nullptr ||
+                              done.contains(input.link->parent);
+                     });
+}
 
 [[nodiscard]] bool is_surface_closure(std::string_view type) noexcept {
   return type == node_type::diffuse_bsdf ||
@@ -44,6 +61,48 @@ namespace {
 
 [[nodiscard]] bool is_null_closure(std::string_view type) noexcept {
   return type == node_type::null_closure || type == node_type::null_volume;
+}
+
+[[nodiscard]] std::string_view projected_input_name(
+    std::string_view node, std::string_view input) noexcept {
+  if (node == node_type::math) {
+    return input == "A"   ? "Value1"
+           : input == "B" ? "Value2"
+           : input == "C" ? "Value3"
+                          : input;
+  }
+  if (node == node_type::mix_closure || node == node_type::mix_volume) {
+    return input == "Factor" ? "Fac"
+           : input == "A"    ? "Closure1"
+           : input == "B"    ? "Closure2"
+                             : input;
+  }
+  if (node == node_type::add_closure || node == node_type::add_volume) {
+    return input == "A"   ? "Closure1"
+           : input == "B" ? "Closure2"
+                          : input;
+  }
+  return input;
+}
+
+[[nodiscard]] std::string_view projected_output_name(
+    std::string_view node, std::string_view output) noexcept {
+  if ((node == node_type::diffuse_bsdf ||
+       node == node_type::translucent_bsdf ||
+       node == node_type::transparent_bsdf) &&
+      output == "Closure") {
+    return "BSDF";
+  }
+  if (node == node_type::emission && output == "Closure") {
+    return "Emission";
+  }
+  if (node == node_type::geometry) {
+    return output == "GeometricNormal"
+               ? "True Normal"
+           : output == "RandomPerIsland" ? "Random Per Island"
+                                          : output;
+  }
+  return output;
 }
 
 [[nodiscard]] std::uint16_t socket_flags(std::string_view node,
@@ -114,12 +173,14 @@ namespace {
       {.name = "Position", .type = GraphSocketType::point, .links = {}},
       {.name = "Normal", .type = GraphSocketType::normal, .links = {}},
       {.name = "Tangent", .type = GraphSocketType::normal, .links = {}},
-      {.name = "GeometricNormal", .type = GraphSocketType::normal, .links = {}},
+      {.name = "True Normal", .type = GraphSocketType::normal, .links = {}},
       {.name = "Incoming", .type = GraphSocketType::vector, .links = {}},
       {.name = "Parametric", .type = GraphSocketType::point, .links = {}},
       {.name = "Backfacing", .type = GraphSocketType::floating, .links = {}},
       {.name = "Pointiness", .type = GraphSocketType::floating, .links = {}},
-      {.name = "RandomPerIsland", .type = GraphSocketType::floating, .links = {}},
+      {.name = "Random Per Island",
+       .type = GraphSocketType::floating,
+       .links = {}},
   };
 }
 
@@ -173,22 +234,6 @@ namespace {
 
 [[nodiscard]] std::vector<GraphOutput> multiply_outputs() {
   return {{.name = "Value", .type = GraphSocketType::floating, .links = {}}};
-}
-
-[[nodiscard]] GraphDomain graph_domain(contract::ShaderDomain domain) noexcept {
-  switch (domain) {
-    case contract::ShaderDomain::surface:
-      return GraphDomain::surface;
-    case contract::ShaderDomain::volume:
-      return GraphDomain::volume;
-    case contract::ShaderDomain::surface_normal:
-      return GraphDomain::bump;
-    case contract::ShaderDomain::displacement:
-      return GraphDomain::displacement;
-    case contract::ShaderDomain::count:
-      break;
-  }
-  return GraphDomain::count;
 }
 
 [[nodiscard]] std::vector<GraphInput> output_inputs() {
@@ -272,8 +317,21 @@ graph_socket_type(contract::SocketType type) noexcept {
 }
 
 GraphOutput *CyclesGraph::root(GraphDomain domain) const noexcept {
-  const auto index = static_cast<std::size_t>(domain);
-  return index < _roots.size() ? _roots[index] : nullptr;
+  const auto *node = output_node();
+  if (node == nullptr) {
+    return nullptr;
+  }
+  const auto name =
+      domain == GraphDomain::surface        ? "Surface"
+      : domain == GraphDomain::volume       ? "Volume"
+      : domain == GraphDomain::displacement ? "Displacement"
+      : domain == GraphDomain::bump          ? "Normal"
+                                             : nullptr;
+  if (name == nullptr) {
+    return nullptr;
+  }
+  const auto *input = node->input(name);
+  return input != nullptr ? input->link : nullptr;
 }
 
 GraphNode *CyclesGraph::add_node(
@@ -300,10 +358,10 @@ GraphNode *CyclesGraph::add_node(
 }
 
 bool CyclesGraph::connect(GraphOutput *output, GraphInput *input) noexcept {
-  if (output == nullptr || input == nullptr || output->type != input->type) {
+  if (output == nullptr || input == nullptr || output->type != input->type ||
+      input->link != nullptr) {
     return false;
   }
-  disconnect(input);
   input->link = output;
   output->links.emplace_back(input);
   return true;
@@ -318,11 +376,14 @@ void CyclesGraph::disconnect(GraphInput *input) noexcept {
   input->link = nullptr;
 }
 
-void CyclesGraph::set_root(GraphDomain domain, GraphOutput *output) noexcept {
-  const auto index = static_cast<std::size_t>(domain);
-  if (index < _roots.size()) {
-    _roots[index] = output;
+void CyclesGraph::disconnect(GraphOutput *output) noexcept {
+  if (output == nullptr) {
+    return;
   }
+  for (auto *input : output->links) {
+    input->link = nullptr;
+  }
+  output->links.clear();
 }
 
 void CyclesGraph::reject(std::string diagnostic) {
@@ -365,7 +426,7 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
       }
       const auto binding = source.inputs.find(socket.name);
       inputs.emplace_back(GraphInput{
-          .name = socket.name,
+          .name = std::string{projected_input_name(source.type, socket.name)},
           .type = *type,
           .flags = socket_flags(source.type, socket.name),
           .value = binding == source.inputs.end() ? std::nullopt
@@ -397,7 +458,11 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
         return graph;
       }
       outputs.emplace_back(
-          GraphOutput{.name = socket.name, .type = *type, .links = {}});
+          GraphOutput{.name =
+                          std::string{
+                              projected_output_name(source.type, socket.name)},
+                      .type = *type,
+                      .links = {}});
     }
 
     auto *node = graph.add_node(source.type, source.label, std::move(inputs),
@@ -417,8 +482,10 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
           is_null_closure(producer_iter->second->type)) {
         continue;
       }
-      auto *input = destination->input(name);
-      auto *output = producer_iter->second->output(binding.source->socket);
+      auto *input = destination->input(
+          projected_input_name(source.type, name));
+      auto *output = producer_iter->second->output(projected_output_name(
+          producer_iter->second->type, binding.source->socket));
       if (!graph.connect(output, input)) {
         graph.reject("Cycles SVM could not project graph link into " +
                      destination->type + "." + name);
@@ -439,12 +506,12 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
     if (node_iter == nodes.end() || is_null_closure(node_iter->second->type)) {
       continue;
     }
-    auto *output = node_iter->second->output(source_root->socket);
+    auto *output = node_iter->second->output(projected_output_name(
+        node_iter->second->type, source_root->socket));
     if (output == nullptr) {
       graph.reject("Cycles SVM root refers to an absent output socket");
       return graph;
     }
-    graph.set_root(graph_domain(domain), output);
     const auto output_input_name =
         domain == contract::ShaderDomain::surface          ? "Surface"
         : domain == contract::ShaderDomain::volume         ? "Volume"
@@ -456,7 +523,12 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
     }
   }
 
+  graph.expand();
   graph.default_inputs();
+  graph.clean();
+  if (!graph.valid()) {
+    return graph;
+  }
   if (auto *surface = graph.root(GraphDomain::surface)) {
     graph.transform_multi_closure(surface->parent, nullptr, false);
   }
@@ -513,6 +585,230 @@ void CyclesGraph::default_inputs() {
   }
 }
 
+void CyclesGraph::expand() {
+  for (auto index = std::size_t{}; index < _nodes.size(); ++index) {
+    _nodes[index]->expand(*this);
+  }
+}
+
+void CyclesGraph::constant_fold() {
+  GraphNodeSet done;
+  GraphNodeSet scheduled;
+  std::queue<GraphNode *> traverse_queue;
+  const auto has_displacement =
+      root(GraphDomain::displacement) != nullptr;
+
+  for (const auto &node : _nodes) {
+    if (!check_node_inputs_has_links(node.get())) {
+      traverse_queue.push(node.get());
+      scheduled.insert(node.get());
+    }
+  }
+
+  while (!traverse_queue.empty()) {
+    auto *node = traverse_queue.front();
+    traverse_queue.pop();
+    done.insert(node);
+    for (auto &output_socket : node->outputs) {
+      if (output_socket.links.empty()) {
+        continue;
+      }
+      for (auto *input : output_socket.links) {
+        if (!scheduled.contains(input->parent) &&
+            check_node_inputs_traversed(input->parent, done)) {
+          traverse_queue.push(input->parent);
+          scheduled.insert(input->parent);
+        }
+      }
+      const ConstantFolder folder{this, node, &output_socket};
+      node->constant_fold(folder);
+    }
+  }
+
+  // Cycles restores a ColorNode when folding removes the displacement root.
+  // Until ColorNode plus the exact automatic Color-to-Vector ConvertNode are
+  // migrated, rejecting this boundary is the only non-divergent behavior.
+  if (has_displacement && root(GraphDomain::displacement) == nullptr) {
+    reject("Cycles displacement constant restoration is not migrated");
+  }
+}
+
+void CyclesGraph::simplify_settings() {
+  for (const auto &node : _nodes) {
+    node->simplify_settings();
+  }
+}
+
+void CyclesGraph::deduplicate_nodes() {
+  GraphNodeSet scheduled;
+  GraphNodeSet done;
+  std::map<std::string, GraphNodeSet, std::less<>> candidates;
+  std::queue<GraphNode *> traverse_queue;
+
+  for (const auto &node : _nodes) {
+    if (!check_node_inputs_has_links(node.get())) {
+      traverse_queue.push(node.get());
+      scheduled.insert(node.get());
+    }
+  }
+
+  while (!traverse_queue.empty()) {
+    auto *node = traverse_queue.front();
+    traverse_queue.pop();
+    done.insert(node);
+    auto has_output_links = false;
+    for (auto &output_socket : node->outputs) {
+      for (auto *input : output_socket.links) {
+        has_output_links = true;
+        if (!scheduled.contains(input->parent) &&
+            check_node_inputs_traversed(input->parent, done)) {
+          traverse_queue.push(input->parent);
+          scheduled.insert(input->parent);
+        }
+      }
+    }
+    if (!has_output_links) {
+      continue;
+    }
+
+    GraphNode *merge_with = nullptr;
+    for (auto *candidate : candidates[node->type]) {
+      if (candidate != node && node->equals(*candidate)) {
+        merge_with = candidate;
+        break;
+      }
+    }
+    if (merge_with == nullptr) {
+      candidates[node->type].insert(node);
+      continue;
+    }
+    if (node->outputs.size() != merge_with->outputs.size()) {
+      std::abort();
+    }
+    for (auto index = std::size_t{}; index < node->outputs.size(); ++index) {
+      relink(node, &node->outputs[index], &merge_with->outputs[index]);
+    }
+  }
+}
+
+void CyclesGraph::optimize_volume_output() {
+  auto *node = output_node();
+  auto *volume = node != nullptr ? node->input("Volume") : nullptr;
+  if (volume == nullptr || volume->link == nullptr) {
+    return;
+  }
+
+  struct NodeAndNonLinearComparator {
+    [[nodiscard]] bool operator()(
+        const std::pair<GraphNode *, bool> &lhs,
+        const std::pair<GraphNode *, bool> &rhs) const noexcept {
+      return lhs.first->id < rhs.first->id ||
+             (lhs.first->id == rhs.first->id && lhs.second < rhs.second);
+    }
+  };
+
+  auto has_valid_volume = false;
+  std::set<std::pair<GraphNode *, bool>, NodeAndNonLinearComparator> scheduled;
+  std::queue<std::pair<GraphNode *, bool>> traverse_queue;
+  traverse_queue.emplace(volume->link->parent, false);
+  scheduled.emplace(volume->link->parent, false);
+
+  while (!traverse_queue.empty()) {
+    auto [current, nonlinear] = traverse_queue.front();
+    traverse_queue.pop();
+    nonlinear = nonlinear || !current->is_linear_operation();
+    has_valid_volume = has_valid_volume || current->has_volume_support();
+    for (auto &input : current->inputs) {
+      if (input.link == nullptr) {
+        continue;
+      }
+      const auto state = std::pair{input.link->parent, nonlinear};
+      if (scheduled.insert(state).second) {
+        traverse_queue.push(state);
+      }
+    }
+  }
+
+  if (!has_valid_volume) {
+    disconnect(volume->link);
+  }
+}
+
+void CyclesGraph::relink(GraphNode *node, GraphOutput *from,
+                         GraphOutput *to) {
+  if (node == nullptr || from == nullptr || to == nullptr) {
+    std::abort();
+  }
+  for (auto &input : node->inputs) {
+    if (input.link != nullptr) {
+      disconnect(&input);
+    }
+  }
+  const auto links = from->links;
+  for (auto *input : links) {
+    disconnect(input);
+    if (!connect(to, input)) {
+      std::abort();
+    }
+  }
+}
+
+void CyclesGraph::break_cycles(GraphNode *node, std::vector<bool> &visited,
+                               std::vector<bool> &on_stack) {
+  visited[node->id] = true;
+  on_stack[node->id] = true;
+  for (auto &input : node->inputs) {
+    if (input.link == nullptr) {
+      continue;
+    }
+    auto *dependency = input.link->parent;
+    if (on_stack[dependency->id]) {
+      disconnect(&input);
+    } else if (!visited[dependency->id]) {
+      break_cycles(dependency, visited, on_stack);
+    }
+  }
+  on_stack[node->id] = false;
+}
+
+void CyclesGraph::clean() {
+  constant_fold();
+  simplify_settings();
+  deduplicate_nodes();
+  optimize_volume_output();
+
+  std::vector<bool> visited(_next_node_id, false);
+  std::vector<bool> on_stack(_next_node_id, false);
+  if (auto *node = output_node()) {
+    break_cycles(node, visited, on_stack);
+  }
+  for (const auto &node : _nodes) {
+    if (node->special_type == GraphNodeSpecialType::output_aov) {
+      break_cycles(node.get(), visited, on_stack);
+    }
+  }
+
+  for (const auto &node : _nodes) {
+    if (visited[node->id]) {
+      continue;
+    }
+    for (auto &input : node->inputs) {
+      if (input.link != nullptr) {
+        disconnect(&input);
+      }
+    }
+  }
+
+  std::vector<std::unique_ptr<GraphNode>> new_nodes;
+  new_nodes.reserve(_nodes.size());
+  for (auto &node : _nodes) {
+    if (visited[node->id]) {
+      new_nodes.emplace_back(std::move(node));
+    }
+  }
+  _nodes = std::move(new_nodes);
+}
+
 void CyclesGraph::transform_multi_closure(GraphNode *node,
                                           GraphOutput *weight_output,
                                           bool volume) {
@@ -520,9 +816,9 @@ void CyclesGraph::transform_multi_closure(GraphNode *node,
     return;
   }
   if (node->special_type == GraphNodeSpecialType::combine_closure) {
-    auto *factor = node->input("Factor");
-    auto *closure1 = node->input("A");
-    auto *closure2 = node->input("B");
+    auto *factor = node->input("Fac");
+    auto *closure1 = node->input("Closure1");
+    auto *closure2 = node->input("Closure2");
     if (closure1 == nullptr || closure2 == nullptr) {
       reject("Cycles combine-closure sockets are incomplete");
       return;

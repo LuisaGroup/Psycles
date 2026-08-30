@@ -657,9 +657,9 @@ private:
     state->closure_done.insert(node);
 
     if (node->special_type == GraphNodeSpecialType::combine_closure) {
-      auto *closure1 = node->input("A");
-      auto *closure2 = node->input("B");
-      auto *factor = node->input("Factor");
+      auto *closure1 = node->input("Closure1");
+      auto *closure2 = node->input("Closure2");
+      auto *factor = node->input("Fac");
       if (closure1 == nullptr || closure2 == nullptr) {
         return reject("Cycles combine-closure sockets are incomplete");
       }

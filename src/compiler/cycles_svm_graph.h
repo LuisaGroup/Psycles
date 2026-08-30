@@ -7,7 +7,6 @@
 #include <psycles/compiler/cycles_svm_types.h>
 #include <psycles/compiler/shader_program.h>
 
-#include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -20,6 +19,8 @@
 namespace psycles::compiler::cycles_svm {
 
 class SVMCompiler;
+class ConstantFolder;
+class CyclesGraph;
 
 inline constexpr auto cycles_synthetic_geometry =
     "cycles.synthetic.geometry";
@@ -110,8 +111,14 @@ struct GraphNode {
   bool need_derivatives{};
 
   virtual void compile(SVMCompiler &compiler) = 0;
+  virtual void expand(CyclesGraph &graph);
+  virtual void constant_fold(const ConstantFolder &folder);
+  virtual void simplify_settings();
   [[nodiscard]] virtual std::uint32_t get_feature() const noexcept;
   [[nodiscard]] virtual ShaderNodeType shader_node_type() const noexcept;
+  [[nodiscard]] virtual bool equals(const GraphNode &other) const noexcept;
+  [[nodiscard]] virtual bool has_volume_support() const noexcept;
+  [[nodiscard]] virtual bool is_linear_operation() const noexcept;
 
   [[nodiscard]] GraphInput *input(std::string_view name) noexcept;
   [[nodiscard]] const GraphInput *input(std::string_view name) const noexcept;
@@ -134,8 +141,6 @@ using GraphNodeSet = std::set<GraphNode *, GraphNodeIdComparator>;
 class CyclesGraph {
 private:
   std::vector<std::unique_ptr<GraphNode>> _nodes;
-  std::array<GraphOutput *, static_cast<std::size_t>(GraphDomain::count)>
-      _roots{};
   std::uint32_t _next_node_id{};
   std::string _diagnostic;
 
@@ -166,15 +171,24 @@ public:
       std::map<std::string, contract::SocketValue, std::less<>> properties = {});
   [[nodiscard]] bool connect(GraphOutput *output, GraphInput *input) noexcept;
   void disconnect(GraphInput *input) noexcept;
-  void set_root(GraphDomain domain, GraphOutput *output) noexcept;
+  void disconnect(GraphOutput *output) noexcept;
 
   // Exact ShaderGraph::default_inputs and transform_multi_closure stages for
   // the SVM-visible graph. Unsupported source metadata fails projection.
   void default_inputs();
   void transform_multi_closure(GraphNode *node, GraphOutput *weight_output,
                                bool volume);
+  void expand();
+  void clean();
 
 private:
+  void constant_fold();
+  void simplify_settings();
+  void deduplicate_nodes();
+  void optimize_volume_output();
+  void relink(GraphNode *node, GraphOutput *from, GraphOutput *to);
+  void break_cycles(GraphNode *node, std::vector<bool> &visited,
+                    std::vector<bool> &on_stack);
   void reject(std::string diagnostic);
 };
 
