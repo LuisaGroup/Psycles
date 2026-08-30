@@ -1,0 +1,76 @@
+{
+  "schema": "psycles.hip_particle_hair_color_impact_gate.v1",
+  "date": "2026-08-30",
+  "renderer_code_head": "cd397f9c9438951b2c2039189d883e3628c38811",
+  "validation_head": "2bd4f9b337b195cd3b0d3a63c0aec90d4e246cf6",
+  "luisa_compute_head": "10b4f6dbd5c74c8bf25f05841a873c85f07a437d",
+  "reference": {
+    "blender": "5.2.1 LTS",
+    "blender_build_hash": "9e2066aef7ef7e20c142ad7bd3303138a4304c93",
+    "cycles_device": "HIP / AMD Radeon RX 9070 XT",
+    "adaptive_sampling": false,
+    "denoising": false,
+    "samples": 1024,
+    "sampler": "Tabulated Sobol",
+    "seed": 0
+  },
+  "impact_audit": [
+    {
+      "scene": "Official benchmark",
+      "resolution": [2048, 858],
+      "curve_color_path_active": true,
+      "gate": "full native-resolution 1024 spp",
+      "psycles_render_seconds": 134.086,
+      "cycles_render_seconds": 119.236457,
+      "combined_relative_rmse": 0.2054855416,
+      "glossy_color_relative_rmse": 0.019599574,
+      "actual_invalid_pixels": 0
+    },
+    {
+      "scene": "Barbershop Interior",
+      "resolution": [2048, 858],
+      "curve_counts": [21800, 21800, 21800, 5000],
+      "curve_color_attribute_counts": [0, 0, 0, 0],
+      "curve_color_path_active": false,
+      "gate": "native-resolution 1 spp load/render canary",
+      "psycles_render_seconds": 0.468047,
+      "actual_invalid_pixels": 0
+    },
+    {
+      "scene": "Blender 4.1 Splash",
+      "resolution": [1920, 1080],
+      "curve_counts": [150000, 150900],
+      "curve_color_attribute_counts": [0, 0],
+      "curve_color_path_active": false,
+      "gate": "native-resolution 1 spp load/render canary",
+      "psycles_render_seconds": 0.66594,
+      "named_attribute_residency": "0/570 bindings, 0/6188547168 bytes",
+      "actual_invalid_pixels": 0
+    }
+  ],
+  "no_curve_negative_control": {
+    "scene": "Monster Under the Bed",
+    "resolution": [1024, 1024],
+    "samples": 1024,
+    "psycles_render_seconds": 76.8031,
+    "cycles_render_seconds": 58.179,
+    "psycles_over_cycles": 1.320117,
+    "combined_relative_rmse": 0.0181476866,
+    "combined_luminance_ratio": 1.002917953,
+    "diffuse_color_relative_rmse": 0.0003672224,
+    "glossy_color_relative_rmse": 0.0002003179,
+    "normal_relative_rmse": 0.000158792,
+    "all_actual_invalid_pixels": 0,
+    "prior_psycles_output_diff": {
+      "rms": 1.8938e-10,
+      "maximum_absolute_error": 4.76837158203125e-7,
+      "changed_pixel_fraction": 0.00484,
+      "interpretation": "floating atomic accumulation order only; no structural or material change"
+    }
+  },
+  "visual_inspection": {
+    "opened_at_original_triptych_resolution": [3088, 1094],
+    "passes": ["Combined", "Diffuse Color", "Normal"],
+    "result": "Cycles and Psycles support, materials, BSSRDF silhouette, floor, child, bed, and normal field align; amplified Combined residual is stochastic transport noise."
+  }
+}

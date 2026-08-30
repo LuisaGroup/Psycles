@@ -1,7 +1,7 @@
 # XIR enclosing-boundary preservation and full-resolution HIP validation
 
-This checkpoint validates Psycles `main@7e712d3` with LuisaCompute
-`next@10b4f6dbd` on the Radeon RX 9070 XT (`gfx1201`, ROCm/HIP
+This checkpoint validates the Psycles repair sequence through `cd397f9` with
+LuisaCompute `next@10b4f6dbd` on the Radeon RX 9070 XT (`gfx1201`, ROCm/HIP
 `7.2.53211`). The reference renderer is Blender 5.2.1 / Cycles
 `9e2066aef7ef`. Only HIP was launched. Vulkan and fallback remain gated on
 completion of the HIP work.
@@ -20,6 +20,12 @@ completion of the HIP work.
 - All seven established complex scenes plus a newly re-exported active
   heterogeneous-volume scene complete at native/full-HD resolution and 1024
   fixed samples, write multilayer EXR, and contain no invalid Psycles pixels.
+- A post-restart impact audit proves that the new particle-hair color path is
+  active only in the official benchmark among the established curve scenes.
+  Exact-build Barbershop and Splash exports retain empty curve-color demand;
+  both pass native-resolution HIP load/render canaries. A fresh 1024x1024,
+  1024-spp Monster negative control reproduces the prior output to
+  `1.8938e-10` multilayer-EXR RMS.
 - Monster, Lone Monk, and Classroom remain close to Cycles. Barbershop is
   structurally aligned but still differs in indirect transport. Flat Archiviz
   retains a Normal/bump mismatch. The official benchmark retains hair/wool
@@ -273,6 +279,45 @@ ctest --test-dir build --output-on-failure -j 1 -R '_hip$'
 # 85/85 passed in 23.20 s (warm cache)
 ```
 
+## Post-restart particle-hair impact gate
+
+The exact Blender build was used to re-export both established legacy-curve
+scenes after the workstation restart. This is an impact-set proof, not a
+guess based on whether a scene merely contains curves:
+
+| scene | curve counts | requested curve colors | current HIP gate | render-only |
+|---|---:|---:|---|---:|
+| Official benchmark | affected legacy hair | nonempty | 2048x858, 1024 spp | 134.086 s |
+| Barbershop | 21,800 + 21,800 + 21,800 + 5,000 | 0 + 0 + 0 + 0 | 2048x858, 1-spp canary | 0.468 s |
+| Splash | 150,000 + 150,900 | 0 + 0 | 1920x1080, 1-spp canary | 0.666 s |
+
+The Barbershop canary builds the real 338-program/8,601-record SVM and its
+1,055 geometries. Splash reports named-attribute residency of exactly
+`0/570` bindings and `0/6,188,547,168` candidate bytes. Thus neither scene
+executes or uploads the new curve-color data, and repeating their expensive
+1024-spp integrations would measure the same shader and geometry payload.
+
+Monster provides the full no-curve negative control on the current binary:
+
+```text
+resolution / samples       1024x1024 / 1024 fixed spp
+Psycles HIP render-only    76.8031 s
+Cycles HIP render-only     58.1790 s
+Psycles / Cycles           1.3201x (+32.01%)
+Combined relative RMSE     1.81477%
+Combined luminance ratio   1.002918
+invalid Psycles pixels     0 in every requested AOV
+```
+
+The fresh multilayer EXR and the preceding Psycles full render have different
+container hashes, as expected for independently written files, but an exact
+pixel comparison gives RMS `1.8938e-10`, maximum absolute error
+`4.7684e-7`, and only 0.484% non-bit-identical pixels. The changed values are
+isolated last-bit differences from nondeterministic floating atomic
+accumulation order; there is no changed image support, SVM program, material,
+or attribute binding. The complete machine-readable impact record is
+[particle-hair-color-impact-gate.json](reports/particle-hair-color-impact-gate.json).
+
 ## Full-resolution HIP matrix
 
 Every render uses 1024 fixed samples, seed zero, Tabulated Sobol, adaptive
@@ -292,7 +337,7 @@ by Cycles and Psycles in one runner invocation.
 | scene | resolution | Cycles HIP | Psycles HIP | Psycles/Cycles | gap |
 |---|---:|---:|---:|---:|---:|
 | Official benchmark | 2048x858 | 119.236 s | 134.086 s | 1.1245x | +12.45% |
-| Monster Under the Bed | 1024x1024 | 58.179 s | 77.076 s | 1.3248x | +32.48% |
+| Monster Under the Bed | 1024x1024 | 58.179 s | 76.803 s | 1.3201x | +32.01% |
 | Lone Monk | 1440x1080 | 56.759 s | 78.022 s | 1.3746x | +37.46% |
 | Classroom | 1920x1080 | 83.977 s | 132.045 s | 1.5724x | +57.24% |
 | Flat Archiviz | 1800x1100 | 115.202 s | 176.975 s | 1.5362x | +53.62% |
@@ -393,10 +438,17 @@ rocks, and parts of the character.
 ### Monster Under the Bed
 
 The SSS monster silhouette and color gradients, child, bed, wood grain, floor,
-and shadows align. The amplified difference is predominantly stochastic
-transport noise.
+and shadows align. Combined, Diffuse Color, and Normal were reopened from the
+fresh post-restart 3088x1094 triptychs at original resolution. The amplified
+Combined difference is predominantly stochastic transport noise; Diffuse
+Color and Normal show matching support with only tiny boundary/last-bit
+residuals.
 
 ![Monster Combined](triptychs/monster-combined.png)
+
+![Monster Diffuse Color](triptychs/monster-diffcol.png)
+
+![Monster Normal](triptychs/monster-normal.png)
 
 ### Lone Monk
 
