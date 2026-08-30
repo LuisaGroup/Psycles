@@ -623,6 +623,25 @@ NodeRegistry make_core_node_registry() {
                                          SocketValue::string("ADD"))},
                  .required_features = {}}));
 
+  static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::vector_rotate,
+      .inputs = {input("Vector", SocketType::vector,
+                       SocketValue::vector({0.0f, 0.0f, 0.0f})),
+                 input("Rotation", SocketType::point,
+                       SocketValue::point({0.0f, 0.0f, 0.0f})),
+                 input("Center", SocketType::point,
+                       SocketValue::point({0.0f, 0.0f, 0.0f})),
+                 input("Axis", SocketType::vector,
+                       SocketValue::vector({0.0f, 0.0f, 1.0f})),
+                 input("Angle", SocketType::floating,
+                       SocketValue::floating(0.0f))},
+      .outputs = {output("Vector", SocketType::vector)},
+      .properties = {property("Type", SocketType::string,
+                              SocketValue::string("AXIS_ANGLE")),
+                     property("Invert", SocketType::boolean,
+                              SocketValue::boolean(false))},
+      .required_features = {}}));
+
   static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::scalar_to_color,
                  .inputs = {input("Value", SocketType::floating,

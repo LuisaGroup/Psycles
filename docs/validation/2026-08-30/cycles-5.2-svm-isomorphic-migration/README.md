@@ -957,3 +957,132 @@ ctest --test-dir build --output-on-failure -R \
 ctest --test-dir build --output-on-failure -Q -E \
   '(_fallback|_vk)$'                                          161/161 PASS
 ```
+
+## Vector Rotate checkpoint
+
+`ShaderNodeVectorRotate` is projected from these Cycles 5.2.1 sources without
+an alternative Psycles evaluator:
+
+| Stage | Cycles 5.2.1 source |
+|---|---|
+| Blender node mapping | `intern/cycles/blender/shader.cpp` |
+| Socket schema and SVM emission | `intern/cycles/scene/shader_nodes.cpp::VectorRotateNode` |
+| Typed payload | `intern/cycles/kernel/svm/node_types.h::SVMNodeVectorRotate` |
+| Interpreter transition | `intern/cycles/kernel/svm/vector_rotate.h` |
+| Euler transform | `intern/cycles/util/transform.h::euler_to_transform` |
+| Axis-angle transform | `intern/cycles/util/math_float3.h::rotate_around_axis` |
+| Interpreter case order | `intern/cycles/kernel/svm/svm.h` |
+
+The copied schema keeps Cycles' input types and defaults: Vector is a vector,
+Rotation and Center are points, Axis is a vector defaulting to `(0,0,1)`, and
+Angle is a float. `Type` and `Invert` map directly to the five
+`NodeVectorRotateType` values and the payload byte. Cycles defines no constant
+folder for this node, so Psycles does not add one.
+
+The compiler emits the exact `SVMNodeVectorRotate` field order: type, Vector,
+Center, Axis, Rotation, Angle, Invert, result offset, and two padding bytes.
+Invalid host-side type strings fail compilation instead of selecting a private
+default. The Blender importer preserves the raw Vector link and the
+`rotation_type` and `invert` properties before this emission step.
+
+### Exact word-stream matrix
+
+The external probe contains all five modes in forward and inverse form, plus
+forward and inverse arbitrary-axis cases with a zero-length axis. The 12
+material shaders occupy global shader IDs 5 through 16. Their surface jumps
+are respectively:
+
+```text
+133 162 191 220 249 278 307 336 365 394 423 452
+```
+
+Every relocated local image is 33 words and has six live stack lanes. The
+first arbitrary-axis forward image is:
+
+```text
+00000001 00000004 0000001f 00000020
+0000000b 00000001 00000000 00000058
+00000000 7fc00000 00000000 00000000
+3e2e147b be6b851f 3e9eb852 3e947ae1
+3f3ae148 bed1eb85 00000000 00000000
+00000000 3f35c28f 00000300 00000007
+7fc00003 00000000 00000000 3f800000
+00000003 000000ff 00000000 00000000
+00000000
+```
+
+The corresponding inverse image differs in the packed payload word only:
+`00000301` instead of `00000300`. The permanent compiler regression freezes
+all 12 complete images word for word, rather than deriving expected payloads
+from Psycles structures. The raw Blender-import regression independently
+freezes the first image.
+
+### Runtime relation and external results
+
+The Luisa transition follows the Cycles branch structure. Euler mode builds
+the same nine transform entries and selects ordinary or transposed direction
+application in mutually exclusive `Invert` branches. The four axis modes use
+the same explicit X/Y/Z axes or loaded arbitrary axis, negate Angle when
+inverted, and apply the same Rodrigues expression ordering. In the arbitrary
+axis case, length zero returns the original Vector exactly; it is not
+normalized or replaced by a fallback axis.
+
+With Geometry Normal `(0,0,1)`, Center `(0.17,-0.23,0.31)`, Angle `0.71`,
+arbitrary Axis `(0.29,0.73,-0.41)`, and Euler Rotation
+`(0.31,-0.52,0.27)`, the clean Cycles CPU Emission pass produced:
+
+| Case | Linear emission RGB |
+|---|---|
+| Axis Angle forward | `( 0.466335535, -0.188421026, 0.994365752)` |
+| Axis Angle inverse | `(-0.413508177,  0.003437847, 0.713639617)` |
+| X Axis forward | `( 0.000000000, -0.505342066, 0.983191490)` |
+| X Axis inverse | `( 0.000000000,  0.394188523, 0.683347940)` |
+| Y Axis forward | `( 0.490843773,  0.000000000, 0.944081426)` |
+| Y Axis inverse | `(-0.408686817,  0.000000000, 0.722457945)` |
+| Z Axis forward | `(-0.108843282, -0.166388512, 1.000000000)` |
+| Z Axis inverse | `( 0.191000253,  0.055234984, 1.000000000)` |
+| Euler XYZ forward | `(-0.322739720, -0.357502222, 0.856672406)` |
+| Euler XYZ inverse | `( 0.423902035,  0.222487405, 0.847297728)` |
+| Zero Axis forward | `( 0.000000000,  0.000000000, 1.000000000)` |
+| Zero Axis inverse | `( 0.000000000,  0.000000000, 1.000000000)` |
+
+The HIP interpreter matches all 12 values within `2e-6`, as well as closure
+weight, both front/back-facing flag states, termination, and final PC 31. PC
+31 is the word after the `NODE_END` opcode; the final two zero words are the
+remaining padding in Cycles' four-word-aligned end block.
+
+The authoritative renderer is the clean Blender 5.2.1 build at commit
+`9e2066aef7ef`. The diagnostic binary has that commit as its source parent and
+only copies the completed global SVM stream when the dump environment variable
+is present. The clean and diagnostic 24x8 OpenEXR renders compare exactly over
+all 17 subimages.
+
+Oracle and validation commands:
+
+```text
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_vector_rotate_matrix.blend \
+  svm_vector_rotate_matrix                                    PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_vector_rotate_matrix.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/svm_vector_rotate_matrix.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_vector_rotate_matrix-trace.exr 24 8 1 0 \
+  --cycles-device CPU                                          PASS
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  /tmp/svm_vector_rotate_matrix.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_vector_rotate_matrix.exr 24 8 1 0 \
+  --cycles-device CPU                                          PASS
+oiiotool -a /tmp/svm_vector_rotate_matrix.exr \
+  /tmp/svm_vector_rotate_matrix-trace.exr --diff              PASS
+
+cmake --build build --parallel 32                              PASS
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.(cycles_svm_(abi|bytecode|compiler|modern_mix|vector|vector_rotate)|graph_material_scene|blender_import|luisa_cycles_svm_hip|source_size|shader_probe_runner_contract|blender_export_render_settings)$' \
+                                                               12/12 PASS
+ctest --test-dir build --output-on-failure -Q -E \
+  '(_fallback|_vk)$'                                          162/162 PASS
+```
