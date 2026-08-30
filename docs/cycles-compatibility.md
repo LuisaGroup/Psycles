@@ -93,10 +93,12 @@ five-way promotion runs.
 
 ## Shader graph path
 
-Psycles does not consume Cycles' serialized SVM or bake Blender materials. It
-compiles the original graph to its own typed topological IR and can execute
-that IR either through the expanded Luisa AST builder or a compact scene-data
-SVM. Shader data follows this path:
+Psycles does not ask Blender/Cycles to pre-bake materials or execute closures
+on the host. The active implementation is nevertheless required to compile the
+original graph into a Cycles-5.2.1-isomorphic SVM stream and execute the same
+stack/PC/node/closure state machine in Luisa DSL. The existing custom typed
+topological executor is transitional code scheduled for wholesale replacement,
+not an allowed competing architecture. Shader data follows this target path:
 
 1. Blender exports the original node trees, links, socket defaults, static
    node properties, mute state, runtime internal links, image identities, and
@@ -104,23 +106,26 @@ SVM. Shader data follows this path:
 2. The Blender adapter walks the active Surface and Volume roots recursively.
    Before node-specific lowering, it replaces muted nodes with their
    Cycles-equivalent same-type internal-link proxies and removes dead input
-   branches. It then inserts explicit Cycles socket conversions and emits a
-   single topologically ordered typed-value instruction stream. Displacement
-   remains release-gated work.
-3. Surface- and volume-closure-producing nodes remain typed Add/Mix trees.
-   Neither domain is flattened into a fixed-size closure array.
+   branches. The replacement compiler then applies the same socket
+   conversions, stack allocation, closure transforms, and typed SVM-node
+   emission as Cycles 5.2.1. Displacement is part of the same shader program
+   and shader-jump control flow.
+3. Surface, volume, and displacement use the same Cycles-isomorphic node
+   stream and stack contract. Closure nodes update the same logical closure
+   state at the same point in that stream; there is no independent Psycles
+   closure-tree executor.
 4. Shader node groups are recursively expanded through their exported Group
    Input/Output interfaces. Group instance names have no semantic role;
    missing and recursive groups produce explicit diagnostics.
 5. Image pixels, mesh attributes, parameter blocks, and geometry are uploaded
    to Luisa resources. No host-side shader evaluator is used.
-6. Bump dependencies are expanded into the same topological stream with
-   explicit center and ray-differential contexts. The expanded route traces
-   that stream while constructing Luisa DSL; the compact route serializes the
-   same typed instructions and original closure tree as scene data.
-7. Host/JIT semantic handlers remain ordinary Luisa callables. Program tags
-   select scene data rather than duplicating a shader graph per material, and
-   the same generated evaluator runs on Luisa `fallback` and GPU backends.
+6. Bump dependencies use Cycles' enter/leave-bump and derivative node
+   semantics in the same stream; Psycles does not substitute a separately
+   scheduled derivative program.
+7. One Luisa SVM interpreter performs the Cycles PC loop and one primary
+   node-type dispatch. JIT scene pruning may omit unreachable Cycles cases but
+   may not add a family/subtype dispatch layer or change node state flow. The
+   same evaluator runs on Luisa `fallback` and GPU backends.
 
 Muted-node normalization is relational rather than node-specific. A muted
 node's concrete implementation is absent, only the internal input reachable

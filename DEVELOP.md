@@ -6,6 +6,33 @@ Cycles render, linear-pass metrics, and visual comparison. The current
 commands, machine, reports, and triptychs are in
 [VALIDATION.md](VALIDATION.md).
 
+## Mandatory Cycles SVM implementation lock
+
+Until the project owner gives an explicit superseding instruction, the sole
+implementation task is an isomorphic Luisa DSL implementation of Blender
+Cycles 5.2.1 SVM. This is a hard development constraint, not a design
+preference:
+
+- reproduce Cycles' SVM node stream, typed node payloads, stack addressing,
+  program-counter loop, single node-type dispatch, closure state, feature
+  masks, and surface/volume/displacement control flow before attempting any
+  alternative architecture;
+- do not retain or extend Psycles-specific substitutes such as execution-family
+  plus semantic-subtype dispatch, independently scheduled value/closure
+  programs, or a second closure-leaf decode layer;
+- do not redesign, generalize, fuse, split, or otherwise "improve" the Cycles
+  execution model. Luisa multistage/JIT facilities may erase node cases and
+  closures that Cycles feature masks prove unreachable, but may not change the
+  observable state machine or bytecode semantics;
+- do not advance unrelated renderer features or optimizations while this SVM
+  replacement remains incomplete;
+- every migrated node family requires a field/state mapping to the exact
+  Cycles 5.2.1 source, a Cycles-oracle regression, and whole-program validation.
+
+No deviation is implied by temporary regressions or by the convenience of the
+existing implementation. Only an explicit project-owner instruction can relax
+this lock.
+
 ## Authoritative-reference policy
 
 The checked-out latest Blender/Cycles source and renders from the same
@@ -20,9 +47,10 @@ only correctness oracle for Psycles rendering and sampling.
 - Regression tests for renderer behavior must execute the Luisa DSL/JIT path
   on the supported backends and compare against current Cycles outputs or
   explicitly versioned Cycles fixtures.
-- Reading Cycles source establishes semantics; Psycles should express those
-  semantics through maintainable Luisa callables, data-oriented resources,
-  and JIT specialization rather than kernel text translation.
+- Reading Cycles source establishes both SVM semantics and, under the active
+  implementation lock above, the required SVM execution model. Luisa DSL is
+  the implementation language; it is not permission to substitute a different
+  interpreter architecture.
 
 ## Active handoff checkpoint
 
