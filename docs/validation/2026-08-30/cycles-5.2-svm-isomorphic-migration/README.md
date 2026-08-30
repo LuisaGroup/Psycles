@@ -325,3 +325,15 @@ This checkpoint is host compiler equivalence only. It does not claim the
 production renderer has switched to the new stream: the remaining required
 work is the full family-by-family compiler port and the Luisa device
 interpreter with one Cycles PC loop and one opcode dispatch.
+
+## Host node compilation boundary
+
+The temporary centralized node-type chain has been removed. The projected
+nodes now expose the same host compilation boundary as Cycles 5.2.1:
+`ShaderNode::compile(SVMCompiler&)`. Diffuse, Translucent, Transparent,
+Emission, Geometry, Mix Closure Weight, the closure-transform Multiply node,
+and Output each own their bytecode emission. Combine-closure nodes remain
+empty because `SVMCompiler::generate_multi_closure` handles them, exactly as in
+Cycles. Unsupported node subclasses fail compilation and never select a
+different bytecode path. The constant and linked closure-mix word oracles above
+are unchanged across this refactor.

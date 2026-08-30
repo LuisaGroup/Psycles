@@ -57,6 +57,8 @@ public:
     std::memcpy(_words.data() + old_size, &payload, sizeof(T));
   }
 
+  void add_node_data(const void *payload, std::size_t payload_size);
+
   void add_node_data_float(float value);
   void add_node_data_float4(float x, float y, float z, float w);
 
