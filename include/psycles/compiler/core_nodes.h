@@ -76,6 +76,7 @@ inline constexpr auto separate_color = "psycles.color.separate";
 inline constexpr auto combine_color = "psycles.color.combine";
 inline constexpr auto normal_map = "psycles.normal_map";
 inline constexpr auto bump = "psycles.bump";
+inline constexpr auto displacement = "psycles.displacement";
 inline constexpr auto vertex_color = "psycles.attribute.vertex_color";
 inline constexpr auto diffuse_bsdf = "psycles.closure.diffuse";
 inline constexpr auto translucent_bsdf = "psycles.closure.translucent";

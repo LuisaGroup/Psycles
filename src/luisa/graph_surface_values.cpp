@@ -9,13 +9,14 @@ std::unique_ptr<ValueNode> make_value_node(
     const compiler::ValueInstruction &instruction) noexcept {
     using Factory = std::unique_ptr<ValueNode> (*)(
         const compiler::ValueInstruction &) noexcept;
-    constexpr std::array<Factory, 10u> factories{
+    constexpr std::array<Factory, 11u> factories{
         try_make_math_value_node,
         try_make_bump_expanded_value_node,
         try_make_context_value_node,
         try_make_ambient_occlusion_value_node,
         try_make_image_value_node,
         try_make_normal_value_node,
+        try_make_displacement_value_node,
         try_make_magic_value_node,
         try_make_wave_value_node,
         try_make_voronoi_value_node,

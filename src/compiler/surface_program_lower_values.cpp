@@ -639,6 +639,36 @@ namespace operand = value_operand;
         }
         return true;
     }
+    if (node.type == node_type::displacement) {
+        auto height = lower_value_input(node, "Height");
+        auto midlevel = lower_value_input(node, "Midlevel");
+        auto scale = lower_value_input(node, "Scale");
+        auto normal = lower_value_input(node, "Normal");
+        if (height && midlevel && scale && normal) {
+            publish(
+                node.id,
+                "Displacement",
+                append(ValueInstruction{
+                    .operation = ValueOperation::displacement,
+                    .source_node = node.id,
+                    .result_type = SocketType::vector,
+                    .operands =
+                        make_value_operands<operand::displacement>({
+                            {operand::displacement::height, *height},
+                            {operand::displacement::midlevel, *midlevel},
+                            {operand::displacement::scale, *scale},
+                            {operand::displacement::normal, *normal}}),
+                    .static_u0 =
+                        (property_string(node, "Space", "OBJECT") ==
+                                 "OBJECT"
+                             ? displacement_object_space
+                             : 0u) |
+                        (property_bool(node, "NormalLinked")
+                             ? displacement_normal_linked
+                             : 0u)}));
+        }
+        return true;
+    }
     return false;
 }
 
