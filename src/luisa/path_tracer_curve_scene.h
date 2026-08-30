@@ -16,6 +16,8 @@ struct CurveGeometryUpload {
   luisa::vector<luisa::uint> material_slots;
   std::optional<std::string> default_uv_layer;
   std::map<std::string, luisa::vector<luisa::float2>, std::less<>> uv_layers;
+  std::map<std::string, luisa::vector<luisa::float4>, std::less<>>
+      color_attributes;
   luisa::vector<float> intercept;
   luisa::vector<float> length;
   luisa::vector<float> random;

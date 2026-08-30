@@ -79,6 +79,7 @@ void test_native_curve_bundle_round_trip() {
   Section first_key;
   Section material_slots;
   Section uv;
+  Section color;
   Section intercept;
   Section length;
   Section random;
@@ -94,6 +95,7 @@ void test_native_curve_bundle_round_trip() {
     first_key = write_values<std::uint32_t>(geometry, {0u});
     material_slots = write_values<std::uint32_t>(geometry, {0u});
     uv = write_values<float>(geometry, {0.25f, 0.75f});
+    color = write_values<float>(geometry, {0.1f, 0.2f, 0.3f, 1.0f});
     intercept = write_values<float>(geometry, {0.0f, 0.45f, 1.0f});
     length = write_values<float>(geometry, {2.0311289f});
     random = write_values<float>(geometry, {0.86031276f});
@@ -127,6 +129,9 @@ void test_native_curve_bundle_round_trip() {
     "default_uv_layer":"RootUV",
     "uv_layers":[{"name":"RootUV","values":)JSON";
     write_section(scene, uv);
+    scene << R"JSON(}],
+    "color_attributes":[{"name":"RootColor","values":)JSON";
+    write_section(scene, color);
     scene << R"JSON(}],
     "intercept":)JSON";
     write_section(scene, intercept);
@@ -174,6 +179,12 @@ void test_native_curve_bundle_round_trip() {
               "curve root U");
   expect_near(curves.uv_layers.at("RootUV")[0u].y, 0.75f,
               "curve root V");
+  expect(curves.color_attributes.at("RootColor").size() == 1u,
+         "curve color domain mismatch");
+  expect_near(curves.color_attributes.at("RootColor")[0u].x, 0.1f,
+              "curve root color R");
+  expect_near(curves.color_attributes.at("RootColor")[0u].w, 1.0f,
+              "curve root color alpha");
   expect_near(curves.keys[1u].w, 0.07f, "middle key radius");
   expect_near(curves.intercept[1u], 0.45f, "middle Intercept");
   expect_near(curves.length[0u], 2.0311289f, "curve Length");

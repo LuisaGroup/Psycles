@@ -34,9 +34,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import blender_scene_manifest as manifest  # noqa: E402
 import blender_build_identity  # noqa: E402
 from blender_particle_hair import (  # noqa: E402
+    cycles_particle_hair_color as _cycles_particle_hair_color,
+    cycles_particle_hair_color_value as _cycles_particle_hair_color_value,
     cycles_particle_hair_positions as _cycles_particle_hair_positions,
     cycles_particle_hair_uv as _cycles_particle_hair_uv,
     cycles_shape_radius as _cycles_shape_radius,
+    material_named_color_attributes as _material_named_color_attributes,
     particle_hair_systems as _particle_hair_systems,
 )
 import cycles_hash  # noqa: E402
@@ -722,12 +725,33 @@ def _particle_hair_geometry(
     if not systems:
         return None
 
+    requested_color_attributes = set().union(
+        *(
+            _material_named_color_attributes(slot.material)
+            for slot in obj.material_slots
+        )
+    )
     emitter_mesh = evaluated.to_mesh(
         preserve_all_data_layers=True,
         depsgraph=depsgraph,
     )
     try:
         uv_layer_names = [layer.name for layer in emitter_mesh.uv_layers]
+        # Cycles numbers color attributes in the complete filtered
+        # CORNER/BYTE_COLOR image, then exports only shader-demanded names.
+        # Preserve the original indices passed to mcol_on_emitter even when
+        # unrelated layers are omitted from the bundle.
+        eligible_color_attributes = [
+            attribute.name
+            for attribute in emitter_mesh.attributes
+            if attribute.data_type == "BYTE_COLOR"
+            and attribute.domain == "CORNER"
+        ]
+        color_attributes = [
+            (name, index)
+            for index, name in enumerate(eligible_color_attributes)
+            if name in requested_color_attributes
+        ]
         default_uv_layer = (
             emitter_mesh.uv_layers.active_render.name
             if emitter_mesh.uv_layers.active_render is not None
@@ -748,6 +772,9 @@ def _particle_hair_geometry(
     randoms = array.array("f")
     curve_uv_layers = {
         name: array.array("f") for name in uv_layer_names
+    }
+    curve_color_attributes = {
+        name: array.array("f") for name, _ in color_attributes
     }
     segment_count = 0
     curve_index = 0
@@ -795,6 +822,16 @@ def _particle_hair_geometry(
                 )
                 curve_uv_layers[name].extend(
                     (float(uv[0]), float(uv[1]))
+                )
+            for name, color_no in color_attributes:
+                color = _cycles_particle_hair_color(
+                    modifier,
+                    particle_system,
+                    particle_no,
+                    color_no,
+                )
+                curve_color_attributes[name].extend(
+                    _cycles_particle_hair_color_value(color)
                 )
             world_positions = _cycles_particle_hair_positions(
                 particle_system,
@@ -892,6 +929,13 @@ def _particle_hair_geometry(
                 "values": _write_array(stream, values),
             }
             for name, values in curve_uv_layers.items()
+        ],
+        "color_attributes": [
+            {
+                "name": name,
+                "values": _write_array(stream, values),
+            }
+            for name, values in curve_color_attributes.items()
         ],
         "intercept": _write_array(stream, intercepts),
         "length": _write_array(stream, lengths),
@@ -1540,6 +1584,19 @@ def _export_scene(
             ):
                 raise RuntimeError(
                     f"incomplete geometry.bin UV section for "
+                    f"{geometry['name']!r}: {section}, "
+                    f"file size {geometry_size}"
+                )
+        for attribute in geometry["color_attributes"]:
+            section = attribute["values"]
+            end = int(section["offset"]) + int(section["bytes"])
+            if (
+                int(section["offset"]) < 0
+                or int(section["bytes"]) < 0
+                or end > geometry_size
+            ):
+                raise RuntimeError(
+                    "incomplete geometry.bin curve-color section for "
                     f"{geometry['name']!r}: {section}, "
                     f"file size {geometry_size}"
                 )

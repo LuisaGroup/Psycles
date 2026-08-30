@@ -273,6 +273,11 @@ struct CurveGeometryDesc {
     // address the same immutable values by layer name.
     std::optional<std::string> default_uv_layer;
     std::map<std::string, std::vector<Vec2f>, std::less<>> uv_layers;
+    // Named emitter CORNER/BYTE_COLOR attributes are projected by Blender's
+    // particle system to one scene-linear value per strand, exactly as
+    // Cycles stores ATTR_ELEMENT_CURVE. These are raw geometry attributes;
+    // material closure evaluation remains entirely in the Luisa SVM.
+    std::map<std::string, std::vector<Vec4f>, std::less<>> color_attributes;
     // Cycles Hair Info attributes retain their native domains: Intercept is
     // per key, while Length and Random are per curve.
     std::vector<float> intercept;

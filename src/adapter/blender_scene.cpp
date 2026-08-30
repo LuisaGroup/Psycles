@@ -1283,6 +1283,31 @@ BlenderSceneImport load_blender_scene_bundle(
                         }
                     }
                 }
+                if (auto *color_attributes =
+                        member(geometry, "color_attributes");
+                    color_attributes != nullptr &&
+                    yyjson_is_arr(color_attributes)) {
+                    yyjson_arr_iter color_iterator =
+                        yyjson_arr_iter_with(color_attributes);
+                    while (auto *attribute =
+                               yyjson_arr_iter_next(&color_iterator)) {
+                        const auto name =
+                            text(member(attribute, "name"));
+                        auto packed = read_values<float>(
+                            geometry_stream,
+                            section_offset(attribute, "values"),
+                            curve_count * 4u);
+                        auto &values = curves.color_attributes[name];
+                        values.reserve(curve_count);
+                        for (std::size_t i = 0u; i < curve_count; ++i) {
+                            values.emplace_back(Vec4f{
+                                packed[i * 4u],
+                                packed[i * 4u + 1u],
+                                packed[i * 4u + 2u],
+                                packed[i * 4u + 3u]});
+                        }
+                    }
+                }
                 curves.intercept = std::move(intercept_values);
                 curves.length = std::move(length_values);
                 curves.random = std::move(random_values);

@@ -191,6 +191,88 @@ ctest --test-dir build --output-on-failure -j 1 -R '_hip$'
 # 85/85 passed in 20.29 s
 ```
 
+## Particle-hair color projection repair
+
+The remaining wool mismatch was not closure arithmetic. Cycles shader index
+48 maps to `franck_wool_brown_furcoat`; its Hair Reflection weight is an ADD
+Mix whose factor is the named emitter attribute `hair_tip_color`. Psycles had
+exported particle-hair UVs but no color attributes, so the SVM correctly read
+the missing attribute as zero and evaluated only the first Mix input.
+
+Blender/Cycles 5.2.1 defines the required geometry lifting in
+`intern/cycles/blender/curves.cpp`: it enumerates every CORNER/BYTE_COLOR
+attribute, retains the original `vcol_num`, filters by `need_attribute`, calls
+`BKE_particle_mcol_on_emitter` once per strand, converts RGB from sRGB to
+linear Rec.709, and stores a `TypeRGBA/ATTR_ELEMENT_CURVE` array. The kernel
+then indexes that array by curve identity. Psycles now implements the same raw
+geometry contract; it does not pre-evaluate a shader node or closure.
+
+Formally, let
+
+```text
+C = [c_i | domain(c_i) = CORNER and type(c_i) = BYTE_COLOR]
+D = the static named-attribute demand of the hair geometry's materials
+N = number of exported strands
+```
+
+For every `c_i` whose name is in `D`, the exporter constructs exactly
+
+```text
+A_i[k] = (srgb_to_linear(BKE_particle_mcol_on_emitter(k, i)), 1),
+          0 <= k < N.
+```
+
+Filtering happens after `i` is assigned from the complete eligible sequence;
+otherwise dropping an unrelated attribute would silently retarget every later
+`mcol_on_emitter` query. The scene contract requires `|A_i| = N` and finite
+RGBA components. HIP uploads each retained `A_i` as a float4 binding with
+`id = attribute_id(name)`, `domain = curve`, and resolves a hit through
+`segment.curve_index`. Thus the exported index, curve-domain cardinality, and
+device lookup form one commuting identity map from the Blender emitter sample
+to the Luisa SVM input.
+
+The exact production trace uses wool pixel `(544, 380)`, global sample zero in
+the 1024-sample Sobol domain, and the staged wavefront path. It closes the
+previous structural discrepancy:
+
+| quantity | missing attribute | repaired Psycles | Cycles 5.2.1 HIP |
+|---|---:|---:|---:|
+| Hair Reflection weight R | 0.064140178 | 0.109573483 | 0.109574236 |
+| Hair Reflection weight G | 0.060643360 | 0.083427072 | 0.083428346 |
+| Hair Reflection weight B | 0.056973599 | 0.070447929 | 0.070449308 |
+| mixed BSDF PDF | 0.003556651 | 0.003008994 | 0.003009085 |
+| post-sample throughput R | structurally divergent | 0.208421901 | 0.208426997 |
+
+The permanent regression chain covers five independent boundaries:
+
+1. Blender calls the RNA `mcol_on_emitter` oracle and verifies float32 sRGB
+   conversion, one value per strand, and omission of an unused color layer.
+2. Bundle import round-trips a curve float4 attribute.
+3. Contract validation checks curve cardinality and finite components.
+4. Attribute residency proves reachable UV/color retention, unreachable
+   pruning, binding counts, and byte counts.
+5. The HIP callable test resolves float2 UV and float4 color bindings through
+   two curve identities and compares shared-callable and direct lookup paths.
+
+After removing unrelated whole-file formatting churn, the final gates are:
+
+```text
+cmake --build build --parallel "$(nproc)"
+# passed
+
+ctest --test-dir build --output-on-failure -j 1 \
+  -R 'psycles\.(curve_geometry_upload|blender_curve_import|attribute_residency|luisa_attribute_lookup_callable_hip)$'
+# 4/4 passed in 0.58 s
+
+blender --background --factory-startup \
+  --python tests/test_blender_export_particle_hair.py -- \
+  tools/export_psycles_scene.py
+# Psycles native particle-hair export regression passed
+
+ctest --test-dir build --output-on-failure -j 1 -R '_hip$'
+# 85/85 passed in 23.20 s (warm cache)
+```
+
 ## Full-resolution HIP matrix
 
 Every render uses 1024 fixed samples, seed zero, Tabulated Sobol, adaptive

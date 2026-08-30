@@ -55,6 +55,9 @@ void test_typed_segments_and_cycles_identity() {
       .default_uv_layer = "RootUV",
       .uv_layers = {{"DetailUV", {{0.6f, 0.7f}, {0.8f, 0.9f}}},
                     {"RootUV", {{0.1f, 0.2f}, {0.3f, 0.4f}}}},
+      .color_attributes = {{"RootColor",
+                            {{0.1f, 0.2f, 0.3f, 1.0f},
+                             {0.4f, 0.5f, 0.6f, 1.0f}}}},
       .intercept = {0.0f, 0.25f, 0.75f, 1.0f, 0.0f, 0.5f, 1.0f},
       .length = {8.0f, 2.0f},
       .random = {}};
@@ -69,6 +72,12 @@ void test_typed_segments_and_cycles_identity() {
   const auto root_uv = upload.uv_layers.at("RootUV")[1u];
   expect(root_uv.x == 0.3f && root_uv.y == 0.4f,
          "curve-domain UV values changed");
+  expect(upload.color_attributes.size() == 1u,
+         "curve-domain colors were dropped");
+  const auto root_color = upload.color_attributes.at("RootColor")[1u];
+  expect(root_color.x == 0.4f && root_color.y == 0.5f && root_color.z == 0.6f &&
+             root_color.w == 1.0f,
+         "curve-domain color values changed");
   expect(upload.intercept.size() == 7u, "wrong Intercept domain");
   expect(upload.length.size() == 2u, "wrong Length domain");
   expect(upload.random.size() == 2u, "wrong Random domain");
