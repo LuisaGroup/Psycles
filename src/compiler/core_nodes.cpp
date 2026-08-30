@@ -519,7 +519,7 @@ NodeRegistry make_core_node_registry() {
       .type = node_type::math,
       .inputs = {input("A", SocketType::floating, SocketValue::floating(0.5f)),
                  input("B", SocketType::floating, SocketValue::floating(0.5f)),
-                 input("C", SocketType::floating, SocketValue::floating(0.5f))},
+                 input("C", SocketType::floating, SocketValue::floating(0.0f))},
       .outputs = {output("Value", SocketType::floating)},
       .properties = {property("Operation", SocketType::string,
                               SocketValue::string("ADD"))},

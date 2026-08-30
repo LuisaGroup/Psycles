@@ -75,6 +75,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "combine_color_modes": values._combine_color_modes,
     "diffuse_bsdf_matrix": closures._diffuse_bsdf_matrix,
     "diffuse_surface": closures._diffuse_surface,
+    "dynamic_mix_shader": closures._dynamic_mix_shader,
     "emission_surface": lights_camera._emission_surface,
     "environment_texture_projection_modes": (
         environment_inputs._environment_texture_projection_modes

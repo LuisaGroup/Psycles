@@ -225,3 +225,103 @@ three-lane stack assignment, closure set-weight, Diffuse BSDF header and typed
 data, surface end, empty volume end, and empty displacement end. Unsupported
 families reject the new image explicitly; the test also proves that they do not
 select the old Psycles bytecode.
+
+## General graph/compiler checkpoint
+
+The one-off Diffuse lowering has now been removed. The replacement host path is
+an adaptation of the following Cycles 5.2.1 implementation, preserving the
+same mutable graph/compiler state and the same algorithmic order:
+
+| Psycles projection | Cycles 5.2.1 source operation |
+|---|---|
+| synthetic graph output at node id 0 | `ShaderGraph::ShaderGraph()` creates `OutputNode` first |
+| default Geometry/Texture Coordinate producers | `ShaderGraph::default_inputs()` |
+| closure-weight graph rewrite | `ShaderGraph::transform_multi_closure()` |
+| scalar/vector/closure stack widths | `SVMCompiler::stack_size()` |
+| first contiguous free range | `SVMCompiler::stack_find_offset()` |
+| producer last-user release | `stack_clear_users()` / `is_sole_user()` |
+| temporary literal release | `stack_clear_temporary()` |
+| dependency collection | `SVMCompiler::find_dependencies()` |
+| DAG order and node-id tie break | `SVMCompiler::generate_svm_nodes()` |
+| closure feature filtering and weight offset | `generate_closure_node()` |
+| shared dependency intersection and jumps | `generate_multi_closure()` |
+| surface/volume/displacement routines | `compile_type()` and `compile()` |
+
+The graph has one stack offset on every input/output, Cycles-style output user
+lists, `nodes_done`, `closure_done`, and the exact 255-lane active-user array.
+The scheduler is the Cycles Sethi-Ullman implementation: producer order uses
+`SU(node) - output_size(node)`, multi-consumer producers contribute only their
+output size, and node id is the sole tie breaker. Unsupported node emitters
+still fail the new compiler; no legacy program is consulted.
+
+The audit also found that Psycles' generic Math schema initialized its third
+input to `0.5`, while Cycles `MathNode` declares `Value3 = 0.0`. The schema now
+uses exact positive zero and a bit-level regression locks it. Generic authored
+Math nodes remain rejected until Cycles' preceding `constant_fold` and
+`fold_math` graph stages are ported; only the post-finalize Multiply node that
+`transform_multi_closure` itself creates is currently accepted. This prevents
+an apparently plausible but non-Cycles word stream from becoming a fallback.
+
+### Constant closure-mix oracle
+
+The existing `transparent_mix` Blender probe (`Transparent Probe`) produced a
+global jump `(95,114,115)`. Normalized to a local stream, Cycles emitted 25
+words:
+
+```
+00000001 00000004 00000017 00000018
+00000008 3f1eb852 000100ff
+00000005 3f400000 3f666666 3f19999a
+00000002 0000001e 00000000 00000000 00000000
+00000005 3f828f5d 3dc49ba6 3d1374bd
+00000003 00000001
+00000000 00000000 00000000
+```
+
+The matching permanent regression proves that the new graph transform emits
+one `NODE_MIX_CLOSURE`, assigns its two outputs to lanes 0 and 1, visits the
+Transparent and Emission leaves in Cycles order, and passes the two distinct
+mix offsets into those closures. Peak stack usage is two lanes.
+
+### Linked closure-mix/jump oracle
+
+`dynamic_mix_shader` is a new canonical Blender probe whose Geometry
+`Backfacing` output drives Mix Shader's factor. It prevents constant folding
+from hiding the runtime closure-tree control flow. The exact oracle command was:
+
+```bash
+blender --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/dynamic_mix.blend dynamic_mix_shader
+PSYCLES_CYCLES_SVM_DUMP=/tmp/dynamic_mix.svm52 \
+  blender /tmp/dynamic_mix.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/dynamic_mix.exr 1 1 1 0 --cycles-device CPU
+```
+
+Cycles produced global jump `(89,117,118)`. The normalized 34-word stream is
+frozen in `test_linked_mix_closure_jumps_match_cycles_5_2_1` and contains, in
+order:
+
+1. `NODE_LIGHT_PATH(NODE_LP_backfacing, lane 0)`;
+2. `NODE_MIX_CLOSURE(fac=lane 0, parent=invalid, children=lanes 1/2)`;
+3. `NODE_JUMP_IF_ONE(jump=9, lane 0)` and the Transparent leaf using lane 1;
+4. `NODE_JUMP_IF_ZERO(jump=6, lane 0)` and the Emission leaf using lane 2;
+5. the three routine terminators.
+
+Peak usage is exactly three lanes. Together with the constant-mix oracle this
+checks both branches of `generate_multi_closure`, including forward-word patch
+distances rather than merely decoded semantics.
+
+### Validation
+
+```text
+cmake --build build --parallel $(nproc)                 PASS
+ctest --test-dir build -R \
+  '^psycles\.cycles_svm_(abi|bytecode|compiler)$'      3/3 PASS
+```
+
+This checkpoint is host compiler equivalence only. It does not claim the
+production renderer has switched to the new stream: the remaining required
+work is the full family-by-family compiler port and the Luisa device
+interpreter with one Cycles PC loop and one opcode dispatch.
