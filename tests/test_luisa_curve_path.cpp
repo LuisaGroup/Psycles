@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <string_view>
 #include <utility>
@@ -20,6 +21,8 @@ using namespace psycles;
 using namespace psycles::compiler;
 using namespace psycles::contract;
 
+inline constexpr std::string_view curve_uv_name = "RootUV";
+
 [[nodiscard]] Mat4f translated(float x, float y, float z) noexcept {
     auto result = Mat4f{};
     result.elements[12u] = x;
@@ -31,9 +34,21 @@ using namespace psycles::contract;
 [[nodiscard]] ShaderGraph hair_intercept_emission() {
     ShaderGraph graph;
     const auto hair = graph.add_node(node_type::hair_info, "Native Hair Info");
+    const auto coordinates = graph.add_node(
+        node_type::texture_coordinate, "Native curve UV");
+    const auto conversion = graph.add_node(
+        node_type::vector_to_color, "Curve UV color");
     const auto emission = graph.add_node(node_type::emission, "Emission");
-    static_cast<void>(graph.set_input(
-        emission, "Color", SocketValue::color({0.25f, 0.5f, 1.0f})));
+    static_cast<void>(graph.set_property(
+        coordinates, "UvMapNamed", SocketValue::boolean(true)));
+    static_cast<void>(graph.set_property(
+        coordinates,
+        "UvMapId",
+        SocketValue::unsigned_integer(uv_attribute_id(curve_uv_name))));
+    static_cast<void>(graph.connect(
+        {.node = coordinates, .socket = "UV"}, conversion, "Vector"));
+    static_cast<void>(graph.connect(
+        {.node = conversion, .socket = "Color"}, emission, "Color"));
     static_cast<void>(graph.connect(
         {.node = hair, .socket = "Intercept"}, emission, "Strength"));
     graph.set_root(
@@ -88,7 +103,9 @@ using namespace psycles::contract;
             .curve_first_key = {0u},
             .material_slots = {material_id, unused_material_id},
             .curve_material_slots = {0u},
-            .intercept = {0.375f, 0.375f},
+            .default_uv_layer = std::string{curve_uv_name},
+            .uv_layers = {{std::string{curve_uv_name}, {{0.2f, 0.7f}}}},
+            .intercept = {0.0f, 1.0f},
             .length = {2.0f},
             .random = {0.25f},
             .cycles_curve_offset = 23u,
@@ -244,6 +261,18 @@ using namespace psycles::contract;
     return std::abs(actual - expected) <= 2.0e-5f;
 }
 
+class CurvePathTraceSink final
+    : public psycles::luisa_backend::LuisaPathTraceSink {
+
+  public:
+    std::optional<psycles::luisa_backend::LuisaPathTrace> trace;
+
+    void write(
+        const psycles::luisa_backend::LuisaPathTrace &value) override {
+        trace = value;
+    }
+};
+
 [[nodiscard]] std::optional<std::array<float, 4u>> render_pixel(
     psycles::luisa_backend::LuisaPathTracerBackend &renderer,
     const SceneSnapshot &scene,
@@ -284,18 +313,46 @@ int main(int argc, char **argv) {
         std::string_view{argc > 1 ? argv[1] : "fallback"};
     luisa::compute::Context context{argv[0]};
     auto device = context.create_device(backend);
+    auto trace_sink = std::make_shared<CurvePathTraceSink>();
     psycles::luisa_backend::LuisaPathTracerBackend renderer{
         std::move(device),
-        {.next_event_estimation = true, .max_samples_per_dispatch = 1u}};
+        {.next_event_estimation = true,
+         .max_samples_per_dispatch = 1u,
+         .path_trace = psycles::luisa_backend::LuisaPathTraceRequest{
+             .pixel_x = 0u,
+             .pixel_y = 0u,
+             .sample = 0u,
+             .sink = trace_sink}}};
     const auto emissive = render_pixel(
         renderer, make_emissive_curve_scene(), backend, "native curve path");
     if (!emissive) {
         return EXIT_FAILURE;
     }
-    constexpr std::array expected{0.09375f, 0.1875f, 0.375f, 1.0f};
+    if (!trace_sink->trace) {
+        std::cerr << "native curve path trace was not delivered on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    using psycles::luisa_backend::path_trace_schema::EventSlot;
+    using psycles::luisa_backend::path_trace_schema::index;
+    const auto &coordinate =
+        trace_sink->trace->slots[index(0u, EventSlot::isect_coord)];
+    const auto traced_u = coordinate[1u];
+    const auto traced_v = coordinate[2u];
+    if (coordinate[3u] != 1.0f ||
+        traced_u < 0.25f || traced_u > 0.75f ||
+        traced_v < -1.0f || traced_v > 1.0f) {
+        std::cerr
+            << "native ribbon trace lost the shader intersection coordinates "
+            << "on " << backend << ": got (" << traced_u << ", "
+            << traced_v << ")\n";
+        return EXIT_FAILURE;
+    }
+    const std::array expected{
+        0.2f * traced_u, 0.7f * traced_u, 0.0f, 1.0f};
     for (auto channel = std::size_t{0u}; channel < expected.size(); ++channel) {
         if (!close((*emissive)[channel], expected[channel])) {
-            std::cerr << "native Hair Info path mismatch on " << backend
+            std::cerr << "native Hair Info/trace coordinate mismatch on " << backend
                       << " channel " << channel << ": got "
                       << (*emissive)[channel] << ", expected "
                       << expected[channel] << '\n';

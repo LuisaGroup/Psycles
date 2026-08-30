@@ -43,13 +43,17 @@ struct CurveSegmentGpu {
 struct AttributeBindingGpu {
     luisa::ulong id{};
     luisa::uint value_slot{};
+    // Low 8 bits are the geometry domain; upper bits encode the element
+    // storage format. Keeping both in one word preserves the 16-byte ABI.
     luisa::uint domain{};
 };
 
 struct AttributeRangeGpu {
     luisa::uint offset{};
     luisa::uint count{};
-    luisa::uint triangle_slot{};
+    // Triangle geometry stores Triangle records here; curve geometry stores
+    // CurveSegmentGpu records. Each binding domain selects the typed view.
+    luisa::uint primitive_slot{};
     luisa::uint padding{};
 };
 
@@ -674,7 +678,7 @@ LUISA_STRUCT(
     psycles::luisa_backend::detail::AttributeRangeGpu,
     offset,
     count,
-    triangle_slot,
+    primitive_slot,
     padding) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::InstanceGpu,

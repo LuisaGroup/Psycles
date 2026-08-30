@@ -165,9 +165,22 @@ constexpr std::uint32_t geometry_normal_corner = 1u << 0u;
 constexpr std::uint32_t geometry_uv_corner = 1u << 1u;
 constexpr std::uint32_t geometry_uv_tangent_corner = 1u << 2u;
 constexpr std::uint32_t geometry_generated_corner = 1u << 3u;
+constexpr std::uint32_t geometry_curve_default_uv = 1u << 4u;
 constexpr std::uint32_t attribute_domain_point = 0u;
 constexpr std::uint32_t attribute_domain_corner = 1u;
 constexpr std::uint32_t attribute_domain_face = 2u;
+constexpr std::uint32_t attribute_domain_curve = 3u;
+constexpr std::uint32_t attribute_domain_mask = 0xffu;
+constexpr std::uint32_t attribute_format_shift = 8u;
+constexpr std::uint32_t attribute_format_float4 = 0u;
+constexpr std::uint32_t attribute_format_float2 = 1u;
+
+[[nodiscard]] constexpr std::uint32_t pack_attribute_layout(
+    std::uint32_t domain,
+    std::uint32_t format = attribute_format_float4) noexcept {
+    return (domain & attribute_domain_mask) |
+           (format << attribute_format_shift);
+}
 constexpr auto camera_visibility =
     contract::visibility_bit(RayVisibility::camera);
 constexpr auto diffuse_visibility =
@@ -258,6 +271,7 @@ struct CurveGeometryResource {
     Buffer<luisa::compute::AABB> bounds;
     Buffer<CurveSegmentGpu> segments;
     Buffer<luisa::float4> keys;
+    std::vector<Buffer<luisa::float2>> uv_layers;
     Buffer<luisa::uint> material_slots;
     Buffer<float> intercept;
     Buffer<float> length;

@@ -52,6 +52,9 @@ void test_typed_segments_and_cycles_identity() {
       .curve_first_key = {0u, 4u},
       .material_slots = {MaterialId{41u}, MaterialId{43u}},
       .curve_material_slots = {1u, 0u},
+      .default_uv_layer = "RootUV",
+      .uv_layers = {{"DetailUV", {{0.6f, 0.7f}, {0.8f, 0.9f}}},
+                    {"RootUV", {{0.1f, 0.2f}, {0.3f, 0.4f}}}},
       .intercept = {0.0f, 0.25f, 0.75f, 1.0f, 0.0f, 0.5f, 1.0f},
       .length = {8.0f, 2.0f},
       .random = {}};
@@ -61,6 +64,11 @@ void test_typed_segments_and_cycles_identity() {
   expect(upload.segments.size() == 5u, "wrong segment count");
   expect(upload.bounds.size() == 5u, "wrong AABB count");
   expect(upload.material_slots.size() == 2u, "wrong material-slot count");
+  expect(upload.default_uv_layer == "RootUV", "default UV layer changed");
+  expect(upload.uv_layers.size() == 2u, "named UV layers were dropped");
+  const auto root_uv = upload.uv_layers.at("RootUV")[1u];
+  expect(root_uv.x == 0.3f && root_uv.y == 0.4f,
+         "curve-domain UV values changed");
   expect(upload.intercept.size() == 7u, "wrong Intercept domain");
   expect(upload.length.size() == 2u, "wrong Length domain");
   expect(upload.random.size() == 2u, "wrong Random domain");

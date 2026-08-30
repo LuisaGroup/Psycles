@@ -388,7 +388,8 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                               make_float3(ray->t_min(), ray->t_max(), 0.5f));
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::isect_coord,
-                              make_float3(hit->committed_ray_t, hit->bary));
+                              make_float3(hit->committed_ray_t,
+                                          point.barycentric));
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::isect_id,
                               make_float3(cast<float>(cycles_object_index),

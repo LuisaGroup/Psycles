@@ -69,6 +69,15 @@ public:
     const auto geometric_normal = incoming;
     const auto dpdv = cross(dpdu, geometric_normal);
 
+    Float2 uv = make_float2(0.0f);
+    $if ((primitive.curve.metadata.geometry.attribute_domains &
+          geometry_curve_default_uv) != 0u) {
+      uv = scene->heap
+               ->buffer<luisa::float2>(
+                   primitive.curve.metadata.geometry.bindless_base + 2u)
+               .read(primitive.curve.metadata.segment.curve_index);
+    };
+
     const auto intercepts = scene->heap->buffer<float>(
         primitive.curve.metadata.geometry.bindless_base + 3u);
     const auto intercept_begin =
@@ -110,6 +119,7 @@ public:
             .object_dpdu = std::move(object_dpdu),
             .dpdu = std::move(dpdu),
             .dpdv = std::move(dpdv),
+            .uv = std::move(uv),
             .intercept = std::move(intercept),
             .length = std::move(curve_length),
             .thickness = std::move(thickness),

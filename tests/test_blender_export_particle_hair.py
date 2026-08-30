@@ -34,8 +34,13 @@ def _hair_material() -> Any:
     tree.nodes.clear()
     output = tree.nodes.new("ShaderNodeOutputMaterial")
     hair_info = tree.nodes.new("ShaderNodeHairInfo")
+    uv_map = tree.nodes.new("ShaderNodeUVMap")
+    uv_map.uv_map = "RootUV"
     emission = tree.nodes.new("ShaderNodeEmission")
-    tree.links.new(hair_info.outputs["Intercept"], emission.inputs["Color"])
+    tree.links.new(uv_map.outputs["UV"], emission.inputs["Color"])
+    tree.links.new(
+        hair_info.outputs["Intercept"], emission.inputs["Strength"]
+    )
     tree.links.new(emission.outputs["Emission"], output.inputs["Surface"])
     return material
 
@@ -52,6 +57,17 @@ def _fixture() -> Any:
     )
     emitter = bpy.context.object
     emitter.name = "Cycles Native Particle Hair"
+    root_uv = emitter.data.uv_layers.active
+    if root_uv is None:
+        root_uv = emitter.data.uv_layers.new(name="RootUV")
+    else:
+        root_uv.name = "RootUV"
+    detail_uv = emitter.data.uv_layers.new(name="DetailUV", do_init=False)
+    root_uv.active_render = True
+    for index, value in enumerate(root_uv.data):
+        value.uv = (0.1 + 0.07 * index, 0.2 + 0.03 * index)
+    for index, value in enumerate(detail_uv.data):
+        value.uv = (0.8 - 0.04 * index, 0.6 - 0.02 * index)
     emitter.data.materials.append(_hair_material())
     bpy.context.view_layer.objects.active = emitter
     emitter.select_set(True)
@@ -136,6 +152,55 @@ def _cycles_expected_positions(
     return positions, length
 
 
+def _cycles_expected_uv_layers(
+    emitter: Any,
+) -> tuple[str, dict[str, list[Any]]]:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = emitter.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh(
+        preserve_all_data_layers=True,
+        depsgraph=depsgraph,
+    )
+    try:
+        names = [layer.name for layer in mesh.uv_layers]
+        default = mesh.uv_layers.active_render.name
+    finally:
+        evaluated.to_mesh_clear()
+    expected = {name: [] for name in names}
+    for modifier in evaluated.modifiers:
+        if modifier.type != "PARTICLE_SYSTEM" or not modifier.show_render:
+            continue
+        system = modifier.particle_system
+        settings = system.settings
+        if settings.type != "HAIR" or settings.render_type != "PATH":
+            continue
+        parents = system.particles
+        first = (
+            len(parents)
+            if settings.child_type != "NONE"
+            and len(system.child_particles) != 0
+            else 0
+        )
+        for particle_no in range(
+            first, len(parents) + len(system.child_particles)
+        ):
+            particle = (
+                parents[particle_no]
+                if particle_no < len(parents)
+                else parents[0]
+            )
+            for uv_no, name in enumerate(names):
+                expected[name].append(
+                    system.uv_on_emitter(
+                        modifier=modifier,
+                        particle=particle,
+                        particle_no=particle_no,
+                        uv_no=uv_no,
+                    ).copy()
+                )
+    return default, expected
+
+
 def _assert_near(actual: float, expected: float, message: str) -> None:
     if not math.isclose(actual, expected, rel_tol=2.0e-5, abs_tol=2.0e-6):
         raise AssertionError(f"{message}: {actual} != {expected}")
@@ -148,7 +213,10 @@ def _main() -> None:
     exporter = pathlib.Path(args[0]).resolve()
 
     _clear_scene()
-    _fixture()
+    emitter = _fixture()
+    expected_default_uv, expected_uv_layers = (
+        _cycles_expected_uv_layers(emitter)
+    )
     exporter_module = runpy.run_path(
         str(exporter), run_name="psycles_particle_hair_exporter_test"
     )
@@ -251,6 +319,31 @@ def _main() -> None:
         intercept = _read_section(binary, curves["intercept"], "f")
         lengths = _read_section(binary, curves["length"], "f")
         random = _read_section(binary, curves["random"], "f")
+        if curves["default_uv_layer"] != expected_default_uv:
+            raise AssertionError("active-render particle UV layer changed")
+        exported_uv_layers = {
+            layer["name"]: _read_section(binary, layer["values"], "f")
+            for layer in curves["uv_layers"]
+        }
+        if set(exported_uv_layers) != set(expected_uv_layers):
+            raise AssertionError("particle UV layer names changed")
+        for name, expected_values in expected_uv_layers.items():
+            actual = exported_uv_layers[name]
+            if len(actual) != 2 * len(expected_values):
+                raise AssertionError("particle UV curve domain changed")
+            for curve, expected in enumerate(expected_values):
+                _assert_near(
+                    float(actual[curve * 2]),
+                    float(expected[0]),
+                    f"{name} curve {curve} U",
+                )
+                _assert_near(
+                    float(actual[curve * 2 + 1]),
+                    float(expected[1]),
+                    f"{name} curve {curve} V",
+                )
+        if exported_uv_layers["RootUV"] == exported_uv_layers["DetailUV"]:
+            raise AssertionError("named particle UV layers were aliased")
         expected_first_keys = tuple(
             index * _KEYS_PER_CURVE
             for index in range(expected_curve_count)

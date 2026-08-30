@@ -18,6 +18,7 @@ _SEMANTIC_SOURCES = (
     "export_psycles_scene.py",
     "blender_scene_manifest.py",
     "blender_build_identity.py",
+    "blender_particle_hair.py",
     "cycles_hash.py",
     "exporter_identity.py",
 )

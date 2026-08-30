@@ -1259,6 +1259,30 @@ BlenderSceneImport load_blender_scene_bundle(
                     std::move(first_key_values);
                 curves.curve_material_slots =
                     std::move(material_values);
+                if (auto *default_uv =
+                        member(geometry, "default_uv_layer");
+                    default_uv != nullptr && yyjson_is_str(default_uv)) {
+                    curves.default_uv_layer = text(default_uv);
+                }
+                if (auto *uv_layers = member(geometry, "uv_layers");
+                    uv_layers != nullptr && yyjson_is_arr(uv_layers)) {
+                    yyjson_arr_iter uv_iterator =
+                        yyjson_arr_iter_with(uv_layers);
+                    while (auto *layer =
+                               yyjson_arr_iter_next(&uv_iterator)) {
+                        const auto name = text(member(layer, "name"));
+                        auto packed = read_values<float>(
+                            geometry_stream,
+                            section_offset(layer, "values"),
+                            curve_count * 2u);
+                        auto &values = curves.uv_layers[name];
+                        values.reserve(curve_count);
+                        for (std::size_t i = 0u; i < curve_count; ++i) {
+                            values.emplace_back(Vec2f{
+                                packed[i * 2u], packed[i * 2u + 1u]});
+                        }
+                    }
+                }
                 curves.intercept = std::move(intercept_values);
                 curves.length = std::move(length_values);
                 curves.random = std::move(random_values);

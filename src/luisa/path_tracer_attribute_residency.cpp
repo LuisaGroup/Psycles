@@ -91,6 +91,13 @@ void require_expression(
                : static_cast<std::uint64_t>(count) * 16u;
 }
 
+[[nodiscard]] std::uint64_t float2_bytes(std::size_t count) noexcept {
+    const auto maximum = std::numeric_limits<std::uint64_t>::max();
+    return count > maximum / 8u
+               ? maximum
+               : static_cast<std::uint64_t>(count) * 8u;
+}
+
 void add_bytes(std::uint64_t &total, std::uint64_t bytes) noexcept {
     const auto maximum = std::numeric_limits<std::uint64_t>::max();
     total = bytes > maximum - total ? maximum : total + bytes;
@@ -159,6 +166,22 @@ void measure_geometry(
         measure(
             contract::cycles_pointiness_attribute_id,
             geometry.positions.size());
+    }
+}
+
+void measure_geometry(
+    SceneAttributeResidencyPlan &plan,
+    const contract::CurveGeometryDesc &geometry,
+    const GeometryAttributeResidency &residency) {
+    for (const auto &[name, values] : geometry.uv_layers) {
+        const auto id = contract::uv_attribute_id(name);
+        const auto bytes = float2_bytes(values.size());
+        ++plan.source_binding_count;
+        add_bytes(plan.source_device_bytes, bytes);
+        if (residency.contains(id)) {
+            ++plan.resident_binding_count;
+            add_bytes(plan.resident_device_bytes, bytes);
+        }
     }
 }
 
@@ -270,6 +293,19 @@ SceneAttributeResidencyPlan build_scene_attribute_residency_plan(
             }
         }
         close_tangent_dependencies(residency.demand, geometry);
+        measure_geometry(result, geometry, residency);
+    }
+    for (const auto &[geometry_id, geometry] :
+         snapshot.curve_geometries) {
+        auto &residency = result.geometries[geometry_id];
+        const auto reachable =
+            reachability.surface_by_geometry.find(geometry_id);
+        if (reachable != reachability.surface_by_geometry.end()) {
+            for (const auto material : reachable->second) {
+                merge_material(
+                    residency.demand, material, material_demands);
+            }
+        }
         measure_geometry(result, geometry, residency);
     }
     return result;

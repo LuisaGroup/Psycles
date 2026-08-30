@@ -33,32 +33,63 @@ template<typename GeometryHeap>
                         attribute_binding_slot)
                     .read(range.offset + local_index);
             $if (attribute_id == binding.id) {
-                Var<Triangle> triangle =
-                    geometry_heap
-                        ->template buffer<Triangle>(range.triangle_slot)
-                        .read(primitive_id);
-                UInt i0 = triangle.i0;
-                UInt i1 = triangle.i1;
-                UInt i2 = triangle.i2;
-                $if (binding.domain == attribute_domain_corner) {
-                    const auto corner = primitive_id * 3u;
-                    i0 = corner;
-                    i1 = corner + 1u;
-                    i2 = corner + 2u;
+                const UInt domain =
+                    binding.domain & attribute_domain_mask;
+                const UInt format =
+                    binding.domain >> attribute_format_shift;
+                $if (domain == attribute_domain_curve) {
+                    const auto segment =
+                        geometry_heap
+                            ->template buffer<CurveSegmentGpu>(
+                                range.primitive_slot)
+                            .read(primitive_id);
+                    $if (format == attribute_format_float2) {
+                        const auto value =
+                            geometry_heap
+                                ->template buffer<luisa::float2>(
+                                    binding.value_slot)
+                                .read(segment.curve_index);
+                        result.value = make_float4(
+                            value.x, value.y, 0.0f, 0.0f);
+                    }
+                    $else {
+                        result.value =
+                            geometry_heap
+                                ->template buffer<luisa::float4>(
+                                    binding.value_slot)
+                                .read(segment.curve_index);
+                    };
+                }
+                $else {
+                    Var<Triangle> triangle =
+                        geometry_heap
+                            ->template buffer<Triangle>(
+                                range.primitive_slot)
+                            .read(primitive_id);
+                    UInt i0 = triangle.i0;
+                    UInt i1 = triangle.i1;
+                    UInt i2 = triangle.i2;
+                    $if (domain == attribute_domain_corner) {
+                        const auto corner = primitive_id * 3u;
+                        i0 = corner;
+                        i1 = corner + 1u;
+                        i2 = corner + 2u;
+                    };
+                    $if (domain == attribute_domain_face) {
+                        i0 = primitive_id;
+                        i1 = primitive_id;
+                        i2 = primitive_id;
+                    };
+                    const auto values =
+                        geometry_heap
+                            ->template buffer<luisa::float4>(
+                                binding.value_slot);
+                    result.value = triangle_interpolate(
+                        barycentric,
+                        values.read(i0),
+                        values.read(i1),
+                        values.read(i2));
                 };
-                $if (binding.domain == attribute_domain_face) {
-                    i0 = primitive_id;
-                    i1 = primitive_id;
-                    i2 = primitive_id;
-                };
-                const auto values =
-                    geometry_heap
-                        ->template buffer<luisa::float4>(binding.value_slot);
-                const auto v0 = values.read(i0);
-                const auto v1 = values.read(i1);
-                const auto v2 = values.read(i2);
-                result.value = triangle_interpolate(
-                    barycentric, v0, v1, v2);
                 found = true;
             };
             local_index += 1u;

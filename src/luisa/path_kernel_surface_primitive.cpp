@@ -133,6 +133,7 @@ public:
       tangent = normalize(curve.dpdu);
       surface_dpdu = curve.dpdu;
       surface_dpdv = curve.dpdv;
+      uv = curve.uv;
       barycentric = make_float2(curve.intersection.u, curve.intersection.v);
       curve_intercept = curve.intercept;
       curve_length = curve.length;

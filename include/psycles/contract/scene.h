@@ -267,6 +267,12 @@ struct CurveGeometryDesc {
     std::vector<std::uint32_t> curve_first_key;
     std::vector<MaterialId> material_slots;
     std::vector<std::uint32_t> curve_material_slots;
+    // Cycles stores legacy particle-hair UV coordinates on the curve domain:
+    // every strand receives the root coordinate reconstructed on its emitter.
+    // The active-render layer supplies ATTR_STD_UV while named UV Map nodes
+    // address the same immutable values by layer name.
+    std::optional<std::string> default_uv_layer;
+    std::map<std::string, std::vector<Vec2f>, std::less<>> uv_layers;
     // Cycles Hair Info attributes retain their native domains: Intercept is
     // per key, while Length and Random are per curve.
     std::vector<float> intercept;
