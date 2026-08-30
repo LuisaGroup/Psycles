@@ -395,3 +395,59 @@ Cycles restores a folded-away displacement root with a `ColorNode` followed
 by its automatic Color-to-Vector `ConvertNode`. Those two exact node compilers
 are not yet migrated, so that boundary currently rejects explicitly instead
 of inventing a replacement or silently dropping displacement.
+
+## First Luisa device interpreter checkpoint
+
+The device path now contains the first executable projection of Cycles 5.2.1
+`svm_eval_nodes`. Its implementation is split by the same source families:
+
+| Psycles implementation | Cycles 5.2.1 source |
+|---|---|
+| `src/luisa/cycles_svm.cpp` | `kernel/svm/svm.h` main PC loop and opcode dispatch |
+| `src/luisa/cycles_svm_stack.cpp` | `kernel/svm/util.h` stack and `SVMInput*` loads |
+| `src/luisa/cycles_svm_math.cpp` | `kernel/svm/math.h` and `math_util.h` |
+| `src/luisa/cycles_svm_value.cpp` | `kernel/svm/value.h`, `geometry.h`, and `light_path.h` |
+| `src/luisa/cycles_svm_closure.cpp` | `kernel/svm/closure.h` and `kernel/closure/emissive.h` |
+
+The Luisa AST has one dynamic word `offset`, one 255-float local stack, one
+loop, and one primary switch on the fetched Cycles opcode. Typed payload reads
+advance that same offset in source field order. The only representational
+projection is spelling a typed payload as sequential typed word loads because
+Luisa DSL cannot dynamically reinterpret a `Buffer<uint>` reference as a C++
+payload struct; there is no second stream or decoded instruction array.
+
+The copied executable cases in this checkpoint are `NODE_END`,
+`NODE_SHADER_JUMP`, `NODE_CLOSURE_BSDF` payload skipping for feature-erased
+paths, `NODE_CLOSURE_EMISSION`, `NODE_CLOSURE_SET_WEIGHT`,
+`NODE_CLOSURE_WEIGHT`, `NODE_EMISSION_WEIGHT`, `NODE_MIX_CLOSURE`, both closure
+jumps, `NODE_GEOMETRY`, `NODE_VALUE_F`, `NODE_VALUE_V`, `NODE_MATH`, and
+`NODE_LIGHT_PATH`. A BSDF that would execute rather than take Cycles' exact
+feature-erased skip transition reports unsupported; it is not evaluated by the
+old surface path. Geometry tangent and volume-density services likewise remain
+explicitly unsupported until their corresponding Cycles families are copied.
+
+`tests/test_luisa_cycles_svm.cpp` executes the two previously frozen Cycles
+streams for dynamic Math/dedup and linked Mix Closure directly on HIP. It also
+walks the generated Luisa AST and requires exactly one PC loop and one primary
+opcode switch. The runtime oracle locks front/back-facing branch selection,
+emission accumulation, closure weight, ShaderData flags, termination status,
+and the exact final word offset (21 and 32 respectively).
+
+Validation on AMD Radeon RX 9070 XT (`gfx1201`):
+
+```text
+cmake --build build --target psycles_luisa_cycles_svm_tests \
+  --parallel 32                                           PASS
+build/bin/psycles_luisa_cycles_svm_tests hip              PASS
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.luisa_cycles_svm_hip$'                       1/1 PASS
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.cycles_svm_(abi|bytecode|compiler)$'         3/3 PASS
+cmake --build build --parallel 32                         PASS
+```
+
+With cache disabled, the first HIP compilation produced a 14,160-byte AMDGPU
+object before linking and an 11,456-byte loaded code object. These sizes are a
+checkpoint, not a performance claim. The production renderer is not yet wired
+to this partial interpreter; doing so before every reachable Cycles opcode and
+closure transition has been copied would violate the no-fallback contract.
