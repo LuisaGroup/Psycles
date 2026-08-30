@@ -13,9 +13,16 @@ ShaderCompilation ShaderCompiler::compile(const contract::ShaderGraph &graph) co
         }
 
         for (const auto &input : schema->inputs) {
-            if (!node->inputs.contains(input.name) && input.default_value) {
+            auto binding = node->inputs.find(input.name);
+            if (binding == node->inputs.end() && input.default_value) {
                 static_cast<void>(normalized.set_input(
                     node->id, input.name, *input.default_value));
+            } else if (binding != node->inputs.end() &&
+                       !binding->second.value && input.default_value) {
+                // A Cycles socket retains its default value while linked. It
+                // becomes observable when constant folding disconnects the
+                // link, so normalize that fallback before graph transforms.
+                binding->second.value = *input.default_value;
             }
         }
         for (const auto &property : schema->properties) {
@@ -41,4 +48,3 @@ ShaderCompilation ShaderCompiler::compile(const contract::ShaderGraph &graph) co
 }
 
 }// namespace psycles::compiler
-

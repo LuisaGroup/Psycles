@@ -582,6 +582,18 @@ private:
                 source->node,
                 source->socket,
                 target_type);
+            if (target_type != contract::SocketType::closure &&
+                target_type != contract::SocketType::volume_closure) {
+                // Cycles copies Blender's socket value even when the socket
+                // is linked. Keep the same fallback for constant-fold graph
+                // rewrites which later disconnect that link.
+                auto *socket =
+                    raw_input(raw_destination, raw_input_name);
+                static_cast<void>(_graph.set_input(
+                    destination,
+                    target_socket,
+                    literal(member(socket, "default"), target_type)));
+            }
             return _graph.connect(
                 output.ref,
                 destination,

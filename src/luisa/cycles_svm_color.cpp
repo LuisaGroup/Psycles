@@ -566,6 +566,100 @@ void node_mix(Cursor &cursor, Stack &stack) noexcept {
   stack_store_float3(stack, output_offset, result);
 }
 
+void node_mix_color(Cursor &cursor, Stack &stack) noexcept {
+  const auto blend_type = cursor.word();
+  const auto a_x = cursor.word();
+  const auto a_y = cursor.word();
+  const auto a_z = cursor.word();
+  const auto b_x = cursor.word();
+  const auto b_y = cursor.word();
+  const auto b_z = cursor.word();
+  const auto factor_input = cursor.word();
+  const auto packed = cursor.word();
+  const auto use_clamp = cursor.byte(packed, 0u);
+  const auto use_clamp_result = cursor.byte(packed, 1u);
+  const auto result_offset = cursor.byte(packed, 2u);
+
+  Float t = stack_load_input_float(stack, factor_input);
+  $if (use_clamp > 0u) {
+    t = luisa::compute::clamp(t, 0.0f, 1.0f);
+  };
+  const Float3 a = stack_load_input_float3(stack, a_x, a_y, a_z);
+  const Float3 b = stack_load_input_float3(stack, b_x, b_y, b_z);
+  Float3 result = svm_mix(blend_type, t, a, b);
+  $if (use_clamp_result != 0u) {
+    result = luisa::compute::clamp(result, 0.0f, 1.0f);
+  };
+  stack_store_float3(stack, result_offset, result);
+}
+
+void node_mix_float(Cursor &cursor, Stack &stack) noexcept {
+  const auto factor_input = cursor.word();
+  const auto a_input = cursor.word();
+  const auto b_input = cursor.word();
+  const auto packed = cursor.word();
+  const auto use_clamp = cursor.byte(packed, 0u);
+  const auto result_offset = cursor.byte(packed, 1u);
+
+  Float t = stack_load_input_float(stack, factor_input);
+  $if (use_clamp > 0u) {
+    t = luisa::compute::clamp(t, 0.0f, 1.0f);
+  };
+  const Float a = stack_load_input_float(stack, a_input);
+  const Float b = stack_load_input_float(stack, b_input);
+  const Float result = a * (1.0f - t) + b * t;
+  stack_store_float(stack, result_offset, result);
+}
+
+void node_mix_vector(Cursor &cursor, Stack &stack) noexcept {
+  const auto a_x = cursor.word();
+  const auto a_y = cursor.word();
+  const auto a_z = cursor.word();
+  const auto b_x = cursor.word();
+  const auto b_y = cursor.word();
+  const auto b_z = cursor.word();
+  const auto factor_input = cursor.word();
+  const auto packed = cursor.word();
+  const auto use_clamp = cursor.byte(packed, 0u);
+  const auto result_offset = cursor.byte(packed, 1u);
+
+  Float t = stack_load_input_float(stack, factor_input);
+  $if (use_clamp > 0u) {
+    t = luisa::compute::clamp(t, 0.0f, 1.0f);
+  };
+  const Float3 a = stack_load_input_float3(stack, a_x, a_y, a_z);
+  const Float3 b = stack_load_input_float3(stack, b_x, b_y, b_z);
+  const Float3 result =
+      a * (make_float3(1.0f) - t) + b * t;
+  stack_store_float3(stack, result_offset, result);
+}
+
+void node_mix_vector_non_uniform(Cursor &cursor, Stack &stack) noexcept {
+  const auto a_x = cursor.word();
+  const auto a_y = cursor.word();
+  const auto a_z = cursor.word();
+  const auto b_x = cursor.word();
+  const auto b_y = cursor.word();
+  const auto b_z = cursor.word();
+  const auto factor_x = cursor.word();
+  const auto factor_y = cursor.word();
+  const auto factor_z = cursor.word();
+  const auto packed = cursor.word();
+  const auto use_clamp = cursor.byte(packed, 0u);
+  const auto result_offset = cursor.byte(packed, 1u);
+
+  Float3 t = stack_load_input_float3(
+      stack, factor_x, factor_y, factor_z);
+  $if (use_clamp > 0u) {
+    t = luisa::compute::clamp(t, 0.0f, 1.0f);
+  };
+  const Float3 a = stack_load_input_float3(stack, a_x, a_y, a_z);
+  const Float3 b = stack_load_input_float3(stack, b_x, b_y, b_z);
+  const Float3 result =
+      a * (make_float3(1.0f) - t) + b * t;
+  stack_store_float3(stack, result_offset, result);
+}
+
 void node_separate_color(Cursor &cursor, Stack &stack) noexcept {
   const auto color_type = cursor.word();
   const auto color_x = cursor.word();

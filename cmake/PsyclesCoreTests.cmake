@@ -149,6 +149,19 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_compiler_tests)
 
     add_executable(
+        psycles_cycles_svm_modern_mix_tests
+        tests/test_cycles_svm_modern_mix.cpp)
+    target_link_libraries(
+        psycles_cycles_svm_modern_mix_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_cycles_svm_modern_mix_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.cycles_svm_modern_mix
+        COMMAND psycles_cycles_svm_modern_mix_tests)
+
+    add_executable(
         psycles_progressive_pixel_probe_tests
         tests/test_progressive_pixel_probe.cpp)
     target_link_libraries(

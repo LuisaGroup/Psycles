@@ -640,3 +640,154 @@ ctest --test-dir build --output-on-failure -R \
   '^psycles\.(cycles_svm_(abi|bytecode|compiler)|blender_import|luisa_cycles_svm_hip)$' \
                                                                5/5 PASS
 ```
+
+## Modern typed Mix checkpoint
+
+Modern Blender `ShaderNodeMix` now follows the four Cycles 5.2.1 node types
+without sharing the legacy `NODE_MIX` path:
+
+- RGBA maps to `MixColorNode` and `NODE_MIX_COLOR`;
+- FLOAT maps to `MixFloatNode` and `NODE_MIX_FLOAT`;
+- VECTOR/UNIFORM maps to `MixVectorNode` and `NODE_MIX_VECTOR`;
+- VECTOR/NON_UNIFORM maps to `MixVectorNonUniformNode` and
+  `NODE_MIX_VECTOR_NON_UNIFORM`.
+
+The host code is an isomorphic Luisa-side projection of
+`intern/cycles/blender/shader.cpp`'s `ShaderNodeMix` selection and socket-name
+mapping, the four compile/constant-fold/linear-operation implementations in
+`intern/cycles/scene/shader_nodes.cpp`, and
+`ConstantFolder::fold_mix_color`/`fold_mix_float` in
+`intern/cycles/scene/constant_fold.cpp`. The device transitions preserve the
+load, factor saturation, interpolation or `svm_mix`, result saturation, and
+store order from `intern/cycles/kernel/svm/mix.h`.
+
+### Dynamic, constant, and typed oracles
+
+Three Blender probes force Cycles itself to retain or fold every modern form:
+
+- `svm_modern_mix_color_matrix` contains all 19 `NodeMix` modes. Every
+  material has an exact 33-word local image, five stack lanes, and a
+  `NODE_MIX_COLOR` payload whose blend and two clamp fields vary independently.
+- `svm_modern_mix_data_matrix` contains both clamp states of MixFloat,
+  uniform MixVector, and non-uniform MixVector. Their local image sizes are
+  respectively 28, 32, and 28 words, with peak stack use 2, 5, and 6.
+- `svm_modern_mix_constant_matrix` feeds the nodes through linked Blender
+  Value/RGB/CombineXYZ nodes, so the values reach Cycles' own constant folders
+  rather than being pre-folded by Blender. All 25 shaders become exact
+  13-word images containing no modern Mix opcode; all 75 closure-weight words
+  are frozen bit for bit in `test_cycles_svm_modern_mix.cpp`.
+
+The HIP regression evaluates all 19 color modes and all six typed data cases
+with one node-mask-specialized interpreter. It compares the Cycles CPU
+Emission pass within `2e-6`, as well as closure weight, front/back-facing
+flags, termination, and final PCs.
+
+### Import, conversion alias, and stack lifetime oracle
+
+`svm_modern_mix_import_chain` connects FLOAT to uniform VECTOR, evaluates a
+non-uniform VECTOR from Geometry Normal, converts both vector results to
+color, and feeds them into an OVERLAY RGBA Mix. This is the same graph used by
+the permanent Blender-import regression. Cycles shader 5 had global jump
+`(89,138,139)` and normalizes to this 55-word shape:
+
+```text
+LIGHT_PATH -> GEOMETRY Normal -> MIX_VECTOR_NON_UNIFORM -> MIX_FLOAT
+           -> MIX_VECTOR -> MIX_COLOR -> EMISSION_WEIGHT
+           -> CLOSURE_EMISSION -> END
+```
+
+The image uses ten stack lanes. There is no conversion opcode between Cycles
+float3 socket kinds: `ConvertNode::compile` aliases the producer stack offset
+with `SVMCompiler::stack_link`. Psycles now mirrors that reference-counted
+alias lifetime, rather than emitting a copy or freeing the producer lane at
+the conversion node. The same oracle also locks Cycles' Geometry rule:
+ordinary Normal uses `NODE_GEOMETRY`, while derivative-capable Position,
+Tangent, True Normal, Incoming, and Parametric select the derivative opcode
+when the graph requires derivatives.
+
+Cycles CPU's linear Emission pass for the two front/back-facing cells was:
+
+```text
+front: (0.259999990, 0.540000021, 0.000000000)
+back:  (0.635999918, 0.000000000, 0.088000007)
+```
+
+The HIP interpreter matches both values and final PC 53.
+
+### Linked socket values and partial-fold edges
+
+The partial-fold oracle exposed a graph-model mismatch rather than a Mix-only
+bug. A Cycles `ShaderInput` retains its socket value while linked. That value
+becomes observable if constant folding disconnects the link. Psycles formerly
+represented a link and its fallback value as mutually exclusive, so a valid
+Cycles rewrite could leave an input with no value.
+
+The contract now preserves an authored value through `ShaderGraph::connect`,
+normalization fills schema defaults even on linked inputs, and Blender import
+copies each raw linked socket default before installing its link. Runtime
+lowering still reads the source while it is linked. This models the two
+independent Cycles fields directly and fixes the entire rewrite class rather
+than special-casing Mix.
+
+`svm_modern_mix_fold_edges` freezes three Cycles-produced cases:
+
+- same linked dynamic color on A and B with result clamp: Cycles cannot bypass
+  the clamp, disconnects the other input, sets Factor to zero, and retains a
+  33-word `NODE_MIX_COLOR` image with seven stack lanes;
+- zero-factor unclamped MixColor: Cycles bypasses A and emits a 23-word image
+  with no MixColor opcode and four stack lanes;
+- one-factor MixFloat: Cycles bypasses B and emits a 17-word image with no
+  MixFloat opcode and one stack lane.
+
+The first, second, and third Cycles CPU Emission values were respectively
+`(0,0,1)`, `(0,-0.4,1.2)`, and `(0,0,0)` for the front-facing probe cells.
+Permanent regressions lock the exact words, opcode absence or presence, stack
+peaks, linked-default contract, and raw Blender socket defaults.
+
+Oracle and focused validation commands:
+
+```text
+/home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_modern_mix_import_chain.blend \
+  svm_modern_mix_import_chain                                  PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_modern_mix_import_chain.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/svm_modern_mix_import_chain.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_modern_mix_import_chain.exr 4 2 1 0 \
+  --cycles-device CPU                                          PASS
+/home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_modern_mix_fold_edges.blend \
+  svm_modern_mix_fold_edges                                    PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_modern_mix_fold_edges.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/svm_modern_mix_fold_edges.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_modern_mix_fold_edges.exr 6 2 1 0 \
+  --cycles-device CPU                                          PASS
+cmake --build build --target \
+  psycles_cycles_svm_modern_mix_tests \
+  psycles_graph_material_scene_tests \
+  psycles_blender_import_tests \
+  psycles_luisa_cycles_svm_tests --parallel 32                 PASS
+build/psycles_cycles_svm_modern_mix_tests                      PASS
+build/psycles_graph_material_scene_tests                       PASS
+build/psycles_blender_import_tests                             PASS
+build/bin/psycles_luisa_cycles_svm_tests hip                   PASS
+cmake --build build --parallel 32                              PASS
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.(cycles_svm_(abi|bytecode|compiler|modern_mix)|graph_material_scene|blender_import|luisa_cycles_svm_hip)$' \
+                                                               7/7 PASS
+ctest --test-dir build --output-on-failure -Q -E \
+  '(_fallback|_vk)$'                                          160/160 PASS
+```
+
+The 160-test gate is the complete configured host/HIP suite with only the
+explicit fallback and Vulkan test names excluded. Its test inventory was
+checked with the identical exclusion expression before execution. The
+canonical probe-list regression also covers all five modern Mix probes, and
+the source-size gate covers the probe split as ordinary project code.

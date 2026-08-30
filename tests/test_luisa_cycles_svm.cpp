@@ -287,6 +287,197 @@ constexpr std::array legacy_mix_modes{
   return image;
 }
 
+[[nodiscard]] ShaderImage compile_dynamic_modern_mix_color(
+    std::size_t index) {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Backfacing");
+  const auto factor = graph.add_node(node_type::math, "Dynamic Factor");
+  const auto &[mode, unused_type] = legacy_mix_modes[index];
+  const auto mix = graph.add_node(node_type::mix_color, mode);
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  const auto configured =
+      graph.set_property(factor, "Operation",
+                         contract::SocketValue::string("MULTIPLY_ADD")) &&
+      graph.connect({geometry, "Backfacing"}, factor, "A") &&
+      graph.set_input(factor, "B", contract::SocketValue::floating(1.5f)) &&
+      graph.set_input(factor, "C", contract::SocketValue::floating(-0.25f)) &&
+      graph.set_property(
+          mix, "BlendMode",
+          contract::SocketValue::string(std::string{mode})) &&
+      graph.set_property(
+          mix, "ClampFactor",
+          contract::SocketValue::boolean(index % 2u == 0u)) &&
+      graph.set_property(
+          mix, "ClampResult",
+          contract::SocketValue::boolean(index % 3u == 0u)) &&
+      graph.connect({factor, "Value"}, mix, "Factor") &&
+      graph.set_input(
+          mix, "A", contract::SocketValue::color({0.17f, 0.63f, 0.89f})) &&
+      graph.set_input(
+          mix, "B", contract::SocketValue::color({0.82f, 0.24f, 0.51f})) &&
+      graph.connect({mix, "Color"}, emission, "Color");
+  if (!configured) {
+    throw std::runtime_error{"failed to create dynamic modern MixColor graph"};
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  if (!shader.ok()) {
+    throw std::runtime_error{"dynamic modern MixColor graph did not validate"};
+  }
+  auto image = compile_shader(*shader.program);
+  if (!image.valid) {
+    throw std::runtime_error{image.diagnostic};
+  }
+  static_cast<void>(unused_type);
+  return image;
+}
+
+[[nodiscard]] ShaderImage compile_dynamic_modern_mix_data(
+    std::size_t kind, bool clamp) {
+  ShaderGraph graph;
+  const auto type = kind == 0u
+                        ? node_type::mix_float
+                        : kind == 1u ? node_type::mix_vector
+                                     : node_type::mix_vector_nonuniform;
+  const auto mix = graph.add_node(type, "Dynamic Modern Typed Mix");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  auto configured = graph.set_property(
+      mix, "ClampFactor", contract::SocketValue::boolean(clamp));
+  if (kind != 2u) {
+    const auto geometry = graph.add_node(node_type::geometry, "Backfacing");
+    const auto factor = graph.add_node(node_type::math, "Dynamic Factor");
+    configured =
+        configured &&
+        graph.set_property(factor, "Operation",
+                           contract::SocketValue::string("MULTIPLY_ADD")) &&
+        graph.connect({geometry, "Backfacing"}, factor, "A") &&
+        graph.set_input(factor, "B",
+                        contract::SocketValue::floating(1.5f)) &&
+        graph.set_input(factor, "C",
+                        contract::SocketValue::floating(-0.25f)) &&
+        graph.connect({factor, "Value"}, mix, "Factor");
+  } else {
+    const auto geometry = graph.add_node(node_type::geometry, "Normal");
+    const auto convert =
+        graph.add_node(node_type::normal_to_vector, "Normal to Vector");
+    configured = configured &&
+                 graph.connect({geometry, "Normal"}, convert, "Normal") &&
+                 graph.connect({convert, "Vector"}, mix, "Factor");
+  }
+  if (kind == 0u) {
+    configured =
+        configured &&
+        graph.set_input(mix, "A", contract::SocketValue::floating(0.2f)) &&
+        graph.set_input(mix, "B", contract::SocketValue::floating(0.8f)) &&
+        graph.set_input(
+            emission, "Color",
+            contract::SocketValue::color({0.31f, 0.57f, 0.83f})) &&
+        graph.connect({mix, "Value"}, emission, "Strength");
+  } else {
+    const auto convert =
+        graph.add_node(node_type::vector_to_color, "Vector to Color");
+    configured =
+        configured &&
+        graph.set_input(
+            mix, "A", contract::SocketValue::vector({0.1f, 0.7f, -0.2f})) &&
+        graph.set_input(
+            mix, "B", contract::SocketValue::vector({0.9f, -0.1f, 0.6f})) &&
+        graph.connect({mix, "Vector"}, convert, "Vector") &&
+        graph.connect({convert, "Color"}, emission, "Color");
+  }
+  if (!configured) {
+    throw std::runtime_error{"failed to create dynamic modern typed Mix graph"};
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  if (!shader.ok()) {
+    throw std::runtime_error{"dynamic modern typed Mix graph did not validate"};
+  }
+  auto image = compile_shader(*shader.program);
+  if (!image.valid) {
+    throw std::runtime_error{image.diagnostic};
+  }
+  return image;
+}
+
+[[nodiscard]] ShaderImage compile_dynamic_modern_mix_chain() {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Geometry");
+  const auto mix_float = graph.add_node(node_type::mix_float, "Mix Float");
+  const auto mix_uniform =
+      graph.add_node(node_type::mix_vector, "Mix Vector Uniform");
+  const auto mix_nonuniform = graph.add_node(
+      node_type::mix_vector_nonuniform, "Mix Vector Non Uniform");
+  const auto normal_to_vector =
+      graph.add_node(node_type::normal_to_vector, "Normal to Vector");
+  const auto uniform_to_color =
+      graph.add_node(node_type::vector_to_color, "Uniform to Color");
+  const auto nonuniform_to_color =
+      graph.add_node(node_type::vector_to_color, "Non Uniform to Color");
+  const auto mix_color = graph.add_node(node_type::mix_color, "Mix Color");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  const auto configured =
+      graph.set_property(mix_float, "ClampFactor",
+                         contract::SocketValue::boolean(false)) &&
+      graph.connect({geometry, "Backfacing"}, mix_float, "Factor") &&
+      graph.set_input(mix_float, "A",
+                      contract::SocketValue::floating(0.2f)) &&
+      graph.set_input(mix_float, "B",
+                      contract::SocketValue::floating(0.8f)) &&
+      graph.set_property(mix_uniform, "ClampFactor",
+                         contract::SocketValue::boolean(true)) &&
+      graph.connect({mix_float, "Value"}, mix_uniform, "Factor") &&
+      graph.set_input(
+          mix_uniform, "A",
+          contract::SocketValue::vector({0.1f, 0.7f, -0.2f})) &&
+      graph.set_input(
+          mix_uniform, "B",
+          contract::SocketValue::vector({0.9f, -0.1f, 0.6f})) &&
+      graph.set_property(mix_nonuniform, "ClampFactor",
+                         contract::SocketValue::boolean(false)) &&
+      graph.connect({geometry, "Normal"}, normal_to_vector, "Normal") &&
+      graph.connect({normal_to_vector, "Vector"}, mix_nonuniform,
+                    "Factor") &&
+      graph.set_input(
+          mix_nonuniform, "A",
+          contract::SocketValue::vector({0.3f, -0.4f, 0.8f})) &&
+      graph.set_input(
+          mix_nonuniform, "B",
+          contract::SocketValue::vector({-0.2f, 0.6f, 0.1f})) &&
+      graph.connect({mix_uniform, "Vector"}, uniform_to_color, "Vector") &&
+      graph.connect({mix_nonuniform, "Vector"}, nonuniform_to_color,
+                    "Vector") &&
+      graph.set_property(mix_color, "BlendMode",
+                         contract::SocketValue::string("OVERLAY")) &&
+      graph.set_property(mix_color, "ClampFactor",
+                         contract::SocketValue::boolean(false)) &&
+      graph.set_property(mix_color, "ClampResult",
+                         contract::SocketValue::boolean(true)) &&
+      graph.connect({geometry, "Backfacing"}, mix_color, "Factor") &&
+      graph.connect({uniform_to_color, "Color"}, mix_color, "A") &&
+      graph.connect({nonuniform_to_color, "Color"}, mix_color, "B") &&
+      graph.connect({mix_color, "Color"}, emission, "Color");
+  if (!configured) {
+    throw std::runtime_error{"failed to create dynamic modern Mix chain"};
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  if (!shader.ok()) {
+    throw std::runtime_error{"dynamic modern Mix chain did not validate"};
+  }
+  auto image = compile_shader(*shader.program);
+  if (!image.valid) {
+    throw std::runtime_error{image.diagnostic};
+  }
+  return image;
+}
+
 [[nodiscard]] auto make_interpreter_kernel(
     std::array<bool, NODE_NUM> node_types_used) {
   return Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>,
@@ -424,6 +615,21 @@ int main(int argc, char **argv) {
   for (const auto &[mode, type] : legacy_mix_modes) {
     legacy_mix_images.emplace_back(compile_dynamic_legacy_mix(mode, type));
   }
+  std::vector<ShaderImage> modern_color_images;
+  modern_color_images.reserve(legacy_mix_modes.size());
+  for (auto index = std::size_t{}; index < legacy_mix_modes.size(); ++index) {
+    modern_color_images.emplace_back(
+        compile_dynamic_modern_mix_color(index));
+  }
+  std::vector<ShaderImage> modern_data_images;
+  modern_data_images.reserve(6u);
+  for (auto kind = std::size_t{}; kind < 3u; ++kind) {
+    modern_data_images.emplace_back(
+        compile_dynamic_modern_mix_data(kind, false));
+    modern_data_images.emplace_back(
+        compile_dynamic_modern_mix_data(kind, true));
+  }
+  const auto modern_chain_image = compile_dynamic_modern_mix_chain();
 
   const auto shape_kernel = make_interpreter_kernel(math_image.node_types_used);
   InterpreterShape shape;
@@ -601,6 +807,157 @@ int main(int argc, char **argv) {
                 << legacy_mix_modes[index].first << " on " << backend << '\n';
       return EXIT_FAILURE;
     }
+  }
+
+  static constexpr std::array modern_front{
+      luisa::float3{0.170000002f, 0.629999995f, 0.889999986f},
+      luisa::float3{0.170000002f, 0.727499962f, 0.985000014f},
+      luisa::float3{0.170000002f, 0.629999995f, 0.889999986f},
+      luisa::float3{0.205741584f, 0.689075649f, 0.902004421f},
+      luisa::float3{0.170000002f, 0.629999995f, 0.889999986f},
+      luisa::float3{-0.000149965286f, 0.607800007f, 0.875974953f},
+      luisa::float3{0.170000002f, 0.629999995f, 0.889999986f},
+      luisa::float3{-0.0349999964f, 0.569999993f, 0.762499988f},
+      luisa::float3{0.170000002f, 0.629999995f, 0.889999986f},
+      luisa::float3{0.147424012f, 0.660302997f, 0.889510453f},
+      luisa::float3{0.170000002f, 0.629999995f, 0.889999986f},
+      luisa::float3{0.0500000119f, 0.689999998f, 1.01749992f},
+      luisa::float3{0.170000002f, 0.629999995f, 0.889999986f},
+      luisa::float3{0.375f, 0.689999998f, 1.01749992f},
+      luisa::float3{0.170000002f, 0.629999995f, 0.889999986f},
+      luisa::float3{0.0f, 0.745000005f, 0.986206889f},
+      luisa::float3{0.170000017f, 0.629999936f, 0.889999986f},
+      luisa::float3{-0.00999999046f, 0.722378016f, 0.974115849f},
+      luisa::float3{0.170000017f, 0.629999936f, 0.889999986f},
+  };
+  static constexpr std::array modern_back{
+      luisa::float3{0.819999993f, 0.240000010f, 0.509999990f},
+      luisa::float3{0.170000002f, 0.142500013f, 0.414999992f},
+      luisa::float3{0.139400005f, 0.151199996f, 0.453899980f},
+      luisa::float3{0.0f, 0.0f, 0.716128945f},
+      luisa::float3{0.819999993f, 0.629999995f, 0.889999986f},
+      luisa::float3{1.02075005f, 0.740999997f, 0.960124969f},
+      luisa::float3{0.944444418f, 0.828947365f, 1.0f},
+      luisa::float3{1.19499993f, 0.930000007f, 1.52749991f},
+      luisa::float3{0.278800011f, 0.437599987f, 0.892199993f},
+      luisa::float3{0.282880008f, 0.478485018f, 0.892447591f},
+      luisa::float3{0.810000002f, 0.110000014f, 0.909999967f},
+      luisa::float3{0.769999981f, 0.329999983f, 0.252499998f},
+      luisa::float3{0.711199999f, 0.567600012f, 0.492200017f},
+      luisa::float3{-0.854999959f, 0.329999983f, 0.252499998f},
+      luisa::float3{0.207317084f, 2.625f, 1.74509799f},
+      luisa::float3{1.0f, 0.0550000072f, 0.408965319f},
+      luisa::float3{0.260487825f, 0.662676096f, 0.889999986f},
+      luisa::float3{1.06999993f, 0.168109775f, 0.469420612f},
+      luisa::float3{0.156629220f, 0.580449402f, 0.819999993f},
+  };
+  static constexpr std::array data_front{
+      luisa::float3{0.0155000007f, 0.0285f, 0.0414999984f},
+      luisa::float3{0.0620000027f, 0.114f, 0.165999994f},
+      luisa::float3{-0.099999994f, 0.899999976f, -0.400000006f},
+      luisa::float3{0.100000001f, 0.699999988f, -0.200000003f},
+      luisa::float3{0.100000001f, 0.699999988f, 0.600000024f},
+      luisa::float3{0.100000001f, 0.699999988f, 0.600000024f},
+  };
+  static constexpr std::array data_back{
+      luisa::float3{0.294499993f, 0.541499972f, 0.788499951f},
+      luisa::float3{0.248000011f, 0.456f, 0.663999975f},
+      luisa::float3{1.10000002f, -0.300000012f, 0.800000012f},
+      luisa::float3{0.899999976f, -0.100000001f, 0.600000024f},
+      luisa::float3{0.100000001f, 0.699999988f, 0.600000024f},
+      luisa::float3{0.100000001f, 0.699999988f, 0.600000024f},
+  };
+
+  auto modern_mask = std::array<bool, NODE_NUM>{};
+  for (const auto &image : modern_color_images) {
+    for (auto type = std::size_t{}; type < modern_mask.size(); ++type) {
+      modern_mask[type] = modern_mask[type] || image.node_types_used[type];
+    }
+  }
+  for (const auto &image : modern_data_images) {
+    for (auto type = std::size_t{}; type < modern_mask.size(); ++type) {
+      modern_mask[type] = modern_mask[type] || image.node_types_used[type];
+    }
+  }
+  for (auto type = std::size_t{}; type < modern_mask.size(); ++type) {
+    modern_mask[type] =
+        modern_mask[type] || modern_chain_image.node_types_used[type];
+  }
+  const auto modern_kernel = make_interpreter_kernel(modern_mask);
+  auto modern_shader =
+      device.compile(modern_kernel, ShaderOption{.enable_cache = false});
+  auto run_modern = [&](const ShaderImage &image) {
+    auto word_buffer = device.create_buffer<std::uint32_t>(image.words.size());
+    auto floating_buffer = device.create_buffer<luisa::float4>(floating.size());
+    auto integer_buffer = device.create_buffer<luisa::uint4>(integer.size());
+    floating = {};
+    integer = {};
+    stream << word_buffer.copy_from(luisa::span{image.words})
+           << modern_shader(word_buffer, floating_buffer, integer_buffer)
+                  .dispatch(2u)
+           << floating_buffer.copy_to(luisa::span{floating})
+           << integer_buffer.copy_to(luisa::span{integer}) << synchronize();
+  };
+
+  for (auto index = std::size_t{}; index < modern_color_images.size();
+       ++index) {
+    run_modern(modern_color_images[index]);
+    const auto front_label = std::string{"front-facing modern MixColor "} +
+                             legacy_mix_modes[index].first;
+    const auto back_label = std::string{"back-facing modern MixColor "} +
+                            legacy_mix_modes[index].first;
+    if (!require_float3(floating[0], modern_front[index], front_label) ||
+        !require_float3(floating[1], modern_back[index], back_label) ||
+        !approximately_equal(floating[0].w, modern_front[index].x) ||
+        !approximately_equal(floating[1].w, modern_back[index].x) ||
+        integer[0].x != ended || integer[1].x != ended ||
+        integer[0].y != 31u || integer[1].y != 31u ||
+        integer[0].z != device_svm::shader_data_emission ||
+        integer[1].z != (device_svm::shader_data_backfacing |
+                         device_svm::shader_data_emission)) {
+      std::cerr << "dynamic modern MixColor mismatch for "
+                << legacy_mix_modes[index].first << " on " << backend << '\n';
+      return EXIT_FAILURE;
+    }
+  }
+  for (auto index = std::size_t{}; index < modern_data_images.size(); ++index) {
+    run_modern(modern_data_images[index]);
+    const auto final_offset = index < 2u ? 26u : index < 4u ? 30u : 26u;
+    const auto label = std::string{"modern typed Mix "} +
+                       std::to_string(index);
+    if (!require_float3(floating[0], data_front[index], label + " front") ||
+        !require_float3(floating[1], data_back[index], label + " back") ||
+        !approximately_equal(floating[0].w, data_front[index].x) ||
+        !approximately_equal(floating[1].w, data_back[index].x) ||
+        integer[0].x != ended || integer[1].x != ended ||
+        integer[0].y != final_offset || integer[1].y != final_offset ||
+        integer[0].z != device_svm::shader_data_emission ||
+        integer[1].z != (device_svm::shader_data_backfacing |
+                         device_svm::shader_data_emission)) {
+      std::cerr << "dynamic modern typed Mix mismatch for case " << index
+                << " on " << backend << '\n';
+      return EXIT_FAILURE;
+    }
+  }
+
+  run_modern(modern_chain_image);
+  static constexpr auto chain_front =
+      luisa::float3{0.259999990f, 0.540000021f, 0.0f};
+  static constexpr auto chain_back =
+      luisa::float3{0.635999918f, 0.0f, 0.088000007f};
+  if (!require_float3(floating[0], chain_front,
+                      "front-facing modern Mix chain") ||
+      !require_float3(floating[1], chain_back,
+                      "back-facing modern Mix chain") ||
+      !approximately_equal(floating[0].w, chain_front.x) ||
+      !approximately_equal(floating[1].w, chain_back.x) ||
+      integer[0].x != ended || integer[1].x != ended ||
+      integer[0].y != 53u || integer[1].y != 53u ||
+      integer[0].z != device_svm::shader_data_emission ||
+      integer[1].z != (device_svm::shader_data_backfacing |
+                       device_svm::shader_data_emission)) {
+    std::cerr << "dynamic modern Mix chain mismatch on " << backend << '\n';
+    return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
 }

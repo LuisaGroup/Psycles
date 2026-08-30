@@ -310,6 +310,40 @@ void test_graph_errors_are_explicit() {
     }
 }
 
+void test_linked_inputs_retain_cycles_socket_defaults() {
+    ShaderCompiler compiler{make_core_node_registry()};
+    ShaderGraph graph;
+    const auto color = graph.add_node(node_type::constant_color, "Color");
+    const auto mix = graph.add_node(node_type::mix_color, "Mix Color");
+    const auto emission = graph.add_node(node_type::emission, "Emission");
+    const auto authored = SocketValue::color({0.25f, 0.5f, 0.75f});
+
+    expect(
+        graph.set_input(mix, "A", authored) &&
+            graph.connect({color, "Color"}, mix, "A") &&
+            graph.connect({color, "Color"}, mix, "B") &&
+            graph.connect({mix, "Color"}, emission, "Color"),
+        "failed to construct linked socket-default regression graph");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+
+    const auto compiled = compiler.compile(graph);
+    expect(compiled.ok(), "linked socket-default graph did not compile");
+    const auto *normalized_mix = compiled.program->graph().find(mix);
+    expect(normalized_mix != nullptr, "normalized Mix Color node is absent");
+    const auto &a = normalized_mix->inputs.at("A");
+    const auto &b = normalized_mix->inputs.at("B");
+    expect(
+        a.source.has_value() && a.value == authored,
+        "connect discarded an authored Cycles socket fallback");
+    expect(
+        b.source.has_value() && b.value.has_value() &&
+            b.value->type == SocketType::color &&
+            std::get<Vec3f>(b.value->value) == Vec3f{},
+        "normalization did not retain the Cycles schema fallback while linked");
+}
+
 void test_sampled_color_ramp_is_part_of_the_graph_contract() {
     ShaderCompiler compiler{make_core_node_registry()};
     ShaderGraph graph;
@@ -537,6 +571,7 @@ int main() {
         test_incremental_material_library();
         test_material_library_compiles_only_the_selected_domain();
         test_graph_errors_are_explicit();
+        test_linked_inputs_retain_cycles_socket_defaults();
         test_sampled_color_ramp_is_part_of_the_graph_contract();
         test_point_to_vector_conversion_lowers();
         test_scene_delta_is_atomic();
