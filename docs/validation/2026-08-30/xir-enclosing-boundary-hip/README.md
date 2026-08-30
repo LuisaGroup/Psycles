@@ -291,7 +291,7 @@ by Cycles and Psycles in one runner invocation.
 
 | scene | resolution | Cycles HIP | Psycles HIP | Psycles/Cycles | gap |
 |---|---:|---:|---:|---:|---:|
-| Official benchmark | 2048x858 | 119.236 s | 128.305 s | 1.0761x | +7.61% |
+| Official benchmark | 2048x858 | 119.236 s | 134.086 s | 1.1245x | +12.45% |
 | Monster Under the Bed | 1024x1024 | 58.179 s | 77.076 s | 1.3248x | +32.48% |
 | Lone Monk | 1440x1080 | 56.759 s | 78.022 s | 1.3746x | +37.46% |
 | Classroom | 1920x1080 | 83.977 s | 132.045 s | 1.5724x | +57.24% |
@@ -308,6 +308,16 @@ for Lone Monk, 241--242 W for Classroom, 220--221 W for Flat Archiviz,
 218--220 W for Barbershop, 236--239 W for Splash, 261--267 W for the official
 benchmark, and 213 W for the active-volume scene. No run used the wrong device
 or exhibited a persistent low-utilization tail.
+
+The benchmark row is the post particle-hair-color exact-build run. The first
+full run used a different patched Blender 5.2.1 build and is retained only as
+a diagnostic; it took 133.943 s. Re-exporting with the exact Cycles-reference
+build hash `9e2066aef7ef` took 134.086 s, a 0.11% spread. Compared with the
+pre-color 128.305 s row, evaluating the newly correct curve-domain attributes
+costs about 4.5%. This is a measured feature cost, not a performance gain, and
+is the next attribute-lookup optimization target. During the exact run the RX
+9070 XT reached 100% busy, 3212 MHz shader clock, PCIe x16, and a 305 W package
+power sample.
 
 ## Runtime program and frame sizes
 
@@ -338,7 +348,7 @@ a percentage. Every listed Combined pass has zero invalid Psycles pixels.
 
 | scene | Combined | luminance ratio | Diffuse Color | Glossy Color | Transmission Color | Normal |
 |---|---:|---:|---:|---:|---:|---:|
-| Benchmark | 21.4339% | 0.964453 | 3.7418% | 10.1168% | 0.5321% | 4.2905% |
+| Benchmark | 20.5486% | 0.967275 | 3.5651% | 1.9600% | 0.5416% | 4.2853% |
 | Monster | 1.8148% | 1.002918 | 0.0367% | 0.0200% | 0.0000% | 0.0159% |
 | Lone Monk | 1.1625% | 1.000754 | 0.0737% | 0.0872% | 0.0000% | 0.1983% |
 | Classroom | 0.6687% | 0.999389 | 0.5916% | 0.0179% | 0.0083% | 0.9866% |
@@ -367,13 +377,18 @@ difference panels.
 ### Official benchmark
 
 Camera, terrain, rocks, grass, character silhouettes, and sheep support align.
-The XIR fix removes the skipped ribbon interval, but visible hair/wool and
-lighting residuals remain. Normal residuals remain coherent on hair, wool,
+The curve-color repair restores the wool's authored glossy color: Glossy Color
+relative RMSE falls from 10.1168% to 1.9600%, and its luminance ratio improves
+from 0.974153 to 0.997511. The Combined result improves more modestly from
+21.4339% to 20.5486%. Visual inspection confirms that the old nearly uniform
+wool lobe is gone; the remaining amplified difference is concentrated in
+direct/indirect illumination on the character, sheep, tree, and rocks rather
+than missing graph color. Normal residuals remain coherent on hair, wool,
 rocks, and parts of the character.
 
-![Benchmark Combined](triptychs/benchmark-combined.png)
+![Benchmark Combined after curve color repair](triptychs/benchmark-hair-color-combined.png)
 
-![Benchmark Normal](triptychs/benchmark-normal.png)
+![Benchmark Glossy Color after curve color repair](triptychs/benchmark-hair-color-glosscol.png)
 
 ### Monster Under the Bed
 
