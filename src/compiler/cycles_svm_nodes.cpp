@@ -114,6 +114,21 @@ clamp_type(const GraphNode *node) noexcept {
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<NodeCombSepColorType>
+combsep_color_type(const GraphNode *node) noexcept {
+  const auto mode = string_property(node, "Mode");
+  if (mode == "RGB") {
+    return NODE_COMBSEP_COLOR_RGB;
+  }
+  if (mode == "HSV") {
+    return NODE_COMBSEP_COLOR_HSV;
+  }
+  if (mode == "HSL") {
+    return NODE_COMBSEP_COLOR_HSL;
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] float cycles_max(float a, float b) noexcept {
   return a > b ? a : b;
 }
@@ -159,6 +174,128 @@ clamp_type(const GraphNode *node) noexcept {
   return {color.x + factor * (inverse.x - color.x),
           color.y + factor * (inverse.y - color.y),
           color.z + factor * (inverse.z - color.z)};
+}
+
+[[nodiscard]] Vec3f cycles_rgb_to_hsv(Vec3f rgb) noexcept {
+  const auto cmax = std::fmax(rgb.x, std::fmax(rgb.y, rgb.z));
+  const auto cmin = cycles_min(rgb.x, cycles_min(rgb.y, rgb.z));
+  const auto cdelta = cmax - cmin;
+  auto h = 0.0f;
+  auto s = 0.0f;
+  const auto v = cmax;
+
+  if (cmax != 0.0f) {
+    s = cdelta / cmax;
+  }
+  if (s != 0.0f) {
+    const Vec3f c{(cmax - rgb.x) / cdelta, (cmax - rgb.y) / cdelta,
+                  (cmax - rgb.z) / cdelta};
+    if (rgb.x == cmax) {
+      h = c.z - c.y;
+    } else if (rgb.y == cmax) {
+      h = 2.0f + c.x - c.z;
+    } else {
+      h = 4.0f + c.y - c.x;
+    }
+    h /= 6.0f;
+    if (h < 0.0f) {
+      h += 1.0f;
+    }
+  }
+  return {h, s, v};
+}
+
+[[nodiscard]] Vec3f cycles_hsv_to_rgb(Vec3f hsv) noexcept {
+  auto h = hsv.x;
+  const auto s = hsv.y;
+  const auto v = hsv.z;
+  if (s == 0.0f) {
+    return {v, v, v};
+  }
+  if (h == 1.0f) {
+    h = 0.0f;
+  }
+  h *= 6.0f;
+  const auto i = std::floor(h);
+  const auto f = h - i;
+  const auto p = v * (1.0f - s);
+  const auto q = v * (1.0f - s * f);
+  const auto t = v * (1.0f - s * (1.0f - f));
+  if (i == 0.0f) {
+    return {v, t, p};
+  }
+  if (i == 1.0f) {
+    return {q, v, p};
+  }
+  if (i == 2.0f) {
+    return {p, v, t};
+  }
+  if (i == 3.0f) {
+    return {p, q, v};
+  }
+  if (i == 4.0f) {
+    return {t, p, v};
+  }
+  return {v, p, q};
+}
+
+[[nodiscard]] Vec3f cycles_rgb_to_hsl(Vec3f rgb) noexcept {
+  const auto cmax = std::fmax(rgb.x, std::fmax(rgb.y, rgb.z));
+  const auto cmin = cycles_min(rgb.x, cycles_min(rgb.y, rgb.z));
+  auto h = 0.0f;
+  auto s = 0.0f;
+  const auto l = cycles_min(1.0f, (cmax + cmin) / 2.0f);
+  if (cmax != cmin) {
+    const auto cdelta = cmax - cmin;
+    s = l > 0.5f ? cdelta / (2.0f - cmax - cmin) : cdelta / (cmax + cmin);
+    if (cmax == rgb.x) {
+      h = (rgb.y - rgb.z) / cdelta + (rgb.y < rgb.z ? 6.0f : 0.0f);
+    } else if (cmax == rgb.y) {
+      h = (rgb.z - rgb.x) / cdelta + 2.0f;
+    } else {
+      h = (rgb.x - rgb.y) / cdelta + 4.0f;
+    }
+  }
+  h /= 6.0f;
+  return {h, s, l};
+}
+
+[[nodiscard]] Vec3f cycles_hsl_to_rgb(Vec3f hsl) noexcept {
+  auto nr = std::fabs(hsl.x * 6.0f - 3.0f) - 1.0f;
+  auto ng = 2.0f - std::fabs(hsl.x * 6.0f - 2.0f);
+  auto nb = 2.0f - std::fabs(hsl.x * 6.0f - 4.0f);
+  nr = cycles_clamp(nr, 0.0f, 1.0f);
+  nb = cycles_clamp(nb, 0.0f, 1.0f);
+  ng = cycles_clamp(ng, 0.0f, 1.0f);
+  const auto chroma = (1.0f - std::fabs(2.0f * hsl.z - 1.0f)) * hsl.y;
+  return {(nr - 0.5f) * chroma + hsl.z, (ng - 0.5f) * chroma + hsl.z,
+          (nb - 0.5f) * chroma + hsl.z};
+}
+
+[[nodiscard]] Vec3f cycles_combine_color(NodeCombSepColorType type,
+                                         Vec3f color) noexcept {
+  switch (type) {
+  case NODE_COMBSEP_COLOR_HSV:
+    return cycles_hsv_to_rgb(color);
+  case NODE_COMBSEP_COLOR_HSL:
+    return cycles_hsl_to_rgb(color);
+  case NODE_COMBSEP_COLOR_RGB:
+  default:
+    return color;
+  }
+}
+
+[[nodiscard]] Vec3f cycles_separate_color(NodeCombSepColorType type,
+                                          Vec3f color) noexcept {
+  switch (type) {
+  case NODE_COMBSEP_COLOR_HSV:
+    return cycles_rgb_to_hsv(color);
+  case NODE_COMBSEP_COLOR_HSL:
+    return cycles_rgb_to_hsl(color);
+  case NODE_COMBSEP_COLOR_RGB:
+  default:
+    return color;
+  }
 }
 
 class UnsupportedNode final : public GraphNode {
@@ -569,6 +706,80 @@ public:
   }
 };
 
+class SeparateColorNode final : public GraphNode {
+public:
+  void constant_fold(const ConstantFolder &folder) override {
+    if (!folder.all_inputs_constant()) {
+      return;
+    }
+    const auto type = combsep_color_type(this);
+    const auto color =
+        literal<Vec3f>(input("Color"), contract::SocketType::color);
+    if (!type || !color) {
+      return;
+    }
+    const auto separated = cycles_separate_color(*type, *color);
+    if (folder.output == output("Red")) {
+      folder.make_constant(separated.x);
+    } else if (folder.output == output("Green")) {
+      folder.make_constant(separated.y);
+    } else if (folder.output == output("Blue")) {
+      folder.make_constant(separated.z);
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto type = combsep_color_type(this);
+    if (!type) {
+      compiler.fail("Cycles Separate Color mode is not migrated exactly");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_SEPARATE_COLOR,
+        SVMNodeSeparateColor{.color_type = *type,
+                             .color = compiler.input_float3("Color"),
+                             .red_offset = compiler.output("Red"),
+                             .green_offset = compiler.output("Green"),
+                             .blue_offset = compiler.output("Blue"),
+                             ._pad = {0u}});
+  }
+};
+
+class CombineColorNode final : public GraphNode {
+public:
+  void constant_fold(const ConstantFolder &folder) override {
+    if (!folder.all_inputs_constant()) {
+      return;
+    }
+    const auto type = combsep_color_type(this);
+    const auto red =
+        literal<float>(input("Red"), contract::SocketType::floating);
+    const auto green =
+        literal<float>(input("Green"), contract::SocketType::floating);
+    const auto blue =
+        literal<float>(input("Blue"), contract::SocketType::floating);
+    if (type && red && green && blue) {
+      folder.make_constant(cycles_combine_color(*type, {*red, *green, *blue}));
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto type = combsep_color_type(this);
+    if (!type) {
+      compiler.fail("Cycles Combine Color mode is not migrated exactly");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_COMBINE_COLOR,
+        SVMNodeCombineColor{.color_type = *type,
+                            .red = compiler.input_float("Red"),
+                            .green = compiler.input_float("Green"),
+                            .blue = compiler.input_float("Blue"),
+                            .color_offset = compiler.output("Color"),
+                            ._pad = {0u, 0u, 0u}});
+  }
+};
+
 class BsdfNode : public GraphNode {
 private:
   ClosureType _closure;
@@ -793,6 +1004,12 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   }
   if (type == node_type::clamp_range) {
     return std::make_unique<ClampNode>();
+  }
+  if (type == node_type::separate_color) {
+    return std::make_unique<SeparateColorNode>();
+  }
+  if (type == node_type::combine_color) {
+    return std::make_unique<CombineColorNode>();
   }
   if (type == node_type::diffuse_bsdf) {
     return std::make_unique<DiffuseBsdfNode>();

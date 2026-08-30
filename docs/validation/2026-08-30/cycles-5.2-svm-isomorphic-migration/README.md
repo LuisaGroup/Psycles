@@ -503,3 +503,55 @@ cmake --build build --target psycles_luisa_cycles_svm_tests \
   --parallel 32                                                PASS
 build/bin/psycles_luisa_cycles_svm_tests hip                   PASS
 ```
+
+## Combine/Separate Color opcode checkpoint
+
+`SeparateColorNode` and `CombineColorNode` are copied from Cycles 5.2.1
+`scene/shader_nodes.cpp`. Their SVM payload layout and runtime transitions map
+directly to `kernel/svm/sepcomb_color.h`; RGB/HSV/HSL conversion semantics come
+from `kernel/svm/color_util.h` and `util/color.h`. The host compiler and Luisa
+interpreter cover every Cycles `NodeCombSepColorType` direction: RGB to
+components, HSV to components, HSL to components, components to RGB,
+components to HSV, and components to HSL. Socket names are projected to
+Cycles' Red/Green/Blue inputs and outputs before compilation; mode values,
+invalid-stack-lane guards, payload words, and switch defaults remain those of
+Cycles.
+
+The dynamic `svm_combsep_color_pipeline` probe deliberately keeps all six
+paths live by connecting Geometry Backfacing through an HSL/HSV/RGB chain.
+Cycles shader 5 had global jump `(89,142,143)`. Removing the two global padding
+words gives an exact 59-word local stream with peak stack usage of six lanes;
+the permanent compiler test freezes every word and opcode position. Cycles CPU
+rendered the linear Emission pass as:
+
+```text
+front: (0.000000000, 0.180000007, 0.000000000)
+back:  (0.564999998, 0.383161038, 0.000000000)
+```
+
+The constant `svm_combsep_color_constant_fold` probe traverses the same mode
+sequence without a dynamic input. Cycles produced global jump `(89,96,97)` and
+a 13-word local stream containing no Separate/Combine opcode. Its final
+closure weight is frozen bit-for-bit as
+`(0x3ed6f51a,0x3eb020c6,0x3e051eb7)`, corresponding to
+`(0.419838727,0.344000041,0.129999980)`.
+
+The HIP interpreter consumes the dynamic 59-word stream directly. It matches
+both Cycles CPU triples within `2e-6`, plus closure weight, ShaderData flags,
+ended status, and final PC 57. Oracle generation and focused validation were:
+
+```text
+blender --background --factory-startup --python \
+  tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_combsep_color_pipeline.blend \
+  svm_combsep_color_pipeline                                  PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_combsep_color_pipeline.svm52 \
+  blender /tmp/svm_combsep_color_pipeline.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_combsep_color_pipeline.exr 4 4 1 0 \
+  --cycles-device CPU                                         PASS
+cmake --build build --parallel 32                             PASS
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.(cycles_svm_(abi|bytecode|compiler)|luisa_cycles_svm_hip)$' \
+                                                               4/4 PASS
+```

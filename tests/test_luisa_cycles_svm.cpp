@@ -149,6 +149,78 @@ namespace device_svm = psycles::luisa_backend::cycles_svm;
   return image;
 }
 
+[[nodiscard]] ShaderImage compile_dynamic_combsep_color_pipeline() {
+  ShaderGraph graph;
+  const auto geometry =
+      graph.add_node(node_type::geometry, "Dynamic Backfacing");
+  const auto combine_hsl =
+      graph.add_node(node_type::combine_color, "Dynamic Combine HSL");
+  const auto separate_hsv =
+      graph.add_node(node_type::separate_color, "Dynamic Separate HSV");
+  const auto combine_rgb =
+      graph.add_node(node_type::combine_color, "Dynamic Combine RGB");
+  const auto separate_hsl =
+      graph.add_node(node_type::separate_color, "Dynamic Separate HSL");
+  const auto combine_hsv =
+      graph.add_node(node_type::combine_color, "Dynamic Combine HSV");
+  const auto separate_rgb =
+      graph.add_node(node_type::separate_color, "Dynamic Separate RGB");
+  const auto combine_rgb_final =
+      graph.add_node(node_type::combine_color, "Dynamic Final Combine RGB");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  const auto configured =
+      graph.set_property(combine_hsl, "Mode",
+                         contract::SocketValue::string("HSL")) &&
+      graph.set_input(combine_hsl, "R",
+                      contract::SocketValue::floating(0.13f)) &&
+      graph.set_input(combine_hsl, "B",
+                      contract::SocketValue::floating(0.36f)) &&
+      graph.connect({geometry, "Backfacing"}, combine_hsl, "G") &&
+      graph.set_property(separate_hsv, "Mode",
+                         contract::SocketValue::string("HSV")) &&
+      graph.connect({combine_hsl, "Color"}, separate_hsv, "Color") &&
+      graph.set_property(combine_rgb, "Mode",
+                         contract::SocketValue::string("RGB")) &&
+      graph.connect({separate_hsv, "B"}, combine_rgb, "R") &&
+      graph.connect({separate_hsv, "R"}, combine_rgb, "G") &&
+      graph.connect({separate_hsv, "G"}, combine_rgb, "B") &&
+      graph.set_property(separate_hsl, "Mode",
+                         contract::SocketValue::string("HSL")) &&
+      graph.connect({combine_rgb, "Color"}, separate_hsl, "Color") &&
+      graph.set_property(combine_hsv, "Mode",
+                         contract::SocketValue::string("HSV")) &&
+      graph.connect({separate_hsl, "R"}, combine_hsv, "R") &&
+      graph.connect({separate_hsl, "G"}, combine_hsv, "G") &&
+      graph.connect({separate_hsl, "B"}, combine_hsv, "B") &&
+      graph.set_property(separate_rgb, "Mode",
+                         contract::SocketValue::string("RGB")) &&
+      graph.connect({combine_hsv, "Color"}, separate_rgb, "Color") &&
+      graph.set_property(combine_rgb_final, "Mode",
+                         contract::SocketValue::string("RGB")) &&
+      graph.connect({separate_rgb, "B"}, combine_rgb_final, "R") &&
+      graph.connect({separate_rgb, "R"}, combine_rgb_final, "G") &&
+      graph.connect({separate_rgb, "G"}, combine_rgb_final, "B") &&
+      graph.connect({combine_rgb_final, "Color"}, emission, "Color");
+  if (!configured) {
+    throw std::runtime_error{
+        "failed to create dynamic Combine/Separate Color SVM graph"};
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  if (!shader.ok()) {
+    throw std::runtime_error{
+        "dynamic Combine/Separate Color graph did not validate"};
+  }
+  auto image = compile_shader(*shader.program);
+  if (!image.valid) {
+    throw std::runtime_error{image.diagnostic};
+  }
+  return image;
+}
+
 [[nodiscard]] auto make_interpreter_kernel(
     std::array<bool, NODE_NUM> node_types_used) {
   return Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>,
@@ -280,6 +352,7 @@ int main(int argc, char **argv) {
   const auto math_image = compile_dynamic_math();
   const auto mix_image = compile_dynamic_mix();
   const auto color_image = compile_dynamic_color_pipeline();
+  const auto combsep_color_image = compile_dynamic_combsep_color_pipeline();
 
   const auto shape_kernel = make_interpreter_kernel(math_image.node_types_used);
   InterpreterShape shape;
@@ -356,6 +429,27 @@ int main(int argc, char **argv) {
                        device_svm::shader_data_emission)) {
     std::cerr << "dynamic color Cycles SVM state mismatch on " << backend
               << '\n';
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run_image(device, stream, combsep_color_image, floating, integer);
+  // Frozen from the Cycles CPU Emission pass of
+  // `svm_combsep_color_pipeline`. The stream is frozen independently in the
+  // host compiler regression.
+  if (!require_float3(floating[0], {0.0f, 0.180000007f, 0.0f},
+                      "front-facing Combine/Separate Color emission") ||
+      !require_float3(floating[1], {0.564999998f, 0.383161038f, 0.0f},
+                      "back-facing Combine/Separate Color emission") ||
+      !approximately_equal(floating[0].w, 0.0f) ||
+      !approximately_equal(floating[1].w, 0.564999998f) ||
+      integer[0].x != ended || integer[1].x != ended || integer[0].y != 57u ||
+      integer[1].y != 57u || integer[0].z != device_svm::shader_data_emission ||
+      integer[1].z != (device_svm::shader_data_backfacing |
+                       device_svm::shader_data_emission)) {
+    std::cerr << "dynamic Combine/Separate Color Cycles SVM state mismatch on "
+              << backend << '\n';
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

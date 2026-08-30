@@ -561,6 +561,196 @@ def _svm_color_constant_fold(scene: Any) -> None:
     _plane(material)
 
 
+def _svm_combsep_color_pipeline(scene: Any) -> None:
+    """Keep Cycles Combine/Separate Color live in HSL, HSV, and RGB modes."""
+    material, tree, output = _material("SVM Combine Separate Color Probe")
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.name = "Dynamic Backfacing"
+
+    combine_hsl = tree.nodes.new("ShaderNodeCombineColor")
+    combine_hsl.name = "Dynamic Combine HSL"
+    combine_hsl.mode = "HSL"
+    _input(combine_hsl, "Red").default_value = 0.13
+    _input(combine_hsl, "Blue").default_value = 0.36
+    tree.links.new(
+        _output(geometry, "Backfacing"),
+        _input(combine_hsl, "Green"),
+    )
+
+    separate_hsv = tree.nodes.new("ShaderNodeSeparateColor")
+    separate_hsv.name = "Dynamic Separate HSV"
+    separate_hsv.mode = "HSV"
+    tree.links.new(
+        _output(combine_hsl, "Color"),
+        _input(separate_hsv, "Color"),
+    )
+
+    combine_rgb = tree.nodes.new("ShaderNodeCombineColor")
+    combine_rgb.name = "Dynamic Combine RGB"
+    combine_rgb.mode = "RGB"
+    tree.links.new(
+        _output(separate_hsv, "Blue"),
+        _input(combine_rgb, "Red"),
+    )
+    tree.links.new(
+        _output(separate_hsv, "Red"),
+        _input(combine_rgb, "Green"),
+    )
+    tree.links.new(
+        _output(separate_hsv, "Green"),
+        _input(combine_rgb, "Blue"),
+    )
+
+    separate_hsl = tree.nodes.new("ShaderNodeSeparateColor")
+    separate_hsl.name = "Dynamic Separate HSL"
+    separate_hsl.mode = "HSL"
+    tree.links.new(
+        _output(combine_rgb, "Color"),
+        _input(separate_hsl, "Color"),
+    )
+
+    combine_hsv = tree.nodes.new("ShaderNodeCombineColor")
+    combine_hsv.name = "Dynamic Combine HSV"
+    combine_hsv.mode = "HSV"
+    for channel in ("Red", "Green", "Blue"):
+        tree.links.new(
+            _output(separate_hsl, channel),
+            _input(combine_hsv, channel),
+        )
+
+    separate_rgb = tree.nodes.new("ShaderNodeSeparateColor")
+    separate_rgb.name = "Dynamic Separate RGB"
+    separate_rgb.mode = "RGB"
+    tree.links.new(
+        _output(combine_hsv, "Color"),
+        _input(separate_rgb, "Color"),
+    )
+
+    combine_rgb_final = tree.nodes.new("ShaderNodeCombineColor")
+    combine_rgb_final.name = "Dynamic Final Combine RGB"
+    combine_rgb_final.mode = "RGB"
+    tree.links.new(
+        _output(separate_rgb, "Blue"),
+        _input(combine_rgb_final, "Red"),
+    )
+    tree.links.new(
+        _output(separate_rgb, "Red"),
+        _input(combine_rgb_final, "Green"),
+    )
+    tree.links.new(
+        _output(separate_rgb, "Green"),
+        _input(combine_rgb_final, "Blue"),
+    )
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(combine_rgb_final, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _material_matrix(
+        scene,
+        [material, material],
+        columns=2,
+        rows=1,
+        name="SVM Combine Separate Color Matrix",
+        backfacing={1},
+        frame_bleed=0.1,
+    )
+
+
+def _svm_combsep_color_constant_fold(scene: Any) -> None:
+    """Freeze Cycles folding for HSL combine, HSV separate, and RGB combine."""
+    material, tree, output = _material("SVM Combine Separate Color Fold Probe")
+    combine_hsl = tree.nodes.new("ShaderNodeCombineColor")
+    combine_hsl.name = "Constant Combine HSL"
+    combine_hsl.mode = "HSL"
+    _input(combine_hsl, "Red").default_value = 0.13
+    _input(combine_hsl, "Green").default_value = 0.55
+    _input(combine_hsl, "Blue").default_value = 0.36
+
+    separate_hsv = tree.nodes.new("ShaderNodeSeparateColor")
+    separate_hsv.name = "Constant Separate HSV"
+    separate_hsv.mode = "HSV"
+    tree.links.new(
+        _output(combine_hsl, "Color"),
+        _input(separate_hsv, "Color"),
+    )
+
+    combine_rgb = tree.nodes.new("ShaderNodeCombineColor")
+    combine_rgb.name = "Constant Combine RGB"
+    combine_rgb.mode = "RGB"
+    tree.links.new(
+        _output(separate_hsv, "Blue"),
+        _input(combine_rgb, "Red"),
+    )
+    tree.links.new(
+        _output(separate_hsv, "Red"),
+        _input(combine_rgb, "Green"),
+    )
+    tree.links.new(
+        _output(separate_hsv, "Green"),
+        _input(combine_rgb, "Blue"),
+    )
+
+    separate_hsl = tree.nodes.new("ShaderNodeSeparateColor")
+    separate_hsl.name = "Constant Separate HSL"
+    separate_hsl.mode = "HSL"
+    tree.links.new(
+        _output(combine_rgb, "Color"),
+        _input(separate_hsl, "Color"),
+    )
+
+    combine_hsv = tree.nodes.new("ShaderNodeCombineColor")
+    combine_hsv.name = "Constant Combine HSV"
+    combine_hsv.mode = "HSV"
+    for channel in ("Red", "Green", "Blue"):
+        tree.links.new(
+            _output(separate_hsl, channel),
+            _input(combine_hsv, channel),
+        )
+
+    separate_rgb = tree.nodes.new("ShaderNodeSeparateColor")
+    separate_rgb.name = "Constant Separate RGB"
+    separate_rgb.mode = "RGB"
+    tree.links.new(
+        _output(combine_hsv, "Color"),
+        _input(separate_rgb, "Color"),
+    )
+
+    combine_rgb_final = tree.nodes.new("ShaderNodeCombineColor")
+    combine_rgb_final.name = "Constant Final Combine RGB"
+    combine_rgb_final.mode = "RGB"
+    tree.links.new(
+        _output(separate_rgb, "Blue"),
+        _input(combine_rgb_final, "Red"),
+    )
+    tree.links.new(
+        _output(separate_rgb, "Red"),
+        _input(combine_rgb_final, "Green"),
+    )
+    tree.links.new(
+        _output(separate_rgb, "Green"),
+        _input(combine_rgb_final, "Blue"),
+    )
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(combine_rgb_final, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
 def _math_operations(scene: Any) -> None:
     """Exercise every Blender 4.5.10 ShaderNodeMath operation."""
     material, tree, output = _material("Math Operations Probe")

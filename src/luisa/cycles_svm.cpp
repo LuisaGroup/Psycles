@@ -226,6 +226,16 @@ void eval_nodes(
       if (node_types_used[NODE_INVERT]) {
         PSYCLES_SVM_CASE(NODE_INVERT) { detail::node_invert(cursor, stack); };
       }
+      if (node_types_used[NODE_SEPARATE_COLOR]) {
+        PSYCLES_SVM_CASE(NODE_SEPARATE_COLOR) {
+          detail::node_separate_color(cursor, stack);
+        };
+      }
+      if (node_types_used[NODE_COMBINE_COLOR]) {
+        PSYCLES_SVM_CASE(NODE_COMBINE_COLOR) {
+          detail::node_combine_color(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_CLAMP]) {
         PSYCLES_SVM_CASE(NODE_CLAMP) { detail::node_clamp(cursor, stack); };
       }
