@@ -81,6 +81,10 @@ void node_separate_vector(Cursor &cursor, Stack &stack,
 void node_combine_vector(Cursor &cursor, Stack &stack,
                          bool use_derivatives) noexcept;
 void node_vector_rotate(Cursor &cursor, Stack &stack) noexcept;
+void node_vector_transform(Cursor &cursor, Stack &stack,
+                           const TransformState &transform_state,
+                           const ShaderData &shader_data,
+                           bool object_motion_enabled) noexcept;
 void node_clamp(Cursor &cursor, Stack &stack) noexcept;
 
 void node_closure_set_weight(Cursor &cursor,

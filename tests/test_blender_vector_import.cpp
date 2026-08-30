@@ -10,6 +10,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -371,9 +372,130 @@ void test_blender_vector_rotate_import() {
          "imported Vector Rotate stack lifetime differs from Cycles");
 }
 
+void test_blender_vector_transform_import() {
+  TemporaryDirectory temporary;
+  {
+    std::ofstream geometry{temporary.path() / "geometry.bin", std::ios::binary};
+    geometry.write("PSYGEO1\0", 8);
+  }
+  {
+    std::ofstream scene{temporary.path() / "scene.json"};
+    scene << R"JSON({
+  "schema":"psycles.blender-scene.v1",
+  "images":[],"node_groups":[],
+  "materials":[{
+    "name":"SVM Vector Transform Import",
+    "cycles_sync":{"shader_index":5},
+    "node_tree":{
+      "name":"SVM Vector Transform Import",
+      "surface_root":{"node":"Emission","socket":"Emission"},
+      "volume_root":null,"displacement_root":null,
+      "links":[
+        {"from_node":"Vector Transform","from_socket":"Vector",
+         "to_node":"Emission","to_socket":"Color"}
+      ],
+      "nodes":[
+        {
+          "name":"Emission","type":"EMISSION","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Color","name":"Color",
+             "type":"NodeSocketColor","linked":true,
+             "default":[1.0,1.0,1.0,1.0]},
+            {"identifier":"Strength","name":"Strength",
+             "type":"NodeSocketFloat","linked":false,"default":1.0}
+          ],
+          "outputs":[
+            {"identifier":"Emission","name":"Emission",
+             "type":"NodeSocketShader","linked":true}
+          ],
+          "properties":{},"special":{}
+        },
+        {
+          "name":"Vector Transform","type":"VECTOR_TRANSFORM",
+          "mute":false,"internal_links":[],
+          "inputs":[
+            {"identifier":"Vector","name":"Vector",
+             "type":"NodeSocketVector","linked":false,
+             "default":[0.37,-0.21,0.63]}
+          ],
+          "outputs":[
+            {"identifier":"Vector","name":"Vector",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]}
+          ],
+          "properties":{"vector_type":"NORMAL",
+                        "convert_from":"CAMERA",
+                        "convert_to":"OBJECT"},
+          "special":{}
+        }
+      ]
+    }
+  }],
+  "render":{"width":16,"height":16,"percentage":100,"cycles":{}},
+  "camera":{"name":"Camera","type":"PERSP",
+    "transform":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+    "clip_start":0.01,"clip_end":100.0},
+  "geometries":[],"curve_geometries":[],"instances":[],"lights":[],
+  "world":null,"world_environment":null
+})JSON";
+  }
+
+  const auto imported =
+      psycles::adapter::load_blender_scene_bundle(temporary.path());
+  expect(imported.ok(), "Vector Transform scene did not import");
+  const psycles::contract::MaterialDesc *material = nullptr;
+  for (const auto &[id, candidate] : imported.scene->materials) {
+    static_cast<void>(id);
+    if (candidate.name == "SVM Vector Transform Import") {
+      material = &candidate;
+      break;
+    }
+  }
+  expect(material != nullptr, "Vector Transform imported material is absent");
+  const psycles::contract::ShaderNode *transform = nullptr;
+  for (const auto &node : material->shader.nodes()) {
+    if (node.label == "Vector Transform") {
+      transform = &node;
+      break;
+    }
+  }
+  expect(transform != nullptr, "Blender Vector Transform node is absent");
+  expect(transform->type == psycles::compiler::node_type::vector_transform,
+         "Blender Vector Transform type differs from Cycles projection");
+  expect(transform->properties.at("Type").value ==
+                 psycles::contract::SocketValue::string("NORMAL").value &&
+             transform->properties.at("Convert From").value ==
+                 psycles::contract::SocketValue::string("CAMERA").value &&
+             transform->properties.at("Convert To").value ==
+                 psycles::contract::SocketValue::string("OBJECT").value,
+         "Blender Vector Transform properties were not preserved");
+
+  const psycles::compiler::ShaderCompiler frontend{
+      psycles::compiler::make_core_node_registry()};
+  const auto shader = frontend.compile(material->shader);
+  expect(shader.ok(), "imported Vector Transform graph did not validate");
+  const auto image =
+      psycles::compiler::cycles_svm::compile_shader(*shader.program);
+  expect(image.valid, "imported Vector Transform graph did not compile to SVM");
+  static constexpr std::array cycles_5_2_1_oracle{
+      0x00000001u, 0x00000004u, 0x00000014u, 0x00000015u, 0x00000059u,
+      0x00000002u, 0x00000002u, 0x00000001u, 0x3ebd70a4u, 0xbe570a3du,
+      0x3f2147aeu, 0x00000000u, 0x00000007u, 0x7fc00000u, 0x00000000u,
+      0x00000000u, 0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
+  expect(image.words == std::vector<std::uint32_t>(cycles_5_2_1_oracle.begin(),
+                                                   cycles_5_2_1_oracle.end()),
+         "imported Vector Transform stream differs from Cycles 5.2.1");
+  expect(image.peak_stack_usage == 3u,
+         "imported Vector Transform stack lifetime differs from Cycles");
+}
+
 } // namespace
 
 void test_blender_vector_import() {
   test_blender_separate_combine_xyz_import();
   test_blender_vector_rotate_import();
+  test_blender_vector_transform_import();
 }

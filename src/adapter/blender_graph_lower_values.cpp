@@ -510,6 +510,31 @@ public:
                 .ref = {.node = id, .socket = "Vector"},
                 .type = SocketType::vector});
         }
+        if (type == "VECTOR_TRANSFORM") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::vector_transform,
+                node_name);
+            static_cast<void>(context.bind(
+                id, "Vector", node, "Vector", SocketType::vector));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Type",
+                SocketValue::string(context.node_property_text(
+                    node, "vector_type", "VECTOR"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Convert From",
+                SocketValue::string(context.node_property_text(
+                    node, "convert_from", "WORLD"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Convert To",
+                SocketValue::string(context.node_property_text(
+                    node, "convert_to", "OBJECT"))));
+            return finish({
+                .ref = {.node = id, .socket = "Vector"},
+                .type = SocketType::vector});
+        }
         if (type == "NORMAL") {
             // Cycles' NormalNode has one authored direction shared by both
             // outputs. It is stored on the Blender output socket rather than

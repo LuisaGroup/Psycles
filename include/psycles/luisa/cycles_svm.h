@@ -31,6 +31,7 @@ inline constexpr std::uint32_t kernel_feature_node_aov = 1u << 7u;
 inline constexpr std::uint32_t kernel_feature_node_light_path = 1u << 8u;
 inline constexpr std::uint32_t kernel_feature_node_principled_hair = 1u << 9u;
 inline constexpr std::uint32_t kernel_feature_node_portal = 1u << 10u;
+inline constexpr std::uint32_t kernel_feature_object_motion = 1u << 15u;
 
 inline constexpr std::uint32_t kernel_feature_node_mask_surface_light =
     kernel_feature_node_emission | kernel_feature_node_voronoi_extra |
@@ -66,6 +67,10 @@ inline constexpr std::uint32_t shader_data_backfacing = 1u << 0u;
 inline constexpr std::uint32_t shader_data_emission = 1u << 1u;
 inline constexpr std::uint32_t shader_data_is_volume_shader_eval = 1u << 8u;
 
+/* Object sentinel and object flag copied from Cycles 5.2.1 kernel/types.h. */
+inline constexpr std::uint32_t object_none = ~0u;
+inline constexpr std::uint32_t shader_data_object_motion = 1u << 1u;
+
 /* Shader id decoration bits copied from Cycles 5.2.1 kernel/types.h. */
 inline constexpr std::uint32_t shader_smooth_normal = 1u << 31u;
 inline constexpr std::uint32_t shader_cast_shadow = 1u << 30u;
@@ -91,6 +96,23 @@ enum class EvaluationStatus : std::uint32_t {
   invalid_node = 3u,
 };
 
+/* Exact transform values consumed by Cycles' vector-transform handler. The
+ * camera fields project kernel_data.cam; the static object fields project
+ * object_fetch_transform() for ShaderData::object. Motion transforms remain
+ * on ShaderData, as in Cycles. */
+struct TransformState {
+  luisa::compute::Float4x4 camera_to_world;
+  luisa::compute::Float4x4 world_to_camera;
+  luisa::compute::Float4x4 object_to_world;
+  luisa::compute::Float4x4 world_to_object;
+
+  TransformState(
+      luisa::compute::Expr<luisa::float4x4> camera_to_world_transform,
+      luisa::compute::Expr<luisa::float4x4> world_to_camera_transform,
+      luisa::compute::Expr<luisa::float4x4> object_to_world_transform,
+      luisa::compute::Expr<luisa::float4x4> world_to_object_transform) noexcept;
+};
+
 /* The fields below are the exact ShaderData projection consumed by the first
  * copied SVM node families. More fields are added only when their Cycles
  * handler is copied; no alternative shader state is consulted. */
@@ -104,18 +126,27 @@ struct ShaderData {
   luisa::compute::Float u;
   luisa::compute::Float v;
   luisa::compute::Float ray_length;
+  luisa::compute::UInt object;
+  luisa::compute::UInt object_flag;
+  luisa::compute::Float4x4 ob_tfm_motion;
+  luisa::compute::Float4x4 ob_itfm_motion;
   luisa::compute::Float3 closure_emission_background;
   luisa::compute::Float3 closure_transparent_extinction;
 
-  ShaderData(luisa::compute::Expr<luisa::float3> position,
-             luisa::compute::Expr<luisa::float3> normal,
-             luisa::compute::Expr<luisa::float3> geometric_normal,
-             luisa::compute::Expr<luisa::float3> incoming,
-             luisa::compute::Expr<std::uint32_t> shader_id,
-             luisa::compute::Expr<std::uint32_t> shader_flags,
-             luisa::compute::Expr<float> parametric_u,
-             luisa::compute::Expr<float> parametric_v,
-             luisa::compute::Expr<float> length) noexcept;
+  ShaderData(
+      luisa::compute::Expr<luisa::float3> position,
+      luisa::compute::Expr<luisa::float3> normal,
+      luisa::compute::Expr<luisa::float3> geometric_normal,
+      luisa::compute::Expr<luisa::float3> incoming,
+      luisa::compute::Expr<std::uint32_t> shader_id,
+      luisa::compute::Expr<std::uint32_t> shader_flags,
+      luisa::compute::Expr<float> parametric_u,
+      luisa::compute::Expr<float> parametric_v,
+      luisa::compute::Expr<float> length,
+      luisa::compute::Expr<std::uint32_t> object_id,
+      luisa::compute::Expr<std::uint32_t> object_flags,
+      luisa::compute::Expr<luisa::float4x4> motion_object_to_world,
+      luisa::compute::Expr<luisa::float4x4> motion_world_to_object) noexcept;
 };
 
 /* Integrator counters read by Cycles' Light Path node. */
@@ -154,8 +185,10 @@ struct EvaluationResult {
 void eval_nodes(
     const luisa::compute::BufferUInt &words,
     compiler::cycles_svm::ShaderType shader_type,
+    std::uint32_t kernel_features,
     std::uint32_t node_feature_mask,
     const std::array<bool, compiler::cycles_svm::NODE_NUM> &node_types_used,
+    const TransformState &transform_state,
     ShaderData &shader_data,
     const PathState &path_state,
     EvaluationResult &result) noexcept;

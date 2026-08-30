@@ -1086,3 +1086,227 @@ ctest --test-dir build --output-on-failure -R \
 ctest --test-dir build --output-on-failure -Q -E \
   '(_fallback|_vk)$'                                          162/162 PASS
 ```
+
+## Vector Transform checkpoint
+
+`ShaderNodeVectorTransform` is projected from the following Cycles 5.2.1
+sources. No operation from the previous Psycles graph evaluator participates
+in either compilation or device execution.
+
+| Stage | Cycles 5.2.1 source |
+|---|---|
+| Blender node mapping | `intern/cycles/blender/shader.cpp` |
+| Socket schema and SVM emission | `intern/cycles/scene/shader_nodes.cpp::VectorTransformNode` |
+| Typed payload | `intern/cycles/kernel/svm/node_types.h::SVMNodeVectorTransform` |
+| Type and space enums | `intern/cycles/kernel/svm/types.h` |
+| Interpreter transition | `intern/cycles/kernel/svm/vector_transform.h` |
+| Object transform selection | `intern/cycles/kernel/geom/object.h` |
+| Camera transforms | `kernel_data.cam.cameratoworld` and `worldtocamera` |
+
+The copied schema keeps Cycles' Vector input default `(0,0,0)`, Type default
+`VECTOR`, Convert From default `WORLD`, and Convert To default `OBJECT`.
+Host strings map only to the three exact enum values in each domain; invalid
+strings fail compilation. The compiler emits the seven payload words in the
+original field order: transform type, source space, destination space, three
+`SVMInputFloat` words, and the packed output offset/padding word.
+
+### Complete transition relation
+
+Let `C` and `C^-1` be Cycles' camera-to-world and world-to-camera transforms,
+and let `O` and `O^-1` be the current shading object's object-to-world and
+world-to-object transforms. Let `A(M,p)`, `D(M,v)`, and `D^T(M,n)` denote the
+Cycles affine-point, direction, and transposed-direction operations. The
+handler uses exactly these paths:
+
+| From | To | Point | Vector | Normal |
+|---|---|---|---|---|
+| World | World | unchanged | unchanged | unchanged |
+| World | Camera | `A(C^-1,p)` | `D(C^-1,v)` | `normalize(D^T(C,n))` |
+| World | Object | `A(O^-1,p)` | `D(O^-1,v)` | `safe_normalize(D^T(O,n))` |
+| Camera | World | `A(C,p)` | `D(C,v)` | `normalize(D^T(C^-1,n))` |
+| Camera | Camera | unchanged | unchanged | unchanged |
+| Camera | Object | World result, then World-to-Object | same | same |
+| Object | World | `A(O,p)` | `D(O,v)` | `normalize(D^T(O^-1,n))` |
+| Object | Object | unchanged | unchanged | unchanged |
+| Object | Camera | Object-to-World if an object exists, then World-to-Camera | same | same |
+
+This table is descriptive; the Luisa implementation retains the three
+top-level Cycles branches and, critically, the two independent conditionals in
+both the Camera and Object branches. It does not replace them with a private
+space-composition table.
+
+The object predicate is exactly `sd.object != OBJECT_NONE`. Consequently,
+World-to-Object is a no-op without an object; Camera-to-Object stops after the
+Camera-to-World step; Object-to-World is a no-op; and Object-to-Camera still
+performs the final World-to-Camera step on the unmodified input. The two world
+probes freeze all six such Type/space cases.
+
+When `KERNEL_FEATURE_OBJECT_MOTION` is absent, the static object transform is
+used exactly as in the Cycles build without `__OBJECT_MOTION__`. When the
+feature is present, `SD_OBJECT_MOTION` selects `sd.ob_tfm_motion` or
+`sd.ob_itfm_motion`; a static object in a scene that contains other moving
+objects still selects the static transform. Permanent HIP regressions execute
+all 27 type/space combinations in all three reachable states: feature absent,
+feature present with a static current object, and feature present with a
+moving current object.
+
+`object_inverse_normal_transform()` is the one branch that calls Cycles'
+`safe_normalize`; a separate external probe and HIP regression freeze
+`NORMAL, WORLD -> OBJECT, input=(0,0,0)` as exactly `(0,0,0)`. Other normal
+branches retain ordinary `normalize` and are not silently changed to the safe
+variant.
+
+### Exact bytecode oracle
+
+The matrix probe covers the Cartesian product
+`{VECTOR,POINT,NORMAL} x {WORLD,OBJECT,CAMERA} x
+{WORLD,OBJECT,CAMERA}`. Each material produces this exact 22-word local image,
+with only the three literal enum words varying from 0 through 2:
+
+```text
+00000001 00000004 00000014 00000015
+00000059 <type> <from> <to>
+3ebd70a4 be570a3d 3f2147ae 00000000
+00000007 7fc00000 00000000 00000000 3f800000
+00000003 000000ff 00000000 00000000 00000000
+```
+
+The opcode is `0x59`, the input is the immediate vector
+`(0.37,-0.21,0.63)`, and peak stack usage is three lanes. Expected enum words
+are frozen as numeric external-oracle literals rather than computed from the
+Psycles enum declarations, so changing both the mapping and the local enum
+cannot make the regression pass spuriously.
+
+The zero-normal probe's material begins at global word 89 in the diagnostic
+Cycles stream. Its relocated local image has the same 22-word shape, with
+`type=2`, `from=0`, `to=1`, and all three immediate input words zero. Clean and
+diagnostic Cycles builds produce bit-identical 17-subimage OpenEXR files.
+
+### External Cycles values and HIP result
+
+The matrix uses a non-rigid object transform and a rotated/translated camera,
+including Blender's camera-Z convention. In the order Type, From, To, the
+clean Cycles 5.2.1 CPU Emission oracle is:
+
+```text
+VECTOR:
+  W->W ( 0.370000005,-0.209999993, 0.629999995)
+  W->O ( 0.167525366,-0.539394736, 0.519599497)
+  W->C ( 0.390730053,-0.174187228,-0.628401756)
+  O->W ( 0.686934054, 0.004955605, 0.594224215)
+  O->O ( 0.370000005,-0.209999993, 0.629999995)
+  O->C ( 0.746782243,-0.091215044,-0.508921802)
+  C->W ( 0.472389996, 0.087430008,-0.589155078)
+  C->O ( 0.433682352, 0.448862910,-0.306350172)
+  C->C ( 0.370000005,-0.209999993, 0.629999995)
+POINT:
+  W->W ( 0.370000005,-0.209999993, 0.629999995)
+  W->O ( 0.381086260,-1.134079933, 0.627285063)
+  W->C (-0.446587324,-0.462478846, 2.459831715)
+  O->W ( 0.406934023, 0.414955586, 0.404224187)
+  O->O ( 0.370000005,-0.209999993, 0.629999995)
+  O->C (-0.262218326, 0.046604354, 2.846807957)
+  C->W ( 0.892389953,-0.222570002, 2.580845118)
+  C->O ( 0.379106045,-2.042509556, 2.246579409)
+  C->C ( 0.370000005,-0.209999993, 0.629999995)
+NORMAL:
+  W->W ( 0.370000005,-0.209999993, 0.629999995)
+  W->O ( 0.366272509,-0.335450113, 0.867938697)
+  W->C ( 0.513985038,-0.229134187,-0.826629758)
+  O->W ( 0.598029315,-0.228953525, 0.768076301)
+  O->O ( 0.370000005,-0.209999993, 0.629999995)
+  O->C ( 0.622421086,-0.236620739,-0.746058047)
+  C->W ( 0.621404469, 0.115009651,-0.775002778)
+  C->O ( 0.851894081, 0.250798553,-0.459757060)
+  C->C ( 0.370000005,-0.209999993, 0.629999995)
+```
+
+The two `OBJECT_NONE` world probes additionally freeze the packed values
+`(0.472389996,-0.222570002,-0.775002778)` for Camera-to-Object and
+`(0.390730053,-0.462478846,-0.826629758)` for Object-to-Camera. The HIP SVM
+interpreter matches all 27 static, 27 feature-static, 27 motion, six
+`OBJECT_NONE`, and three zero-normal executions within `2e-6`, including
+closure weight, emission flag, termination, and final PC 20.
+
+### Production wiring canary and visual inspection
+
+The production renderer still executes the previous graph evaluator at this
+checkpoint; the copied Cycles SVM interpreter is not yet wired into full path
+tracing. The 64x64, one-sample canonical run is therefore retained as a
+negative canary, not reported as parity. Visual inspection shows all 27 Cycles
+cells on the left, a completely black Psycles Combined image in the center,
+and the same cell structure in the amplified difference image. Combined RMSE
+is `0.7800161`, MAE is `0.5684803`, and maximum absolute error is
+`2.84680796`.
+
+![Vector Transform Combined production canary](vector-transform/combined.png)
+
+The Normal pass agrees visually and numerically (RMSE `1.44675e-7`), but that
+pass comes from geometric intersection state and is not evidence that Vector
+Transform is wired. Its amplified difference image is included to distinguish
+the working scene/camera/geometry path from the missing shader-execution path.
+
+![Vector Transform Normal production canary](vector-transform/normal.png)
+
+Oracle and validation commands:
+
+```text
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_vector_transform_matrix.blend \
+  svm_vector_transform_matrix                                 PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_vector_transform_matrix.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/svm_vector_transform_matrix.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_vector_transform_matrix-trace.exr 36 36 1 0 \
+  --cycles-device CPU                                         PASS
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  /tmp/svm_vector_transform_matrix.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_vector_transform_matrix.exr 36 36 1 0 \
+  --cycles-device CPU                                         PASS
+oiiotool -a /tmp/svm_vector_transform_matrix.exr \
+  /tmp/svm_vector_transform_matrix-trace.exr --diff           PASS
+
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_vector_transform_zero_normal.blend \
+  svm_vector_transform_zero_normal                            PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_vector_transform_zero_normal.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/svm_vector_transform_zero_normal.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_vector_transform_zero_normal-trace.exr 8 8 1 0 \
+  --cycles-device CPU                                         PASS
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  /tmp/svm_vector_transform_zero_normal.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_vector_transform_zero_normal.exr 8 8 1 0 \
+  --cycles-device CPU                                         PASS
+oiiotool -a /tmp/svm_vector_transform_zero_normal.exr \
+  /tmp/svm_vector_transform_zero_normal-trace.exr --diff      PASS
+
+python tools/run_cycles_shader_probes.py \
+  --blender /home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --psycles-render build/bin/psycles_render_blender_scene \
+  --output-dir /tmp/psycles-vector-transform-probe \
+  --backend hip --cycles-device CPU --width 64 --height 64 \
+  --samples 1 svm_vector_transform_matrix                     NEGATIVE CANARY
+
+cmake --build build --parallel 32                             PASS
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.(cycles_svm_(abi|bytecode|compiler|modern_mix|vector|vector_rotate|vector_transform)|graph_material_scene|blender_import|luisa_cycles_svm_hip|source_size|shader_probe_runner_contract|blender_export_render_settings)$' \
+                                                               13/13 PASS
+ctest --test-dir build --output-on-failure -Q -E \
+  '(_fallback|_vk)$'                                          163/163 PASS
+```
+
+The zero-normal probe remains callable through the canonical runner because
+the probe registry contract requires every generated scene to be reproducible
+there. Its all-zero Combined image cannot by itself establish production
+support; only its external Cycles bytecode plus the nonzero HIP SVM regression
+are used as evidence. The nonzero 27-cell matrix remains the production wiring
+gate.

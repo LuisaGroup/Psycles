@@ -38,4 +38,16 @@ luisa::compute::Float3 direction(
   return affine(transform, value, false);
 }
 
+luisa::compute::Float3
+direction_transposed(luisa::compute::Expr<luisa::float4x4> transform,
+                     luisa::compute::Expr<luisa::float3> value) noexcept {
+  using namespace luisa::compute;
+  const auto c0 = transform[0u];
+  const auto c1 = transform[1u];
+  const auto c2 = transform[2u];
+  return make_float3(fma(value.x, c0.x, fma(value.y, c0.y, value.z * c0.z)),
+                     fma(value.x, c1.x, fma(value.y, c1.y, value.z * c1.z)),
+                     fma(value.x, c2.x, fma(value.y, c2.y, value.z * c2.z)));
+}
+
 } // namespace psycles::luisa_backend::cycles_transform

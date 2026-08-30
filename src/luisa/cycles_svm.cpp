@@ -16,6 +16,16 @@ namespace psycles::luisa_backend::cycles_svm {
 using namespace luisa::compute;
 using namespace compiler::cycles_svm;
 
+TransformState::TransformState(
+    Expr<luisa::float4x4> camera_to_world_transform,
+    Expr<luisa::float4x4> world_to_camera_transform,
+    Expr<luisa::float4x4> object_to_world_transform,
+    Expr<luisa::float4x4> world_to_object_transform) noexcept
+    : camera_to_world{camera_to_world_transform},
+      world_to_camera{world_to_camera_transform},
+      object_to_world{object_to_world_transform},
+      world_to_object{world_to_object_transform} {}
+
 ShaderData::ShaderData(Expr<luisa::float3> position,
                        Expr<luisa::float3> normal,
                        Expr<luisa::float3> geometric_normal,
@@ -24,7 +34,11 @@ ShaderData::ShaderData(Expr<luisa::float3> position,
                        Expr<std::uint32_t> shader_flags,
                        Expr<float> parametric_u,
                        Expr<float> parametric_v,
-                       Expr<float> length) noexcept
+                       Expr<float> length,
+                       Expr<std::uint32_t> object_id,
+                       Expr<std::uint32_t> object_flags,
+                       Expr<luisa::float4x4> motion_object_to_world,
+                       Expr<luisa::float4x4> motion_world_to_object) noexcept
     : P{position},
       N{normal},
       Ng{geometric_normal},
@@ -34,6 +48,10 @@ ShaderData::ShaderData(Expr<luisa::float3> position,
       u{parametric_u},
       v{parametric_v},
       ray_length{length},
+      object{object_id},
+      object_flag{object_flags},
+      ob_tfm_motion{motion_object_to_world},
+      ob_itfm_motion{motion_world_to_object},
       closure_emission_background{make_float3(0.0f)},
       closure_transparent_extinction{make_float3(0.0f)} {}
 
@@ -62,8 +80,10 @@ EvaluationResult::EvaluationResult() noexcept
 void eval_nodes(
     const BufferUInt &words,
     ShaderType shader_type,
+    std::uint32_t kernel_features,
     std::uint32_t node_feature_mask,
     const std::array<bool, NODE_NUM> &node_types_used,
+    const TransformState &transform_state,
     ShaderData &shader_data,
     const PathState &path_state,
     EvaluationResult &result) noexcept {
@@ -262,6 +282,13 @@ void eval_nodes(
       if (node_types_used[NODE_VECTOR_ROTATE]) {
         PSYCLES_SVM_CASE(NODE_VECTOR_ROTATE) {
           detail::node_vector_rotate(cursor, stack);
+        };
+      }
+      if (node_types_used[NODE_VECTOR_TRANSFORM]) {
+        PSYCLES_SVM_CASE(NODE_VECTOR_TRANSFORM) {
+          detail::node_vector_transform(
+              cursor, stack, transform_state, shader_data,
+              (kernel_features & kernel_feature_object_motion) != 0u);
         };
       }
       if (node_types_used[NODE_CLAMP]) {

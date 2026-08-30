@@ -4,6 +4,7 @@
 
 #include "cycles_svm_compiler_internal.h"
 #include "cycles_svm_constant_fold.h"
+#include "cycles_svm_vector_nodes.h"
 
 #include <psycles/compiler/core_nodes.h>
 
@@ -138,27 +139,6 @@ combsep_color_type(const GraphNode *node) noexcept {
   }
   if (mode == "HSL") {
     return NODE_COMBSEP_COLOR_HSL;
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::optional<NodeVectorRotateType>
-vector_rotate_type(const GraphNode *node) noexcept {
-  const auto type = string_property(node, "Type");
-  if (type == "AXIS_ANGLE") {
-    return NODE_VECTOR_ROTATE_TYPE_AXIS;
-  }
-  if (type == "X_AXIS") {
-    return NODE_VECTOR_ROTATE_TYPE_AXIS_X;
-  }
-  if (type == "Y_AXIS") {
-    return NODE_VECTOR_ROTATE_TYPE_AXIS_Y;
-  }
-  if (type == "Z_AXIS") {
-    return NODE_VECTOR_ROTATE_TYPE_AXIS_Z;
-  }
-  if (type == "EULER_XYZ") {
-    return NODE_VECTOR_ROTATE_TYPE_EULER_XYZ;
   }
   return std::nullopt;
 }
@@ -1611,30 +1591,6 @@ public:
   }
 };
 
-class VectorRotateNode final : public GraphNode {
-public:
-  void compile(SVMCompiler &compiler) override {
-    const auto rotate_type = vector_rotate_type(this);
-    const auto invert = boolean_property(this, "Invert");
-    if (!rotate_type || !invert) {
-      compiler.fail("Cycles Vector Rotate properties are invalid");
-      return;
-    }
-    compiler.add_node(
-        this, NODE_VECTOR_ROTATE,
-        SVMNodeVectorRotate{
-            .rotate_type = *rotate_type,
-            .vector = compiler.input_float3("Vector"),
-            .center = compiler.input_float3("Center"),
-            .axis = compiler.input_float3("Axis"),
-            .rotation = compiler.input_float3("Rotation"),
-            .angle = compiler.input_float("Angle"),
-            .invert = static_cast<std::uint8_t>(*invert),
-            .result_offset = compiler.output("Vector"),
-            ._pad = {0u, 0u}});
-  }
-};
-
 class BsdfNode : public GraphNode {
 private:
   ClosureType _closure;
@@ -1895,8 +1851,8 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   if (type == node_type::separate_xyz) {
     return std::make_unique<SeparateXYZNode>();
   }
-  if (type == node_type::vector_rotate) {
-    return std::make_unique<VectorRotateNode>();
+  if (auto node = make_vector_graph_node(type)) {
+    return node;
   }
   if (type == node_type::diffuse_bsdf) {
     return std::make_unique<DiffuseBsdfNode>();
