@@ -432,6 +432,135 @@ def _clamp(scene: Any) -> None:
     _plane(material)
 
 
+def _svm_color_pipeline(scene: Any) -> None:
+    """Keep five Cycles color opcodes live behind Backfacing inputs."""
+    material, tree, output = _material("SVM Color Pipeline Probe")
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.name = "Dynamic Backfacing"
+
+    invert = tree.nodes.new("ShaderNodeInvert")
+    invert.name = "Dynamic Invert"
+    _input(invert, "Color").default_value = (0.12, 0.47, 0.81, 1.0)
+    tree.links.new(
+        _output(geometry, "Backfacing"),
+        _input(invert, "Fac"),
+    )
+
+    gamma = tree.nodes.new("ShaderNodeGamma")
+    gamma.name = "Gamma"
+    _input(gamma, "Gamma").default_value = 2.2
+    tree.links.new(
+        _output(invert, "Color"),
+        _input(gamma, "Color"),
+    )
+
+    brightness = tree.nodes.new("ShaderNodeBrightContrast")
+    brightness.name = "Dynamic Brightness Contrast"
+    _input(brightness, "Bright").default_value = 0.17
+    tree.links.new(
+        _output(gamma, "Color"),
+        _input(brightness, "Color"),
+    )
+    tree.links.new(
+        _output(geometry, "Backfacing"),
+        _input(brightness, "Contrast"),
+    )
+
+    hsv = tree.nodes.new("ShaderNodeHueSaturation")
+    hsv.name = "Dynamic HSV"
+    _input(hsv, "Hue").default_value = 0.3
+    _input(hsv, "Saturation").default_value = 1.4
+    _input(hsv, "Value").default_value = 0.75
+    tree.links.new(
+        _output(brightness, "Color"),
+        _input(hsv, "Color"),
+    )
+    tree.links.new(
+        _output(geometry, "Backfacing"),
+        _input(hsv, "Fac"),
+    )
+
+    clamp = tree.nodes.new("ShaderNodeClamp")
+    clamp.name = "Dynamic Range Clamp"
+    clamp.clamp_type = "RANGE"
+    _input(clamp, "Min").default_value = 0.8
+    _input(clamp, "Max").default_value = 0.2
+    tree.links.new(
+        _output(geometry, "Backfacing"),
+        _input(clamp, "Value"),
+    )
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(hsv, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(clamp, "Result"),
+        _input(emission, "Strength"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _material_matrix(
+        scene,
+        [material, material],
+        columns=2,
+        rows=1,
+        name="SVM Color Pipeline Matrix",
+        backfacing={1},
+        frame_bleed=0.1,
+    )
+
+
+def _svm_color_constant_fold(scene: Any) -> None:
+    """Freeze Cycles folding for Invert, Gamma, Bright/Contrast and Clamp."""
+    material, tree, output = _material("SVM Color Constant Fold Probe")
+    invert = tree.nodes.new("ShaderNodeInvert")
+    invert.name = "Constant Invert"
+    _input(invert, "Color").default_value = (0.12, 0.47, 0.81, 1.0)
+    _input(invert, "Fac").default_value = 0.37
+
+    gamma = tree.nodes.new("ShaderNodeGamma")
+    gamma.name = "Constant Gamma"
+    _input(gamma, "Gamma").default_value = 2.2
+    tree.links.new(_output(invert, "Color"), _input(gamma, "Color"))
+
+    brightness = tree.nodes.new("ShaderNodeBrightContrast")
+    brightness.name = "Constant Brightness Contrast"
+    _input(brightness, "Bright").default_value = 0.17
+    _input(brightness, "Contrast").default_value = -0.35
+    tree.links.new(
+        _output(gamma, "Color"),
+        _input(brightness, "Color"),
+    )
+
+    clamp = tree.nodes.new("ShaderNodeClamp")
+    clamp.name = "Constant Range Clamp"
+    clamp.clamp_type = "RANGE"
+    _input(clamp, "Value").default_value = 0.1
+    _input(clamp, "Min").default_value = 0.8
+    _input(clamp, "Max").default_value = 0.2
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(brightness, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(clamp, "Result"),
+        _input(emission, "Strength"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
 def _math_operations(scene: Any) -> None:
     """Exercise every Blender 4.5.10 ShaderNodeMath operation."""
     material, tree, output = _material("Math Operations Probe")

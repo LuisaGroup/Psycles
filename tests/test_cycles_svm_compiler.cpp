@@ -343,6 +343,160 @@ void test_zero_mix_closure_fold_matches_cycles_5_2_1() {
           "zero-factor Mix retained its discarded branch");
 }
 
+void test_dynamic_color_pipeline_matches_cycles_5_2_1() {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Dynamic Backfacing");
+  const auto invert = graph.add_node(node_type::invert_color, "Dynamic Invert");
+  require(graph.set_input(invert, "Color",
+                          SocketValue::color({0.12f, 0.47f, 0.81f})) &&
+              graph.connect(OutputRef{geometry, "Backfacing"}, invert,
+                            "Factor"),
+          "failed to configure dynamic Invert");
+
+  const auto gamma = graph.add_node(node_type::gamma_color, "Gamma");
+  require(graph.set_input(gamma, "Gamma", SocketValue::floating(2.2f)) &&
+              graph.connect(OutputRef{invert, "Color"}, gamma, "Color"),
+          "failed to configure Gamma");
+
+  const auto brightness = graph.add_node(
+      node_type::brightness_contrast, "Dynamic Brightness Contrast");
+  require(graph.set_input(brightness, "Bright",
+                          SocketValue::floating(0.17f)) &&
+              graph.connect(OutputRef{gamma, "Color"}, brightness, "Color") &&
+              graph.connect(OutputRef{geometry, "Backfacing"}, brightness,
+                            "Contrast"),
+          "failed to configure dynamic Brightness Contrast");
+
+  const auto hsv = graph.add_node(node_type::hue_saturation, "Dynamic HSV");
+  require(graph.set_input(hsv, "Hue", SocketValue::floating(0.3f)) &&
+              graph.set_input(hsv, "Saturation",
+                              SocketValue::floating(1.4f)) &&
+              graph.set_input(hsv, "Value", SocketValue::floating(0.75f)) &&
+              graph.connect(OutputRef{brightness, "Color"}, hsv, "Color") &&
+              graph.connect(OutputRef{geometry, "Backfacing"}, hsv,
+                            "Factor"),
+          "failed to configure dynamic HSV");
+
+  const auto clamp = graph.add_node(node_type::clamp_range,
+                                    "Dynamic Range Clamp");
+  require(graph.set_property(clamp, "Mode", SocketValue::string("RANGE")) &&
+              graph.set_input(clamp, "Min", SocketValue::floating(0.8f)) &&
+              graph.set_input(clamp, "Max", SocketValue::floating(0.2f)) &&
+              graph.connect(OutputRef{geometry, "Backfacing"}, clamp,
+                            "Value"),
+          "failed to configure dynamic RANGE Clamp");
+
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.connect(OutputRef{hsv, "Color"}, emission, "Color") &&
+              graph.connect(OutputRef{clamp, "Result"}, emission, "Strength"),
+          "failed to connect color pipeline to Emission");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(), "dynamic color pipeline graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen from Cycles 5.2.1 `SVM Color Pipeline Probe`. The global shader-5
+  // jump (89,134,135) is normalized to this local 51-word stream. Every color
+  // node remains live because Geometry::Backfacing drives its dynamic path.
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x00000031u, 0x00000032u,
+      0x00000032u, 0x00000008u, 0x00000000u,
+      0x00000050u, 0x3df5c28fu, 0x3ef0a3d7u, 0x3f4f5c29u,
+      0x7fc00000u, 0x00000001u,
+      0x00000030u, 0x7fc00001u, 0x00000000u, 0x00000000u,
+      0x400ccccdu, 0x00000004u,
+      0x00000031u, 0x7fc00004u, 0x00000000u, 0x00000000u,
+      0x3e2e147bu, 0x7fc00000u, 0x00000001u,
+      0x00000025u, 0x7fc00001u, 0x00000000u, 0x00000000u,
+      0x3e99999au, 0x3fb33333u, 0x3f400000u, 0x7fc00000u,
+      0x00000004u,
+      0x0000005fu, 0x00000001u, 0x3f4ccccdu, 0x3e4ccccdu,
+      0x7fc00000u, 0x00000001u,
+      0x00000007u, 0x7fc00004u, 0x00000000u, 0x00000000u,
+      0x7fc00001u,
+      0x00000003u, 0x000000ffu,
+      0x00000000u,
+      0x00000000u,
+      0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles color pipeline SVM differs from Cycles");
+  require(image.peak_stack_usage == 7u,
+          "color pipeline peak stack usage differs from Cycles");
+  require(image.node_types_used[NODE_INVERT] &&
+              image.node_types_used[NODE_GAMMA] &&
+              image.node_types_used[NODE_BRIGHTCONTRAST] &&
+              image.node_types_used[NODE_HSV] &&
+              image.node_types_used[NODE_CLAMP],
+          "color pipeline opcode usage differs from Cycles");
+}
+
+void test_color_constant_fold_matches_cycles_5_2_1() {
+  ShaderGraph graph;
+  const auto invert = graph.add_node(node_type::invert_color,
+                                     "Constant Invert");
+  require(graph.set_input(invert, "Color",
+                          SocketValue::color({0.12f, 0.47f, 0.81f})) &&
+              graph.set_input(invert, "Factor",
+                              SocketValue::floating(0.37f)),
+          "failed to configure constant Invert");
+  const auto gamma = graph.add_node(node_type::gamma_color,
+                                    "Constant Gamma");
+  require(graph.set_input(gamma, "Gamma", SocketValue::floating(2.2f)) &&
+              graph.connect(OutputRef{invert, "Color"}, gamma, "Color"),
+          "failed to configure constant Gamma");
+  const auto brightness = graph.add_node(
+      node_type::brightness_contrast, "Constant Brightness Contrast");
+  require(graph.set_input(brightness, "Bright",
+                          SocketValue::floating(0.17f)) &&
+              graph.set_input(brightness, "Contrast",
+                              SocketValue::floating(-0.35f)) &&
+              graph.connect(OutputRef{gamma, "Color"}, brightness, "Color"),
+          "failed to configure constant Brightness Contrast");
+  const auto clamp = graph.add_node(node_type::clamp_range,
+                                    "Constant Range Clamp");
+  require(graph.set_property(clamp, "Mode", SocketValue::string("RANGE")) &&
+              graph.set_input(clamp, "Value",
+                              SocketValue::floating(0.1f)) &&
+              graph.set_input(clamp, "Min", SocketValue::floating(0.8f)) &&
+              graph.set_input(clamp, "Max", SocketValue::floating(0.2f)),
+          "failed to configure constant RANGE Clamp");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.connect(OutputRef{brightness, "Color"}, emission, "Color") &&
+              graph.connect(OutputRef{clamp, "Result"}, emission, "Strength"),
+          "failed to connect constant color pipeline");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(), "constant color pipeline graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen from Cycles 5.2.1 `SVM Color Constant Fold Probe`. All four value
+  // nodes disappear and their composed result is embedded in closure weight.
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x0000000bu, 0x0000000cu,
+      0x00000005u, 0x3db1030eu, 0x3dc5492bu, 0x3dddd033u,
+      0x00000003u, 0x000000ffu,
+      0x00000000u,
+      0x00000000u,
+      0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles constant color folds differ from Cycles");
+  require(!image.node_types_used[NODE_INVERT] &&
+              !image.node_types_used[NODE_GAMMA] &&
+              !image.node_types_used[NODE_BRIGHTCONTRAST] &&
+              !image.node_types_used[NODE_CLAMP],
+          "constant color pipeline retained folded opcodes");
+}
+
 void test_unsupported_node_rejects_without_old_fallback() {
   ShaderGraph graph;
   const auto principled =
@@ -368,6 +522,8 @@ int main() {
   test_dynamic_math_and_dedup_match_cycles_5_2_1();
   test_constant_math_fold_matches_cycles_5_2_1();
   test_zero_mix_closure_fold_matches_cycles_5_2_1();
+  test_dynamic_color_pipeline_matches_cycles_5_2_1();
+  test_color_constant_fold_matches_cycles_5_2_1();
   test_unsupported_node_rejects_without_old_fallback();
   return 0;
 }

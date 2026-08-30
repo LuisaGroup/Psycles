@@ -65,6 +65,11 @@ void node_light_path(Cursor &cursor, Stack &stack,
                      const PathState &path_state,
                      std::uint32_t node_feature_mask) noexcept;
 void node_math(Cursor &cursor, Stack &stack) noexcept;
+void node_hsv(Cursor &cursor, Stack &stack) noexcept;
+void node_gamma(Cursor &cursor, Stack &stack) noexcept;
+void node_brightness(Cursor &cursor, Stack &stack) noexcept;
+void node_invert(Cursor &cursor, Stack &stack) noexcept;
+void node_clamp(Cursor &cursor, Stack &stack) noexcept;
 
 void node_closure_set_weight(Cursor &cursor,
                              luisa::compute::Float3 &closure_weight) noexcept;

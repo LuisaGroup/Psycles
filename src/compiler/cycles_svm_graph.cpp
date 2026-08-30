@@ -82,6 +82,11 @@ namespace {
            : input == "B" ? "Closure2"
                           : input;
   }
+  if ((node == node_type::invert_color ||
+       node == node_type::hue_saturation) &&
+      input == "Factor") {
+    return "Fac";
+  }
   return input;
 }
 

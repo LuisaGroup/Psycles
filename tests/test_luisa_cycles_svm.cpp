@@ -92,6 +92,63 @@ namespace device_svm = psycles::luisa_backend::cycles_svm;
   return image;
 }
 
+[[nodiscard]] ShaderImage compile_dynamic_color_pipeline() {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Dynamic Backfacing");
+  const auto invert = graph.add_node(node_type::invert_color, "Dynamic Invert");
+  const auto gamma = graph.add_node(node_type::gamma_color, "Gamma");
+  const auto brightness = graph.add_node(
+      node_type::brightness_contrast, "Dynamic Brightness Contrast");
+  const auto hsv = graph.add_node(node_type::hue_saturation, "Dynamic HSV");
+  const auto clamp = graph.add_node(node_type::clamp_range,
+                                    "Dynamic Range Clamp");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  const auto configured =
+      graph.set_input(invert, "Color",
+                      contract::SocketValue::color({0.12f, 0.47f, 0.81f})) &&
+      graph.connect({geometry, "Backfacing"}, invert, "Factor") &&
+      graph.set_input(gamma, "Gamma",
+                      contract::SocketValue::floating(2.2f)) &&
+      graph.connect({invert, "Color"}, gamma, "Color") &&
+      graph.set_input(brightness, "Bright",
+                      contract::SocketValue::floating(0.17f)) &&
+      graph.connect({gamma, "Color"}, brightness, "Color") &&
+      graph.connect({geometry, "Backfacing"}, brightness, "Contrast") &&
+      graph.set_input(hsv, "Hue",
+                      contract::SocketValue::floating(0.3f)) &&
+      graph.set_input(hsv, "Saturation",
+                      contract::SocketValue::floating(1.4f)) &&
+      graph.set_input(hsv, "Value",
+                      contract::SocketValue::floating(0.75f)) &&
+      graph.connect({brightness, "Color"}, hsv, "Color") &&
+      graph.connect({geometry, "Backfacing"}, hsv, "Factor") &&
+      graph.set_property(clamp, "Mode",
+                         contract::SocketValue::string("RANGE")) &&
+      graph.set_input(clamp, "Min",
+                      contract::SocketValue::floating(0.8f)) &&
+      graph.set_input(clamp, "Max",
+                      contract::SocketValue::floating(0.2f)) &&
+      graph.connect({geometry, "Backfacing"}, clamp, "Value") &&
+      graph.connect({hsv, "Color"}, emission, "Color") &&
+      graph.connect({clamp, "Result"}, emission, "Strength");
+  if (!configured) {
+    throw std::runtime_error{"failed to create dynamic color SVM graph"};
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  if (!shader.ok()) {
+    throw std::runtime_error{"dynamic color graph did not validate"};
+  }
+  auto image = compile_shader(*shader.program);
+  if (!image.valid) {
+    throw std::runtime_error{image.diagnostic};
+  }
+  return image;
+}
+
 [[nodiscard]] auto make_interpreter_kernel(
     std::array<bool, NODE_NUM> node_types_used) {
   return Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>,
@@ -222,6 +279,7 @@ int main(int argc, char **argv) {
   const auto backend = std::string_view{argc > 1 ? argv[1] : "hip"};
   const auto math_image = compile_dynamic_math();
   const auto mix_image = compile_dynamic_mix();
+  const auto color_image = compile_dynamic_color_pipeline();
 
   const auto shape_kernel = make_interpreter_kernel(math_image.node_types_used);
   InterpreterShape shape;
@@ -273,6 +331,31 @@ int main(int argc, char **argv) {
                        device_svm::shader_data_emission)) {
     std::cerr << "dynamic closure jump Cycles SVM state mismatch on "
               << backend << '\n';
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run_image(device, stream, color_image, floating, integer);
+  // Frozen from the 4x4 Cycles CPU Emission pass of
+  // `svm_color_pipeline`: the left half is front-facing and the right half
+  // has its polygon winding reversed. The shader stream itself is separately
+  // frozen word-for-word by test_cycles_svm_compiler.cpp.
+  if (!require_float3(floating[0],
+                      {0.035884645f, 0.071987897f, 0.159804747f},
+                      "front-facing color pipeline emission") ||
+      !require_float3(floating[1],
+                      {0.665142953f, 0.0f, 0.707822502f},
+                      "back-facing color pipeline emission") ||
+      !approximately_equal(floating[0].w, 0.035884645f) ||
+      !approximately_equal(floating[1].w, 0.665142953f) ||
+      integer[0].x != ended || integer[1].x != ended ||
+      integer[0].y != 49u || integer[1].y != 49u ||
+      integer[0].z != device_svm::shader_data_emission ||
+      integer[1].z != (device_svm::shader_data_backfacing |
+                       device_svm::shader_data_emission)) {
+    std::cerr << "dynamic color Cycles SVM state mismatch on " << backend
+              << '\n';
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
