@@ -102,6 +102,30 @@ class CyclesPathTraceComparisonTests(unittest.TestCase):
         report = comparison.compare_traces(reference, actual)
         self.assertTrue(report["passed"])
 
+    def test_forward_emission_measure_is_a_complete_gate(self) -> None:
+        reference = _trace()
+        actual = copy.deepcopy(reference)
+        fields = (
+            ("forward_emission", "r", 0.25),
+            ("forward_policy", "emission_sampling", 4.0),
+            ("forward_policy", "selection_pdf", 0.125),
+            ("forward_policy", "pdf_valid", 1.0),
+            ("forward_mis", "bsdf_pdf", 0.25),
+            ("forward_mis", "light_pdf", 0.125),
+            ("forward_mis", "mis_weight", 0.8),
+            ("forward_contribution", "b", 0.5),
+        )
+        for slot, component, value in fields:
+            candidate = copy.deepcopy(actual)
+            candidate["events"][1]["slots"][slot][component] = value
+            report = comparison.compare_traces(reference, candidate)
+            self.assertFalse(report["passed"], (slot, component))
+            self.assertEqual(report["failure_count"], 1)
+            self.assertEqual(
+                report["failures"][0]["field"],
+                f"events[1].{slot}.{component}",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

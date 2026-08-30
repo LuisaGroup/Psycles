@@ -8,14 +8,16 @@
 namespace psycles::luisa_backend::path_trace_schema {
 
 inline constexpr std::string_view name{"psycles.cycles-path-trace"};
-inline constexpr std::uint32_t version = 2u;
+inline constexpr std::uint32_t version = 3u;
 inline constexpr std::uint32_t global_slot_count = 8u;
 inline constexpr std::uint32_t event_slot_count = 72u;
 inline constexpr std::uint32_t shadow_event_slot_count = 8u;
+inline constexpr std::uint32_t forward_event_slot_count = 4u;
 inline constexpr std::uint32_t shadow_event_base = 296u;
+inline constexpr std::uint32_t forward_event_base = 328u;
 inline constexpr std::uint32_t max_events = 4u;
 inline constexpr std::uint32_t max_closures = 8u;
-inline constexpr std::uint32_t slot_count = 328u;
+inline constexpr std::uint32_t slot_count = 344u;
 
 enum class GlobalSlot : std::uint32_t {
     header = 0u,
@@ -91,6 +93,13 @@ enum class ShadowEventSlot : std::uint32_t {
     shadow_transmittance = 7u,
 };
 
+enum class ForwardEventSlot : std::uint32_t {
+    forward_emission = 0u,
+    forward_policy = 1u,
+    forward_mis = 2u,
+    forward_contribution = 3u,
+};
+
 [[nodiscard]] constexpr std::uint32_t index(
     GlobalSlot slot) noexcept {
     return static_cast<std::uint32_t>(slot);
@@ -100,6 +109,13 @@ enum class ShadowEventSlot : std::uint32_t {
     std::uint32_t event,
     ShadowEventSlot slot) noexcept {
     return shadow_event_base + event * shadow_event_slot_count +
+           static_cast<std::uint32_t>(slot);
+}
+
+[[nodiscard]] constexpr std::uint32_t index(
+    std::uint32_t event,
+    ForwardEventSlot slot) noexcept {
+    return forward_event_base + event * forward_event_slot_count +
            static_cast<std::uint32_t>(slot);
 }
 

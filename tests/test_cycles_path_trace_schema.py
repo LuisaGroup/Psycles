@@ -32,21 +32,23 @@ class CyclesPathTraceSchemaTests(unittest.TestCase):
 
     def test_trace_slots_are_fixed_and_contiguous(self) -> None:
         schema: Any = trace_schema
-        self.assertEqual(schema.SCHEMA_VERSION, 2)
+        self.assertEqual(schema.SCHEMA_VERSION, 3)
         self.assertEqual(schema.GLOBAL_SLOT_COUNT, 8)
         self.assertEqual(schema.EVENT_SLOT_COUNT, 72)
         self.assertEqual(schema.SHADOW_EVENT_SLOT_COUNT, 8)
+        self.assertEqual(schema.FORWARD_EVENT_SLOT_COUNT, 4)
         self.assertEqual(schema.SHADOW_EVENT_BASE, 296)
+        self.assertEqual(schema.FORWARD_EVENT_BASE, 328)
         self.assertEqual(schema.MAX_EVENTS, 4)
         self.assertEqual(schema.MAX_CLOSURES, 8)
-        self.assertEqual(schema.AOV_COUNT, 328)
+        self.assertEqual(schema.AOV_COUNT, 344)
         self.assertEqual(len(schema.SLOTS), schema.AOV_COUNT)
         self.assertEqual(
             [slot.index for slot in schema.SLOTS],
             list(range(schema.AOV_COUNT)),
         )
         self.assertEqual(schema.SLOTS[0].aov, "PsyTrace000")
-        self.assertEqual(schema.SLOTS[-1].aov, "PsyTrace327")
+        self.assertEqual(schema.SLOTS[-1].aov, "PsyTrace343")
 
     def test_each_event_has_identical_layout(self) -> None:
         schema: Any = trace_schema
@@ -56,7 +58,9 @@ class CyclesPathTraceSchemaTests(unittest.TestCase):
             ]
             self.assertEqual(
                 len(event_slots),
-                schema.EVENT_SLOT_COUNT + schema.SHADOW_EVENT_SLOT_COUNT,
+                schema.EVENT_SLOT_COUNT
+                + schema.SHADOW_EVENT_SLOT_COUNT
+                + schema.FORWARD_EVENT_SLOT_COUNT,
             )
             self.assertEqual(
                 sum(slot.scope == "closure" for slot in event_slots),
@@ -155,6 +159,32 @@ class CyclesPathTraceSchemaTests(unittest.TestCase):
                         + event * schema.SHADOW_EVENT_SLOT_COUNT,
                         schema.SHADOW_EVENT_BASE
                         + (event + 1) * schema.SHADOW_EVENT_SLOT_COUNT,
+                    )
+                ),
+            )
+
+    def test_forward_trace_is_an_append_only_event_tail(self) -> None:
+        schema: Any = trace_schema
+        names = (
+            "forward_emission",
+            "forward_policy",
+            "forward_mis",
+            "forward_contribution",
+        )
+        for event in range(schema.MAX_EVENTS):
+            event_slots = {
+                slot.name: slot
+                for slot in schema.SLOTS
+                if slot.scope == "event" and slot.event == event
+            }
+            self.assertEqual(
+                [event_slots[name].index for name in names],
+                list(
+                    range(
+                        schema.FORWARD_EVENT_BASE
+                        + event * schema.FORWARD_EVENT_SLOT_COUNT,
+                        schema.FORWARD_EVENT_BASE
+                        + (event + 1) * schema.FORWARD_EVENT_SLOT_COUNT,
                     )
                 ),
             )
