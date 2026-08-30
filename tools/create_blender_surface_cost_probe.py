@@ -12,10 +12,13 @@ shader-to-shader edge in the original material graph but disconnects all
 non-shader inputs, including those inside nested node groups. The authored
 socket defaults therefore replace the dynamic value DAG without baking it.
 The ``constant-diffuse``, ``constant-glossy``, and ``constant-glass`` modes
-replace the Surface graph with one raw closure of the named family. All modes
-disconnect Volume and Displacement. Together the probes separate value-program
-cost, closure-population cost, and the rest of the integrator; they are not
-production-scene conversion tools.
+replace the Surface graph with one raw closure of the named family.
+``procedural-diffuse`` replaces every material by the same topology
+Generated -> Noise Texture -> Diffuse BSDF, while retaining material-specific
+runtime parameters. It is an image-free control for separating SVM/procedural
+cost from image-sampler cost. All modes disconnect Volume and Displacement.
+Together the probes separate value-program cost, closure-population cost, and
+the rest of the integrator; they are not production-scene conversion tools.
 """
 
 from __future__ import annotations
@@ -41,6 +44,7 @@ def _arguments() -> argparse.Namespace:
             "constant-diffuse",
             "constant-glossy",
             "constant-glass",
+            "procedural-diffuse",
         ),
         default="constant-diffuse",
         help=(
@@ -92,11 +96,14 @@ def _replace_material_surface(
 ) -> None:
     material.use_nodes = True
     tree = material.node_tree
-    output = _active_material_output(tree)
+    # Single-closure probes intentionally have no dormant value graph. Keeping
+    # disconnected image nodes would not affect shader reachability, but would
+    # make the exported control scene retain irrelevant image assets and defeat
+    # the stronger invariant that every material is constant-only.
+    tree.nodes.clear()
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    output.is_active_output = True
     surface = output.inputs["Surface"]
-    _disconnect_input(tree, surface)
-    _disconnect_input(tree, output.inputs["Volume"])
-    _disconnect_input(tree, output.inputs["Displacement"])
 
     node_type = {
         "constant-diffuse": "ShaderNodeBsdfDiffuse",
@@ -110,6 +117,46 @@ def _replace_material_surface(
     closure.inputs["Color"].default_value = (*color, 1.0)
     closure.inputs["Roughness"].default_value = roughness
     tree.links.new(closure.outputs["BSDF"], surface)
+
+    cycles = getattr(material, "cycles", None)
+    if cycles is not None and hasattr(cycles, "emission_sampling"):
+        cycles.emission_sampling = "NONE"
+
+
+def _replace_material_surface_with_procedural_diffuse(
+    material: Any,
+    material_index: int,
+) -> None:
+    """Install one image-free, topology-identical procedural material.
+
+    Only authored defaults vary with ``material_index``. The exporter therefore
+    emits one graph topology with distinct parameter blocks, which is the same
+    quotient used by the production SVM and avoids measuring artificial shader
+    specialization.
+    """
+
+    material.use_nodes = True
+    tree = material.node_tree
+    tree.nodes.clear()
+
+    output = tree.nodes.new("ShaderNodeOutputMaterial")
+    output.is_active_output = True
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    noise = tree.nodes.new("ShaderNodeTexNoise")
+    diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+
+    # Keep the response bounded and broadly similar across materials while
+    # forcing every visible hit through a non-trivial procedural value DAG.
+    noise.inputs["Scale"].default_value = 3.0 + float(material_index % 7)
+    noise.inputs["Detail"].default_value = 3.0
+    noise.inputs["Roughness"].default_value = 0.55
+    noise.inputs["Lacunarity"].default_value = 2.0
+    noise.inputs["Distortion"].default_value = 0.15
+    diffuse.inputs["Roughness"].default_value = 0.2
+
+    tree.links.new(coordinates.outputs["Generated"], noise.inputs["Vector"])
+    tree.links.new(noise.outputs["Color"], diffuse.inputs["Color"])
+    tree.links.new(diffuse.outputs["BSDF"], output.inputs["Surface"])
 
     cycles = getattr(material, "cycles", None)
     if cycles is not None and hasattr(cycles, "emission_sampling"):
@@ -158,6 +205,11 @@ def _replace_all_material_surfaces(
     if mode in {"constant-diffuse", "constant-glossy", "constant-glass"}:
         for material in materials:
             _replace_material_surface(material, color, roughness, mode)
+    elif mode == "procedural-diffuse":
+        for material_index, material in enumerate(materials):
+            _replace_material_surface_with_procedural_diffuse(
+                material, material_index
+            )
     elif mode == "constant-closure-inputs":
         visited: set[int] = set()
         for material in materials:

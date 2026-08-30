@@ -2,9 +2,26 @@
 
 #include "path_tracer_internal.h"
 
-#include <array>
-
 namespace psycles::luisa_backend::detail {
+
+[[nodiscard]] constexpr luisa::compute::SamplerAddress
+cycles_texture_sampler_address(std::uint32_t extension) noexcept {
+    // Surface-program canonical extension codes are Repeat, Clip, Extend,
+    // Mirror. This is the same quotient used by Cycles when it creates the
+    // backend texture object: wrap, border, clamp, mirror.
+    switch (extension) {
+        case 0u:
+            return luisa::compute::SamplerAddress::REPEAT;
+        case 1u:
+            return luisa::compute::SamplerAddress::ZERO;
+        case 2u:
+            return luisa::compute::SamplerAddress::EDGE;
+        case 3u:
+            return luisa::compute::SamplerAddress::MIRROR;
+        default:
+            std::abort();
+    }
+}
 
 // Canonical Cycles TextureInterpolator transfer function. Interpolation and
 // extension are immutable shader-graph metadata, so host specialization keeps
@@ -17,122 +34,67 @@ template<typename TextureHeap>
     Expr<luisa::float2> uv,
     std::uint32_t interpolation,
     std::uint32_t extension) noexcept {
-    // Implement Cycles' TextureInterpolator explicitly. Relying on a backend
-    // sampler makes clip-border, mirror, and cubic behavior backend-dependent
-    // and differs from Cycles at texel boundaries.
     auto texture = textures->tex2d(handle);
-    auto size = texture.size();
-    Int width = cast<int>(size.x);
-    Int height = cast<int>(size.y);
-
-    const auto split_coordinate =
-        [](Float coordinate, Int &index) noexcept -> Float {
-        // Match Cycles' frac(): truncation followed by an explicit negative
-        // correction, including negative integers.
-        index = cast<int>(coordinate) -
-                select(0, 1, coordinate < 0.0f);
-        return coordinate - cast<float>(index);
-    };
-    const auto wrap_periodic =
-        [](Int coordinate, Int extent) noexcept -> Int {
-        auto wrapped = coordinate % extent;
-        return select(wrapped,
-                      wrapped + extent,
-                      wrapped < 0);
-    };
-    const auto wrap_mirror =
-        [](Int coordinate, Int extent) noexcept -> Int {
-        auto adjusted = coordinate +
-                        select(0, 1, coordinate < 0);
-        auto period = abs(adjusted) % (2 * extent);
-        return select(period,
-                      2 * extent - period - 1,
-                      period >= extent);
-    };
-    const auto read_clip =
-        [&](Int x, Int y) noexcept -> Float4 {
-        Float4 value = make_float4(0.0f);
-        $if ((x >= 0) & (x < width) &
-             (y >= 0) & (y < height)) {
-            value = texture.read(make_uint2(
-                cast<uint>(x), cast<uint>(y)));
-        };
-        return value;
-    };
-    const auto wrap_coordinate =
-        [&](Int coordinate, Int extent) noexcept -> Int {
-        if (extension == 0u) {
-            return wrap_periodic(coordinate, extent);
-        }
-        if (extension == 2u) {
-            return clamp(coordinate, 0, extent - 1);
-        }
-        if (extension == 3u) {
-            return wrap_mirror(coordinate, extent);
-        }
-        return coordinate;
-    };
-    const auto read_wrapped =
-        [&](Int x, Int y) noexcept -> Float4 {
-        return read_clip(wrap_coordinate(x, width),
-                         wrap_coordinate(y, height));
-    };
-
-    auto coordinate = def(uv);
+    const auto address = cycles_texture_sampler_address(extension);
     if (interpolation == 0u) {
-        Int x;
-        Int y;
-        static_cast<void>(split_coordinate(
-            coordinate.x * cast<float>(width), x));
-        static_cast<void>(split_coordinate(
-            coordinate.y * cast<float>(height), y));
-        return read_wrapped(x, y);
+        return texture.sample(
+            uv, luisa::compute::SamplerFilter::POINT, address);
     }
-
-    Int x;
-    Int y;
-    auto tx = split_coordinate(
-        coordinate.x * cast<float>(width) - 0.5f, x);
-    auto ty = split_coordinate(
-        coordinate.y * cast<float>(height) - 0.5f, y);
-
     if (interpolation == 1u) {
-        auto x1 = x + 1;
-        auto y1 = y + 1;
-        auto row0 = (1.0f - tx) * read_wrapped(x, y) +
-                    tx * read_wrapped(x1, y);
-        auto row1 = (1.0f - tx) * read_wrapped(x, y1) +
-                    tx * read_wrapped(x1, y1);
-        return (1.0f - ty) * row0 + ty * row1;
+        return texture.sample(
+            uv, luisa::compute::SamplerFilter::LINEAR_POINT, address);
     }
 
-    // Cycles treats both Cubic and Smart as cubic. These are its exact cubic
-    // B-spline weights.
-    const auto cubic_weights = [](Float t) noexcept {
-        return std::array<Float, 4u>{
-            (((-1.0f / 6.0f) * t + 0.5f) * t -
-             0.5f) *
-                    t +
-                (1.0f / 6.0f),
-            ((0.5f * t - 1.0f) * t) * t +
-                (2.0f / 3.0f),
-            ((-0.5f * t + 0.5f) * t + 0.5f) *
-                    t +
-                (1.0f / 6.0f),
-            (1.0f / 6.0f) * t * t * t};
+    // Cycles' fast bicubic reconstruction is a separable cubic B-spline
+    // factored into four native bilinear samples. The factorization is exact:
+    // g0=w0+w1, g1=w2+w3 and h selects the bilinear coordinate whose two
+    // hardware weights reproduce each adjacent cubic pair.
+    const auto cubic_w0 = [](Float a) noexcept {
+        return (1.0f / 6.0f) *
+               (a * (a * (-a + 3.0f) - 3.0f) + 1.0f);
     };
-    auto wx = cubic_weights(tx);
-    auto wy = cubic_weights(ty);
-    const auto cubic_row = [&](Int row) noexcept {
-        return wx[0u] * read_wrapped(x - 1, row) +
-               wx[1u] * read_wrapped(x, row) +
-               wx[2u] * read_wrapped(x + 1, row) +
-               wx[3u] * read_wrapped(x + 2, row);
+    const auto cubic_w1 = [](Float a) noexcept {
+        return (1.0f / 6.0f) *
+               (a * a * (3.0f * a - 6.0f) + 4.0f);
     };
-    return wy[0u] * cubic_row(y - 1) +
-           wy[1u] * cubic_row(y) +
-           wy[2u] * cubic_row(y + 1) +
-           wy[3u] * cubic_row(y + 2);
+    const auto cubic_w2 = [](Float a) noexcept {
+        return (1.0f / 6.0f) *
+               (a * (a * (-3.0f * a + 3.0f) + 3.0f) + 1.0f);
+    };
+    const auto cubic_w3 = [](Float a) noexcept {
+        return (1.0f / 6.0f) * a * a * a;
+    };
+    const auto cubic_axis = [&](Float coordinate, Float extent) noexcept {
+        const auto x = coordinate * extent - 0.5f;
+        const auto px = luisa::compute::floor(x);
+        const auto f = x - px;
+        const auto w0 = cubic_w0(f);
+        const auto w1 = cubic_w1(f);
+        const auto w2 = cubic_w2(f);
+        const auto w3 = cubic_w3(f);
+        const auto g0 = w0 + w1;
+        const auto g1 = w2 + w3;
+        const auto h0 = w1 / g0 - 1.0f;
+        const auto h1 = w3 / g1 + 1.0f;
+        return make_float4(
+            (px + h0 + 0.5f) / extent,
+            (px + h1 + 0.5f) / extent,
+            g0,
+            g1);
+    };
+    const auto size = texture.size();
+    const auto x = cubic_axis(uv.x, cast<float>(size.x));
+    const auto y = cubic_axis(uv.y, cast<float>(size.y));
+    const auto sample = [&](Float u, Float v) noexcept {
+        return texture.sample(
+            make_float2(u, v),
+            luisa::compute::SamplerFilter::LINEAR_POINT,
+            address);
+    };
+    return y.z * (x.z * sample(x.x, y.x) +
+                  x.w * sample(x.y, y.x)) +
+           y.w * (x.z * sample(x.x, y.y) +
+                  x.w * sample(x.y, y.y));
 }
 
 }// namespace psycles::luisa_backend::detail
