@@ -9,7 +9,6 @@
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
-namespace {
 
 using namespace luisa::compute;
 using namespace compiler::cycles_svm;
@@ -65,18 +64,21 @@ void object_normal_transform(Float3 &value,
                              const TransformState &transform_state,
                              const ShaderData &shader_data,
                              bool object_motion_enabled) noexcept {
+  const Bool is_object = shader_data.object != object_none;
   if (object_motion_enabled) {
     $if (object_has_motion(shader_data)) {
       value = normalize_exact(cycles_transform::direction_transposed(
           shader_data.ob_itfm_motion, value));
     }
-    $else {
+    $elif(is_object) {
       value = normalize_exact(cycles_transform::direction_transposed(
           transform_state.world_to_object, value));
     };
   } else {
-    value = normalize_exact(cycles_transform::direction_transposed(
-        transform_state.world_to_object, value));
+    $if(is_object) {
+      value = normalize_exact(cycles_transform::direction_transposed(
+          transform_state.world_to_object, value));
+    };
   }
 }
 
@@ -84,18 +86,23 @@ void object_inverse_normal_transform(Float3 &value,
                                      const TransformState &transform_state,
                                      const ShaderData &shader_data,
                                      bool object_motion_enabled) noexcept {
+  const Bool is_object = shader_data.object != object_none;
   if (object_motion_enabled) {
     $if (object_has_motion(shader_data)) {
-      value = safe_normalize_exact(cycles_transform::direction_transposed(
-          shader_data.ob_tfm_motion, value));
+      $if(is_object) {
+        value = safe_normalize_exact(cycles_transform::direction_transposed(
+            shader_data.ob_tfm_motion, value));
+      };
     }
-    $else {
+    $elif(is_object) {
       value = safe_normalize_exact(cycles_transform::direction_transposed(
           transform_state.object_to_world, value));
     };
   } else {
-    value = safe_normalize_exact(cycles_transform::direction_transposed(
-        transform_state.object_to_world, value));
+    $if(is_object) {
+      value = safe_normalize_exact(cycles_transform::direction_transposed(
+          transform_state.object_to_world, value));
+    };
   }
 }
 
@@ -132,8 +139,6 @@ void object_inverse_dir_transform(Float3 &value,
     value = cycles_transform::direction(transform_state.world_to_object, value);
   }
 }
-
-} // namespace
 
 void node_vector_transform(Cursor &cursor, Stack &stack,
                            const TransformState &transform_state,

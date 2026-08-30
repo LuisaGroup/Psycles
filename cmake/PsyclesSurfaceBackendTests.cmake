@@ -414,6 +414,15 @@ psycles_add_luisa_backend_test(
     LIBRARIES Psycles::luisa)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_wireframe_tests
+    SOURCE tests/test_luisa_cycles_svm_wireframe.cpp
+    TEST_STEM luisa_cycles_svm_wireframe
+    LIBRARIES Psycles::luisa)
+target_include_directories(
+    psycles_luisa_cycles_svm_wireframe_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_light_falloff_tests
     SOURCE tests/test_luisa_light_falloff.cpp
     TEST_STEM luisa_light_falloff

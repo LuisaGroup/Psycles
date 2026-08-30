@@ -39,6 +39,7 @@ from cycles_shader_probe import (  # noqa: E402
     procedural_textures,
     refraction_closures,
     sheen_closures,
+    svm_geometry,
     svm_mix,
     subsurface_closures,
     support,
@@ -164,6 +165,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "svm_vector_transform_no_object_to_camera": (
         svm_vector._svm_vector_transform_no_object_to_camera
     ),
+    "svm_bump_constant_fold": svm_geometry._svm_bump_constant_fold,
+    "svm_wireframe_matrix": svm_geometry._svm_wireframe_matrix,
+    "svm_wireframe_bump": svm_geometry._svm_wireframe_bump,
     "mix_shader_emission": closures._mix_shader_emission,
     "negative_scale_surface": closures._negative_scale_surface,
     "nishita_diffuse_transport": closures._nishita_diffuse_transport,

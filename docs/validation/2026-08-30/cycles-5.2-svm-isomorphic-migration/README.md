@@ -1310,3 +1310,229 @@ there. Its all-zero Combined image cannot by itself establish production
 support; only its external Cycles bytecode plus the nonzero HIP SVM regression
 are used as evidence. The nonzero 27-cell matrix remains the production wiring
 gate.
+
+## Wireframe and Bump checkpoint
+
+This checkpoint copies the Cycles 5.2.1 Wireframe/Bump path from commit
+`9e2066aef7ef7e20c142ad7bd3303138a4304c93`. It does not define a Psycles
+geometry-node model. The implementation map is:
+
+| Stage | Cycles 5.2.1 source |
+|---|---|
+| Blender node projection | `source/blender/nodes/shader/nodes/node_shader_wireframe.cc` and the Cycles Blender sync |
+| socket schema and SVM emission | `intern/cycles/scene/shader_nodes.cpp::{WireframeNode,BumpNode}` |
+| three-sample Bump graph transform | `intern/cycles/scene/shader_graph.cpp::ShaderGraph::refine_bump_nodes` |
+| typed payload ABI | `intern/cycles/kernel/svm/node_types.h::{SVMNodeWireframe,SVMNodeSetBump,SVMNodeConvert}` |
+| Wireframe transition | `intern/cycles/kernel/svm/wireframe.h` |
+| Bump transition | `intern/cycles/kernel/svm/displace.h::svm_node_set_bump` |
+| regular and derivative conversion | `intern/cycles/kernel/svm/convert.h::svm_node_convert` |
+| compact differential reconstruction | `intern/cycles/kernel/util/differential.h::differential_from_compact` |
+
+### Graph and compiler equivalence
+
+The projected Bump node now has Cycles' exact ordered input list:
+`Height`, `SampleCenter`, `SampleX`, `SampleY`, `Normal`, `Strength`,
+`Distance`, `Filter Width`. `Invert` and `UseObjectSpace` are the only Bump
+properties. The old `NormalLinked` property belongs to the legacy Psycles
+pipeline and is deliberately absent from the SVM projection.
+
+Projection executes the same ordering as `ShaderGraph::simplify`:
+
+```text
+expand -> default_inputs -> clean -> refine_bump_nodes
+```
+
+For every linked Height input, dependency discovery computes its full upstream
+subgraph. The original subgraph becomes `SHADER_BUMP_CENTER`; two structural
+copies become `SHADER_BUMP_DX` and `SHADER_BUMP_DY`. All three receive the
+authored Filter Width, their outputs connect to `SampleCenter`, `SampleX`, and
+`SampleY`, and Height is disconnected. Node equality includes `bump` but not
+`bump_filter_width`, matching `ShaderNode::equals` rather than inventing a new
+deduplication key.
+
+The source audit also exposed an initially missing Cycles fold: when Height is
+unlinked, `BumpNode::constant_fold` bypasses the node to its Normal input. An
+external `svm_bump_constant_fold` oracle freezes the resulting program body at
+global words 89 through 101:
+
+```text
+0000000b 00000001 00000000
+00000007 7fc00000 00000000 00000000 3f800000
+00000003 000000ff
+00000000 00000000 00000000
+```
+
+There is no `NODE_SET_BUMP`; the local compiler regression also requires a
+three-lane peak stack. This is a bytecode-equivalence requirement, not merely
+a numerical optimization.
+
+The linked Wireframe-to-Bump oracle produces the following exact 35-word local
+image and a nine-lane peak stack:
+
+```text
+00000001 00000004 00000021 00000022
+0000005a 3e051eb8 3ebd70a4 00000000
+0000000b 01000001 00000000
+0000005a 3e051eb8 3ebd70a4 00040100
+0000005a 3e051eb8 3ebd70a4 00050200
+00000021 3e4ccccd 3f4ccccd 3ebd70a4 00000101 ff060504
+00000007 7fc00006 00000000 00000000 3f800000
+00000003 000000ff
+00000000 00000000 00000000
+```
+
+The three `NODE_WIREFRAME` records are CENTER, DX, and DY. The Geometry word
+`01000001` is frozen directly from the external binary oracle. Immediate and
+linked World/Pixel Size matrices are also frozen word-for-word; in particular,
+Pixel Size remains a packed Wireframe flag rather than a separate Psycles
+variant.
+
+### Device transition equivalence
+
+Wireframe reconstructs `dP.dx` and `dP.dy` with Cycles'
+`differential_from_compact(sd.Ng, sd.dP)`. For Pixel Size it projects each
+differential into the viewing plane perpendicular to `sd.wi`, averages their
+lengths, multiplies by `0.5 * size`, and squares the result. Each of the three
+triangle edges then evaluates exactly:
+
+```text
+dot(cross(edge, P - vertex), cross(edge, P - vertex))
+    < dot(edge, edge) * pixelwidth_squared
+```
+
+The comparison is strictly less-than. The feature-specialized primitive guard
+is `prim != PRIM_NONE` without hair/point-cloud support, and additionally
+requires `type & PRIMITIVE_TRIANGLE` when either feature is compiled. Static
+and motion triangle fetches, `SD_OBJECT_TRANSFORM_APPLIED`, object transforms,
+and DX/DY position offsets preserve the Cycles branch structure.
+
+Bump consumes the reconstructed differential unless a valid saved bump-state
+offset supplies the full differential. Its copied surface-gradient relation is:
+
+```text
+Rx = cross(dP.dy, normal_in)
+Ry = cross(normal_in, dP.dx)
+det = dot(dP.dx, Rx)
+surfgrad = (h_x - h_c) * Rx + (h_y - h_c) * Ry
+normal_out = safe_normalize(filter_width * abs(det) * normal_in
+                            - scale * sign(det) * surfgrad)
+```
+
+Invert negates scale, Strength is clamped only from below, a zero normalized
+result falls back to `normal_in`, and the nonzero result mixes with the input
+normal before the final ordinary normalize. Object-space inverse/forward
+normal and direction transforms occur in the same positions as Cycles. A
+disabled Bump feature writes zero to the output exactly as the Cycles feature
+guard does.
+
+The Luisa `KernelGlobals` boundary supplies only the Cycles services consumed
+by these copied handlers: static triangle vertices, motion triangle vertices,
+and `film.rgb_to_y`. Its virtual calls occur while the host records the Luisa
+AST; they do not create device virtual dispatch or an alternate runtime model.
+
+The final source-to-source audit found two structural omissions that the first
+numerical matrix did not expose. First, Cycles' base
+`ShaderNode::get_feature()` returns `KERNEL_FEATURE_NODE_BUMP` for every node
+whose cloned `bump` state is CENTER, DX, or DY; the local base had returned
+zero. The host regression now inspects the projected graph directly and
+requires exactly one Wireframe node in each state, each with the Bump feature
+and the authored filter width. Second, Cycles' object normal helpers preserve
+the input normal when `sd.object == OBJECT_NONE` on the static-transform path.
+The HIP regression passes a deliberately anisotropic transform with
+`OBJECT_NONE` and requires both forward and inverse normal helpers to leave the
+normal bit-exactly unchanged. Both fixes follow the corresponding Cycles base
+class and `kernel/geom/object.h` branches; neither is a probe-specific special
+case.
+
+While wiring the external stream into the HIP regression, a real ABI defect
+was found: `NodeConvert` is a 32-bit enum and `SVMNodeConvert` occupies two
+words. The old parser treated the packed offsets as part of the enum word and
+advanced the PC by only one word. The fixed interpreter consumes the enum word
+followed by the packed offset word, and implements all eight regular and
+derivative FI/FV/CF/CI/VF/VI/IF/IV transitions from `convert.h`. Executing the
+unmodified external stream is the permanent regression for both payload
+decoding and subsequent PC alignment.
+
+### External oracle and visual inspection
+
+The clean reference executable reports Blender 5.2.1 commit `9e2066aef7ef`.
+The diagnostic executable contains only the environment-gated final SVM dump
+plus the previously documented observation hooks. `oiiotool -a ... --diff`
+reports `PASS` for both Wireframe Matrix and Wireframe Bump clean/diagnostic
+multilayer EXRs. The comparison reports record zero RMSE, zero maximum error,
+identical channel means, and no invalid pixels.
+
+The original-resolution triptychs were opened and inspected. The World/Pixel
+matrix has identical triangle-edge masks in both panels; the Bump probe has
+identical signed normal-color diagonals. Both difference panels are completely
+black.
+
+![Wireframe clean versus diagnostic Cycles](wireframe-bump/matrix/combined.png)
+
+![Wireframe Bump clean versus diagnostic Cycles](wireframe-bump/bump/combined.png)
+
+These triptychs establish that the bytecode instrumentation is observational.
+They are not a Psycles production-render comparison: at this checkpoint the
+new Cycles SVM interpreter is still exercised by its focused Luisa/HIP kernel
+and is not yet connected to the full path tracer.
+
+Oracle and validation commands:
+
+```text
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_wireframe_matrix.blend svm_wireframe_matrix        PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_wireframe_matrix.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/svm_wireframe_matrix.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_wireframe_matrix-trace.exr 128 128 1 0 \
+  --cycles-device CPU                                         PASS
+
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_wireframe_bump.blend svm_wireframe_bump            PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_wireframe_bump.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/svm_wireframe_bump.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_wireframe_bump-trace.exr 128 128 1 0 \
+  --cycles-device CPU                                         PASS
+
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_bump_constant_fold.blend svm_bump_constant_fold    PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_bump_constant_fold.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/svm_bump_constant_fold.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_bump_constant_fold-trace.exr 32 32 1 0 \
+  --cycles-device CPU                                         PASS
+
+cmake --build build --parallel 32 --target \
+  psycles_cycles_svm_wireframe_tests \
+  psycles_blender_wireframe_import_tests \
+  psycles_luisa_cycles_svm_tests \
+  psycles_luisa_cycles_svm_wireframe_tests                    PASS
+build/psycles_cycles_svm_wireframe_tests                      PASS
+build/psycles_blender_wireframe_import_tests                  PASS
+build/bin/psycles_luisa_cycles_svm_tests hip                  PASS
+build/bin/psycles_luisa_cycles_svm_wireframe_tests hip        PASS
+cmake --build build --parallel 32                             PASS
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.(cycles_svm_(abi|bytecode|compiler|modern_mix|vector|vector_rotate|vector_transform|wireframe)|graph_material_scene|blender_(import|wireframe_import)|luisa_cycles_svm(_wireframe)?_hip|source_size|shader_probe_runner_contract|blender_export_render_settings)$' \
+                                                               16/16 PASS
+ctest --test-dir build --output-on-failure -j32 -E \
+  '(_fallback|_vk|_hip)$'                                      77/77 PASS
+ctest --test-dir build --output-on-failure -R '_hip$' -j1     89/89 PASS
+```
+
+The first complete source-size run rejected the root `CMakeLists.txt` at 2014
+lines. The fix did not weaken the limit: the seven existing Blender import-test
+target registrations were moved unchanged into
+`cmake/PsyclesBlenderImportTests.cmake`, with the new Wireframe registration
+kept beside them. This leaves the root file at 1910 lines, and the complete
+770-file source-size scan passes.

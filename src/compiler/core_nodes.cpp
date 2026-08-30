@@ -655,6 +655,16 @@ NodeRegistry make_core_node_registry() {
                                          SocketValue::string("OBJECT"))},
                  .required_features = {}}));
 
+  static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::wireframe,
+      .inputs = {input("Size", SocketType::floating,
+                       SocketValue::floating(0.01f))},
+      .outputs = {output("Fac", SocketType::floating)},
+      .properties = {property("Use Pixel Size", SocketType::boolean,
+                              SocketValue::boolean(false))},
+      .required_features = feature_bit(ShaderFeature::surface) |
+                           feature_bit(ShaderFeature::derivatives)}));
+
   static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::scalar_to_color,
                  .inputs = {input("Value", SocketType::floating,
@@ -982,11 +992,11 @@ NodeRegistry make_core_node_registry() {
       .inputs =
           {input("Height", SocketType::floating, SocketValue::floating(1.0f)),
            input("Strength", SocketType::floating, SocketValue::floating(1.0f)),
-           input("Distance", SocketType::floating, SocketValue::floating(1.0f)),
+           input("Distance", SocketType::floating, SocketValue::floating(0.1f)),
            input("FilterWidth", SocketType::floating,
-                 SocketValue::floating(1.0f)),
+                 SocketValue::floating(0.1f)),
            input("Normal", SocketType::normal,
-                 SocketValue::normal({0.0f, 0.0f, 1.0f}))},
+                 SocketValue::normal({0.0f, 0.0f, 0.0f}))},
       .outputs = {output("Normal", SocketType::normal)},
       .properties = {property("Invert", SocketType::boolean,
                               SocketValue::boolean(false)),

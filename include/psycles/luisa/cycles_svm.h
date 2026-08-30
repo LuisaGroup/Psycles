@@ -31,6 +31,12 @@ inline constexpr std::uint32_t kernel_feature_node_aov = 1u << 7u;
 inline constexpr std::uint32_t kernel_feature_node_light_path = 1u << 8u;
 inline constexpr std::uint32_t kernel_feature_node_principled_hair = 1u << 9u;
 inline constexpr std::uint32_t kernel_feature_node_portal = 1u << 10u;
+inline constexpr std::uint32_t kernel_feature_path_tracing = 1u << 11u;
+inline constexpr std::uint32_t kernel_feature_pointcloud = 1u << 12u;
+inline constexpr std::uint32_t kernel_feature_hair_ribbon = 1u << 13u;
+inline constexpr std::uint32_t kernel_feature_hair_thick = 1u << 14u;
+inline constexpr std::uint32_t kernel_feature_hair =
+    kernel_feature_hair_ribbon | kernel_feature_hair_thick;
 inline constexpr std::uint32_t kernel_feature_object_motion = 1u << 15u;
 
 inline constexpr std::uint32_t kernel_feature_node_mask_surface_light =
@@ -69,7 +75,12 @@ inline constexpr std::uint32_t shader_data_is_volume_shader_eval = 1u << 8u;
 
 /* Object sentinel and object flag copied from Cycles 5.2.1 kernel/types.h. */
 inline constexpr std::uint32_t object_none = ~0u;
+inline constexpr std::uint32_t primitive_none = ~0u;
+inline constexpr std::uint32_t primitive_triangle = 1u << 0u;
+inline constexpr std::uint32_t primitive_curve_thick = 1u << 1u;
+inline constexpr std::uint32_t primitive_motion = 1u << 6u;
 inline constexpr std::uint32_t shader_data_object_motion = 1u << 1u;
+inline constexpr std::uint32_t shader_data_object_transform_applied = 1u << 2u;
 
 /* Shader id decoration bits copied from Cycles 5.2.1 kernel/types.h. */
 inline constexpr std::uint32_t shader_smooth_normal = 1u << 31u;
@@ -113,6 +124,30 @@ struct TransformState {
       luisa::compute::Expr<luisa::float4x4> world_to_object_transform) noexcept;
 };
 
+struct TriangleVertices {
+  luisa::compute::Float3 v0;
+  luisa::compute::Float3 v1;
+  luisa::compute::Float3 v2;
+};
+
+/* Host/JIT projection of the exact KernelGlobals services consumed by the
+ * copied SVM handlers. Virtual dispatch happens while Luisa records the AST;
+ * generated device code contains only the resulting buffer operations. */
+class KernelGlobals {
+public:
+  virtual ~KernelGlobals() noexcept = default;
+
+  [[nodiscard]] virtual TriangleVertices triangle_vertices(
+      luisa::compute::Expr<std::uint32_t> object,
+      luisa::compute::Expr<std::uint32_t> prim) const noexcept = 0;
+  [[nodiscard]] virtual TriangleVertices
+  motion_triangle_vertices(luisa::compute::Expr<std::uint32_t> object,
+                           luisa::compute::Expr<std::uint32_t> prim,
+                           luisa::compute::Expr<float> time) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3
+  film_rgb_to_y() const noexcept = 0;
+};
+
 /* The fields below are the exact ShaderData projection consumed by the first
  * copied SVM node families. More fields are added only when their Cycles
  * handler is copied; no alternative shader state is consulted. */
@@ -121,13 +156,17 @@ struct ShaderData {
   luisa::compute::Float3 N;
   luisa::compute::Float3 Ng;
   luisa::compute::Float3 wi;
+  luisa::compute::UInt type;
   luisa::compute::UInt shader;
   luisa::compute::UInt flag;
+  luisa::compute::UInt object_flag;
+  luisa::compute::UInt prim;
   luisa::compute::Float u;
   luisa::compute::Float v;
-  luisa::compute::Float ray_length;
   luisa::compute::UInt object;
-  luisa::compute::UInt object_flag;
+  luisa::compute::Float time;
+  luisa::compute::Float ray_length;
+  luisa::compute::Float dP;
   luisa::compute::Float4x4 ob_tfm_motion;
   luisa::compute::Float4x4 ob_itfm_motion;
   luisa::compute::Float3 closure_emission_background;
@@ -138,13 +177,17 @@ struct ShaderData {
       luisa::compute::Expr<luisa::float3> normal,
       luisa::compute::Expr<luisa::float3> geometric_normal,
       luisa::compute::Expr<luisa::float3> incoming,
+      luisa::compute::Expr<std::uint32_t> primitive_type,
       luisa::compute::Expr<std::uint32_t> shader_id,
       luisa::compute::Expr<std::uint32_t> shader_flags,
+      luisa::compute::Expr<std::uint32_t> object_flags,
+      luisa::compute::Expr<std::uint32_t> primitive_id,
       luisa::compute::Expr<float> parametric_u,
       luisa::compute::Expr<float> parametric_v,
-      luisa::compute::Expr<float> length,
       luisa::compute::Expr<std::uint32_t> object_id,
-      luisa::compute::Expr<std::uint32_t> object_flags,
+      luisa::compute::Expr<float> motion_time,
+      luisa::compute::Expr<float> length,
+      luisa::compute::Expr<float> position_differential,
       luisa::compute::Expr<luisa::float4x4> motion_object_to_world,
       luisa::compute::Expr<luisa::float4x4> motion_world_to_object) noexcept;
 };
@@ -183,6 +226,7 @@ struct EvaluationResult {
  * to Cycles' template feature mask and kernel_data_svm_usage_NODE_* constants.
  * The device machine still has one word PC loop and one primary opcode switch. */
 void eval_nodes(
+    const KernelGlobals &kernel_globals,
     const luisa::compute::BufferUInt &words,
     compiler::cycles_svm::ShaderType shader_type,
     std::uint32_t kernel_features,

@@ -4,6 +4,7 @@
 
 #include "cycles_svm_compiler_internal.h"
 #include "cycles_svm_constant_fold.h"
+#include "cycles_svm_geometry_nodes.h"
 #include "cycles_svm_vector_nodes.h"
 
 #include <psycles/compiler/core_nodes.h>
@@ -785,6 +786,35 @@ public:
       if (previous_input != nullptr && previous_input->link != nullptr) {
         folder.bypass(previous_input->link);
       }
+    }
+  }
+};
+
+class ScalarToColorNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    auto *input = this->input("Value");
+    auto *output = this->output("Color");
+    if (input == nullptr || output == nullptr) {
+      compiler.fail("Cycles Float-to-Color Convert sockets are absent");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_CONVERT,
+        SVMNodeConvert{.convert_type = NODE_CONVERT_FV,
+                       .from_offset = compiler.input_link("Value"),
+                       .to_offset = compiler.output("Color"),
+                       ._pad = {0u, 0u}});
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    auto *input = this->input("Value");
+    if (input == nullptr || !folder.all_inputs_constant()) {
+      return;
+    }
+    const auto value = literal<float>(input, contract::SocketType::floating);
+    if (value) {
+      folder.make_constant(Vec3f{*value, *value, *value});
     }
   }
 };
@@ -1755,15 +1785,17 @@ void GraphNode::constant_fold(const ConstantFolder &) {}
 
 void GraphNode::simplify_settings() {}
 
-std::uint32_t GraphNode::get_feature() const noexcept { return 0u; }
+std::uint32_t GraphNode::get_feature() const noexcept {
+  return bump == SHADER_BUMP_NONE ? 0u : kernel_feature_node_bump;
+}
 
 ShaderNodeType GraphNode::shader_node_type() const noexcept {
   return NODE_NONE;
 }
 
 bool GraphNode::equals(const GraphNode &other) const noexcept {
-  if (type != other.type || properties != other.properties ||
-      inputs.size() != other.inputs.size()) {
+  if (type != other.type || bump != other.bump ||
+      properties != other.properties || inputs.size() != other.inputs.size()) {
     return false;
   }
   for (auto index = std::size_t{}; index < inputs.size(); ++index) {
@@ -1805,6 +1837,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
       type == node_type::vector_to_normal ||
       type == node_type::normal_to_vector) {
     return std::make_unique<Float3ConvertNode>();
+  }
+  if (type == node_type::scalar_to_color) {
+    return std::make_unique<ScalarToColorNode>();
   }
   if (type == cycles_synthetic_math || type == node_type::math) {
     return std::make_unique<MathNode>();
@@ -1852,6 +1887,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
     return std::make_unique<SeparateXYZNode>();
   }
   if (auto node = make_vector_graph_node(type)) {
+    return node;
+  }
+  if (auto node = make_geometry_graph_node(type)) {
     return node;
   }
   if (type == node_type::diffuse_bsdf) {

@@ -24,6 +24,26 @@ using namespace psycles::compiler;
 using namespace psycles::compiler::cycles_svm;
 namespace device_svm = psycles::luisa_backend::cycles_svm;
 
+class TestKernelGlobals final : public device_svm::KernelGlobals {
+public:
+  [[nodiscard]] device_svm::TriangleVertices triangle_vertices(
+      Expr<std::uint32_t>, Expr<std::uint32_t>) const noexcept override {
+    return {.v0 = make_float3(0.0f, 0.0f, 0.0f),
+            .v1 = make_float3(1.0f, 0.0f, 0.0f),
+            .v2 = make_float3(0.0f, 1.0f, 0.0f)};
+  }
+
+  [[nodiscard]] device_svm::TriangleVertices motion_triangle_vertices(
+      Expr<std::uint32_t>, Expr<std::uint32_t>,
+      Expr<float>) const noexcept override {
+    return triangle_vertices(0u, 0u);
+  }
+
+  [[nodiscard]] Float3 film_rgb_to_y() const noexcept override {
+    return make_float3(0.2126f, 0.7152f, 0.0722f);
+  }
+};
+
 constexpr std::array legacy_mix_modes{
     std::pair{"MIX", NODE_MIX_BLEND},
     std::pair{"DARKEN", NODE_MIX_DARK},
@@ -670,6 +690,7 @@ compile_dynamic_vector_transform(const VectorTransformCase &item,
         const auto identity = make_float4x4(1.0f);
         const device_svm::TransformState transform_state{identity, identity,
                                                          identity, identity};
+        const TestKernelGlobals kernel_globals;
         const UInt shader_flags =
             select(0u, device_svm::shader_data_backfacing, index != 0u);
         device_svm::ShaderData shader_data{
@@ -677,20 +698,24 @@ compile_dynamic_vector_transform(const VectorTransformCase &item,
             make_float3(shader_normal.x, shader_normal.y, shader_normal.z),
             make_float3(shader_normal.x, shader_normal.y, shader_normal.z),
             make_float3(0.0f, 0.0f, -1.0f),
+            device_svm::primitive_triangle,
             0u,
             shader_flags,
+            0u,
+            0u,
             0.2f,
             0.3f,
+            0u,
+            0.0f,
             4.0f,
-            0u,
-            0u,
+            0.25f,
             identity,
             identity};
         const device_svm::PathState path_state{
             device_svm::path_ray_visibility_camera, 0u};
         device_svm::EvaluationResult result;
         device_svm::eval_nodes(
-            words, SHADER_TYPE_SURFACE,
+            kernel_globals, words, SHADER_TYPE_SURFACE,
             0u,
             device_svm::kernel_feature_node_emission |
                 device_svm::kernel_feature_node_light_path,
@@ -754,24 +779,29 @@ compile_dynamic_vector_transform(const VectorTransformCase &item,
             cycles_probe_camera_to_world(), cycles_probe_world_to_camera(),
             object_has_motion ? identity : object_to_world,
             object_has_motion ? identity : world_to_object};
+        const TestKernelGlobals kernel_globals;
         device_svm::ShaderData shader_data{
             make_float3(1.0f, 2.0f, 3.0f),
             make_float3(0.0f, 0.0f, 1.0f),
             make_float3(0.0f, 0.0f, 1.0f),
             make_float3(0.0f, 0.0f, -1.0f),
+            device_svm::primitive_triangle,
             0u,
+            0u,
+            object_has_motion ? device_svm::shader_data_object_motion : 0u,
             0u,
             0.2f,
             0.3f,
-            4.0f,
             has_object ? 0u : device_svm::object_none,
-            object_has_motion ? device_svm::shader_data_object_motion : 0u,
+            0.0f,
+            4.0f,
+            0.25f,
             object_has_motion ? object_to_world : identity,
             object_has_motion ? world_to_object : identity};
         const device_svm::PathState path_state{
             device_svm::path_ray_visibility_camera, 0u};
         device_svm::EvaluationResult result;
-        device_svm::eval_nodes(words, SHADER_TYPE_SURFACE,
+        device_svm::eval_nodes(kernel_globals, words, SHADER_TYPE_SURFACE,
                                object_motion_feature_enabled
                                    ? device_svm::kernel_feature_object_motion
                                    : 0u,
