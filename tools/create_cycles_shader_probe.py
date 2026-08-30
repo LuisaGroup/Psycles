@@ -130,6 +130,8 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "svm_math_dedup": values._svm_math_dedup,
     "svm_color_pipeline": values._svm_color_pipeline,
     "svm_color_constant_fold": values._svm_color_constant_fold,
+    "svm_combsep_color_pipeline": values._svm_combsep_color_pipeline,
+    "svm_combsep_color_constant_fold": values._svm_combsep_color_constant_fold,
     "mapping_modes": texture_inputs._mapping_modes,
     "magic_texture_matrix": magic_inputs._magic_texture_matrix,
     "metallic_bsdf_matrix": metallic_closures._metallic_bsdf_matrix,

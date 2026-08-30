@@ -497,6 +497,179 @@ void test_color_constant_fold_matches_cycles_5_2_1() {
           "constant color pipeline retained folded opcodes");
 }
 
+void test_dynamic_combsep_color_matches_cycles_5_2_1() {
+  ShaderGraph graph;
+  const auto geometry =
+      graph.add_node(node_type::geometry, "Dynamic Backfacing");
+  const auto combine_hsl =
+      graph.add_node(node_type::combine_color, "Dynamic Combine HSL");
+  require(
+      graph.set_property(combine_hsl, "Mode", SocketValue::string("HSL")) &&
+          graph.set_input(combine_hsl, "R", SocketValue::floating(0.13f)) &&
+          graph.set_input(combine_hsl, "B", SocketValue::floating(0.36f)) &&
+          graph.connect(OutputRef{geometry, "Backfacing"}, combine_hsl, "G"),
+      "failed to configure dynamic HSL Combine Color");
+
+  const auto separate_hsv =
+      graph.add_node(node_type::separate_color, "Dynamic Separate HSV");
+  require(
+      graph.set_property(separate_hsv, "Mode", SocketValue::string("HSV")) &&
+          graph.connect(OutputRef{combine_hsl, "Color"}, separate_hsv, "Color"),
+      "failed to configure dynamic HSV Separate Color");
+
+  const auto combine_rgb =
+      graph.add_node(node_type::combine_color, "Dynamic Combine RGB");
+  require(graph.set_property(combine_rgb, "Mode", SocketValue::string("RGB")) &&
+              graph.connect(OutputRef{separate_hsv, "B"}, combine_rgb, "R") &&
+              graph.connect(OutputRef{separate_hsv, "R"}, combine_rgb, "G") &&
+              graph.connect(OutputRef{separate_hsv, "G"}, combine_rgb, "B"),
+          "failed to configure dynamic RGB Combine Color");
+
+  const auto separate_hsl =
+      graph.add_node(node_type::separate_color, "Dynamic Separate HSL");
+  require(
+      graph.set_property(separate_hsl, "Mode", SocketValue::string("HSL")) &&
+          graph.connect(OutputRef{combine_rgb, "Color"}, separate_hsl, "Color"),
+      "failed to configure dynamic HSL Separate Color");
+  const auto combine_hsv =
+      graph.add_node(node_type::combine_color, "Dynamic Combine HSV");
+  require(graph.set_property(combine_hsv, "Mode", SocketValue::string("HSV")) &&
+              graph.connect(OutputRef{separate_hsl, "R"}, combine_hsv, "R") &&
+              graph.connect(OutputRef{separate_hsl, "G"}, combine_hsv, "G") &&
+              graph.connect(OutputRef{separate_hsl, "B"}, combine_hsv, "B"),
+          "failed to configure dynamic HSV Combine Color");
+  const auto separate_rgb =
+      graph.add_node(node_type::separate_color, "Dynamic Separate RGB");
+  require(
+      graph.set_property(separate_rgb, "Mode", SocketValue::string("RGB")) &&
+          graph.connect(OutputRef{combine_hsv, "Color"}, separate_rgb, "Color"),
+      "failed to configure dynamic RGB Separate Color");
+  const auto combine_rgb_final =
+      graph.add_node(node_type::combine_color, "Dynamic Final Combine RGB");
+  require(
+      graph.set_property(combine_rgb_final, "Mode",
+                         SocketValue::string("RGB")) &&
+          graph.connect(OutputRef{separate_rgb, "B"}, combine_rgb_final, "R") &&
+          graph.connect(OutputRef{separate_rgb, "R"}, combine_rgb_final, "G") &&
+          graph.connect(OutputRef{separate_rgb, "G"}, combine_rgb_final, "B"),
+      "failed to configure dynamic final RGB Combine Color");
+
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(
+      graph.connect(OutputRef{combine_rgb_final, "Color"}, emission, "Color"),
+      "failed to connect dynamic Combine/Separate Color pipeline");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(), "dynamic Combine/Separate Color graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen from Cycles 5.2.1 `SVM Combine Separate Color Probe`. Shader 5's
+  // global jump (89,142,143) is normalized to this local 59-word stream. The
+  // chain exercises RGB, HSV, and HSL in both combine and separate directions.
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x00000039u, 0x0000003au, 0x00000032u,
+      0x00000008u, 0x00000000u, 0x00000053u, 0x00000002u, 0x3e051eb8u,
+      0x7fc00000u, 0x3eb851ecu, 0x00000001u, 0x00000052u, 0x00000001u,
+      0x7fc00001u, 0x00000000u, 0x00000000u, 0x00050400u, 0x00000053u,
+      0x00000000u, 0x7fc00005u, 0x7fc00000u, 0x7fc00004u, 0x00000001u,
+      0x00000052u, 0x00000002u, 0x7fc00001u, 0x00000000u, 0x00000000u,
+      0x00050400u, 0x00000053u, 0x00000001u, 0x7fc00000u, 0x7fc00004u,
+      0x7fc00005u, 0x00000001u, 0x00000052u, 0x00000000u, 0x7fc00001u,
+      0x00000000u, 0x00000000u, 0x00050400u, 0x00000053u, 0x00000000u,
+      0x7fc00005u, 0x7fc00000u, 0x7fc00004u, 0x00000001u, 0x00000007u,
+      0x7fc00001u, 0x00000000u, 0x00000000u, 0x3f800000u, 0x00000003u,
+      0x000000ffu, 0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles Combine/Separate Color SVM differs from Cycles");
+  require(image.peak_stack_usage == 6u,
+          "Combine/Separate Color peak stack usage differs from Cycles");
+  require(image.node_types_used[NODE_SEPARATE_COLOR] &&
+              image.node_types_used[NODE_COMBINE_COLOR],
+          "Combine/Separate Color opcode usage differs from Cycles");
+}
+
+void test_combsep_color_constant_fold_matches_cycles_5_2_1() {
+  ShaderGraph graph;
+  const auto combine_hsl =
+      graph.add_node(node_type::combine_color, "Constant Combine HSL");
+  require(graph.set_property(combine_hsl, "Mode", SocketValue::string("HSL")) &&
+              graph.set_input(combine_hsl, "R", SocketValue::floating(0.13f)) &&
+              graph.set_input(combine_hsl, "G", SocketValue::floating(0.55f)) &&
+              graph.set_input(combine_hsl, "B", SocketValue::floating(0.36f)),
+          "failed to configure constant HSL Combine Color");
+  const auto separate_hsv =
+      graph.add_node(node_type::separate_color, "Constant Separate HSV");
+  require(
+      graph.set_property(separate_hsv, "Mode", SocketValue::string("HSV")) &&
+          graph.connect(OutputRef{combine_hsl, "Color"}, separate_hsv, "Color"),
+      "failed to configure constant HSV Separate Color");
+  const auto combine_rgb =
+      graph.add_node(node_type::combine_color, "Constant Combine RGB");
+  require(graph.set_property(combine_rgb, "Mode", SocketValue::string("RGB")) &&
+              graph.connect(OutputRef{separate_hsv, "B"}, combine_rgb, "R") &&
+              graph.connect(OutputRef{separate_hsv, "R"}, combine_rgb, "G") &&
+              graph.connect(OutputRef{separate_hsv, "G"}, combine_rgb, "B"),
+          "failed to configure constant RGB Combine Color");
+  const auto separate_hsl =
+      graph.add_node(node_type::separate_color, "Constant Separate HSL");
+  require(
+      graph.set_property(separate_hsl, "Mode", SocketValue::string("HSL")) &&
+          graph.connect(OutputRef{combine_rgb, "Color"}, separate_hsl, "Color"),
+      "failed to configure constant HSL Separate Color");
+  const auto combine_hsv =
+      graph.add_node(node_type::combine_color, "Constant Combine HSV");
+  require(graph.set_property(combine_hsv, "Mode", SocketValue::string("HSV")) &&
+              graph.connect(OutputRef{separate_hsl, "R"}, combine_hsv, "R") &&
+              graph.connect(OutputRef{separate_hsl, "G"}, combine_hsv, "G") &&
+              graph.connect(OutputRef{separate_hsl, "B"}, combine_hsv, "B"),
+          "failed to configure constant HSV Combine Color");
+  const auto separate_rgb =
+      graph.add_node(node_type::separate_color, "Constant Separate RGB");
+  require(
+      graph.set_property(separate_rgb, "Mode", SocketValue::string("RGB")) &&
+          graph.connect(OutputRef{combine_hsv, "Color"}, separate_rgb, "Color"),
+      "failed to configure constant RGB Separate Color");
+  const auto combine_rgb_final =
+      graph.add_node(node_type::combine_color, "Constant Final Combine RGB");
+  require(
+      graph.set_property(combine_rgb_final, "Mode",
+                         SocketValue::string("RGB")) &&
+          graph.connect(OutputRef{separate_rgb, "B"}, combine_rgb_final, "R") &&
+          graph.connect(OutputRef{separate_rgb, "R"}, combine_rgb_final, "G") &&
+          graph.connect(OutputRef{separate_rgb, "G"}, combine_rgb_final, "B"),
+      "failed to configure constant final RGB Combine Color");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(
+      graph.connect(OutputRef{combine_rgb_final, "Color"}, emission, "Color"),
+      "failed to connect constant Combine/Separate Color pipeline");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(),
+          "constant Combine/Separate Color graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen from Cycles 5.2.1 `SVM Combine Separate Color Fold Probe`.
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x0000000bu, 0x0000000cu, 0x00000005u,
+      0x3ed6f51au, 0x3eb020c6u, 0x3e051eb7u, 0x00000003u, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles Combine/Separate Color folds differ from Cycles");
+  require(!image.node_types_used[NODE_SEPARATE_COLOR] &&
+              !image.node_types_used[NODE_COMBINE_COLOR],
+          "constant Combine/Separate Color retained folded opcodes");
+}
+
 void test_unsupported_node_rejects_without_old_fallback() {
   ShaderGraph graph;
   const auto principled =
@@ -524,6 +697,8 @@ int main() {
   test_zero_mix_closure_fold_matches_cycles_5_2_1();
   test_dynamic_color_pipeline_matches_cycles_5_2_1();
   test_color_constant_fold_matches_cycles_5_2_1();
+  test_dynamic_combsep_color_matches_cycles_5_2_1();
+  test_combsep_color_constant_fold_matches_cycles_5_2_1();
   test_unsupported_node_rejects_without_old_fallback();
   return 0;
 }

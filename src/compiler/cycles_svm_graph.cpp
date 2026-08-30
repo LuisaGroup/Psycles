@@ -87,6 +87,12 @@ namespace {
       input == "Factor") {
     return "Fac";
   }
+  if (node == node_type::combine_color) {
+    return input == "R"   ? "Red"
+           : input == "G" ? "Green"
+           : input == "B" ? "Blue"
+                          : input;
+  }
   return input;
 }
 
@@ -106,6 +112,12 @@ namespace {
                ? "True Normal"
            : output == "RandomPerIsland" ? "Random Per Island"
                                           : output;
+  }
+  if (node == node_type::separate_color) {
+    return output == "R"   ? "Red"
+           : output == "G" ? "Green"
+           : output == "B" ? "Blue"
+                           : output;
   }
   return output;
 }

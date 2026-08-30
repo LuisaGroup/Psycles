@@ -70,6 +70,74 @@ using namespace compiler::cycles_svm;
   return rgb;
 }
 
+[[nodiscard]] Float3 rgb_to_hsl(Expr<luisa::float3> rgb_value) noexcept {
+  const Float3 rgb = rgb_value;
+  const Float cmax =
+      luisa::compute::max(rgb.x, luisa::compute::max(rgb.y, rgb.z));
+  const Float cmin =
+      luisa::compute::min(rgb.x, luisa::compute::min(rgb.y, rgb.z));
+  Float h = 0.0f;
+  Float s = 0.0f;
+  const Float l = luisa::compute::min(1.0f, (cmax + cmin) / 2.0f);
+
+  $if(cmax != cmin) {
+    const Float cdelta = cmax - cmin;
+    $if(l > 0.5f) { s = cdelta / (2.0f - cmax - cmin); }
+    $else { s = cdelta / (cmax + cmin); };
+    $if(cmax == rgb.x) {
+      h = (rgb.y - rgb.z) / cdelta;
+      $if(rgb.y < rgb.z) { h += 6.0f; };
+    }
+    $elif(cmax == rgb.y) { h = (rgb.z - rgb.x) / cdelta + 2.0f; }
+    $else { h = (rgb.x - rgb.y) / cdelta + 4.0f; };
+  };
+  h /= 6.0f;
+  return make_float3(h, s, l);
+}
+
+[[nodiscard]] Float3 hsl_to_rgb(Expr<luisa::float3> hsl_value) noexcept {
+  const Float3 hsl = hsl_value;
+  Float nr = abs(hsl.x * 6.0f - 3.0f) - 1.0f;
+  Float ng = 2.0f - abs(hsl.x * 6.0f - 2.0f);
+  Float nb = 2.0f - abs(hsl.x * 6.0f - 4.0f);
+  nr = luisa::compute::clamp(nr, 0.0f, 1.0f);
+  nb = luisa::compute::clamp(nb, 0.0f, 1.0f);
+  ng = luisa::compute::clamp(ng, 0.0f, 1.0f);
+  const Float chroma = (1.0f - abs(2.0f * hsl.z - 1.0f)) * hsl.y;
+  return make_float3((nr - 0.5f) * chroma + hsl.z, (ng - 0.5f) * chroma + hsl.z,
+                     (nb - 0.5f) * chroma + hsl.z);
+}
+
+[[nodiscard]] Float3 combine_color(UInt color_type,
+                                   Expr<luisa::float3> color_value) noexcept {
+  Float3 color = color_value;
+  $switch(color_type) {
+    $case(static_cast<std::uint32_t>(NODE_COMBSEP_COLOR_HSV)) {
+      color = hsv_to_rgb(color);
+    };
+    $case(static_cast<std::uint32_t>(NODE_COMBSEP_COLOR_HSL)) {
+      color = hsl_to_rgb(color);
+    };
+    $default{};
+  };
+  return color;
+}
+
+[[nodiscard]] Float3 separate_color(UInt color_type,
+                                    Expr<luisa::float3> color_value) noexcept {
+  Float3 color = color_value;
+  $switch(color_type) {
+    $case(static_cast<std::uint32_t>(NODE_COMBSEP_COLOR_HSV)) {
+      color = rgb_to_hsv(color);
+    };
+    $case(static_cast<std::uint32_t>(NODE_COMBSEP_COLOR_HSL)) {
+      color = rgb_to_hsl(color);
+    };
+    $default{};
+  };
+  return color;
+}
+
 [[nodiscard]] Float3 gamma_color(Expr<luisa::float3> color_value,
                                  Expr<float> gamma_value) noexcept {
   Float3 color = color_value;
@@ -183,6 +251,44 @@ void node_invert(Cursor &cursor, Stack &stack) noexcept {
       factor * (make_float3(1.0f) - input_color) +
       (1.0f - factor) * input_color;
   $if (output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    stack_store_float3(stack, output_offset, color);
+  };
+}
+
+void node_separate_color(Cursor &cursor, Stack &stack) noexcept {
+  const auto color_type = cursor.word();
+  const auto color_x = cursor.word();
+  const auto color_y = cursor.word();
+  const auto color_z = cursor.word();
+  const auto packed_outputs = cursor.word();
+  const auto red_offset = cursor.byte(packed_outputs, 0u);
+  const auto green_offset = cursor.byte(packed_outputs, 1u);
+  const auto blue_offset = cursor.byte(packed_outputs, 2u);
+  const auto color = separate_color(
+      color_type, stack_load_input_float3(stack, color_x, color_y, color_z));
+  $if(red_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    stack_store_float(stack, red_offset, color.x);
+  };
+  $if(green_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    stack_store_float(stack, green_offset, color.y);
+  };
+  $if(blue_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    stack_store_float(stack, blue_offset, color.z);
+  };
+}
+
+void node_combine_color(Cursor &cursor, Stack &stack) noexcept {
+  const auto color_type = cursor.word();
+  const auto red_input = cursor.word();
+  const auto green_input = cursor.word();
+  const auto blue_input = cursor.word();
+  const auto packed_output = cursor.word();
+  const auto output_offset = cursor.byte(packed_output, 0u);
+  const auto color = combine_color(
+      color_type, make_float3(stack_load_input_float(stack, red_input),
+                              stack_load_input_float(stack, green_input),
+                              stack_load_input_float(stack, blue_input)));
+  $if(output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
     stack_store_float3(stack, output_offset, color);
   };
 }
