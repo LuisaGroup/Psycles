@@ -126,6 +126,71 @@ The remaining parameter error is small floating-point drift. The structural
 error was the different subdivision identity; that error is gone. The complete
 device trace is [reports/ribbon-trace.json](reports/ribbon-trace.json).
 
+## Legacy Hair conditional-support repair
+
+Tracing wool pixel `(544, 380)` at global sample zero exposed a second,
+independent structural failure after the ribbon interval was repaired. Both
+renderers selected closure 1, legacy Hair Transmission, with the same closure
+random numbers. Cycles accepted the sample and continued to bounce one, while
+Psycles replaced its positive conditional PDF with zero and terminated the
+path. The generated direction was valid for Cycles' longitudinal Hair sampler
+but lay on the evaluation-side of `ShaderClosure::N`.
+
+Let `I` be the selected closure, `P(I=i)=s_i/S`, and let `V_i(w)` denote the
+support predicate implemented by conditional sampler `p_i(w)`. The composed
+one-sample estimator is valid on exactly
+
+```text
+(I = i) and V_i(w).
+```
+
+The old `finish()` added a family-independent geometric predicate `G(w)` and
+therefore sampled `p_i(w) 1[G(w)]`. This is equivalent only if
+`V_i(w) => G(w)` for every closure family. Cycles' legacy Hair sampler is a
+constructive counterexample: its sampling support is defined by longitudinal
+angle bounds and deliberately does not apply the normal-side predicate used by
+arbitrary-direction Hair evaluation.
+
+The repair makes each conditional sampler the sole owner of its support.
+Diffuse, translucent, rough-translucent, velvet, and Sheen retain their
+Cycles-compatible geometric-normal tests inside their own samplers;
+Transparent and legacy Hair retain their distinct support rules. The selected
+Hair term uses the sampler result, while other mixture terms still use the
+arbitrary-direction evaluation predicate. A ribbon Hair Transmission
+regression pins the counterexample: the incoming direction is on the front
+side, the sampled transmission direction has `dot(N, wo) > 0`, and the sample
+must remain valid.
+
+The production trace after the repair records label 9 and reaches bounce one.
+Its selected conditional value is numerically aligned with Cycles:
+
+```text
+                         Cycles                 Psycles
+wo.x                  -0.253024459           -0.253011256
+wo.y                   0.954300523            0.954313517
+wo.z                   0.159025207            0.158967823
+BSDF.r                  0.000627175            0.000627140
+BSDF.g                  0.000518232            0.000518213
+BSDF.b                  0.000448958            0.000448946
+label                            9                       9
+next bounce                      1                       1
+```
+
+The remaining PDF difference, `0.003009085` versus `0.003556651`, is not a
+Hair Transmission sampling error. The trace localizes it to the categorical
+measure: closure 2, Hair Reflection, has a different populated weight. That
+SVM/material-input mismatch remains the next strict HIP target.
+
+After the repair, a full parallel build and the serialized HIP suite pass:
+
+```text
+cmake --build build --parallel "$(nproc)"
+# passed
+
+ctest --test-dir build --output-on-failure -j 1 -R '_hip$'
+# 85/85 passed in 20.29 s
+```
+
 ## Full-resolution HIP matrix
 
 Every render uses 1024 fixed samples, seed zero, Tabulated Sobol, adaptive

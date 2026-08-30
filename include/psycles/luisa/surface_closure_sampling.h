@@ -284,7 +284,6 @@ class SurfaceClosureSelectedSample {
     [[nodiscard]] Expr<luisa::float3> direction() const noexcept;
 
     [[nodiscard]] SurfaceSampleTrace finish(
-        const SurfaceClosurePoint &point,
         const SurfaceClosureSelectionMeasure &measure,
         Expr<std::uint32_t> runtime_flags,
         const SurfaceEvaluation &mixture_evaluation,

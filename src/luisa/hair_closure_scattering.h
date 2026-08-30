@@ -18,12 +18,14 @@ struct HairClosureSample {
 [[nodiscard]] HairClosureEvaluation evaluate_hair_reflection(
     const SurfaceClosurePhysicalHairRecord &closure,
     Float3 incoming,
-    Float3 outgoing) noexcept;
+    Float3 outgoing,
+    Bool sampled_direction) noexcept;
 
 [[nodiscard]] HairClosureEvaluation evaluate_hair_transmission(
     const SurfaceClosurePhysicalHairRecord &closure,
     Float3 incoming,
-    Float3 outgoing) noexcept;
+    Float3 outgoing,
+    Bool sampled_direction) noexcept;
 
 [[nodiscard]] HairClosureSample sample_hair_reflection(
     const SurfaceClosurePhysicalHairRecord &closure,

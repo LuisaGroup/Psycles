@@ -217,7 +217,6 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
                                    ? _populated_runtime_state->_runtime_flags
                                    : measure.runtime_flags();
     return selected.finish(
-        closure_point,
         measure,
         runtime_flags,
         mixture,
