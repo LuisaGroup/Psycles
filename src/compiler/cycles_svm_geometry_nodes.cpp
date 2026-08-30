@@ -51,6 +51,111 @@ float_socket_value(const GraphInput *input) noexcept {
   }
 }
 
+class GeometryNode final : public GraphNode {
+public:
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_GEOMETRY;
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto bump_offset = node_bump_offset(bump);
+    const auto use_derivative =
+        need_derivatives || bump != SHADER_BUMP_NONE;
+    const auto store_derivatives =
+        static_cast<std::uint8_t>(need_derivatives);
+
+    auto *out = output("Position");
+    if (out != nullptr && !out->links.empty()) {
+      compiler.add_node(
+          this, NODE_GEOMETRY,
+          SVMNodeGeometry{.geom_type = NODE_GEOM_P,
+                          .bump_offset = bump_offset,
+                          .store_derivatives = store_derivatives,
+                          .out_offset = compiler.output("Position"),
+                          .bump_filter_width = bump_filter_width},
+          use_derivative);
+    }
+
+    // Cycles does not support a finite-difference bump offset for Normal,
+    // Tangent, True Normal, or Incoming.
+    out = output("Normal");
+    if (out != nullptr && !out->links.empty()) {
+      compiler.add_node(
+          this, NODE_GEOMETRY,
+          SVMNodeGeometry{.geom_type = NODE_GEOM_N,
+                          .bump_offset = NODE_BUMP_OFFSET_CENTER,
+                          .store_derivatives = store_derivatives,
+                          .out_offset = compiler.output("Normal"),
+                          .bump_filter_width = bump_filter_width});
+    }
+
+    out = output("Tangent");
+    if (out != nullptr && !out->links.empty()) {
+      compiler.add_node(
+          this, NODE_GEOMETRY,
+          SVMNodeGeometry{.geom_type = NODE_GEOM_T,
+                          .bump_offset = NODE_BUMP_OFFSET_CENTER,
+                          .store_derivatives = store_derivatives,
+                          .out_offset = compiler.output("Tangent"),
+                          .bump_filter_width = bump_filter_width},
+          use_derivative);
+    }
+
+    out = output("True Normal");
+    if (out != nullptr && !out->links.empty()) {
+      compiler.add_node(
+          this, NODE_GEOMETRY,
+          SVMNodeGeometry{.geom_type = NODE_GEOM_Ng,
+                          .bump_offset = NODE_BUMP_OFFSET_CENTER,
+                          .store_derivatives = store_derivatives,
+                          .out_offset = compiler.output("True Normal"),
+                          .bump_filter_width = bump_filter_width},
+          use_derivative);
+    }
+
+    out = output("Incoming");
+    if (out != nullptr && !out->links.empty()) {
+      compiler.add_node(
+          this, NODE_GEOMETRY,
+          SVMNodeGeometry{.geom_type = NODE_GEOM_I,
+                          .bump_offset = NODE_BUMP_OFFSET_CENTER,
+                          .store_derivatives = store_derivatives,
+                          .out_offset = compiler.output("Incoming"),
+                          .bump_filter_width = bump_filter_width},
+          use_derivative);
+    }
+
+    out = output("Parametric");
+    if (out != nullptr && !out->links.empty()) {
+      compiler.add_node(
+          this, NODE_GEOMETRY,
+          SVMNodeGeometry{.geom_type = NODE_GEOM_uv,
+                          .bump_offset = bump_offset,
+                          .store_derivatives = store_derivatives,
+                          .out_offset = compiler.output("Parametric"),
+                          .bump_filter_width = bump_filter_width},
+          use_derivative);
+    }
+
+    if (auto *socket = output("Backfacing");
+        socket != nullptr && !socket->links.empty()) {
+      compiler.add_node(
+          this, NODE_LIGHT_PATH,
+          SVMNodeLightPath{.path_type = NODE_LP_backfacing,
+                           .out_offset = compiler.output("Backfacing"),
+                           ._pad = {0u, 0u, 0u}});
+    }
+    for (const auto name : {"Pointiness", "Random Per Island"}) {
+      if (const auto *socket = output(name);
+          socket != nullptr && !socket->links.empty()) {
+        compiler.fail("Cycles Geometry output is not migrated: " +
+                      std::string{name});
+        return;
+      }
+    }
+  }
+};
+
 class BumpNode final : public GraphNode {
 public:
   [[nodiscard]] std::uint32_t get_feature() const noexcept override {
@@ -118,6 +223,9 @@ public:
 } // namespace
 
 std::unique_ptr<GraphNode> make_geometry_graph_node(std::string_view type) {
+  if (type == node_type::geometry) {
+    return std::make_unique<GeometryNode>();
+  }
   if (type == node_type::bump) {
     return std::make_unique<BumpNode>();
   }

@@ -41,7 +41,11 @@ void require_words(std::span<const std::uint32_t> actual,
     if (actual[index] != expected[index]) {
       std::cerr << label << " differs at word " << index << ": got 0x"
                 << std::hex << actual[index] << ", expected 0x"
-                << expected[index] << std::dec << '\n';
+                << expected[index] << "; actual:";
+      for (const auto word : actual) {
+        std::cerr << " 0x" << word;
+      }
+      std::cerr << std::dec << '\n';
       std::exit(EXIT_FAILURE);
     }
   }
@@ -144,6 +148,55 @@ make_wireframe_bump_program() {
 [[nodiscard]] ShaderImage compile_wireframe_bump() {
   const auto program = make_wireframe_bump_program();
   auto image = compile_shader(*program);
+  require(image.valid, image.diagnostic.c_str());
+  return image;
+}
+
+[[nodiscard]] ShaderImage
+compile_geometry_bump(const char *geometry_output) {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Geometry");
+  const auto to_vector =
+      graph.add_node(node_type::point_to_vector, "Point to Vector");
+  const auto to_color =
+      graph.add_node(node_type::vector_to_color, "Vector to Color");
+  const auto separate =
+      graph.add_node(node_type::separate_xyz, "Separate Geometry");
+  const auto bump = graph.add_node(node_type::bump, "Geometry Bump");
+  const auto normal_to_vector =
+      graph.add_node(node_type::normal_to_vector, "Normal to Vector");
+  const auto normal_to_color =
+      graph.add_node(node_type::vector_to_color, "Normal to Color");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(
+      graph.connect({geometry, geometry_output}, to_vector, "Point") &&
+          graph.connect({to_vector, "Vector"}, to_color, "Vector") &&
+          graph.connect({to_color, "Color"}, separate, "Vector") &&
+          graph.connect({separate, "X"}, bump, "Height") &&
+          graph.set_input(bump, "Strength", SocketValue::floating(0.73f)) &&
+          graph.set_input(bump, "Distance", SocketValue::floating(0.41f)) &&
+          graph.set_input(bump, "FilterWidth",
+                          SocketValue::floating(0.29f)) &&
+          graph.set_property(bump, "Invert", SocketValue::boolean(false)) &&
+          graph.set_property(bump, "UseObjectSpace",
+                             SocketValue::boolean(false)) &&
+          graph.connect({bump, "Normal"}, normal_to_vector, "Normal") &&
+          graph.connect({normal_to_vector, "Vector"}, normal_to_color,
+                        "Vector") &&
+          graph.connect({normal_to_color, "Color"}, emission, "Color"),
+      "failed to construct Geometry Bump graph");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  if (!shader.ok()) {
+    for (const auto &diagnostic : shader.diagnostics) {
+      std::cerr << diagnostic.message << '\n';
+    }
+    std::exit(EXIT_FAILURE);
+  }
+  auto image = compile_shader(*shader.program);
   require(image.valid, image.diagnostic.c_str());
   return image;
 }
@@ -303,6 +356,58 @@ void test_unlinked_height_bump_constant_fold() {
           "unlinked-Height Bump was not folded exactly like Cycles");
 }
 
+void test_geometry_bump_derivative_streams() {
+  static constexpr std::array position{
+      0x00000001u, 0x00000004u, 0x0000004bu, 0x0000004cu, 0x0000000cu,
+      0x00000000u, 0x3e947ae1u, 0x0000000bu, 0x03000001u, 0x3e947ae1u,
+      0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u, 0x00000600u,
+      0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u, 0x0000ff01u,
+      0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u, 0x0000ff02u,
+      0x0000000cu, 0x00000100u, 0x3e947ae1u, 0x00000054u, 0x7fc00000u,
+      0x00000000u, 0x00000000u, 0x00000700u, 0x00000054u, 0x7fc00000u,
+      0x00000000u, 0x00000000u, 0x0000ff01u, 0x00000054u, 0x7fc00000u,
+      0x00000000u, 0x00000000u, 0x0000ff02u, 0x0000000cu, 0x00000200u,
+      0x3e947ae1u, 0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u,
+      0x00000800u, 0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u,
+      0x0000ff01u, 0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u,
+      0x0000ff02u, 0x00000021u, 0x3ed1eb85u, 0x3f3ae148u, 0x3e947ae1u,
+      0x06000003u, 0xff000807u, 0x00000007u, 0x7fc00000u, 0x00000000u,
+      0x00000000u, 0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
+  static constexpr std::array parametric{
+      0x00000001u, 0x00000004u, 0x0000004bu, 0x0000004cu, 0x0000000bu,
+      0x00000001u, 0x3e947ae1u, 0x0000000cu, 0x03000005u, 0x3e947ae1u,
+      0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u, 0x00000600u,
+      0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u, 0x0000ff01u,
+      0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u, 0x0000ff02u,
+      0x0000000cu, 0x03000105u, 0x3e947ae1u, 0x00000054u, 0x7fc00003u,
+      0x00000000u, 0x00000000u, 0x00000700u, 0x00000054u, 0x7fc00003u,
+      0x00000000u, 0x00000000u, 0x0000ff01u, 0x00000054u, 0x7fc00003u,
+      0x00000000u, 0x00000000u, 0x0000ff02u, 0x0000000cu, 0x03000205u,
+      0x3e947ae1u, 0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u,
+      0x00000800u, 0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u,
+      0x0000ff01u, 0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u,
+      0x0000ff02u, 0x00000021u, 0x3ed1eb85u, 0x3f3ae148u, 0x3e947ae1u,
+      0x06000000u, 0xff030807u, 0x00000007u, 0x7fc00003u, 0x00000000u,
+      0x00000000u, 0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
+
+  const auto position_image = compile_geometry_bump("Position");
+  const auto parametric_image = compile_geometry_bump("Parametric");
+  require_words(position_image.words, position,
+                "Cycles 5.2.1 Geometry Position Bump oracle");
+  require_words(parametric_image.words, parametric,
+                "Cycles 5.2.1 Geometry Parametric Bump oracle");
+  require(position_image.peak_stack_usage == 9u &&
+              parametric_image.peak_stack_usage == 9u,
+          "Geometry Bump stack lifetime differs from Cycles");
+  require(position_image.node_types_used[NODE_GEOMETRY_DERIVATIVE] &&
+              parametric_image.node_types_used[NODE_GEOMETRY_DERIVATIVE],
+          "Geometry Bump did not select Cycles' derivative opcode");
+}
+
 } // namespace
 
 int main() {
@@ -311,5 +416,6 @@ int main() {
   test_bump_refinement_stream();
   test_bump_refinement_features();
   test_unlinked_height_bump_constant_fold();
+  test_geometry_bump_derivative_streams();
   return EXIT_SUCCESS;
 }

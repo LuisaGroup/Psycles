@@ -14,6 +14,78 @@ namespace psycles::luisa_backend::cycles_svm::detail {
 using namespace luisa::compute;
 using namespace compiler::cycles_svm;
 
+namespace {
+
+[[nodiscard]] Float3 geometry_value(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    Expr<std::uint32_t> geometry_type) noexcept {
+  Float3 data = make_float3(0.0f);
+  $switch(geometry_type) {
+    PSYCLES_SVM_CASE(NODE_GEOM_P) { data = shader_data.P; };
+    PSYCLES_SVM_CASE(NODE_GEOM_N) { data = shader_data.N; };
+    PSYCLES_SVM_CASE(NODE_GEOM_T) {
+      data = kernel_globals.primitive_tangent(shader_data);
+    };
+    PSYCLES_SVM_CASE(NODE_GEOM_I) { data = shader_data.wi; };
+    PSYCLES_SVM_CASE(NODE_GEOM_Ng) { data = shader_data.Ng; };
+    PSYCLES_SVM_CASE(NODE_GEOM_uv) {
+      data = make_float3(1.0f - shader_data.u - shader_data.v,
+                         shader_data.u, 0.0f);
+    };
+    $default { data = make_float3(0.0f); };
+  };
+  return data;
+}
+
+[[nodiscard]] Dual3 geometry_derivative(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    Expr<std::uint32_t> geometry_type) noexcept {
+  Dual3 data{.val = make_float3(0.0f),
+             .dx = make_float3(0.0f),
+             .dy = make_float3(0.0f)};
+  $switch(geometry_type) {
+    PSYCLES_SVM_CASE(NODE_GEOM_P) {
+      data.val = shader_data.P;
+      data.dx = shader_data.dPdu * shader_data.du.dx +
+                shader_data.dPdv * shader_data.dv.dx;
+      data.dy = shader_data.dPdu * shader_data.du.dy +
+                shader_data.dPdv * shader_data.dv.dy;
+    };
+    PSYCLES_SVM_CASE(NODE_GEOM_N) { data.val = shader_data.N; };
+    PSYCLES_SVM_CASE(NODE_GEOM_T) {
+      const auto tangent =
+          kernel_globals.primitive_tangent_derivative(shader_data);
+      data.val = tangent.val;
+      data.dx = tangent.dx;
+      data.dy = tangent.dy;
+    };
+    PSYCLES_SVM_CASE(NODE_GEOM_I) {
+      data.val = shader_data.wi;
+      const auto incoming =
+          differential_from_compact(shader_data.wi, shader_data.dI);
+      data.dx = incoming.dx;
+      data.dy = incoming.dy;
+    };
+    PSYCLES_SVM_CASE(NODE_GEOM_Ng) { data.val = shader_data.Ng; };
+    PSYCLES_SVM_CASE(NODE_GEOM_uv) {
+      data.val = make_float3(1.0f - shader_data.u - shader_data.v,
+                             shader_data.u, 0.0f);
+      data.dx = make_float3(-shader_data.du.dx - shader_data.dv.dx,
+                            shader_data.du.dx, 0.0f);
+      data.dy = make_float3(-shader_data.du.dy - shader_data.dv.dy,
+                            shader_data.du.dy, 0.0f);
+    };
+    $default {
+      data.val = make_float3(0.0f);
+      data.dx = make_float3(0.0f);
+      data.dy = make_float3(0.0f);
+    };
+  };
+  return data;
+}
+
+} // namespace
+
 void node_value_f(Cursor &cursor, Stack &stack) noexcept {
   const auto value = cursor.floating();
   const auto packed_output = cursor.word();
@@ -29,31 +101,35 @@ void node_value_v(Cursor &cursor, Stack &stack) noexcept {
   stack_store_float3(stack, cursor.byte(packed_output, 0u), value);
 }
 
-void node_geometry(Cursor &cursor, Stack &stack, ShaderData &shader_data,
-                   Bool &supported) noexcept {
+void node_geometry(Cursor &cursor, Stack &stack,
+                   const KernelGlobals &kernel_globals,
+                   const ShaderData &shader_data,
+                   bool use_derivatives) noexcept {
   const auto packed = cursor.word();
   const auto geometry_type = cursor.byte(packed, 0u);
+  const auto bump_offset = cursor.byte(packed, 1u);
+  const auto store_derivatives = cursor.byte(packed, 2u);
   const auto output_offset = cursor.byte(packed, 3u);
-  static_cast<void>(cursor.floating()); // bump_filter_width
+  const auto bump_filter_width = cursor.floating();
 
-  Float3 data = make_float3(0.0f);
-  $switch (geometry_type) {
-    PSYCLES_SVM_CASE(NODE_GEOM_P) { data = shader_data.P; };
-    PSYCLES_SVM_CASE(NODE_GEOM_N) { data = shader_data.N; };
-    PSYCLES_SVM_CASE(NODE_GEOM_T) {
-      /* Cycles obtains this through primitive_tangent. That exact primitive
-       * service is wired with the attribute family, not substituted here. */
-      supported = false;
+  if (use_derivatives) {
+    auto data =
+        geometry_derivative(kernel_globals, shader_data, geometry_type);
+    $if(bump_offset == static_cast<std::uint32_t>(NODE_BUMP_OFFSET_DX)) {
+      data.val += data.dx * bump_filter_width;
+    }
+    $elif(bump_offset == static_cast<std::uint32_t>(NODE_BUMP_OFFSET_DY)) {
+      data.val += data.dy * bump_filter_width;
     };
-    PSYCLES_SVM_CASE(NODE_GEOM_I) { data = shader_data.wi; };
-    PSYCLES_SVM_CASE(NODE_GEOM_Ng) { data = shader_data.Ng; };
-    PSYCLES_SVM_CASE(NODE_GEOM_uv) {
-      data = make_float3(1.0f - shader_data.u - shader_data.v,
-                         shader_data.u, 0.0f);
-    };
-    $default { data = make_float3(0.0f); };
-  };
-  stack_store_float3(stack, output_offset, data);
+    $if(store_derivatives != 0u) {
+      stack_store_dual3(stack, output_offset, data);
+    }
+    $else { stack_store_float3(stack, output_offset, data.val); };
+  } else {
+    stack_store_float3(
+        stack, output_offset,
+        geometry_value(kernel_globals, shader_data, geometry_type));
+  }
 }
 
 void node_light_path(Cursor &cursor, Stack &stack,

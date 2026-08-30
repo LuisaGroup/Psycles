@@ -84,6 +84,7 @@ NodeRegistry make_core_node_registry() {
                              output("GeometricNormal", SocketType::normal),
                              output("Incoming", SocketType::vector),
                              output("Tangent", SocketType::vector),
+                             output("Parametric", SocketType::point),
                              output("Backfacing", SocketType::floating),
                              output("Pointiness", SocketType::floating),
                              output("RandomPerIsland", SocketType::floating)},

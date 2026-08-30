@@ -130,6 +130,20 @@ struct TriangleVertices {
   luisa::compute::Float3 v2;
 };
 
+/* Direct Luisa projections of Cycles' differential and dual3 value types. */
+struct Differential {
+  luisa::compute::Float dx;
+  luisa::compute::Float dy;
+};
+
+struct Dual3 {
+  luisa::compute::Float3 val;
+  luisa::compute::Float3 dx;
+  luisa::compute::Float3 dy;
+};
+
+struct ShaderData;
+
 /* Host/JIT projection of the exact KernelGlobals services consumed by the
  * copied SVM handlers. Virtual dispatch happens while Luisa records the AST;
  * generated device code contains only the resulting buffer operations. */
@@ -146,6 +160,10 @@ public:
                            luisa::compute::Expr<float> time) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float3
   film_rgb_to_y() const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3
+  primitive_tangent(const ShaderData &shader_data) const noexcept = 0;
+  [[nodiscard]] virtual Dual3 primitive_tangent_derivative(
+      const ShaderData &shader_data) const noexcept = 0;
 };
 
 /* The fields below are the exact ShaderData projection consumed by the first
@@ -167,6 +185,11 @@ struct ShaderData {
   luisa::compute::Float time;
   luisa::compute::Float ray_length;
   luisa::compute::Float dP;
+  luisa::compute::Float dI;
+  Differential du;
+  Differential dv;
+  luisa::compute::Float3 dPdu;
+  luisa::compute::Float3 dPdv;
   luisa::compute::Float4x4 ob_tfm_motion;
   luisa::compute::Float4x4 ob_itfm_motion;
   luisa::compute::Float3 closure_emission_background;
@@ -188,6 +211,13 @@ struct ShaderData {
       luisa::compute::Expr<float> motion_time,
       luisa::compute::Expr<float> length,
       luisa::compute::Expr<float> position_differential,
+      luisa::compute::Expr<float> incoming_differential,
+      luisa::compute::Expr<float> parametric_u_dx,
+      luisa::compute::Expr<float> parametric_u_dy,
+      luisa::compute::Expr<float> parametric_v_dx,
+      luisa::compute::Expr<float> parametric_v_dy,
+      luisa::compute::Expr<luisa::float3> position_u_derivative,
+      luisa::compute::Expr<luisa::float3> position_v_derivative,
       luisa::compute::Expr<luisa::float4x4> motion_object_to_world,
       luisa::compute::Expr<luisa::float4x4> motion_world_to_object) noexcept;
 };
