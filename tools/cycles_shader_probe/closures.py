@@ -138,6 +138,48 @@ def _mix_shader_emission(scene: Any) -> None:
     )
 
 
+def _dynamic_mix_shader(scene: Any) -> None:
+    """Keep Mix Shader's factor linked so Cycles emits both jump nodes."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    material, tree, output = _material("Dynamic Mix Probe")
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.name = "Geometry"
+    transparent = tree.nodes.new("ShaderNodeBsdfTransparent")
+    transparent.name = "Transparent BSDF"
+    _input(transparent, "Color").default_value = (
+        0.75,
+        0.9,
+        0.6,
+        1.0,
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    _input(emission, "Color").default_value = (
+        0.85,
+        0.08,
+        0.03,
+        1.0,
+    )
+    _input(emission, "Strength").default_value = 1.2
+    mix = tree.nodes.new("ShaderNodeMixShader")
+    mix.name = "Dynamic Mix Shader"
+    tree.links.new(
+        _output(geometry, "Backfacing"),
+        _input(mix, "Fac"),
+    )
+    tree.links.new(
+        _output(transparent, "BSDF"), mix.inputs[1]
+    )
+    tree.links.new(
+        _output(emission, "Emission"), mix.inputs[2]
+    )
+    tree.links.new(
+        _output(mix, "Shader"), _input(output, "Surface")
+    )
+    _plane(material)
+
+
 def _transparent_mix(scene: Any) -> None:
     _world(scene, (0.04, 0.22, 0.7, 1.0), 1.8)
     material, tree, output = _material("Transparent Probe")
