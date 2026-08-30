@@ -16,8 +16,8 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-
 void test_blender_legacy_mix_import();
+void test_blender_vector_import();
 namespace {
 using psycles::adapter::load_blender_scene_bundle;
 using psycles::contract::DirectLightSampling;
@@ -1984,7 +1984,6 @@ void test_light_path_portal_depth_import() {
 }
 
 } // namespace
-
 int main() {
   try {
     test_integrator_settings_round_trip();
@@ -1992,6 +1991,7 @@ int main() {
     test_cycles_default_microfacet_tangent_import();
     test_light_path_portal_depth_import();
     test_blender_legacy_mix_import();
+    test_blender_vector_import();
   } catch (const std::exception &exception) {
     std::cerr << "test failure: " << exception.what() << '\n';
     return EXIT_FAILURE;

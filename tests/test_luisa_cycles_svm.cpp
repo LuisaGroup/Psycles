@@ -245,6 +245,49 @@ constexpr std::array legacy_mix_modes{
   return image;
 }
 
+[[nodiscard]] ShaderImage compile_dynamic_sepcomb_vector_pipeline() {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Geometry");
+  const auto normal_to_vector =
+      graph.add_node(node_type::normal_to_vector, "Normal to Vector");
+  const auto vector_to_color =
+      graph.add_node(node_type::vector_to_color, "Vector to Color");
+  const auto separate =
+      graph.add_node(node_type::separate_xyz, "Separate XYZ");
+  const auto combine = graph.add_node(node_type::combine_xyz, "Combine XYZ");
+  const auto result_to_color =
+      graph.add_node(node_type::vector_to_color, "Result to Color");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  const auto configured =
+      graph.connect({geometry, "Normal"}, normal_to_vector, "Normal") &&
+      graph.connect({normal_to_vector, "Vector"}, vector_to_color,
+                    "Vector") &&
+      graph.connect({vector_to_color, "Color"}, separate, "Vector") &&
+      graph.connect({separate, "Z"}, combine, "X") &&
+      graph.connect({separate, "X"}, combine, "Y") &&
+      graph.connect({separate, "Y"}, combine, "Z") &&
+      graph.connect({combine, "Vector"}, result_to_color, "Vector") &&
+      graph.connect({result_to_color, "Color"}, emission, "Color");
+  if (!configured) {
+    throw std::runtime_error{
+        "failed to create dynamic Separate/Combine XYZ graph"};
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  if (!shader.ok()) {
+    throw std::runtime_error{
+        "dynamic Separate/Combine XYZ graph did not validate"};
+  }
+  auto image = compile_shader(*shader.program);
+  if (!image.valid) {
+    throw std::runtime_error{image.diagnostic};
+  }
+  return image;
+}
+
 [[nodiscard]] ShaderImage compile_dynamic_legacy_mix(std::string_view mode,
                                                      NodeMix type) {
   ShaderGraph graph;
@@ -479,18 +522,20 @@ constexpr std::array legacy_mix_modes{
 }
 
 [[nodiscard]] auto make_interpreter_kernel(
-    std::array<bool, NODE_NUM> node_types_used) {
+    std::array<bool, NODE_NUM> node_types_used,
+    luisa::float3 shader_normal = {0.0f, 0.0f, 1.0f}) {
   return Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>,
                   Buffer<luisa::uint4>>{
-      [node_types_used](BufferUInt words, BufferFloat4 floating_output,
-                        BufferUInt4 integer_output) noexcept {
+      [node_types_used, shader_normal](BufferUInt words,
+                                       BufferFloat4 floating_output,
+                                       BufferUInt4 integer_output) noexcept {
         const UInt index = dispatch_x();
         const UInt shader_flags =
             select(0u, device_svm::shader_data_backfacing, index != 0u);
         device_svm::ShaderData shader_data{
             make_float3(1.0f, 2.0f, 3.0f),
-            make_float3(0.0f, 0.0f, 1.0f),
-            make_float3(0.0f, 0.0f, 1.0f),
+            make_float3(shader_normal.x, shader_normal.y, shader_normal.z),
+            make_float3(shader_normal.x, shader_normal.y, shader_normal.z),
             make_float3(0.0f, 0.0f, -1.0f),
             0u,
             shader_flags,
@@ -590,8 +635,10 @@ struct InterpreterShape final : StmtVisitor {
 
 void run_image(Device &device, Stream &stream, const ShaderImage &image,
                std::array<luisa::float4, 2u> &floating,
-               std::array<luisa::uint4, 2u> &integer) {
-  const auto kernel = make_interpreter_kernel(image.node_types_used);
+               std::array<luisa::uint4, 2u> &integer,
+               luisa::float3 shader_normal = {0.0f, 0.0f, 1.0f}) {
+  const auto kernel =
+      make_interpreter_kernel(image.node_types_used, shader_normal);
   auto shader = device.compile(kernel, ShaderOption{.enable_cache = false});
   auto word_buffer = device.create_buffer<std::uint32_t>(image.words.size());
   auto floating_buffer = device.create_buffer<luisa::float4>(floating.size());
@@ -610,6 +657,7 @@ int main(int argc, char **argv) {
   const auto mix_image = compile_dynamic_mix();
   const auto color_image = compile_dynamic_color_pipeline();
   const auto combsep_color_image = compile_dynamic_combsep_color_pipeline();
+  const auto sepcomb_vector_image = compile_dynamic_sepcomb_vector_pipeline();
   std::vector<ShaderImage> legacy_mix_images;
   legacy_mix_images.reserve(legacy_mix_modes.size());
   for (const auto &[mode, type] : legacy_mix_modes) {
@@ -726,6 +774,34 @@ int main(int argc, char **argv) {
       integer[1].z != (device_svm::shader_data_backfacing |
                        device_svm::shader_data_emission)) {
     std::cerr << "dynamic Combine/Separate Color Cycles SVM state mismatch on "
+              << backend << '\n';
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  // Frozen from the Cycles CPU Emission pass of
+  // `svm_sepcomb_vector_pipeline`. The object rotation makes all three normal
+  // components non-trivial; the host stream is frozen independently by the
+  // vector compiler and Blender-import regressions.
+  static constexpr auto cycles_probe_normal =
+      luisa::float3{-0.191833034f, -0.347542346f, 0.917831361f};
+  run_image(device, stream, sepcomb_vector_image, floating, integer,
+            cycles_probe_normal);
+  static constexpr auto cycles_vector_emission =
+      luisa::float3{0.917831361f, -0.191833034f, -0.347542346f};
+  if (!require_float3(floating[0], cycles_vector_emission,
+                      "front-facing Separate/Combine XYZ emission") ||
+      !require_float3(floating[1], cycles_vector_emission,
+                      "back-facing Separate/Combine XYZ emission") ||
+      !approximately_equal(floating[0].w, cycles_vector_emission.x) ||
+      !approximately_equal(floating[1].w, cycles_vector_emission.x) ||
+      integer[0].x != ended || integer[1].x != ended ||
+      integer[0].y != 39u || integer[1].y != 39u ||
+      integer[0].z != device_svm::shader_data_emission ||
+      integer[1].z != (device_svm::shader_data_backfacing |
+                       device_svm::shader_data_emission)) {
+    std::cerr << "dynamic Separate/Combine XYZ Cycles SVM state mismatch on "
               << backend << '\n';
     return EXIT_FAILURE;
   }

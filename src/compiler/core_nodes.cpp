@@ -901,6 +901,30 @@ NodeRegistry make_core_node_registry() {
       .required_features = {}}));
 
   static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::separate_xyz,
+      // Cycles 5.2.1 SeparateXYZNode declares this as SOCKET_IN_COLOR even
+      // though Blender presents a vector socket.
+      .inputs = {input("Vector", SocketType::color,
+                       SocketValue::color({0.0f, 0.0f, 0.0f}))},
+      .outputs = {output("X", SocketType::floating),
+                  output("Y", SocketType::floating),
+                  output("Z", SocketType::floating)},
+      .properties = {},
+      .required_features = {}}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::combine_xyz,
+      .inputs = {input("X", SocketType::floating,
+                       SocketValue::floating(0.0f)),
+                 input("Y", SocketType::floating,
+                       SocketValue::floating(0.0f)),
+                 input("Z", SocketType::floating,
+                       SocketValue::floating(0.0f))},
+      .outputs = {output("Vector", SocketType::vector)},
+      .properties = {},
+      .required_features = {}}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::normal_map,
       .inputs = {input("Strength", SocketType::floating,
                        SocketValue::floating(1.0f)),

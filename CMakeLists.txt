@@ -1668,7 +1668,7 @@ if(PSYCLES_ENABLE_LUISA)
             add_executable(
                 psycles_blender_import_tests
                 tests/test_blender_import.cpp
-                tests/test_blender_legacy_mix_import.cpp)
+                tests/test_blender_legacy_mix_import.cpp tests/test_blender_vector_import.cpp)
             target_link_libraries(
                 psycles_blender_import_tests
                 PRIVATE Psycles::luisa_runtime)

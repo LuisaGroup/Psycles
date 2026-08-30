@@ -140,6 +140,8 @@ _ALL_PROBES = (
     "svm_modern_mix_data_matrix",
     "svm_modern_mix_fold_edges",
     "svm_modern_mix_import_chain",
+    "svm_sepcomb_vector_constant_fold",
+    "svm_sepcomb_vector_pipeline",
     "thin_film_surface",
     "transparent_mix",
     "transparent_data_pass",

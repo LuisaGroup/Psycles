@@ -42,6 +42,7 @@ from cycles_shader_probe import (  # noqa: E402
     svm_mix,
     subsurface_closures,
     support,
+    svm_vector,
     texture_inputs,
     thin_film_closures,
     values,
@@ -148,6 +149,10 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "svm_modern_mix_constant_matrix": svm_mix._svm_modern_mix_constant_matrix,
     "svm_modern_mix_import_chain": svm_mix._svm_modern_mix_import_chain,
     "svm_modern_mix_fold_edges": svm_mix._svm_modern_mix_fold_edges,
+    "svm_sepcomb_vector_pipeline": svm_vector._svm_sepcomb_vector_pipeline,
+    "svm_sepcomb_vector_constant_fold": (
+        svm_vector._svm_sepcomb_vector_constant_fold
+    ),
     "mix_shader_emission": closures._mix_shader_emission,
     "negative_scale_surface": closures._negative_scale_surface,
     "nishita_diffuse_transport": closures._nishita_diffuse_transport,

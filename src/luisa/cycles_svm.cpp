@@ -239,6 +239,26 @@ void eval_nodes(
           detail::node_combine_color(cursor, stack);
         };
       }
+      if (node_types_used[NODE_SEPARATE_VECTOR]) {
+        PSYCLES_SVM_CASE(NODE_SEPARATE_VECTOR) {
+          detail::node_separate_vector(cursor, stack, false);
+        };
+      }
+      if (node_types_used[NODE_SEPARATE_VECTOR_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_SEPARATE_VECTOR_DERIVATIVE) {
+          detail::node_separate_vector(cursor, stack, true);
+        };
+      }
+      if (node_types_used[NODE_COMBINE_VECTOR]) {
+        PSYCLES_SVM_CASE(NODE_COMBINE_VECTOR) {
+          detail::node_combine_vector(cursor, stack, false);
+        };
+      }
+      if (node_types_used[NODE_COMBINE_VECTOR_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_COMBINE_VECTOR_DERIVATIVE) {
+          detail::node_combine_vector(cursor, stack, true);
+        };
+      }
       if (node_types_used[NODE_CLAMP]) {
         PSYCLES_SVM_CASE(NODE_CLAMP) { detail::node_clamp(cursor, stack); };
       }
