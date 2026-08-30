@@ -1,0 +1,1593 @@
+{
+  "absolute_tolerance": 1e-06,
+  "actual": "/var/tmp/psycles-benchmark-curve-uv-final-20260830/trace/psycles-hip-s0.json",
+  "checked": {
+    "exact": 46,
+    "float32": 112,
+    "random_exact": 16,
+    "topology": 3
+  },
+  "failure_count": 243,
+  "failures": [
+    {
+      "absolute_error": 0.03785386681556702,
+      "actual": 0.39902806282043457,
+      "bound": 1.7980561256408691e-06,
+      "field": "events[0].isect_coord.u",
+      "policy": "topology",
+      "reference": 0.36117419600486755
+    },
+    {
+      "absolute_error": 0.01217341423034668,
+      "actual": 0.8708606958389282,
+      "bound": 2.7417213916778565e-06,
+      "field": "events[0].isect_coord.v",
+      "policy": "topology",
+      "reference": 0.8586872816085815
+    },
+    {
+      "actual": 1.0,
+      "field": "events[0].isect_id.primitive_type",
+      "policy": "exact",
+      "reference": 1284.0
+    },
+    {
+      "absolute_error": 0.01613880693912506,
+      "actual": 0.23079541325569153,
+      "bound": 1.4938684403896331e-06,
+      "field": "events[0].surface_n.x",
+      "policy": "float32",
+      "reference": 0.2469342201948166
+    },
+    {
+      "absolute_error": 0.0075743794441223145,
+      "actual": -0.8833363056182861,
+      "bound": 2.7818213701248167e-06,
+      "field": "events[0].surface_n.y",
+      "policy": "float32",
+      "reference": -0.8909106850624084
+    },
+    {
+      "absolute_error": 0.026798754930496216,
+      "actual": -0.40798330307006836,
+      "bound": 1.8159666061401368e-06,
+      "field": "events[0].surface_n.z",
+      "policy": "float32",
+      "reference": -0.38118454813957214
+    },
+    {
+      "absolute_error": 0.0031529441475868225,
+      "actual": 0.048584599047899246,
+      "bound": 1.1034750863909721e-06,
+      "field": "events[0].light_eval.bsdf_pdf",
+      "policy": "float32",
+      "reference": 0.05173754319548607
+    },
+    {
+      "absolute_error": 0.0005034804344177246,
+      "actual": 0.9962267875671387,
+      "bound": 2.992453575134277e-06,
+      "field": "events[0].light_eval.mis_weight",
+      "policy": "float32",
+      "reference": 0.995723307132721
+    },
+    {
+      "absolute_error": 0.0008692443370819092,
+      "actual": 0.17373627424240112,
+      "bound": 1.349211037158966e-06,
+      "field": "events[0].closure_pick.sample_weight",
+      "policy": "float32",
+      "reference": 0.17460551857948303
+    },
+    {
+      "actual": 0.18377657234668732,
+      "field": "events[0].closure_random.selection_rescaled",
+      "policy": "random_exact",
+      "reference": 0.1954045444726944
+    },
+    {
+      "absolute_error": 0.0014027059078216553,
+      "actual": 0.27448728680610657,
+      "bound": 1.5517799854278565e-06,
+      "field": "events[0].closure_weight.r",
+      "policy": "float32",
+      "reference": 0.2758899927139282
+    },
+    {
+      "absolute_error": 0.0008160322904586792,
+      "actual": 0.16170455515384674,
+      "bound": 1.3250411748886107e-06,
+      "field": "events[0].closure_weight.g",
+      "policy": "float32",
+      "reference": 0.16252058744430542
+    },
+    {
+      "absolute_error": 0.00038896501064300537,
+      "actual": 0.08501695841550827,
+      "bound": 1.1708118468523026e-06,
+      "field": "events[0].closure_weight.b",
+      "policy": "float32",
+      "reference": 0.08540592342615128
+    },
+    {
+      "absolute_error": 0.01613880693912506,
+      "actual": 0.23079541325569153,
+      "bound": 1.4938684403896331e-06,
+      "field": "events[0].closure_n.x",
+      "policy": "float32",
+      "reference": 0.2469342201948166
+    },
+    {
+      "absolute_error": 0.0075743794441223145,
+      "actual": -0.8833363056182861,
+      "bound": 2.7818213701248167e-06,
+      "field": "events[0].closure_n.y",
+      "policy": "float32",
+      "reference": -0.8909106850624084
+    },
+    {
+      "absolute_error": 0.026798754930496216,
+      "actual": -0.40798330307006836,
+      "bound": 1.8159666061401368e-06,
+      "field": "events[0].closure_n.z",
+      "policy": "float32",
+      "reference": -0.38118454813957214
+    },
+    {
+      "absolute_error": 0.07762223482131958,
+      "actual": 0.0,
+      "bound": 1.155244469642639e-06,
+      "field": "events[0].bsdf_meta.pdf",
+      "policy": "float32",
+      "reference": 0.07762223482131958
+    },
+    {
+      "absolute_error": 0.07762223482131958,
+      "actual": 0.0,
+      "bound": 1.155244469642639e-06,
+      "field": "events[0].bsdf_meta.unguided_pdf",
+      "policy": "float32",
+      "reference": 0.07762223482131958
+    },
+    {
+      "actual": 0.0,
+      "field": "events[0].bsdf_meta.label",
+      "policy": "exact",
+      "reference": 10.0
+    },
+    {
+      "absolute_error": 0.010041981935501099,
+      "actual": -0.3919057846069336,
+      "bound": 1.8038955330848693e-06,
+      "field": "events[0].bsdf_wo.x",
+      "policy": "float32",
+      "reference": -0.4019477665424347
+    },
+    {
+      "absolute_error": 0.0006527900695800781,
+      "actual": 0.4219779074192047,
+      "bound": 1.8452613949775695e-06,
+      "field": "events[0].bsdf_wo.y",
+      "policy": "float32",
+      "reference": 0.4226306974887848
+    },
+    {
+      "absolute_error": 0.0052294135093688965,
+      "actual": 0.8175232410430908,
+      "bound": 2.6350464820861814e-06,
+      "field": "events[0].bsdf_wo.z",
+      "policy": "float32",
+      "reference": 0.8122938275337219
+    },
+    {
+      "absolute_error": 0.08919069170951843,
+      "actual": 0.0,
+      "bound": 1.1783813834190369e-06,
+      "field": "events[0].bsdf_eval.r",
+      "policy": "float32",
+      "reference": 0.08919069170951843
+    },
+    {
+      "absolute_error": 0.05254023149609566,
+      "actual": 0.0,
+      "bound": 1.1050804629921912e-06,
+      "field": "events[0].bsdf_eval.g",
+      "policy": "float32",
+      "reference": 0.05254023149609566
+    },
+    {
+      "absolute_error": 0.027610328048467636,
+      "actual": 0.0,
+      "bound": 1.0552206560969351e-06,
+      "field": "events[0].bsdf_eval.b",
+      "policy": "float32",
+      "reference": 0.027610328048467636
+    },
+    {
+      "absolute_error": 0.10000000149011612,
+      "actual": 0.0,
+      "bound": 1.2000000029802322e-06,
+      "field": "events[0].bsdf_roughness_eta.roughness_u",
+      "policy": "float32",
+      "reference": 0.10000000149011612
+    },
+    {
+      "absolute_error": 1.0,
+      "actual": 0.0,
+      "bound": 3e-06,
+      "field": "events[0].bsdf_roughness_eta.roughness_v",
+      "policy": "float32",
+      "reference": 1.0
+    },
+    {
+      "actual": false,
+      "field": "events[0].post_depth.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[0].post_throughput.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[0].post_ray_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[0].post_ray_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[0].post_flags.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[0].post_mis.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": 3096.0,
+      "field": "events[0].surface_flags.runtime_flag_low16",
+      "policy": "exact",
+      "reference": 34316.0
+    },
+    {
+      "actual": 0.0,
+      "field": "events[0].surface_flags.runtime_flag_high16",
+      "policy": "exact",
+      "reference": 2.0
+    },
+    {
+      "actual": false,
+      "field": "events[0].post_visibility.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "absolute_error": 0.0035487860441207886,
+      "actual": 0.055899478495121,
+      "bound": 1.1188965290784835e-06,
+      "field": "events[0].nee_bsdf.r",
+      "policy": "float32",
+      "reference": 0.05944826453924179
+    },
+    {
+      "absolute_error": 0.00208842009305954,
+      "actual": 0.032931216061115265,
+      "bound": 1.0700392723083495e-06,
+      "field": "events[0].nee_bsdf.g",
+      "policy": "float32",
+      "reference": 0.035019636154174805
+    },
+    {
+      "absolute_error": 0.0010893624275922775,
+      "actual": 0.017313748598098755,
+      "bound": 1.036806222051382e-06,
+      "field": "events[0].nee_bsdf.b",
+      "policy": "float32",
+      "reference": 0.018403111025691032
+    },
+    {
+      "absolute_error": 0.0035487860441207886,
+      "actual": 0.055899478495121,
+      "bound": 1.1188965290784835e-06,
+      "field": "events[0].nee_glossy.r",
+      "policy": "float32",
+      "reference": 0.05944826453924179
+    },
+    {
+      "absolute_error": 0.00208842009305954,
+      "actual": 0.032931216061115265,
+      "bound": 1.0700392723083495e-06,
+      "field": "events[0].nee_glossy.g",
+      "policy": "float32",
+      "reference": 0.035019636154174805
+    },
+    {
+      "absolute_error": 0.0010893624275922775,
+      "actual": 0.017313748598098755,
+      "bound": 1.036806222051382e-06,
+      "field": "events[0].nee_glossy.b",
+      "policy": "float32",
+      "reference": 0.018403111025691032
+    },
+    {
+      "absolute_error": 0.010656997561454773,
+      "actual": 0.16929909586906433,
+      "bound": 1.359912186861038e-06,
+      "field": "events[0].nee_weighted_bsdf.r",
+      "policy": "float32",
+      "reference": 0.1799560934305191
+    },
+    {
+      "absolute_error": 0.005681976675987244,
+      "actual": 0.09036200493574142,
+      "bound": 1.1920879632234573e-06,
+      "field": "events[0].nee_weighted_bsdf.g",
+      "policy": "float32",
+      "reference": 0.09604398161172867
+    },
+    {
+      "absolute_error": 0.0017134398221969604,
+      "actual": 0.02746698260307312,
+      "bound": 1.05836084485054e-06,
+      "field": "events[0].nee_weighted_bsdf.b",
+      "policy": "float32",
+      "reference": 0.02918042242527008
+    },
+    {
+      "absolute_error": 0.010656997561454773,
+      "actual": 0.16929909586906433,
+      "bound": 1.359912186861038e-06,
+      "field": "events[0].nee_unshadowed.r",
+      "policy": "float32",
+      "reference": 0.1799560934305191
+    },
+    {
+      "absolute_error": 0.005681976675987244,
+      "actual": 0.09036200493574142,
+      "bound": 1.1920879632234573e-06,
+      "field": "events[0].nee_unshadowed.g",
+      "policy": "float32",
+      "reference": 0.09604398161172867
+    },
+    {
+      "absolute_error": 0.0017134398221969604,
+      "actual": 0.02746698260307312,
+      "bound": 1.05836084485054e-06,
+      "field": "events[0].nee_unshadowed.b",
+      "policy": "float32",
+      "reference": 0.02918042242527008
+    },
+    {
+      "absolute_error": 0.0027806758880615234,
+      "actual": 0.3807722330093384,
+      "bound": 1.7615444660186768e-06,
+      "field": "events[0].closure.0.meta.sample_weight",
+      "policy": "float32",
+      "reference": 0.37799155712127686
+    },
+    {
+      "absolute_error": 0.0027806758880615234,
+      "actual": 0.3807722330093384,
+      "bound": 1.7615444660186768e-06,
+      "field": "events[0].closure.0.weight.r",
+      "policy": "float32",
+      "reference": 0.37799155712127686
+    },
+    {
+      "absolute_error": 0.0027806758880615234,
+      "actual": 0.3807722330093384,
+      "bound": 1.7615444660186768e-06,
+      "field": "events[0].closure.0.weight.g",
+      "policy": "float32",
+      "reference": 0.37799155712127686
+    },
+    {
+      "absolute_error": 0.0027806758880615234,
+      "actual": 0.3807722330093384,
+      "bound": 1.7615444660186768e-06,
+      "field": "events[0].closure.0.weight.b",
+      "policy": "float32",
+      "reference": 0.37799155712127686
+    },
+    {
+      "absolute_error": 0.01613880693912506,
+      "actual": 0.23079541325569153,
+      "bound": 1.4938684403896331e-06,
+      "field": "events[0].closure.0.normal.x",
+      "policy": "float32",
+      "reference": 0.2469342201948166
+    },
+    {
+      "absolute_error": 0.0075743794441223145,
+      "actual": -0.8833363056182861,
+      "bound": 2.7818213701248167e-06,
+      "field": "events[0].closure.0.normal.y",
+      "policy": "float32",
+      "reference": -0.8909106850624084
+    },
+    {
+      "absolute_error": 0.026798754930496216,
+      "actual": -0.40798330307006836,
+      "bound": 1.8159666061401368e-06,
+      "field": "events[0].closure.0.normal.z",
+      "policy": "float32",
+      "reference": -0.38118454813957214
+    },
+    {
+      "absolute_error": 0.0008692443370819092,
+      "actual": 0.17373627424240112,
+      "bound": 1.349211037158966e-06,
+      "field": "events[0].closure.1.meta.sample_weight",
+      "policy": "float32",
+      "reference": 0.17460551857948303
+    },
+    {
+      "absolute_error": 0.0014027059078216553,
+      "actual": 0.27448728680610657,
+      "bound": 1.5517799854278565e-06,
+      "field": "events[0].closure.1.weight.r",
+      "policy": "float32",
+      "reference": 0.2758899927139282
+    },
+    {
+      "absolute_error": 0.0008160322904586792,
+      "actual": 0.16170455515384674,
+      "bound": 1.3250411748886107e-06,
+      "field": "events[0].closure.1.weight.g",
+      "policy": "float32",
+      "reference": 0.16252058744430542
+    },
+    {
+      "absolute_error": 0.00038896501064300537,
+      "actual": 0.08501695841550827,
+      "bound": 1.1708118468523026e-06,
+      "field": "events[0].closure.1.weight.b",
+      "policy": "float32",
+      "reference": 0.08540592342615128
+    },
+    {
+      "absolute_error": 0.01613880693912506,
+      "actual": 0.23079541325569153,
+      "bound": 1.4938684403896331e-06,
+      "field": "events[0].closure.1.normal.x",
+      "policy": "float32",
+      "reference": 0.2469342201948166
+    },
+    {
+      "absolute_error": 0.0075743794441223145,
+      "actual": -0.8833363056182861,
+      "bound": 2.7818213701248167e-06,
+      "field": "events[0].closure.1.normal.y",
+      "policy": "float32",
+      "reference": -0.8909106850624084
+    },
+    {
+      "absolute_error": 0.026798754930496216,
+      "actual": -0.40798330307006836,
+      "bound": 1.8159666061401368e-06,
+      "field": "events[0].closure.1.normal.z",
+      "policy": "float32",
+      "reference": -0.38118454813957214
+    },
+    {
+      "absolute_error": 0.0008692443370819092,
+      "actual": 0.17373627424240112,
+      "bound": 1.349211037158966e-06,
+      "field": "events[0].closure.2.meta.sample_weight",
+      "policy": "float32",
+      "reference": 0.17460551857948303
+    },
+    {
+      "absolute_error": 0.0014027059078216553,
+      "actual": 0.27448728680610657,
+      "bound": 1.5517799854278565e-06,
+      "field": "events[0].closure.2.weight.r",
+      "policy": "float32",
+      "reference": 0.2758899927139282
+    },
+    {
+      "absolute_error": 0.0008160322904586792,
+      "actual": 0.16170455515384674,
+      "bound": 1.3250411748886107e-06,
+      "field": "events[0].closure.2.weight.g",
+      "policy": "float32",
+      "reference": 0.16252058744430542
+    },
+    {
+      "absolute_error": 0.00038896501064300537,
+      "actual": 0.08501695841550827,
+      "bound": 1.1708118468523026e-06,
+      "field": "events[0].closure.2.weight.b",
+      "policy": "float32",
+      "reference": 0.08540592342615128
+    },
+    {
+      "absolute_error": 0.01613880693912506,
+      "actual": 0.23079541325569153,
+      "bound": 1.4938684403896331e-06,
+      "field": "events[0].closure.2.normal.x",
+      "policy": "float32",
+      "reference": 0.2469342201948166
+    },
+    {
+      "absolute_error": 0.0075743794441223145,
+      "actual": -0.8833363056182861,
+      "bound": 2.7818213701248167e-06,
+      "field": "events[0].closure.2.normal.y",
+      "policy": "float32",
+      "reference": -0.8909106850624084
+    },
+    {
+      "absolute_error": 0.026798754930496216,
+      "actual": -0.40798330307006836,
+      "bound": 1.8159666061401368e-06,
+      "field": "events[0].closure.2.normal.z",
+      "policy": "float32",
+      "reference": -0.38118454813957214
+    },
+    {
+      "actual": false,
+      "field": "events[1].state_depth.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].state_lobes.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].state_visibility.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].state_flags.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].throughput.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].ray_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].ray_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].ray_range.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].isect_coord.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].isect_id.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].surface_meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].surface_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].surface_ng.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].surface_n.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].random_scalars.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].random_light.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].random_bsdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].light_meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].light_id.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].light_pdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].light_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].light_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].light_ng.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].light_eval.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure_pick.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure_random.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure_weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure_n.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].bsdf_meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].bsdf_wo.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].bsdf_eval.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].bsdf_roughness_eta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].post_depth.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].post_throughput.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].post_ray_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].post_ray_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].post_flags.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].post_mis.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].surface_flags.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].post_visibility.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].light_shader.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].nee_bsdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].nee_diffuse.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].nee_glossy.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].nee_weighted_bsdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].nee_light_shader.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].nee_unshadowed.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure.0.meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure.0.weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure.0.normal.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure.1.meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure.1.weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure.1.normal.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure.2.meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure.2.weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].closure.2.normal.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].state_depth.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].state_lobes.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].state_visibility.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].state_flags.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].throughput.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].ray_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].ray_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].ray_range.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].isect_coord.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].isect_id.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].surface_meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].surface_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].surface_ng.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].surface_n.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].random_scalars.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].random_light.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].random_bsdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].light_meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].light_id.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].light_pdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].light_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].light_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].light_ng.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].light_eval.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure_pick.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure_random.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure_weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure_n.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].bsdf_meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].bsdf_wo.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].bsdf_eval.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].bsdf_roughness_eta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].post_depth.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].post_throughput.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].post_ray_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].post_ray_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].post_flags.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].post_mis.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].surface_flags.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].post_visibility.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].light_shader.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].nee_bsdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].nee_diffuse.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].nee_glossy.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].nee_weighted_bsdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].nee_light_shader.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].nee_unshadowed.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].nee_contribution.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure.0.meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure.0.weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure.0.normal.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure.1.meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure.1.weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure.1.normal.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure.2.meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure.2.weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].closure.2.normal.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].state_depth.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].state_lobes.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].state_visibility.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].state_flags.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].throughput.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].ray_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].ray_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].ray_range.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].isect_coord.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].isect_id.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].surface_meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].surface_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].surface_ng.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].surface_n.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].random_scalars.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].random_light.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].random_bsdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].light_meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].light_id.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].light_pdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].light_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].light_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].light_ng.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].light_eval.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].closure_pick.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].closure_random.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].closure_weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].closure_n.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].bsdf_meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].bsdf_wo.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].bsdf_eval.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].bsdf_roughness_eta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].post_depth.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].post_throughput.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].post_ray_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].post_ray_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].post_flags.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].post_mis.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].surface_flags.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].post_visibility.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].light_shader.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].nee_bsdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].nee_diffuse.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].nee_glossy.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].nee_weighted_bsdf.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].closure.0.meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].closure.0.weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].closure.0.normal.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].closure.1.meta.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].closure.1.weight.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[3].closure.1.normal.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].shadow_ray_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].shadow_ray_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].shadow_ray_range.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].shadow_source.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[1].shadow_light.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].shadow_ray_p.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].shadow_ray_d.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].shadow_ray_range.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].shadow_source.written",
+      "policy": "exact",
+      "reference": true
+    },
+    {
+      "actual": false,
+      "field": "events[2].shadow_light.written",
+      "policy": "exact",
+      "reference": true
+    }
+  ],
+  "max_absolute_error": 1.0,
+  "max_error_field": "events[0].bsdf_roughness_eta.roughness_v",
+  "max_relative_error": 1.0,
+  "passed": false,
+  "reference": "/var/tmp/psycles-benchmark-hair-trace-20260830/cycles-hip-s0.exr",
+  "relative_tolerance": 2e-06,
+  "schema": "psycles.cycles-path-trace-comparison.v1",
+  "topology_equivalent": []
+}

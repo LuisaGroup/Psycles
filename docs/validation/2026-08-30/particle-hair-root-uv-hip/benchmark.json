@@ -1,0 +1,180 @@
+{
+  "commands": {
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "/var/tmp/psycles-official-redownload-20260814/benchmark-extracted/benchmark/benchmark.blend",
+        "--background",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-benchmark-curve-uv-final-20260830/fullres-2048x858-1024/cycles/hip.exr",
+        "2048",
+        "858",
+        "1024",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "RX 9070 XT"
+      ],
+      "log": "/var/tmp/psycles-benchmark-curve-uv-final-20260830/fullres-2048x858-1024/logs/cycles-hip.log",
+      "returncode": 0,
+      "wall_seconds": 121.21070325799519
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_hip-wavefront-staged": {
+      "command": [
+        "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-benchmark-curve-uv-final-20260830/export",
+        "/var/tmp/psycles-benchmark-curve-uv-final-20260830/fullres-2048x858-1024/psycles/hip-wavefront-staged.ppm",
+        "hip",
+        "2048",
+        "858",
+        "1024",
+        "64",
+        "-",
+        "1024",
+        "429",
+        "0",
+        "0",
+        "1024",
+        "-",
+        "1",
+        "0",
+        "wavefront-staged",
+        "32",
+        "32768",
+        "32",
+        "1",
+        "1",
+        "0",
+        "4",
+        "2",
+        "auto",
+        "0",
+        "0",
+        "0",
+        "1",
+        "1048576"
+      ],
+      "log": "/var/tmp/psycles-benchmark-curve-uv-final-20260830/fullres-2048x858-1024/logs/psycles-hip-wavefront-staged.log",
+      "returncode": 0,
+      "wall_seconds": 199.22048631799407
+    }
+  },
+  "comparisons": {
+    "psycles-hip-wavefront-staged-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-benchmark-curve-uv-final-20260830/fullres-2048x858-1024/psycles/hip-wavefront-staged.exr",
+      "process_wall_seconds": 21.415244963995065,
+      "reference": "/var/tmp/psycles-benchmark-curve-uv-final-20260830/fullres-2048x858-1024/cycles/hip.exr",
+      "report": "/var/tmp/psycles-benchmark-curve-uv-final-20260830/fullres-2048x858-1024/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/report.json"
+    }
+  },
+  "compiler_tmp": "/var/tmp/psycles-compiler-tmp",
+  "matrix": {
+    "cycles": [
+      "hip"
+    ],
+    "psycles": [
+      "hip-wavefront-staged"
+    ]
+  },
+  "relative_performance": {
+    "hip-wavefront-staged": {
+      "slowdown_vs_cycles_hip": 1.0776737486191232,
+      "speedup_over_cycles_hip": 0.9279246165932404
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-benchmark-curve-uv-final-20260830/fullres-2048x858-1024/cycles/hip.json",
+        "metadata_sha256": "6b3bb244461b09f6ea45d32831326d1a98fbfc9cfa6fff2abced49e86ac292b8",
+        "output": "/var/tmp/psycles-benchmark-curve-uv-final-20260830/fullres-2048x858-1024/cycles/hip.exr",
+        "process_wall_seconds": 121.21070325799519,
+        "render_seconds": 119.2364573829982,
+        "sha256": "19b59aa66abe4edf5443643d3525f467525fdc2716a1fd2995e120a16a79bb0d"
+      }
+    },
+    "psycles": {
+      "hip-wavefront-staged": {
+        "backend": "hip",
+        "output": "/var/tmp/psycles-benchmark-curve-uv-final-20260830/fullres-2048x858-1024/psycles/hip-wavefront-staged.exr",
+        "process_wall_seconds": 199.22048631799407,
+        "render_seconds": 128.498,
+        "scene_compile_seconds": 60.6439,
+        "scheduler": "wavefront-staged",
+        "sha256": "be5498b087f1c25c1d8a474f63bb1f204df9e5a7f3f3f8456e4e88217e6024a1",
+        "shader_jit_seconds": 6.79353
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": false,
+    "requested": false,
+    "reused_stages": []
+  },
+  "scene": {
+    "blend": "/var/tmp/psycles-official-redownload-20260814/benchmark-extracted/benchmark/benchmark.blend",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "bundle": "/var/tmp/psycles-benchmark-curve-uv-final-20260830/export",
+    "geometry_bin_sha256": "3229da39a858abd4766aba90f23b9db4a79515510a97e789378e11cf2e267921",
+    "scene_json_sha256": "67c298c7cc9adcaff17ff98c9cba1bba2f362ae1c81f3b8153ecf5cb1145fa2a",
+    "sha256": "324bce66ad7c9defc5c31c0333a44dae6e097f67c4761baac8e2ccb0da107d5b"
+  },
+  "schema": "psycles.scene-benchmark.v1",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "RX 9070 XT",
+    "height": 858,
+    "max_samples_per_dispatch": 64,
+    "psycles_environment": {
+      "PSYCLES_COMPACT_SURFACE_VALUES": null,
+      "PSYCLES_POPULATE_SURFACE_ONCE": null
+    },
+    "psycles_scheduler_config": {
+      "fast_math": true,
+      "persistent_block_size": 32,
+      "persistent_fetch_size": 1,
+      "persistent_worker_count": 32768,
+      "staged_direct_light_queue": false,
+      "staged_surface_sorting": true,
+      "wavefront_counter_readback_batch_size": 4,
+      "wavefront_counter_readback_pipeline_depth": 2,
+      "wavefront_execution_block_size": 32,
+      "wavefront_frame_capacity": 1048576,
+      "wavefront_graph_refill_threshold": 0,
+      "wavefront_graph_selective": false,
+      "wavefront_graph_worker_count": 0,
+      "wavefront_tail_megakernel_threshold": "auto"
+    },
+    "psycles_schedulers": [
+      "wavefront-staged"
+    ],
+    "samples": 1024,
+    "width": 2048
+  },
+  "status": "complete"
+}
