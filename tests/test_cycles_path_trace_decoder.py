@@ -233,6 +233,10 @@ class CyclesPathTraceDecoderTests(unittest.TestCase):
             self.assertEqual(
                 trace["events"][3]["slots"]
                 ["shadow_transmittance"]["b"],
+                schema.FORWARD_EVENT_BASE - 0.5,
+            )
+            self.assertEqual(
+                trace["events"][3]["slots"]["forward_contribution"]["b"],
                 schema.AOV_COUNT - 0.5,
             )
 

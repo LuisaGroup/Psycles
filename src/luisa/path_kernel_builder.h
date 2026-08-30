@@ -407,6 +407,9 @@ struct PathSampleContext {
   void trace_write_shadow_event(UInt event,
         path_trace_schema::ShadowEventSlot slot,
         Float3 value) const noexcept;
+  void trace_write_forward_event(UInt event,
+        path_trace_schema::ForwardEventSlot slot,
+        Float3 value) const noexcept;
   void trace_write_closure(UInt event, std::uint32_t closure,
                            std::uint32_t field, Float3 value) const noexcept;
     void record_surface_closure_count(UInt count) const noexcept;

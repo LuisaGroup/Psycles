@@ -599,6 +599,18 @@ void PathSampleContext::trace_write_shadow_event(
     };
 }
 
+void PathSampleContext::trace_write_forward_event(
+    UInt event,
+    path_trace_schema::ForwardEventSlot slot,
+    Float3 value) const noexcept {
+    $if(event < path_trace_schema::max_events) {
+        trace_write(path_trace_schema::forward_event_base +
+                        event * path_trace_schema::forward_event_slot_count +
+                        static_cast<std::uint32_t>(slot),
+                    value);
+    };
+}
+
 void PathSampleContext::trace_write_closure(UInt event,
                                             std::uint32_t closure,
                                             std::uint32_t field,

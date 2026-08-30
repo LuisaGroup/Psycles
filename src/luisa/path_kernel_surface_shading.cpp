@@ -200,6 +200,9 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         emitted = select(
             emitted, make_float3(0.0f), bounce.subsurface_exit);
         Float emission_weight = 1.0f;
+        Float forward_selection_pdf = 0.0f;
+        Float forward_light_pdf = 0.0f;
+        Bool forward_pdf_valid = false;
         if (next_event_estimation && scene->emissive_triangle_count > 0u) {
             // The committed primitive already carries the effective authored
             // sampling policy. NONE covers non-emissive materials, curves,
@@ -217,7 +220,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                         point.geometric_normal,
                         -point.geometric_normal,
                         point.back_facing);
-                Float selection_pdf =
+                forward_selection_pdf =
                     0.5f * length(cross(wp1 - wp0, wp2 - wp0)) *
                     scene->triangle_area_pdf;
                 if (config.use_light_tree) {
@@ -225,7 +228,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                         config.light_tree.triangle_emitter(
                             cycles_object_index,
                             cycles_primitive_index);
-                    selection_pdf = config.light_tree.forward_pdf(
+                    forward_selection_pdf = config.light_tree.forward_pdf(
                         emitter_id,
                         ray->origin(),
                         previous_mis_origin_normal,
@@ -236,21 +239,47 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 const auto light_pdf =
                     _emissive_triangle
                         ->from_intersection(
-                            selection_pdf,
+                            forward_selection_pdf,
                             surface.emission_sampling,
                             ray->origin(),
                             hit_position,
                             wp0,
                             wp1,
                             wp2,
-                            oriented_geometric_normal)
-                        .value;
+                            oriented_geometric_normal);
+                forward_light_pdf = light_pdf.value;
+                forward_pdf_valid = light_pdf.valid;
                 emission_weight = forward_light_weight(
-                    previous_bsdf_pdf, light_pdf, competing, light_pdf > 0.0f);
+                    previous_bsdf_pdf,
+                    forward_light_pdf,
+                    competing,
+                    forward_pdf_valid);
             };
         }
         Float3 emission_contribution = clamp_contribution(
             throughput * emitted * emission_weight, path_depth);
+        sample.trace_write_forward_event(
+            path_step,
+            path_trace_schema::ForwardEventSlot::forward_emission,
+            emitted);
+        sample.trace_write_forward_event(
+            path_step,
+            path_trace_schema::ForwardEventSlot::forward_policy,
+            make_float3(
+                cast<float>(surface.emission_sampling),
+                forward_selection_pdf,
+                select(0.0f, 1.0f, forward_pdf_valid)));
+        sample.trace_write_forward_event(
+            path_step,
+            path_trace_schema::ForwardEventSlot::forward_mis,
+            make_float3(
+                previous_bsdf_pdf,
+                forward_light_pdf,
+                emission_weight));
+        sample.trace_write_forward_event(
+            path_step,
+            path_trace_schema::ForwardEventSlot::forward_contribution,
+            emission_contribution);
         sample.accumulate_radiance(
             emission_contribution);
         auto directly_visible_emission =

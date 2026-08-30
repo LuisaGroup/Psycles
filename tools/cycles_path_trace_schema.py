@@ -12,15 +12,18 @@ from typing import Iterable
 
 
 SCHEMA_NAME = "psycles.cycles-path-trace"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 AOV_PREFIX = "PsyTrace"
 GLOBAL_SLOT_COUNT = 8
 EVENT_SLOT_COUNT = 72
 SHADOW_EVENT_SLOT_COUNT = 8
+FORWARD_EVENT_SLOT_COUNT = 4
 MAX_EVENTS = 4
 MAX_CLOSURES = 8
 SHADOW_EVENT_BASE = GLOBAL_SLOT_COUNT + EVENT_SLOT_COUNT * MAX_EVENTS
 AOV_COUNT = SHADOW_EVENT_BASE + SHADOW_EVENT_SLOT_COUNT * MAX_EVENTS
+FORWARD_EVENT_BASE = AOV_COUNT
+AOV_COUNT = FORWARD_EVENT_BASE + FORWARD_EVENT_SLOT_COUNT * MAX_EVENTS
 
 COMPARE_EXACT = "exact"
 COMPARE_RANDOM_EXACT = "random_exact"
@@ -147,6 +150,20 @@ _SHADOW_EVENT_LAYOUT = (
     ("shadow_hit_id", ("object", "primitive", "kind")),
     ("shadow_hit_coord", ("distance", "u", "v")),
     ("shadow_transmittance", ("r", "g", "b")),
+)
+
+# Forward-hit emission diagnostics are an append-only tail. Keeping them out
+# of the original event block preserves every version-2 slot index while
+# exposing the complete MIS measure: the effective side policy, legacy/light-
+# tree selection probability, reconstructed light PDF, and final weight.
+_FORWARD_EVENT_LAYOUT = (
+    ("forward_emission", ("r", "g", "b")),
+    (
+        "forward_policy",
+        ("emission_sampling", "selection_pdf", "pdf_valid"),
+    ),
+    ("forward_mis", ("bsdf_pdf", "light_pdf", "mis_weight")),
+    ("forward_contribution", ("r", "g", "b")),
 )
 
 
@@ -286,6 +303,14 @@ _EVENT_COMPARISON = {
     # standalone transmittance. Psycles records the latter to diagnose its
     # traversal, but the cross-oracle gate remains nee_contribution above.
     "shadow_transmittance": (COMPARE_RESERVED,) * 3,
+    "forward_emission": (COMPARE_FLOAT32,) * 3,
+    "forward_policy": (
+        COMPARE_EXACT,
+        COMPARE_FLOAT32,
+        COMPARE_EXACT,
+    ),
+    "forward_mis": (COMPARE_FLOAT32,) * 3,
+    "forward_contribution": (COMPARE_FLOAT32,) * 3,
 }
 
 
@@ -369,6 +394,20 @@ def slots() -> tuple[TraceSlot, ...]:
                 _SHADOW_EVENT_LAYOUT
             )
         )
+    for event in range(MAX_EVENTS):
+        forward_base = FORWARD_EVENT_BASE + event * FORWARD_EVENT_SLOT_COUNT
+        result.extend(
+            TraceSlot(
+                forward_base + relative,
+                "event",
+                name,
+                components,
+                event=event,
+            )
+            for relative, (name, components) in enumerate(
+                _FORWARD_EVENT_LAYOUT
+            )
+        )
     if len(result) != AOV_COUNT:
         raise AssertionError(
             f"trace schema has {len(result)} slots, expected {AOV_COUNT}"
@@ -417,8 +456,16 @@ def cpp_header() -> str:
             f"{SHADOW_EVENT_SLOT_COUNT}u;"
         ),
         (
+            "inline constexpr std::uint32_t forward_event_slot_count = "
+            f"{FORWARD_EVENT_SLOT_COUNT}u;"
+        ),
+        (
             "inline constexpr std::uint32_t shadow_event_base = "
             f"{SHADOW_EVENT_BASE}u;"
+        ),
+        (
+            "inline constexpr std::uint32_t forward_event_base = "
+            f"{FORWARD_EVENT_BASE}u;"
         ),
         f"inline constexpr std::uint32_t max_events = {MAX_EVENTS}u;",
         f"inline constexpr std::uint32_t max_closures = {MAX_CLOSURES}u;",
@@ -437,6 +484,10 @@ def cpp_header() -> str:
         *enum_members(_SHADOW_EVENT_LAYOUT),
         "};",
         "",
+        "enum class ForwardEventSlot : std::uint32_t {",
+        *enum_members(_FORWARD_EVENT_LAYOUT),
+        "};",
+        "",
         "[[nodiscard]] constexpr std::uint32_t index(",
         "    GlobalSlot slot) noexcept {",
         "    return static_cast<std::uint32_t>(slot);",
@@ -446,6 +497,13 @@ def cpp_header() -> str:
         "    std::uint32_t event,",
         "    ShadowEventSlot slot) noexcept {",
         "    return shadow_event_base + event * shadow_event_slot_count +",
+        "           static_cast<std::uint32_t>(slot);",
+        "}",
+        "",
+        "[[nodiscard]] constexpr std::uint32_t index(",
+        "    std::uint32_t event,",
+        "    ForwardEventSlot slot) noexcept {",
+        "    return forward_event_base + event * forward_event_slot_count +",
         "           static_cast<std::uint32_t>(slot);",
         "}",
         "",
@@ -480,6 +538,8 @@ def schema_document() -> dict[str, object]:
         "event_slot_count": EVENT_SLOT_COUNT,
         "shadow_event_slot_count": SHADOW_EVENT_SLOT_COUNT,
         "shadow_event_base": SHADOW_EVENT_BASE,
+        "forward_event_slot_count": FORWARD_EVENT_SLOT_COUNT,
+        "forward_event_base": FORWARD_EVENT_BASE,
         "max_events": MAX_EVENTS,
         "max_closures": MAX_CLOSURES,
         "slots": [

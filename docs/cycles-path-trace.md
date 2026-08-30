@@ -26,14 +26,17 @@ cannot silently leave the JIT kernel on an older layout. The raw 3D random
 order is the Cycles order `(u, v, selection)`; `PRNG_LENS_TIME` is
 `(time, lens_u, lens_v)`.
 
-Schema version 2 contains 328 RGB records. It preserves all 296 version-1
-indices and appends a separate shadow-transport tail:
+Schema version 3 contains 344 RGB records. It preserves all 328 version-2
+indices and appends a separate forward-emission tail:
 
 - 8 camera/global slots;
 - 4 path events with 72 slots per event;
 - up to 8 raw Cycles closures per event, with meta, weight, and normal records;
 - 4 shadow events with 8 slots per event for the exact ray interval,
   source/light identities, first eligible backend hit, and transmittance;
+- 4 forward-emission events with 4 slots per event for the evaluated emission,
+  effective side policy and discrete selection PDF, BSDF/light PDFs and MIS
+  weight, and the contribution after Cycles sample clamping;
 - reserved event slots for compatible schema growth.
 
 The trace includes camera RNG and ray state, absolute RNG dimensions, path
@@ -44,7 +47,7 @@ Every 32-bit RNG hash or flag field is stored as two exact 16-bit values so an
 EXR float cannot round away integer bits.
 
 Instrumentation writes are enabled only when the film contains the complete
-328-AOV range. A normal render, or a render with only some similarly named
+344-AOV range. A normal render, or a render with only some similarly named
 AOVs, performs no trace writes. This guard prevents a diagnostic build from
 writing past a smaller film buffer.
 
@@ -89,6 +92,16 @@ of representative extents through 8192 after an explicit float32 round-trip.
 The original Barbershop failure at Cycles pixel `(1041, 254)` was also rerun at
 1152x480 with the instrumented Blender build; `oiiotool --info` reports the
 result as exactly 1x1 with the complete trace/pass channel set.
+
+Only the `PsyTraceNNN` AOVs are a per-path oracle. Blender's cropped Render
+Result applies a render-border normalization to ordinary filtered passes. On
+the 2048x858 benchmark at pixel `(1150, 607)`, absolute sample 508, both a 1x1
+crop and the center of a 3x3 crop stored Combined as exactly 0.75 times the
+Cycles raw film contribution. A full-frame sample-subset render stored the raw
+value exactly. The device trace, the post-clamp contribution, the raw Combined
+buffer, and the value passed through `BlenderOutputDriver` all agreed before
+that crop-only conversion. Consequently cropped Combined or light-pass values
+must never be used to infer a transport, MIS, clamp, or material difference.
 
 ```bash
 TRACE_BLENDER=/home/mike/Projects/blender-install-psycles-trace/blender
