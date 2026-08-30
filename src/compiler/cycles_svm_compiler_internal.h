@@ -76,6 +76,8 @@ public:
 
   [[nodiscard]] virtual SVMStackOffset
   closure_mix_weight_offset() const noexcept = 0;
+  [[nodiscard]] virtual SVMStackOffset
+  get_bump_state_offset() const noexcept = 0;
   [[nodiscard]] virtual ShaderType output_type() const noexcept = 0;
 };
 

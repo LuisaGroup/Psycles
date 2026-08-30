@@ -41,6 +41,7 @@ inline constexpr auto map_range = "psycles.math.map_range";
 inline constexpr auto vector_math = "psycles.math.vector";
 inline constexpr auto vector_rotate = "psycles.vector.rotate";
 inline constexpr auto vector_transform = "psycles.vector.transform";
+inline constexpr auto wireframe = "psycles.wireframe";
 inline constexpr auto scalar_to_color = "psycles.convert.scalar_to_color";
 inline constexpr auto scalar_to_boolean =
     "psycles.convert.scalar_to_boolean";

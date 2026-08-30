@@ -30,26 +30,34 @@ ShaderData::ShaderData(Expr<luisa::float3> position,
                        Expr<luisa::float3> normal,
                        Expr<luisa::float3> geometric_normal,
                        Expr<luisa::float3> incoming,
+                       Expr<std::uint32_t> primitive_type,
                        Expr<std::uint32_t> shader_id,
                        Expr<std::uint32_t> shader_flags,
+                       Expr<std::uint32_t> object_flags,
+                       Expr<std::uint32_t> primitive_id,
                        Expr<float> parametric_u,
                        Expr<float> parametric_v,
-                       Expr<float> length,
                        Expr<std::uint32_t> object_id,
-                       Expr<std::uint32_t> object_flags,
+                       Expr<float> motion_time,
+                       Expr<float> length,
+                       Expr<float> position_differential,
                        Expr<luisa::float4x4> motion_object_to_world,
                        Expr<luisa::float4x4> motion_world_to_object) noexcept
     : P{position},
       N{normal},
       Ng{geometric_normal},
       wi{incoming},
+      type{primitive_type},
       shader{shader_id},
       flag{shader_flags},
+      object_flag{object_flags},
+      prim{primitive_id},
       u{parametric_u},
       v{parametric_v},
-      ray_length{length},
       object{object_id},
-      object_flag{object_flags},
+      time{motion_time},
+      ray_length{length},
+      dP{position_differential},
       ob_tfm_motion{motion_object_to_world},
       ob_itfm_motion{motion_world_to_object},
       closure_emission_background{make_float3(0.0f)},
@@ -78,6 +86,7 @@ EvaluationResult::EvaluationResult() noexcept
       closure_weight{make_float3(0.0f)} {}
 
 void eval_nodes(
+    const KernelGlobals &kernel_globals,
     const BufferUInt &words,
     ShaderType shader_type,
     std::uint32_t kernel_features,
@@ -217,11 +226,31 @@ void eval_nodes(
                                 transition_supported);
         };
       }
+      if (node_types_used[NODE_CONVERT]) {
+        PSYCLES_SVM_CASE(NODE_CONVERT) {
+          detail::node_convert(cursor, stack, kernel_globals, false);
+        };
+      }
+      if (node_types_used[NODE_CONVERT_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_CONVERT_DERIVATIVE) {
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_convert(cursor, stack, kernel_globals, true);
+          }
+        };
+      }
       if (node_types_used[NODE_VALUE_F]) {
         PSYCLES_SVM_CASE(NODE_VALUE_F) { detail::node_value_f(cursor, stack); };
       }
       if (node_types_used[NODE_VALUE_V]) {
         PSYCLES_SVM_CASE(NODE_VALUE_V) { detail::node_value_v(cursor, stack); };
+      }
+      if (node_types_used[NODE_SET_BUMP]) {
+        PSYCLES_SVM_CASE(NODE_SET_BUMP) {
+          detail::node_set_bump(
+              cursor, stack, transform_state, shader_data,
+              (node_feature_mask & kernel_feature_node_bump) != 0u,
+              (kernel_features & kernel_feature_object_motion) != 0u);
+        };
       }
       if (node_types_used[NODE_HSV]) {
         PSYCLES_SVM_CASE(NODE_HSV) { detail::node_hsv(cursor, stack); };
@@ -288,6 +317,15 @@ void eval_nodes(
         PSYCLES_SVM_CASE(NODE_VECTOR_TRANSFORM) {
           detail::node_vector_transform(
               cursor, stack, transform_state, shader_data,
+              (kernel_features & kernel_feature_object_motion) != 0u);
+        };
+      }
+      if (node_types_used[NODE_WIREFRAME]) {
+        PSYCLES_SVM_CASE(NODE_WIREFRAME) {
+          detail::node_wireframe(
+              cursor, stack, kernel_globals, transform_state, shader_data,
+              (kernel_features &
+               (kernel_feature_hair | kernel_feature_pointcloud)) != 0u,
               (kernel_features & kernel_feature_object_motion) != 0u);
         };
       }

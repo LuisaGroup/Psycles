@@ -47,6 +47,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_bytecode.cpp
     src/compiler/cycles_svm_constant_fold.cpp
     src/compiler/cycles_svm_compiler.cpp
+    src/compiler/cycles_svm_geometry_nodes.cpp
     src/compiler/cycles_svm_graph.cpp
     src/compiler/cycles_svm_nodes.cpp
     src/compiler/cycles_svm_vector_nodes.cpp
@@ -1664,98 +1665,7 @@ if(PSYCLES_ENABLE_LUISA)
             # backend. Keep them outside the fallback-only block so a native
             # Metal/HIP/Vulkan build does not silently lose surface coverage.
             include(cmake/PsyclesSurfaceBackendTests.cmake)
-
-            add_executable(
-                psycles_blender_import_tests
-                tests/test_blender_import.cpp
-                tests/test_blender_legacy_mix_import.cpp tests/test_blender_vector_import.cpp)
-            target_link_libraries(
-                psycles_blender_import_tests
-                PRIVATE Psycles::luisa_runtime)
-            target_compile_features(
-                psycles_blender_import_tests
-                PRIVATE cxx_std_20)
-            add_test(
-                NAME psycles.blender_import
-                COMMAND psycles_blender_import_tests)
-
-            add_executable(
-                psycles_blender_displacement_import_tests
-                tests/test_blender_displacement_import.cpp)
-            target_link_libraries(
-                psycles_blender_displacement_import_tests
-                PRIVATE Psycles::luisa_runtime)
-            target_compile_features(
-                psycles_blender_displacement_import_tests
-                PRIVATE cxx_std_20)
-            add_test(
-                NAME psycles.blender_displacement_import
-                COMMAND psycles_blender_displacement_import_tests)
-
-            add_executable(
-                psycles_blender_light_falloff_import_tests
-                tests/test_blender_light_falloff_import.cpp)
-            target_link_libraries(
-                psycles_blender_light_falloff_import_tests
-                PRIVATE Psycles::luisa_runtime)
-            target_compile_features(
-                psycles_blender_light_falloff_import_tests
-                PRIVATE cxx_std_20)
-            add_test(
-                NAME psycles.blender_light_falloff_import
-                COMMAND psycles_blender_light_falloff_import_tests)
-
-            add_executable(
-                psycles_blender_ambient_occlusion_import_tests
-                tests/test_blender_ambient_occlusion_import.cpp)
-            target_link_libraries(
-                psycles_blender_ambient_occlusion_import_tests
-                PRIVATE Psycles::luisa_runtime)
-            target_compile_features(
-                psycles_blender_ambient_occlusion_import_tests
-                PRIVATE cxx_std_20)
-            add_test(
-                NAME psycles.blender_ambient_occlusion_import
-                COMMAND psycles_blender_ambient_occlusion_import_tests)
-
-            add_executable(
-                psycles_blender_hair_import_tests
-                tests/test_blender_hair_import.cpp)
-            target_link_libraries(
-                psycles_blender_hair_import_tests
-                PRIVATE Psycles::luisa_runtime)
-            target_compile_features(
-                psycles_blender_hair_import_tests
-                PRIVATE cxx_std_20)
-            add_test(
-                NAME psycles.blender_hair_import
-                COMMAND psycles_blender_hair_import_tests)
-
-            add_executable(
-                psycles_blender_muted_node_tests
-                tests/test_blender_muted_node.cpp)
-            target_link_libraries(
-                psycles_blender_muted_node_tests
-                PRIVATE Psycles::luisa_runtime)
-            target_compile_features(
-                psycles_blender_muted_node_tests
-                PRIVATE cxx_std_20)
-            add_test(
-                NAME psycles.blender_muted_node
-                COMMAND psycles_blender_muted_node_tests)
-
-            add_executable(
-                psycles_blender_curve_import_tests
-                tests/test_blender_curve_import.cpp)
-            target_link_libraries(
-                psycles_blender_curve_import_tests
-                PRIVATE Psycles::luisa_runtime)
-            target_compile_features(
-                psycles_blender_curve_import_tests
-                PRIVATE cxx_std_20)
-            add_test(
-                NAME psycles.blender_curve_import
-                COMMAND psycles_blender_curve_import_tests)
+            include(cmake/PsyclesBlenderImportTests.cmake)
 
             psycles_add_luisa_backend_test(
                 TARGET

@@ -57,6 +57,24 @@ luisa::compute::Float3 stack_load_float3(
   return make_float3(stack[offset], stack[offset + 1u], stack[offset + 2u]);
 }
 
+luisa::compute::Float3 stack_load_float3_default(
+    Stack &stack,
+    luisa::compute::Expr<std::uint32_t> offset,
+    luisa::compute::Expr<luisa::float3> value) noexcept {
+  using namespace luisa::compute;
+  Float3 result = value;
+  $if (offset != static_cast<std::uint32_t>(
+                     compiler::cycles_svm::SVM_STACK_INVALID)) {
+    result = stack_load_float3(stack, offset);
+  };
+  return result;
+}
+
+luisa::compute::Int stack_load_int(
+    Stack &stack, luisa::compute::Expr<std::uint32_t> offset) noexcept {
+  return stack[offset].bitcast<std::int32_t>();
+}
+
 luisa::compute::Float stack_load_input_float(
     Stack &stack, luisa::compute::Expr<std::uint32_t> bits) noexcept {
   using namespace luisa::compute;
@@ -96,6 +114,12 @@ void stack_store_float3(Stack &stack,
   stack[offset] = value.x;
   stack[offset + 1u] = value.y;
   stack[offset + 2u] = value.z;
+}
+
+void stack_store_int(Stack &stack,
+                     luisa::compute::Expr<std::uint32_t> offset,
+                     luisa::compute::Expr<std::int32_t> value) noexcept {
+  stack[offset] = value.bitcast<float>();
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

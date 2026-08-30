@@ -829,6 +829,21 @@ public:
                 .ref = {.node = id, .socket = "Normal"},
                 .type = SocketType::normal});
         }
+        if (type == "WIREFRAME") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::wireframe,
+                node_name);
+            static_cast<void>(context.bind(
+                id, "Size", node, "Size", SocketType::floating));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Use Pixel Size",
+                SocketValue::boolean(context.node_property_bool(
+                    node, "use_pixel_size", false))));
+            return finish({
+                .ref = {.node = id, .socket = "Fac"},
+                .type = SocketType::floating});
+        }
         return std::nullopt;
     }
 };

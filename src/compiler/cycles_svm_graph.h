@@ -49,10 +49,18 @@ enum class GraphSocketType : std::uint8_t {
 enum class GraphNodeSpecialType : std::uint8_t {
   none,
   geometry,
+  bump,
   closure,
   combine_closure,
   output,
   output_aov,
+};
+
+enum ShaderBump : std::uint8_t {
+  SHADER_BUMP_NONE,
+  SHADER_BUMP_CENTER,
+  SHADER_BUMP_DX,
+  SHADER_BUMP_DY,
 };
 
 enum class GraphDomain : std::uint8_t {
@@ -107,6 +115,8 @@ struct GraphNode {
   std::vector<GraphOutput> outputs;
   std::map<std::string, contract::SocketValue, std::less<>> properties;
   GraphNodeSpecialType special_type{GraphNodeSpecialType::none};
+  ShaderBump bump{SHADER_BUMP_NONE};
+  float bump_filter_width{};
   bool added_to_svm{};
   bool need_derivatives{};
 
@@ -180,6 +190,7 @@ public:
                                bool volume);
   void expand();
   void clean();
+  void refine_bump_nodes();
 
 private:
   void constant_fold();
@@ -189,6 +200,10 @@ private:
   void relink(GraphNode *node, GraphOutput *from, GraphOutput *to);
   void break_cycles(GraphNode *node, std::vector<bool> &visited,
                     std::vector<bool> &on_stack);
+  void find_dependencies(GraphNodeSet &dependencies, GraphInput *input);
+  void copy_nodes(
+      GraphNodeSet &nodes,
+      std::map<GraphNode *, GraphNode *, GraphNodeIdComparator> &node_map);
   void reject(std::string diagnostic);
 };
 

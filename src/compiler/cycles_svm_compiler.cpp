@@ -166,6 +166,7 @@ private:
   GraphNode *_current_node{};
   ShaderType _current_type{SHADER_TYPE_SURFACE};
   SVMStackOffset _mix_weight_offset{SVM_STACK_INVALID};
+  SVMStackOffset _bump_state_offset{SVM_STACK_INVALID};
   std::string _diagnostic;
 
 private:
@@ -414,6 +415,10 @@ private:
   [[nodiscard]] SVMStackOffset
   closure_mix_weight_offset() const noexcept override {
     return _mix_weight_offset;
+  }
+
+  [[nodiscard]] SVMStackOffset get_bump_state_offset() const noexcept override {
+    return _bump_state_offset;
   }
 
   [[nodiscard]] ShaderType output_type() const noexcept override {

@@ -1,13 +1,16 @@
 set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm.cpp
+    src/luisa/cycles_svm_bump.cpp
     src/luisa/cycles_svm_closure.cpp
     src/luisa/cycles_svm_color.cpp
+    src/luisa/cycles_svm_convert.cpp
     src/luisa/cycles_svm_math.cpp
     src/luisa/cycles_svm_stack.cpp
     src/luisa/cycles_svm_value.cpp
     src/luisa/cycles_svm_vector.cpp
     src/luisa/cycles_svm_vector_rotate.cpp
     src/luisa/cycles_svm_vector_transform.cpp
+    src/luisa/cycles_svm_wireframe.cpp
     src/luisa/graph_surface.cpp
     src/luisa/graph_surface_closures.cpp
     src/luisa/graph_surface_emission.cpp

@@ -99,6 +99,9 @@ namespace {
            : input == "B" ? "Blue"
                           : input;
   }
+  if (node == node_type::bump && input == "FilterWidth") {
+    return "Filter Width";
+  }
   return input;
 }
 
@@ -178,6 +181,9 @@ namespace {
     std::string_view type) noexcept {
   if (type == node_type::geometry || type == cycles_synthetic_geometry) {
     return GraphNodeSpecialType::geometry;
+  }
+  if (type == node_type::bump) {
+    return GraphNodeSpecialType::bump;
   }
   if (is_combine_closure(type)) {
     return GraphNodeSpecialType::combine_closure;
@@ -467,6 +473,39 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
                                                   : binding->second.value,
       });
     }
+    if (source.type == node_type::bump) {
+      auto authored_inputs = std::move(inputs);
+      inputs.clear();
+      inputs.reserve(8u);
+      const auto append_authored = [&](std::string_view name) {
+        const auto iter = std::find_if(
+            authored_inputs.begin(), authored_inputs.end(),
+            [name](const GraphInput &input) { return input.name == name; });
+        if (iter == authored_inputs.end()) {
+          return false;
+        }
+        inputs.emplace_back(std::move(*iter));
+        authored_inputs.erase(iter);
+        return true;
+      };
+      if (!append_authored("Height")) {
+        graph.reject("Cycles Bump Height input is absent");
+        return graph;
+      }
+      for (const auto name : {"SampleCenter", "SampleX", "SampleY"}) {
+        inputs.emplace_back(GraphInput{
+            .name = name,
+            .type = GraphSocketType::floating,
+            .value = contract::SocketValue::floating(0.0f),
+        });
+      }
+      if (!append_authored("Normal") || !append_authored("Strength") ||
+          !append_authored("Distance") || !append_authored("Filter Width") ||
+          !authored_inputs.empty()) {
+        graph.reject("Cycles Bump input projection is not isomorphic");
+        return graph;
+      }
+    }
     if (is_surface_closure(source.type)) {
       inputs.emplace_back(GraphInput{
           .name = "SurfaceMixWeight",
@@ -499,9 +538,13 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
                       .links = {}});
     }
 
+    auto properties = source.properties;
+    if (source.type == node_type::bump) {
+      properties.erase("NormalLinked");
+    }
     auto *node = graph.add_node(source.type, source.label, std::move(inputs),
                                 std::move(outputs), special_type(source.type),
-                                source.properties);
+                                std::move(properties));
     nodes.emplace(source.id.value, node);
   }
 
@@ -560,6 +603,7 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
   graph.expand();
   graph.default_inputs();
   graph.clean();
+  graph.refine_bump_nodes();
   if (!graph.valid()) {
     return graph;
   }
@@ -570,6 +614,112 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
     graph.transform_multi_closure(volume->parent, nullptr, true);
   }
   return graph;
+}
+
+void CyclesGraph::find_dependencies(GraphNodeSet &dependencies,
+                                    GraphInput *input) {
+  auto *node = input != nullptr && input->link != nullptr ? input->link->parent
+                                                          : nullptr;
+  if (node != nullptr && !dependencies.contains(node)) {
+    for (auto &dependency : node->inputs) {
+      find_dependencies(dependencies, &dependency);
+    }
+    dependencies.insert(node);
+  }
+}
+
+void CyclesGraph::copy_nodes(
+    GraphNodeSet &nodes,
+    std::map<GraphNode *, GraphNode *, GraphNodeIdComparator> &node_map) {
+  for (auto *node : nodes) {
+    std::vector<GraphInput> inputs;
+    inputs.reserve(node->inputs.size());
+    for (const auto &input : node->inputs) {
+      inputs.emplace_back(GraphInput{.name = input.name,
+                                     .type = input.type,
+                                     .flags = input.flags,
+                                     .value = input.value});
+    }
+    std::vector<GraphOutput> outputs;
+    outputs.reserve(node->outputs.size());
+    for (const auto &output : node->outputs) {
+      outputs.emplace_back(
+          GraphOutput{.name = output.name, .type = output.type, .links = {}});
+    }
+    auto *copy =
+        add_node(node->type, node->label, std::move(inputs), std::move(outputs),
+                 node->special_type, node->properties);
+    copy->bump = node->bump;
+    node_map.emplace(node, copy);
+  }
+
+  for (auto *node : nodes) {
+    for (const auto &input : node->inputs) {
+      if (input.link == nullptr) {
+        continue;
+      }
+      auto *source = node_map.at(input.link->parent);
+      auto *destination = node_map.at(input.parent);
+      if (!connect(source->output(input.link->name),
+                   destination->input(input.name))) {
+        reject("Cycles bump dependency copy could not recreate a link");
+        return;
+      }
+    }
+  }
+}
+
+void CyclesGraph::refine_bump_nodes() {
+  for (auto index = std::size_t{}; index < _nodes.size(); ++index) {
+    auto *node = _nodes[index].get();
+    auto *height = node->input("Height");
+    if (node->special_type != GraphNodeSpecialType::bump || height == nullptr ||
+        height->link == nullptr) {
+      continue;
+    }
+    auto *filter_width_input = node->input("Filter Width");
+    const auto filter_width = float_value(filter_width_input);
+    if (!filter_width) {
+      reject("Cycles Bump Filter Width is not a float");
+      return;
+    }
+
+    GraphNodeSet dependencies;
+    find_dependencies(dependencies, height);
+    std::map<GraphNode *, GraphNode *, GraphNodeIdComparator> nodes_dx;
+    std::map<GraphNode *, GraphNode *, GraphNodeIdComparator> nodes_dy;
+    copy_nodes(dependencies, nodes_dx);
+    copy_nodes(dependencies, nodes_dy);
+    if (!valid()) {
+      return;
+    }
+
+    for (auto *dependency : dependencies) {
+      dependency->bump = SHADER_BUMP_CENTER;
+      dependency->bump_filter_width = *filter_width;
+    }
+    for (const auto &[source, copy] : nodes_dx) {
+      static_cast<void>(source);
+      copy->bump = SHADER_BUMP_DX;
+      copy->bump_filter_width = *filter_width;
+    }
+    for (const auto &[source, copy] : nodes_dy) {
+      static_cast<void>(source);
+      copy->bump = SHADER_BUMP_DY;
+      copy->bump_filter_width = *filter_width;
+    }
+
+    auto *output = height->link;
+    auto *output_dx = nodes_dx.at(output->parent)->output(output->name);
+    auto *output_dy = nodes_dy.at(output->parent)->output(output->name);
+    if (!connect(output_dx, node->input("SampleX")) ||
+        !connect(output_dy, node->input("SampleY")) ||
+        !connect(output, node->input("SampleCenter"))) {
+      reject("Cycles Bump sample graph could not be connected");
+      return;
+    }
+    disconnect(height);
+  }
 }
 
 void CyclesGraph::default_inputs() {

@@ -10,6 +10,15 @@ namespace psycles::luisa_backend::cycles_svm::detail {
 
 using Stack = luisa::compute::ArrayFloat<SVM_STACK_SIZE>;
 
+struct Differential3 {
+  luisa::compute::Float3 dx;
+  luisa::compute::Float3 dy;
+};
+
+[[nodiscard]] Differential3
+differential_from_compact(luisa::compute::Expr<luisa::float3> direction,
+                          luisa::compute::Expr<float> differential) noexcept;
+
 class Cursor final {
 private:
   const luisa::compute::BufferUInt &_words;
@@ -35,6 +44,12 @@ public:
     luisa::compute::Expr<float> value) noexcept;
 [[nodiscard]] luisa::compute::Float3 stack_load_float3(
     Stack &stack, luisa::compute::Expr<std::uint32_t> offset) noexcept;
+[[nodiscard]] luisa::compute::Float3 stack_load_float3_default(
+    Stack &stack,
+    luisa::compute::Expr<std::uint32_t> offset,
+    luisa::compute::Expr<luisa::float3> value) noexcept;
+[[nodiscard]] luisa::compute::Int stack_load_int(
+    Stack &stack, luisa::compute::Expr<std::uint32_t> offset) noexcept;
 [[nodiscard]] luisa::compute::Float stack_load_input_float(
     Stack &stack, luisa::compute::Expr<std::uint32_t> bits) noexcept;
 [[nodiscard]] luisa::compute::Float3 stack_load_input_float3(
@@ -49,6 +64,30 @@ void stack_store_float(Stack &stack,
 void stack_store_float3(Stack &stack,
                         luisa::compute::Expr<std::uint32_t> offset,
                         luisa::compute::Expr<luisa::float3> value) noexcept;
+void stack_store_int(Stack &stack,
+                     luisa::compute::Expr<std::uint32_t> offset,
+                     luisa::compute::Expr<std::int32_t> value) noexcept;
+
+[[nodiscard]] luisa::compute::Float3
+normalize_exact(luisa::compute::Expr<luisa::float3> value) noexcept;
+[[nodiscard]] luisa::compute::Float3
+safe_normalize_exact(luisa::compute::Expr<luisa::float3> value) noexcept;
+void object_position_transform(luisa::compute::Float3 &value,
+                               const TransformState &transform_state,
+                               const ShaderData &shader_data,
+                               bool object_motion_enabled) noexcept;
+void object_inverse_normal_transform(luisa::compute::Float3 &value,
+                                     const TransformState &transform_state,
+                                     const ShaderData &shader_data,
+                                     bool object_motion_enabled) noexcept;
+void object_normal_transform(luisa::compute::Float3 &value,
+                             const TransformState &transform_state,
+                             const ShaderData &shader_data,
+                             bool object_motion_enabled) noexcept;
+void object_inverse_dir_transform(luisa::compute::Float3 &value,
+                                  const TransformState &transform_state,
+                                  const ShaderData &shader_data,
+                                  bool object_motion_enabled) noexcept;
 
 [[nodiscard]] luisa::compute::Float svm_math(
     luisa::compute::Expr<std::uint32_t> type,
@@ -60,6 +99,9 @@ void node_value_f(Cursor &cursor, Stack &stack) noexcept;
 void node_value_v(Cursor &cursor, Stack &stack) noexcept;
 void node_geometry(Cursor &cursor, Stack &stack, ShaderData &shader_data,
                    luisa::compute::Bool &supported) noexcept;
+void node_convert(Cursor &cursor, Stack &stack,
+                  const KernelGlobals &kernel_globals,
+                  bool use_derivatives) noexcept;
 void node_light_path(Cursor &cursor, Stack &stack,
                      const ShaderData &shader_data,
                      const PathState &path_state,
@@ -85,6 +127,17 @@ void node_vector_transform(Cursor &cursor, Stack &stack,
                            const TransformState &transform_state,
                            const ShaderData &shader_data,
                            bool object_motion_enabled) noexcept;
+void node_wireframe(Cursor &cursor, Stack &stack,
+                    const KernelGlobals &kernel_globals,
+                    const TransformState &transform_state,
+                    const ShaderData &shader_data,
+                    bool require_triangle_primitive,
+                    bool object_motion_enabled) noexcept;
+void node_set_bump(Cursor &cursor, Stack &stack,
+                   const TransformState &transform_state,
+                   const ShaderData &shader_data,
+                   bool bump_feature_enabled,
+                   bool object_motion_enabled) noexcept;
 void node_clamp(Cursor &cursor, Stack &stack) noexcept;
 
 void node_closure_set_weight(Cursor &cursor,

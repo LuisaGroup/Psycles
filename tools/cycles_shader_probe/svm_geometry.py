@@ -1,0 +1,231 @@
+"""Cycles 5.2 SVM geometry-dependent node probes."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import bpy
+from mathutils import Euler, Matrix, Vector
+
+from .support import _input, _material, _output
+
+
+def _wireframe_material(
+    name: str,
+    *,
+    use_pixel_size: bool,
+    size: float,
+    linked_size: bool,
+) -> Any:
+    """Build an unbaked Wireframe-to-Emission Cycles graph."""
+    material, tree, output = _material(name)
+    wireframe = tree.nodes.new("ShaderNodeWireframe")
+    wireframe.name = f"{name} Wireframe"
+    wireframe.use_pixel_size = use_pixel_size
+    if linked_size:
+        geometry = tree.nodes.new("ShaderNodeNewGeometry")
+        geometry.name = f"{name} Geometry"
+        separate = tree.nodes.new("ShaderNodeSeparateXYZ")
+        separate.name = f"{name} Separate Normal"
+        scale = tree.nodes.new("ShaderNodeMath")
+        scale.name = f"{name} Scale Size"
+        scale.operation = "MULTIPLY"
+        scale.inputs[1].default_value = size
+        tree.links.new(
+            _output(geometry, "Normal"),
+            _input(separate, "Vector"),
+        )
+        tree.links.new(_output(separate, "Z"), scale.inputs[0])
+        tree.links.new(_output(scale, "Value"), _input(wireframe, "Size"))
+    else:
+        _input(wireframe, "Size").default_value = size
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = f"{name} Emission"
+    tree.links.new(_output(wireframe, "Fac"), _input(emission, "Color"))
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    return material
+
+
+def _wireframe_row_mesh(
+    name: str,
+    materials: list[Any],
+    y0: float,
+    y1: float,
+    object_to_world: Matrix,
+) -> Any:
+    """Create final-world triangles in the object's untransformed mesh space."""
+    columns = len(materials)
+    subdivisions = 4
+    extent = 1.1
+    world_to_object = object_to_world.inverted()
+    vertices: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, int, int]] = []
+    face_materials: list[int] = []
+    for material_index in range(columns):
+        x0 = -extent + 2.0 * extent * material_index / columns
+        x1 = -extent + 2.0 * extent * (material_index + 1) / columns
+        first = len(vertices)
+        stride = subdivisions + 1
+        for y_index in range(stride):
+            v = y_index / subdivisions
+            for x_index in range(stride):
+                u = x_index / subdivisions
+                world = Vector(
+                    (
+                        x0 + (x1 - x0) * u,
+                        y0 + (y1 - y0) * v,
+                        0.0,
+                    )
+                )
+                local = world_to_object @ world
+                vertices.append(tuple(local))
+        for y_index in range(subdivisions):
+            for x_index in range(subdivisions):
+                lower = first + y_index * stride + x_index
+                upper = lower + stride
+                if (x_index + y_index) & 1:
+                    faces.extend(
+                        (
+                            (lower, lower + 1, upper),
+                            (lower + 1, upper + 1, upper),
+                        )
+                    )
+                else:
+                    faces.extend(
+                        (
+                            (lower, lower + 1, upper + 1),
+                            (lower, upper + 1, upper),
+                        )
+                    )
+                face_materials.extend((material_index, material_index))
+
+    mesh = bpy.data.meshes.new(f"{name} Mesh")
+    mesh.from_pydata(vertices, (), faces)
+    for material in materials:
+        mesh.materials.append(material)
+    for polygon, material_index in zip(
+        mesh.polygons, face_materials, strict=True
+    ):
+        polygon.material_index = material_index
+    mesh.update()
+
+    surface = bpy.data.objects.new(name, mesh)
+    surface.matrix_world = object_to_world
+    bpy.context.scene.collection.objects.link(surface)
+    return surface
+
+
+def _svm_wireframe_matrix(scene: Any) -> None:
+    """Exercise both size modes, input ABIs, and transform-applied branches."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+
+    cases = (
+        (False, 0.09, False, "World Immediate"),
+        (False, 0.09, True, "World Stack"),
+        (True, 2.5, False, "Pixel Immediate"),
+        (True, 2.5, True, "Pixel Stack"),
+    )
+    materials = [
+        _wireframe_material(
+            f"SVM Wireframe {label}",
+            use_pixel_size=use_pixel_size,
+            size=size,
+            linked_size=linked_size,
+        )
+        for use_pixel_size, size, linked_size, label in cases
+    ]
+
+    object_to_world = (
+        Matrix.Translation((0.17, -0.13, 0.21))
+        @ Euler((0.29, -0.21, 0.17), "XYZ").to_matrix().to_4x4()
+        @ Matrix.Diagonal((1.31, 0.74, 1.16, 1.0))
+    )
+
+    # A single-user mesh takes Cycles' SD_OBJECT_TRANSFORM_APPLIED path.
+    _wireframe_row_mesh(
+        "SVM Wireframe Transform Applied",
+        materials,
+        -1.1,
+        0.0,
+        object_to_world,
+    )
+
+    # A second user prevents Cycles from baking the object transform. The
+    # visible object therefore exercises object_position_transform(), while
+    # its geometry-sharing twin stays outside the camera frame.
+    shared = _wireframe_row_mesh(
+        "SVM Wireframe Runtime Transform",
+        materials,
+        0.0,
+        1.1,
+        object_to_world,
+    )
+    twin = bpy.data.objects.new(
+        "SVM Wireframe Runtime Transform Offscreen Twin",
+        shared.data,
+    )
+    twin.matrix_world = Matrix.Translation((8.0, 0.0, 0.0)) @ object_to_world
+    scene.collection.objects.link(twin)
+
+
+def _svm_wireframe_bump(scene: Any) -> None:
+    """Freeze Cycles' CENTER/DX/DY refinement of a Wireframe height graph."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+
+    material, tree, output = _material("SVM Wireframe Bump")
+    wireframe = tree.nodes.new("ShaderNodeWireframe")
+    wireframe.name = "Wireframe Height"
+    wireframe.use_pixel_size = False
+    _input(wireframe, "Size").default_value = 0.13
+
+    bump = tree.nodes.new("ShaderNodeBump")
+    bump.name = "Wireframe Bump"
+    bump.invert = True
+    _input(bump, "Strength").default_value = 0.8
+    _input(bump, "Distance").default_value = 0.2
+    _input(bump, "Filter Width").default_value = 0.37
+    tree.links.new(_output(wireframe, "Fac"), _input(bump, "Height"))
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Bump Normal Emission"
+    tree.links.new(_output(bump, "Normal"), _input(emission, "Color"))
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    _wireframe_row_mesh(
+        "SVM Wireframe Bump Surface",
+        [material],
+        -1.1,
+        1.1,
+        Matrix.Identity(4),
+    )
+
+
+def _svm_bump_constant_fold(scene: Any) -> None:
+    """Freeze Cycles' unlinked-Height BumpNode constant-fold contract."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+
+    material, tree, output = _material("SVM Bump Constant Fold")
+    bump = tree.nodes.new("ShaderNodeBump")
+    bump.name = "Unlinked Height Bump"
+    bump.invert = True
+    _input(bump, "Strength").default_value = 0.37
+    _input(bump, "Distance").default_value = 0.19
+    _input(bump, "Filter Width").default_value = 0.23
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Folded Normal Emission"
+    tree.links.new(_output(bump, "Normal"), _input(emission, "Color"))
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    _wireframe_row_mesh(
+        "SVM Bump Constant Fold Surface",
+        [material],
+        -1.1,
+        1.1,
+        Matrix.Identity(4),
+    )
