@@ -33,6 +33,16 @@ std::size_t BytecodeBuilder::add_node(ShaderNodeType type) {
   return begin;
 }
 
+void BytecodeBuilder::add_node_data(const void *payload,
+                                    std::size_t payload_size) {
+  if (payload_size % sizeof(std::uint32_t) != 0u) {
+    std::abort();
+  }
+  const auto old_size = _words.size();
+  _words.resize(old_size + payload_size / sizeof(std::uint32_t));
+  std::memcpy(_words.data() + old_size, payload, payload_size);
+}
+
 void BytecodeBuilder::add_node_data_float(float value) {
   _words.emplace_back(std::bit_cast<std::uint32_t>(value));
 }

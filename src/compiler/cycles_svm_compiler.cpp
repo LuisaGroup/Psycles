@@ -2,10 +2,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0 */
 
-#include <psycles/compiler/core_nodes.h>
-#include <psycles/compiler/cycles_svm_compiler.h>
-
-#include "cycles_svm_graph.h"
+#include "cycles_svm_compiler_internal.h"
 
 #include <algorithm>
 #include <array>
@@ -17,7 +14,7 @@
 #include <limits>
 #include <optional>
 #include <string>
-#include <string_view>
+#include <cstring>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -25,18 +22,6 @@
 
 namespace psycles::compiler::cycles_svm {
 namespace {
-
-constexpr auto kernel_feature_node_bsdf = 1u << 0u;
-constexpr auto kernel_feature_node_emission = 1u << 1u;
-constexpr auto kernel_feature_node_volume = 1u << 2u;
-constexpr auto kernel_feature_node_bump = 1u << 3u;
-constexpr auto kernel_feature_node_bump_state = 1u << 4u;
-constexpr auto kernel_feature_node_voronoi_extra = 1u << 5u;
-constexpr auto kernel_feature_node_raytrace = 1u << 6u;
-constexpr auto kernel_feature_node_aov = 1u << 7u;
-constexpr auto kernel_feature_node_light_path = 1u << 8u;
-constexpr auto kernel_feature_node_principled_hair = 1u << 9u;
-constexpr auto kernel_feature_node_portal = 1u << 10u;
 
 constexpr auto kernel_feature_node_mask_surface =
     kernel_feature_node_bsdf | kernel_feature_node_emission |
@@ -51,13 +36,6 @@ constexpr auto kernel_feature_node_mask_volume =
 constexpr auto kernel_feature_node_mask_displacement =
     kernel_feature_node_voronoi_extra | kernel_feature_node_bump |
     kernel_feature_node_bump_state | kernel_feature_node_portal;
-
-enum class ShaderType : std::uint8_t {
-  surface,
-  volume,
-  displacement,
-  bump,
-};
 
 class Stack {
 private:
@@ -153,16 +131,10 @@ template<typename T>
   }
 }
 
-[[nodiscard]] std::optional<NodeMathType> math_type(
-    const GraphNode *node) noexcept {
-  if (node->type == cycles_synthetic_math) {
-    return NODE_MATH_MULTIPLY;
-  }
-  return std::nullopt;
-}
-
-class Compiler {
+class Compiler final : public SVMCompiler {
 private:
+  using SVMCompiler::add_node;
+
   struct CompilerState {
     explicit CompilerState(std::size_t node_capacity)
         : nodes_done_flag(node_capacity, false) {}
@@ -178,7 +150,7 @@ private:
   BytecodeBuilder _stream;
   Stack _stack;
   GraphNode *_current_node{};
-  ShaderType _current_type{ShaderType::surface};
+  ShaderType _current_type{SHADER_TYPE_SURFACE};
   SVMStackOffset _mix_weight_offset{SVM_STACK_INVALID};
   std::string _diagnostic;
 
@@ -188,6 +160,10 @@ private:
       _diagnostic = std::move(diagnostic);
     }
     return false;
+  }
+
+  void fail(std::string diagnostic) override {
+    static_cast<void>(reject(std::move(diagnostic)));
   }
 
   [[nodiscard]] std::uint32_t stack_size(const GraphInput *input) const
@@ -211,7 +187,7 @@ private:
   }
 
   void add_value_node(GraphNode *node, float value,
-                      SVMStackOffset stack_offset) {
+                      SVMStackOffset stack_offset) override {
     static_cast<void>(add_node(
         node, NODE_VALUE_F,
         SVMNodeValueF{.value = value,
@@ -220,7 +196,7 @@ private:
   }
 
   void add_value_node(GraphNode *node, Vec3f value,
-                      SVMStackOffset stack_offset) {
+                      SVMStackOffset stack_offset) override {
     static_cast<void>(add_node(
         node, NODE_VALUE_V,
         SVMNodeValueV{.out_offset = stack_offset,
@@ -299,7 +275,7 @@ private:
     return output_socket->stack_offset;
   }
 
-  [[nodiscard]] SVMInputFloat input_float(std::string_view name) {
+  [[nodiscard]] SVMInputFloat input_float(std::string_view name) override {
     auto *input = _current_node->input(name);
     if (input == nullptr) {
       static_cast<void>(reject("Cycles SVM float input is absent: " +
@@ -318,7 +294,7 @@ private:
     return cycles_svm::input_float(*value);
   }
 
-  [[nodiscard]] SVMInputFloat3 input_float3(std::string_view name) {
+  [[nodiscard]] SVMInputFloat3 input_float3(std::string_view name) override {
     auto *input = _current_node->input(name);
     if (input == nullptr) {
       static_cast<void>(reject("Cycles SVM float3 input is absent: " +
@@ -348,7 +324,7 @@ private:
     return cycles_svm::input_float3(value->x, value->y, value->z);
   }
 
-  [[nodiscard]] SVMStackOffset input_link(std::string_view name) {
+  [[nodiscard]] SVMStackOffset input_link(std::string_view name) override {
     auto *input = _current_node->input(name);
     if (input == nullptr) {
       static_cast<void>(reject("Cycles SVM linked input is absent: " +
@@ -360,7 +336,7 @@ private:
                : SVM_STACK_INVALID;
   }
 
-  [[nodiscard]] SVMStackOffset output(std::string_view name) {
+  [[nodiscard]] SVMStackOffset output(std::string_view name) override {
     auto *shader_output = _current_node->output(name);
     if (shader_output == nullptr) {
       static_cast<void>(reject("Cycles SVM output is absent: " +
@@ -371,225 +347,51 @@ private:
                                          : SVM_STACK_INVALID;
   }
 
-  template<SvmPayload T>
-  [[nodiscard]] std::size_t add_node(GraphNode *node, ShaderNodeType type,
-                                     const T &payload,
-                                     bool use_derivatives = false) {
+  void add_node_payload(GraphNode *node, ShaderNodeType type,
+                        const void *payload, std::size_t payload_size,
+                        bool use_derivatives) override {
+    if (payload_size % sizeof(std::uint32_t) != 0u) {
+      std::abort();
+    }
     const auto resolved =
         ((use_derivatives || (node != nullptr && node->need_derivatives)) &&
-         _current_type != ShaderType::volume)
+         _current_type != SHADER_TYPE_VOLUME)
             ? node_type_with_derivatives(type)
             : type;
-    const auto offset = _stream.add_node(resolved, payload);
+    static_cast<void>(_stream.add_node(resolved));
+    _stream.add_node_data(payload, payload_size);
     if (node != nullptr) {
       node->added_to_svm = true;
     }
-    return offset;
   }
 
-  [[nodiscard]] std::size_t add_node(ShaderNodeType type) {
+  void add_node_data(const void *payload,
+                     std::size_t payload_size) override {
+    if (payload_size % sizeof(std::uint32_t) != 0u) {
+      std::abort();
+    }
+    _stream.add_node_data(payload, payload_size);
+  }
+
+  void add_bsdf_node_payload(const SVMNodeClosureBsdf &node,
+                             const void *payload,
+                             std::size_t payload_size) override {
+    add_node_payload(_current_node, NODE_CLOSURE_BSDF, &node, sizeof(node),
+                     false);
+    add_node_data(payload, payload_size);
+  }
+
+  [[nodiscard]] std::size_t add_node(ShaderNodeType type) override {
     return _stream.add_node(type);
   }
 
-  [[nodiscard]] bool compile_geometry(GraphNode *node) {
-    struct Output {
-      std::string_view name;
-      NodeGeometry geometry;
-    };
-    static constexpr Output outputs[] = {
-        {"Position", NODE_GEOM_P},
-        {"Normal", NODE_GEOM_N},
-        {"Tangent", NODE_GEOM_T},
-        {"GeometricNormal", NODE_GEOM_Ng},
-        {"Incoming", NODE_GEOM_I},
-        {"Parametric", NODE_GEOM_uv},
-    };
-    for (const auto &item : outputs) {
-      auto *socket = node->output(item.name);
-      if (socket == nullptr || socket->links.empty()) {
-        continue;
-      }
-      static_cast<void>(add_node(
-          node, NODE_GEOMETRY,
-          SVMNodeGeometry{.geom_type = item.geometry,
-                          .bump_offset = NODE_BUMP_OFFSET_CENTER,
-                          .store_derivatives =
-                              static_cast<std::uint8_t>(node->need_derivatives),
-                          .out_offset = output(item.name),
-                          .bump_filter_width = 0.0f},
-          item.geometry != NODE_GEOM_N && item.geometry != NODE_GEOM_Ng));
-    }
-    if (auto *socket = node->output("Backfacing");
-        socket != nullptr && !socket->links.empty()) {
-      static_cast<void>(add_node(
-          node, NODE_LIGHT_PATH,
-          SVMNodeLightPath{.path_type = NODE_LP_backfacing,
-                           .out_offset = output("Backfacing"),
-                           ._pad = {0u, 0u, 0u}}));
-    }
-    return _diagnostic.empty();
+  [[nodiscard]] SVMStackOffset
+  closure_mix_weight_offset() const noexcept override {
+    return _mix_weight_offset;
   }
 
-  [[nodiscard]] bool compile_math(GraphNode *node) {
-    const auto operation = math_type(node);
-    if (!operation) {
-      return reject("Cycles Math operation is not migrated exactly");
-    }
-    const auto value1_name = node->input("Value1") != nullptr ? "Value1" : "A";
-    const auto value2_name = node->input("Value2") != nullptr ? "Value2" : "B";
-    const auto value3_name = node->input("Value3") != nullptr ? "Value3" : "C";
-    const auto result_name = node->output("Result") != nullptr ? "Result" : "Value";
-    static_cast<void>(add_node(
-        node, NODE_MATH,
-        SVMNodeMath{.math_type = *operation,
-                    .value1 = input_float(value1_name),
-                    .value2 = input_float(value2_name),
-                    .value3 = input_float(value3_name),
-                    .result_offset = output(result_name),
-                    ._pad = {0u, 0u, 0u}}));
-    return _diagnostic.empty();
-  }
-
-  [[nodiscard]] bool compile_mix_closure_weight(GraphNode *node) {
-    static_cast<void>(add_node(
-        node, NODE_MIX_CLOSURE,
-        SVMNodeMixClosure{.fac = input_float("Fac"),
-                          .in_weight_offset = input_link("Weight"),
-                          .weight1_offset = output("Weight1"),
-                          .weight2_offset = output("Weight2"),
-                          ._pad = {0u}}));
-    return _diagnostic.empty();
-  }
-
-  template<SvmPayload T>
-  [[nodiscard]] bool compile_bsdf(GraphNode *node, ClosureType closure,
-                                  const T &data) {
-    auto *color = node->input("Color");
-    if (color == nullptr) {
-      return reject("Cycles BSDF Color input is absent");
-    }
-    if (color->link != nullptr) {
-      static_cast<void>(add_node(
-          node, NODE_CLOSURE_WEIGHT,
-          SVMNodeClosureWeight{.weight_offset = input_link("Color"),
-                               ._pad = {0u, 0u, 0u}}));
-    } else {
-      const auto value = literal<Vec3f>(color, contract::SocketType::color);
-      if (!value) {
-        return reject("Cycles BSDF Color input is ill typed");
-      }
-      static_cast<void>(add_node(
-          node, NODE_CLOSURE_SET_WEIGHT,
-          SVMNodeClosureSetWeight{
-              .rgb = packed_float3{value->x, value->y, value->z}}));
-    }
-    static_cast<void>(add_node(
-        node, NODE_CLOSURE_BSDF,
-        SVMNodeClosureBsdf{.closure_type = closure,
-                           .mix_weight_offset = _mix_weight_offset,
-                           ._pad = {0u, 0u, 0u}}));
-    _stream.add_node_data(data);
-    return _diagnostic.empty();
-  }
-
-  [[nodiscard]] bool compile_diffuse(GraphNode *node) {
-    return compile_bsdf(
-        node, CLOSURE_BSDF_DIFFUSE_ID,
-        SVMNodeDiffuseBsdfData{.color = input_float3("Color"),
-                               .roughness = input_float("Roughness"),
-                               .normal_offset = input_link("Normal"),
-                               ._pad = {0u, 0u, 0u}});
-  }
-
-  [[nodiscard]] bool compile_translucent(GraphNode *node) {
-    return compile_bsdf(
-        node, CLOSURE_BSDF_TRANSLUCENT_ID,
-        SVMNodeSimpleBsdfData{.param1 = {},
-                              .normal_offset = input_link("Normal"),
-                              ._pad = {0u, 0u, 0u}});
-  }
-
-  [[nodiscard]] bool compile_transparent(GraphNode *node) {
-    return compile_bsdf(node, CLOSURE_BSDF_TRANSPARENT_ID,
-                        SVMNodeSimpleBsdfData{});
-  }
-
-  [[nodiscard]] bool compile_emission(GraphNode *node) {
-    auto *color = node->input("Color");
-    auto *strength = node->input("Strength");
-    if (color == nullptr || strength == nullptr) {
-      return reject("Cycles Emission inputs are absent");
-    }
-    if (color->link != nullptr || strength->link != nullptr) {
-      static_cast<void>(add_node(
-          node, NODE_EMISSION_WEIGHT,
-          SVMNodeEmissionWeight{.color = input_float3("Color"),
-                                .strength = input_float("Strength")}));
-    } else {
-      const auto c = literal<Vec3f>(color, contract::SocketType::color);
-      const auto s = literal<float>(strength, contract::SocketType::floating);
-      if (!c || !s) {
-        return reject("Cycles Emission inputs are ill typed");
-      }
-      static_cast<void>(add_node(
-          node, NODE_CLOSURE_SET_WEIGHT,
-          SVMNodeClosureSetWeight{.rgb = packed_float3{
-                                      c->x * *s, c->y * *s, c->z * *s}}));
-    }
-    static_cast<void>(add_node(
-        node, NODE_CLOSURE_EMISSION,
-        SVMNodeClosureEmission{.mix_weight_offset = _mix_weight_offset,
-                               ._pad = {0u, 0u, 0u}}));
-    return _diagnostic.empty();
-  }
-
-  [[nodiscard]] bool compile_node(GraphNode *node) {
-    if (node->type == cycles_synthetic_geometry ||
-        node->type == node_type::geometry) {
-      return compile_geometry(node);
-    }
-    if (node->type == cycles_synthetic_mix_closure_weight) {
-      return compile_mix_closure_weight(node);
-    }
-    if (node->type == cycles_synthetic_math) {
-      return compile_math(node);
-    }
-    if (node->type == node_type::diffuse_bsdf) {
-      return compile_diffuse(node);
-    }
-    if (node->type == node_type::translucent_bsdf) {
-      return compile_translucent(node);
-    }
-    if (node->type == node_type::transparent_bsdf) {
-      return compile_transparent(node);
-    }
-    if (node->type == node_type::emission) {
-      return compile_emission(node);
-    }
-    if (node->type == node_type::null_closure ||
-        node->type == node_type::null_volume ||
-        node->special_type == GraphNodeSpecialType::combine_closure) {
-      return true;
-    }
-    return reject("Cycles SVM node family is not migrated: " + node->type);
-  }
-
-  [[nodiscard]] std::uint32_t node_feature(const GraphNode *node) const
-      noexcept {
-    if (node->type == node_type::emission ||
-        node->type == node_type::volume_emission) {
-      return kernel_feature_node_emission;
-    }
-    if (node->type == node_type::volume_absorption ||
-        node->type == node_type::volume_scatter ||
-        node->type == node_type::volume_coefficients ||
-        node->type == node_type::principled_volume) {
-      return kernel_feature_node_volume;
-    }
-    if (node->special_type == GraphNodeSpecialType::closure) {
-      return kernel_feature_node_bsdf;
-    }
-    return 0u;
+  [[nodiscard]] ShaderType output_type() const noexcept override {
+    return _current_type;
   }
 
   [[nodiscard]] bool is_sole_user(const GraphNode *node,
@@ -628,9 +430,9 @@ private:
 
   [[nodiscard]] bool generate_node(GraphNode *node, GraphNodeSet &done) {
     _current_node = node;
-    const auto ok = compile_node(node);
+    node->compile(*this);
     _current_node = nullptr;
-    if (!ok) {
+    if (!_diagnostic.empty()) {
       return false;
     }
     stack_clear_users(node, done);
@@ -799,7 +601,7 @@ private:
 
   [[nodiscard]] bool generate_closure_node(GraphNode *node,
                                            CompilerState *state) {
-    const auto feature = node_feature(node);
+    const auto feature = node->get_feature();
     if ((state->node_feature_mask & feature) != feature) {
       return true;
     }
@@ -812,7 +614,7 @@ private:
         }
       }
     }
-    auto *weight = node->input(_current_type == ShaderType::volume
+    auto *weight = node->input(_current_type == SHADER_TYPE_VOLUME
                                    ? "VolumeMixWeight"
                                    : "SurfaceMixWeight");
     if (weight != nullptr) {
@@ -996,19 +798,19 @@ private:
       return reject("Cycles SVM graph has no OutputNode");
     }
     switch (type) {
-      case ShaderType::surface:
+      case SHADER_TYPE_SURFACE:
         root_input = output_node->input("Surface");
         state.node_feature_mask = kernel_feature_node_mask_surface;
         break;
-      case ShaderType::volume:
+      case SHADER_TYPE_VOLUME:
         root_input = output_node->input("Volume");
         state.node_feature_mask = kernel_feature_node_mask_volume;
         break;
-      case ShaderType::displacement:
+      case SHADER_TYPE_DISPLACEMENT:
         root_input = output_node->input("Displacement");
         state.node_feature_mask = kernel_feature_node_mask_displacement;
         break;
-      case ShaderType::bump:
+      case SHADER_TYPE_BUMP:
         root_input = output_node->input("Normal");
         state.node_feature_mask = kernel_feature_node_mask_displacement;
         break;
@@ -1018,16 +820,13 @@ private:
                                 root_input->link->parent, &state)) {
       return false;
     }
-    if (type == ShaderType::displacement && root_input != nullptr &&
-        root_input->link != nullptr) {
-      _current_node = output_node;
-      static_cast<void>(add_node(
-          output_node, NODE_SET_DISPLACEMENT,
-          SVMNodeSetDisplacement{.fac_offset = stack_assign(root_input),
-                                 ._pad = {0u, 0u, 0u}}));
-      _current_node = nullptr;
+    _current_node = output_node;
+    output_node->compile(*this);
+    _current_node = nullptr;
+    if (!_diagnostic.empty()) {
+      return false;
     }
-    if (type != ShaderType::bump) {
+    if (type != SHADER_TYPE_BUMP) {
       static_cast<void>(add_node(NODE_END));
     }
     return _diagnostic.empty();
@@ -1060,18 +859,18 @@ public:
 
     const auto has_bump = _graph.root(GraphDomain::bump) != nullptr;
     const auto surface_offset = _stream.size();
-    if (has_bump && !compile_type(ShaderType::bump)) {
+    if (has_bump && !compile_type(SHADER_TYPE_BUMP)) {
       return finish(false);
     }
-    if (!compile_type(ShaderType::surface)) {
+    if (!compile_type(SHADER_TYPE_SURFACE)) {
       return finish(false);
     }
     const auto volume_offset = _stream.size();
-    if (!compile_type(ShaderType::volume)) {
+    if (!compile_type(SHADER_TYPE_VOLUME)) {
       return finish(false);
     }
     const auto displacement_offset = _stream.size();
-    if (!compile_type(ShaderType::displacement)) {
+    if (!compile_type(SHADER_TYPE_DISPLACEMENT)) {
       return finish(false);
     }
 

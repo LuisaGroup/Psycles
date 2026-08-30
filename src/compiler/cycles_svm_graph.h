@@ -19,6 +19,8 @@
 
 namespace psycles::compiler::cycles_svm {
 
+class SVMCompiler;
+
 inline constexpr auto cycles_synthetic_geometry =
     "cycles.synthetic.geometry";
 inline constexpr auto cycles_synthetic_texture_coordinate =
@@ -95,6 +97,8 @@ struct GraphOutput {
 };
 
 struct GraphNode {
+  virtual ~GraphNode() noexcept = default;
+
   std::uint32_t id{};
   std::string type;
   std::string label;
@@ -105,11 +109,18 @@ struct GraphNode {
   bool added_to_svm{};
   bool need_derivatives{};
 
+  virtual void compile(SVMCompiler &compiler) = 0;
+  [[nodiscard]] virtual std::uint32_t get_feature() const noexcept;
+  [[nodiscard]] virtual ShaderNodeType shader_node_type() const noexcept;
+
   [[nodiscard]] GraphInput *input(std::string_view name) noexcept;
   [[nodiscard]] const GraphInput *input(std::string_view name) const noexcept;
   [[nodiscard]] GraphOutput *output(std::string_view name) noexcept;
   [[nodiscard]] const GraphOutput *output(std::string_view name) const noexcept;
 };
+
+[[nodiscard]] std::unique_ptr<GraphNode>
+make_graph_node(std::string_view type);
 
 struct GraphNodeIdComparator {
   [[nodiscard]] bool operator()(const GraphNode *lhs,

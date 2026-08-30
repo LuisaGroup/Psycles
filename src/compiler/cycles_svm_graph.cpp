@@ -280,7 +280,7 @@ GraphNode *CyclesGraph::add_node(
     std::string type, std::string label, std::vector<GraphInput> inputs,
     std::vector<GraphOutput> outputs, GraphNodeSpecialType node_special_type,
     std::map<std::string, contract::SocketValue, std::less<>> properties) {
-  auto node = std::make_unique<GraphNode>();
+  auto node = make_graph_node(type);
   node->id = _next_node_id++;
   node->type = std::move(type);
   node->label = std::move(label);

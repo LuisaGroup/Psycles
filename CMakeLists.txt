@@ -48,6 +48,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_bytecode.cpp
     src/compiler/cycles_svm_compiler.cpp
     src/compiler/cycles_svm_graph.cpp
+    src/compiler/cycles_svm_nodes.cpp
     src/compiler/cycles_emission_sampling.cpp
     src/compiler/hosek_sky.cpp
     src/compiler/material_library.cpp
