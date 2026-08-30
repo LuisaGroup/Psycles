@@ -1,6 +1,7 @@
 #include "path_tracer_surface_value_state_family.h"
 
 #include "surface_bump.h"
+#include "surface_displacement.h"
 
 #include <cstdlib>
 #include <utility>
@@ -261,6 +262,57 @@ void emit_bump_support_family(
     }
 }
 
+void emit_displacement_family(
+    const SurfacePoint &point,
+    const SurfaceValueLocalsView &locals,
+    Var<luisa::uint4> instruction,
+    const compiler::SurfaceValueStaticVariant &variant,
+    SurfaceValueOperandReader &operands) noexcept {
+    if (variant.instruction.operation !=
+        compiler::ValueOperation::displacement) {
+        std::abort();
+    }
+    require_immediate_subset(
+        variant,
+        static_cast<std::uint16_t>(
+            compiler::displacement_configuration_mask));
+    const auto height =
+        operands.scalar(operand::displacement::height);
+    const auto midlevel =
+        operands.scalar(operand::displacement::midlevel);
+    const auto scale =
+        operands.scalar(operand::displacement::scale);
+    const auto linked_normal =
+        operands.vector(operand::displacement::normal);
+    const auto configuration =
+        surface_value_runtime_immediate(instruction);
+    const auto normal_linked =
+        (configuration & static_cast<std::uint32_t>(
+                              compiler::displacement_normal_linked)) != 0u;
+    const auto object_space =
+        (configuration & static_cast<std::uint32_t>(
+                              compiler::displacement_object_space)) != 0u;
+    const auto input = SurfaceDisplacementInput{
+        .height = height,
+        .midlevel = midlevel,
+        .scale = scale,
+        .normal = select(point.shading_normal,
+                         linked_normal,
+                         normal_linked),
+        .normal_to_world_x = point.normal_to_world_x,
+        .normal_to_world_y = point.normal_to_world_y,
+        .normal_to_world_z = point.normal_to_world_z};
+    Float3 result = make_float3(0.0f);
+    $if(object_space) {
+        result = displacement_object_inline(input);
+    }
+    $else {
+        result = displacement_world_inline(input);
+    };
+    write_surface_value_vector(
+        locals, instruction, std::move(result));
+}
+
 } // namespace
 
 void emit_direct_surface_state_family(
@@ -293,6 +345,10 @@ void emit_direct_surface_state_family(
         case compiler::SurfaceSvmValueOpcode::bump_support:
             emit_bump_support_family(services, point, locals, instruction,
                                      variant, operands);
+            return;
+        case compiler::SurfaceSvmValueOpcode::displacement:
+            emit_displacement_family(
+                point, locals, instruction, variant, operands);
             return;
         default:
             std::abort();

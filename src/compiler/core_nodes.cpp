@@ -915,6 +915,25 @@ NodeRegistry make_core_node_registry() {
                            feature_bit(ShaderFeature::derivatives)}));
 
   static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::displacement,
+      .inputs =
+          {input("Height", SocketType::floating,
+                 SocketValue::floating(0.0f)),
+           input("Midlevel", SocketType::floating,
+                 SocketValue::floating(0.5f)),
+           input("Scale", SocketType::floating,
+                 SocketValue::floating(1.0f)),
+           input("Normal", SocketType::normal,
+                 SocketValue::normal({0.0f, 0.0f, 0.0f}))},
+      .outputs = {output("Displacement", SocketType::vector)},
+      .properties =
+          {property("Space", SocketType::string,
+                    SocketValue::string("OBJECT")),
+           property("NormalLinked", SocketType::boolean,
+                    SocketValue::boolean(false))},
+      .required_features = feature_bit(ShaderFeature::surface)}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::vertex_color,
       .inputs = {},
       .outputs = {output("Color", SocketType::color),

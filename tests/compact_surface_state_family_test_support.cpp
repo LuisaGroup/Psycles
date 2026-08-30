@@ -30,6 +30,8 @@ static_assert(surface_value_family_has_direct_evaluator(
     SurfaceSvmValueOpcode::tex_coord_derivative));
 static_assert(surface_value_family_has_direct_evaluator(
     SurfaceSvmValueOpcode::bump_support));
+static_assert(surface_value_family_has_direct_evaluator(
+    SurfaceSvmValueOpcode::displacement));
 
 [[nodiscard]] bool is_transform_operation(ValueOperation operation) noexcept {
   return operation == ValueOperation::object_position_with_transform ||
@@ -64,6 +66,11 @@ ShaderGraph make_direct_state_bump_graph() {
       node_type::vector_math, "Direct state plus transformed object");
   const auto height =
       graph.add_node(node_type::vector_to_scalar, "Direct state bump height");
+  const auto displacement = graph.add_node(
+      node_type::displacement, "Direct state object displacement");
+  const auto displacement_height = graph.add_node(
+      node_type::vector_to_scalar,
+      "Direct state object displacement height");
   const auto bump =
       graph.add_node(node_type::bump, "Direct state derivative Bump");
   const auto diffuse =
@@ -105,12 +112,27 @@ ShaderGraph make_direct_state_bump_graph() {
                     add_transformed_object, "B") &&
       graph.connect({.node = add_transformed_object, .socket = "Vector"},
                     height, "Vector") &&
-      graph.connect({.node = height, .socket = "Value"}, bump, "Height") &&
+      graph.connect({.node = height, .socket = "Value"}, displacement,
+                    "Height") &&
+      graph.connect({.node = geometry, .socket = "Normal"}, displacement,
+                    "Normal") &&
+      graph.connect({.node = displacement, .socket = "Displacement"},
+                    displacement_height, "Vector") &&
+      graph.connect({.node = displacement_height, .socket = "Value"}, bump,
+                    "Height") &&
       graph.connect({.node = geometry, .socket = "Normal"}, bump, "Normal") &&
       graph.connect({.node = bump, .socket = "Normal"}, diffuse, "Normal") &&
       graph.set_input(bump, "Strength", SocketValue::floating(0.67f)) &&
       graph.set_input(bump, "Distance", SocketValue::floating(0.23f)) &&
       graph.set_input(bump, "FilterWidth", SocketValue::floating(0.19f)) &&
+      graph.set_input(displacement, "Midlevel",
+                      SocketValue::floating(-0.21f)) &&
+      graph.set_input(displacement, "Scale",
+                      SocketValue::floating(0.43f)) &&
+      graph.set_property(displacement, "Space",
+                         SocketValue::string("OBJECT")) &&
+      graph.set_property(displacement, "NormalLinked",
+                         SocketValue::boolean(true)) &&
       graph.set_property(bump, "Invert", SocketValue::boolean(true)) &&
       graph.set_property(bump, "NormalLinked", SocketValue::boolean(true)) &&
       graph.set_property(bump, "UseObjectSpace", SocketValue::boolean(false)) &&
@@ -144,6 +166,7 @@ validate_direct_state_surface_runtime(const SurfaceValueRuntime &runtime) {
       ValueOperation::bump_offset_zero,
       ValueOperation::bump_filter_width,
       ValueOperation::bump_samples,
+      ValueOperation::displacement,
       ValueOperation::sampled_surface_position,
       ValueOperation::sampled_uv,
       ValueOperation::sampled_generated,
@@ -171,6 +194,18 @@ validate_direct_state_surface_runtime(const SurfaceValueRuntime &runtime) {
       count_variant(ValueOperation::object_position_with_transform);
   const auto derivative_variants =
       count_variant(ValueOperation::sampled_object_position_with_transform);
+  const auto displacement_variants =
+      count_variant(ValueOperation::displacement);
+  const auto displacement_immediate_exact = std::all_of(
+      runtime.value_variants.begin(), runtime.value_variants.end(),
+      [](const auto &variant) noexcept {
+        return variant.instruction.operation != ValueOperation::displacement ||
+               (variant.svm_immediates.size() == 1u &&
+                variant.svm_immediates.front() ==
+                    static_cast<std::uint16_t>(
+                        displacement_object_space |
+                        displacement_normal_linked));
+      });
 
   const auto &scene = runtime.svm_scene;
   std::vector<bool> transform_metadata_seen(scene.value_metadata.size(), false);
@@ -202,12 +237,15 @@ validate_direct_state_surface_runtime(const SurfaceValueRuntime &runtime) {
   const auto owned_payload_count = std::count(
       transform_metadata_seen.begin(), transform_metadata_seen.end(), true);
   exact_relation &= transform_record_count == owned_payload_count;
-  if (ordinary_variants != 1u || derivative_variants != 1u || !exact_relation) {
+  if (ordinary_variants != 1u || derivative_variants != 1u ||
+      displacement_variants != 1u || !displacement_immediate_exact ||
+      !exact_relation) {
     std::ostringstream message;
     message << "compact runtime violated the transform evaluator/metadata "
                "injection (variants="
             << ordinary_variants
             << ", derivative variants=" << derivative_variants
+            << ", displacement variants=" << displacement_variants
             << ", records=" << transform_record_count
             << ", owned payloads=" << owned_payload_count << ')';
     return message.str();

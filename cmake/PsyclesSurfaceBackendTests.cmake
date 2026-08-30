@@ -369,6 +369,15 @@ target_include_directories(
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_displacement_tests
+    SOURCE tests/test_luisa_displacement.cpp
+    TEST_STEM luisa_displacement
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_displacement_tests
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_noise_callable_tests
     SOURCE tests/test_luisa_noise_callable.cpp
     TEST_STEM luisa_noise_callable

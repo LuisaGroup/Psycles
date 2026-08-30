@@ -940,69 +940,36 @@ private:
                 node, socket, requested);
         }
         if (type == "DISPLACEMENT") {
-            // Cycles' scalar Displacement node produces
-            // normal * (height - midlevel) * scale. The automatic bump
-            // lowering below projects this vector back onto the geometric
-            // normal before evaluating the height derivatives.
-            const auto offset = _graph.add_node(
-                compiler::node_type::subtract_float,
-                node_name + " / Height Offset");
-            static_cast<void>(bind(
-                offset,
-                "A",
-                node,
-                "Height",
-                SocketType::floating));
-            static_cast<void>(bind(
-                offset,
-                "B",
-                node,
-                "Midlevel",
-                SocketType::floating));
-
-            const auto scaled_height = _graph.add_node(
-                compiler::node_type::multiply_float,
-                node_name + " / Scaled Height");
-            static_cast<void>(_graph.connect(
-                {.node = offset, .socket = "Value"},
-                scaled_height,
-                "A"));
-            static_cast<void>(bind(
-                scaled_height,
-                "B",
-                node,
-                "Scale",
-                SocketType::floating));
-
-            TypedOutput normal;
-            if (auto source = input_source(node, "Normal")) {
-                normal = lower_output(
-                    source->node,
-                    source->socket,
-                    SocketType::normal);
-            } else {
-                normal = geometry_output(
-                    "Normal", SocketType::normal);
-            }
-            const auto normal_vector = conversion(
-                normal, SocketType::vector);
             const auto displacement = _graph.add_node(
-                compiler::node_type::vector_math,
+                compiler::node_type::displacement,
                 node_name);
-            static_cast<void>(_graph.connect(
-                normal_vector.ref, displacement, "A"));
-            static_cast<void>(_graph.connect(
-                {.node = scaled_height, .socket = "Value"},
-                displacement,
-                "Scale"));
+            static_cast<void>(bind(
+                displacement, "Height", node, "Height",
+                SocketType::floating));
+            static_cast<void>(bind(
+                displacement, "Midlevel", node, "Midlevel",
+                SocketType::floating));
+            static_cast<void>(bind(
+                displacement, "Scale", node, "Scale",
+                SocketType::floating));
+            const auto normal_linked =
+                input_source(node, "Normal").has_value();
+            static_cast<void>(bind(
+                displacement, "Normal", node, "Normal",
+                SocketType::normal));
             static_cast<void>(_graph.set_property(
                 displacement,
-                "Operation",
-                SocketValue::string("SCALE")));
+                "Space",
+                SocketValue::string(
+                    node_property_text(node, "space", "OBJECT"))));
+            static_cast<void>(_graph.set_property(
+                displacement,
+                "NormalLinked",
+                SocketValue::boolean(normal_linked)));
             return {
                 .ref = {
                     .node = displacement,
-                    .socket = "Vector"},
+                    .socket = "Displacement"},
                 .type = SocketType::vector};
         }
         if (type == "BUMP") {

@@ -544,6 +544,8 @@ public:
     const compiler::ValueInstruction &instruction) noexcept;
 [[nodiscard]] std::unique_ptr<ValueNode> try_make_normal_value_node(
     const compiler::ValueInstruction &instruction) noexcept;
+[[nodiscard]] std::unique_ptr<ValueNode> try_make_displacement_value_node(
+    const compiler::ValueInstruction &instruction) noexcept;
 [[nodiscard]] std::unique_ptr<ValueNode>
 try_make_ambient_occlusion_value_node(
     const compiler::ValueInstruction &instruction) noexcept;

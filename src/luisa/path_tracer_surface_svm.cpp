@@ -141,8 +141,10 @@ Float3 SurfaceSvmInterpreter::execute(
                 instruction.x & compiler::surface_svm_opcode_mask;
             UInt next_instruction = instruction_index + 1u;
 
-            $if(opcode <= static_cast<std::uint32_t>(
-                              compiler::ValueOperation::ambient_occlusion)) {
+            // `opcode` is an execution-family id, not a semantic
+            // ValueOperation ordinal. Keep the device classification identical
+            // to surface_svm_bytecode_kind() and independent of enum growth.
+            $if(opcode < compiler::surface_svm_value_opcode_count) {
               impl.values(resources.scalar_parameters,
                           resources.vector_parameters,
                           resources.cycles_bsdf_tables, resources.textures,

@@ -195,7 +195,13 @@ enum class ValueOperation : std::uint8_t {
   combine_color,
   hosek_wilkie_sky,
   nishita_sky,
-  ambient_occlusion
+  ambient_occlusion,
+  // Cycles' scalar Displacement node is a ShaderData operation, not merely
+  // `normal * scalar`: OBJECT space applies the inverse normal transform
+  // before scaling and the object direction transform afterwards. Keep the
+  // operation semantic in the IR so non-uniform instance transforms cannot
+  // be lost during Blender graph normalization.
+  displacement
 };
 
 // Operand layouts are shared by lowering and backend AST construction. Named
@@ -324,6 +330,14 @@ struct bump_samples {
   static constexpr std::size_t filter_width = 5u;
   static constexpr std::size_t normal = 6u;
   static constexpr std::size_t count = 7u;
+};
+
+struct displacement {
+  static constexpr std::size_t height = 0u;
+  static constexpr std::size_t midlevel = 1u;
+  static constexpr std::size_t scale = 2u;
+  static constexpr std::size_t normal = 3u;
+  static constexpr std::size_t count = 4u;
 };
 
 // Differential sample offsets are scalar coefficients of SurfacePoint::dPdx
@@ -664,6 +678,8 @@ value_operation_operand_count(ValueOperation operation) noexcept {
       return value_operand::layer_weight::count;
     case ValueOperation::ambient_occlusion:
       return value_operand::ambient_occlusion::count;
+    case ValueOperation::displacement:
+      return value_operand::displacement::count;
     case ValueOperation::mapping:
       return value_operand::mapping::count;
     case ValueOperation::image_color:
@@ -895,6 +911,15 @@ inline constexpr std::uint64_t ambient_occlusion_normal_linked = 1u << 3u;
 inline constexpr std::uint64_t ambient_occlusion_configuration_mask =
     ambient_occlusion_only_local | ambient_occlusion_inside |
     ambient_occlusion_global_radius | ambient_occlusion_normal_linked;
+
+// Exact SVMNodeDisplacement configuration. Cycles represents an unlinked
+// Normal socket with SVM_STACK_INVALID and substitutes ShaderData::N at
+// evaluation time; spelling that topology fact as a bit avoids a magic
+// parameter value in Psycles' typed stack.
+inline constexpr std::uint64_t displacement_object_space = 1u << 0u;
+inline constexpr std::uint64_t displacement_normal_linked = 1u << 1u;
+inline constexpr std::uint64_t displacement_configuration_mask =
+    displacement_object_space | displacement_normal_linked;
 
 // Normal Map is a static shader-stage configuration. Keep its packed IR
 // contract in one place so graph lowering and Luisa AST construction cannot

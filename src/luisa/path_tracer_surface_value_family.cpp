@@ -283,6 +283,7 @@ bool emit_direct_surface_value_variant(
         case compiler::SurfaceSvmValueOpcode::tex_coord:
         case compiler::SurfaceSvmValueOpcode::tex_coord_derivative:
         case compiler::SurfaceSvmValueOpcode::bump_support:
+        case compiler::SurfaceSvmValueOpcode::displacement:
             emit_direct_surface_state_family(
                 family, runtime, bytecode_slots, services, point, locals,
                 instruction, variant, operands);
