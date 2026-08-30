@@ -110,6 +110,19 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_surface_svm_scene_tests)
 
     add_executable(
+        psycles_cycles_svm_abi_tests
+        tests/test_cycles_svm_abi.cpp)
+    target_link_libraries(
+        psycles_cycles_svm_abi_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_cycles_svm_abi_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.cycles_svm_abi
+        COMMAND psycles_cycles_svm_abi_tests)
+
+    add_executable(
         psycles_progressive_pixel_probe_tests
         tests/test_progressive_pixel_probe.cpp)
     target_link_libraries(
