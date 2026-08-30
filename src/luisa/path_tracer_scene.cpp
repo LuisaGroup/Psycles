@@ -1375,7 +1375,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 .count =
                     static_cast<std::uint32_t>(
                         upload.attributes.size()),
-                .triangle_slot = bindless_base,
+                .primitive_slot = bindless_base,
                 .padding = 0u});
         stream << resource.positions.copy_from(
                       luisa::span{upload.positions})
@@ -1432,7 +1432,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             geometry_indices,
             geometry_gpu,
             geometry_materials,
-            attribute_ranges);
+            attribute_bindings,
+            attribute_ranges,
+            attribute_residency,
+            next_attribute_slot);
     if (!curve_upload.ok()) {
         diagnose(result.diagnostics, curve_upload.diagnostic);
         return result;

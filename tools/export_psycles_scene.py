@@ -33,6 +33,12 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import blender_scene_manifest as manifest  # noqa: E402
 import blender_build_identity  # noqa: E402
+from blender_particle_hair import (  # noqa: E402
+    cycles_particle_hair_positions as _cycles_particle_hair_positions,
+    cycles_particle_hair_uv as _cycles_particle_hair_uv,
+    cycles_shape_radius as _cycles_shape_radius,
+    particle_hair_systems as _particle_hair_systems,
+)
 import cycles_hash  # noqa: E402
 import exporter_identity  # noqa: E402
 
@@ -696,100 +702,10 @@ def _geometry(
         evaluated.to_mesh_clear()
 
 
-def _particle_hair_systems(evaluated: Any) -> list[tuple[Any, Any]]:
-    """Return the final-render legacy hair systems consumed by Cycles.
-
-    Cycles walks evaluated particle-system modifiers, checks the modifier's
-    render bit, and accepts only HAIR/PATH systems. Keeping this predicate in
-    one place makes object-index assignment and geometry extraction agree.
-    """
-
-    systems: list[tuple[Any, Any]] = []
-    for modifier in evaluated.modifiers:
-        if modifier.type != "PARTICLE_SYSTEM" or not modifier.show_render:
-            continue
-        particle_system = getattr(modifier, "particle_system", None)
-        if particle_system is None:
-            continue
-        settings = particle_system.settings
-        if settings.type == "HAIR" and settings.render_type == "PATH":
-            systems.append((particle_system, settings))
-    return systems
-
-
 def _object_has_particle_hair(obj: Any, depsgraph: Any) -> bool:
     if obj.type != "MESH":
         return False
     return bool(_particle_hair_systems(obj.evaluated_get(depsgraph)))
-
-
-def _cycles_shape_radius(
-    shape: np.float32,
-    root: np.float32,
-    tip: np.float32,
-    intercept: np.float32,
-) -> np.float32:
-    """Evaluate Cycles' particle-hair radius curve in float32."""
-
-    radius = np.float32(np.float32(1.0) - intercept)
-    if shape < np.float32(0.0):
-        radius = np.float32(
-            np.power(radius, np.float32(np.float32(1.0) + shape))
-        )
-    elif shape > np.float32(0.0):
-        radius = np.float32(
-            np.power(
-                radius,
-                np.float32(
-                    np.float32(1.0)
-                    / np.float32(np.float32(1.0) - shape)
-                ),
-            )
-        )
-    return np.float32(
-        np.float32(radius * np.float32(root - tip)) + tip
-    )
-
-
-def _cycles_particle_hair_positions(
-    particle_system: Any,
-    evaluated: Any,
-    particle_no: int,
-    key_count: int,
-) -> list[np.ndarray[Any, np.dtype[np.float32]]]:
-    """Recover Cycles' prefix-preserving BKE_particle_co_hair contract.
-
-    A particle cache defines keys on the prefix ``[0, segments]``. The BKE
-    function leaves its output untouched outside that prefix, and Cycles seeds
-    the output with the preceding coordinate before every call. Blender's RNA
-    wrapper instead zero-initializes the output-only parameter, so a shortened
-    path appears to jump to world origin. Because the unwritten domain is a
-    suffix, propagate the last written coordinate only across the trailing
-    all-zero RNA results. Interior zero coordinates remain observable.
-    """
-
-    positions = [
-        np.asarray(
-            particle_system.co_hair(
-                object=evaluated,
-                particle_no=particle_no,
-                step=step,
-            ),
-            dtype=np.float32,
-        )
-        for step in range(key_count)
-    ]
-    suffix_begin = len(positions)
-    while suffix_begin > 0 and not np.any(
-        positions[suffix_begin - 1] != np.float32(0.0)
-    ):
-        suffix_begin -= 1
-    if 0 < suffix_begin < len(positions):
-        positions[suffix_begin:] = [
-            positions[suffix_begin - 1].copy()
-            for _ in range(len(positions) - suffix_begin)
-        ]
-    return positions
 
 
 def _particle_hair_geometry(
@@ -806,6 +722,20 @@ def _particle_hair_geometry(
     if not systems:
         return None
 
+    emitter_mesh = evaluated.to_mesh(
+        preserve_all_data_layers=True,
+        depsgraph=depsgraph,
+    )
+    try:
+        uv_layer_names = [layer.name for layer in emitter_mesh.uv_layers]
+        default_uv_layer = (
+            emitter_mesh.uv_layers.active_render.name
+            if emitter_mesh.uv_layers.active_render is not None
+            else None
+        )
+    finally:
+        evaluated.to_mesh_clear()
+
     object_to_world = np.asarray(evaluated.matrix_world, dtype=np.float32)
     world_to_object = np.linalg.inv(object_to_world).astype(
         np.float32, copy=False
@@ -816,11 +746,14 @@ def _particle_hair_geometry(
     intercepts = array.array("f")
     lengths = array.array("f")
     randoms = array.array("f")
+    curve_uv_layers = {
+        name: array.array("f") for name in uv_layer_names
+    }
     segment_count = 0
     curve_index = 0
     material_slot_count = max(len(obj.material_slots), 1)
 
-    for particle_system, settings in systems:
+    for modifier, particle_system, settings in systems:
         parent_count = len(particle_system.particles)
         child_count = len(particle_system.child_particles)
         first_particle = (
@@ -853,6 +786,16 @@ def _particle_hair_geometry(
 
         for particle_no in range(first_particle, particle_end):
             curve_first_key.append(len(keys) // 4)
+            for uv_no, name in enumerate(uv_layer_names):
+                uv = _cycles_particle_hair_uv(
+                    modifier,
+                    particle_system,
+                    particle_no,
+                    uv_no,
+                )
+                curve_uv_layers[name].extend(
+                    (float(uv[0]), float(uv[1]))
+                )
             world_positions = _cycles_particle_hair_positions(
                 particle_system,
                 evaluated,
@@ -942,6 +885,14 @@ def _particle_hair_geometry(
         "curve_material_slots": _write_array(
             stream, curve_material_slots
         ),
+        "default_uv_layer": default_uv_layer,
+        "uv_layers": [
+            {
+                "name": name,
+                "values": _write_array(stream, values),
+            }
+            for name, values in curve_uv_layers.items()
+        ],
         "intercept": _write_array(stream, intercepts),
         "length": _write_array(stream, lengths),
         "random": _write_array(stream, randoms),
@@ -1576,6 +1527,19 @@ def _export_scene(
             ):
                 raise RuntimeError(
                     f"incomplete geometry.bin section for "
+                    f"{geometry['name']!r}: {section}, "
+                    f"file size {geometry_size}"
+                )
+        for uv_layer in geometry["uv_layers"]:
+            section = uv_layer["values"]
+            end = int(section["offset"]) + int(section["bytes"])
+            if (
+                int(section["offset"]) < 0
+                or int(section["bytes"]) < 0
+                or end > geometry_size
+            ):
+                raise RuntimeError(
+                    f"incomplete geometry.bin UV section for "
                     f"{geometry['name']!r}: {section}, "
                     f"file size {geometry_size}"
                 )

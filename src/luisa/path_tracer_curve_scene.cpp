@@ -88,6 +88,14 @@ build_curve_geometry_upload(const contract::CurveGeometryDesc &geometry,
     upload.keys.emplace_back(luisa::make_float4(key.x, key.y, key.z, key.w));
   }
   upload.material_slots.reserve(geometry.curve_first_key.size());
+  upload.default_uv_layer = geometry.default_uv_layer;
+  for (const auto &[name, source] : geometry.uv_layers) {
+    auto &destination = upload.uv_layers[name];
+    destination.reserve(source.size());
+    for (const auto value : source) {
+      destination.emplace_back(luisa::make_float2(value.x, value.y));
+    }
+  }
   upload.length.reserve(geometry.curve_first_key.size());
   upload.random.reserve(geometry.curve_first_key.size());
   upload.intercept.reserve(geometry.keys.size());
@@ -138,7 +146,10 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
     std::map<contract::GeometryId, std::uint32_t> &geometry_indices,
     luisa::vector<GeometryGpu> &geometry_gpu,
     luisa::vector<MaterialBindingGpu> &geometry_materials,
-    luisa::vector<AttributeRangeGpu> &attribute_ranges) const {
+    luisa::vector<AttributeBindingGpu> &attribute_bindings,
+    luisa::vector<AttributeRangeGpu> &attribute_ranges,
+    const SceneAttributeResidencyPlan &attribute_residency,
+    std::uint32_t &next_attribute_slot) const {
   CurveSceneUploadResult result;
   CyclesPrimitiveIntervalResolver curve_intervals;
   CyclesPrimitiveIntervalResolver segment_intervals;
@@ -221,6 +232,33 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
     data->heap.emplace_on_update(bindless_base + 4u, resource.material_slots);
     data->heap.emplace_on_update(bindless_base + 5u, resource.length);
     data->heap.emplace_on_update(bindless_base + 6u, resource.random);
+    const auto attribute_offset =
+        static_cast<std::uint32_t>(attribute_bindings.size());
+    const auto &resident = attribute_residency.geometry(geometry_id);
+    bool default_uv_available = false;
+    for (const auto &[name, values] : upload.uv_layers) {
+      const auto is_default =
+          upload.default_uv_layer && *upload.default_uv_layer == name;
+      const auto id = contract::uv_attribute_id(name);
+      const auto retain_named = resident.contains(id);
+      if (!is_default && !retain_named) {
+        continue;
+      }
+      auto &buffer = resource.uv_layers.emplace_back(
+          data->device.create_buffer<luisa::float2>(values.size()));
+      const auto slot = is_default ? bindless_base + 2u
+                                   : next_attribute_slot++;
+      data->heap.emplace_on_update(slot, buffer);
+      stream << buffer.copy_from(luisa::span{values});
+      default_uv_available |= is_default;
+      if (retain_named) {
+        attribute_bindings.emplace_back(AttributeBindingGpu{
+            .id = id,
+            .value_slot = slot,
+            .domain = pack_attribute_layout(
+                attribute_domain_curve, attribute_format_float2)});
+      }
+    }
     stream << resource.bounds.copy_from(luisa::span{upload.bounds})
            << resource.segments.copy_from(luisa::span{upload.segments})
            << resource.keys.copy_from(luisa::span{upload.keys})
@@ -234,16 +272,19 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
     geometry_indices.emplace(geometry_id, geometry_index);
     result.resource_indices.emplace(geometry_id, resource_index);
     attribute_ranges.emplace_back(
-        AttributeRangeGpu{.offset = 0u,
-                          .count = 0u,
-                          .triangle_slot = bindless_base,
+        AttributeRangeGpu{.offset = attribute_offset,
+                          .count = static_cast<std::uint32_t>(
+                              attribute_bindings.size() - attribute_offset),
+                          .primitive_slot = bindless_base,
                           .padding = 0u});
     geometry_gpu.emplace_back(GeometryGpu{
         .bindless_base = bindless_base,
         .material_offset = material_offset,
         .material_count = static_cast<std::uint32_t>(
             std::max<std::size_t>(geometry.material_slots.size(), 1u)),
-        .attribute_domains = 0u,
+        .attribute_domains = default_uv_available
+                                 ? geometry_curve_default_uv
+                                 : 0u,
         .cycles_primitive_offset = *curve_interval.offset,
         .cycles_segment_offset = *segment_interval.offset,
         .primitive_kind = geometry_kind_curve,

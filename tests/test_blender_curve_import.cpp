@@ -78,6 +78,7 @@ void test_native_curve_bundle_round_trip() {
   Section keys;
   Section first_key;
   Section material_slots;
+  Section uv;
   Section intercept;
   Section length;
   Section random;
@@ -92,6 +93,7 @@ void test_native_curve_bundle_round_trip() {
                                        0.07f, 0.25f, 0.0f, 2.0f, 0.0f});
     first_key = write_values<std::uint32_t>(geometry, {0u});
     material_slots = write_values<std::uint32_t>(geometry, {0u});
+    uv = write_values<float>(geometry, {0.25f, 0.75f});
     intercept = write_values<float>(geometry, {0.0f, 0.45f, 1.0f});
     length = write_values<float>(geometry, {2.0311289f});
     random = write_values<float>(geometry, {0.86031276f});
@@ -122,6 +124,10 @@ void test_native_curve_bundle_round_trip() {
     "curve_material_slots":)JSON";
     write_section(scene, material_slots);
     scene << R"JSON(,
+    "default_uv_layer":"RootUV",
+    "uv_layers":[{"name":"RootUV","values":)JSON";
+    write_section(scene, uv);
+    scene << R"JSON(}],
     "intercept":)JSON";
     write_section(scene, intercept);
     scene << R"JSON(,
@@ -160,6 +166,14 @@ void test_native_curve_bundle_round_trip() {
          "curve material table mismatch");
   expect(curves.material_slots.size() == 1u,
          "default curve material was not resolved");
+  expect(curves.default_uv_layer == "RootUV",
+         "default curve UV layer mismatch");
+  expect(curves.uv_layers.at("RootUV").size() == 1u,
+         "curve UV domain mismatch");
+  expect_near(curves.uv_layers.at("RootUV")[0u].x, 0.25f,
+              "curve root U");
+  expect_near(curves.uv_layers.at("RootUV")[0u].y, 0.75f,
+              "curve root V");
   expect_near(curves.keys[1u].w, 0.07f, "middle key radius");
   expect_near(curves.intercept[1u], 0.45f, "middle Intercept");
   expect_near(curves.length[0u], 2.0311289f, "curve Length");

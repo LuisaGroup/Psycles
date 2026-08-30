@@ -28,6 +28,8 @@ void expect(bool condition, const std::string &message) {
         .curve_first_key = {0u},
         .material_slots = {},
         .curve_material_slots = {},
+        .default_uv_layer = "RootUV",
+        .uv_layers = {{"RootUV", {{0.25f, 0.75f}}}},
         .intercept = {0.0f, 0.5f, 1.0f},
         .length = {2.0615528f},
         .random = {0.86031276f}};
@@ -61,6 +63,26 @@ void test_curve_transaction_validation_is_atomic() {
     expect(
         !scene.snapshot().curve_geometries.contains(GeometryId{2u}),
         "rejected curve partially mutated the scene");
+
+    auto mismatched_uv = valid_curve();
+    mismatched_uv.name = "Invalid UV Hair";
+    mismatched_uv.uv_layers.at("RootUV").clear();
+    SceneDelta invalid_uv{.base_revision = 1u, .commands = {}};
+    invalid_uv.commands.emplace_back(UpsertCurveGeometry{
+        .id = GeometryId{3u},
+        .value = std::move(mismatched_uv)});
+    expect(!scene.apply(invalid_uv).committed,
+           "mismatched curve-domain UV layer was accepted");
+
+    auto missing_default = valid_curve();
+    missing_default.name = "Missing Default UV Hair";
+    missing_default.default_uv_layer = "AbsentUV";
+    SceneDelta invalid_default{.base_revision = 1u, .commands = {}};
+    invalid_default.commands.emplace_back(UpsertCurveGeometry{
+        .id = GeometryId{4u},
+        .value = std::move(missing_default)});
+    expect(!scene.apply(invalid_default).committed,
+           "missing default curve UV layer was accepted");
 }
 
 }// namespace

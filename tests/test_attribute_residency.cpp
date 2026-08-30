@@ -281,10 +281,69 @@ void test_unknown_query_is_conservative_top() {
         "unresolved runtime attribute ID did not raise demand to top");
 }
 
+void test_curve_domain_uv_residency() {
+    constexpr MaterialId material_id{21u};
+    constexpr MaterialId unreachable_material{22u};
+    constexpr GeometryId geometry_id{23u};
+    constexpr std::string_view kept_uv = "CurveRootUV";
+    constexpr std::string_view dropped_uv = "UnusedCurveUV";
+
+    SceneSnapshot snapshot;
+    snapshot.materials.emplace(
+        material_id,
+        MaterialDesc{
+            .name = "curve UV",
+            .shader = named_uv_graph(uv_attribute_id(kept_uv))});
+    snapshot.materials.emplace(
+        unreachable_material,
+        MaterialDesc{
+            .name = "unreachable curve UV",
+            .shader = named_uv_graph(uv_attribute_id(dropped_uv))});
+    snapshot.curve_geometries.emplace(
+        geometry_id,
+        CurveGeometryDesc{
+            .name = "curve UV residency fixture",
+            .keys = {{0.0f, 0.0f, 0.0f, 0.1f},
+                     {0.0f, 0.0f, 1.0f, 0.1f},
+                     {1.0f, 0.0f, 0.0f, 0.1f},
+                     {1.0f, 0.0f, 1.0f, 0.1f}},
+            .curve_first_key = {0u, 2u},
+            .material_slots = {material_id},
+            .curve_material_slots = {0u, 0u},
+            .default_uv_layer = std::string{kept_uv},
+            .uv_layers = {
+                {std::string{kept_uv}, {{0.1f, 0.2f}, {0.3f, 0.4f}}},
+                {std::string{dropped_uv}, {{0.5f, 0.6f}, {0.7f, 0.8f}}}}});
+    snapshot.instances.emplace(
+        InstanceId{24u},
+        InstanceDesc{.name = "curve UV user", .geometry = geometry_id});
+
+    MaterialLibrary materials;
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto reachability = build_scene_material_reachability(snapshot);
+    require(
+        materials.update(snapshot, compiler, reachability.shader_materials)
+            .committed,
+        "curve UV material did not compile");
+    const auto plan = build_scene_attribute_residency_plan(snapshot, materials);
+    const auto &resident = plan.geometry(geometry_id);
+    require(
+        resident.contains(uv_attribute_id(kept_uv)) &&
+            !resident.contains(uv_attribute_id(dropped_uv)),
+        "curve-domain UV reachability was not exact");
+    require(
+        plan.source_binding_count == 2u &&
+            plan.resident_binding_count == 1u &&
+            plan.source_device_bytes == 32u &&
+            plan.resident_device_bytes == 16u,
+        "curve-domain UV residency census is not exact");
+}
+
 }// namespace
 
 int main() {
     test_per_geometry_union_and_tangent_dependency_closure();
+    test_curve_domain_uv_residency();
     test_unknown_query_is_conservative_top();
     return EXIT_SUCCESS;
 }

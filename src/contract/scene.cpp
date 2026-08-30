@@ -263,6 +263,35 @@ template<typename Id>
         validate_count(
             "material slot", curves.curve_material_slots.size(),
             curve_count);
+        for (const auto &[name, values] : curves.uv_layers) {
+            if (values.size() != curve_count) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_mesh,
+                    "curve geometry '" + curves.name +
+                        "' has a mismatched UV layer '" + name +
+                        "' count");
+            }
+            if (std::any_of(
+                    values.begin(), values.end(),
+                    [](const auto &uv) noexcept {
+                        return !std::isfinite(uv.x) ||
+                               !std::isfinite(uv.y);
+                    })) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_mesh,
+                    "curve geometry '" + curves.name +
+                        "' contains a non-finite UV coordinate in layer '" +
+                        name + "'");
+            }
+        }
+        if (curves.default_uv_layer &&
+            !curves.uv_layers.contains(*curves.default_uv_layer)) {
+            diagnose(
+                SceneDiagnosticCode::invalid_mesh,
+                "curve geometry '" + curves.name +
+                    "' names a missing default UV layer '" +
+                    *curves.default_uv_layer + "'");
+        }
         validate_count(
             "Intercept attribute", curves.intercept.size(),
             curves.keys.size());

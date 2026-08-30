@@ -17,6 +17,7 @@ struct CurveGeometryContext {
   Float3 object_dpdu;
   Float3 dpdu;
   Float3 dpdv;
+  Float2 uv;
   Float intercept;
   Float length;
   Float thickness;
