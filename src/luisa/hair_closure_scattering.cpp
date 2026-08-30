@@ -119,7 +119,8 @@ struct HairLongitudinalBounds {
 HairClosureEvaluation evaluate_hair_reflection(
     const SurfaceClosurePhysicalHairRecord &closure,
     Float3 incoming,
-    Float3 outgoing) noexcept {
+    Float3 outgoing,
+    Bool sampled_direction) noexcept {
     const auto frame = make_hair_frame(closure, incoming);
     const auto outgoing_z = clamp(
         dot(frame.tangent, outgoing), -1.0f, 1.0f);
@@ -141,8 +142,14 @@ HairClosureEvaluation evaluate_hair_reflection(
         closure.payload.offset,
         closure.payload.roughness_u,
         bounds);
+    // Cycles' Hair sampler owns the support test for its generated direction:
+    // unlike bsdf_hair_reflection_eval(), bsdf_hair_reflection_sample() does
+    // not reject the sample against ShaderClosure::N. The selected term of a
+    // one-sample mixture must therefore retain the sampler's value, while an
+    // independently evaluated direction still obeys the closure hemisphere.
     const auto valid =
-        dot(closure.common.normal, outgoing) >= 0.0f &
+        (sampled_direction |
+         (dot(closure.common.normal, outgoing) >= 0.0f)) &
         (half_pi - abs(theta_i) >= 0.001f) &
         (cosine_phi >= 0.0f);
     const auto pdf = select(0.0f, phi_pdf * theta_pdf, valid);
@@ -152,7 +159,8 @@ HairClosureEvaluation evaluate_hair_reflection(
 HairClosureEvaluation evaluate_hair_transmission(
     const SurfaceClosurePhysicalHairRecord &closure,
     Float3 incoming,
-    Float3 outgoing) noexcept {
+    Float3 outgoing,
+    Bool sampled_direction) noexcept {
     const auto frame = make_hair_frame(closure, incoming);
     const auto outgoing_z = clamp(
         dot(frame.tangent, outgoing), -1.0f, 1.0f);
@@ -177,8 +185,12 @@ HairClosureEvaluation evaluate_hair_transmission(
         closure.payload.offset,
         closure.payload.roughness_u,
         bounds);
+    // See the reflection case above. Cycles' transmission sampler likewise
+    // has no ShaderClosure::N-side rejection; only arbitrary-direction
+    // evaluation applies that support predicate.
     const auto valid =
-        dot(closure.common.normal, outgoing) < 0.0f &
+        (sampled_direction |
+         (dot(closure.common.normal, outgoing) < 0.0f)) &
         (half_pi - abs(theta_i) >= 0.001f);
     const auto pdf = select(0.0f, phi_pdf * theta_pdf, valid);
     return {.intensity = pdf, .pdf = pdf};

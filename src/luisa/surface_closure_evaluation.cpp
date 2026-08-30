@@ -680,7 +680,7 @@ evaluate_hair_closure(
         $if(reflection) {
             if (reachability.contains(SurfaceClosureKind::hair_reflection)) {
                 const auto evaluation = detail::evaluate_hair_reflection(
-                    closure, incoming, outgoing);
+                    closure, incoming, outgoing, selected_sample);
                 intensity = evaluation.intensity;
                 pdf = evaluation.pdf;
             }
@@ -688,7 +688,7 @@ evaluate_hair_closure(
         $else {
             if (reachability.contains(SurfaceClosureKind::hair_transmission)) {
                 const auto evaluation = detail::evaluate_hair_transmission(
-                    closure, incoming, outgoing);
+                    closure, incoming, outgoing, selected_sample);
                 intensity = evaluation.intensity;
                 pdf = evaluation.pdf;
             }

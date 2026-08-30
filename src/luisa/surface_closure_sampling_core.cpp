@@ -21,6 +21,14 @@ namespace {
     return (properties & property) != 0u;
 }
 
+[[nodiscard]] Bool sampled_direction_in_geometric_support(
+    const SurfaceClosurePoint &point,
+    Float3 direction,
+    Bool transmission) noexcept {
+    const auto cosine = dot(point.geometric_normal, direction);
+    return select(cosine > 0.0f, cosine < 0.0f, transmission);
+}
+
 inline constexpr auto sampling_general_payload_reachability =
     SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(SurfaceClosureKind::principled) |
@@ -341,6 +349,14 @@ sample_common_closure(
         select(0u,
                translucent,
                is_translucent | is_rough_translucent);
+    // Diffuse, translucent, rough-translucent, and velvet sampling in Cycles
+    // all receive Ng and make this strict support decision inside their own
+    // bsdf_*_sample() routine. Transparent sampling is the only common-only
+    // family which deliberately has no geometric-side test.
+    const auto transmission = is_translucent | is_rough_translucent;
+    result.valid &= is_transparent |
+                    sampled_direction_in_geometric_support(
+                        point, result.direction, transmission);
     return result;
 }
 
@@ -410,6 +426,8 @@ sample_general_closure(
             reachability.contains(SurfaceClosureKind::sheen_microfiber)) {
             direction = detail::sample_sheen(
                 closure, incoming, random_direction);
+            valid = sampled_direction_in_geometric_support(
+                point, direction, false);
             // Cycles' bsdf_sample() reports one_float2() for Sheen. This is
             // deliberately distinct from bsdf_roughness_eta(), which reports
             // the authored/clamped LTC roughness when a guiding-selected
@@ -938,7 +956,6 @@ SurfaceClosureSelectedSample::direction() const noexcept {
 }
 
 SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
-    const SurfaceClosurePoint &point,
     const SurfaceClosureSelectionMeasure &measure,
     Expr<std::uint32_t> runtime_flags,
     const SurfaceEvaluation &mixture_evaluation,
@@ -964,24 +981,14 @@ SurfaceSampleTrace SurfaceClosureSelectedSample::finish(
             _properties,
             surface_closure_sample_property::bssrdf);
 
-    // Conditional samplers already receive the same projected Ng, but keep
-    // the aggregate validity law explicit here for common-only closures and
-    // as a proof boundary against future sampler implementations.
-    const auto sampling_geometric_normal = select(
-        point.geometric_normal,
-        _closure_normal,
-        point.is_curve);
-    const auto reflection_geometric_valid =
-        dot(sampling_geometric_normal, _direction) > 0.0f;
-    const auto transmission_geometric_valid =
-        dot(sampling_geometric_normal, _direction) < 0.0f;
-    const auto geometric_valid = select(
-        reflection_geometric_valid,
-        transmission_geometric_valid,
-        selected_translucent | selected_transmission);
-    const auto sample_valid =
-        _selected & _candidate_valid &
-        (selected_bssrdf | selected_transparent | geometric_valid);
+    // The conditional p(w | i) implementation is the sole owner of its
+    // support predicate. Adding a second, family-independent hemisphere test
+    // here is not a conservative check: Cycles' legacy Hair samplers
+    // deliberately accept some ribbon directions for which dot(sc->N, wo)
+    // has the evaluation-side sign. Formally, finish() may only intersect the
+    // categorical-selection event with the sampler's validity event; every
+    // additional predicate would change the sampled measure.
+    const auto sample_valid = _selected & _candidate_valid;
 
     auto regular = SurfaceEvaluation::zero();
     const auto regular_valid = sample_valid & !selected_bssrdf;
@@ -1317,7 +1324,6 @@ void SurfaceClosureSamplingVisitor::visit(
     }
     const auto mixture = evaluation.finish(true);
     const auto result = selected.finish(
-        _point,
         measure,
         measure.runtime_flags(),
         mixture,

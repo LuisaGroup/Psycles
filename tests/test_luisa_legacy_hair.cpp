@@ -134,6 +134,13 @@ constexpr HostVector reflection_outgoing_source{
     0.2f, -0.1f, 0.974679434f};
 constexpr HostVector transmission_outgoing_source{
     0.2f, -0.1f, -0.974679434f};
+// A ribbon normal can lie on the same side of a sampled legacy Hair
+// transmission direction even though the longitudinal Hair sample is valid.
+// Cycles deliberately lets bsdf_hair_transmission_sample() own that support
+// decision; this normal keeps wi on the front side while exposing any later
+// generic dot(N, wo) rejection of the sampled direction.
+constexpr HostVector sampled_transmission_same_side_normal{
+    -0.6f, -0.3f, 0.74161985f};
 
 struct HairReference {
     HostVector tangent;
@@ -186,9 +193,12 @@ struct LongitudinalBounds {
     const HairReference &closure,
     HostVector incoming,
     HostVector outgoing,
-    bool reflection) noexcept {
-    if ((reflection && outgoing.z < 0.0f) ||
-        (!reflection && outgoing.z >= 0.0f)) {
+    HostVector normal,
+    bool reflection,
+    bool sampled_direction = false) noexcept {
+    if (!sampled_direction &&
+        ((reflection && dot(normal, outgoing) < 0.0f) ||
+         (!reflection && dot(normal, outgoing) >= 0.0f))) {
         return 0.0f;
     }
     constexpr auto pi = std::numbers::pi_v<float>;
@@ -388,9 +398,16 @@ make_clamp_parameter_data(const CompiledSurface &surface) {
     return result;
 }
 
-[[nodiscard]] SurfacePoint hair_point(Expr<bool> is_curve) noexcept {
+[[nodiscard]] SurfacePoint hair_point(
+    Expr<bool> is_curve,
+    bool sampled_transmission_same_side) noexcept {
     auto point = make_surface_point();
-    point.geometric_normal = make_float3(0.0f, 0.0f, 1.0f);
+    point.geometric_normal = sampled_transmission_same_side
+                                 ? normalize(make_float3(
+                                       sampled_transmission_same_side_normal.x,
+                                       sampled_transmission_same_side_normal.y,
+                                       sampled_transmission_same_side_normal.z))
+                                 : make_float3(0.0f, 0.0f, 1.0f);
     point.shading_normal = point.geometric_normal;
     point.object_shading_normal = point.geometric_normal;
     point.undisplaced_shading_normal = point.geometric_normal;
@@ -425,7 +442,9 @@ make_clamp_parameter_data(const CompiledSurface &surface) {
     const SurfaceDispatch &surfaces,
     std::uint32_t surface_tag,
     bool reflection,
-    bool tangent_linked) {
+    bool tangent_linked,
+    bool force_curve = false,
+    bool sampled_transmission_same_side = false) {
     const auto closure_reachability = SurfaceClosureReachability{
         .kinds = surface_closure_kind_bit(
             reflection ? SurfaceClosureKind::hair_reflection
@@ -434,12 +453,17 @@ make_clamp_parameter_data(const CompiledSurface &surface) {
                        surface_tag,
                        reflection,
                        tangent_linked,
+                       force_curve,
+                       sampled_transmission_same_side,
                        closure_reachability](BufferFloat4 parameters,
                        BufferFloat4 output) noexcept {
         const auto case_index = dispatch_x();
-        const auto is_curve = !tangent_linked & (case_index != 0u);
+        const auto is_curve = force_curve
+                                  ? Bool{true}
+                                  : !tangent_linked & (case_index != 0u);
         ParameterShaderServices services{parameters};
-        const auto point = hair_point(is_curve);
+        const auto point = hair_point(
+            is_curve, sampled_transmission_same_side);
         const auto query = hair_query();
 
         SurfaceClosureSet closures{1u};
@@ -594,8 +618,13 @@ make_clamp_parameter_data(const CompiledSurface &surface) {
     std::span<const luisa::float4, record::count> actual,
     bool reflection,
     bool is_curve,
-    bool tangent_linked) noexcept {
+    bool tangent_linked,
+    bool sampled_transmission_same_side = false) noexcept {
     const auto incoming = normalize(incoming_source);
+    const auto normal = normalize(
+        sampled_transmission_same_side
+            ? sampled_transmission_same_side_normal
+            : HostVector{0.0f, 0.0f, 1.0f});
     const auto tangent = normalize(
         (tangent_linked || is_curve) ? dpdu_source : dpdv_source);
     const auto offset =
@@ -609,11 +638,16 @@ make_clamp_parameter_data(const CompiledSurface &surface) {
         reflection ? reflection_outgoing_source
                    : transmission_outgoing_source);
     const auto evaluation = hair_evaluation(
-        closure, incoming, outgoing, reflection);
+        closure, incoming, outgoing, normal, reflection);
     const auto sampled_direction = hair_sample(
         closure, incoming, reflection);
     const auto sampled_evaluation = hair_evaluation(
-        closure, incoming, sampled_direction, reflection);
+        closure,
+        incoming,
+        sampled_direction,
+        normal,
+        reflection,
+        true);
     const auto kind = reflection
                           ? SurfaceClosureKind::hair_reflection
                           : SurfaceClosureKind::hair_transmission;
@@ -662,7 +696,7 @@ make_clamp_parameter_data(const CompiledSurface &surface) {
         luisa::float4{expected_glossy.x, expected_glossy.y,
             expected_glossy.z, 1.0f},
         luisa::float4{expected_transmission.x,
-            expected_transmission.y, expected_transmission.z, 1.0f},
+            expected_transmission.y, expected_transmission.z, normal.z},
         luisa::float4{weighted_evaluation.x, weighted_evaluation.y,
             weighted_evaluation.z, evaluation},
         luisa::float4{evaluation_glossy.x, evaluation_glossy.y,
@@ -707,6 +741,9 @@ int main(int argc, char **argv) {
     const auto transmission = compile_graph(
         compiler, "transmission", true,
         ClosureOperation::hair_transmission);
+    const auto ribbon_transmission = compile_graph(
+        compiler, "transmission", false,
+        ClosureOperation::hair_transmission);
 
     SurfaceDispatch reflection_surfaces;
     const auto reflection_tag =
@@ -716,16 +753,32 @@ int main(int argc, char **argv) {
     const auto transmission_tag =
         transmission_surfaces.create<GraphSurface>(
             transmission.program, transmission.closure_plan);
+    SurfaceDispatch ribbon_transmission_surfaces;
+    const auto ribbon_transmission_tag =
+        ribbon_transmission_surfaces.create<GraphSurface>(
+            ribbon_transmission.program,
+            ribbon_transmission.closure_plan);
     const auto reflection_kernel = make_test_kernel(
         reflection_surfaces, reflection_tag, true, false);
     const auto transmission_kernel = make_test_kernel(
         transmission_surfaces, transmission_tag, false, true);
+    const auto ribbon_transmission_kernel = make_test_kernel(
+        ribbon_transmission_surfaces,
+        ribbon_transmission_tag,
+        false,
+        false,
+        true,
+        true);
     if (backend == "fallback") {
         auto bounded = true;
         bounded &= require_bounded_xir(
             "legacy_hair_reflection", reflection_kernel, 45000u);
         bounded &= require_bounded_xir(
             "legacy_hair_transmission", transmission_kernel, 45000u);
+        bounded &= require_bounded_xir(
+            "legacy_hair_ribbon_transmission",
+            ribbon_transmission_kernel,
+            45000u);
         if (!bounded) {
             return EXIT_FAILURE;
         }
@@ -742,23 +795,36 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(clamp_parameter_data.size());
     auto transmission_parameters =
         device.create_buffer<luisa::float4>(transmission.parameters.size());
+    auto ribbon_transmission_parameters =
+        device.create_buffer<luisa::float4>(
+            ribbon_transmission.parameters.size());
     auto reflection_output =
         device.create_buffer<luisa::float4>(2u * record::count);
     auto clamp_output =
         device.create_buffer<luisa::float4>(record::count);
     auto transmission_output =
         device.create_buffer<luisa::float4>(record::count);
+    auto ribbon_transmission_output =
+        device.create_buffer<luisa::float4>(record::count);
     auto reflection_shader = compile_named_kernel(
         device, "legacy_hair_reflection", reflection_kernel);
     auto transmission_shader = compile_named_kernel(
         device, "legacy_hair_transmission", transmission_kernel);
+    auto ribbon_transmission_shader = compile_named_kernel(
+        device,
+        "legacy_hair_ribbon_transmission",
+        ribbon_transmission_kernel);
     std::array<luisa::float4, 2u * record::count> reflection_actual{};
     std::array<luisa::float4, record::count> clamp_actual{};
     std::array<luisa::float4, record::count> transmission_actual{};
+    std::array<luisa::float4, record::count>
+        ribbon_transmission_actual{};
     stream << reflection_parameters.copy_from(
                   luisa::span{reflection.parameters})
            << transmission_parameters.copy_from(
                   luisa::span{transmission.parameters})
+           << ribbon_transmission_parameters.copy_from(
+                  luisa::span{ribbon_transmission.parameters})
            << clamp_parameters.copy_from(
                   luisa::span{clamp_parameter_data})
            << reflection_shader(
@@ -767,12 +833,18 @@ int main(int argc, char **argv) {
            << transmission_shader(
                   transmission_parameters, transmission_output)
                   .dispatch(1u)
+           << ribbon_transmission_shader(
+                  ribbon_transmission_parameters,
+                  ribbon_transmission_output)
+                  .dispatch(1u)
            << reflection_shader(clamp_parameters, clamp_output)
                   .dispatch(1u)
            << reflection_output.copy_to(
                   luisa::span{reflection_actual})
            << transmission_output.copy_to(
                   luisa::span{transmission_actual})
+           << ribbon_transmission_output.copy_to(
+                  luisa::span{ribbon_transmission_actual})
            << clamp_output.copy_to(luisa::span{clamp_actual})
            << synchronize();
 
@@ -786,6 +858,9 @@ int main(int argc, char **argv) {
     const auto linked =
         std::span<const luisa::float4, record::count>{
             transmission_actual.data(), record::count};
+    const auto ribbon_transmission_span =
+        std::span<const luisa::float4, record::count>{
+            ribbon_transmission_actual.data(), record::count};
     const auto clamp_ok = close_record(
         backend,
         "roughness clamp",
@@ -805,5 +880,13 @@ int main(int argc, char **argv) {
     ok &= verify_scenario(
         backend, "linked triangle transmission", linked,
         false, false, true);
+    ok &= verify_scenario(
+        backend,
+        "unlinked ribbon transmission with sampled same-side normal",
+        ribbon_transmission_span,
+        false,
+        true,
+        false,
+        true);
     return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
