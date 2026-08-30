@@ -195,3 +195,33 @@ Later migration commits must add, in this order:
 5. whole-scene visual and numerical parity before performance claims.
 
 No old-path fallback is allowed to make these tests pass.
+
+## First word-stream oracle checkpoint
+
+The local Cycles 5.2.1 diagnostic build was given an environment-gated dump at
+`SVMShaderManager::device_update_specific`, after per-shader streams had been
+aggregated and before device upload. The dump records the final global words
+and the exact `(shader id, shader name)` table; it does not alter compilation.
+
+The canonical `diffuse_surface` Blender probe produced shader id 5,
+`Diffuse Probe`, with global jump `(95, 111, 112)`. Removing only the global
+jump-table relocation gives this exact local stream:
+
+```
+00000001 00000004 00000014 00000015
+0000000b 00000001 00000000
+00000005 3f2e147b 3e75c28f 3db851ec
+00000002 00000002 000000ff
+3f2e147b 3e75c28f 3db851ec 3edc28f6
+00000000 00000000
+00000000
+00000000
+```
+
+This is now a permanent word-for-word test in
+`tests/test_cycles_svm_compiler.cpp`. It proves the first complete compiler
+path: local shader jump, Cycles default `Geometry::Normal` insertion, first-fit
+three-lane stack assignment, closure set-weight, Diffuse BSDF header and typed
+data, surface end, empty volume end, and empty displacement end. Unsupported
+families reject the new image explicitly; the test also proves that they do not
+select the old Psycles bytecode.
