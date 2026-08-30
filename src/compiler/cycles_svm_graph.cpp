@@ -104,6 +104,17 @@ namespace {
 
 [[nodiscard]] std::string_view projected_output_name(
     std::string_view node, std::string_view output) noexcept {
+  if (node == node_type::mix_float && output == "Value") {
+    return "Result";
+  }
+  if ((node == node_type::mix_vector ||
+       node == node_type::mix_vector_nonuniform) &&
+      output == "Vector") {
+    return "Result";
+  }
+  if (node == node_type::mix_color && output == "Color") {
+    return "Result";
+  }
   if ((node == node_type::diffuse_bsdf ||
        node == node_type::translucent_bsdf ||
        node == node_type::transparent_bsdf) &&

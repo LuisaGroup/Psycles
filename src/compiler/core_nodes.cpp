@@ -756,7 +756,7 @@ NodeRegistry make_core_node_registry() {
                             input("A", SocketType::color,
                                   SocketValue::color({0.0f, 0.0f, 0.0f})),
                             input("B", SocketType::color,
-                                  SocketValue::color({1.0f, 1.0f, 1.0f}))},
+                                  SocketValue::color({0.0f, 0.0f, 0.0f}))},
                  .outputs = {output("Color", SocketType::color)},
                  .properties = {property("BlendMode", SocketType::string,
                                          SocketValue::string("MIX")),

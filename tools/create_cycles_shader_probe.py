@@ -26,6 +26,7 @@ if str(_TOOL_DIRECTORY) not in sys.path:
     sys.path.insert(0, str(_TOOL_DIRECTORY))
 
 from cycles_shader_probe import (  # noqa: E402
+    bump_nested,
     closures,
     environment_inputs,
     geometry_inputs,
@@ -38,6 +39,7 @@ from cycles_shader_probe import (  # noqa: E402
     procedural_textures,
     refraction_closures,
     sheen_closures,
+    svm_mix,
     subsurface_closures,
     support,
     texture_inputs,
@@ -62,7 +64,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "background_world": values._background_world,
     "blackbody_matrix": texture_inputs._blackbody_matrix,
     "bump_matrix": closures._bump_matrix,
-    "bump_nested_matrix": closures._bump_nested_matrix,
+    "bump_nested_matrix": bump_nested._bump_nested_matrix,
     "bump_surface": closures._bump_surface,
     "brightness_contrast": values._brightness_contrast,
     "brick_texture": procedural_textures._brick_texture,
@@ -141,6 +143,11 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "mix_rgb_legacy_modes": values._mix_rgb_legacy_modes,
     "svm_legacy_mix_matrix": values._svm_legacy_mix_matrix,
     "svm_legacy_mix_constant_matrix": values._svm_legacy_mix_constant_matrix,
+    "svm_modern_mix_color_matrix": svm_mix._svm_modern_mix_color_matrix,
+    "svm_modern_mix_data_matrix": svm_mix._svm_modern_mix_data_matrix,
+    "svm_modern_mix_constant_matrix": svm_mix._svm_modern_mix_constant_matrix,
+    "svm_modern_mix_import_chain": svm_mix._svm_modern_mix_import_chain,
+    "svm_modern_mix_fold_edges": svm_mix._svm_modern_mix_fold_edges,
     "mix_shader_emission": closures._mix_shader_emission,
     "negative_scale_surface": closures._negative_scale_surface,
     "nishita_diffuse_transport": closures._nishita_diffuse_transport,

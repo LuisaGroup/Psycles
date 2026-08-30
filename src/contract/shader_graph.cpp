@@ -277,9 +277,11 @@ bool ShaderGraph::connect(
     if (n == nullptr) {
         return false;
     }
-    n->inputs[std::move(input_socket)] = InputBinding{
-        .source = std::move(source),
-        .value = std::nullopt};
+    // Cycles ShaderInput stores its socket value independently of its link.
+    // Preserve an authored fallback so graph rewrites which disconnect the
+    // link observe the same value as Cycles' constant folder.
+    auto &binding = n->inputs[std::move(input_socket)];
+    binding.source = std::move(source);
     return true;
 }
 

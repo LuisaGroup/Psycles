@@ -86,6 +86,20 @@ public:
     }
   }
 
+  void retain(SVMStackOffset offset, std::uint32_t size) noexcept {
+    const auto begin = static_cast<std::uint32_t>(offset);
+    if (begin + size > SVM_STACK_SIZE) {
+      std::abort();
+    }
+    for (auto index = std::uint32_t{}; index < size; ++index) {
+      auto &users = _users[begin + index];
+      if (users <= 0) {
+        std::abort();
+      }
+      ++users;
+    }
+  }
+
   [[nodiscard]] bool failed() const noexcept { return _failed; }
   [[nodiscard]] std::uint32_t peak() const noexcept { return _peak; }
 };
@@ -345,6 +359,18 @@ private:
     }
     return !shader_output->links.empty() ? stack_assign(shader_output)
                                          : SVM_STACK_INVALID;
+  }
+
+  void stack_link(GraphInput *input, GraphOutput *output_socket) override {
+    if (input == nullptr || output_socket == nullptr || input->link == nullptr ||
+        stack_size(input->link) != stack_size(output_socket)) {
+      static_cast<void>(reject("Cycles SVM stack link is ill formed"));
+      return;
+    }
+    if (output_socket->stack_offset == SVM_STACK_INVALID) {
+      output_socket->stack_offset = stack_assign(input);
+      _stack.retain(output_socket->stack_offset, stack_size(output_socket));
+    }
   }
 
   void add_node_payload(GraphNode *node, ShaderNodeType type,

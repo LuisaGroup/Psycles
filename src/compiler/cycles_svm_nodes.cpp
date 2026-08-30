@@ -724,6 +724,70 @@ public:
   }
 };
 
+class Float3ConvertNode final : public GraphNode {
+private:
+  [[nodiscard]] static bool inverse(std::string_view lhs,
+                                    std::string_view rhs) noexcept {
+    return (lhs == node_type::vector_to_color &&
+            rhs == node_type::color_to_vector) ||
+           (lhs == node_type::color_to_vector &&
+            rhs == node_type::vector_to_color) ||
+           (lhs == node_type::vector_to_normal &&
+            rhs == node_type::normal_to_vector) ||
+           (lhs == node_type::normal_to_vector &&
+            rhs == node_type::vector_to_normal);
+  }
+
+public:
+  void compile(SVMCompiler &compiler) override {
+    auto *in = inputs.empty() ? nullptr : &inputs.front();
+    auto *out = outputs.empty() ? nullptr : &outputs.front();
+    if (in == nullptr || out == nullptr) {
+      compiler.fail("Cycles float3 Convert node sockets are absent");
+      return;
+    }
+    if (in->link != nullptr) {
+      compiler.stack_link(in, out);
+      return;
+    }
+    const auto value = in->value
+                           ? std::get_if<Vec3f>(&in->value->value)
+                           : nullptr;
+    if (value == nullptr) {
+      compiler.fail("Cycles float3 Convert node value is ill typed");
+      return;
+    }
+    const auto offset = compiler.output(out->name);
+    if (offset != SVM_STACK_INVALID) {
+      compiler.add_value_node(this, *value, offset);
+    }
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    auto *in = inputs.empty() ? nullptr : &inputs.front();
+    if (in == nullptr) {
+      return;
+    }
+    if (folder.all_inputs_constant()) {
+      const auto value = in->value
+                             ? std::get_if<Vec3f>(&in->value->value)
+                             : nullptr;
+      if (value != nullptr) {
+        folder.make_constant(*value);
+      }
+    } else if (in->link != nullptr &&
+               inverse(type, in->link->parent->type)) {
+      auto *previous = in->link->parent;
+      auto *previous_input = previous->inputs.empty()
+                                 ? nullptr
+                                 : &previous->inputs.front();
+      if (previous_input != nullptr && previous_input->link != nullptr) {
+        folder.bypass(previous_input->link);
+      }
+    }
+  }
+};
+
 class NullNode final : public GraphNode {
 public:
   void compile(SVMCompiler &) override {}
@@ -834,7 +898,7 @@ public:
                   static_cast<std::uint8_t>(need_derivatives),
               .out_offset = compiler.output(item.name),
               .bump_filter_width = 0.0f},
-          item.geometry != NODE_GEOM_N && item.geometry != NODE_GEOM_Ng);
+          need_derivatives && item.geometry != NODE_GEOM_N);
     }
     if (auto *socket = output("Backfacing");
         socket != nullptr && !socket->links.empty()) {
@@ -1037,6 +1101,220 @@ public:
     }
     const auto *factor = input("Fac");
     return !*use_clamp && factor != nullptr && factor->link == nullptr;
+  }
+};
+
+class MixColorNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    const auto type = mix_type(this);
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    const auto use_clamp_result = boolean_property(this, "ClampResult");
+    if (!type || !use_clamp || !use_clamp_result) {
+      compiler.fail("Cycles Mix Color properties are not migrated exactly");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_MIX_COLOR,
+        SVMNodeMixColor{.blend_type = *type,
+                        .a = compiler.input_float3("A"),
+                        .b = compiler.input_float3("B"),
+                        .fac = compiler.input_float("Factor"),
+                        .use_clamp = static_cast<std::uint8_t>(*use_clamp),
+                        .use_clamp_result =
+                            static_cast<std::uint8_t>(*use_clamp_result),
+                        .result_offset = compiler.output("Result"),
+                        ._pad = {0u}});
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    const auto type = mix_type(this);
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    const auto use_clamp_result = boolean_property(this, "ClampResult");
+    if (!type || !use_clamp || !use_clamp_result) {
+      return;
+    }
+    if (folder.all_inputs_constant()) {
+      const auto factor =
+          literal<float>(input("Factor"), contract::SocketType::floating);
+      const auto a = literal<Vec3f>(input("A"), contract::SocketType::color);
+      const auto b = literal<Vec3f>(input("B"), contract::SocketType::color);
+      if (factor && a && b) {
+        const auto t = *use_clamp
+                           ? cycles_clamp(*factor, 0.0f, 1.0f)
+                           : *factor;
+        folder.make_constant_clamp(cycles_svm_mix(*type, t, *a, *b),
+                                   *use_clamp_result);
+      }
+    } else {
+      folder.fold_mix_color(*type, *use_clamp, *use_clamp_result);
+    }
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    const auto type = mix_type(this);
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    const auto use_clamp_result = boolean_property(this, "ClampResult");
+    if (!type || !use_clamp || !use_clamp_result) {
+      return false;
+    }
+    switch (*type) {
+      case NODE_MIX_BLEND:
+      case NODE_MIX_ADD:
+      case NODE_MIX_MUL:
+      case NODE_MIX_SUB:
+        break;
+      default:
+        return false;
+    }
+    const auto *factor = input("Factor");
+    return !*use_clamp && !*use_clamp_result && factor != nullptr &&
+           factor->link == nullptr;
+  }
+};
+
+class MixFloatNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    if (!use_clamp) {
+      compiler.fail("Cycles Mix Float properties are not migrated exactly");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_MIX_FLOAT,
+        SVMNodeMixFloat{.fac = compiler.input_float("Factor"),
+                        .a = compiler.input_float("A"),
+                        .b = compiler.input_float("B"),
+                        .use_clamp = static_cast<std::uint8_t>(*use_clamp),
+                        .result_offset = compiler.output("Result"),
+                        ._pad = {0u, 0u}});
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    if (!use_clamp) {
+      return;
+    }
+    if (folder.all_inputs_constant()) {
+      const auto factor =
+          literal<float>(input("Factor"), contract::SocketType::floating);
+      const auto a =
+          literal<float>(input("A"), contract::SocketType::floating);
+      const auto b =
+          literal<float>(input("B"), contract::SocketType::floating);
+      if (factor && a && b) {
+        const auto t = *use_clamp
+                           ? cycles_clamp(*factor, 0.0f, 1.0f)
+                           : *factor;
+        folder.make_constant(*a * (1.0f - t) + *b * t);
+      }
+    } else {
+      folder.fold_mix_float(*use_clamp, false);
+    }
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    const auto *factor = input("Factor");
+    return use_clamp && !*use_clamp && factor != nullptr &&
+           factor->link == nullptr;
+  }
+};
+
+class MixVectorNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    if (!use_clamp) {
+      compiler.fail("Cycles Mix Vector properties are not migrated exactly");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_MIX_VECTOR,
+        SVMNodeMixVector{.a = compiler.input_float3("A"),
+                         .b = compiler.input_float3("B"),
+                         .fac = compiler.input_float("Factor"),
+                         .use_clamp = static_cast<std::uint8_t>(*use_clamp),
+                         .result_offset = compiler.output("Result"),
+                         ._pad = {0u, 0u}});
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    if (!use_clamp) {
+      return;
+    }
+    if (folder.all_inputs_constant()) {
+      const auto factor =
+          literal<float>(input("Factor"), contract::SocketType::floating);
+      const auto a = literal<Vec3f>(input("A"), contract::SocketType::vector);
+      const auto b = literal<Vec3f>(input("B"), contract::SocketType::vector);
+      if (factor && a && b) {
+        const auto t = *use_clamp
+                           ? cycles_clamp(*factor, 0.0f, 1.0f)
+                           : *factor;
+        folder.make_constant(
+            {a->x * (1.0f - t) + b->x * t,
+             a->y * (1.0f - t) + b->y * t,
+             a->z * (1.0f - t) + b->z * t});
+      }
+    } else {
+      folder.fold_mix_color(NODE_MIX_BLEND, *use_clamp, false);
+    }
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    const auto *factor = input("Factor");
+    return use_clamp && !*use_clamp && factor != nullptr &&
+           factor->link == nullptr;
+  }
+};
+
+class MixVectorNonUniformNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    if (!use_clamp) {
+      compiler.fail(
+          "Cycles Mix Vector Non Uniform properties are not migrated exactly");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_MIX_VECTOR_NON_UNIFORM,
+        SVMNodeMixVectorNonUniform{
+            .a = compiler.input_float3("A"),
+            .b = compiler.input_float3("B"),
+            .fac = compiler.input_float3("Factor"),
+            .use_clamp = static_cast<std::uint8_t>(*use_clamp),
+            .result_offset = compiler.output("Result"),
+            ._pad = {0u, 0u}});
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    if (!use_clamp || !folder.all_inputs_constant()) {
+      return;
+    }
+    const auto factor =
+        literal<Vec3f>(input("Factor"), contract::SocketType::vector);
+    const auto a = literal<Vec3f>(input("A"), contract::SocketType::vector);
+    const auto b = literal<Vec3f>(input("B"), contract::SocketType::vector);
+    if (factor && a && b) {
+      const auto t = *use_clamp ? cycles_saturate(*factor) : *factor;
+      folder.make_constant(
+          {a->x * (1.0f - t.x) + b->x * t.x,
+           a->y * (1.0f - t.y) + b->y * t.y,
+           a->z * (1.0f - t.z) + b->z * t.z});
+    }
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    const auto use_clamp = boolean_property(this, "ClampFactor");
+    const auto *factor = input("Factor");
+    return use_clamp && !*use_clamp && factor != nullptr &&
+           factor->link == nullptr;
   }
 };
 
@@ -1435,6 +1713,14 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   if (type == cycles_synthetic_mix_closure_weight) {
     return std::make_unique<MixClosureWeightNode>();
   }
+  if (type == node_type::vector_to_color ||
+      type == node_type::color_to_vector ||
+      type == node_type::point_to_vector ||
+      type == node_type::float3_to_vector ||
+      type == node_type::vector_to_normal ||
+      type == node_type::normal_to_vector) {
+    return std::make_unique<Float3ConvertNode>();
+  }
   if (type == cycles_synthetic_math || type == node_type::math) {
     return std::make_unique<MathNode>();
   }
@@ -1443,6 +1729,18 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   }
   if (type == node_type::legacy_mix_color) {
     return std::make_unique<MixNode>();
+  }
+  if (type == node_type::mix_color) {
+    return std::make_unique<MixColorNode>();
+  }
+  if (type == node_type::mix_float) {
+    return std::make_unique<MixFloatNode>();
+  }
+  if (type == node_type::mix_vector) {
+    return std::make_unique<MixVectorNode>();
+  }
+  if (type == node_type::mix_vector_nonuniform) {
+    return std::make_unique<MixVectorNonUniformNode>();
   }
   if (type == node_type::gamma_color) {
     return std::make_unique<GammaNode>();

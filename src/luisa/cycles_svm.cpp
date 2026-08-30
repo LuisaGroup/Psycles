@@ -242,6 +242,26 @@ void eval_nodes(
       if (node_types_used[NODE_CLAMP]) {
         PSYCLES_SVM_CASE(NODE_CLAMP) { detail::node_clamp(cursor, stack); };
       }
+      if (node_types_used[NODE_MIX_COLOR]) {
+        PSYCLES_SVM_CASE(NODE_MIX_COLOR) {
+          detail::node_mix_color(cursor, stack);
+        };
+      }
+      if (node_types_used[NODE_MIX_FLOAT]) {
+        PSYCLES_SVM_CASE(NODE_MIX_FLOAT) {
+          detail::node_mix_float(cursor, stack);
+        };
+      }
+      if (node_types_used[NODE_MIX_VECTOR]) {
+        PSYCLES_SVM_CASE(NODE_MIX_VECTOR) {
+          detail::node_mix_vector(cursor, stack);
+        };
+      }
+      if (node_types_used[NODE_MIX_VECTOR_NON_UNIFORM]) {
+        PSYCLES_SVM_CASE(NODE_MIX_VECTOR_NON_UNIFORM) {
+          detail::node_mix_vector_non_uniform(cursor, stack);
+        };
+      }
       $default {
         result.status =
             static_cast<std::uint32_t>(EvaluationStatus::invalid_node);

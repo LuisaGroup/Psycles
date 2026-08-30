@@ -387,6 +387,125 @@ void ConstantFolder::fold_mix(NodeMix type, bool clamp) const {
   }
 }
 
+void ConstantFolder::fold_mix_color(NodeMix type, bool clamp_factor,
+                                    bool clamp) const {
+  auto *factor = node->input("Factor");
+  auto *color1 = node->input("A");
+  auto *color2 = node->input("B");
+  const auto factor_value = stored_float_value(factor);
+  if (factor == nullptr || color1 == nullptr || color2 == nullptr ||
+      !factor_value) {
+    return;
+  }
+
+  const auto fac = clamp_factor
+                       ? cycles_clamp(*factor_value, 0.0f, 1.0f)
+                       : *factor_value;
+  const auto fac_is_zero = factor->link == nullptr && fac == 0.0f;
+  const auto fac_is_one = factor->link == nullptr && fac == 1.0f;
+
+  if (fac_is_zero && type != NODE_MIX_LIGHT && type != NODE_MIX_DODGE &&
+      type != NODE_MIX_BURN &&
+      try_bypass_or_make_constant(color1, clamp)) {
+    return;
+  }
+
+  switch (type) {
+    case NODE_MIX_BLEND:
+      if (color1->link != nullptr && color2->link != nullptr) {
+        if (color1->link == color2->link) {
+          if (!try_bypass_or_make_constant(color1, clamp)) {
+            set_constant(factor, 0.0f);
+          }
+          break;
+        }
+      } else if (color1->link == nullptr && color2->link == nullptr) {
+        const auto value1 = float3_value(color1);
+        const auto value2 = float3_value(color2);
+        if (value1 && value2 && *value1 == *value2) {
+          static_cast<void>(try_bypass_or_make_constant(color1, clamp));
+          break;
+        }
+      }
+      if (fac_is_one) {
+        static_cast<void>(try_bypass_or_make_constant(color2, clamp));
+      }
+      break;
+    case NODE_MIX_ADD:
+      if (is_zero(color1) && fac_is_one) {
+        static_cast<void>(try_bypass_or_make_constant(color2, clamp));
+      } else if (is_zero(color2)) {
+        static_cast<void>(try_bypass_or_make_constant(color1, clamp));
+      }
+      break;
+    case NODE_MIX_SUB:
+      if (is_zero(color2)) {
+        static_cast<void>(try_bypass_or_make_constant(color1, clamp));
+      } else if (color1->link != nullptr && color1->link == color2->link &&
+                 fac_is_one) {
+        make_zero();
+      }
+      break;
+    case NODE_MIX_MUL:
+      if (is_one(color1) && fac_is_one) {
+        static_cast<void>(try_bypass_or_make_constant(color2, clamp));
+      } else if (is_one(color2)) {
+        static_cast<void>(try_bypass_or_make_constant(color1, clamp));
+      } else if (is_zero(color1)) {
+        make_zero();
+      } else if (is_zero(color2) && fac_is_one) {
+        make_zero();
+      }
+      break;
+    case NODE_MIX_DIV:
+      if (is_one(color2)) {
+        static_cast<void>(try_bypass_or_make_constant(color1, clamp));
+      } else if (is_zero(color1)) {
+        make_zero();
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+void ConstantFolder::fold_mix_float(bool clamp_factor, bool clamp) const {
+  auto *factor = node->input("Factor");
+  auto *value1 = node->input("A");
+  auto *value2 = node->input("B");
+  const auto factor_value = stored_float_value(factor);
+  if (factor == nullptr || value1 == nullptr || value2 == nullptr ||
+      !factor_value) {
+    return;
+  }
+
+  const auto fac = clamp_factor
+                       ? cycles_clamp(*factor_value, 0.0f, 1.0f)
+                       : *factor_value;
+  const auto fac_is_zero = factor->link == nullptr && fac == 0.0f;
+  const auto fac_is_one = factor->link == nullptr && fac == 1.0f;
+
+  if (fac_is_zero && try_bypass_or_make_constant(value1, clamp)) {
+    return;
+  }
+  if (value1->link != nullptr && value2->link != nullptr) {
+    if (value1->link == value2->link) {
+      static_cast<void>(try_bypass_or_make_constant(value1, clamp));
+      return;
+    }
+  } else if (value1->link == nullptr && value2->link == nullptr) {
+    const auto a = float_value(value1);
+    const auto b = float_value(value2);
+    if (a && b && *a == *b) {
+      static_cast<void>(try_bypass_or_make_constant(value1, clamp));
+      return;
+    }
+  }
+  if (fac_is_one) {
+    static_cast<void>(try_bypass_or_make_constant(value2, clamp));
+  }
+}
+
 void ConstantFolder::fold_math(NodeMathType type) const {
   auto *value1 = node->input("Value1");
   auto *value2 = node->input("Value2");
