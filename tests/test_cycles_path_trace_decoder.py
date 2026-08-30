@@ -104,6 +104,32 @@ class CyclesPathTraceRenderTests(unittest.TestCase):
             patch,
         )
 
+    def test_cycles_patch_defines_nee_contribution_on_every_exit(self) -> None:
+        patch = (
+            ROOT
+            / "tools"
+            / "cycles_path_trace"
+            / "0001-Cycles-add-Psycles-per-path-trace-oracle.patch"
+        ).read_text(encoding="utf-8")
+
+        initializer = (
+            "PSYCLES_TRACE_EVENT_NEE_CONTRIBUTION, zero_float3()"
+        )
+        visible_terminal = (
+            "PSYCLES_TRACE_EVENT_NEE_CONTRIBUTION,\n"
+            "+      spectrum_to_rgb(INTEGRATOR_STATE(state, shadow_path, throughput))"
+        )
+        direct_light_entry = patch.index(
+            "+    ShaderEvalResult integrate_surface_direct_light"
+        )
+        initializer_position = patch.index(initializer, direct_light_entry)
+        first_rejection = patch.index(
+            "  if (!(kernel_data.integrator.use_direct_light",
+            direct_light_entry,
+        )
+        self.assertLess(initializer_position, first_rejection)
+        self.assertIn(visible_terminal, patch)
+
 
 class PsyclesRawPathTraceDecoderTests(unittest.TestCase):
     def test_raw_rgba_slots_use_the_shared_schema(self) -> None:
