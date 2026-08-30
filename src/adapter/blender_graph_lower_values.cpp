@@ -149,7 +149,7 @@ public:
             }
             if (type == "MIX_RGB") {
                 const auto id = context.graph().add_node(
-                    compiler::node_type::mix_color,
+                    compiler::node_type::legacy_mix_color,
                     node_name);
                 static_cast<void>(context.bind(
                     id,
@@ -173,12 +173,9 @@ public:
                     id,
                     "BlendMode",
                     SocketValue::string(blend_type)));
-                // Cycles always clamps the legacy MixRGB factor. The
-                // Blender use_alpha option is not consumed by Cycles.
-                static_cast<void>(context.graph().set_property(
-                    id,
-                    "ClampFactor",
-                    SocketValue::boolean(true)));
+                // Cycles' legacy MixNode always clamps the factor and has no
+                // clamp-factor socket or property. Blender's use_alpha option
+                // is not consumed by Cycles.
                 static_cast<void>(context.graph().set_property(
                     id,
                     "ClampResult",

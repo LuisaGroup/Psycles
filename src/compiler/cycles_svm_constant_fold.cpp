@@ -70,6 +70,18 @@ void set_constant(GraphInput *input, std::int32_t value) {
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<float> stored_float_value(
+    const GraphInput *input) noexcept {
+  if (input == nullptr || !input->value ||
+      input->value->type != contract::SocketType::floating) {
+    return std::nullopt;
+  }
+  if (const auto *value = std::get_if<float>(&input->value->value)) {
+    return *value;
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] std::optional<Vec3f> float3_value(
     const GraphInput *input) noexcept {
   if (input == nullptr || input->link != nullptr || !input->value) {
@@ -296,6 +308,83 @@ bool ConstantFolder::is_one(GraphInput *input) const noexcept {
     return *value == Vec3f{1.0f, 1.0f, 1.0f};
   }
   return false;
+}
+
+void ConstantFolder::fold_mix(NodeMix type, bool clamp) const {
+  auto *factor = node->input("Fac");
+  auto *color1 = node->input("Color1");
+  auto *color2 = node->input("Color2");
+  const auto factor_value = stored_float_value(factor);
+  if (factor == nullptr || color1 == nullptr || color2 == nullptr ||
+      !factor_value) {
+    return;
+  }
+
+  const auto fac = cycles_clamp(*factor_value, 0.0f, 1.0f);
+  const auto fac_is_zero = factor->link == nullptr && fac == 0.0f;
+  const auto fac_is_one = factor->link == nullptr && fac == 1.0f;
+
+  if (fac_is_zero && type != NODE_MIX_LIGHT && type != NODE_MIX_DODGE &&
+      type != NODE_MIX_BURN &&
+      try_bypass_or_make_constant(color1, clamp)) {
+    return;
+  }
+
+  switch (type) {
+    case NODE_MIX_BLEND:
+      if (color1->link != nullptr && color2->link != nullptr) {
+        if (color1->link == color2->link) {
+          static_cast<void>(try_bypass_or_make_constant(color1, clamp));
+          break;
+        }
+      } else if (color1->link == nullptr && color2->link == nullptr) {
+        const auto value1 = float3_value(color1);
+        const auto value2 = float3_value(color2);
+        if (value1 && value2 && *value1 == *value2) {
+          static_cast<void>(try_bypass_or_make_constant(color1, clamp));
+          break;
+        }
+      }
+      if (fac_is_one) {
+        static_cast<void>(try_bypass_or_make_constant(color2, clamp));
+      }
+      break;
+    case NODE_MIX_ADD:
+      if (is_zero(color1) && fac_is_one) {
+        static_cast<void>(try_bypass_or_make_constant(color2, clamp));
+      } else if (is_zero(color2)) {
+        static_cast<void>(try_bypass_or_make_constant(color1, clamp));
+      }
+      break;
+    case NODE_MIX_SUB:
+      if (is_zero(color2)) {
+        static_cast<void>(try_bypass_or_make_constant(color1, clamp));
+      } else if (color1->link != nullptr && color1->link == color2->link &&
+                 fac_is_one) {
+        make_zero();
+      }
+      break;
+    case NODE_MIX_MUL:
+      if (is_one(color1) && fac_is_one) {
+        static_cast<void>(try_bypass_or_make_constant(color2, clamp));
+      } else if (is_one(color2)) {
+        static_cast<void>(try_bypass_or_make_constant(color1, clamp));
+      } else if (is_zero(color1)) {
+        make_zero();
+      } else if (is_zero(color2) && fac_is_one) {
+        make_zero();
+      }
+      break;
+    case NODE_MIX_DIV:
+      if (is_one(color2)) {
+        static_cast<void>(try_bypass_or_make_constant(color1, clamp));
+      } else if (is_zero(color1)) {
+        make_zero();
+      }
+      break;
+    default:
+      break;
+  }
 }
 
 void ConstantFolder::fold_math(NodeMathType type) const {

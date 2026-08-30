@@ -555,3 +555,88 @@ ctest --test-dir build --output-on-failure -R \
   '^psycles\.(cycles_svm_(abi|bytecode|compiler)|luisa_cycles_svm_hip)$' \
                                                                4/4 PASS
 ```
+
+## Legacy MixRGB / `NODE_MIX` checkpoint
+
+Blender's legacy `ShaderNodeMixRGB` and modern `ShaderNodeMix` are no longer
+conflated. The former now projects to a dedicated host graph node that copies
+Cycles 5.2.1 `MixNode`; the latter remains reserved for the separate
+`MixColorNode`, `MixFloatNode`, and vector families. This distinction is
+observable in both compiler state and bytecode:
+
+- legacy Mix has Cycles inputs `Fac`, `Color1`, and `Color2` and emits
+  `NODE_MIX`;
+- its factor is always saturated by `svm_mix_clamped_factor` and therefore it
+  has no `ClampFactor` property;
+- `use_clamp` emits a second `NODE_MIX` whose type is `NODE_MIX_CLAMP`;
+- modern Mix uses its own typed node opcodes and separately stored factor and
+  result clamp fields.
+
+The host implementation is a direct projection of
+`scene/shader_nodes.cpp::MixNode`,
+`scene/constant_fold.cpp::ConstantFolder::fold_mix`, and
+`kernel/svm/color_util.h`. The Luisa transition is copied from
+`kernel/svm/mix.h::svm_node_mix`: it fetches one `SVMNodeMix`, loads the exact
+`SVMInputFloat`/`SVMInputFloat3` payloads, clamps the factor, dispatches the
+same 19-value `NodeMix` switch, and stores three consecutive stack lanes. The
+blend, add, multiply, screen, overlay, subtract, divide, difference,
+exclusion, darken, lighten, dodge, burn, hue, saturation, value, color,
+soft-light, linear-light, and clamp branches retain Cycles' operation and
+condition order.
+
+The dynamic `svm_legacy_mix_matrix` oracle contains one material for every
+blend type. Geometry Backfacing produces factors 0.23 and 0.64 in two rows.
+The ordinary modes normalize to exact 33-word local streams; clamped ADD has
+the second clamp node and normalizes to 43 words. Both use five stack lanes.
+The HIP interpreter consumes each frozen stream with one shared compiled
+kernel and matches all 38 Cycles CPU Emission triples within `2e-6`, including
+negative and greater-than-one unclamped components. It also matches closure
+weight, front/back-facing ShaderData flags, termination, and final PCs 31 or
+41.
+
+The constant oracle deliberately links Blender Value and RGB nodes into every
+MixRGB input. GDB confirmed that this reaches Cycles'
+`MixNode::constant_fold`; leaving all three values as unconnected
+Blender socket defaults instead bypasses that function and is folded by
+Blender before the Cycles graph exists. The two evaluators differ by several
+ULPs on some modes, so the latter is not a valid SVM oracle. With the linked
+inputs, all 19 independently folded 13-word streams and the aggregate
+`mix_rgb_legacy_modes` stream match Psycles word for word. The aggregate
+closure bits are
+`(0x3e8cedbc,0x3f1a6314,0x3f5b393e)`.
+
+The import regression in `tests/test_blender_legacy_mix_import.cpp` locks the
+raw `MIX_RGB` mapping, absence of the nonexistent `ClampFactor` property,
+preservation of blend/result-clamp settings, and the final Cycles SVM fold.
+Oracle and focused validation commands are:
+
+```text
+blender --background --factory-startup --python \
+  tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_legacy_mix_matrix.blend svm_legacy_mix_matrix       PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_legacy_mix_matrix.svm52 \
+  blender /tmp/svm_legacy_mix_matrix.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/svm_legacy_mix_matrix.exr 152 16 1 0 \
+  --cycles-device CPU                                          PASS
+blender --background --factory-startup --python \
+  tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_legacy_mix_constant_matrix.blend \
+  svm_legacy_mix_constant_matrix                               PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_legacy_mix_constant_matrix.svm52 \
+  blender /tmp/svm_legacy_mix_constant_matrix.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/svm_legacy_mix_constant_matrix.exr 76 4 1 0 \
+  --cycles-device CPU                                          PASS
+cmake --build build --target \
+  psycles_cycles_svm_compiler_tests \
+  psycles_luisa_cycles_svm_tests \
+  psycles_blender_import_tests --parallel 32                   PASS
+build/psycles_cycles_svm_compiler_tests                        PASS
+build/psycles_blender_import_tests                             PASS
+build/bin/psycles_luisa_cycles_svm_tests hip                   PASS
+cmake --build build --parallel 32                              PASS
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.(cycles_svm_(abi|bytecode|compiler)|blender_import|luisa_cycles_svm_hip)$' \
+                                                               5/5 PASS
+```

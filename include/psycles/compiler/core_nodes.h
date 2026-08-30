@@ -62,6 +62,7 @@ inline constexpr auto mix_float = "psycles.value.mix_float";
 inline constexpr auto mix_vector = "psycles.value.mix_vector";
 inline constexpr auto mix_vector_nonuniform =
     "psycles.value.mix_vector_nonuniform";
+inline constexpr auto legacy_mix_color = "psycles.color.mix_legacy";
 inline constexpr auto mix_color = "psycles.color.mix";
 inline constexpr auto multiply_color = "psycles.color.multiply";
 inline constexpr auto hue_saturation = "psycles.color.hue_saturation";

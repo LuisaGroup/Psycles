@@ -35,6 +35,7 @@ public:
   [[nodiscard]] bool is_zero(GraphInput *input) const noexcept;
   [[nodiscard]] bool is_one(GraphInput *input) const noexcept;
 
+  void fold_mix(NodeMix type, bool clamp) const;
   void fold_math(NodeMathType type) const;
 };
 

@@ -69,6 +69,7 @@ void node_hsv(Cursor &cursor, Stack &stack) noexcept;
 void node_gamma(Cursor &cursor, Stack &stack) noexcept;
 void node_brightness(Cursor &cursor, Stack &stack) noexcept;
 void node_invert(Cursor &cursor, Stack &stack) noexcept;
+void node_mix(Cursor &cursor, Stack &stack) noexcept;
 void node_separate_color(Cursor &cursor, Stack &stack) noexcept;
 void node_combine_color(Cursor &cursor, Stack &stack) noexcept;
 void node_clamp(Cursor &cursor, Stack &stack) noexcept;

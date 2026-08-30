@@ -226,6 +226,9 @@ void eval_nodes(
       if (node_types_used[NODE_INVERT]) {
         PSYCLES_SVM_CASE(NODE_INVERT) { detail::node_invert(cursor, stack); };
       }
+      if (node_types_used[NODE_MIX]) {
+        PSYCLES_SVM_CASE(NODE_MIX) { detail::node_mix(cursor, stack); };
+      }
       if (node_types_used[NODE_SEPARATE_COLOR]) {
         PSYCLES_SVM_CASE(NODE_SEPARATE_COLOR) {
           detail::node_separate_color(cursor, stack);

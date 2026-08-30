@@ -735,6 +735,21 @@ NodeRegistry make_core_node_registry() {
   }
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::legacy_mix_color,
+                 .inputs = {input("Factor", SocketType::floating,
+                                  SocketValue::floating(0.5f)),
+                            input("A", SocketType::color,
+                                  SocketValue::color({0.0f, 0.0f, 0.0f})),
+                            input("B", SocketType::color,
+                                  SocketValue::color({0.0f, 0.0f, 0.0f}))},
+                 .outputs = {output("Color", SocketType::color)},
+                 .properties = {property("BlendMode", SocketType::string,
+                                         SocketValue::string("MIX")),
+                                property("ClampResult", SocketType::boolean,
+                                         SocketValue::boolean(false))},
+                 .required_features = {}}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::mix_color,
                  .inputs = {input("Factor", SocketType::floating,
                                   SocketValue::floating(0.5f)),

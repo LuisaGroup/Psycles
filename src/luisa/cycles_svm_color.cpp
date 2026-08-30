@@ -138,6 +138,296 @@ using namespace compiler::cycles_svm;
   return color;
 }
 
+[[nodiscard]] Float3 mix_interp(Expr<luisa::float3> a,
+                                Expr<luisa::float3> b, Float t) noexcept {
+  return a + t * (b - a);
+}
+
+[[nodiscard]] Float3 mix_blend(Float t, Expr<luisa::float3> color1,
+                               Expr<luisa::float3> color2) noexcept {
+  return mix_interp(color1, color2, t);
+}
+
+[[nodiscard]] Float3 mix_add(Float t, Expr<luisa::float3> color1,
+                             Expr<luisa::float3> color2) noexcept {
+  return mix_interp(color1, color1 + color2, t);
+}
+
+[[nodiscard]] Float3 mix_multiply(Float t, Expr<luisa::float3> color1,
+                                  Expr<luisa::float3> color2) noexcept {
+  return mix_interp(color1, color1 * color2, t);
+}
+
+[[nodiscard]] Float3 mix_screen(Float t, Expr<luisa::float3> color1_value,
+                                Expr<luisa::float3> color2_value) noexcept {
+  const Float3 color1 = color1_value;
+  const Float3 color2 = color2_value;
+  const Float tm = 1.0f - t;
+  const Float3 one = make_float3(1.0f);
+  return one - (make_float3(tm) + t * (one - color2)) * (one - color1);
+}
+
+[[nodiscard]] Float3 mix_overlay(Float t, Expr<luisa::float3> color1,
+                                 Expr<luisa::float3> color2_value) noexcept {
+  const Float3 color2 = color2_value;
+  const Float tm = 1.0f - t;
+  Float3 result = color1;
+  $if (result.x < 0.5f) {
+    result.x *= tm + 2.0f * t * color2.x;
+  }
+  $else {
+    result.x =
+        1.0f - (tm + 2.0f * t * (1.0f - color2.x)) * (1.0f - result.x);
+  };
+  $if (result.y < 0.5f) {
+    result.y *= tm + 2.0f * t * color2.y;
+  }
+  $else {
+    result.y =
+        1.0f - (tm + 2.0f * t * (1.0f - color2.y)) * (1.0f - result.y);
+  };
+  $if (result.z < 0.5f) {
+    result.z *= tm + 2.0f * t * color2.z;
+  }
+  $else {
+    result.z =
+        1.0f - (tm + 2.0f * t * (1.0f - color2.z)) * (1.0f - result.z);
+  };
+  return result;
+}
+
+[[nodiscard]] Float3 mix_subtract(Float t, Expr<luisa::float3> color1,
+                                  Expr<luisa::float3> color2) noexcept {
+  return mix_interp(color1, color1 - color2, t);
+}
+
+[[nodiscard]] Float3 mix_divide(Float t, Expr<luisa::float3> color1,
+                                Expr<luisa::float3> color2_value) noexcept {
+  const Float3 color2 = color2_value;
+  const Float tm = 1.0f - t;
+  Float3 result = color1;
+  $if (color2.x != 0.0f) {
+    result.x = tm * result.x + t * result.x / color2.x;
+  };
+  $if (color2.y != 0.0f) {
+    result.y = tm * result.y + t * result.y / color2.y;
+  };
+  $if (color2.z != 0.0f) {
+    result.z = tm * result.z + t * result.z / color2.z;
+  };
+  return result;
+}
+
+[[nodiscard]] Float3 mix_difference(Float t, Expr<luisa::float3> color1,
+                                    Expr<luisa::float3> color2) noexcept {
+  return mix_interp(color1, abs(color1 - color2), t);
+}
+
+[[nodiscard]] Float3 mix_exclusion(Float t, Expr<luisa::float3> color1,
+                                   Expr<luisa::float3> color2) noexcept {
+  return luisa::compute::max(
+      mix_interp(color1, color1 + color2 - 2.0f * color1 * color2, t),
+      make_float3(0.0f));
+}
+
+[[nodiscard]] Float3 mix_darken(Float t, Expr<luisa::float3> color1,
+                                Expr<luisa::float3> color2) noexcept {
+  return mix_interp(color1, luisa::compute::min(color1, color2), t);
+}
+
+[[nodiscard]] Float3 mix_lighten(Float t, Expr<luisa::float3> color1,
+                                 Expr<luisa::float3> color2) noexcept {
+  return mix_interp(color1, luisa::compute::max(color1, color2), t);
+}
+
+[[nodiscard]] Float mix_dodge_component(Float t, Float color1,
+                                        Float color2) noexcept {
+  Float result = color1;
+  $if (result != 0.0f) {
+    Float value = 1.0f - t * color2;
+    $if (value <= 0.0f) { result = 1.0f; }
+    $else {
+      value = result / value;
+      $if (value > 1.0f) { result = 1.0f; }
+      $else { result = value; };
+    };
+  };
+  return result;
+}
+
+[[nodiscard]] Float3 mix_dodge(Float t, Expr<luisa::float3> color1_value,
+                               Expr<luisa::float3> color2_value) noexcept {
+  const Float3 color1 = color1_value;
+  const Float3 color2 = color2_value;
+  return make_float3(mix_dodge_component(t, color1.x, color2.x),
+                     mix_dodge_component(t, color1.y, color2.y),
+                     mix_dodge_component(t, color1.z, color2.z));
+}
+
+[[nodiscard]] Float mix_burn_component(Float t, Float color1,
+                                       Float color2) noexcept {
+  Float result = color1;
+  Float value = 1.0f - t + t * color2;
+  $if (value <= 0.0f) { result = 0.0f; }
+  $else {
+    value = 1.0f - (1.0f - result) / value;
+    $if (value < 0.0f) { result = 0.0f; }
+    $elif (value > 1.0f) { result = 1.0f; }
+    $else { result = value; };
+  };
+  return result;
+}
+
+[[nodiscard]] Float3 mix_burn(Float t, Expr<luisa::float3> color1_value,
+                              Expr<luisa::float3> color2_value) noexcept {
+  const Float3 color1 = color1_value;
+  const Float3 color2 = color2_value;
+  return make_float3(mix_burn_component(t, color1.x, color2.x),
+                     mix_burn_component(t, color1.y, color2.y),
+                     mix_burn_component(t, color1.z, color2.z));
+}
+
+[[nodiscard]] Float3 mix_hue(Float t, Expr<luisa::float3> color1,
+                             Expr<luisa::float3> color2) noexcept {
+  Float3 result = color1;
+  const Float3 hsv2 = rgb_to_hsv(color2);
+  $if (hsv2.y != 0.0f) {
+    Float3 hsv = rgb_to_hsv(result);
+    hsv.x = hsv2.x;
+    result = mix_interp(result, hsv_to_rgb(hsv), t);
+  };
+  return result;
+}
+
+[[nodiscard]] Float3 mix_saturation(Float t, Expr<luisa::float3> color1,
+                                    Expr<luisa::float3> color2) noexcept {
+  const Float tm = 1.0f - t;
+  Float3 result = color1;
+  Float3 hsv = rgb_to_hsv(result);
+  $if (hsv.y != 0.0f) {
+    const Float3 hsv2 = rgb_to_hsv(color2);
+    hsv.y = tm * hsv.y + t * hsv2.y;
+    result = hsv_to_rgb(hsv);
+  };
+  return result;
+}
+
+[[nodiscard]] Float3 mix_value(Float t, Expr<luisa::float3> color1,
+                               Expr<luisa::float3> color2) noexcept {
+  const Float tm = 1.0f - t;
+  Float3 hsv = rgb_to_hsv(color1);
+  const Float3 hsv2 = rgb_to_hsv(color2);
+  hsv.z = tm * hsv.z + t * hsv2.z;
+  return hsv_to_rgb(hsv);
+}
+
+[[nodiscard]] Float3 mix_color(Float t, Expr<luisa::float3> color1,
+                               Expr<luisa::float3> color2) noexcept {
+  Float3 result = color1;
+  const Float3 hsv2 = rgb_to_hsv(color2);
+  $if (hsv2.y != 0.0f) {
+    Float3 hsv = rgb_to_hsv(result);
+    hsv.x = hsv2.x;
+    hsv.y = hsv2.y;
+    result = mix_interp(result, hsv_to_rgb(hsv), t);
+  };
+  return result;
+}
+
+[[nodiscard]] Float3 mix_soft_light(Float t,
+                                    Expr<luisa::float3> color1_value,
+                                    Expr<luisa::float3> color2_value) noexcept {
+  const Float3 color1 = color1_value;
+  const Float3 color2 = color2_value;
+  const Float tm = 1.0f - t;
+  const Float3 one = make_float3(1.0f);
+  const Float3 screen = one - (one - color2) * (one - color1);
+  return tm * color1 +
+         t * ((one - color1) * color2 * color1 + color1 * screen);
+}
+
+[[nodiscard]] Float3 mix_linear_light(Float t,
+                                      Expr<luisa::float3> color1,
+                                      Expr<luisa::float3> color2) noexcept {
+  return color1 + t * (2.0f * color2 + make_float3(-1.0f));
+}
+
+[[nodiscard]] Float3 svm_mix(UInt type, Float t,
+                             Expr<luisa::float3> color1,
+                             Expr<luisa::float3> color2) noexcept {
+  Float3 result = make_float3(0.0f);
+  $switch(type) {
+    $case(static_cast<std::uint32_t>(NODE_MIX_BLEND)) {
+      result = mix_blend(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_ADD)) {
+      result = mix_add(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_MUL)) {
+      result = mix_multiply(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_SCREEN)) {
+      result = mix_screen(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_OVERLAY)) {
+      result = mix_overlay(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_SUB)) {
+      result = mix_subtract(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_DIV)) {
+      result = mix_divide(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_DIFF)) {
+      result = mix_difference(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_EXCLUSION)) {
+      result = mix_exclusion(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_DARK)) {
+      result = mix_darken(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_LIGHT)) {
+      result = mix_lighten(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_DODGE)) {
+      result = mix_dodge(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_BURN)) {
+      result = mix_burn(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_HUE)) {
+      result = mix_hue(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_SAT)) {
+      result = mix_saturation(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_VAL)) {
+      result = mix_value(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_COL)) {
+      result = mix_color(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_SOFT)) {
+      result = mix_soft_light(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_LINEAR)) {
+      result = mix_linear_light(t, color1, color2);
+    };
+    $case(static_cast<std::uint32_t>(NODE_MIX_CLAMP)) {
+      result = luisa::compute::clamp(color1, 0.0f, 1.0f);
+    };
+    $default{};
+  };
+  return result;
+}
+
+[[nodiscard]] Float3 svm_mix_clamped_factor(
+    UInt type, Float t, Expr<luisa::float3> color1,
+    Expr<luisa::float3> color2) noexcept {
+  return svm_mix(type, luisa::compute::clamp(t, 0.0f, 1.0f), color1, color2);
+}
+
 [[nodiscard]] Float3 gamma_color(Expr<luisa::float3> color_value,
                                  Expr<float> gamma_value) noexcept {
   Float3 color = color_value;
@@ -253,6 +543,27 @@ void node_invert(Cursor &cursor, Stack &stack) noexcept {
   $if (output_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
     stack_store_float3(stack, output_offset, color);
   };
+}
+
+void node_mix(Cursor &cursor, Stack &stack) noexcept {
+  const auto mix_type = cursor.word();
+  const auto color1_x = cursor.word();
+  const auto color1_y = cursor.word();
+  const auto color1_z = cursor.word();
+  const auto color2_x = cursor.word();
+  const auto color2_y = cursor.word();
+  const auto color2_z = cursor.word();
+  const auto factor_input = cursor.word();
+  const auto packed_output = cursor.word();
+  const auto output_offset = cursor.byte(packed_output, 0u);
+  const Float factor = stack_load_input_float(stack, factor_input);
+  const Float3 color1 =
+      stack_load_input_float3(stack, color1_x, color1_y, color1_z);
+  const Float3 color2 =
+      stack_load_input_float3(stack, color2_x, color2_y, color2_z);
+  const Float3 result =
+      svm_mix_clamped_factor(mix_type, factor, color1, color2);
+  stack_store_float3(stack, output_offset, result);
 }
 
 void node_separate_color(Cursor &cursor, Stack &stack) noexcept {

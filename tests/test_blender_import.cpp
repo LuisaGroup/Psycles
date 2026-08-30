@@ -17,14 +17,13 @@
 #include <utility>
 #include <vector>
 
+void test_blender_legacy_mix_import();
 namespace {
-
 using psycles::adapter::load_blender_scene_bundle;
 using psycles::contract::DirectLightSampling;
 using psycles::contract::EmissionSampling;
 using psycles::contract::PixelFilter;
 using psycles::contract::WorldSampling;
-
 void expect(bool condition, const std::string &message) {
   if (!condition) {
     throw std::runtime_error{message};
@@ -1992,6 +1991,7 @@ int main() {
     test_cycles_float_to_boolean_conversion();
     test_cycles_default_microfacet_tangent_import();
     test_light_path_portal_depth_import();
+    test_blender_legacy_mix_import();
   } catch (const std::exception &exception) {
     std::cerr << "test failure: " << exception.what() << '\n';
     return EXIT_FAILURE;
