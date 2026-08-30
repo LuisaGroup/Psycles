@@ -41,6 +41,13 @@ ShaderData::ShaderData(Expr<luisa::float3> position,
                        Expr<float> motion_time,
                        Expr<float> length,
                        Expr<float> position_differential,
+                       Expr<float> incoming_differential,
+                       Expr<float> parametric_u_dx,
+                       Expr<float> parametric_u_dy,
+                       Expr<float> parametric_v_dx,
+                       Expr<float> parametric_v_dy,
+                       Expr<luisa::float3> position_u_derivative,
+                       Expr<luisa::float3> position_v_derivative,
                        Expr<luisa::float4x4> motion_object_to_world,
                        Expr<luisa::float4x4> motion_world_to_object) noexcept
     : P{position},
@@ -58,6 +65,11 @@ ShaderData::ShaderData(Expr<luisa::float3> position,
       time{motion_time},
       ray_length{length},
       dP{position_differential},
+      dI{incoming_differential},
+      du{parametric_u_dx, parametric_u_dy},
+      dv{parametric_v_dx, parametric_v_dy},
+      dPdu{position_u_derivative},
+      dPdv{position_v_derivative},
       ob_tfm_motion{motion_object_to_world},
       ob_itfm_motion{motion_world_to_object},
       closure_emission_background{make_float3(0.0f)},
@@ -222,8 +234,16 @@ void eval_nodes(
       }
       if (node_types_used[NODE_GEOMETRY]) {
         PSYCLES_SVM_CASE(NODE_GEOMETRY) {
-          detail::node_geometry(cursor, stack, shader_data,
-                                transition_supported);
+          detail::node_geometry(cursor, stack, kernel_globals, shader_data,
+                                false);
+        };
+      }
+      if (node_types_used[NODE_GEOMETRY_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_GEOMETRY_DERIVATIVE) {
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_geometry(cursor, stack, kernel_globals, shader_data,
+                                  true);
+          }
         };
       }
       if (node_types_used[NODE_CONVERT]) {

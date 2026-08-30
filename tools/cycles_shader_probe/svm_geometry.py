@@ -229,3 +229,46 @@ def _svm_bump_constant_fold(scene: Any) -> None:
         1.1,
         Matrix.Identity(4),
     )
+
+
+def _geometry_bump_material(name: str, output_name: str) -> Any:
+    """Build the exact Geometry-output subgraph cloned by Cycles Bump."""
+    material, tree, output = _material(name)
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.name = f"{name} Geometry"
+    separate = tree.nodes.new("ShaderNodeSeparateXYZ")
+    separate.name = f"{name} Separate"
+    tree.links.new(_output(geometry, output_name), _input(separate, "Vector"))
+
+    bump = tree.nodes.new("ShaderNodeBump")
+    bump.name = f"{name} Bump"
+    bump.invert = False
+    _input(bump, "Strength").default_value = 0.73
+    _input(bump, "Distance").default_value = 0.41
+    _input(bump, "Filter Width").default_value = 0.29
+    tree.links.new(_output(separate, "X"), _input(bump, "Height"))
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = f"{name} Emission"
+    tree.links.new(_output(bump, "Normal"), _input(emission, "Color"))
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    return material
+
+
+def _svm_geometry_bump_offsets(scene: Any) -> None:
+    """Freeze Cycles Geometry dual evaluation and CENTER/DX/DY emission."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+
+    materials = [
+        _geometry_bump_material("SVM Geometry Position Bump", "Position"),
+        _geometry_bump_material("SVM Geometry Parametric Bump", "Parametric"),
+    ]
+    _wireframe_row_mesh(
+        "SVM Geometry Bump Offset Surface",
+        materials,
+        -1.1,
+        1.1,
+        Matrix.Identity(4),
+    )

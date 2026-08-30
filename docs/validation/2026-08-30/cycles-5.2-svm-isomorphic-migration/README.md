@@ -1536,3 +1536,145 @@ target registrations were moved unchanged into
 `cmake/PsyclesBlenderImportTests.cmake`, with the new Wireframe registration
 kept beside them. This leaves the root file at 1910 lines, and the complete
 770-file source-size scan passes.
+
+## Geometry dual values and Bump offsets
+
+This checkpoint copies the Geometry value path from the same Cycles 5.2.1
+commit. The authoritative source mapping is:
+
+| Stage | Cycles 5.2.1 source |
+|---|---|
+| Geometry sockets and compiler decisions | `intern/cycles/scene/shader_nodes.cpp::GeometryNode` |
+| typed payload | `intern/cycles/kernel/svm/node_types.h::SVMNodeGeometry` |
+| primary/derivative opcode dispatch | `intern/cycles/kernel/svm/svm.h` |
+| Geometry value transition | `intern/cycles/kernel/svm/geometry.h` |
+| position and incoming dual construction | `intern/cycles/kernel/svm/util.h` |
+| compact incoming differential | `intern/cycles/kernel/util/differential.h` |
+| tangent service | `intern/cycles/kernel/geom/primitive.h::primitive_tangent` |
+
+For a dual value `D = (val, dx, dy)`, the copied evaluator defines these six
+cases and no alternatives:
+
+```text
+P  = (sd.P,
+      sd.dPdu * sd.du.dx + sd.dPdv * sd.dv.dx,
+      sd.dPdu * sd.du.dy + sd.dPdv * sd.dv.dy)
+N  = (sd.N,  0, 0)
+T  = primitive_tangent<dual3>(kg, sd)
+I  = (sd.wi, differential_from_compact(sd.wi, sd.dI))
+Ng = (sd.Ng, 0, 0)
+uv = ((1 - sd.u - sd.v, sd.u, 0),
+      (-sd.du.dx - sd.dv.dx, sd.du.dx, 0),
+      (-sd.du.dy - sd.dv.dy, sd.du.dy, 0))
+```
+
+`NODE_GEOMETRY_DERIVATIVE` then performs exactly one optional first-order
+shift: DX adds `D.dx * bump_filter_width` to `D.val`; DY adds
+`D.dy * bump_filter_width`; CENTER leaves it unchanged. A nonzero
+`store_derivatives` writes the nine contiguous stack lanes `val`, `dx`, and
+`dy`; otherwise only `val` is written. The ordinary `NODE_GEOMETRY` path writes
+the non-dual value and ignores derivative fields, as Cycles does. The
+derivative opcode remains absent under the Cycles VOLUME feature guard.
+
+The copied compiler decision is equally important. Position and Parametric
+receive the current CENTER/DX/DY state. Normal always receives CENTER and the
+ordinary opcode. Tangent, True Normal, and Incoming receive CENTER but select
+the derivative opcode when the graph requires derivatives or belongs to a
+Bump clone. Every emitted payload carries the authored `bump_filter_width` and
+the exact `need_derivatives()` store bit.
+
+The first external stream comparison exposed a graph-identity defect rather
+than a numerical defect. Psycles had represented an automatically inserted
+Geometry node with a private `cycles.synthetic.geometry` type, so it could not
+deduplicate against an authored Geometry node. Cycles has one `GeometryNode`
+type for both cases. Removing the private type makes authored and default
+inputs share the same Cycles node identity and produces the exact external
+stream without an extra Geometry opcode.
+
+Blender `NEW_GEOMETRY` now preserves Tangent as a vector and Parametric as a
+point. The importer regression also freezes Cycles' less obvious typing rule:
+Separate XYZ declares a color input internally, so Tangent reaches it through
+`vector_to_color`, while Parametric reaches it through `point_to_vector` and
+then `vector_to_color`. Those conversion nodes are required Cycles semantics,
+not removable adapter noise.
+
+### External oracle, HIP execution, and visual inspection
+
+The `svm_geometry_bump_offsets` Blender probe contains two authored graphs:
+Geometry Position or Geometry Parametric is separated to X, used as Bump
+Height with Strength `0.73`, Distance `0.41`, and Filter Width `0.29`, and the
+resulting normal is emitted. The unmodified Cycles executable reports Blender
+5.2.1 commit `9e2066aef7ef`. Its final shader-local streams are 77 words for
+both materials; the permanent host regression stores both streams verbatim and
+requires a nine-lane peak stack plus `NODE_GEOMETRY_DERIVATIVE`.
+
+The diagnostic Blender differs only by environment-gated observation hooks.
+`oiiotool -a ... --diff` reports `PASS` between clean and diagnostic multilayer
+EXRs. The retained Combined report records RMSE `0`, maximum absolute error
+`0`, channel-mean ratios `(1,1,1)`, and zero invalid pixels. At `(32,64)` the
+Position material emits `(-0.281100065,0,0.959678471)`; at `(96,64)` the
+Parametric material emits
+`(6.36798063e-08,0.454413354,0.890790939)`.
+
+I opened the retained 1552x582 triptych at original resolution. The clean and
+diagnostic panels have identical triangle boundaries and signed normal colors
+for both materials, and the entire difference panel is black.
+
+![Geometry Position/Parametric Bump clean versus diagnostic Cycles](geometry-derivative/combined.png)
+
+The HIP regression executes both untouched 77-word streams through the Luisa
+PC loop. It requires the external Position value above, a separately frozen
+source-derived Parametric transition, `EvaluationStatus::ended`, and final PC
+75; the two words after `NODE_END` are Cycles alignment padding and are not
+executed. A second HIP kernel invokes the same copied handler on all P/N/T/I/Ng
+and uv payloads, checks all nine dual stack lanes, and checks both DX and DY
+value shifts. This is a Luisa/HIP regression, not a host reference evaluator.
+
+`primitive_tangent<float3/dual3>` is represented at the SVM boundary as a
+host/JIT `KernelGlobals` service: the virtual call constructs Luisa AST and
+does not survive as device virtual dispatch. Its complete generated-coordinate
+attribute implementation belongs to the forthcoming copied ATTR/primitive
+family. Pointiness and Random Per Island likewise remain explicit compile
+failures until that Cycles family is copied; this checkpoint does not replace
+them with constants or approximations. The new SVM remains focused-test-only
+and is not yet wired into the production path tracer.
+
+Oracle and focused validation commands:
+
+```text
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/psycles-geometry-dual.STBw3W/svm_geometry_bump_offsets.blend \
+  svm_geometry_bump_offsets                                    PASS
+
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  /tmp/psycles-geometry-dual.STBw3W/svm_geometry_bump_offsets.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/psycles-geometry-dual.STBw3W/svm_geometry_bump_offsets-clean.exr \
+  128 128 1 0 --cycles-device CPU                              PASS
+
+PSYCLES_CYCLES_SVM_DUMP=/tmp/psycles-geometry-dual.STBw3W/svm_geometry_bump_offsets.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/psycles-geometry-dual.STBw3W/svm_geometry_bump_offsets.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/psycles-geometry-dual.STBw3W/svm_geometry_bump_offsets-trace.exr \
+  128 128 1 0 --cycles-device CPU                              PASS
+
+oiiotool -a \
+  /tmp/psycles-geometry-dual.STBw3W/svm_geometry_bump_offsets-clean.exr \
+  /tmp/psycles-geometry-dual.STBw3W/svm_geometry_bump_offsets-trace.exr \
+  --diff                                                       PASS
+
+cmake --build build --parallel 32 --target \
+  psycles_cycles_svm_wireframe_tests \
+  psycles_blender_import_tests \
+  psycles_luisa_cycles_svm_wireframe_tests                     PASS
+build/psycles_cycles_svm_wireframe_tests                       PASS
+build/psycles_blender_import_tests                             PASS
+build/bin/psycles_luisa_cycles_svm_wireframe_tests hip         PASS
+cmake --build build --parallel 32                              PASS
+ctest --test-dir build --output-on-failure -j32 -E \
+  '(_fallback|_vk|_hip)$'                                      77/77 PASS
+ctest --test-dir build --output-on-failure -R '_hip$' -j1      89/89 PASS
+```

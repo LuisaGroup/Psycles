@@ -19,6 +19,12 @@ using namespace psycles::compiler::cycles_svm;
 namespace device_svm = psycles::luisa_backend::cycles_svm;
 
 constexpr auto probe_count = 14u;
+constexpr auto geometry_dual_case_count = 8u;
+
+[[nodiscard]] bool near(float actual, float expected,
+                        float tolerance = 3.0e-5f) noexcept {
+  return std::abs(actual - expected) <= tolerance;
+}
 
 class ProbeKernelGlobals final : public device_svm::KernelGlobals {
 public:
@@ -52,6 +58,18 @@ public:
   [[nodiscard]] Float3 film_rgb_to_y() const noexcept override {
     return make_float3(0.2126f, 0.7152f, 0.0722f);
   }
+
+  [[nodiscard]] Float3 primitive_tangent(
+      const device_svm::ShaderData &) const noexcept override {
+    return make_float3(0.25f, -0.5f, 0.75f);
+  }
+
+  [[nodiscard]] device_svm::Dual3 primitive_tangent_derivative(
+      const device_svm::ShaderData &) const noexcept override {
+    return {.val = make_float3(0.25f, -0.5f, 0.75f),
+            .dx = make_float3(0.125f, 0.25f, -0.375f),
+            .dy = make_float3(-0.5f, 0.625f, 0.75f)};
+  }
 };
 
 [[nodiscard]] std::array<bool, NODE_NUM> immediate_node_types() {
@@ -66,6 +84,8 @@ public:
 [[nodiscard]] std::array<bool, NODE_NUM> bump_node_types() {
   auto types = immediate_node_types();
   types[NODE_GEOMETRY] = true;
+  types[NODE_GEOMETRY_DERIVATIVE] = true;
+  types[NODE_SEPARATE_VECTOR] = true;
   types[NODE_SET_BUMP] = true;
   return types;
 }
@@ -135,6 +155,17 @@ public:
                                            0.5f,
                                            4.0f,
                                            0.2f,
+                                           0.0f,
+                                           0.2f,
+                                           0.0f,
+                                           0.0f,
+                                           0.2f,
+                                           make_float3(0.7071067811865475f,
+                                                       -0.7071067811865475f,
+                                                       0.0f),
+                                           make_float3(0.7071067811865475f,
+                                                       0.7071067811865475f,
+                                                       0.0f),
                                            identity,
                                            identity};
         const device_svm::PathState path_state{
@@ -155,6 +186,124 @@ public:
                              make_uint4(result.status, result.final_offset,
                                         shader_data.flag, 0u));
       }};
+}
+
+[[nodiscard]] bool test_geometry_dual_lanes(Device &device, Stream &stream) {
+  // Payloads are exact SVMNodeGeometry words: geom_type, bump_offset,
+  // store_derivatives, out_offset, followed by bump_filter_width. The first
+  // six cover every Geometry evaluator arm; the final two cover the Cycles
+  // DX/DY first-order value shift while retaining the original dual lanes.
+  static constexpr std::array<std::uint32_t,
+                              geometry_dual_case_count * 2u>
+      payloads{
+          0x00010000u, 0x3e947ae1u, // P, CENTER
+          0x00010001u, 0x3e947ae1u, // N, CENTER
+          0x00010002u, 0x3e947ae1u, // T, CENTER
+          0x00010003u, 0x3e947ae1u, // I, CENTER
+          0x00010004u, 0x3e947ae1u, // Ng, CENTER
+          0x00010005u, 0x3e947ae1u, // uv, CENTER
+          0x00010100u, 0x3e947ae1u, // P, DX
+          0x00010205u, 0x3e947ae1u, // uv, DY
+      };
+
+  const auto kernel =
+      Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>>{
+          [](BufferUInt words, BufferFloat4 output) noexcept {
+            const UInt index = dispatch_x();
+            const auto identity = make_float4x4(1.0f);
+            device_svm::ShaderData shader_data{
+                make_float3(1.0f, 2.0f, 3.0f),
+                make_float3(0.1f, 0.2f, 0.3f),
+                make_float3(0.0f, 0.0f, 1.0f),
+                make_float3(0.0f, 0.0f, -1.0f),
+                device_svm::primitive_triangle,
+                0u,
+                0u,
+                device_svm::shader_data_object_transform_applied,
+                0u,
+                0.2f,
+                0.3f,
+                0u,
+                0.5f,
+                4.0f,
+                0.2f,
+                0.4f,
+                0.1f,
+                -0.2f,
+                0.3f,
+                0.4f,
+                make_float3(1.0f, 2.0f, 3.0f),
+                make_float3(-1.0f, 0.5f, 2.0f),
+                identity,
+                identity};
+            ProbeKernelGlobals kernel_globals;
+            device_svm::detail::Stack stack;
+            UInt offset = index * 2u;
+            device_svm::detail::Cursor cursor{words, offset};
+            device_svm::detail::node_geometry(
+                cursor, stack, kernel_globals, shader_data, true);
+            output.write(index * 3u,
+                         make_float4(device_svm::detail::stack_load_float3(
+                                         stack, 0u),
+                                     0.0f));
+            output.write(index * 3u + 1u,
+                         make_float4(device_svm::detail::stack_load_float3(
+                                         stack, 3u),
+                                     0.0f));
+            output.write(index * 3u + 2u,
+                         make_float4(device_svm::detail::stack_load_float3(
+                                         stack, 6u),
+                                     0.0f));
+          }};
+  auto shader = device.compile(kernel, ShaderOption{.enable_cache = false});
+  auto word_buffer = device.create_buffer<std::uint32_t>(payloads.size());
+  std::array<luisa::float4, geometry_dual_case_count * 3u> actual{};
+  auto output_buffer = device.create_buffer<luisa::float4>(actual.size());
+  stream << word_buffer.copy_from(luisa::span{payloads})
+         << shader(word_buffer, output_buffer).dispatch(geometry_dual_case_count)
+         << output_buffer.copy_to(luisa::span{actual}) << synchronize();
+
+  constexpr auto s = 0.28284271247461901f;
+  static constexpr std::array<luisa::float3,
+                              geometry_dual_case_count * 3u>
+      expected{
+          luisa::float3{1.0f, 2.0f, 3.0f},
+          luisa::float3{-0.2f, 0.35f, 0.9f},
+          luisa::float3{-0.6f, -0.2f, 0.2f},
+          luisa::float3{0.1f, 0.2f, 0.3f},
+          luisa::float3{0.0f},
+          luisa::float3{0.0f},
+          luisa::float3{0.25f, -0.5f, 0.75f},
+          luisa::float3{0.125f, 0.25f, -0.375f},
+          luisa::float3{-0.5f, 0.625f, 0.75f},
+          luisa::float3{0.0f, 0.0f, -1.0f},
+          luisa::float3{-s, s, 0.0f},
+          luisa::float3{s, s, 0.0f},
+          luisa::float3{0.0f, 0.0f, 1.0f},
+          luisa::float3{0.0f},
+          luisa::float3{0.0f},
+          luisa::float3{0.5f, 0.2f, 0.0f},
+          luisa::float3{-0.4f, 0.1f, 0.0f},
+          luisa::float3{-0.2f, -0.2f, 0.0f},
+          luisa::float3{0.942f, 2.1015f, 3.261f},
+          luisa::float3{-0.2f, 0.35f, 0.9f},
+          luisa::float3{-0.6f, -0.2f, 0.2f},
+          luisa::float3{0.442f, 0.142f, 0.0f},
+          luisa::float3{-0.4f, 0.1f, 0.0f},
+          luisa::float3{-0.2f, -0.2f, 0.0f},
+      };
+  for (auto i = std::size_t{}; i < actual.size(); ++i) {
+    if (!near(actual[i].x, expected[i].x) ||
+        !near(actual[i].y, expected[i].y) ||
+        !near(actual[i].z, expected[i].z)) {
+      std::cerr << "Cycles Geometry dual lane " << i << " mismatch: ("
+                << actual[i].x << ", " << actual[i].y << ", "
+                << actual[i].z << ") != (" << expected[i].x << ", "
+                << expected[i].y << ", " << expected[i].z << ")\n";
+      return false;
+    }
+  }
+  return true;
 }
 
 void run(Device &device, Stream &stream, std::span<const std::uint32_t> words,
@@ -206,6 +355,13 @@ void run(Device &device, Stream &stream, std::span<const std::uint32_t> words,
             0.0f,
             0.0f,
             0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            make_float3(1.0f, 0.0f, 0.0f),
+            make_float3(0.0f, 1.0f, 0.0f),
             identity,
             identity};
         Float3 inverse = make_float3(0.6f, 0.8f, 0.0f);
@@ -230,11 +386,6 @@ void run(Device &device, Stream &stream, std::span<const std::uint32_t> words,
     }
   }
   return true;
-}
-
-[[nodiscard]] bool near(float actual, float expected,
-                        float tolerance = 3.0e-5f) noexcept {
-  return std::abs(actual - expected) <= tolerance;
 }
 
 [[nodiscard]] bool
@@ -275,12 +426,54 @@ int main(int argc, char **argv) {
       0x00000007u, 0x7fc00006u, 0x00000000u, 0x00000000u, 0x3f800000u,
       0x00000003u, 0x000000ffu, 0x00000000u, 0x00000000u, 0x00000000u,
   };
+  // Shader-local streams dumped by unmodified Cycles 5.2.1 at
+  // 9e2066aef7ef. They are consumed verbatim so this executes the same
+  // PC/payload sequence as the external Blender oracle.
+  static constexpr std::array geometry_position_bump{
+      0x00000001u, 0x00000004u, 0x0000004bu, 0x0000004cu, 0x0000000cu,
+      0x00000000u, 0x3e947ae1u, 0x0000000bu, 0x03000001u, 0x3e947ae1u,
+      0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u, 0x00000600u,
+      0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u, 0x0000ff01u,
+      0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u, 0x0000ff02u,
+      0x0000000cu, 0x00000100u, 0x3e947ae1u, 0x00000054u, 0x7fc00000u,
+      0x00000000u, 0x00000000u, 0x00000700u, 0x00000054u, 0x7fc00000u,
+      0x00000000u, 0x00000000u, 0x0000ff01u, 0x00000054u, 0x7fc00000u,
+      0x00000000u, 0x00000000u, 0x0000ff02u, 0x0000000cu, 0x00000200u,
+      0x3e947ae1u, 0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u,
+      0x00000800u, 0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u,
+      0x0000ff01u, 0x00000054u, 0x7fc00000u, 0x00000000u, 0x00000000u,
+      0x0000ff02u, 0x00000021u, 0x3ed1eb85u, 0x3f3ae148u, 0x3e947ae1u,
+      0x06000003u, 0xff000807u, 0x00000007u, 0x7fc00000u, 0x00000000u,
+      0x00000000u, 0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
+  static constexpr std::array geometry_parametric_bump{
+      0x00000001u, 0x00000004u, 0x0000004bu, 0x0000004cu, 0x0000000bu,
+      0x00000001u, 0x3e947ae1u, 0x0000000cu, 0x03000005u, 0x3e947ae1u,
+      0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u, 0x00000600u,
+      0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u, 0x0000ff01u,
+      0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u, 0x0000ff02u,
+      0x0000000cu, 0x03000105u, 0x3e947ae1u, 0x00000054u, 0x7fc00003u,
+      0x00000000u, 0x00000000u, 0x00000700u, 0x00000054u, 0x7fc00003u,
+      0x00000000u, 0x00000000u, 0x0000ff01u, 0x00000054u, 0x7fc00003u,
+      0x00000000u, 0x00000000u, 0x0000ff02u, 0x0000000cu, 0x03000205u,
+      0x3e947ae1u, 0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u,
+      0x00000800u, 0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u,
+      0x0000ff01u, 0x00000054u, 0x7fc00003u, 0x00000000u, 0x00000000u,
+      0x0000ff02u, 0x00000021u, 0x3ed1eb85u, 0x3f3ae148u, 0x3e947ae1u,
+      0x06000000u, 0xff030807u, 0x00000007u, 0x7fc00003u, 0x00000000u,
+      0x00000000u, 0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
 
   const auto backend = std::string_view{argc > 1 ? argv[1] : "hip"};
   Context context{argv[0]};
   auto device = context.create_device(backend);
   auto stream = device.create_stream();
   if (!test_object_none_normal_transforms(device, stream)) {
+    return EXIT_FAILURE;
+  }
+  if (!test_geometry_dual_lanes(device, stream)) {
     return EXIT_FAILURE;
   }
   std::array<luisa::float4, probe_count> floating{};
@@ -336,6 +529,41 @@ int main(int argc, char **argv) {
       integer[12].y != 33u) {
     std::cerr << "Cycles disabled Bump feature branch mismatch on " << backend
               << '\n';
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run(device, stream, geometry_position_bump, bump_node_types(), true,
+      floating, integer);
+  static constexpr auto expected_position =
+      luisa::float3{-0.281100065f, 0.0f, 0.959678471f};
+  if (!near(floating[13u].x, expected_position.x) ||
+      !near(floating[13u].y, expected_position.y) ||
+      !near(floating[13u].z, expected_position.z) ||
+      integer[13u].x != ended || integer[13u].y != 75u) {
+    std::cerr << "Cycles Geometry Position Bump stream mismatch on " << backend
+              << ": (" << floating[13u].x << ", " << floating[13u].y << ", "
+              << floating[13u].z << "), status=" << integer[13u].x
+              << ", pc=" << integer[13u].y << '\n';
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run(device, stream, geometry_parametric_bump, bump_node_types(), true,
+      floating, integer);
+  static constexpr auto expected_parametric =
+      luisa::float3{0.376315475f, 0.0f, 0.926491559f};
+  if (!near(floating[13u].x, expected_parametric.x) ||
+      !near(floating[13u].y, expected_parametric.y) ||
+      !near(floating[13u].z, expected_parametric.z) ||
+      integer[13u].x != ended || integer[13u].y != 75u) {
+    std::cerr << "Cycles Geometry Parametric Bump stream mismatch on "
+              << backend << ": (" << floating[13u].x << ", "
+              << floating[13u].y << ", " << floating[13u].z
+              << "), status=" << integer[13u].x
+              << ", pc=" << integer[13u].y << '\n';
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

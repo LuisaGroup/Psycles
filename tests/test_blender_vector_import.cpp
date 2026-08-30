@@ -492,10 +492,218 @@ void test_blender_vector_transform_import() {
          "imported Vector Transform stack lifetime differs from Cycles");
 }
 
+void test_blender_geometry_tangent_parametric_import() {
+  TemporaryDirectory temporary;
+  {
+    std::ofstream geometry{temporary.path() / "geometry.bin",
+                           std::ios::binary};
+    geometry.write("PSYGEO1\0", 8);
+  }
+  {
+    std::ofstream scene{temporary.path() / "scene.json"};
+    scene << R"JSON({
+  "schema":"psycles.blender-scene.v1",
+  "images":[],"node_groups":[],
+  "materials":[{
+    "name":"SVM Geometry Tangent Parametric Import",
+    "cycles_sync":{"shader_index":5},
+    "node_tree":{
+      "name":"SVM Geometry Tangent Parametric Import",
+      "surface_root":{"node":"Emission","socket":"Emission"},
+      "volume_root":null,"displacement_root":null,
+      "links":[
+        {"from_node":"Geometry","from_socket":"Tangent",
+         "to_node":"Separate Tangent","to_socket":"Vector"},
+        {"from_node":"Geometry","from_socket":"Parametric",
+         "to_node":"Separate Parametric","to_socket":"Vector"},
+        {"from_node":"Separate Tangent","from_socket":"X",
+         "to_node":"Combine XYZ","to_socket":"X"},
+        {"from_node":"Separate Parametric","from_socket":"Y",
+         "to_node":"Combine XYZ","to_socket":"Y"},
+        {"from_node":"Combine XYZ","from_socket":"Vector",
+         "to_node":"Emission","to_socket":"Color"}
+      ],
+      "nodes":[
+        {
+          "name":"Geometry","type":"NEW_GEOMETRY","mute":false,
+          "internal_links":[],"inputs":[],
+          "outputs":[
+            {"identifier":"Tangent","name":"Tangent",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]},
+            {"identifier":"Parametric","name":"Parametric",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]}
+          ],
+          "properties":{},"special":{}
+        },
+        {
+          "name":"Separate Tangent","type":"SEPXYZ","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Vector","name":"Vector",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]}
+          ],
+          "outputs":[
+            {"identifier":"X","name":"X","type":"NodeSocketFloat",
+             "linked":true,"default":0.0},
+            {"identifier":"Y","name":"Y","type":"NodeSocketFloat",
+             "linked":false,"default":0.0},
+            {"identifier":"Z","name":"Z","type":"NodeSocketFloat",
+             "linked":false,"default":0.0}
+          ],
+          "properties":{},"special":{}
+        },
+        {
+          "name":"Separate Parametric","type":"SEPXYZ","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Vector","name":"Vector",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]}
+          ],
+          "outputs":[
+            {"identifier":"X","name":"X","type":"NodeSocketFloat",
+             "linked":false,"default":0.0},
+            {"identifier":"Y","name":"Y","type":"NodeSocketFloat",
+             "linked":true,"default":0.0},
+            {"identifier":"Z","name":"Z","type":"NodeSocketFloat",
+             "linked":false,"default":0.0}
+          ],
+          "properties":{},"special":{}
+        },
+        {
+          "name":"Combine XYZ","type":"COMBXYZ","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"X","name":"X","type":"NodeSocketFloat",
+             "linked":true,"default":0.0},
+            {"identifier":"Y","name":"Y","type":"NodeSocketFloat",
+             "linked":true,"default":0.0},
+            {"identifier":"Z","name":"Z","type":"NodeSocketFloat",
+             "linked":false,"default":0.0}
+          ],
+          "outputs":[
+            {"identifier":"Vector","name":"Vector",
+             "type":"NodeSocketVector","linked":true,
+             "default":[0.0,0.0,0.0]}
+          ],
+          "properties":{},"special":{}
+        },
+        {
+          "name":"Emission","type":"EMISSION","mute":false,
+          "internal_links":[],
+          "inputs":[
+            {"identifier":"Color","name":"Color",
+             "type":"NodeSocketColor","linked":true,
+             "default":[1.0,1.0,1.0,1.0]},
+            {"identifier":"Strength","name":"Strength",
+             "type":"NodeSocketFloat","linked":false,"default":1.0}
+          ],
+          "outputs":[
+            {"identifier":"Emission","name":"Emission",
+             "type":"NodeSocketShader","linked":true}
+          ],
+          "properties":{},"special":{}
+        }
+      ]
+    }
+  }],
+  "render":{"width":16,"height":16,"percentage":100,"cycles":{}},
+  "camera":{"name":"Camera","type":"PERSP",
+    "transform":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
+    "clip_start":0.01,"clip_end":100.0},
+  "geometries":[],"curve_geometries":[],"instances":[],"lights":[],
+  "world":null,"world_environment":null
+})JSON";
+  }
+
+  const auto imported =
+      psycles::adapter::load_blender_scene_bundle(temporary.path());
+  expect(imported.ok(), "Geometry Tangent/Parametric scene did not import");
+  const psycles::contract::MaterialDesc *material = nullptr;
+  for (const auto &[id, candidate] : imported.scene->materials) {
+    static_cast<void>(id);
+    if (candidate.name == "SVM Geometry Tangent Parametric Import") {
+      material = &candidate;
+      break;
+    }
+  }
+  expect(material != nullptr,
+         "Geometry Tangent/Parametric imported material is absent");
+  const psycles::contract::ShaderNode *separate_tangent = nullptr;
+  const psycles::contract::ShaderNode *separate_parametric = nullptr;
+  for (const auto &node : material->shader.nodes()) {
+    if (node.label == "Separate Tangent") {
+      separate_tangent = &node;
+    } else if (node.label == "Separate Parametric") {
+      separate_parametric = &node;
+    }
+  }
+  expect(separate_tangent != nullptr && separate_parametric != nullptr,
+         "Geometry Tangent/Parametric consumers are absent");
+
+  const auto tangent_source =
+      separate_tangent->inputs.at("Vector").source.value();
+  const auto *tangent_to_color = material->shader.find(tangent_source.node);
+  expect(tangent_to_color != nullptr &&
+             tangent_to_color->type ==
+                 psycles::compiler::node_type::vector_to_color,
+         "Geometry.Tangent lost Cycles' Separate XYZ color conversion");
+  const auto tangent_geometry_source =
+      tangent_to_color->inputs.at("Vector").source.value();
+  const auto *tangent_geometry =
+      material->shader.find(tangent_geometry_source.node);
+  expect(tangent_geometry != nullptr &&
+             tangent_geometry->type == psycles::compiler::node_type::geometry &&
+             tangent_geometry_source.socket == "Tangent",
+         "Blender Geometry.Tangent was not preserved as the Cycles output");
+
+  const auto parametric_vector_source =
+      separate_parametric->inputs.at("Vector").source.value();
+  const auto *parametric_to_color =
+      material->shader.find(parametric_vector_source.node);
+  expect(parametric_to_color != nullptr &&
+             parametric_to_color->type ==
+                 psycles::compiler::node_type::vector_to_color,
+         "Geometry.Parametric lost Cycles' Separate XYZ color conversion");
+  const auto point_to_vector_source =
+      parametric_to_color->inputs.at("Vector").source.value();
+  const auto *point_to_vector =
+      material->shader.find(point_to_vector_source.node);
+  expect(point_to_vector != nullptr &&
+             point_to_vector->type ==
+                 psycles::compiler::node_type::point_to_vector,
+         "Blender Geometry.Parametric lost its point-to-vector conversion");
+  const auto parametric_source =
+      point_to_vector->inputs.at("Point").source.value();
+  const auto *parametric_geometry =
+      material->shader.find(parametric_source.node);
+  expect(parametric_geometry != nullptr &&
+             parametric_geometry->type ==
+                 psycles::compiler::node_type::geometry &&
+             parametric_source.socket == "Parametric",
+         "Blender Geometry.Parametric was not preserved as the Cycles output");
+
+  const psycles::compiler::ShaderCompiler frontend{
+      psycles::compiler::make_core_node_registry()};
+  const auto shader = frontend.compile(material->shader);
+  expect(shader.ok(), "imported Geometry Tangent/Parametric graph is invalid");
+  const auto image =
+      psycles::compiler::cycles_svm::compile_shader(*shader.program);
+  expect(image.valid && image.node_types_used[
+                            psycles::compiler::cycles_svm::NODE_GEOMETRY] &&
+             !image.node_types_used[
+                 psycles::compiler::cycles_svm::NODE_GEOMETRY_DERIVATIVE],
+         "plain Geometry Tangent/Parametric did not select Cycles' opcode");
+}
+
 } // namespace
 
 void test_blender_vector_import() {
   test_blender_separate_combine_xyz_import();
   test_blender_vector_rotate_import();
   test_blender_vector_transform_import();
+  test_blender_geometry_tangent_parametric_import();
 }

@@ -896,60 +896,6 @@ public:
   }
 };
 
-class GeometryNode final : public GraphNode {
-public:
-  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
-    return NODE_GEOMETRY;
-  }
-
-  void compile(SVMCompiler &compiler) override {
-    struct Output {
-      std::string_view name;
-      NodeGeometry geometry;
-    };
-    static constexpr Output outputs[] = {
-        {"Position", NODE_GEOM_P},
-        {"Normal", NODE_GEOM_N},
-        {"Tangent", NODE_GEOM_T},
-        {"True Normal", NODE_GEOM_Ng},
-        {"Incoming", NODE_GEOM_I},
-        {"Parametric", NODE_GEOM_uv},
-    };
-    for (const auto &item : outputs) {
-      auto *socket = output(item.name);
-      if (socket == nullptr || socket->links.empty()) {
-        continue;
-      }
-      compiler.add_node(
-          this, NODE_GEOMETRY,
-          SVMNodeGeometry{
-              .geom_type = item.geometry,
-              .bump_offset = NODE_BUMP_OFFSET_CENTER,
-              .store_derivatives =
-                  static_cast<std::uint8_t>(need_derivatives),
-              .out_offset = compiler.output(item.name),
-              .bump_filter_width = 0.0f},
-          need_derivatives && item.geometry != NODE_GEOM_N);
-    }
-    if (auto *socket = output("Backfacing");
-        socket != nullptr && !socket->links.empty()) {
-      compiler.add_node(
-          this, NODE_LIGHT_PATH,
-          SVMNodeLightPath{.path_type = NODE_LP_backfacing,
-                           .out_offset = compiler.output("Backfacing"),
-                           ._pad = {0u, 0u, 0u}});
-    }
-    for (const auto name : {"Pointiness", "Random Per Island"}) {
-      if (const auto *socket = output(name);
-          socket != nullptr && !socket->links.empty()) {
-        compiler.fail("Cycles Geometry output is not migrated: " +
-                      std::string{name});
-        return;
-      }
-    }
-  }
-};
-
 class MixClosureWeightNode final : public GraphNode {
 public:
   void compile(SVMCompiler &compiler) override {
@@ -1823,9 +1769,6 @@ bool GraphNode::is_linear_operation() const noexcept { return false; }
 std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   if (type == "cycles.synthetic.output") {
     return std::make_unique<OutputNode>();
-  }
-  if (type == cycles_synthetic_geometry || type == node_type::geometry) {
-    return std::make_unique<GeometryNode>();
   }
   if (type == cycles_synthetic_mix_closure_weight) {
     return std::make_unique<MixClosureWeightNode>();

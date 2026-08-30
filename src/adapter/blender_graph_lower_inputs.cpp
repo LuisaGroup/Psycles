@@ -340,6 +340,12 @@ public:
       if (socket == "Incoming") {
         return finish(context.geometry_output("Incoming", SocketType::vector));
       }
+      if (socket == "Tangent") {
+        return finish(context.geometry_output("Tangent", SocketType::vector));
+      }
+      if (socket == "Parametric") {
+        return finish(context.geometry_output("Parametric", SocketType::point));
+      }
       if (socket == "Backfacing") {
         return finish(
             context.geometry_output("Backfacing", SocketType::floating));

@@ -179,7 +179,7 @@ namespace {
 
 [[nodiscard]] GraphNodeSpecialType special_type(
     std::string_view type) noexcept {
-  if (type == node_type::geometry || type == cycles_synthetic_geometry) {
+  if (type == node_type::geometry) {
     return GraphNodeSpecialType::geometry;
   }
   if (type == node_type::bump) {
@@ -754,7 +754,7 @@ void CyclesGraph::default_inputs() {
                                  graph_socket_link_position |
                                  graph_socket_link_tangent)) != 0u) {
         if (geometry == nullptr) {
-          geometry = add_node(cycles_synthetic_geometry, "Geometry",
+          geometry = add_node(node_type::geometry, "Geometry",
                               geometry_inputs(), geometry_outputs(),
                               GraphNodeSpecialType::geometry);
         }

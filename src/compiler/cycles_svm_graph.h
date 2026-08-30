@@ -22,8 +22,6 @@ class SVMCompiler;
 class ConstantFolder;
 class CyclesGraph;
 
-inline constexpr auto cycles_synthetic_geometry =
-    "cycles.synthetic.geometry";
 inline constexpr auto cycles_synthetic_texture_coordinate =
     "cycles.synthetic.texture_coordinate";
 inline constexpr auto cycles_synthetic_mix_closure_weight =

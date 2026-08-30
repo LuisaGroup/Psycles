@@ -42,6 +42,18 @@ public:
   [[nodiscard]] Float3 film_rgb_to_y() const noexcept override {
     return make_float3(0.2126f, 0.7152f, 0.0722f);
   }
+
+  [[nodiscard]] Float3 primitive_tangent(
+      const device_svm::ShaderData &) const noexcept override {
+    return make_float3(1.0f, 0.0f, 0.0f);
+  }
+
+  [[nodiscard]] device_svm::Dual3 primitive_tangent_derivative(
+      const device_svm::ShaderData &) const noexcept override {
+    return {.val = make_float3(1.0f, 0.0f, 0.0f),
+            .dx = make_float3(0.0f),
+            .dy = make_float3(0.0f)};
+  }
 };
 
 constexpr std::array legacy_mix_modes{
@@ -709,6 +721,13 @@ compile_dynamic_vector_transform(const VectorTransformCase &item,
             0.0f,
             4.0f,
             0.25f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            make_float3(1.0f, 0.0f, 0.0f),
+            make_float3(0.0f, 1.0f, 0.0f),
             identity,
             identity};
         const device_svm::PathState path_state{
@@ -796,6 +815,13 @@ compile_dynamic_vector_transform(const VectorTransformCase &item,
             0.0f,
             4.0f,
             0.25f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            make_float3(1.0f, 0.0f, 0.0f),
+            make_float3(0.0f, 1.0f, 0.0f),
             object_has_motion ? object_to_world : identity,
             object_has_motion ? world_to_object : identity};
         const device_svm::PathState path_state{
