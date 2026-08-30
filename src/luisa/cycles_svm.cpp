@@ -259,6 +259,11 @@ void eval_nodes(
           detail::node_combine_vector(cursor, stack, true);
         };
       }
+      if (node_types_used[NODE_VECTOR_ROTATE]) {
+        PSYCLES_SVM_CASE(NODE_VECTOR_ROTATE) {
+          detail::node_vector_rotate(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_CLAMP]) {
         PSYCLES_SVM_CASE(NODE_CLAMP) { detail::node_clamp(cursor, stack); };
       }

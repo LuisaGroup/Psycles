@@ -46,6 +46,33 @@ constexpr std::array legacy_mix_modes{
     std::pair{"VALUE", NODE_MIX_VAL},
 };
 
+struct VectorRotateCase {
+  std::string_view type;
+  bool invert;
+  Vec3f axis;
+  Vec3f rotation;
+  float angle;
+};
+
+static constexpr std::array vector_rotate_cases{
+    VectorRotateCase{"AXIS_ANGLE", false, {0.29f, 0.73f, -0.41f}, {},
+                     0.71f},
+    VectorRotateCase{"AXIS_ANGLE", true, {0.29f, 0.73f, -0.41f}, {},
+                     0.71f},
+    VectorRotateCase{"X_AXIS", false, {0.0f, 0.0f, 1.0f}, {}, 0.71f},
+    VectorRotateCase{"X_AXIS", true, {0.0f, 0.0f, 1.0f}, {}, 0.71f},
+    VectorRotateCase{"Y_AXIS", false, {0.0f, 0.0f, 1.0f}, {}, 0.71f},
+    VectorRotateCase{"Y_AXIS", true, {0.0f, 0.0f, 1.0f}, {}, 0.71f},
+    VectorRotateCase{"Z_AXIS", false, {0.0f, 0.0f, 1.0f}, {}, 0.71f},
+    VectorRotateCase{"Z_AXIS", true, {0.0f, 0.0f, 1.0f}, {}, 0.71f},
+    VectorRotateCase{"EULER_XYZ", false, {0.0f, 0.0f, 1.0f},
+                     {0.31f, -0.52f, 0.27f}, 0.0f},
+    VectorRotateCase{"EULER_XYZ", true, {0.0f, 0.0f, 1.0f},
+                     {0.31f, -0.52f, 0.27f}, 0.0f},
+    VectorRotateCase{"AXIS_ANGLE", false, {}, {}, 0.71f},
+    VectorRotateCase{"AXIS_ANGLE", true, {}, {}, 0.71f},
+};
+
 [[nodiscard]] ShaderImage compile_dynamic_math() {
   ShaderGraph graph;
   const auto geometry_a = graph.add_node(node_type::geometry, "Geometry A");
@@ -280,6 +307,52 @@ constexpr std::array legacy_mix_modes{
   if (!shader.ok()) {
     throw std::runtime_error{
         "dynamic Separate/Combine XYZ graph did not validate"};
+  }
+  auto image = compile_shader(*shader.program);
+  if (!image.valid) {
+    throw std::runtime_error{image.diagnostic};
+  }
+  return image;
+}
+
+[[nodiscard]] ShaderImage
+compile_dynamic_vector_rotate(const VectorRotateCase &item) {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Geometry");
+  const auto normal_to_vector =
+      graph.add_node(node_type::normal_to_vector, "Normal to Vector");
+  const auto rotate = graph.add_node(node_type::vector_rotate, "Vector Rotate");
+  const auto vector_to_color =
+      graph.add_node(node_type::vector_to_color, "Vector to Color");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  const auto configured =
+      graph.connect({geometry, "Normal"}, normal_to_vector, "Normal") &&
+      graph.connect({normal_to_vector, "Vector"}, rotate, "Vector") &&
+      graph.set_input(rotate, "Center",
+                      contract::SocketValue::point({0.17f, -0.23f, 0.31f})) &&
+      graph.set_input(rotate, "Axis",
+                      contract::SocketValue::vector(item.axis)) &&
+      graph.set_input(rotate, "Rotation",
+                      contract::SocketValue::point(item.rotation)) &&
+      graph.set_input(rotate, "Angle",
+                      contract::SocketValue::floating(item.angle)) &&
+      graph.set_property(
+          rotate, "Type",
+          contract::SocketValue::string(std::string{item.type})) &&
+      graph.set_property(rotate, "Invert",
+                         contract::SocketValue::boolean(item.invert)) &&
+      graph.connect({rotate, "Vector"}, vector_to_color, "Vector") &&
+      graph.connect({vector_to_color, "Color"}, emission, "Color");
+  if (!configured) {
+    throw std::runtime_error{"failed to create dynamic Vector Rotate graph"};
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  if (!shader.ok()) {
+    throw std::runtime_error{"dynamic Vector Rotate graph did not validate"};
   }
   auto image = compile_shader(*shader.program);
   if (!image.valid) {
@@ -658,6 +731,11 @@ int main(int argc, char **argv) {
   const auto color_image = compile_dynamic_color_pipeline();
   const auto combsep_color_image = compile_dynamic_combsep_color_pipeline();
   const auto sepcomb_vector_image = compile_dynamic_sepcomb_vector_pipeline();
+  std::vector<ShaderImage> vector_rotate_images;
+  vector_rotate_images.reserve(vector_rotate_cases.size());
+  for (const auto &item : vector_rotate_cases) {
+    vector_rotate_images.emplace_back(compile_dynamic_vector_rotate(item));
+  }
   std::vector<ShaderImage> legacy_mix_images;
   legacy_mix_images.reserve(legacy_mix_modes.size());
   for (const auto &[mode, type] : legacy_mix_modes) {
@@ -804,6 +882,70 @@ int main(int argc, char **argv) {
     std::cerr << "dynamic Separate/Combine XYZ Cycles SVM state mismatch on "
               << backend << '\n';
     return EXIT_FAILURE;
+  }
+
+  // Frozen from the 6x2 Cycles 5.2.1 CPU Emission pass of
+  // `svm_vector_rotate_matrix`. Cases cover all five rotation modes, both
+  // values of Invert, and the arbitrary-axis zero-length branch. The host
+  // compiler regression independently freezes every stream word.
+  static constexpr std::array cycles_vector_rotate_emission{
+      luisa::float3{0.466335535f, -0.188421026f, 0.994365752f},
+      luisa::float3{-0.413508177f, 0.003437847f, 0.713639617f},
+      luisa::float3{0.0f, -0.505342066f, 0.983191490f},
+      luisa::float3{0.0f, 0.394188523f, 0.683347940f},
+      luisa::float3{0.490843773f, 0.0f, 0.944081426f},
+      luisa::float3{-0.408686817f, 0.0f, 0.722457945f},
+      luisa::float3{-0.108843282f, -0.166388512f, 1.0f},
+      luisa::float3{0.191000253f, 0.055234984f, 1.0f},
+      luisa::float3{-0.322739720f, -0.357502222f, 0.856672406f},
+      luisa::float3{0.423902035f, 0.222487405f, 0.847297728f},
+      luisa::float3{0.0f, 0.0f, 1.0f},
+      luisa::float3{0.0f, 0.0f, 1.0f},
+  };
+  const auto vector_rotate_kernel =
+      make_interpreter_kernel(vector_rotate_images.front().node_types_used);
+  auto vector_rotate_shader = device.compile(
+      vector_rotate_kernel, ShaderOption{.enable_cache = false});
+  for (auto index = std::size_t{}; index < vector_rotate_images.size();
+       ++index) {
+    const auto &image = vector_rotate_images[index];
+    auto word_buffer = device.create_buffer<std::uint32_t>(image.words.size());
+    auto floating_buffer = device.create_buffer<luisa::float4>(floating.size());
+    auto integer_buffer = device.create_buffer<luisa::uint4>(integer.size());
+    floating = {};
+    integer = {};
+    stream << word_buffer.copy_from(luisa::span{image.words})
+           << vector_rotate_shader(word_buffer, floating_buffer, integer_buffer)
+                  .dispatch(2u)
+           << floating_buffer.copy_to(luisa::span{floating})
+           << integer_buffer.copy_to(luisa::span{integer}) << synchronize();
+    const auto label = std::string{vector_rotate_cases[index].type} +
+                       (vector_rotate_cases[index].invert ? " inverse" :
+                                                            " forward");
+    if (!require_float3(floating[0], cycles_vector_rotate_emission[index],
+                        label + " front") ||
+        !require_float3(floating[1], cycles_vector_rotate_emission[index],
+                        label + " back") ||
+        !approximately_equal(floating[0].w,
+                             cycles_vector_rotate_emission[index].x) ||
+        !approximately_equal(floating[1].w,
+                             cycles_vector_rotate_emission[index].x) ||
+        integer[0].x != ended || integer[1].x != ended ||
+        integer[0].y != 31u || integer[1].y != 31u ||
+        integer[0].z != device_svm::shader_data_emission ||
+        integer[1].z != (device_svm::shader_data_backfacing |
+                         device_svm::shader_data_emission)) {
+      std::cerr << "dynamic Vector Rotate Cycles SVM state mismatch for "
+                << label << " on " << backend << ": front=(" << floating[0].x
+                << ", " << floating[0].y << ", " << floating[0].z << ", "
+                << floating[0].w << "), back=(" << floating[1].x << ", "
+                << floating[1].y << ", " << floating[1].z << ", "
+                << floating[1].w << "), integer front=(" << integer[0].x
+                << ", " << integer[0].y << ", " << integer[0].z
+                << "), integer back=(" << integer[1].x << ", "
+                << integer[1].y << ", " << integer[1].z << ")\n";
+      return EXIT_FAILURE;
+    }
   }
 
   static constexpr std::array legacy_front{

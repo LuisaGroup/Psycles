@@ -482,6 +482,34 @@ public:
                         ? SocketType::floating
                         : SocketType::vector});
         }
+        if (type == "VECTOR_ROTATE") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::vector_rotate,
+                node_name);
+            static_cast<void>(context.bind(
+                id, "Vector", node, "Vector", SocketType::vector));
+            static_cast<void>(context.bind(
+                id, "Rotation", node, "Rotation", SocketType::point));
+            static_cast<void>(context.bind(
+                id, "Center", node, "Center", SocketType::point));
+            static_cast<void>(context.bind(
+                id, "Axis", node, "Axis", SocketType::vector));
+            static_cast<void>(context.bind(
+                id, "Angle", node, "Angle", SocketType::floating));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Type",
+                SocketValue::string(context.node_property_text(
+                    node, "rotation_type", "AXIS_ANGLE"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Invert",
+                SocketValue::boolean(context.node_property_bool(
+                    node, "invert"))));
+            return finish({
+                .ref = {.node = id, .socket = "Vector"},
+                .type = SocketType::vector});
+        }
         if (type == "NORMAL") {
             // Cycles' NormalNode has one authored direction shared by both
             // outputs. It is stored on the Blender output socket rather than

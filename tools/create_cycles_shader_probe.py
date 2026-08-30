@@ -153,6 +153,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "svm_sepcomb_vector_constant_fold": (
         svm_vector._svm_sepcomb_vector_constant_fold
     ),
+    "svm_vector_rotate_matrix": svm_vector._svm_vector_rotate_matrix,
     "mix_shader_emission": closures._mix_shader_emission,
     "negative_scale_surface": closures._negative_scale_surface,
     "nishita_diffuse_transport": closures._nishita_diffuse_transport,

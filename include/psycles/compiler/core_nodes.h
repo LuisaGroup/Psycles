@@ -39,6 +39,7 @@ inline constexpr auto clamp_float = "psycles.math.clamp";
 inline constexpr auto clamp_range = "psycles.math.clamp_range";
 inline constexpr auto map_range = "psycles.math.map_range";
 inline constexpr auto vector_math = "psycles.math.vector";
+inline constexpr auto vector_rotate = "psycles.vector.rotate";
 inline constexpr auto scalar_to_color = "psycles.convert.scalar_to_color";
 inline constexpr auto scalar_to_boolean =
     "psycles.convert.scalar_to_boolean";
