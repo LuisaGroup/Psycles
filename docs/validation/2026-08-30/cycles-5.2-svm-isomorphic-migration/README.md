@@ -451,3 +451,55 @@ object before linking and an 11,456-byte loaded code object. These sizes are a
 checkpoint, not a performance claim. The production renderer is not yet wired
 to this partial interpreter; doing so before every reachable Cycles opcode and
 closure transition has been copied would violate the no-fallback contract.
+
+## Color transformation opcode checkpoint
+
+The next copied device and host families are exactly the Cycles 5.2.1
+`InvertNode`, `GammaNode`, `BrightContrastNode`, `HSVNode`, and `ClampNode`,
+mapped to `NODE_INVERT`, `NODE_GAMMA`, `NODE_BRIGHTCONTRAST`, `NODE_HSV`, and
+`NODE_CLAMP`. Their compiler emission and constant-fold methods come from
+`scene/shader_nodes.cpp`; their device transitions come from `kernel/svm`'s
+`invert.h`, `gamma.h`, `brightness.h`, `hsv.h`, `clamp.h`, `color_util.h`, and
+`util/color.h`. The component branch order, HSV hue wrapping, oversaturation
+clamp, gamma-zero case, RANGE min/max reversal, and output-validity checks are
+kept as written in those sources.
+
+Two new Blender probes were executed with the exact diagnostic Cycles build:
+
+- `svm_color_pipeline` uses Geometry Backfacing to keep all five nodes live.
+  Shader 5 had global jump `(89,134,135)` and normalized to a 51-word stream.
+  The permanent host regression locks every word, lane reuse, opcode order,
+  and peak stack usage of seven lanes.
+- `svm_color_constant_fold` chains constant Invert, Gamma, Bright/Contrast,
+  and RANGE Clamp into Emission. Cycles removed all four opcodes and embedded
+  closure weight bits `(3db1030e,3dc5492b,3dddd033)` in a 13-word stream. The
+  permanent regression locks that graph-cleaning result.
+
+The dynamic probe renders a two-cell 4x4 matrix whose second cell has reversed
+polygon winding. Cycles CPU's linear Emission pass was constant within each
+cell:
+
+```text
+front: (0.035884645, 0.071987897, 0.159804747)
+back:  (0.665142953, 0.000000000, 0.707822502)
+```
+
+The HIP interpreter consumes the same frozen 51-word stream and matches both
+triples within `2e-6`, along with closure weight, ShaderData flags, ended
+status, and final PC 49. The oracle generation and validation commands were:
+
+```text
+blender --background --factory-startup --python \
+  tools/create_cycles_shader_probe.py -- \
+  /tmp/svm_color_pipeline.blend svm_color_pipeline             PASS
+PSYCLES_CYCLES_SVM_DUMP=/tmp/svm_color_pipeline.svm52 \
+  blender /tmp/svm_color_pipeline.blend --background --python \
+  tools/render_cycles_golden.py -- \
+  /tmp/svm_color_pipeline.exr 4 4 1 0 --cycles-device CPU      PASS
+cmake --build build --target psycles_cycles_svm_compiler_tests \
+  --parallel 32                                                PASS
+build/psycles_cycles_svm_compiler_tests                        PASS
+cmake --build build --target psycles_luisa_cycles_svm_tests \
+  --parallel 32                                                PASS
+build/bin/psycles_luisa_cycles_svm_tests hip                   PASS
+```

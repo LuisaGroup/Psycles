@@ -203,14 +203,31 @@ void eval_nodes(
       if (node_types_used[NODE_VALUE_V]) {
         PSYCLES_SVM_CASE(NODE_VALUE_V) { detail::node_value_v(cursor, stack); };
       }
+      if (node_types_used[NODE_HSV]) {
+        PSYCLES_SVM_CASE(NODE_HSV) { detail::node_hsv(cursor, stack); };
+      }
       if (node_types_used[NODE_MATH]) {
         PSYCLES_SVM_CASE(NODE_MATH) { detail::node_math(cursor, stack); };
+      }
+      if (node_types_used[NODE_GAMMA]) {
+        PSYCLES_SVM_CASE(NODE_GAMMA) { detail::node_gamma(cursor, stack); };
+      }
+      if (node_types_used[NODE_BRIGHTCONTRAST]) {
+        PSYCLES_SVM_CASE(NODE_BRIGHTCONTRAST) {
+          detail::node_brightness(cursor, stack);
+        };
       }
       if (node_types_used[NODE_LIGHT_PATH]) {
         PSYCLES_SVM_CASE(NODE_LIGHT_PATH) {
           detail::node_light_path(cursor, stack, shader_data, path_state,
                                   node_feature_mask);
         };
+      }
+      if (node_types_used[NODE_INVERT]) {
+        PSYCLES_SVM_CASE(NODE_INVERT) { detail::node_invert(cursor, stack); };
+      }
+      if (node_types_used[NODE_CLAMP]) {
+        PSYCLES_SVM_CASE(NODE_CLAMP) { detail::node_clamp(cursor, stack); };
       }
       $default {
         result.status =

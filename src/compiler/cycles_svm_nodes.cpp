@@ -7,6 +7,7 @@
 
 #include <psycles/compiler/core_nodes.h>
 
+#include <cmath>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -99,6 +100,65 @@ math_type(const GraphNode *node) noexcept {
   PSYCLES_CYCLES_MATH_TYPE("DEGREES", NODE_MATH_DEGREES)
 #undef PSYCLES_CYCLES_MATH_TYPE
   return std::nullopt;
+}
+
+[[nodiscard]] std::optional<NodeClampType>
+clamp_type(const GraphNode *node) noexcept {
+  const auto mode = string_property(node, "Mode");
+  if (mode == "MINMAX") {
+    return NODE_CLAMP_MINMAX;
+  }
+  if (mode == "RANGE") {
+    return NODE_CLAMP_RANGE;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] float cycles_max(float a, float b) noexcept {
+  return a > b ? a : b;
+}
+
+[[nodiscard]] float cycles_min(float a, float b) noexcept {
+  return a < b ? a : b;
+}
+
+[[nodiscard]] float cycles_clamp(float value, float minimum,
+                                 float maximum) noexcept {
+  return cycles_min(cycles_max(value, minimum), maximum);
+}
+
+[[nodiscard]] Vec3f cycles_gamma(Vec3f color, float gamma) noexcept {
+  if (gamma == 0.0f) {
+    return {1.0f, 1.0f, 1.0f};
+  }
+  if (color.x > 0.0f) {
+    color.x = std::pow(color.x, gamma);
+  }
+  if (color.y > 0.0f) {
+    color.y = std::pow(color.y, gamma);
+  }
+  if (color.z > 0.0f) {
+    color.z = std::pow(color.z, gamma);
+  }
+  return color;
+}
+
+[[nodiscard]] Vec3f cycles_brightness_contrast(Vec3f color,
+                                                float brightness,
+                                                float contrast) noexcept {
+  const auto a = 1.0f + contrast;
+  const auto b = brightness - contrast * 0.5f;
+  color.x = cycles_max(a * color.x + b, 0.0f);
+  color.y = cycles_max(a * color.y + b, 0.0f);
+  color.z = cycles_max(a * color.z + b, 0.0f);
+  return color;
+}
+
+[[nodiscard]] Vec3f cycles_invert(Vec3f color, float factor) noexcept {
+  const Vec3f inverse{1.0f - color.x, 1.0f - color.y, 1.0f - color.z};
+  return {color.x + factor * (inverse.x - color.x),
+          color.y + factor * (inverse.y - color.y),
+          color.z + factor * (inverse.z - color.z)};
 }
 
 class UnsupportedNode final : public GraphNode {
@@ -361,6 +421,154 @@ public:
   }
 };
 
+class InvertNode final : public GraphNode {
+public:
+  void constant_fold(const ConstantFolder &folder) override {
+    auto *color = input("Color");
+    auto *factor = input("Fac");
+    if (factor == nullptr || factor->link != nullptr) {
+      return;
+    }
+    const auto factor_value =
+        literal<float>(factor, contract::SocketType::floating);
+    if (!factor_value) {
+      return;
+    }
+    if (color != nullptr && color->link == nullptr) {
+      const auto color_value =
+          literal<Vec3f>(color, contract::SocketType::color);
+      if (color_value) {
+        folder.make_constant(cycles_invert(*color_value, *factor_value));
+      }
+    } else if (*factor_value == 0.0f) {
+      folder.bypass(color->link);
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    compiler.add_node(
+        this, NODE_INVERT,
+        SVMNodeInvert{.color = compiler.input_float3("Color"),
+                      .fac = compiler.input_float("Fac"),
+                      .out_offset = compiler.output("Color"),
+                      ._pad = {0u, 0u, 0u}});
+  }
+};
+
+class GammaNode final : public GraphNode {
+public:
+  void constant_fold(const ConstantFolder &folder) override {
+    auto *color = input("Color");
+    auto *gamma = input("Gamma");
+    if (folder.all_inputs_constant()) {
+      const auto color_value =
+          literal<Vec3f>(color, contract::SocketType::color);
+      const auto gamma_value =
+          literal<float>(gamma, contract::SocketType::floating);
+      if (color_value && gamma_value) {
+        folder.make_constant(cycles_gamma(*color_value, *gamma_value));
+      }
+    } else if (folder.is_one(color) || folder.is_zero(gamma)) {
+      folder.make_one();
+    } else if (folder.is_one(gamma)) {
+      static_cast<void>(folder.try_bypass_or_make_constant(color, false));
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    compiler.add_node(
+        this, NODE_GAMMA,
+        SVMNodeGamma{.color = compiler.input_float3("Color"),
+                     .gamma = compiler.input_float("Gamma"),
+                     .out_offset = compiler.output("Color"),
+                     ._pad = {0u, 0u, 0u}});
+  }
+};
+
+class BrightContrastNode final : public GraphNode {
+public:
+  void constant_fold(const ConstantFolder &folder) override {
+    if (!folder.all_inputs_constant()) {
+      return;
+    }
+    const auto color =
+        literal<Vec3f>(input("Color"), contract::SocketType::color);
+    const auto bright =
+        literal<float>(input("Bright"), contract::SocketType::floating);
+    const auto contrast =
+        literal<float>(input("Contrast"), contract::SocketType::floating);
+    if (color && bright && contrast) {
+      folder.make_constant(
+          cycles_brightness_contrast(*color, *bright, *contrast));
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    compiler.add_node(
+        this, NODE_BRIGHTCONTRAST,
+        SVMNodeBrightContrast{.color = compiler.input_float3("Color"),
+                              .bright = compiler.input_float("Bright"),
+                              .contrast = compiler.input_float("Contrast"),
+                              .out_offset = compiler.output("Color"),
+                              ._pad = {0u, 0u, 0u}});
+  }
+};
+
+class HSVNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    compiler.add_node(
+        this, NODE_HSV,
+        SVMNodeHSV{.color = compiler.input_float3("Color"),
+                   .hue = compiler.input_float("Hue"),
+                   .sat = compiler.input_float("Saturation"),
+                   .val = compiler.input_float("Value"),
+                   .fac = compiler.input_float("Fac"),
+                   .out_color_offset = compiler.output("Color"),
+                   ._pad = {0u, 0u, 0u}});
+  }
+};
+
+class ClampNode final : public GraphNode {
+public:
+  void constant_fold(const ConstantFolder &folder) override {
+    if (!folder.all_inputs_constant()) {
+      return;
+    }
+    const auto type = clamp_type(this);
+    const auto value =
+        literal<float>(input("Value"), contract::SocketType::floating);
+    const auto minimum =
+        literal<float>(input("Min"), contract::SocketType::floating);
+    const auto maximum =
+        literal<float>(input("Max"), contract::SocketType::floating);
+    if (!type || !value || !minimum || !maximum) {
+      return;
+    }
+    if (*type == NODE_CLAMP_RANGE && *minimum > *maximum) {
+      folder.make_constant(cycles_clamp(*value, *maximum, *minimum));
+    } else {
+      folder.make_constant(cycles_clamp(*value, *minimum, *maximum));
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto type = clamp_type(this);
+    if (!type) {
+      compiler.fail("Cycles Clamp mode is not migrated exactly");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_CLAMP,
+        SVMNodeClamp{.clamp_type = *type,
+                     .min = compiler.input_float("Min"),
+                     .max = compiler.input_float("Max"),
+                     .value = compiler.input_float("Value"),
+                     .result_offset = compiler.output("Result"),
+                     ._pad = {0u, 0u, 0u}});
+  }
+};
+
 class BsdfNode : public GraphNode {
 private:
   ClosureType _closure;
@@ -570,6 +778,21 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   }
   if (type == cycles_synthetic_math || type == node_type::math) {
     return std::make_unique<MathNode>();
+  }
+  if (type == node_type::invert_color) {
+    return std::make_unique<InvertNode>();
+  }
+  if (type == node_type::gamma_color) {
+    return std::make_unique<GammaNode>();
+  }
+  if (type == node_type::brightness_contrast) {
+    return std::make_unique<BrightContrastNode>();
+  }
+  if (type == node_type::hue_saturation) {
+    return std::make_unique<HSVNode>();
+  }
+  if (type == node_type::clamp_range) {
+    return std::make_unique<ClampNode>();
   }
   if (type == node_type::diffuse_bsdf) {
     return std::make_unique<DiffuseBsdfNode>();
