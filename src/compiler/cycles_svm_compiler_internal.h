@@ -48,6 +48,10 @@ public:
   virtual void fail(std::string diagnostic) = 0;
   [[nodiscard]] virtual SVMInputFloat input_float(std::string_view name) = 0;
   [[nodiscard]] virtual SVMInputFloat3 input_float3(std::string_view name) = 0;
+  [[nodiscard]] SVMInputFloat3
+  input_float3_from_offset(SVMStackOffset offset) const noexcept {
+    return cycles_svm::input_float3(offset);
+  }
   [[nodiscard]] virtual SVMStackOffset input_link(std::string_view name) = 0;
   [[nodiscard]] virtual SVMStackOffset output(std::string_view name) = 0;
 

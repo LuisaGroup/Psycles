@@ -44,6 +44,19 @@ template<typename T>
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<bool> boolean_property(
+    const GraphNode *node, std::string_view name) noexcept {
+  const auto iter = node->properties.find(name);
+  if (iter == node->properties.end() ||
+      iter->second.type != contract::SocketType::boolean) {
+    return std::nullopt;
+  }
+  if (const auto *value = std::get_if<bool>(&iter->second.value)) {
+    return *value;
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] std::optional<NodeMathType>
 math_type(const GraphNode *node) noexcept {
   if (node->type == cycles_synthetic_math) {
@@ -125,6 +138,69 @@ combsep_color_type(const GraphNode *node) noexcept {
   }
   if (mode == "HSL") {
     return NODE_COMBSEP_COLOR_HSL;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<NodeMix>
+mix_type(const GraphNode *node) noexcept {
+  const auto mode = string_property(node, "BlendMode");
+  if (mode == "MIX") {
+    return NODE_MIX_BLEND;
+  }
+  if (mode == "ADD") {
+    return NODE_MIX_ADD;
+  }
+  if (mode == "MULTIPLY") {
+    return NODE_MIX_MUL;
+  }
+  if (mode == "SUBTRACT") {
+    return NODE_MIX_SUB;
+  }
+  if (mode == "SCREEN") {
+    return NODE_MIX_SCREEN;
+  }
+  if (mode == "DIVIDE") {
+    return NODE_MIX_DIV;
+  }
+  if (mode == "DIFFERENCE") {
+    return NODE_MIX_DIFF;
+  }
+  if (mode == "DARKEN") {
+    return NODE_MIX_DARK;
+  }
+  if (mode == "LIGHTEN") {
+    return NODE_MIX_LIGHT;
+  }
+  if (mode == "OVERLAY") {
+    return NODE_MIX_OVERLAY;
+  }
+  if (mode == "DODGE") {
+    return NODE_MIX_DODGE;
+  }
+  if (mode == "BURN") {
+    return NODE_MIX_BURN;
+  }
+  if (mode == "HUE") {
+    return NODE_MIX_HUE;
+  }
+  if (mode == "SATURATION") {
+    return NODE_MIX_SAT;
+  }
+  if (mode == "VALUE") {
+    return NODE_MIX_VAL;
+  }
+  if (mode == "COLOR") {
+    return NODE_MIX_COL;
+  }
+  if (mode == "SOFT_LIGHT") {
+    return NODE_MIX_SOFT;
+  }
+  if (mode == "LINEAR_LIGHT") {
+    return NODE_MIX_LINEAR;
+  }
+  if (mode == "EXCLUSION") {
+    return NODE_MIX_EXCLUSION;
   }
   return std::nullopt;
 }
@@ -296,6 +372,303 @@ combsep_color_type(const GraphNode *node) noexcept {
   default:
     return color;
   }
+}
+
+[[nodiscard]] Vec3f cycles_interp(Vec3f a, Vec3f b, float t) noexcept {
+  return {a.x + t * (b.x - a.x), a.y + t * (b.y - a.y),
+          a.z + t * (b.z - a.z)};
+}
+
+[[nodiscard]] Vec3f cycles_mix_blend(float t, Vec3f color1,
+                                     Vec3f color2) noexcept {
+  return cycles_interp(color1, color2, t);
+}
+
+[[nodiscard]] Vec3f cycles_mix_add(float t, Vec3f color1,
+                                   Vec3f color2) noexcept {
+  return cycles_interp(color1,
+                       {color1.x + color2.x, color1.y + color2.y,
+                        color1.z + color2.z},
+                       t);
+}
+
+[[nodiscard]] Vec3f cycles_mix_multiply(float t, Vec3f color1,
+                                        Vec3f color2) noexcept {
+  return cycles_interp(color1,
+                       {color1.x * color2.x, color1.y * color2.y,
+                        color1.z * color2.z},
+                       t);
+}
+
+[[nodiscard]] Vec3f cycles_mix_screen(float t, Vec3f color1,
+                                      Vec3f color2) noexcept {
+  const auto tm = 1.0f - t;
+  return {1.0f - (tm + t * (1.0f - color2.x)) * (1.0f - color1.x),
+          1.0f - (tm + t * (1.0f - color2.y)) * (1.0f - color1.y),
+          1.0f - (tm + t * (1.0f - color2.z)) * (1.0f - color1.z)};
+}
+
+[[nodiscard]] Vec3f cycles_mix_overlay(float t, Vec3f color1,
+                                       Vec3f color2) noexcept {
+  const auto tm = 1.0f - t;
+  auto result = color1;
+  if (result.x < 0.5f) {
+    result.x *= tm + 2.0f * t * color2.x;
+  } else {
+    result.x =
+        1.0f - (tm + 2.0f * t * (1.0f - color2.x)) * (1.0f - result.x);
+  }
+  if (result.y < 0.5f) {
+    result.y *= tm + 2.0f * t * color2.y;
+  } else {
+    result.y =
+        1.0f - (tm + 2.0f * t * (1.0f - color2.y)) * (1.0f - result.y);
+  }
+  if (result.z < 0.5f) {
+    result.z *= tm + 2.0f * t * color2.z;
+  } else {
+    result.z =
+        1.0f - (tm + 2.0f * t * (1.0f - color2.z)) * (1.0f - result.z);
+  }
+  return result;
+}
+
+[[nodiscard]] Vec3f cycles_mix_subtract(float t, Vec3f color1,
+                                        Vec3f color2) noexcept {
+  return cycles_interp(color1,
+                       {color1.x - color2.x, color1.y - color2.y,
+                        color1.z - color2.z},
+                       t);
+}
+
+[[nodiscard]] Vec3f cycles_mix_divide(float t, Vec3f color1,
+                                      Vec3f color2) noexcept {
+  const auto tm = 1.0f - t;
+  auto result = color1;
+  if (color2.x != 0.0f) {
+    result.x = tm * result.x + t * result.x / color2.x;
+  }
+  if (color2.y != 0.0f) {
+    result.y = tm * result.y + t * result.y / color2.y;
+  }
+  if (color2.z != 0.0f) {
+    result.z = tm * result.z + t * result.z / color2.z;
+  }
+  return result;
+}
+
+[[nodiscard]] Vec3f cycles_mix_difference(float t, Vec3f color1,
+                                          Vec3f color2) noexcept {
+  return cycles_interp(color1,
+                       {std::fabs(color1.x - color2.x),
+                        std::fabs(color1.y - color2.y),
+                        std::fabs(color1.z - color2.z)},
+                       t);
+}
+
+[[nodiscard]] Vec3f cycles_mix_exclusion(float t, Vec3f color1,
+                                         Vec3f color2) noexcept {
+  const auto result = cycles_interp(
+      color1,
+      {color1.x + color2.x - 2.0f * color1.x * color2.x,
+       color1.y + color2.y - 2.0f * color1.y * color2.y,
+       color1.z + color2.z - 2.0f * color1.z * color2.z},
+      t);
+  return {cycles_max(result.x, 0.0f), cycles_max(result.y, 0.0f),
+          cycles_max(result.z, 0.0f)};
+}
+
+[[nodiscard]] Vec3f cycles_mix_darken(float t, Vec3f color1,
+                                      Vec3f color2) noexcept {
+  return cycles_interp(color1,
+                       {cycles_min(color1.x, color2.x),
+                        cycles_min(color1.y, color2.y),
+                        cycles_min(color1.z, color2.z)},
+                       t);
+}
+
+[[nodiscard]] Vec3f cycles_mix_lighten(float t, Vec3f color1,
+                                       Vec3f color2) noexcept {
+  return cycles_interp(color1,
+                       {cycles_max(color1.x, color2.x),
+                        cycles_max(color1.y, color2.y),
+                        cycles_max(color1.z, color2.z)},
+                       t);
+}
+
+[[nodiscard]] float cycles_mix_dodge_component(float t, float color1,
+                                               float color2) noexcept {
+  if (color1 != 0.0f) {
+    auto value = 1.0f - t * color2;
+    if (value <= 0.0f) {
+      return 1.0f;
+    }
+    value = color1 / value;
+    return value > 1.0f ? 1.0f : value;
+  }
+  return color1;
+}
+
+[[nodiscard]] Vec3f cycles_mix_dodge(float t, Vec3f color1,
+                                     Vec3f color2) noexcept {
+  return {cycles_mix_dodge_component(t, color1.x, color2.x),
+          cycles_mix_dodge_component(t, color1.y, color2.y),
+          cycles_mix_dodge_component(t, color1.z, color2.z)};
+}
+
+[[nodiscard]] float cycles_mix_burn_component(float t, float color1,
+                                              float color2) noexcept {
+  auto value = 1.0f - t + t * color2;
+  if (value <= 0.0f) {
+    return 0.0f;
+  }
+  value = 1.0f - (1.0f - color1) / value;
+  if (value < 0.0f) {
+    return 0.0f;
+  }
+  if (value > 1.0f) {
+    return 1.0f;
+  }
+  return value;
+}
+
+[[nodiscard]] Vec3f cycles_mix_burn(float t, Vec3f color1,
+                                    Vec3f color2) noexcept {
+  return {cycles_mix_burn_component(t, color1.x, color2.x),
+          cycles_mix_burn_component(t, color1.y, color2.y),
+          cycles_mix_burn_component(t, color1.z, color2.z)};
+}
+
+[[nodiscard]] Vec3f cycles_mix_hue(float t, Vec3f color1,
+                                   Vec3f color2) noexcept {
+  auto result = color1;
+  const auto hsv2 = cycles_rgb_to_hsv(color2);
+  if (hsv2.y != 0.0f) {
+    auto hsv = cycles_rgb_to_hsv(result);
+    hsv.x = hsv2.x;
+    result = cycles_interp(result, cycles_hsv_to_rgb(hsv), t);
+  }
+  return result;
+}
+
+[[nodiscard]] Vec3f cycles_mix_saturation(float t, Vec3f color1,
+                                          Vec3f color2) noexcept {
+  const auto tm = 1.0f - t;
+  auto result = color1;
+  auto hsv = cycles_rgb_to_hsv(result);
+  if (hsv.y != 0.0f) {
+    const auto hsv2 = cycles_rgb_to_hsv(color2);
+    hsv.y = tm * hsv.y + t * hsv2.y;
+    result = cycles_hsv_to_rgb(hsv);
+  }
+  return result;
+}
+
+[[nodiscard]] Vec3f cycles_mix_value(float t, Vec3f color1,
+                                     Vec3f color2) noexcept {
+  const auto tm = 1.0f - t;
+  auto hsv = cycles_rgb_to_hsv(color1);
+  const auto hsv2 = cycles_rgb_to_hsv(color2);
+  hsv.z = tm * hsv.z + t * hsv2.z;
+  return cycles_hsv_to_rgb(hsv);
+}
+
+[[nodiscard]] Vec3f cycles_mix_color(float t, Vec3f color1,
+                                     Vec3f color2) noexcept {
+  auto result = color1;
+  const auto hsv2 = cycles_rgb_to_hsv(color2);
+  if (hsv2.y != 0.0f) {
+    auto hsv = cycles_rgb_to_hsv(result);
+    hsv.x = hsv2.x;
+    hsv.y = hsv2.y;
+    result = cycles_interp(result, cycles_hsv_to_rgb(hsv), t);
+  }
+  return result;
+}
+
+[[nodiscard]] Vec3f cycles_mix_soft_light(float t, Vec3f color1,
+                                          Vec3f color2) noexcept {
+  const auto tm = 1.0f - t;
+  const Vec3f screen{
+      1.0f - (1.0f - color2.x) * (1.0f - color1.x),
+      1.0f - (1.0f - color2.y) * (1.0f - color1.y),
+      1.0f - (1.0f - color2.z) * (1.0f - color1.z)};
+  return {
+      tm * color1.x +
+          t * ((1.0f - color1.x) * color2.x * color1.x +
+               color1.x * screen.x),
+      tm * color1.y +
+          t * ((1.0f - color1.y) * color2.y * color1.y +
+               color1.y * screen.y),
+      tm * color1.z +
+          t * ((1.0f - color1.z) * color2.z * color1.z +
+               color1.z * screen.z)};
+}
+
+[[nodiscard]] Vec3f cycles_mix_linear_light(float t, Vec3f color1,
+                                            Vec3f color2) noexcept {
+  return {color1.x + t * (2.0f * color2.x - 1.0f),
+          color1.y + t * (2.0f * color2.y - 1.0f),
+          color1.z + t * (2.0f * color2.z - 1.0f)};
+}
+
+[[nodiscard]] Vec3f cycles_saturate(Vec3f color) noexcept {
+  return {cycles_clamp(color.x, 0.0f, 1.0f),
+          cycles_clamp(color.y, 0.0f, 1.0f),
+          cycles_clamp(color.z, 0.0f, 1.0f)};
+}
+
+[[nodiscard]] Vec3f cycles_svm_mix(NodeMix type, float t, Vec3f color1,
+                                   Vec3f color2) noexcept {
+  switch (type) {
+  case NODE_MIX_BLEND:
+    return cycles_mix_blend(t, color1, color2);
+  case NODE_MIX_ADD:
+    return cycles_mix_add(t, color1, color2);
+  case NODE_MIX_MUL:
+    return cycles_mix_multiply(t, color1, color2);
+  case NODE_MIX_SCREEN:
+    return cycles_mix_screen(t, color1, color2);
+  case NODE_MIX_OVERLAY:
+    return cycles_mix_overlay(t, color1, color2);
+  case NODE_MIX_SUB:
+    return cycles_mix_subtract(t, color1, color2);
+  case NODE_MIX_DIV:
+    return cycles_mix_divide(t, color1, color2);
+  case NODE_MIX_DIFF:
+    return cycles_mix_difference(t, color1, color2);
+  case NODE_MIX_EXCLUSION:
+    return cycles_mix_exclusion(t, color1, color2);
+  case NODE_MIX_DARK:
+    return cycles_mix_darken(t, color1, color2);
+  case NODE_MIX_LIGHT:
+    return cycles_mix_lighten(t, color1, color2);
+  case NODE_MIX_DODGE:
+    return cycles_mix_dodge(t, color1, color2);
+  case NODE_MIX_BURN:
+    return cycles_mix_burn(t, color1, color2);
+  case NODE_MIX_HUE:
+    return cycles_mix_hue(t, color1, color2);
+  case NODE_MIX_SAT:
+    return cycles_mix_saturation(t, color1, color2);
+  case NODE_MIX_VAL:
+    return cycles_mix_value(t, color1, color2);
+  case NODE_MIX_COL:
+    return cycles_mix_color(t, color1, color2);
+  case NODE_MIX_SOFT:
+    return cycles_mix_soft_light(t, color1, color2);
+  case NODE_MIX_LINEAR:
+    return cycles_mix_linear_light(t, color1, color2);
+  case NODE_MIX_CLAMP:
+    return cycles_saturate(color1);
+  }
+  return {};
+}
+
+[[nodiscard]] Vec3f cycles_svm_mix_clamped_factor(NodeMix type, float t,
+                                                  Vec3f color1,
+                                                  Vec3f color2) noexcept {
+  return cycles_svm_mix(type, cycles_clamp(t, 0.0f, 1.0f), color1, color2);
 }
 
 class UnsupportedNode final : public GraphNode {
@@ -589,6 +962,81 @@ public:
                       .fac = compiler.input_float("Fac"),
                       .out_offset = compiler.output("Color"),
                       ._pad = {0u, 0u, 0u}});
+  }
+};
+
+class MixNode final : public GraphNode {
+public:
+  void constant_fold(const ConstantFolder &folder) override {
+    const auto type = mix_type(this);
+    const auto use_clamp = boolean_property(this, "ClampResult");
+    if (!type || !use_clamp) {
+      return;
+    }
+    if (folder.all_inputs_constant()) {
+      const auto factor =
+          literal<float>(input("Fac"), contract::SocketType::floating);
+      const auto color1 =
+          literal<Vec3f>(input("Color1"), contract::SocketType::color);
+      const auto color2 =
+          literal<Vec3f>(input("Color2"), contract::SocketType::color);
+      if (factor && color1 && color2) {
+        folder.make_constant_clamp(
+            cycles_svm_mix_clamped_factor(*type, *factor, *color1, *color2),
+            *use_clamp);
+      }
+    } else {
+      folder.fold_mix(*type, *use_clamp);
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto type = mix_type(this);
+    const auto use_clamp = boolean_property(this, "ClampResult");
+    if (!type || !use_clamp) {
+      compiler.fail(
+          "Cycles legacy Mix node properties are not migrated exactly");
+      return;
+    }
+    const auto color_offset = compiler.output("Color");
+    compiler.add_node(
+        this, NODE_MIX,
+        SVMNodeMix{.mix_type = *type,
+                   .c1 = compiler.input_float3("Color1"),
+                   .c2 = compiler.input_float3("Color2"),
+                   .fac = compiler.input_float("Fac"),
+                   .result_offset = color_offset,
+                   ._pad = {0u, 0u, 0u}});
+    if (*use_clamp) {
+      compiler.add_node(
+          this, NODE_MIX,
+          SVMNodeMix{
+              .mix_type = NODE_MIX_CLAMP,
+              .c1 = compiler.input_float3_from_offset(color_offset),
+              .c2 = SVMInputFloat3{{0u}, {0u}, {0u}},
+              .fac = SVMInputFloat{0u},
+              .result_offset = color_offset,
+              ._pad = {0u, 0u, 0u}});
+    }
+  }
+
+  [[nodiscard]] bool is_linear_operation() const noexcept override {
+    const auto type = mix_type(this);
+    const auto use_clamp = boolean_property(this, "ClampResult");
+    if (!type || !use_clamp) {
+      return false;
+    }
+    switch (*type) {
+      case NODE_MIX_BLEND:
+      case NODE_MIX_ADD:
+      case NODE_MIX_MUL:
+      case NODE_MIX_SUB:
+        break;
+      default:
+        return false;
+    }
+    const auto *factor = input("Fac");
+    return !*use_clamp && factor != nullptr && factor->link == nullptr;
   }
 };
 
@@ -992,6 +1440,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   }
   if (type == node_type::invert_color) {
     return std::make_unique<InvertNode>();
+  }
+  if (type == node_type::legacy_mix_color) {
+    return std::make_unique<MixNode>();
   }
   if (type == node_type::gamma_color) {
     return std::make_unique<GammaNode>();

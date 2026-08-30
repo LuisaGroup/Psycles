@@ -1459,25 +1459,24 @@ def _mix_rgb_legacy_modes(scene: Any) -> None:
         "Green": [],
         "Blue": [],
     }
+    factor = tree.nodes.new("ShaderNodeValue")
+    factor.name = "Legacy MixRGB Factor"
+    _output(factor, "Value").default_value = 0.37
+    color1 = tree.nodes.new("ShaderNodeRGB")
+    color1.name = "Legacy MixRGB Color1"
+    _output(color1, "Color").default_value = (0.17, 0.63, 0.89, 0.2)
+    color2 = tree.nodes.new("ShaderNodeRGB")
+    color2.name = "Legacy MixRGB Color2"
+    _output(color2, "Color").default_value = (0.82, 0.24, 0.51, 0.9)
     for index, mode in enumerate(modes):
         mix = tree.nodes.new("ShaderNodeMixRGB")
         mix.name = f"Legacy MixRGB {index:02d} {mode}"
         mix.blend_type = mode
         mix.use_alpha = index % 2 == 0
         mix.use_clamp = False
-        _input(mix, "Fac").default_value = 0.37
-        _input(mix, "Color1").default_value = (
-            0.17,
-            0.63,
-            0.89,
-            0.2,
-        )
-        _input(mix, "Color2").default_value = (
-            0.82,
-            0.24,
-            0.51,
-            0.9,
-        )
+        tree.links.new(_output(factor, "Value"), _input(mix, "Fac"))
+        tree.links.new(_output(color1, "Color"), _input(mix, "Color1"))
+        tree.links.new(_output(color2, "Color"), _input(mix, "Color2"))
         separate = tree.nodes.new("ShaderNodeSeparateColor")
         separate.name = f"Separate Legacy {mode}"
         separate.mode = "RGB"
@@ -1523,6 +1522,143 @@ def _mix_rgb_legacy_modes(scene: Any) -> None:
         _input(output, "Surface"),
     )
     _plane(material)
+
+
+def _svm_legacy_mix_matrix(scene: Any) -> None:
+    """Keep every Cycles 5.2 legacy NODE_MIX blend mode dynamic."""
+    modes = (
+        "MIX",
+        "DARKEN",
+        "MULTIPLY",
+        "BURN",
+        "LIGHTEN",
+        "SCREEN",
+        "DODGE",
+        "ADD",
+        "OVERLAY",
+        "SOFT_LIGHT",
+        "LINEAR_LIGHT",
+        "DIFFERENCE",
+        "EXCLUSION",
+        "SUBTRACT",
+        "DIVIDE",
+        "HUE",
+        "SATURATION",
+        "COLOR",
+        "VALUE",
+    )
+    materials = []
+    for index, mode in enumerate(modes):
+        material, tree, output = _material(
+            f"SVM Legacy Mix {index:02d} {mode}"
+        )
+        geometry = tree.nodes.new("ShaderNodeNewGeometry")
+        geometry.name = f"Dynamic Backfacing {index:02d}"
+        factor = tree.nodes.new("ShaderNodeMath")
+        factor.name = f"Dynamic Factor {index:02d}"
+        factor.operation = "MULTIPLY_ADD"
+        tree.links.new(
+            _output(geometry, "Backfacing"),
+            factor.inputs[0],
+        )
+        factor.inputs[1].default_value = 0.41
+        factor.inputs[2].default_value = 0.23
+
+        mix = tree.nodes.new("ShaderNodeMixRGB")
+        mix.name = f"Legacy MixRGB {index:02d} {mode}"
+        mix.blend_type = mode
+        mix.use_alpha = index % 2 == 0
+        # Cycles implements this as a second NODE_MIX with
+        # NODE_MIX_CLAMP. ADD is chosen so the blue component exceeds one.
+        mix.use_clamp = mode == "ADD"
+        tree.links.new(_output(factor, "Value"), _input(mix, "Fac"))
+        _input(mix, "Color1").default_value = (
+            0.17,
+            0.63,
+            0.89,
+            0.2,
+        )
+        _input(mix, "Color2").default_value = (
+            0.82,
+            0.24,
+            0.51,
+            0.9,
+        )
+        emission = tree.nodes.new("ShaderNodeEmission")
+        emission.name = f"Emission {index:02d}"
+        tree.links.new(_output(mix, "Color"), _input(emission, "Color"))
+        tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+        materials.append(material)
+
+    _material_matrix(
+        scene,
+        materials + materials,
+        columns=len(modes),
+        rows=2,
+        name="SVM Legacy Mix Matrix",
+        backfacing=set(range(len(modes), len(modes) * 2)),
+        frame_bleed=0.1,
+    )
+
+
+def _svm_legacy_mix_constant_matrix(scene: Any) -> None:
+    """Freeze each Cycles-folded legacy Mix mode separately."""
+    modes = (
+        "MIX",
+        "DARKEN",
+        "MULTIPLY",
+        "BURN",
+        "LIGHTEN",
+        "SCREEN",
+        "DODGE",
+        "ADD",
+        "OVERLAY",
+        "SOFT_LIGHT",
+        "LINEAR_LIGHT",
+        "DIFFERENCE",
+        "EXCLUSION",
+        "SUBTRACT",
+        "DIVIDE",
+        "HUE",
+        "SATURATION",
+        "COLOR",
+        "VALUE",
+    )
+    materials = []
+    for index, mode in enumerate(modes):
+        material, tree, output = _material(
+            f"SVM Legacy Mix Constant {index:02d} {mode}"
+        )
+        mix = tree.nodes.new("ShaderNodeMixRGB")
+        mix.name = f"Legacy MixRGB Constant {index:02d} {mode}"
+        mix.blend_type = mode
+        mix.use_alpha = index % 2 == 0
+        mix.use_clamp = False
+        factor = tree.nodes.new("ShaderNodeValue")
+        factor.name = f"Factor {index:02d}"
+        _output(factor, "Value").default_value = 0.37
+        color1 = tree.nodes.new("ShaderNodeRGB")
+        color1.name = f"Color1 {index:02d}"
+        _output(color1, "Color").default_value = (0.17, 0.63, 0.89, 0.2)
+        color2 = tree.nodes.new("ShaderNodeRGB")
+        color2.name = f"Color2 {index:02d}"
+        _output(color2, "Color").default_value = (0.82, 0.24, 0.51, 0.9)
+        tree.links.new(_output(factor, "Value"), _input(mix, "Fac"))
+        tree.links.new(_output(color1, "Color"), _input(mix, "Color1"))
+        tree.links.new(_output(color2, "Color"), _input(mix, "Color2"))
+        emission = tree.nodes.new("ShaderNodeEmission")
+        emission.name = f"Emission {index:02d}"
+        tree.links.new(_output(mix, "Color"), _input(emission, "Color"))
+        tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+        materials.append(material)
+    _material_matrix(
+        scene,
+        materials,
+        columns=len(modes),
+        rows=1,
+        name="SVM Legacy Mix Constant Matrix",
+        frame_bleed=0.1,
+    )
 
 
 def _separate_color_modes(scene: Any) -> None:

@@ -8,7 +8,9 @@
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <luisa/luisa-compute.h>
@@ -21,6 +23,28 @@ using namespace psycles::contract;
 using namespace psycles::compiler;
 using namespace psycles::compiler::cycles_svm;
 namespace device_svm = psycles::luisa_backend::cycles_svm;
+
+constexpr std::array legacy_mix_modes{
+    std::pair{"MIX", NODE_MIX_BLEND},
+    std::pair{"DARKEN", NODE_MIX_DARK},
+    std::pair{"MULTIPLY", NODE_MIX_MUL},
+    std::pair{"BURN", NODE_MIX_BURN},
+    std::pair{"LIGHTEN", NODE_MIX_LIGHT},
+    std::pair{"SCREEN", NODE_MIX_SCREEN},
+    std::pair{"DODGE", NODE_MIX_DODGE},
+    std::pair{"ADD", NODE_MIX_ADD},
+    std::pair{"OVERLAY", NODE_MIX_OVERLAY},
+    std::pair{"SOFT_LIGHT", NODE_MIX_SOFT},
+    std::pair{"LINEAR_LIGHT", NODE_MIX_LINEAR},
+    std::pair{"DIFFERENCE", NODE_MIX_DIFF},
+    std::pair{"EXCLUSION", NODE_MIX_EXCLUSION},
+    std::pair{"SUBTRACT", NODE_MIX_SUB},
+    std::pair{"DIVIDE", NODE_MIX_DIV},
+    std::pair{"HUE", NODE_MIX_HUE},
+    std::pair{"SATURATION", NODE_MIX_SAT},
+    std::pair{"COLOR", NODE_MIX_COL},
+    std::pair{"VALUE", NODE_MIX_VAL},
+};
 
 [[nodiscard]] ShaderImage compile_dynamic_math() {
   ShaderGraph graph;
@@ -221,6 +245,48 @@ namespace device_svm = psycles::luisa_backend::cycles_svm;
   return image;
 }
 
+[[nodiscard]] ShaderImage compile_dynamic_legacy_mix(std::string_view mode,
+                                                     NodeMix type) {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Backfacing");
+  const auto factor = graph.add_node(node_type::math, "Dynamic Factor");
+  const auto mix =
+      graph.add_node(node_type::legacy_mix_color, std::string{mode});
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  const auto configured =
+      graph.set_property(factor, "Operation",
+                         contract::SocketValue::string("MULTIPLY_ADD")) &&
+      graph.connect({geometry, "Backfacing"}, factor, "A") &&
+      graph.set_input(factor, "B", contract::SocketValue::floating(0.41f)) &&
+      graph.set_input(factor, "C", contract::SocketValue::floating(0.23f)) &&
+      graph.set_property(mix, "BlendMode",
+                         contract::SocketValue::string(std::string{mode})) &&
+      graph.set_property(mix, "ClampResult",
+                         contract::SocketValue::boolean(type == NODE_MIX_ADD)) &&
+      graph.connect({factor, "Value"}, mix, "Factor") &&
+      graph.set_input(
+          mix, "A", contract::SocketValue::color({0.17f, 0.63f, 0.89f})) &&
+      graph.set_input(
+          mix, "B", contract::SocketValue::color({0.82f, 0.24f, 0.51f})) &&
+      graph.connect({mix, "Color"}, emission, "Color");
+  if (!configured) {
+    throw std::runtime_error{"failed to create dynamic legacy Mix graph"};
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  if (!shader.ok()) {
+    throw std::runtime_error{"dynamic legacy Mix graph did not validate"};
+  }
+  auto image = compile_shader(*shader.program);
+  if (!image.valid) {
+    throw std::runtime_error{image.diagnostic};
+  }
+  return image;
+}
+
 [[nodiscard]] auto make_interpreter_kernel(
     std::array<bool, NODE_NUM> node_types_used) {
   return Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>,
@@ -353,6 +419,11 @@ int main(int argc, char **argv) {
   const auto mix_image = compile_dynamic_mix();
   const auto color_image = compile_dynamic_color_pipeline();
   const auto combsep_color_image = compile_dynamic_combsep_color_pipeline();
+  std::vector<ShaderImage> legacy_mix_images;
+  legacy_mix_images.reserve(legacy_mix_modes.size());
+  for (const auto &[mode, type] : legacy_mix_modes) {
+    legacy_mix_images.emplace_back(compile_dynamic_legacy_mix(mode, type));
+  }
 
   const auto shape_kernel = make_interpreter_kernel(math_image.node_types_used);
   InterpreterShape shape;
@@ -451,6 +522,85 @@ int main(int argc, char **argv) {
     std::cerr << "dynamic Combine/Separate Color Cycles SVM state mismatch on "
               << backend << '\n';
     return EXIT_FAILURE;
+  }
+
+  static constexpr std::array legacy_front{
+      luisa::float3{0.319499999f, 0.540300012f, 0.802599967f},
+      luisa::float3{0.170000002f, 0.540300012f, 0.802599967f},
+      luisa::float3{0.162962005f, 0.519876003f, 0.789696991f},
+      luisa::float3{0.134153962f, 0.551623821f, 0.876028359f},
+      luisa::float3{0.319499999f, 0.629999995f, 0.889999986f},
+      luisa::float3{0.326538026f, 0.650424004f, 0.902902961f},
+      luisa::float3{0.209514424f, 0.666807771f, 1.000000000f},
+      luisa::float3{0.358600020f, 0.685199976f, 1.000000000f},
+      luisa::float3{0.195023999f, 0.585748017f, 0.890505970f},
+      luisa::float3{0.190769911f, 0.602121234f, 0.890450358f},
+      luisa::float3{0.317200005f, 0.510399997f, 0.894599974f},
+      luisa::float3{0.280399978f, 0.574800014f, 0.772700012f},
+      luisa::float3{0.294476002f, 0.615647972f, 0.798506021f},
+      luisa::float3{-0.018600002f, 0.574800014f, 0.772700012f},
+      luisa::float3{0.178582922f, 1.088850021f, 1.086672544f},
+      luisa::float3{0.335600019f, 0.524200022f, 0.801489592f},
+      luisa::float3{0.190812230f, 0.637515485f, 0.889999986f},
+      luisa::float3{0.335600019f, 0.545012176f, 0.812613368f},
+      luisa::float3{0.166924730f, 0.618603349f, 0.873899996f},
+  };
+  static constexpr std::array legacy_back{
+      luisa::float3{0.585999966f, 0.380400002f, 0.646799982f},
+      luisa::float3{0.170000002f, 0.380400002f, 0.646799982f},
+      luisa::float3{0.150416002f, 0.323568016f, 0.610895991f},
+      luisa::float3{0.061934948f, 0.279595017f, 0.839743555f},
+      luisa::float3{0.585999966f, 0.629999995f, 0.889999986f},
+      luisa::float3{0.605584025f, 0.686831951f, 0.925903976f},
+      luisa::float3{0.357744098f, 0.744328916f, 1.000000000f},
+      luisa::float3{0.694800019f, 0.783599973f, 1.000000000f},
+      luisa::float3{0.239632010f, 0.506864011f, 0.891407967f},
+      luisa::float3{0.227794573f, 0.552424312f, 0.891253114f},
+      luisa::float3{0.579599977f, 0.297200024f, 0.902799964f},
+      luisa::float3{0.477199972f, 0.476399988f, 0.563600004f},
+      luisa::float3{0.516367972f, 0.590063989f, 0.635408044f},
+      luisa::float3{-0.354799986f, 0.476399988f, 0.563600004f},
+      luisa::float3{0.193882942f, 1.906800032f, 1.437262774f},
+      luisa::float3{0.630799949f, 0.335600019f, 0.643710256f},
+      luisa::float3{0.227912173f, 0.650912702f, 0.889999986f},
+      luisa::float3{0.630799949f, 0.393512189f, 0.674663365f},
+      luisa::float3{0.161442712f, 0.598287582f, 0.845200002f},
+  };
+  const auto legacy_kernel =
+      make_interpreter_kernel(legacy_mix_images.front().node_types_used);
+  auto legacy_shader =
+      device.compile(legacy_kernel, ShaderOption{.enable_cache = false});
+  for (auto index = std::size_t{}; index < legacy_mix_images.size(); ++index) {
+    const auto &image = legacy_mix_images[index];
+    auto word_buffer = device.create_buffer<std::uint32_t>(image.words.size());
+    auto floating_buffer = device.create_buffer<luisa::float4>(floating.size());
+    auto integer_buffer = device.create_buffer<luisa::uint4>(integer.size());
+    floating = {};
+    integer = {};
+    stream << word_buffer.copy_from(luisa::span{image.words})
+           << legacy_shader(word_buffer, floating_buffer, integer_buffer)
+                  .dispatch(2u)
+           << floating_buffer.copy_to(luisa::span{floating})
+           << integer_buffer.copy_to(luisa::span{integer}) << synchronize();
+    const auto front_label =
+        std::string{"front-facing legacy Mix "} + legacy_mix_modes[index].first;
+    const auto back_label =
+        std::string{"back-facing legacy Mix "} + legacy_mix_modes[index].first;
+    const auto final_offset =
+        legacy_mix_modes[index].second == NODE_MIX_ADD ? 41u : 31u;
+    if (!require_float3(floating[0], legacy_front[index], front_label) ||
+        !require_float3(floating[1], legacy_back[index], back_label) ||
+        !approximately_equal(floating[0].w, legacy_front[index].x) ||
+        !approximately_equal(floating[1].w, legacy_back[index].x) ||
+        integer[0].x != ended || integer[1].x != ended ||
+        integer[0].y != final_offset || integer[1].y != final_offset ||
+        integer[0].z != device_svm::shader_data_emission ||
+        integer[1].z != (device_svm::shader_data_backfacing |
+                         device_svm::shader_data_emission)) {
+      std::cerr << "dynamic legacy Mix Cycles SVM state mismatch for "
+                << legacy_mix_modes[index].first << " on " << backend << '\n';
+      return EXIT_FAILURE;
+    }
   }
   return EXIT_SUCCESS;
 }

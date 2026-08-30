@@ -2,12 +2,16 @@
 #include <psycles/compiler/cycles_svm_compiler.h>
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <span>
+#include <string_view>
+#include <utility>
 #include <variant>
+#include <vector>
 
 namespace {
 
@@ -670,6 +674,260 @@ void test_combsep_color_constant_fold_matches_cycles_5_2_1() {
           "constant Combine/Separate Color retained folded opcodes");
 }
 
+constexpr std::array legacy_mix_modes{
+    std::pair{"MIX", NODE_MIX_BLEND},
+    std::pair{"DARKEN", NODE_MIX_DARK},
+    std::pair{"MULTIPLY", NODE_MIX_MUL},
+    std::pair{"BURN", NODE_MIX_BURN},
+    std::pair{"LIGHTEN", NODE_MIX_LIGHT},
+    std::pair{"SCREEN", NODE_MIX_SCREEN},
+    std::pair{"DODGE", NODE_MIX_DODGE},
+    std::pair{"ADD", NODE_MIX_ADD},
+    std::pair{"OVERLAY", NODE_MIX_OVERLAY},
+    std::pair{"SOFT_LIGHT", NODE_MIX_SOFT},
+    std::pair{"LINEAR_LIGHT", NODE_MIX_LINEAR},
+    std::pair{"DIFFERENCE", NODE_MIX_DIFF},
+    std::pair{"EXCLUSION", NODE_MIX_EXCLUSION},
+    std::pair{"SUBTRACT", NODE_MIX_SUB},
+    std::pair{"DIVIDE", NODE_MIX_DIV},
+    std::pair{"HUE", NODE_MIX_HUE},
+    std::pair{"SATURATION", NODE_MIX_SAT},
+    std::pair{"COLOR", NODE_MIX_COL},
+    std::pair{"VALUE", NODE_MIX_VAL},
+};
+
+void test_dynamic_legacy_mix_matches_cycles_5_2_1() {
+  static constexpr std::array normal_oracle{
+      0x00000001u, 0x00000004u, 0x0000001fu, 0x00000020u, 0x00000032u,
+      0x00000008u, 0x00000000u, 0x0000002cu, 0x00000024u, 0x7fc00000u,
+      0x3ed1eb85u, 0x3e6b851fu, 0x00000001u, 0x00000051u, 0x00000000u,
+      0x3e2e147bu, 0x3f2147aeu, 0x3f63d70au, 0x3f51eb85u, 0x3e75c28fu,
+      0x3f028f5cu, 0x7fc00001u, 0x00000002u, 0x00000007u, 0x7fc00002u,
+      0x00000000u, 0x00000000u, 0x3f800000u, 0x00000003u, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  static constexpr std::array clamped_add_oracle{
+      0x00000001u, 0x00000004u, 0x00000029u, 0x0000002au, 0x00000032u,
+      0x00000008u, 0x00000000u, 0x0000002cu, 0x00000024u, 0x7fc00000u,
+      0x3ed1eb85u, 0x3e6b851fu, 0x00000001u, 0x00000051u, 0x00000001u,
+      0x3e2e147bu, 0x3f2147aeu, 0x3f63d70au, 0x3f51eb85u, 0x3e75c28fu,
+      0x3f028f5cu, 0x7fc00001u, 0x00000002u, 0x00000051u, 0x00000013u,
+      0x7fc00002u, 0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+      0x00000000u, 0x00000000u, 0x00000002u, 0x00000007u, 0x7fc00002u,
+      0x00000000u, 0x00000000u, 0x3f800000u, 0x00000003u, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+
+  for (const auto &[name, type] : legacy_mix_modes) {
+    ShaderGraph graph;
+    const auto geometry = graph.add_node(node_type::geometry, "Backfacing");
+    const auto factor = graph.add_node(node_type::math, "Dynamic Factor");
+    require(graph.set_property(factor, "Operation",
+                               SocketValue::string("MULTIPLY_ADD")) &&
+                graph.connect(OutputRef{geometry, "Backfacing"}, factor,
+                              "A") &&
+                graph.set_input(factor, "B", SocketValue::floating(0.41f)) &&
+                graph.set_input(factor, "C", SocketValue::floating(0.23f)),
+            "failed to configure dynamic legacy Mix factor");
+    const auto mix = graph.add_node(node_type::legacy_mix_color, name);
+    const auto use_clamp = type == NODE_MIX_ADD;
+    require(graph.set_property(mix, "BlendMode", SocketValue::string(name)) &&
+                graph.set_property(mix, "ClampResult",
+                                   SocketValue::boolean(use_clamp)) &&
+                graph.connect(OutputRef{factor, "Value"}, mix, "Factor") &&
+                graph.set_input(
+                    mix, "A", SocketValue::color({0.17f, 0.63f, 0.89f})) &&
+                graph.set_input(
+                    mix, "B", SocketValue::color({0.82f, 0.24f, 0.51f})),
+            "failed to configure dynamic legacy Mix node");
+    const auto emission = graph.add_node(node_type::emission, "Emission");
+    require(graph.connect(OutputRef{mix, "Color"}, emission, "Color"),
+            "failed to connect dynamic legacy Mix output");
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = emission, .socket = "Closure"});
+
+    const ShaderCompiler frontend{make_core_node_registry()};
+    const auto shader = frontend.compile(graph);
+    require(shader.ok(), "dynamic legacy Mix graph did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+    if (use_clamp) {
+      require_words(image.words, clamped_add_oracle,
+                    "Psycles clamped legacy Mix differs from Cycles");
+    } else {
+      auto expected = normal_oracle;
+      expected[14] = static_cast<std::uint32_t>(type);
+      require_words(image.words, expected,
+                    "Psycles legacy Mix differs from Cycles");
+    }
+    if (image.peak_stack_usage != 5u || !image.node_types_used[NODE_MIX] ||
+        image.node_types_used[NODE_MIX_COLOR]) {
+      std::cerr << "legacy Mix stack or opcode mask differs from Cycles for "
+                << name << ": peak=" << image.peak_stack_usage
+                << ", NODE_MIX=" << image.node_types_used[NODE_MIX]
+                << ", NODE_MIX_COLOR="
+                << image.node_types_used[NODE_MIX_COLOR] << '\n';
+      std::exit(1);
+    }
+  }
+}
+
+void test_legacy_mix_constant_modes_match_cycles_5_2_1() {
+  // Frozen from the 19 shaders in Cycles 5.2.1
+  // `SVM Legacy Mix Constant Matrix`. The inputs are linked from Cycles
+  // Value/Color nodes so that Cycles' MixNode::constant_fold, rather than
+  // Blender's pre-Cycles node folding, is the oracle. Each row is the exact
+  // folded closure weight for Fac=0.37, Color1=(0.17,0.63,0.89), and
+  // Color2=(0.82,0.24,0.51).
+  static constexpr std::array<std::array<std::uint32_t, 3u>, 19u> oracle{{
+      {0x3ed22d0eu, 0x3ef8adacu, 0x3f3fd8aeu},
+      {0x3e2e147bu, 0x3ef8adacu, 0x3f3fd8aeu},
+      {0x3e227c7cu, 0x3ee7db2bu, 0x3f3a8859u},
+      {0x3de2df80u, 0x3ef8731cu, 0x3f5d9aa0u},
+      {0x3ed22d0eu, 0x3f2147aeu, 0x3f63d70au},
+      {0x3ed7f90eu, 0x3f29b0eeu, 0x3f69275fu},
+      {0x3e79e648u, 0x3f30ff53u, 0x3f800000u},
+      {0x3ef2617cu, 0x3f380347u, 0x3f8a12d7u},
+      {0x3e574d59u, 0x3f0f0e4eu, 0x3f640c63u},
+      {0x3e504b5du, 0x3f15cc7eu, 0x3f640684u},
+      {0x3ed04817u, 0x3ee00d1cu, 0x3f65bc01u},
+      {0x3eb1f8a0u, 0x3f0a8c15u, 0x3f338865u},
+      {0x3ebd909fu, 0x3f1b5e96u, 0x3f3e290fu},
+      {0xbe089a03u, 0x3f0a8c15u, 0x3f338865u},
+      {0x3e3c37fcu, 0x3faf1f8au, 0x3f9a6adeu},
+      {0x3edf6fd2u, 0x3eeb6ae8u, 0x3f3f639du},
+      {0x3e505d31u, 0x3f246005u, 0x3f63d70au},
+      {0x3edf6fd2u, 0x3efc8f42u, 0x3f43f85du},
+      {0x3e29039bu, 0x3f1c9629u, 0x3f5d35a8u},
+  }};
+
+  auto mismatch_count = std::size_t{};
+  for (auto index = std::size_t{}; index < legacy_mix_modes.size(); ++index) {
+    const auto &[name, type] = legacy_mix_modes[index];
+    ShaderGraph graph;
+    const auto mix = graph.add_node(node_type::legacy_mix_color, name);
+    require(graph.set_property(mix, "BlendMode", SocketValue::string(name)) &&
+                graph.set_property(mix, "ClampResult",
+                                   SocketValue::boolean(false)) &&
+                graph.set_input(mix, "Factor",
+                                SocketValue::floating(0.37f)) &&
+                graph.set_input(
+                    mix, "A", SocketValue::color({0.17f, 0.63f, 0.89f})) &&
+                graph.set_input(
+                    mix, "B", SocketValue::color({0.82f, 0.24f, 0.51f})),
+            "failed to configure constant legacy Mix mode");
+    const auto emission = graph.add_node(node_type::emission, "Emission");
+    require(graph.connect(OutputRef{mix, "Color"}, emission, "Color"),
+            "failed to connect constant legacy Mix mode");
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = emission, .socket = "Closure"});
+
+    const ShaderCompiler frontend{make_core_node_registry()};
+    const auto shader = frontend.compile(graph);
+    require(shader.ok(), "constant legacy Mix mode did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+    const std::array expected{
+        0x00000001u, 0x00000004u, 0x0000000bu, 0x0000000cu,
+        0x00000005u, oracle[index][0], oracle[index][1], oracle[index][2],
+        0x00000003u, 0x000000ffu, 0x00000000u, 0x00000000u,
+        0x00000000u,
+    };
+    require(image.words.size() == expected.size(),
+            "constant legacy Mix mode word count differs from Cycles");
+    for (auto word = std::size_t{}; word < expected.size(); ++word) {
+      if (image.words[word] != expected[word]) {
+        std::cerr << "constant legacy Mix " << name << " differs at word "
+                  << word << ": got 0x" << std::hex << image.words[word]
+                  << ", expected 0x" << expected[word] << std::dec << '\n';
+        ++mismatch_count;
+      }
+    }
+    require(!image.node_types_used[NODE_MIX],
+            "constant legacy Mix mode retained NODE_MIX");
+    static_cast<void>(type);
+  }
+  require(mismatch_count == 0u,
+          "Psycles constant legacy Mix modes differ from Cycles");
+}
+
+void test_legacy_mix_constant_fold_matches_cycles_5_2_1() {
+  ShaderGraph graph;
+  std::array<std::vector<OutputRef>, 3u> channels;
+  for (const auto &[name, type] : legacy_mix_modes) {
+    const auto mix = graph.add_node(node_type::legacy_mix_color, name);
+    require(graph.set_property(mix, "BlendMode", SocketValue::string(name)) &&
+                graph.set_property(mix, "ClampResult",
+                                   SocketValue::boolean(false)) &&
+                graph.set_input(mix, "Factor", SocketValue::floating(0.37f)) &&
+                graph.set_input(
+                    mix, "A", SocketValue::color({0.17f, 0.63f, 0.89f})) &&
+                graph.set_input(
+                    mix, "B", SocketValue::color({0.82f, 0.24f, 0.51f})),
+            "failed to configure constant legacy Mix node");
+    const auto separate = graph.add_node(node_type::separate_color, name);
+    require(graph.set_property(separate, "Mode", SocketValue::string("RGB")) &&
+                graph.connect(OutputRef{mix, "Color"}, separate, "Color"),
+            "failed to connect constant legacy Mix separation");
+    channels[0].push_back(OutputRef{separate, "R"});
+    channels[1].push_back(OutputRef{separate, "G"});
+    channels[2].push_back(OutputRef{separate, "B"});
+    static_cast<void>(type);
+  }
+
+  std::array<OutputRef, 3u> averages;
+  for (auto channel = std::size_t{}; channel < channels.size(); ++channel) {
+    auto value = channels[channel].front();
+    for (auto index = std::size_t{1u}; index < channels[channel].size();
+         ++index) {
+      const auto add = graph.add_node(node_type::math, "Legacy Sum");
+      require(graph.set_property(add, "Operation", SocketValue::string("ADD")) &&
+                  graph.connect(value, add, "A") &&
+                  graph.connect(channels[channel][index], add, "B"),
+              "failed to construct legacy Mix sum");
+      value = OutputRef{add, "Value"};
+    }
+    const auto scale = graph.add_node(node_type::math, "Legacy Average");
+    require(graph.set_property(scale, "Operation",
+                               SocketValue::string("MULTIPLY")) &&
+                graph.connect(value, scale, "A") &&
+                graph.set_input(scale, "B",
+                                SocketValue::floating(1.0f / 19.0f)),
+            "failed to construct legacy Mix average");
+    averages[channel] = OutputRef{scale, "Value"};
+  }
+
+  const auto combine = graph.add_node(node_type::combine_color, "Pack Modes");
+  require(graph.set_property(combine, "Mode", SocketValue::string("RGB")) &&
+              graph.connect(averages[0], combine, "R") &&
+              graph.connect(averages[1], combine, "G") &&
+              graph.connect(averages[2], combine, "B"),
+          "failed to pack constant legacy Mix modes");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.connect(OutputRef{combine, "Color"}, emission, "Color"),
+          "failed to connect constant legacy Mix result");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(), "constant legacy Mix graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+  // Frozen from `mix_rgb_legacy_modes` with Value/Color nodes linked into all
+  // MixRGB inputs. That forces this fold to occur in Cycles' SVM graph rather
+  // than in Blender's pre-Cycles node evaluator.
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x0000000bu, 0x0000000cu, 0x00000005u,
+      0x3e8cedbcu, 0x3f1a6314u, 0x3f5b393eu, 0x00000003u, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles legacy Mix folding differs from Cycles");
+  require(!image.node_types_used[NODE_MIX],
+          "constant legacy Mix retained NODE_MIX");
+}
+
 void test_unsupported_node_rejects_without_old_fallback() {
   ShaderGraph graph;
   const auto principled =
@@ -699,6 +957,9 @@ int main() {
   test_color_constant_fold_matches_cycles_5_2_1();
   test_dynamic_combsep_color_matches_cycles_5_2_1();
   test_combsep_color_constant_fold_matches_cycles_5_2_1();
+  test_dynamic_legacy_mix_matches_cycles_5_2_1();
+  test_legacy_mix_constant_modes_match_cycles_5_2_1();
+  test_legacy_mix_constant_fold_matches_cycles_5_2_1();
   test_unsupported_node_rejects_without_old_fallback();
   return 0;
 }

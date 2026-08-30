@@ -400,7 +400,8 @@ namespace operand = value_operand;
         }
         return true;
     }
-    if (node.type == node_type::mix_color) {
+    if (node.type == node_type::mix_color ||
+        node.type == node_type::legacy_mix_color) {
         auto factor = lower_value_input(node, "Factor");
         auto a = lower_value_input(node, "A");
         auto b = lower_value_input(node, "B");

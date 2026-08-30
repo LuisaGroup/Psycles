@@ -139,6 +139,8 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "mix_color_edge_cases": values._mix_color_edge_cases,
     "mix_data_types": values._mix_data_types,
     "mix_rgb_legacy_modes": values._mix_rgb_legacy_modes,
+    "svm_legacy_mix_matrix": values._svm_legacy_mix_matrix,
+    "svm_legacy_mix_constant_matrix": values._svm_legacy_mix_constant_matrix,
     "mix_shader_emission": closures._mix_shader_emission,
     "negative_scale_surface": closures._negative_scale_surface,
     "nishita_diffuse_transport": closures._nishita_diffuse_transport,

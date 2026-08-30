@@ -87,6 +87,12 @@ namespace {
       input == "Factor") {
     return "Fac";
   }
+  if (node == node_type::legacy_mix_color) {
+    return input == "Factor" ? "Fac"
+           : input == "A"    ? "Color1"
+           : input == "B"    ? "Color2"
+                             : input;
+  }
   if (node == node_type::combine_color) {
     return input == "R"   ? "Red"
            : input == "G" ? "Green"
