@@ -26,6 +26,45 @@ using psycles::luisa_backend::SurfaceImageBoxInput;
 using psycles::test_support::approximately_equal;
 using psycles::test_support::xir_instruction_count;
 
+struct TextureSamplingShape {
+    std::size_t native_samples{};
+    std::size_t texel_reads{};
+};
+
+template<typename... Args>
+[[nodiscard]] TextureSamplingShape texture_sampling_shape(
+    const Kernel1D<Args...> &kernel) {
+    auto module = xir::ast_to_xir_translate(
+        kernel.function()->function(), {});
+    TextureSamplingShape result;
+    for (const auto *function : module->function_list()) {
+        if (const auto *definition = function->definition()) {
+            definition->traverse_instructions(
+                [&](const xir::Instruction *instruction) noexcept {
+                    if (instruction->isa<xir::ResourceQueryInst>()) {
+                        const auto *query =
+                            static_cast<const xir::ResourceQueryInst *>(
+                                instruction);
+                        result.native_samples +=
+                            query->op() ==
+                            xir::ResourceQueryOp::
+                                BINDLESS_TEXTURE2D_SAMPLE_SAMPLER;
+                    }
+                    if (instruction->isa<xir::ResourceReadInst>()) {
+                        const auto *read =
+                            static_cast<const xir::ResourceReadInst *>(
+                                instruction);
+                        result.texel_reads +=
+                            read->op() ==
+                            xir::ResourceReadOp::
+                                BINDLESS_TEXTURE2D_READ;
+                    }
+                });
+        }
+    }
+    return result;
+}
+
 constexpr auto coordinate_count = std::uint32_t{7u};
 constexpr auto source_interpolation_mode_count = std::uint32_t{4u};
 constexpr auto source_extension_mode_count = std::uint32_t{4u};
@@ -115,6 +154,22 @@ make_repeated_sampling_kernel(bool shared) {
 }
 
 [[nodiscard]] Kernel1D<BindlessArray, Buffer<luisa::float4>>
+make_single_sampling_kernel(std::uint32_t interpolation) {
+    return [interpolation](
+               BindlessVar textures,
+               BufferFloat4 output) noexcept {
+        output.write(
+            0u,
+            sample_cycles_texture_2d(
+                textures,
+                0u,
+                make_float2(0.37f, 0.61f),
+                interpolation,
+                0u));
+    };
+}
+
+[[nodiscard]] Kernel1D<BindlessArray, Buffer<luisa::float4>>
 make_repeated_image_box_kernel(bool shared) {
     constexpr auto repetition_count = std::uint32_t{8u};
     const auto callables = make_texture_2d_sampling_callables();
@@ -160,6 +215,31 @@ make_repeated_image_box_kernel(bool shared) {
 int main(int argc, char **argv) {
     const auto backend =
         std::string_view{argc > 1 ? argv[1] : "fallback"};
+
+    static_assert(
+        cycles_texture_sampler_address(0u) == SamplerAddress::REPEAT &&
+        cycles_texture_sampler_address(1u) == SamplerAddress::ZERO &&
+        cycles_texture_sampler_address(2u) == SamplerAddress::EDGE &&
+        cycles_texture_sampler_address(3u) == SamplerAddress::MIRROR);
+    constexpr std::array expected_native_sample_counts{1u, 1u, 4u, 4u};
+    for (auto interpolation = std::uint32_t{0u};
+         interpolation < source_interpolation_mode_count;
+         ++interpolation) {
+        const auto kernel = make_single_sampling_kernel(interpolation);
+        const auto shape = texture_sampling_shape(kernel);
+        if (shape.native_samples !=
+                expected_native_sample_counts[interpolation] ||
+            shape.texel_reads != 0u) {
+            std::cerr
+                << "Cycles texture sampling shape regression for mode "
+                << interpolation << ": native samples="
+                << shape.native_samples << " (expected "
+                << expected_native_sample_counts[interpolation]
+                << "), explicit texel reads=" << shape.texel_reads
+                << " (expected 0)\n";
+            return EXIT_FAILURE;
+        }
+    }
 
     const auto inline_shape =
         make_repeated_sampling_kernel(false);

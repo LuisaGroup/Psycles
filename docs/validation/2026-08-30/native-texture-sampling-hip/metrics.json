@@ -1,0 +1,44 @@
+{
+  "schema": "psycles.native-texture-sampling-hip.v1",
+  "cycles_revision": "Blender 5.2.1 9e2066aef7ef",
+  "device": "AMD Radeon RX 9070 XT",
+  "settings": {
+    "width": 2048,
+    "height": 858,
+    "samples": 1024,
+    "cycles_adaptive_sampling": false,
+    "psycles_scheduler": "wavefront-staged"
+  },
+  "xir_native_sample_counts": {
+    "closest": 1,
+    "linear": 1,
+    "cubic": 4,
+    "smart": 4,
+    "explicit_texel_reads": 0
+  },
+  "constant_control": {
+    "cycles_render_seconds": 95.40553632902447,
+    "psycles_render_seconds": 99.8357,
+    "slowdown": 1.0464350795712447,
+    "combined_luminance_mean_ratio": 0.9999552871089258,
+    "combined_relative_rmse": 0.0028813630006112585
+  },
+  "procedural_control": {
+    "cycles_render_seconds": 101.22612157900585,
+    "psycles_render_seconds": 102.684,
+    "slowdown": 1.0144021957796368,
+    "combined_luminance_mean_ratio": 0.999946783393359,
+    "combined_relative_rmse": 0.005306686523530275
+  },
+  "barbershop": {
+    "cycles_render_seconds": 127.66202072700253,
+    "software_texture_psycles_seconds": 217.022,
+    "native_texture_psycles_seconds": 212.273,
+    "native_slowdown": 1.6627733040034898,
+    "native_time_reduction_fraction": 0.021882574116909788,
+    "native_vs_cycles_combined_luminance_mean_ratio": 1.0027407281019667,
+    "native_vs_cycles_combined_relative_rmse": 0.03996724915758473,
+    "native_vs_software_combined_luminance_mean_ratio": 0.9999973979751989,
+    "native_vs_software_combined_relative_rmse": 0.0032415662195115474
+  }
+}
