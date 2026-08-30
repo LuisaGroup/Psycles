@@ -1,13 +1,17 @@
 # Psycles
 
-Psycles is a new renderer implementation that treats Blender Cycles as an
-interface and semantic contract, while expressing execution through
-LuisaCompute's multistage C++ DSL and runtime JIT.
+Psycles is a renderer implementation that treats Blender Cycles 5.2.1 as its
+interface, semantic contract, and current SVM execution-model reference, while
+expressing device execution through LuisaCompute's multistage C++ DSL and
+runtime JIT.
 
-The project deliberately does **not** translate Cycles SVM bytecode, reuse the
-Cycles GPU kernel ABI, or commit to a wavefront/megakernel schedule. Its current
-milestone establishes the semantic and compilation boundaries that later
-geometry, transport, and scheduling implementations must obey:
+The active milestone is locked to an isomorphic implementation of Cycles'
+SVM node stream, stack, program-counter loop, node dispatch, closure state, and
+feature masks. Alternative Psycles-specific SVM architectures are forbidden
+unless the project owner explicitly changes that requirement. See the
+mandatory implementation lock in [DEVELOP.md](DEVELOP.md).
+
+The surrounding project boundaries include:
 
 - a typed, extensible ShaderGraph contract with explicit surface, volume, and
   displacement roots;
@@ -17,8 +21,7 @@ geometry, transport, and scheduling implementations must obey:
 - an atomic incremental material library that reuses programs on parameter-only
   edits;
 - transactional scene snapshots with stable resource identifiers;
-- a Luisa DSL `Polymorphic<Surface>` protocol retained as the canonical
-  device-side material dispatch boundary;
+- a Luisa DSL implementation of the Cycles SVM material execution boundary;
 - a Luisa device execution path with camera rays, hardware/fallback RayQuery,
   transformed instances, multi-bounce transport, direct-light sampling, film
   accumulation, and pass output;

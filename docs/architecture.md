@@ -3,16 +3,21 @@
 ## Decision
 
 Cycles defines what Blender users can express and what results are observable.
-It does not define Psycles's kernel list, device memory layout, shader bytecode,
-or scheduling strategy.
+For the active SVM replacement, Cycles 5.2.1 also defines the implementation
+model: node stream, typed payloads, stack ABI, program-counter loop, single
+node-type dispatch, closure state, feature masks, and
+surface/volume/displacement control flow. Psycles must reproduce that model in
+Luisa DSL without architectural substitutions until the project owner
+explicitly lifts the lock in `DEVELOP.md`. This SVM lock does not independently
+prescribe the outer path-tracing scheduler.
 
 ```mermaid
 flowchart TD
     A["Blender / Cycles normalized graph"] --> B["Cycles contract adapter"]
     B --> C["ShaderGraph + SceneSnapshot"]
-    C --> D["SurfaceProgram + parameter blocks"]
+    C --> D["Cycles-isomorphic SVM compiler + parameter blocks"]
     D --> E["RendererBackend contract"]
-    E --> F["Polymorphic GraphSurface"]
+    E --> F["Cycles-isomorphic Luisa SVM"]
     F --> G["Luisa DSL AST + device JIT"]
     G --> H["Renderer session + Cycles passes"]
     I["Blender Cycles golden"] --> J["Linear pass differential"]
@@ -71,7 +76,13 @@ properties. The compiler therefore produces two signatures:
 This split is a correctness and invalidation contract. It does not prescribe
 how parameters are packed or cached.
 
-### Surface program
+### Legacy surface program (wholesale replacement in progress)
+
+The remainder of this subsection records the current implementation so that it
+can be removed safely; it is not an approved target architecture. Under the
+mandatory lock in `DEVELOP.md`, no new work may extend these custom execution
+boundaries. Their replacement is the Cycles 5.2.1 SVM stream, stack, PC loop,
+single node dispatch, and closure flow.
 
 `compiler::SurfaceProgram` is a typed, immutable semantic program with one
 topologically ordered value instruction stream plus separate surface- and
@@ -590,7 +601,8 @@ independently written CPU renderer.
 
 ## Explicit non-goals of the current milestone
 
-- No SVM interpreter or SVM stack ABI.
+- No alternative SVM interpreter, stack ABI, multi-level dispatch, or
+  independently invented material execution model.
 - No recreation of Cycles `KernelData` or `IntegratorStateGPU`.
 - No material clustering, dispatch grouping, or scene-specific switch
   rewriting.
@@ -603,14 +615,11 @@ independently written CPU renderer.
 
 ## Next implementation slices
 
-1. Add the in-Blender extractor that copies normalized, pre-SVM
-   `cycles::ShaderGraph` objects into the adapter DTO.
-2. Complete camera, scene data, RayQuery, surface dispatch, transport, film,
-   and pass semantics through Luisa DSL/JIT.
-3. Run the same micro-scenes and Lone Monk through official Cycles and the
-   Luisa executor, adding node/socket and statistical BSDF tests before
-   expanding coverage.
-4. Expand ShaderGraph coverage, derivatives/bump, textures, attributes, and
-   the remaining closure semantics from coverage failures.
-5. Only after semantic coverage is stable, add schedule IR and compiler-level
-   surface-dispatch fusion experiments.
+1. Replace the existing Psycles-specific material executor with the
+   Cycles 5.2.1 SVM stream, stack, PC loop, node dispatch, and closure flow.
+2. Migrate every used Cycles node family with field/state mapping and direct
+   Cycles-oracle regressions.
+3. Run node probes and complex Blender scenes through official Cycles and the
+   Luisa executor, including full-pass and visual comparison.
+4. Only after the owner explicitly lifts the implementation lock may a
+   different material execution architecture be considered.
