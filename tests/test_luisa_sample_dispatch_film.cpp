@@ -289,7 +289,8 @@ render(luisa::compute::Context &context, std::string_view backend,
        std::uint32_t wavefront_counter_readback_batch_size = 4u,
        std::uint32_t wavefront_counter_readback_pipeline_depth = 2u,
        std::uint32_t wavefront_frame_capacity = 128u,
-       bool diagnostic_histograms_enabled = false) {
+       bool diagnostic_histograms_enabled = false,
+       bool zero_nee_fixture = false) {
   auto device = context.create_device(backend);
   auto trace_sink = path_trace_enabled ? std::make_shared<TraceSink>()
                                        : std::shared_ptr<TraceSink>{};
@@ -349,7 +350,15 @@ render(luisa::compute::Context &context, std::string_view backend,
        .surface_closure_count_histogram = closure_histogram_request,
        .surface_program_execution_histogram =
            surface_program_histogram_request}};
-  auto compilation = renderer.compile_scene(make_scene());
+  auto scene = make_scene();
+  if (zero_nee_fixture) {
+    // An emission-only surface has no BSDF that can receive the sampled
+    // light.  The NEE state machine therefore exits before constructing a
+    // shadow task, while its mathematically final contribution is still the
+    // additive identity and must be present in the differential trace.
+    scene.materials.at(MaterialId{1u}).shader = world_shader();
+  }
+  auto compilation = renderer.compile_scene(scene);
   if (!compilation.ok()) {
     for (const auto &diagnostic : compilation.diagnostics) {
       std::cerr << diagnostic.message << '\n';
@@ -506,6 +515,23 @@ render(luisa::compute::Context &context, std::string_view backend,
   if (result.trace->sample != traced_sample ||
       rng[0u] != static_cast<float>(traced_sample)) {
     std::cerr << "dispatch.z did not preserve the absolute sample index\n";
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool validate_zero_nee_trace(const RenderResult &result) {
+  if (!result.trace) {
+    std::cerr << "zero-NEE fixture path trace is missing\n";
+    return false;
+  }
+  const auto &contribution = result.trace->slots[trace_schema::index(
+      0u, trace_schema::EventSlot::nee_contribution)];
+  if (contribution[0u] != 0.0f || contribution[1u] != 0.0f ||
+      contribution[2u] != 0.0f || contribution[3u] != 1.0f) {
+    std::cerr << "rejected NEE event is not a written zero contribution: {"
+              << contribution[0u] << ", " << contribution[1u] << ", "
+              << contribution[2u] << ", " << contribution[3u] << "}\n";
     return false;
   }
   return true;
@@ -764,13 +790,19 @@ int main(int argc, char **argv) {
   const auto persistent = render(
       context, backend, psycles::luisa_backend::LuisaPathScheduler::persistent,
       sample_count, false);
+  const auto zero_nee = render(
+      context, backend, psycles::luisa_backend::LuisaPathScheduler::megakernel,
+      1u, false, true, true, false,
+      psycles::luisa_backend::luisa_wavefront_auto_tail_threshold, 4u, 2u,
+      128u, false, true);
   if (!reference || !deterministic || !single_plane || !per_sample ||
       !per_sample_no_trace || !chunked || !wavefront || !graph_wavefront ||
       !graph_wavefront_tail || !staged_wavefront ||
       !staged_wavefront_unsorted || !staged_direct_inline ||
       !staged_direct_queued || !staged_direct_queued_chunked ||
-      !staged_direct_queued_small_capacity || !persistent ||
+      !staged_direct_queued_small_capacity || !persistent || !zero_nee ||
       !validate_reference(*reference) ||
+      !validate_zero_nee_trace(*zero_nee) ||
       !compare_outputs(*reference, *deterministic, true,
                        "deterministic serial chunking") ||
       !compare_outputs(*reference, *single_plane, false,

@@ -1,24 +1,27 @@
-From be18d2a2ac55b1874558eb70bc36398f0edaf846 Mon Sep 17 00:00:00 2001
+From cb168525138fecc792cc393f94afc39582b0103c Mon Sep 17 00:00:00 2001
 From: Mike Smith <mango@live.cn>
 Date: Wed, 5 Aug 2026 22:36:09 +0800
 Subject: [PATCH] Cycles: add Psycles per-path trace oracle
 
 ---
  intern/cycles/kernel/data_template.h          |   3 +
- .../kernel/integrator/init_from_camera.h      |  38 ++-
- .../cycles/kernel/integrator/psycles_trace.h  | 265 +++++++++++++++
+ .../kernel/integrator/init_from_camera.h      |  38 +-
+ .../cycles/kernel/integrator/psycles_trace.h  | 295 ++++++++++++
  intern/cycles/kernel/integrator/shade_light.h |  31 +-
  .../cycles/kernel/integrator/shade_shadow.h   |   7 +
- .../cycles/kernel/integrator/shade_surface.h  | 318 +++++++++++++++++-
+ .../cycles/kernel/integrator/shade_surface.h  | 451 +++++++++++++++++-
+ intern/cycles/kernel/light/sample.h           |  37 +-
+ intern/cycles/kernel/light/triangle.h         |  13 +-
  intern/cycles/scene/integrator.cpp            |   1 +
- 7 files changed, 651 insertions(+), 12 deletions(-)
+ intern/cycles/scene/light.cpp                 |  39 ++
+ 10 files changed, 888 insertions(+), 27 deletions(-)
  create mode 100644 intern/cycles/kernel/integrator/psycles_trace.h
 
 diff --git a/intern/cycles/kernel/data_template.h b/intern/cycles/kernel/data_template.h
-index cda78449..b3343058 100644
+index 24e094df3..8dce065b8 100644
 --- a/intern/cycles/kernel/data_template.h
 +++ b/intern/cycles/kernel/data_template.h
-@@ -198,6 +198,9 @@ KERNEL_STRUCT_MEMBER(integrator, float, filter_glossy)
+@@ -198,6 +198,9 @@ KERNEL_STRUCT_MEMBER(integrator, float, differential_widen_scale)
  /* Seed. */
  KERNEL_STRUCT_MEMBER_DONT_SPECIALIZE
  KERNEL_STRUCT_MEMBER(integrator, int, seed)
@@ -29,7 +32,7 @@ index cda78449..b3343058 100644
  KERNEL_STRUCT_MEMBER(integrator, float, sample_clamp_direct)
  KERNEL_STRUCT_MEMBER(integrator, float, sample_clamp_indirect)
 diff --git a/intern/cycles/kernel/integrator/init_from_camera.h b/intern/cycles/kernel/integrator/init_from_camera.h
-index 948a83a7..fd7d0eac 100644
+index 948a83a74..fd7d0eac2 100644
 --- a/intern/cycles/kernel/integrator/init_from_camera.h
 +++ b/intern/cycles/kernel/integrator/init_from_camera.h
 @@ -10,6 +10,7 @@
@@ -108,10 +111,10 @@ index 948a83a7..fd7d0eac 100644
  
 diff --git a/intern/cycles/kernel/integrator/psycles_trace.h b/intern/cycles/kernel/integrator/psycles_trace.h
 new file mode 100644
-index 00000000..1d0e1337
+index 000000000..50a3bd03f
 --- /dev/null
 +++ b/intern/cycles/kernel/integrator/psycles_trace.h
-@@ -0,0 +1,265 @@
+@@ -0,0 +1,295 @@
 +/* SPDX-FileCopyrightText: 2026 Psycles Authors
 + *
 + * SPDX-License-Identifier: Apache-2.0 */
@@ -132,17 +135,21 @@ index 00000000..1d0e1337
 +
 +CCL_NAMESPACE_BEGIN
 +
-+static constexpr int PSYCLES_TRACE_SCHEMA_VERSION = 2;
++static constexpr int PSYCLES_TRACE_SCHEMA_VERSION = 3;
 +static constexpr int PSYCLES_TRACE_GLOBAL_SLOTS = 8;
 +static constexpr int PSYCLES_TRACE_EVENT_SLOTS = 72;
 +static constexpr int PSYCLES_TRACE_SHADOW_EVENT_SLOTS = 8;
++static constexpr int PSYCLES_TRACE_FORWARD_EVENT_SLOTS = 4;
 +static constexpr int PSYCLES_TRACE_MAX_EVENTS = 4;
 +static constexpr int PSYCLES_TRACE_MAX_CLOSURES = 8;
 +static constexpr int PSYCLES_TRACE_SHADOW_EVENT_BASE =
 +    PSYCLES_TRACE_GLOBAL_SLOTS + PSYCLES_TRACE_EVENT_SLOTS * PSYCLES_TRACE_MAX_EVENTS;
-+static constexpr int PSYCLES_TRACE_AOV_COUNT =
++static constexpr int PSYCLES_TRACE_FORWARD_EVENT_BASE =
 +    PSYCLES_TRACE_SHADOW_EVENT_BASE +
 +    PSYCLES_TRACE_SHADOW_EVENT_SLOTS * PSYCLES_TRACE_MAX_EVENTS;
++static constexpr int PSYCLES_TRACE_AOV_COUNT =
++    PSYCLES_TRACE_FORWARD_EVENT_BASE +
++    PSYCLES_TRACE_FORWARD_EVENT_SLOTS * PSYCLES_TRACE_MAX_EVENTS;
 +
 +enum PsyclesTraceGlobalSlot {
 +  PSYCLES_TRACE_GLOBAL_HEADER = 0,
@@ -216,6 +223,13 @@ index 00000000..1d0e1337
 +  PSYCLES_TRACE_SHADOW_EVENT_HIT_ID = 5,
 +  PSYCLES_TRACE_SHADOW_EVENT_HIT_COORD = 6,
 +  PSYCLES_TRACE_SHADOW_EVENT_TRANSMITTANCE = 7,
++};
++
++enum PsyclesTraceForwardEventSlot {
++  PSYCLES_TRACE_FORWARD_EVENT_EMISSION = 0,
++  PSYCLES_TRACE_FORWARD_EVENT_POLICY = 1,
++  PSYCLES_TRACE_FORWARD_EVENT_MIS = 2,
++  PSYCLES_TRACE_FORWARD_EVENT_CONTRIBUTION = 3,
 +};
 +
 +ccl_device_forceinline int psycles_trace_event_index(ConstIntegratorState state)
@@ -315,6 +329,25 @@ index 00000000..1d0e1337
 +                      value);
 +}
 +
++ccl_device_forceinline void psycles_trace_write_forward_event(
++    KernelGlobals kg,
++    ConstIntegratorState state,
++    ccl_global float *ccl_restrict render_buffer,
++    const int relative_slot,
++    const float3 value)
++{
++  const int event = psycles_trace_event_index(state);
++  if (event < 0 || event >= PSYCLES_TRACE_MAX_EVENTS) {
++    return;
++  }
++  psycles_trace_write(kg,
++                      state,
++                      render_buffer,
++                      PSYCLES_TRACE_FORWARD_EVENT_BASE +
++                          event * PSYCLES_TRACE_FORWARD_EVENT_SLOTS + relative_slot,
++                      value);
++}
++
 +ccl_device_forceinline int psycles_trace_shadow_event_index(
 +    ConstIntegratorShadowState state)
 +{
@@ -378,7 +411,7 @@ index 00000000..1d0e1337
 +
 +CCL_NAMESPACE_END
 diff --git a/intern/cycles/kernel/integrator/shade_light.h b/intern/cycles/kernel/integrator/shade_light.h
-index ecbbe97c..2df068a8 100644
+index 13da8c099..bb9d974ba 100644
 --- a/intern/cycles/kernel/integrator/shade_light.h
 +++ b/intern/cycles/kernel/integrator/shade_light.h
 @@ -7,6 +7,7 @@
@@ -460,7 +493,7 @@ index ecbbe97c..2df068a8 100644
    if (result == SHADER_EVAL_CACHE_MISS) {
      integrator_shadow_path_cache_miss(state, DEVICE_KERNEL_INTEGRATOR_SHADE_LIGHT_NEE);
 diff --git a/intern/cycles/kernel/integrator/shade_shadow.h b/intern/cycles/kernel/integrator/shade_shadow.h
-index e2825b2b..bf84bc72 100644
+index 23c77ce65..60a5db0ee 100644
 --- a/intern/cycles/kernel/integrator/shade_shadow.h
 +++ b/intern/cycles/kernel/integrator/shade_shadow.h
 @@ -5,6 +5,7 @@
@@ -485,7 +518,7 @@ index e2825b2b..bf84bc72 100644
    film_write_direct_light(kg, state, render_buffer);
    integrator_shadow_path_terminate(state, DEVICE_KERNEL_INTEGRATOR_SHADE_SHADOW);
 diff --git a/intern/cycles/kernel/integrator/shade_surface.h b/intern/cycles/kernel/integrator/shade_surface.h
-index 33b875a0..c6582596 100644
+index 8857cb63f..44a39b06b 100644
 --- a/intern/cycles/kernel/integrator/shade_surface.h
 +++ b/intern/cycles/kernel/integrator/shade_surface.h
 @@ -5,6 +5,7 @@
@@ -496,7 +529,77 @@ index 33b875a0..c6582596 100644
  #include "kernel/integrator/surface_shader.h"
  
  #include "kernel/film/data_passes.h"
-@@ -315,11 +316,11 @@ ccl_device_forceinline
+@@ -115,6 +116,25 @@ ccl_device_forceinline bool integrate_surface_holdout(KernelGlobals kg,
+   return true;
+ }
+ 
++/*
++ * The forward-emission trace is a total record over ordinary surface events,
++ * rather than a partial record whose presence depends on SD_EMISSION.  Keep
++ * the side-policy projection in one place so the identity record below and an
++ * actual emission record cannot disagree about the effective shader policy.
++ */
++ccl_device_forceinline int psycles_trace_surface_emission_sampling(
++    const ccl_private ShaderData *ccl_restrict sd)
++{
++  if (sd->flag & SD_MIS_FRONT) {
++    return (sd->flag & SD_MIS_BACK) ? EMISSION_SAMPLING_FRONT_BACK :
++                                      EMISSION_SAMPLING_FRONT;
++  }
++  if (sd->flag & SD_MIS_BACK) {
++    return EMISSION_SAMPLING_BACK;
++  }
++  return EMISSION_SAMPLING_NONE;
++}
++
+ ccl_device_forceinline void integrate_surface_emission(KernelGlobals kg,
+                                                        IntegratorState state,
+                                                        const ccl_private ShaderData *sd,
+@@ -147,12 +167,41 @@ ccl_device_forceinline void integrate_surface_emission(KernelGlobals kg,
+   /* Evaluate emissive closure. */
+   const Spectrum L = surface_shader_emission(sd);
+ 
++  float selection_pdf = 0.0f;
++  float light_pdf = 0.0f;
+   const float mis_weight = light_sample_mis_weight_forward_surface(
+-      kg, state, path_visibility, path_flag, sd);
+-
++      kg, state, path_visibility, path_flag, sd, &selection_pdf, &light_pdf);
++
++  const int emission_sampling = psycles_trace_surface_emission_sampling(sd);
++  psycles_trace_write_forward_event(kg,
++                                    state,
++                                    render_buffer,
++                                    PSYCLES_TRACE_FORWARD_EVENT_EMISSION,
++                                    spectrum_to_rgb(L));
++  psycles_trace_write_forward_event(kg,
++                                    state,
++                                    render_buffer,
++                                    PSYCLES_TRACE_FORWARD_EVENT_POLICY,
++                                    make_float3(float(emission_sampling),
++                                                selection_pdf,
++                                                light_pdf > 0.0f ? 1.0f : 0.0f));
++  psycles_trace_write_forward_event(
++      kg,
++      state,
++      render_buffer,
++      PSYCLES_TRACE_FORWARD_EVENT_MIS,
++      make_float3(INTEGRATOR_STATE(state, path, mis_ray_pdf), light_pdf, mis_weight));
+   guiding_record_surface_emission(kg, state, L, mis_weight);
+   film_write_surface_emission(
+       kg, state, L, mis_weight, render_buffer, object_lightgroup(kg, sd->object));
++  Spectrum film_contribution =
++      INTEGRATOR_STATE(state, path, throughput) * L * mis_weight;
++  film_clamp_light(kg, &film_contribution, INTEGRATOR_STATE(state, path, bounce) - 1);
++  psycles_trace_write_forward_event(kg,
++                                    state,
++                                    render_buffer,
++                                    PSYCLES_TRACE_FORWARD_EVENT_CONTRIBUTION,
++                                    spectrum_to_rgb(film_contribution));
+ }
+ 
+ ccl_device int integrate_surface_ray_portal(KernelGlobals kg,
+@@ -315,12 +364,22 @@ ccl_device_forceinline
  /* MSVC has very long compilation time (x20) if we force inline this function */
  ccl_device
  #endif
@@ -511,17 +614,76 @@ index 33b875a0..c6582596 100644
 +                                                    const ccl_private RNGState *rng_state,
 +                                                    ccl_global float *ccl_restrict render_buffer)
  {
++  /*
++   * NEE contribution is a total function of the current surface event.
++   * Establish its additive identity before any rejection or termination;
++   * the visible terminal shadow path overwrites it with its final value.
++   * This covers every early exit without mirroring the transport state
++   * machine in diagnostic-only control flow.
++   */
++  psycles_trace_write_event(
++      kg, state, render_buffer, PSYCLES_TRACE_EVENT_NEE_CONTRIBUTION, zero_float3());
++
    /* Test if there is a light or BSDF that needs direct light. */
-   if (!(kernel_data.integrator.use_direct_light && (sd->runtime_flag & SR_BSDF_HAS_EVAL))) {
-@@ -355,11 +356,43 @@ ccl_device
+   if (!(kernel_data.integrator.use_direct_light && (sd->flag & SD_BSDF_HAS_EVAL))) {
+     return SHADER_EVAL_EMPTY;
+@@ -344,6 +403,22 @@ ccl_device
+     const uint bounce = INTEGRATOR_STATE(state, path, bounce);
+     const float3 rand_light = path_state_rng_3D(kg, rng_state, PRNG_LIGHT);
+ 
++    /*
++     * The light tree writes these fields exactly when discrete emitter
++     * selection succeeds, before sampling the selected emitter's shape.
++     * Initializing them to sentinels therefore makes a failed NEE sample
++     * observationally distinguish the two stages without consuming another
++     * random number or repeating either operation:
++     *
++     *   emitter_id < 0: discrete selection failed;
++     *   emitter_id >= 0: selection succeeded and shape sampling failed.
++     *
++     * Successful transport is unchanged because every supported selection
++     * path overwrites both fields before light_sample() reads them.
++     */
++    ls.emitter_id = -1;
++    ls.pdf_selection = -1.0f;
++
+     if (!light_sample_from_position(kg,
+                                     rand_light,
+                                     sd->time,
+@@ -355,11 +430,68 @@ ccl_device
                                      path_flag,
                                      &ls))
      {
++      int selected_prim = PRIM_NONE;
++      int selected_object = OBJECT_NONE;
++      int selected_visibility = 0;
++#ifdef __LIGHT_TREE__
++      if (kernel_data.integrator.use_light_tree && ls.emitter_id >= 0) {
++        const ccl_global KernelLightTreeEmitter *kemitter =
++            &kernel_data_fetch(light_tree_emitters, ls.emitter_id);
++        selected_prim = kemitter->light.id;
++        selected_object = (selected_prim >= 0) ? ls.object : kemitter->object_id;
++        selected_visibility = kemitter->visibility_flag;
++      }
++#endif
 +      psycles_trace_write_event(kg,
 +                                state,
 +                                render_buffer,
 +                                PSYCLES_TRACE_EVENT_LIGHT_META,
-+                                make_float3(-1.0f, -1.0f, -1.0f));
++                                make_float3(
++                                    -1.0f, float(ls.emitter_id), float(selected_prim)));
++      psycles_trace_write_event(kg,
++                                state,
++                                render_buffer,
++                                PSYCLES_TRACE_EVENT_LIGHT_ID,
++                                make_float3(float(selected_object),
++                                            float(selected_visibility),
++                                            0.0f));
++      psycles_trace_write_event(kg,
++                                state,
++                                render_buffer,
++                                PSYCLES_TRACE_EVENT_LIGHT_PDF,
++                                make_float3(0.0f, ls.pdf_selection, 0.0f));
        return SHADER_EVAL_EMPTY;
      }
    }
@@ -557,7 +719,7 @@ index 33b875a0..c6582596 100644
  
    const bool is_transmission = dot(ls.D, sd->N) < 0.0f;
  
-@@ -394,6 +427,27 @@ ccl_device
+@@ -394,6 +526,27 @@ ccl_device
    float avg_roughness_squared = 0.0f;
    const float bsdf_pdf = surface_shader_bsdf_eval(
        kg, state, sd, ls.D, &bsdf_eval, ls.shader, avg_roughness_squared);
@@ -585,7 +747,7 @@ index 33b875a0..c6582596 100644
  
    Ray ray ccl_optional_struct_init;
  
-@@ -413,19 +467,53 @@ ccl_device
+@@ -413,19 +566,53 @@ ccl_device
    {
      const float mis_weight = light_sample_mis_weight_nee(kg, ls.pdf, bsdf_pdf);
      bsdf_eval_mul(&bsdf_eval, light_shader_eval * ls.eval_fac / ls.pdf * mis_weight);
@@ -639,7 +801,7 @@ index 33b875a0..c6582596 100644
  
      /* Create shadow ray. */
      light_sample_to_surface_shadow_ray(kg, sd, &ls, &ray);
-@@ -441,6 +529,33 @@ ccl_device
+@@ -441,6 +628,33 @@ ccl_device
      ray.P = integrate_surface_ray_offset(kg, sd, ray.P, ray.D);
    }
  
@@ -673,7 +835,7 @@ index 33b875a0..c6582596 100644
    /* Branch off shadow kernel. */
    IntegratorShadowState shadow_state = integrate_direct_light_shadow_init_common(
        kg,
-@@ -491,8 +606,10 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -491,8 +705,10 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
      KernelGlobals kg,
      IntegratorState state,
      ccl_private ShaderData *sd,
@@ -683,9 +845,9 @@ index 33b875a0..c6582596 100644
  {
 +  const int trace_event = psycles_trace_event_index(state);
    /* Sample BSDF or BSSRDF. */
-   if (!(sd->runtime_flag & (SR_BSDF | SR_BSSRDF))) {
+   if (!(sd->flag & (SD_BSDF | SD_BSSRDF))) {
      return LABEL_NONE;
-@@ -500,6 +617,23 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -500,6 +716,23 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
  
    float3 rand_bsdf = path_state_rng_3D(kg, rng_state, PRNG_SURFACE_BSDF);
    const ccl_private ShaderClosure *sc = surface_shader_bsdf_bssrdf_pick(sd, &rand_bsdf);
@@ -709,7 +871,7 @@ index 33b875a0..c6582596 100644
  
  #ifdef __SUBSURFACE__
    /* BSSRDF closure, we schedule subsurface intersection kernel. */
-@@ -570,6 +704,24 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -570,6 +803,24 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
      unguided_bsdf_pdf = bsdf_pdf;
    }
  
@@ -734,10 +896,10 @@ index 33b875a0..c6582596 100644
    if (label & LABEL_TRANSPARENT) {
      /* Only need to modify start distance for transparent. */
      INTEGRATOR_STATE_WRITE(state, ray, tmin) = intersection_t_offset(sd->ray_length);
-@@ -619,6 +771,57 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
+@@ -620,6 +871,57 @@ ccl_device_forceinline int integrate_surface_bsdf_bssrdf_bounce(
    }
  
-   path_state_next(kg, state, label, sd->runtime_flag);
+   path_state_next(kg, state, label, sd->flag);
 +  const uint32_t post_flag = INTEGRATOR_STATE(state, path, flag);
 +  psycles_trace_write_event_at(
 +      kg,
@@ -792,7 +954,44 @@ index 33b875a0..c6582596 100644
  
    guiding_record_surface_bounce(kg,
                                  state,
-@@ -841,6 +1044,104 @@ ccl_device int integrate_surface(KernelGlobals kg,
+@@ -796,6 +1098,36 @@ ccl_device int integrate_surface(KernelGlobals kg,
+     /* After shader evaluation, in case of texture cache miss. */
+     guiding_record_surface_segment(kg, state, &sd);
+ 
++    /*
++     * Define the diagnostic at every ordinary surface event.  This identity
++     * record is overwritten below when an emissive closure exists.  Its
++     * presence therefore carries no hidden control-flow predicate, and a
++     * runtime-zero emission remains distinguishable from a missing event
++     * without changing shader evaluation or transport.
++     */
++    psycles_trace_write_forward_event(kg,
++                                      state,
++                                      render_buffer,
++                                      PSYCLES_TRACE_FORWARD_EVENT_EMISSION,
++                                      zero_float3());
++    psycles_trace_write_forward_event(
++        kg,
++        state,
++        render_buffer,
++        PSYCLES_TRACE_FORWARD_EVENT_POLICY,
++        make_float3(float(psycles_trace_surface_emission_sampling(&sd)), 0.0f, 0.0f));
++    psycles_trace_write_forward_event(
++        kg,
++        state,
++        render_buffer,
++        PSYCLES_TRACE_FORWARD_EVENT_MIS,
++        make_float3(INTEGRATOR_STATE(state, path, mis_ray_pdf), 0.0f, 1.0f));
++    psycles_trace_write_forward_event(kg,
++                                      state,
++                                      render_buffer,
++                                      PSYCLES_TRACE_FORWARD_EVENT_CONTRIBUTION,
++                                      zero_float3());
++
+ #ifdef __SUBSURFACE__
+     if (path_flag & PATH_RAY_SUBSURFACE) {
+       /* When coming from inside subsurface scattering, setup a diffuse
+@@ -842,6 +1174,104 @@ ccl_device int integrate_surface(KernelGlobals kg,
      /* Load random number state. */
      RNGState rng_state;
      path_state_rng_load(state, &rng_state);
@@ -867,7 +1066,7 @@ index 33b875a0..c6582596 100644
 +                              state,
 +                              render_buffer,
 +                              PSYCLES_TRACE_EVENT_SURFACE_FLAGS,
-+                              psycles_trace_uint32(uint32_t(sd.runtime_flag)));
++                              psycles_trace_uint32(uint32_t(sd.flag)));
 +    psycles_trace_write_event(kg, state, render_buffer, PSYCLES_TRACE_EVENT_SURFACE_P, sd.P);
 +    psycles_trace_write_event(kg, state, render_buffer, PSYCLES_TRACE_EVENT_SURFACE_NG, sd.Ng);
 +    psycles_trace_write_event(kg, state, render_buffer, PSYCLES_TRACE_EVENT_SURFACE_N, sd.N);
@@ -897,7 +1096,7 @@ index 33b875a0..c6582596 100644
  
  #if defined(__PATH_GUIDING__) && PATH_GUIDING_LEVEL >= 4
      if (kernel_data.kernel_features & KERNEL_FEATURE_PATH_GUIDING) {
-@@ -851,7 +1152,7 @@ ccl_device int integrate_surface(KernelGlobals kg,
+@@ -852,7 +1282,7 @@ ccl_device int integrate_surface(KernelGlobals kg,
      /* Direct light. */
      PROFILING_EVENT(PROFILING_SHADE_SURFACE_DIRECT_LIGHT);
      const ShaderEvalResult result = integrate_surface_direct_light<node_feature_mask>(
@@ -906,7 +1105,7 @@ index 33b875a0..c6582596 100644
      if (result == SHADER_EVAL_CACHE_MISS) {
        return LABEL_CACHE_MISS;
      }
-@@ -865,7 +1166,8 @@ ccl_device int integrate_surface(KernelGlobals kg,
+@@ -866,7 +1296,8 @@ ccl_device int integrate_surface(KernelGlobals kg,
  #endif
  
      PROFILING_EVENT(PROFILING_SHADE_SURFACE_INDIRECT_LIGHT);
@@ -916,11 +1115,113 @@ index 33b875a0..c6582596 100644
  #ifdef __VOLUME__
    }
    else {
+diff --git a/intern/cycles/kernel/light/sample.h b/intern/cycles/kernel/light/sample.h
+index 12e978aa4..99b75494a 100644
+--- a/intern/cycles/kernel/light/sample.h
++++ b/intern/cycles/kernel/light/sample.h
+@@ -471,8 +471,16 @@ ccl_device_inline float light_sample_mis_weight_forward_surface(
+     IntegratorState state,
+     const PathRayVisibility path_visibility,
+     const uint32_t path_flag,
+-    const ccl_private ShaderData *sd)
++    const ccl_private ShaderData *sd,
++    ccl_private float *r_selection_pdf = nullptr,
++    ccl_private float *r_light_pdf = nullptr)
+ {
++  if (r_selection_pdf != nullptr) {
++    *r_selection_pdf = 0.0f;
++  }
++  if (r_light_pdf != nullptr) {
++    *r_light_pdf = 0.0f;
++  }
+   bool has_mis = !(path_flag & PATH_RAY_MIS_SKIP) &&
+                  (sd->flag & ((sd->flag & SD_BACKFACING) ? SD_MIS_BACK : SD_MIS_FRONT));
+ 
+@@ -486,7 +494,7 @@ ccl_device_inline float light_sample_mis_weight_forward_surface(
+ 
+   const float bsdf_pdf = INTEGRATOR_STATE(state, path, mis_ray_pdf);
+   const float t = sd->ray_length;
+-  float pdf = triangle_light_pdf(kg, sd, t);
++  float pdf = triangle_light_pdf(kg, sd, t, r_selection_pdf);
+ 
+   /* Light selection pdf. */
+ #ifdef __LIGHT_TREE__
+@@ -500,15 +508,19 @@ ccl_device_inline float light_sample_mis_weight_forward_surface(
+     const uint triangle = kernel_data_fetch(triangle_to_tree,
+                                             sd->prim - prim_offset + lookup_offset);
+ 
+-    pdf *= light_tree_pdf(kg,
+-                          ray_P,
+-                          N,
+-                          dt,
+-                          path_visibility,
+-                          path_flag,
+-                          sd->object,
+-                          triangle,
+-                          light_link_receiver_forward(kg, state));
++    const float selection_pdf = light_tree_pdf(kg,
++                                               ray_P,
++                                               N,
++                                               dt,
++                                               path_visibility,
++                                               path_flag,
++                                               sd->object,
++                                               triangle,
++                                               light_link_receiver_forward(kg, state));
++    pdf *= selection_pdf;
++    if (r_selection_pdf != nullptr) {
++      *r_selection_pdf = selection_pdf;
++    }
+   }
+   else
+ #endif
+@@ -516,6 +528,9 @@ ccl_device_inline float light_sample_mis_weight_forward_surface(
+     /* Handled in triangle_light_pdf for efficiency. */
+   }
+ 
++  if (r_light_pdf != nullptr) {
++    *r_light_pdf = pdf;
++  }
+   return light_sample_mis_weight_forward(kg, bsdf_pdf, pdf);
+ }
+ 
+diff --git a/intern/cycles/kernel/light/triangle.h b/intern/cycles/kernel/light/triangle.h
+index 89da4886f..9cc003f8d 100644
+--- a/intern/cycles/kernel/light/triangle.h
++++ b/intern/cycles/kernel/light/triangle.h
+@@ -62,8 +62,12 @@ ccl_device_inline float triangle_light_pdf_area_sampling(const float3 Ng,
+ 
+ ccl_device_forceinline float triangle_light_pdf(KernelGlobals kg,
+                                                 const ccl_private ShaderData *sd,
+-                                                const float t)
++                                                const float t,
++                                                ccl_private float *r_selection_pdf = nullptr)
+ {
++  if (r_selection_pdf != nullptr) {
++    *r_selection_pdf = 0.0f;
++  }
+   /* A naive heuristic to decide between costly solid angle sampling
+    * and simple area sampling, comparing the distance to the triangle plane
+    * to the length of the edges of the triangle. */
+@@ -118,7 +122,12 @@ ccl_device_forceinline float triangle_light_pdf(KernelGlobals kg,
+       distribution_area = triangle_area(V[0], V[1], V[2]);
+     }
+ 
+-    pdf *= distribution_area * kernel_data.integrator.distribution_pdf_triangles;
++    const float selection_pdf =
++        distribution_area * kernel_data.integrator.distribution_pdf_triangles;
++    pdf *= selection_pdf;
++    if (r_selection_pdf != nullptr) {
++      *r_selection_pdf = selection_pdf;
++    }
+   }
+ 
+   return pdf;
 diff --git a/intern/cycles/scene/integrator.cpp b/intern/cycles/scene/integrator.cpp
-index 77ca236c..91f2a131 100644
+index f5bc6391b..eae105e23 100644
 --- a/intern/cycles/scene/integrator.cpp
 +++ b/intern/cycles/scene/integrator.cpp
-@@ -315,6 +315,7 @@ void Integrator::device_update(Device *device, DeviceScene *dscene, Scene *scene
+@@ -316,6 +316,7 @@ void Integrator::device_update(Device *device, DeviceScene *dscene, Scene *scene
  
    const int clamped_aa_samples = min(aa_samples, MAX_SAMPLES);
  
@@ -928,6 +1229,77 @@ index 77ca236c..91f2a131 100644
    kintegrator->sampling_pattern = sampling_pattern;
    kintegrator->scrambling_distance = scrambling_distance;
    kintegrator->sobol_index_mask = reverse_integer_bits(next_power_of_two(clamped_aa_samples - 1) -
--- 
-2.55.0
-
+diff --git a/intern/cycles/scene/light.cpp b/intern/cycles/scene/light.cpp
+index 3050001d3..6af993568 100644
+--- a/intern/cycles/scene/light.cpp
++++ b/intern/cycles/scene/light.cpp
+@@ -524,6 +524,22 @@ void LightManager::test_enabled_lights(Scene *scene)
+ 
+     Light *light = static_cast<Light *>(object->get_geometry());
+     light->is_enabled = light->has_contribution(scene, object);
++    const Shader *effective_shader =
++        light->get_shader() ? light->get_shader() : scene->default_light;
++    const float3 diagnostic_strength = light->get_strength();
++    const float3 diagnostic_emission = effective_shader->emission_estimate;
++    fprintf(stderr,
++            "PSYCLES_LIGHT_ENABLE %d %s %d strength=(%.9g,%.9g,%.9g) "
++            "emission=(%.9g,%.9g,%.9g)\n",
++            object->index,
++            object->name.c_str(),
++            int(light->is_enabled),
++            double(diagnostic_strength.x),
++            double(diagnostic_strength.y),
++            double(diagnostic_strength.z),
++            double(diagnostic_emission.x),
++            double(diagnostic_emission.y),
++            double(diagnostic_emission.z));
+     has_portal |= light->is_portal_light();
+ 
+     if (light->is_background_light()) {
+@@ -643,6 +659,7 @@ void LightManager::device_update_distribution(Device * /*unused*/,
+     const bool transform_applied = mesh->transform_applied;
+     const Transform tfm = object->get_tfm();
+     const int visibility_flag = light_object_visibility_flags(object);
++    const float object_area_begin = totarea;
+ 
+     const size_t mesh_num_triangles = mesh->num_triangles();
+     const packed_float3 *mesh_positions = mesh->get_position();
+@@ -676,9 +693,26 @@ void LightManager::device_update_distribution(Device * /*unused*/,
+         totarea += triangle_area(p1, p2, p3);
+       }
+     }
++    if (totarea != object_area_begin) {
++      fprintf(stderr,
++              "PSYCLES_MESH_LIGHT_AREA %d %s transform_applied=%d "
++              "area=%.9g cumulative=%.9g\n",
++              object->index,
++              object->name.c_str(),
++              int(transform_applied),
++              double(totarea - object_area_begin),
++              double(totarea));
++    }
+   }
+ 
+   const float trianglearea = totarea;
++  fprintf(stderr,
++          "PSYCLES_TRIANGLE_AREA total=%.9g pdf=%.9g triangles=%zu lights=%d\n",
++          double(trianglearea),
++          double(trianglearea > 0.0f ? 1.0f / trianglearea * (num_lights ? 0.5f : 1.0f) :
++                                      0.0f),
++          num_triangles,
++          num_lights);
+ 
+   /* Lights. */
+   int light_index = 0;
+@@ -1440,6 +1474,11 @@ void LightManager::device_update_lights(DeviceScene *dscene, Scene *scene)
+       portal_index++;
+     }
+     else if (light->is_enabled) {
++      fprintf(stderr,
++              "PSYCLES_LIGHT_MAP %d %d %s\n",
++              light_index,
++              object->index,
++              object->name.c_str());
+       light->copy_to_kernel(klights + light_index, scene, object);
+       light_index++;
+     }

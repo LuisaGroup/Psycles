@@ -229,6 +229,17 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
         auto &invocation = sample.invocation;
         auto &task = preparation.task;
 
+        // The traced NEE contribution is a total function of a surface
+        // event.  Initialize it to the additive identity before any of the
+        // early-exit predicates below; a shadow path that reaches a visible
+        // terminal state overwrites this value with its final unshadowed
+        // contribution times transmittance.  This makes light-sampling
+        // failure, roulette rejection, opaque traversal, and transparent
+        // shading that becomes opaque observationally equivalent to the
+        // zero contribution they have in the film, without duplicating a
+        // diagnostic write in every control-flow exit.
+        _trace->record_contribution(bounce, make_float3(0.0f));
+
         $if(preparation.valid) {
             if (_task_sink) {
                 _task_sink->emit(
