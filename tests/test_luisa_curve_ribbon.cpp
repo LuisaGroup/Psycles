@@ -11,6 +11,8 @@
 #include <vector>
 
 #include <luisa/luisa-compute.h>
+#include <luisa/coro/schedulers/state_machine.h>
+#include <luisa/dsl/coro_func.h>
 #include <luisa/xir/instructions/arithmetic.h>
 #include <luisa/xir/instructions/break.h>
 #include <luisa/xir/instructions/if.h>
@@ -159,14 +161,26 @@ int main(int argc, char **argv) {
             AABB{
                 .packed_min = {-2.1f, -0.6f, 1.9f},
                 .packed_max = {2.1f, 0.6f, 2.1f}}};
+        constexpr std::array boundary_control_points{
+            luisa::float4{0.2665650546550751f, -4.7415385246276855f,
+                          0.8878118991851807f, 8.992105722427368e-05f},
+            luisa::float4{0.2706359326839447f, -4.740843772888184f,
+                          0.8848966360092163f, 8.417015487793833e-05f},
+            luisa::float4{0.2736737430095673f, -4.7385821342468262f,
+                          0.8816856741905212f, 7.852141425246373e-05f},
+            luisa::float4{0.2769835293292999f, -4.7353634834289551f,
+                          0.8777113556861877f, 7.159107917686924e-05f}};
         auto identity_bounds_buffer =
             device.create_buffer<AABB>(identity_bounds.size());
         auto transformed_bounds_buffer =
             device.create_buffer<AABB>(transformed_bounds.size());
+        auto boundary_control_point_buffer =
+            device.create_buffer<luisa::float4>(boundary_control_points.size());
         auto identity_curves = device.create_procedural_primitive(
             identity_bounds_buffer);
         auto transformed_curves = device.create_procedural_primitive(
             transformed_bounds_buffer);
+        auto subdivision = device.create_buffer<std::uint32_t>(1u);
         auto accel = device.create_accel();
         accel.emplace_back(identity_curves);
         const auto transformed_object_to_world = make_float4x4(
@@ -178,9 +192,11 @@ int main(int argc, char **argv) {
             transformed_curves,
             transformed_object_to_world);
 
-        auto output = device.create_buffer<luisa::float4>(5u);
+        auto output = device.create_buffer<luisa::float4>(6u);
         Kernel1D trace = [ribbon](
                              BufferFloat4 records,
+                             BufferUInt runtime_subdivision,
+                             BufferFloat4 runtime_control_points,
                              AccelVar scene_accel) noexcept {
             const UInt test = dispatch_x();
             $if(test == 0u) {
@@ -196,6 +212,31 @@ int main(int argc, char **argv) {
                         ribbon->derivative(polynomial, 0.25f).x,
                         0.0f,
                         0.0f));
+
+                // Reduced from a unique-valid-interval ribbon hit in the
+                // Blender 5.2 benchmark scene. Cycles selects subdivision 5
+                // of 16. Returning a later loop-carried value changes u/v
+                // structurally even though the distance is nearly unchanged.
+                const CurveControlPoints interval_boundary{
+                    .before = runtime_control_points.read(0u),
+                    .begin = runtime_control_points.read(1u),
+                    .end = runtime_control_points.read(2u),
+                    .after = runtime_control_points.read(3u)};
+                const auto boundary_hit = ribbon->intersect(
+                    make_ray(
+                        make_float3(
+                            3.0629506111145020f, -4.7604250907897949f,
+                            0.1933582425117493f),
+                        make_float3(
+                            -0.9707216024398804f, 0.0070224693045020f,
+                            0.2401046752929688f),
+                        0.0f, 101.48377227783203f),
+                    interval_boundary, runtime_subdivision.read(0u));
+                records.write(
+                    5u,
+                    make_float4(
+                        boundary_hit.distance, boundary_hit.u, boundary_hit.v,
+                        select(0.0f, 1.0f, boundary_hit.valid)));
             };
             const Float ray_x = select(
                 cast<float>(test) * 4.0f,
@@ -289,8 +330,12 @@ int main(int argc, char **argv) {
                 make_float4(distance, u, v, procedural));
         };
         auto shader = device.compile(trace);
-        std::array<luisa::float4, 5u> results{};
+        std::array<luisa::float4, 6u> results{};
+        constexpr std::array subdivision_value{4u};
         stream
+            << subdivision.copy_from(luisa::span{subdivision_value})
+            << boundary_control_point_buffer.copy_from(
+                   luisa::span{boundary_control_points})
             << identity_bounds_buffer.copy_from(
                    luisa::span{identity_bounds})
             << transformed_bounds_buffer.copy_from(
@@ -298,7 +343,9 @@ int main(int argc, char **argv) {
             << identity_curves.build()
             << transformed_curves.build()
             << accel.build()
-            << shader(output, accel).dispatch(4u)
+            << shader(output, subdivision, boundary_control_point_buffer,
+                      accel)
+                   .dispatch(4u)
             << output.copy_to(luisa::span{results})
             << synchronize();
 
@@ -325,6 +372,62 @@ int main(int argc, char **argv) {
         expect_near(
             results[4u].y, 2.5f, 1.0e-7f,
             "Catmull-Rom polynomial derivative");
+        expect(results[5u].w == 1.0f,
+               "unique-valid-interval ribbon did not commit");
+        expect_near(results[5u].x, 2.8753504753112793f, 2.0e-6f,
+                    "unique-valid-interval ribbon distance");
+        expect_near(results[5u].y, 0.3611741960048676f, 5.0e-5f,
+                    "unique-valid-interval ribbon u");
+        expect_near(results[5u].z, 0.8586872816085815f, 5.0e-4f,
+                    "unique-valid-interval ribbon v");
+
+        auto coroutine_output =
+            device.create_buffer<luisa::float4>(1u);
+        auto coroutine = Coroutine<void(
+            Buffer<luisa::float4>, Buffer<std::uint32_t>,
+            Buffer<luisa::float4>)>{
+            [ribbon](BufferFloat4 records,
+                     BufferUInt runtime_subdivision,
+                     BufferFloat4 runtime_control_points) noexcept {
+                $suspend("shade_surface");
+                const CurveControlPoints curve{
+                    .before = runtime_control_points.read(0u),
+                    .begin = runtime_control_points.read(1u),
+                    .end = runtime_control_points.read(2u),
+                    .after = runtime_control_points.read(3u)};
+                const auto hit = ribbon->intersect(
+                    make_ray(
+                        make_float3(
+                            3.0629506111145020f, -4.7604250907897949f,
+                            0.1933582425117493f),
+                        make_float3(
+                            -0.9707216024398804f, 0.0070224693045020f,
+                            0.2401046752929688f),
+                        0.0f, 101.48377227783203f),
+                    curve, runtime_subdivision.read(0u));
+                records.write(
+                    0u,
+                    make_float4(
+                        hit.distance, hit.u, hit.v,
+                        select(0.0f, 1.0f, hit.valid)));
+            }};
+        luisa::compute::coro::StateMachineCoroScheduler<
+            Buffer<luisa::float4>, Buffer<std::uint32_t>,
+            Buffer<luisa::float4>> coroutine_scheduler{device, coroutine};
+        coroutine_scheduler(
+            coroutine_output, subdivision, boundary_control_point_buffer)
+            .dispatch(1u)(stream);
+        std::array<luisa::float4, 1u> coroutine_result{};
+        stream << coroutine_output.copy_to(luisa::span{coroutine_result})
+               << synchronize();
+        expect(coroutine_result[0u].w == 1.0f,
+               "coroutine unique-valid-interval ribbon did not commit");
+        expect_near(coroutine_result[0u].x, 2.8753504753112793f,
+                    5.0e-6f, "coroutine ribbon distance");
+        expect_near(coroutine_result[0u].y, 0.3611741960048676f,
+                    5.0e-5f, "coroutine ribbon u");
+        expect_near(coroutine_result[0u].z, 0.8586872816085815f,
+                    5.0e-4f, "coroutine ribbon v");
         return EXIT_SUCCESS;
     } catch (const std::exception &error) {
         std::cerr << "curve ribbon test (" << backend
