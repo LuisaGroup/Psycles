@@ -154,9 +154,15 @@ public:
     return value;
   }
 
-  [[nodiscard]] Float4 volume_attribute_float4(
+  [[nodiscard]] Float3 object_inverse_position_transform(
       const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &,
+      Expr<luisa::float3> value) const noexcept override {
+    return value;
+  }
+
+  [[nodiscard]] Float4 kernel_image_interp_3d(
+      device_svm::ShaderData &, Expr<std::int32_t>,
+      Expr<luisa::float3>, Expr<std::int32_t>,
       Expr<bool>) const noexcept override {
     return make_float4(0.0f);
   }

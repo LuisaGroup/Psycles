@@ -49,7 +49,8 @@ ShaderData::ShaderData(Expr<luisa::float3> position,
                        Expr<luisa::float3> position_u_derivative,
                        Expr<luisa::float3> position_v_derivative,
                        Expr<luisa::float4x4> motion_object_to_world,
-                       Expr<luisa::float4x4> motion_world_to_object) noexcept
+                       Expr<luisa::float4x4> motion_world_to_object,
+                       Expr<std::uint32_t> random_state) noexcept
     : P{position},
       N{normal},
       Ng{geometric_normal},
@@ -72,6 +73,7 @@ ShaderData::ShaderData(Expr<luisa::float3> position,
       dPdv{position_v_derivative},
       ob_tfm_motion{motion_object_to_world},
       ob_itfm_motion{motion_world_to_object},
+      lcg_state{random_state},
       closure_emission_background{make_float3(0.0f)},
       closure_transparent_extinction{make_float3(0.0f)} {}
 

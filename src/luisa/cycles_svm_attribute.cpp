@@ -312,14 +312,15 @@ void node_attr_derivative(Cursor &cursor, Stack &stack,
 
 void node_attr_volume(Cursor &cursor, Stack &stack,
                       const KernelGlobals &kernel_globals,
-                      const ShaderData &shader_data) noexcept {
+                      ShaderData &shader_data) noexcept {
+  device_assert(primitive_is_volume_attribute(shader_data));
   const auto node = read_attribute_node(cursor);
   const auto descriptor =
       node_attr_init(kernel_globals, shader_data, node);
   const auto stochastic =
       node.bump_filter_width.bitcast<luisa::uint>() != 0u;
-  const auto value = kernel_globals.volume_attribute_float4(
-      shader_data, descriptor, stochastic);
+  const auto value = volume_attribute_float4(
+      kernel_globals, shader_data, descriptor, stochastic);
   $if(node.output_type ==
       static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT)) {
     stack_store_float(stack, node.out_offset, average(value.xyz()));

@@ -115,7 +115,7 @@ void node_attr_derivative(Cursor &cursor, Stack &stack,
                           const ShaderData &shader_data) noexcept;
 void node_attr_volume(Cursor &cursor, Stack &stack,
                       const KernelGlobals &kernel_globals,
-                      const ShaderData &shader_data) noexcept;
+                      ShaderData &shader_data) noexcept;
 void node_convert(Cursor &cursor, Stack &stack,
                   const KernelGlobals &kernel_globals,
                   bool use_derivatives) noexcept;
