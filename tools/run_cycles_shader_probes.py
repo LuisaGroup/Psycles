@@ -148,6 +148,7 @@ _ALL_PROBES = (
     "svm_vector_transform_no_object_from_camera",
     "svm_vector_transform_no_object_to_camera",
     "svm_bump_constant_fold",
+    "svm_geometry_attributes",
     "svm_geometry_bump_offsets",
     "svm_wireframe_matrix",
     "svm_wireframe_bump",

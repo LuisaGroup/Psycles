@@ -137,20 +137,50 @@ public:
           use_derivative);
     }
 
-    if (auto *socket = output("Backfacing");
-        socket != nullptr && !socket->links.empty()) {
+    out = output("Backfacing");
+    if (out != nullptr && !out->links.empty()) {
       compiler.add_node(
           this, NODE_LIGHT_PATH,
           SVMNodeLightPath{.path_type = NODE_LP_backfacing,
                            .out_offset = compiler.output("Backfacing"),
                            ._pad = {0u, 0u, 0u}});
     }
-    for (const auto name : {"Pointiness", "Random Per Island"}) {
-      if (const auto *socket = output(name);
-          socket != nullptr && !socket->links.empty()) {
-        compiler.fail("Cycles Geometry output is not migrated: " +
-                      std::string{name});
-        return;
+
+    out = output("Pointiness");
+    if (out != nullptr && !out->links.empty()) {
+      if (compiler.output_type() != SHADER_TYPE_VOLUME) {
+        compiler.add_node(
+            this, NODE_ATTR,
+            SVMNodeAttr{
+                .attr = static_cast<int>(ATTR_STD_POINTINESS),
+                .out_offset = compiler.output("Pointiness"),
+                .output_type = NODE_ATTR_OUTPUT_FLOAT,
+                .bump_offset = bump_offset,
+                .store_derivatives = store_derivatives,
+                .bump_filter_width = bump_filter_width},
+            use_derivative);
+      } else {
+        compiler.add_value_node(this, 0.0f,
+                                compiler.output("Pointiness"));
+      }
+    }
+
+    out = output("Random Per Island");
+    if (out != nullptr && !out->links.empty()) {
+      if (compiler.output_type() != SHADER_TYPE_VOLUME) {
+        compiler.add_node(
+            this, NODE_ATTR,
+            SVMNodeAttr{
+                .attr = static_cast<int>(ATTR_STD_RANDOM_PER_ISLAND),
+                .out_offset = compiler.output("Random Per Island"),
+                .output_type = NODE_ATTR_OUTPUT_FLOAT,
+                .bump_offset = bump_offset,
+                .store_derivatives = store_derivatives,
+                .bump_filter_width = bump_filter_width},
+            use_derivative);
+      } else {
+        compiler.add_value_node(
+            this, 0.0f, compiler.output("Random Per Island"));
       }
     }
   }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import bpy
@@ -272,3 +273,114 @@ def _svm_geometry_bump_offsets(scene: Any) -> None:
         1.1,
         Matrix.Identity(4),
     )
+
+
+def _geometry_attribute_material(
+    name: str,
+    output_name: str,
+    *,
+    use_bump: bool,
+) -> Any:
+    """Build an unbaked Geometry standard-attribute SVM graph."""
+    material, tree, output = _material(name)
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.name = f"{name} Geometry"
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = f"{name} Emission"
+    if use_bump:
+        bump = tree.nodes.new("ShaderNodeBump")
+        bump.name = f"{name} Bump"
+        bump.invert = False
+        _input(bump, "Strength").default_value = 0.73
+        _input(bump, "Distance").default_value = 0.41
+        _input(bump, "Filter Width").default_value = 0.29
+        tree.links.new(
+            _output(geometry, output_name),
+            _input(bump, "Height"),
+        )
+        tree.links.new(
+            _output(bump, "Normal"),
+            _input(emission, "Color"),
+        )
+    else:
+        tree.links.new(
+            _output(geometry, output_name),
+            _input(emission, "Color"),
+        )
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    return material
+
+
+def _svm_geometry_attributes(scene: Any) -> None:
+    """Freeze Cycles Pointiness/Random NODE_ATTR surface and dual paths."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+
+    cases = (
+        ("Pointiness", False, "Pointiness Surface"),
+        ("Random Per Island", False, "Random Surface"),
+        ("Pointiness", True, "Pointiness Bump"),
+        ("Random Per Island", True, "Random Bump"),
+    )
+    materials = [
+        _geometry_attribute_material(
+            f"SVM Geometry Attribute {label}",
+            output_name,
+            use_bump=use_bump,
+        )
+        for output_name, use_bump, label in cases
+    ]
+
+    # Four topologically disconnected curved patches make Random Per Island
+    # non-degenerate while retaining a spatially varying Pointiness field.
+    columns = 2
+    rows = 2
+    resolution = 12
+    extent = 1.1
+    vertices: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, int, int, int]] = []
+    material_indices: list[int] = []
+    for material_index in range(len(materials)):
+        column = material_index % columns
+        row = material_index // columns
+        x0 = -extent + 2.0 * extent * column / columns
+        x1 = -extent + 2.0 * extent * (column + 1) / columns
+        y0 = -extent + 2.0 * extent * row / rows
+        y1 = -extent + 2.0 * extent * (row + 1) / rows
+        first = len(vertices)
+        stride = resolution + 1
+        for y_index in range(stride):
+            v = y_index / resolution
+            y = y0 + (y1 - y0) * v
+            for x_index in range(stride):
+                u = x_index / resolution
+                x = x0 + (x1 - x0) * u
+                z = (
+                    0.13 * math.sin(4.1 * x + 0.7 * y)
+                    + 0.09 * math.cos(2.3 * x - 3.7 * y)
+                    + 0.06 * math.sin(5.2 * (x * x + y * y))
+                )
+                vertices.append((x, y, z))
+        for y_index in range(resolution):
+            for x_index in range(resolution):
+                lower = first + y_index * stride + x_index
+                upper = lower + stride
+                faces.append(
+                    (lower, lower + 1, upper + 1, upper)
+                )
+                material_indices.append(material_index)
+
+    mesh = bpy.data.meshes.new("SVM Geometry Attribute Mesh")
+    mesh.from_pydata(vertices, (), faces)
+    for material in materials:
+        mesh.materials.append(material)
+    for polygon, material_index in zip(
+        mesh.polygons, material_indices, strict=True
+    ):
+        polygon.material_index = material_index
+        polygon.use_smooth = True
+    mesh.update()
+    surface = bpy.data.objects.new("SVM Geometry Attribute Surface", mesh)
+    scene.collection.objects.link(surface)

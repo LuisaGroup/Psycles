@@ -116,6 +116,14 @@ void stack_store_float3(Stack &stack,
   stack[offset + 2u] = value.z;
 }
 
+void stack_store_dual1(Stack &stack,
+                       luisa::compute::Expr<std::uint32_t> offset,
+                       const Dual1 &value) noexcept {
+  stack_store_float(stack, offset, value.val);
+  stack_store_float(stack, offset + 1u, value.dx);
+  stack_store_float(stack, offset + 2u, value.dy);
+}
+
 void stack_store_dual3(Stack &stack,
                        luisa::compute::Expr<std::uint32_t> offset,
                        const Dual3 &value) noexcept {

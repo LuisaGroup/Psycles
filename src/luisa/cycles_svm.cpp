@@ -246,6 +246,25 @@ void eval_nodes(
           }
         };
       }
+      if (node_types_used[NODE_ATTR]) {
+        PSYCLES_SVM_CASE(NODE_ATTR) {
+          if ((node_feature_mask & kernel_feature_node_volume) != 0u) {
+            detail::node_attr_volume(cursor, stack, kernel_globals,
+                                     shader_data);
+          } else {
+            detail::node_attr_surface(cursor, stack, kernel_globals,
+                                      shader_data);
+          }
+        };
+      }
+      if (node_types_used[NODE_ATTR_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_ATTR_DERIVATIVE) {
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_attr_derivative(cursor, stack, kernel_globals,
+                                         shader_data);
+          }
+        };
+      }
       if (node_types_used[NODE_CONVERT]) {
         PSYCLES_SVM_CASE(NODE_CONVERT) {
           detail::node_convert(cursor, stack, kernel_globals, false);

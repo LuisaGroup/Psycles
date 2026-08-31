@@ -3,6 +3,7 @@
 #include "cycles_svm_internal.h"
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -20,6 +21,22 @@ namespace device_svm = psycles::luisa_backend::cycles_svm;
 
 constexpr auto probe_count = 14u;
 constexpr auto geometry_dual_case_count = 8u;
+constexpr auto attribute_float_id = 100u;
+constexpr auto attribute_float2_id = 101u;
+constexpr auto attribute_float3_id = 102u;
+constexpr auto attribute_float4_id = 103u;
+constexpr auto attribute_rgba_id = 104u;
+constexpr auto attribute_missing_id = 999u;
+
+[[nodiscard]] constexpr std::uint32_t pack_attribute_node(
+    std::uint8_t output_offset, NodeAttributeOutputType output_type,
+    NodeBumpOffset bump_offset = NODE_BUMP_OFFSET_CENTER,
+    bool store_derivatives = false) noexcept {
+  return static_cast<std::uint32_t>(output_offset) |
+         (static_cast<std::uint32_t>(output_type) << 8u) |
+         (static_cast<std::uint32_t>(bump_offset) << 16u) |
+         (static_cast<std::uint32_t>(store_derivatives) << 24u);
+}
 
 [[nodiscard]] bool near(float actual, float expected,
                         float tolerance = 3.0e-5f) noexcept {
@@ -70,6 +87,184 @@ public:
             .dx = make_float3(0.125f, 0.25f, -0.375f),
             .dy = make_float3(-0.5f, 0.625f, 0.75f)};
   }
+
+  [[nodiscard]] device_svm::AttributeDescriptor find_attribute(
+      const device_svm::ShaderData &,
+      Expr<luisa::ulong> id) const noexcept override {
+    device_svm::AttributeDescriptor descriptor{
+        .element = static_cast<std::uint32_t>(ATTR_ELEMENT_NONE),
+        .type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT),
+        .offset = static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)};
+    $if(id == static_cast<luisa::ulong>(ATTR_STD_POINTINESS)) {
+      descriptor.element = static_cast<std::uint32_t>(ATTR_ELEMENT_VERTEX);
+      descriptor.type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT);
+      descriptor.offset = static_cast<std::int32_t>(ATTR_STD_POINTINESS);
+    }
+    $elif(id == static_cast<luisa::ulong>(ATTR_STD_RANDOM_PER_ISLAND)) {
+      descriptor.element = static_cast<std::uint32_t>(ATTR_ELEMENT_FACE);
+      descriptor.type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT);
+      descriptor.offset =
+          static_cast<std::int32_t>(ATTR_STD_RANDOM_PER_ISLAND);
+    }
+    $elif((id >= static_cast<luisa::ulong>(100u)) &
+          (id <= static_cast<luisa::ulong>(104u))) {
+      descriptor.element = static_cast<std::uint32_t>(ATTR_ELEMENT_VERTEX);
+      descriptor.type = (id - static_cast<luisa::ulong>(100u))
+                            .cast<std::uint32_t>();
+      descriptor.offset = id.cast<std::int32_t>();
+    };
+    return descriptor;
+  }
+
+  [[nodiscard]] Float primitive_surface_attribute_float(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
+    Float value = 0.0f;
+    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
+      value = 0.125f;
+      $if(descriptor.offset ==
+          static_cast<std::int32_t>(ATTR_STD_POINTINESS)) {
+        value = 0.25f;
+      };
+      $if(descriptor.offset ==
+          static_cast<std::int32_t>(ATTR_STD_RANDOM_PER_ISLAND)) {
+        value = 0.75f;
+      };
+    };
+    return value;
+  }
+
+  [[nodiscard]] device_svm::Dual1
+  primitive_surface_attribute_float_derivative(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
+    device_svm::Dual1 value{.val = 0.0f, .dx = 0.0f, .dy = 0.0f};
+    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
+      value.val = 0.125f;
+      value.dx = 0.03125f;
+      value.dy = -0.0625f;
+      $if(descriptor.offset ==
+          static_cast<std::int32_t>(ATTR_STD_POINTINESS)) {
+        value.val = 0.25f;
+        value.dx = 0.1f;
+        value.dy = -0.2f;
+      };
+      $if(descriptor.offset ==
+          static_cast<std::int32_t>(ATTR_STD_RANDOM_PER_ISLAND)) {
+        value.val = 0.75f;
+        value.dx = 0.0f;
+        value.dy = 0.0f;
+      };
+    };
+    return value;
+  }
+
+  [[nodiscard]] Float2 primitive_surface_attribute_float2(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
+    Float2 value = make_float2(0.0f);
+    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
+      value = make_float2(0.2f, 0.4f);
+    };
+    return value;
+  }
+
+  [[nodiscard]] device_svm::Dual2
+  primitive_surface_attribute_float2_derivative(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
+    device_svm::Dual2 value{.val = make_float2(0.0f),
+                            .dx = make_float2(0.0f),
+                            .dy = make_float2(0.0f)};
+    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
+      value.val = make_float2(0.2f, 0.4f);
+      value.dx = make_float2(0.01f, 0.02f);
+      value.dy = make_float2(-0.03f, 0.04f);
+    };
+    return value;
+  }
+
+  [[nodiscard]] Float3 primitive_surface_attribute_float3(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
+    Float3 value = make_float3(0.0f);
+    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
+      value = make_float3(0.2f, 0.4f, 0.8f);
+    };
+    return value;
+  }
+
+  [[nodiscard]] device_svm::Dual3
+  primitive_surface_attribute_float3_derivative(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
+    device_svm::Dual3 value{.val = make_float3(0.0f),
+                            .dx = make_float3(0.0f),
+                            .dy = make_float3(0.0f)};
+    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
+      value.val = make_float3(0.2f, 0.4f, 0.8f);
+      value.dx = make_float3(0.01f, 0.02f, 0.03f);
+      value.dy = make_float3(-0.04f, 0.05f, -0.06f);
+    };
+    return value;
+  }
+
+  [[nodiscard]] Float4 primitive_surface_attribute_float4(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
+    Float4 value = make_float4(0.0f);
+    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
+      value = make_float4(0.2f, 0.4f, 0.8f, 0.6f);
+    };
+    return value;
+  }
+
+  [[nodiscard]] device_svm::Dual4
+  primitive_surface_attribute_float4_derivative(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
+    device_svm::Dual4 value{.val = make_float4(0.0f),
+                            .dx = make_float4(0.0f),
+                            .dy = make_float4(0.0f)};
+    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
+      value.val = make_float4(0.2f, 0.4f, 0.8f, 0.6f);
+      value.dx = make_float4(0.01f, 0.02f, 0.03f, 0.04f);
+      value.dy = make_float4(-0.04f, 0.05f, -0.06f, 0.07f);
+    };
+    return value;
+  }
+
+  [[nodiscard]] Float3 object_inverse_position_transform_if_object(
+      const device_svm::ShaderData &shader_data,
+      Expr<luisa::float3> value) const noexcept override {
+    Float3 result = value;
+    $if(shader_data.object != device_svm::object_none) {
+      result -= make_float3(1.0f, 2.0f, 3.0f);
+    };
+    return result;
+  }
+
+  [[nodiscard]] device_svm::Dual3
+  object_inverse_position_transform_if_object_derivative(
+      const device_svm::ShaderData &shader_data,
+      const device_svm::Dual3 &value) const noexcept override {
+    device_svm::Dual3 result{.val = value.val,
+                             .dx = value.dx,
+                             .dy = value.dy};
+    $if(shader_data.object != device_svm::object_none) {
+      result.val -= make_float3(1.0f, 2.0f, 3.0f);
+    };
+    return result;
+  }
+
+  [[nodiscard]] Float4 volume_attribute_float4(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &,
+      Expr<bool> stochastic) const noexcept override {
+    Float4 value = make_float4(0.2f, 0.4f, 0.8f, 0.6f);
+    $if(stochastic) { value += make_float4(1.0f); };
+    return value;
+  }
 };
 
 [[nodiscard]] std::array<bool, NODE_NUM> immediate_node_types() {
@@ -88,6 +283,48 @@ public:
   types[NODE_SEPARATE_VECTOR] = true;
   types[NODE_SET_BUMP] = true;
   return types;
+}
+
+[[nodiscard]] std::array<bool, NODE_NUM>
+attribute_node_types(bool use_bump) {
+  auto types = immediate_node_types();
+  types[NODE_ATTR] = !use_bump;
+  types[NODE_ATTR_DERIVATIVE] = use_bump;
+  if (use_bump) {
+    types[NODE_GEOMETRY] = true;
+    types[NODE_SET_BUMP] = true;
+  }
+  return types;
+}
+
+[[nodiscard]] device_svm::ShaderData make_attribute_shader_data(
+    Expr<std::uint32_t> primitive_type,
+    Expr<std::uint32_t> object) noexcept {
+  const auto identity = make_float4x4(1.0f);
+  return {make_float3(1.5f, 2.25f, 3.75f),
+          make_float3(0.0f, 0.0f, 1.0f),
+          make_float3(0.0f, 0.0f, 1.0f),
+          make_float3(0.0f, 0.0f, -1.0f),
+          primitive_type,
+          0u,
+          0u,
+          device_svm::shader_data_object_transform_applied,
+          0u,
+          0.2f,
+          0.3f,
+          object,
+          0.5f,
+          4.0f,
+          0.2f,
+          0.0f,
+          0.1f,
+          -0.2f,
+          0.3f,
+          0.4f,
+          make_float3(1.0f, 2.0f, 3.0f),
+          make_float3(-1.0f, 0.5f, 2.0f),
+          identity,
+          identity};
 }
 
 [[nodiscard]] auto make_probe_kernel(std::array<bool, NODE_NUM> node_types,
@@ -306,6 +543,389 @@ public:
   return true;
 }
 
+[[nodiscard]] bool test_attribute_surface_handler(Device &device,
+                                                   Stream &stream) {
+  constexpr auto case_count = 21u;
+  static constexpr std::array<std::uint32_t, case_count * 3u> payloads{
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      0u,
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT),
+      0u,
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT_ALPHA),
+      0u,
+      attribute_float2_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      0u,
+      attribute_float2_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT),
+      0u,
+      attribute_float2_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT_ALPHA),
+      0u,
+      attribute_float3_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      0u,
+      attribute_float3_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT),
+      0u,
+      attribute_float3_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT_ALPHA),
+      0u,
+      attribute_float4_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      0u,
+      attribute_float4_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT),
+      0u,
+      attribute_float4_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT_ALPHA),
+      0u,
+      attribute_rgba_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      0u,
+      attribute_rgba_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT_ALPHA),
+      0u,
+      attribute_missing_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      0u,
+      attribute_missing_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT),
+      0u,
+      attribute_missing_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT_ALPHA),
+      0u,
+      static_cast<std::uint32_t>(ATTR_STD_UV),
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      0u,
+      static_cast<std::uint32_t>(ATTR_STD_GENERATED),
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      0u,
+      attribute_float3_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      0u,
+      static_cast<std::uint32_t>(ATTR_STD_GENERATED),
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      0u,
+  };
+  static constexpr std::array<luisa::float3, case_count> expected{
+      luisa::float3{0.125f},
+      luisa::float3{0.125f, 0.0f, 0.0f},
+      luisa::float3{1.0f, 0.0f, 0.0f},
+      luisa::float3{0.2f, 0.4f, 0.0f},
+      luisa::float3{0.2f, 0.0f, 0.0f},
+      luisa::float3{1.0f, 0.0f, 0.0f},
+      luisa::float3{0.2f, 0.4f, 0.8f},
+      luisa::float3{1.4f / 3.0f, 0.0f, 0.0f},
+      luisa::float3{1.0f, 0.0f, 0.0f},
+      luisa::float3{0.2f, 0.4f, 0.8f},
+      luisa::float3{1.4f / 3.0f, 0.0f, 0.0f},
+      luisa::float3{0.6f, 0.0f, 0.0f},
+      luisa::float3{0.2f, 0.4f, 0.8f},
+      luisa::float3{0.6f, 0.0f, 0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{1.0f, 0.0f, 0.0f},
+      luisa::float3{0.5f, 0.2f, 0.0f},
+      luisa::float3{0.5f, 0.25f, 0.75f},
+      luisa::float3{0.0f},
+      luisa::float3{1.5f, 2.25f, 3.75f},
+  };
+
+  const auto kernel =
+      Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>>{
+          [](BufferUInt words, BufferFloat4 output) noexcept {
+            const UInt index = dispatch_x();
+            UInt primitive_type = device_svm::primitive_triangle;
+            UInt object = 0u;
+            $if(index == 17u) {
+              primitive_type = device_svm::primitive_lamp;
+            };
+            $if((index == 19u) | (index == 20u)) {
+              object = device_svm::object_none;
+            };
+            auto shader_data =
+                make_attribute_shader_data(primitive_type, object);
+            ProbeKernelGlobals kernel_globals;
+            device_svm::detail::Stack stack;
+            for (auto lane = 0u; lane < 9u; ++lane) {
+              stack[lane] = 0.0f;
+            }
+            UInt offset = index * 3u;
+            device_svm::detail::Cursor cursor{words, offset};
+            device_svm::detail::node_attr_surface(
+                cursor, stack, kernel_globals, shader_data);
+            output.write(
+                index,
+                make_float4(device_svm::detail::stack_load_float3(
+                                stack, 0u),
+                            0.0f));
+          }};
+  auto shader = device.compile(kernel, ShaderOption{.enable_cache = false});
+  auto word_buffer = device.create_buffer<std::uint32_t>(payloads.size());
+  auto output_buffer = device.create_buffer<luisa::float4>(case_count);
+  std::array<luisa::float4, case_count> actual{};
+  stream << word_buffer.copy_from(luisa::span{payloads})
+         << shader(word_buffer, output_buffer).dispatch(case_count)
+         << output_buffer.copy_to(luisa::span{actual}) << synchronize();
+  for (auto index = std::size_t{}; index < case_count; ++index) {
+    if (!near(actual[index].x, expected[index].x) ||
+        !near(actual[index].y, expected[index].y) ||
+        !near(actual[index].z, expected[index].z)) {
+      std::cerr << "Cycles ATTR surface case " << index << " mismatch: ("
+                << actual[index].x << ", " << actual[index].y << ", "
+                << actual[index].z << ") != (" << expected[index].x << ", "
+                << expected[index].y << ", " << expected[index].z << ")\n";
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool test_attribute_derivative_handler(Device &device,
+                                                      Stream &stream) {
+  constexpr auto case_count = 15u;
+  constexpr auto filter = std::bit_cast<std::uint32_t>(0.29f);
+  static constexpr std::array<std::uint32_t, case_count * 3u> payloads{
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT_ALPHA,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      attribute_float2_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      attribute_float2_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      attribute_float3_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      attribute_float4_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      attribute_float4_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT_ALPHA,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      attribute_rgba_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      attribute_missing_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT_ALPHA,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      static_cast<std::uint32_t>(ATTR_STD_UV),
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      static_cast<std::uint32_t>(ATTR_STD_GENERATED),
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT,
+                          NODE_BUMP_OFFSET_DX, false),
+      filter,
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT,
+                          NODE_BUMP_OFFSET_DY, false),
+      filter,
+      static_cast<std::uint32_t>(ATTR_STD_GENERATED),
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3,
+                          NODE_BUMP_OFFSET_CENTER, true),
+      filter,
+  };
+  constexpr auto float3_average = 1.4f / 3.0f;
+  constexpr auto dx_average = 0.02f;
+  constexpr auto dy_average = -0.05f / 3.0f;
+  static constexpr std::array<luisa::float3, case_count * 3u> expected{
+      luisa::float3{0.125f},
+      luisa::float3{0.03125f},
+      luisa::float3{-0.0625f},
+      luisa::float3{0.125f, 0.03125f, -0.0625f},
+      luisa::float3{0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{1.0f, 0.0f, 0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{0.2f, 0.4f, 0.0f},
+      luisa::float3{0.01f, 0.02f, 0.0f},
+      luisa::float3{-0.03f, 0.04f, 0.0f},
+      luisa::float3{0.2f, 0.01f, -0.03f},
+      luisa::float3{0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{float3_average, dx_average, dy_average},
+      luisa::float3{0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{float3_average, dx_average, dy_average},
+      luisa::float3{0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{0.6f, 0.04f, 0.07f},
+      luisa::float3{0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{0.2f, 0.4f, 0.8f},
+      luisa::float3{0.01f, 0.02f, 0.03f},
+      luisa::float3{-0.04f, 0.05f, -0.06f},
+      luisa::float3{1.0f, 0.0f, 0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{0.5f, 0.2f, 0.0f},
+      luisa::float3{-0.4f, 0.1f, 0.0f},
+      luisa::float3{-0.2f, -0.2f, 0.0f},
+      luisa::float3{0.5f, 0.25f, 0.75f},
+      luisa::float3{-0.2f, 0.35f, 0.9f},
+      luisa::float3{-0.6f, -0.2f, 0.2f},
+      luisa::float3{0.1340625f, 0.0f, 0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{0.106875f, 0.0f, 0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{0.0f},
+      luisa::float3{1.5f, 2.25f, 3.75f},
+      luisa::float3{-0.2f, 0.35f, 0.9f},
+      luisa::float3{-0.6f, -0.2f, 0.2f},
+  };
+
+  const auto kernel =
+      Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>>{
+          [](BufferUInt words, BufferFloat4 output) noexcept {
+            const UInt index = dispatch_x();
+            UInt primitive_type = device_svm::primitive_triangle;
+            $if(index == 10u) {
+              primitive_type = device_svm::primitive_lamp;
+            };
+            UInt object = 0u;
+            $if(index == 14u) { object = device_svm::object_none; };
+            auto shader_data =
+                make_attribute_shader_data(primitive_type, object);
+            ProbeKernelGlobals kernel_globals;
+            device_svm::detail::Stack stack;
+            for (auto lane = 0u; lane < 9u; ++lane) {
+              stack[lane] = 0.0f;
+            }
+            UInt offset = index * 3u;
+            device_svm::detail::Cursor cursor{words, offset};
+            device_svm::detail::node_attr_derivative(
+                cursor, stack, kernel_globals, shader_data);
+            output.write(
+                index * 3u,
+                make_float4(device_svm::detail::stack_load_float3(
+                                stack, 0u),
+                            0.0f));
+            output.write(
+                index * 3u + 1u,
+                make_float4(device_svm::detail::stack_load_float3(
+                                stack, 3u),
+                            0.0f));
+            output.write(
+                index * 3u + 2u,
+                make_float4(device_svm::detail::stack_load_float3(
+                                stack, 6u),
+                            0.0f));
+          }};
+  auto shader = device.compile(kernel, ShaderOption{.enable_cache = false});
+  auto word_buffer = device.create_buffer<std::uint32_t>(payloads.size());
+  auto output_buffer = device.create_buffer<luisa::float4>(expected.size());
+  std::array<luisa::float4, expected.size()> actual{};
+  stream << word_buffer.copy_from(luisa::span{payloads})
+         << shader(word_buffer, output_buffer).dispatch(case_count)
+         << output_buffer.copy_to(luisa::span{actual}) << synchronize();
+  for (auto index = std::size_t{}; index < expected.size(); ++index) {
+    if (!near(actual[index].x, expected[index].x) ||
+        !near(actual[index].y, expected[index].y) ||
+        !near(actual[index].z, expected[index].z)) {
+      std::cerr << "Cycles ATTR derivative lane group " << index
+                << " mismatch: (" << actual[index].x << ", "
+                << actual[index].y << ", " << actual[index].z << ") != ("
+                << expected[index].x << ", " << expected[index].y << ", "
+                << expected[index].z << ")\n";
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool test_attribute_volume_handler(Device &device,
+                                                  Stream &stream) {
+  constexpr auto case_count = 4u;
+  static constexpr std::array<std::uint32_t, case_count * 3u> payloads{
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT),
+      0u,
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      0u,
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT_ALPHA),
+      0u,
+      attribute_float_id,
+      pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
+      1u,
+  };
+  static constexpr std::array<luisa::float3, case_count> expected{
+      luisa::float3{1.4f / 3.0f, 0.0f, 0.0f},
+      luisa::float3{0.2f, 0.4f, 0.8f},
+      luisa::float3{0.6f, 0.0f, 0.0f},
+      luisa::float3{1.2f, 1.4f, 1.8f},
+  };
+  const auto kernel =
+      Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>>{
+          [](BufferUInt words, BufferFloat4 output) noexcept {
+            const UInt index = dispatch_x();
+            auto shader_data = make_attribute_shader_data(
+                device_svm::primitive_volume, 0u);
+            ProbeKernelGlobals kernel_globals;
+            device_svm::detail::Stack stack;
+            for (auto lane = 0u; lane < 3u; ++lane) {
+              stack[lane] = 0.0f;
+            }
+            UInt offset = index * 3u;
+            device_svm::detail::Cursor cursor{words, offset};
+            device_svm::detail::node_attr_volume(
+                cursor, stack, kernel_globals, shader_data);
+            output.write(
+                index,
+                make_float4(device_svm::detail::stack_load_float3(
+                                stack, 0u),
+                            0.0f));
+          }};
+  auto shader = device.compile(kernel, ShaderOption{.enable_cache = false});
+  auto word_buffer = device.create_buffer<std::uint32_t>(payloads.size());
+  auto output_buffer = device.create_buffer<luisa::float4>(case_count);
+  std::array<luisa::float4, case_count> actual{};
+  stream << word_buffer.copy_from(luisa::span{payloads})
+         << shader(word_buffer, output_buffer).dispatch(case_count)
+         << output_buffer.copy_to(luisa::span{actual}) << synchronize();
+  for (auto index = std::size_t{}; index < case_count; ++index) {
+    if (!near(actual[index].x, expected[index].x) ||
+        !near(actual[index].y, expected[index].y) ||
+        !near(actual[index].z, expected[index].z)) {
+      std::cerr << "Cycles ATTR volume case " << index << " mismatch: ("
+                << actual[index].x << ", " << actual[index].y << ", "
+                << actual[index].z << ") != (" << expected[index].x << ", "
+                << expected[index].y << ", " << expected[index].z << ")\n";
+      return false;
+    }
+  }
+  return true;
+}
+
 void run(Device &device, Stream &stream, std::span<const std::uint32_t> words,
          std::array<bool, NODE_NUM> node_types, bool bump_feature_enabled,
          std::array<luisa::float4, probe_count> &floating,
@@ -465,6 +1085,38 @@ int main(int argc, char **argv) {
       0x00000000u, 0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u,
       0x00000000u, 0x00000000u,
   };
+  static constexpr std::array geometry_pointiness_surface{
+      0x00000001u, 0x00000004u, 0x00000013u, 0x00000014u, 0x00000015u,
+      0x00000020u, 0x00000100u, 0x00000000u, 0x0000000du, 0x00000000u,
+      0x00000100u, 0x00000007u, 0x7fc00001u, 0x00000000u, 0x00000000u,
+      0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u, 0x00000000u,
+      0x00000000u,
+  };
+  static constexpr std::array geometry_random_surface{
+      0x00000001u, 0x00000004u, 0x00000013u, 0x00000014u, 0x00000015u,
+      0x00000021u, 0x00000100u, 0x00000000u, 0x0000000du, 0x00000000u,
+      0x00000100u, 0x00000007u, 0x7fc00001u, 0x00000000u, 0x00000000u,
+      0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u, 0x00000000u,
+      0x00000000u,
+  };
+  static constexpr std::array geometry_pointiness_bump{
+      0x00000001u, 0x00000004u, 0x00000021u, 0x00000022u, 0x0000000bu,
+      0x00000001u, 0x3e947ae1u, 0x00000016u, 0x00000020u, 0x00000103u,
+      0x3e947ae1u, 0x00000016u, 0x00000020u, 0x00010104u, 0x3e947ae1u,
+      0x00000016u, 0x00000020u, 0x00020105u, 0x3e947ae1u, 0x00000021u,
+      0x3ed1eb85u, 0x3f3ae148u, 0x3e947ae1u, 0x03000000u, 0xff060504u,
+      0x00000007u, 0x7fc00006u, 0x00000000u, 0x00000000u, 0x3f800000u,
+      0x00000003u, 0x000000ffu, 0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  static constexpr std::array geometry_random_bump{
+      0x00000001u, 0x00000004u, 0x00000021u, 0x00000022u, 0x0000000bu,
+      0x00000001u, 0x3e947ae1u, 0x00000016u, 0x00000021u, 0x00000103u,
+      0x3e947ae1u, 0x00000016u, 0x00000021u, 0x00010104u, 0x3e947ae1u,
+      0x00000016u, 0x00000021u, 0x00020105u, 0x3e947ae1u, 0x00000021u,
+      0x3ed1eb85u, 0x3f3ae148u, 0x3e947ae1u, 0x03000000u, 0xff060504u,
+      0x00000007u, 0x7fc00006u, 0x00000000u, 0x00000000u, 0x3f800000u,
+      0x00000003u, 0x000000ffu, 0x00000000u, 0x00000000u, 0x00000000u,
+  };
 
   const auto backend = std::string_view{argc > 1 ? argv[1] : "hip"};
   Context context{argv[0]};
@@ -474,6 +1126,11 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
   if (!test_geometry_dual_lanes(device, stream)) {
+    return EXIT_FAILURE;
+  }
+  if (!test_attribute_surface_handler(device, stream) ||
+      !test_attribute_derivative_handler(device, stream) ||
+      !test_attribute_volume_handler(device, stream)) {
     return EXIT_FAILURE;
   }
   std::array<luisa::float4, probe_count> floating{};
@@ -564,6 +1221,60 @@ int main(int argc, char **argv) {
               << floating[13u].y << ", " << floating[13u].z
               << "), status=" << integer[13u].x
               << ", pc=" << integer[13u].y << '\n';
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run(device, stream, geometry_pointiness_surface,
+      attribute_node_types(false), false, floating, integer);
+  if (!require_factor(floating, 0u, 0.25f,
+                      "Cycles Geometry Pointiness surface") ||
+      integer[0u].x != ended || integer[0u].y != 19u) {
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run(device, stream, geometry_random_surface,
+      attribute_node_types(false), false, floating, integer);
+  if (!require_factor(floating, 0u, 0.75f,
+                      "Cycles Geometry Random Per Island surface") ||
+      integer[0u].x != ended || integer[0u].y != 19u) {
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run(device, stream, geometry_pointiness_bump,
+      attribute_node_types(true), true, floating, integer);
+  static constexpr auto expected_pointiness_bump =
+      luisa::float3{0.097966006f, 0.293898017f, 0.950803143f};
+  if (!near(floating[0u].x, expected_pointiness_bump.x) ||
+      !near(floating[0u].y, expected_pointiness_bump.y) ||
+      !near(floating[0u].z, expected_pointiness_bump.z) ||
+      integer[0u].x != ended || integer[0u].y != 33u) {
+    std::cerr << "Cycles Geometry Pointiness Bump stream mismatch on "
+              << backend << ": (" << floating[0u].x << ", "
+              << floating[0u].y << ", " << floating[0u].z
+              << "), status=" << integer[0u].x
+              << ", pc=" << integer[0u].y << '\n';
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run(device, stream, geometry_random_bump,
+      attribute_node_types(true), true, floating, integer);
+  if (!near(floating[0u].x, 0.0f) ||
+      !near(floating[0u].y, 0.0f) ||
+      !near(floating[0u].z, 1.0f) || integer[0u].x != ended ||
+      integer[0u].y != 33u) {
+    std::cerr << "Cycles Geometry Random Per Island Bump stream mismatch on "
+              << backend << ": (" << floating[0u].x << ", "
+              << floating[0u].y << ", " << floating[0u].z
+              << "), status=" << integer[0u].x
+              << ", pc=" << integer[0u].y << '\n';
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
