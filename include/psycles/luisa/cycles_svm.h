@@ -92,6 +92,8 @@ inline constexpr std::uint32_t path_ray_emission = 1u << 5u;
 inline constexpr std::uint32_t shader_data_backfacing = 1u << 0u;
 inline constexpr std::uint32_t shader_data_emission = 1u << 1u;
 inline constexpr std::uint32_t shader_data_is_volume_shader_eval = 1u << 8u;
+inline constexpr std::uint32_t shader_data_volume_cubic =
+    static_cast<std::uint32_t>(compiler::cycles_svm::SD_VOLUME_CUBIC);
 
 /* Object sentinel and object flag copied from Cycles 5.2.1 kernel/types.h. */
 inline constexpr std::uint32_t object_none = ~0u;
@@ -254,8 +256,15 @@ public:
   [[nodiscard]] virtual Dual3
   object_inverse_position_transform_if_object_derivative(
       const ShaderData &shader_data, const Dual3 &value) const noexcept = 0;
-  [[nodiscard]] virtual luisa::compute::Float4 volume_attribute_float4(
-      const ShaderData &shader_data, const AttributeDescriptor &descriptor,
+  [[nodiscard]] virtual luisa::compute::Float3
+  object_inverse_position_transform(
+      const ShaderData &shader_data,
+      luisa::compute::Expr<luisa::float3> value) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float4 kernel_image_interp_3d(
+      ShaderData &shader_data,
+      luisa::compute::Expr<std::int32_t> image_texture_id,
+      luisa::compute::Expr<luisa::float3> position,
+      luisa::compute::Expr<std::int32_t> interpolation,
       luisa::compute::Expr<bool> stochastic) const noexcept = 0;
 };
 
@@ -285,6 +294,7 @@ struct ShaderData {
   luisa::compute::Float3 dPdv;
   luisa::compute::Float4x4 ob_tfm_motion;
   luisa::compute::Float4x4 ob_itfm_motion;
+  luisa::compute::UInt lcg_state;
   luisa::compute::Float3 closure_emission_background;
   luisa::compute::Float3 closure_transparent_extinction;
 
@@ -312,7 +322,8 @@ struct ShaderData {
       luisa::compute::Expr<luisa::float3> position_u_derivative,
       luisa::compute::Expr<luisa::float3> position_v_derivative,
       luisa::compute::Expr<luisa::float4x4> motion_object_to_world,
-      luisa::compute::Expr<luisa::float4x4> motion_world_to_object) noexcept;
+      luisa::compute::Expr<luisa::float4x4> motion_world_to_object,
+      luisa::compute::Expr<std::uint32_t> random_state = 0u) noexcept;
 };
 
 [[nodiscard]] AttributeDescriptor
@@ -344,6 +355,29 @@ find_attribute(const KernelGlobals &kernel_globals,
 [[nodiscard]] Dual4 primitive_surface_attribute_float4_derivative(
     const KernelGlobals &kernel_globals, const ShaderData &shader_data,
     const AttributeDescriptor &descriptor) noexcept;
+
+[[nodiscard]] luisa::compute::Bool
+primitive_is_volume_attribute(const ShaderData &shader_data) noexcept;
+[[nodiscard]] luisa::compute::Float4 volume_attribute_float4(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const AttributeDescriptor &descriptor,
+    luisa::compute::Expr<bool> stochastic) noexcept;
+[[nodiscard]] luisa::compute::Float primitive_volume_attribute_float(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const AttributeDescriptor &descriptor,
+    luisa::compute::Expr<bool> stochastic) noexcept;
+[[nodiscard]] luisa::compute::Float2 primitive_volume_attribute_float2(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const AttributeDescriptor &descriptor,
+    luisa::compute::Expr<bool> stochastic) noexcept;
+[[nodiscard]] luisa::compute::Float3 primitive_volume_attribute_float3(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const AttributeDescriptor &descriptor,
+    luisa::compute::Expr<bool> stochastic) noexcept;
+[[nodiscard]] luisa::compute::Float4 primitive_volume_attribute_float4(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const AttributeDescriptor &descriptor,
+    luisa::compute::Expr<bool> stochastic) noexcept;
 
 /* Integrator counters read by Cycles' Light Path node. */
 struct PathState {

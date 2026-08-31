@@ -1998,7 +1998,66 @@ ctest --test-dir build --output-on-failure -j32 -E \
 ctest --test-dir build --output-on-failure -R '_hip$' -j1    90/90 PASS
 ```
 
-Volume grids remain the next primitive dependency. Production table
-construction, insertion-ordered named attribute IDs, and
-`NODE_VERTEX_COLOR` also remain open; no old evaluator is used for curve or
-point fallback.
+The following checkpoint resolves the volume primitive dependency. Production
+table construction, insertion-ordered named attribute IDs, and
+`NODE_VERTEX_COLOR` remain open; no old evaluator is used for curve or point
+fallback.
+
+## Volume primitive attributes
+
+The volume checkpoint copies `kernel/geom/volume.h::volume_attribute_float4`,
+`primitive_is_volume_attribute`, and `primitive_volume_attribute<T>`, together
+with the exact `InterpolationType` and `ShaderDataFlag` values consumed by that
+code. `ShaderData.lcg_state` is now explicit because stochastic 3D image
+sampling mutates precisely that Cycles state.
+
+The former `KernelGlobals::volume_attribute_float4` semantic callback has been
+deleted. The copied transition now owns all behavior above the same low-level
+resource boundary as Cycles:
+
+```text
+object/mesh:
+  FLOAT  -> (f, f, f, 1)
+  FLOAT2 -> (x, y, 0, 1)
+  FLOAT3 -> (x, y, z, 1)
+  FLOAT4/RGBA -> stored float4
+  MATRIX -> 0
+
+voxel:
+  P_object = object_inverse_position_transform(sd.P)
+  interpolation = SD_VOLUME_CUBIC ? CUBIC : NONE
+  value = kernel_image_interp_3d(sd, descriptor.offset,
+                                 P_object, interpolation, stochastic)
+  if value.w > 1e-6 and value.w != 1:
+      value.rgb /= value.w
+```
+
+`kernel_image_interp_3d` is the remaining raw device-image service, exactly as
+in `kernel/util/image_3d.h`; it is not allowed to implement attribute lookup,
+type conversion, coordinate selection, interpolation-mode selection, or
+unpremultiplication. A concrete production resource-table implementation is
+still required when the new SVM is wired into the renderer.
+
+The HIP regression covers all six object/mesh type arms, default and cubic
+voxel interpolation, the `1e-6` alpha boundary, stochastic `lcg_state`
+advancement, all four `primitive_volume_attribute<T>` result projections,
+exact equality with `PRIMITIVE_VOLUME`, and the sequential Cycles control-flow
+edge where an unknown object type may continue into a simultaneously set voxel
+element. The pre-existing `NODE_ATTR` volume test now resolves a real voxel
+descriptor and traverses this implementation instead of receiving a fabricated
+semantic callback value.
+
+```text
+cmake --build build --parallel 32                            PASS
+ctest --test-dir build --output-on-failure -R \
+  'psycles\.cycles_svm_abi|psycles\.luisa_cycles_svm_wireframe_hip'
+                                                              2/2 PASS
+ctest --test-dir build --output-on-failure -j32 -E \
+  '(_fallback|_vk|_hip)$'                                    77/77 PASS
+ctest --test-dir build --output-on-failure -R '_hip$' -j1    90/90 PASS
+```
+
+Production attribute-table construction, Cycles insertion-ordered named
+attribute IDs, the concrete 3D image resource service, and
+`NODE_VERTEX_COLOR` remain open. None may be replaced with the previous
+attribute hash or surface evaluator.

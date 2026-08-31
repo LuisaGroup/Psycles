@@ -26,6 +26,7 @@ constexpr auto attribute_float2_id = 101u;
 constexpr auto attribute_float3_id = 102u;
 constexpr auto attribute_float4_id = 103u;
 constexpr auto attribute_rgba_id = 104u;
+constexpr auto attribute_voxel_id = 105u;
 constexpr auto attribute_missing_id = 999u;
 
 [[nodiscard]] constexpr std::uint32_t pack_attribute_node(
@@ -141,6 +142,12 @@ public:
       entry.element = static_cast<std::uint16_t>(ATTR_ELEMENT_FACE);
       entry.type = static_cast<std::uint8_t>(NODE_ATTR_FLOAT);
       entry.offset = 6;
+    }
+    $elif(offset == 14u) {
+      entry.id = static_cast<luisa::ulong>(attribute_voxel_id);
+      entry.element = static_cast<std::uint16_t>(ATTR_ELEMENT_VOXEL);
+      entry.type = static_cast<std::uint8_t>(NODE_ATTR_FLOAT4);
+      entry.offset = 7;
     };
     return entry;
   }
@@ -255,12 +262,35 @@ public:
     return result;
   }
 
-  [[nodiscard]] Float4 volume_attribute_float4(
+  [[nodiscard]] Float3 object_inverse_position_transform(
       const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &,
+      Expr<luisa::float3> value) const noexcept override {
+    return value - make_float3(1.0f, 2.0f, 3.0f);
+  }
+
+  [[nodiscard]] Float4 kernel_image_interp_3d(
+      device_svm::ShaderData &shader_data,
+      Expr<std::int32_t> image_texture_id,
+      Expr<luisa::float3> position,
+      Expr<std::int32_t> interpolation,
       Expr<bool> stochastic) const noexcept override {
-    Float4 value = make_float4(0.2f, 0.4f, 0.8f, 0.6f);
-    $if(stochastic) { value += make_float4(1.0f); };
+    Float4 value = make_float4(0.12f, 0.24f, 0.48f, 0.6f);
+    $if(image_texture_id == 8) {
+      value = make_float4(position * 0.25f, 0.25f);
+    }
+    $elif(image_texture_id == 9) {
+      value = make_float4(interpolation.cast<float>(), position.x,
+                          position.y, 1.0f);
+    }
+    $elif(image_texture_id == 10) {
+      value = make_float4(0.3f, 0.6f, 0.9f, 1.0e-7f);
+    };
+    $if(stochastic) {
+      shader_data.lcg_state += 17u;
+      $if(image_texture_id == 7) {
+        value = make_float4(0.6f, 0.7f, 0.9f, 0.5f);
+      };
+    };
     return value;
   }
 };
@@ -863,16 +893,16 @@ attribute_node_types(bool use_bump) {
                                                   Stream &stream) {
   constexpr auto case_count = 4u;
   static constexpr std::array<std::uint32_t, case_count * 3u> payloads{
-      attribute_float_id,
+      attribute_voxel_id,
       pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT),
       0u,
-      attribute_float_id,
+      attribute_voxel_id,
       pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
       0u,
-      attribute_float_id,
+      attribute_voxel_id,
       pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT_ALPHA),
       0u,
-      attribute_float_id,
+      attribute_voxel_id,
       pack_attribute_node(0u, NODE_ATTR_OUTPUT_FLOAT3),
       1u,
   };
@@ -918,6 +948,187 @@ attribute_node_types(bool use_bump) {
                 << actual[index].x << ", " << actual[index].y << ", "
                 << actual[index].z << ") != (" << expected[index].x << ", "
                 << expected[index].y << ", " << expected[index].z << ")\n";
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] bool test_primitive_volume_attributes(Device &device,
+                                                    Stream &stream) {
+  constexpr auto case_count = 18u;
+  const auto kernel =
+      Kernel1D<Buffer<luisa::float4>, Buffer<luisa::uint4>>{
+          [](BufferFloat4 output, BufferUInt4 state_output) noexcept {
+            const UInt index = dispatch_x();
+            UInt primitive_type = device_svm::primitive_volume;
+            UInt shader_flags = 0u;
+            UInt element = static_cast<std::uint32_t>(ATTR_ELEMENT_OBJECT);
+            UInt type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT);
+            Int offset = 0;
+            Bool stochastic = false;
+            UInt conversion = 0u;
+
+            $if(index == 1u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_MESH);
+              type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT2);
+            }
+            $elif(index == 2u) {
+              type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT3);
+            }
+            $elif(index == 3u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_MESH);
+              type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT4);
+            }
+            $elif(index == 4u) {
+              type = static_cast<std::uint32_t>(NODE_ATTR_RGBA);
+            }
+            $elif(index == 5u) {
+              type = static_cast<std::uint32_t>(NODE_ATTR_MATRIX);
+            }
+            $elif(index == 6u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_VOXEL);
+              offset = 8;
+            }
+            $elif(index == 7u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_VOXEL);
+              offset = 9;
+              shader_flags = device_svm::shader_data_volume_cubic;
+              stochastic = true;
+            }
+            $elif(index == 8u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_VOXEL);
+              offset = 10;
+            }
+            $elif(index == 9u) {
+              primitive_type = device_svm::primitive_triangle;
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_VOXEL);
+              offset = 8;
+              conversion = 4u;
+            }
+            $elif(index == 10u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_VOXEL);
+              offset = 7;
+              conversion = 1u;
+            }
+            $elif(index == 11u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_VOXEL);
+              offset = 7;
+              conversion = 2u;
+            }
+            $elif(index == 12u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_VOXEL);
+              offset = 7;
+              conversion = 3u;
+            }
+            $elif(index == 13u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_VOXEL);
+              offset = 7;
+              conversion = 4u;
+            }
+            $elif(index == 14u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_OBJECT |
+                                                   ATTR_ELEMENT_VOXEL);
+            }
+            $elif(index == 15u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_OBJECT |
+                                                   ATTR_ELEMENT_VOXEL);
+              type = 99u;
+              offset = 8;
+            }
+            $elif(index == 16u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_NONE);
+            }
+            $elif(index == 17u) {
+              element = static_cast<std::uint32_t>(ATTR_ELEMENT_VOXEL);
+              offset = 9;
+            };
+
+            auto shader_data = make_attribute_shader_data(primitive_type, 0u);
+            shader_data.flag = shader_flags;
+            shader_data.lcg_state = 23u;
+            const device_svm::AttributeDescriptor descriptor{
+                .element = element, .type = type, .offset = offset};
+            ProbeKernelGlobals kernel_globals;
+            Float4 value = make_float4(0.0f);
+            $switch(conversion) {
+              $case(0u) {
+                value = device_svm::volume_attribute_float4(
+                    kernel_globals, shader_data, descriptor, stochastic);
+              };
+              $case(1u) {
+                value.x = device_svm::primitive_volume_attribute_float(
+                    kernel_globals, shader_data, descriptor, stochastic);
+              };
+              $case(2u) {
+                const Float2 converted =
+                    device_svm::primitive_volume_attribute_float2(
+                        kernel_globals, shader_data, descriptor, stochastic);
+                value = make_float4(converted.x, converted.y, 0.0f, 0.0f);
+              };
+              $case(3u) {
+                const Float3 converted =
+                    device_svm::primitive_volume_attribute_float3(
+                        kernel_globals, shader_data, descriptor, stochastic);
+                value = make_float4(converted, 0.0f);
+              };
+              $case(4u) {
+                value = device_svm::primitive_volume_attribute_float4(
+                    kernel_globals, shader_data, descriptor, stochastic);
+              };
+            };
+            output.write(index, value);
+            state_output.write(
+                index,
+                make_uint4(shader_data.lcg_state,
+                           device_svm::primitive_is_volume_attribute(
+                               shader_data)
+                               .cast<std::uint32_t>(),
+                           0u, 0u));
+          }};
+  auto shader = device.compile(kernel, ShaderOption{.enable_cache = false});
+  auto output_buffer = device.create_buffer<luisa::float4>(case_count);
+  auto state_buffer = device.create_buffer<luisa::uint4>(case_count);
+  std::array<luisa::float4, case_count> actual{};
+  std::array<luisa::uint4, case_count> states{};
+  stream << shader(output_buffer, state_buffer).dispatch(case_count)
+         << output_buffer.copy_to(luisa::span{actual})
+         << state_buffer.copy_to(luisa::span{states}) << synchronize();
+
+  static constexpr std::array<luisa::float4, case_count> expected{
+      luisa::float4{0.0625f, 0.0625f, 0.0625f, 1.0f},
+      luisa::float4{0.177f, 0.384f, 0.0f, 1.0f},
+      luisa::float4{0.174f, 0.387f, 0.74f, 1.0f},
+      luisa::float4{0.174f, 0.387f, 0.74f, 0.565f},
+      luisa::float4{0.174f, 0.387f, 0.74f, 0.565f},
+      luisa::float4{0.0f},
+      luisa::float4{0.5f, 0.25f, 0.75f, 0.25f},
+      luisa::float4{2.0f, 0.5f, 0.25f, 1.0f},
+      luisa::float4{0.3f, 0.6f, 0.9f, 1.0e-7f},
+      luisa::float4{0.0f},
+      luisa::float4{1.4f / 3.0f, 0.0f, 0.0f, 0.0f},
+      luisa::float4{0.2f, 0.4f, 0.0f, 0.0f},
+      luisa::float4{0.2f, 0.4f, 0.8f, 0.0f},
+      luisa::float4{0.2f, 0.4f, 0.8f, 0.6f},
+      luisa::float4{0.0625f, 0.0625f, 0.0625f, 1.0f},
+      luisa::float4{0.5f, 0.25f, 0.75f, 0.25f},
+      luisa::float4{0.0f},
+      luisa::float4{-1.0f, 0.5f, 0.25f, 1.0f},
+  };
+  for (auto index = std::size_t{}; index < case_count; ++index) {
+    const auto &value = actual[index];
+    const auto &reference = expected[index];
+    const auto expected_lcg = index == 7u ? 40u : 23u;
+    const auto expected_volume = index == 9u ? 0u : 1u;
+    if (!near(value.x, reference.x) || !near(value.y, reference.y) ||
+        !near(value.z, reference.z) || !near(value.w, reference.w) ||
+        states[index].x != expected_lcg ||
+        states[index].y != expected_volume) {
+      std::cerr << "Cycles primitive volume attribute case " << index
+                << " mismatch: (" << value.x << ", " << value.y << ", "
+                << value.z << ", " << value.w << "), lcg="
+                << states[index].x << ", is_volume=" << states[index].y
+                << '\n';
       return false;
     }
   }
@@ -1128,7 +1339,8 @@ int main(int argc, char **argv) {
   }
   if (!test_attribute_surface_handler(device, stream) ||
       !test_attribute_derivative_handler(device, stream) ||
-      !test_attribute_volume_handler(device, stream)) {
+      !test_attribute_volume_handler(device, stream) ||
+      !test_primitive_volume_attributes(device, stream)) {
     return EXIT_FAILURE;
   }
   std::array<luisa::float4, probe_count> floating{};

@@ -1218,6 +1218,12 @@ static_assert(static_cast<std::uint64_t>(NODE_ATTR_OUTPUT_FLOAT) == 1ull);
 static_assert(static_cast<std::uint64_t>(NODE_ATTR_OUTPUT_FLOAT3) == 0ull);
 static_assert(static_cast<std::uint64_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA) == 2ull);
 static_assert(static_cast<std::uint64_t>(NODE_ATTR_RGBA) == 4ull);
+static_assert(static_cast<std::int64_t>(INTERPOLATION_NONE) == -1ll);
+static_assert(static_cast<std::uint64_t>(INTERPOLATION_LINEAR) == 0ull);
+static_assert(static_cast<std::uint64_t>(INTERPOLATION_CLOSEST) == 1ull);
+static_assert(static_cast<std::uint64_t>(INTERPOLATION_CUBIC) == 2ull);
+static_assert(static_cast<std::uint64_t>(INTERPOLATION_SMART) == 3ull);
+static_assert(static_cast<std::uint64_t>(INTERPOLATION_NUM_TYPES) == 4ull);
 static_assert(static_cast<std::uint64_t>(PRIMITIVE_NONE) == 0ull);
 static_assert(static_cast<std::uint64_t>(PRIMITIVE_TRIANGLE) == 1ull);
 static_assert(static_cast<std::uint64_t>(PRIMITIVE_CURVE_THICK) == 2ull);
@@ -1238,6 +1244,56 @@ static_assert(static_cast<std::uint64_t>(PRIMITIVE_ALL) == 127ull);
 static_assert(static_cast<std::uint64_t>(PRIMITIVE_NUM_SHAPES) == 6ull);
 static_assert(static_cast<std::uint64_t>(PRIMITIVE_NUM_BITS) == 7ull);
 static_assert(static_cast<std::uint64_t>(PRIMITIVE_NUM) == 12ull);
+static_assert(static_cast<std::uint32_t>(SD_BACKFACING) == (1u << 0u));
+static_assert(static_cast<std::uint32_t>(SD_EMISSION) == (1u << 1u));
+static_assert(static_cast<std::uint32_t>(SD_BSDF) == (1u << 2u));
+static_assert(static_cast<std::uint32_t>(SD_BSDF_HAS_EVAL) == (1u << 3u));
+static_assert(static_cast<std::uint32_t>(SD_BSSRDF) == (1u << 4u));
+static_assert(static_cast<std::uint32_t>(SD_HOLDOUT) == (1u << 5u));
+static_assert(static_cast<std::uint32_t>(SD_EXTINCTION) == (1u << 6u));
+static_assert(static_cast<std::uint32_t>(SD_SCATTER) == (1u << 7u));
+static_assert(static_cast<std::uint32_t>(SD_IS_VOLUME_SHADER_EVAL) ==
+              (1u << 8u));
+static_assert(static_cast<std::uint32_t>(SD_TRANSPARENT) == (1u << 9u));
+static_assert(static_cast<std::uint32_t>(SD_BSDF_HAS_TRANSMISSION) ==
+              (1u << 10u));
+static_assert(static_cast<std::uint32_t>(SD_RAY_PORTAL) == (1u << 11u));
+static_assert(static_cast<std::uint32_t>(SD_CACHE_MISS) == (1u << 12u));
+static_assert(static_cast<std::uint32_t>(SD_CLOSURE_FLAGS) == 7678u);
+static_assert(static_cast<std::uint32_t>(SD_HAS_LIGHT_PATH_NODE) ==
+              (1u << 13u));
+static_assert(static_cast<std::uint32_t>(SD_HAS_BUMP_FROM_SURFACE) ==
+              (1u << 14u));
+static_assert(static_cast<std::uint32_t>(SD_USE_BUMP_MAP_CORRECTION) ==
+              (1u << 15u));
+static_assert(static_cast<std::uint32_t>(SD_MIS_FRONT) == (1u << 16u));
+static_assert(static_cast<std::uint32_t>(SD_HAS_TRANSPARENT_SHADOW) ==
+              (1u << 17u));
+static_assert(static_cast<std::uint32_t>(SD_HAS_VOLUME) == (1u << 18u));
+static_assert(static_cast<std::uint32_t>(SD_HAS_ONLY_VOLUME) ==
+              (1u << 19u));
+static_assert(static_cast<std::uint32_t>(SD_HETEROGENEOUS_VOLUME) ==
+              (1u << 20u));
+static_assert(static_cast<std::uint32_t>(SD_HAS_BSSRDF_BUMP) ==
+              (1u << 21u));
+static_assert(static_cast<std::uint32_t>(SD_VOLUME_EQUIANGULAR) ==
+              (1u << 22u));
+static_assert(static_cast<std::uint32_t>(SD_VOLUME_MIS) == (1u << 23u));
+static_assert(static_cast<std::uint32_t>(SD_VOLUME_CUBIC) == (1u << 24u));
+static_assert(static_cast<std::uint32_t>(SD_HAS_BUMP_FROM_DISPLACEMENT) ==
+              (1u << 25u));
+static_assert(static_cast<std::uint32_t>(SD_HAS_BUMP) ==
+              ((1u << 14u) | (1u << 25u)));
+static_assert(static_cast<std::uint32_t>(SD_HAS_DISPLACEMENT) ==
+              (1u << 26u));
+static_assert(static_cast<std::uint32_t>(SD_HAS_CONSTANT_EMISSION) ==
+              (1u << 27u));
+static_assert(static_cast<std::uint32_t>(SD_NEED_VOLUME_ATTRIBUTES) ==
+              (1u << 28u));
+static_assert(static_cast<std::uint32_t>(SD_HAS_EMISSION) == (1u << 29u));
+static_assert(static_cast<std::uint32_t>(SD_HAS_RAYTRACE) == (1u << 30u));
+static_assert(static_cast<std::uint32_t>(SD_MIS_BACK) == (1u << 31u));
+static_assert(static_cast<std::uint32_t>(SD_SHADER_FLAGS) == 4294918144u);
 static_assert(static_cast<std::uint64_t>(ATTR_PRIM_GEOMETRY) == 0ull);
 static_assert(static_cast<std::uint64_t>(ATTR_PRIM_SUBD) == 1ull);
 static_assert(static_cast<std::uint64_t>(ATTR_PRIM_TYPES) == 2ull);
