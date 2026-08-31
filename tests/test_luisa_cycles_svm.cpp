@@ -55,70 +55,80 @@ public:
             .dy = make_float3(0.0f)};
   }
 
-  [[nodiscard]] device_svm::AttributeDescriptor find_attribute(
-      const device_svm::ShaderData &,
-      Expr<luisa::ulong>) const noexcept override {
-    return {.element = static_cast<std::uint32_t>(ATTR_ELEMENT_NONE),
-            .type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT),
-            .offset = static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)};
+  [[nodiscard]] UInt
+  object_attribute_map_offset(Expr<std::uint32_t>) const noexcept override {
+    return 0u;
   }
 
-  [[nodiscard]] Float primitive_surface_attribute_float(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &) const noexcept override {
+  [[nodiscard]] Var<AttributeMap>
+  attribute_map(Expr<std::uint32_t>) const noexcept override {
+    Var<AttributeMap> entry;
+    entry.id = static_cast<luisa::ulong>(ATTR_STD_NONE);
+    entry.offset = 0;
+    entry.element = static_cast<std::uint16_t>(0u);
+    entry.type = static_cast<std::uint8_t>(0u);
+    entry.pad = static_cast<std::uint8_t>(0u);
+    return entry;
+  }
+
+  [[nodiscard]] Float
+  attribute_float(Expr<std::int32_t>) const noexcept override {
     return 0.0f;
   }
 
-  [[nodiscard]] device_svm::Dual1
-  primitive_surface_attribute_float_derivative(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &) const noexcept override {
-    return {.val = 0.0f, .dx = 0.0f, .dy = 0.0f};
-  }
-
-  [[nodiscard]] Float2 primitive_surface_attribute_float2(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &) const noexcept override {
+  [[nodiscard]] Float2
+  attribute_float2(Expr<std::int32_t>) const noexcept override {
     return make_float2(0.0f);
   }
 
-  [[nodiscard]] device_svm::Dual2
-  primitive_surface_attribute_float2_derivative(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &) const noexcept override {
-    return {.val = make_float2(0.0f),
-            .dx = make_float2(0.0f),
-            .dy = make_float2(0.0f)};
+  [[nodiscard]] Var<packed_float3>
+  attribute_float3(Expr<std::int32_t>) const noexcept override {
+    Var<packed_float3> value;
+    value.x = 0.0f;
+    value.y = 0.0f;
+    value.z = 0.0f;
+    return value;
   }
 
-  [[nodiscard]] Float3 primitive_surface_attribute_float3(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &) const noexcept override {
-    return make_float3(0.0f);
-  }
-
-  [[nodiscard]] device_svm::Dual3
-  primitive_surface_attribute_float3_derivative(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &) const noexcept override {
-    return {.val = make_float3(0.0f),
-            .dx = make_float3(0.0f),
-            .dy = make_float3(0.0f)};
-  }
-
-  [[nodiscard]] Float4 primitive_surface_attribute_float4(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &) const noexcept override {
+  [[nodiscard]] Float4
+  attribute_float4(Expr<std::int32_t>) const noexcept override {
     return make_float4(0.0f);
   }
 
-  [[nodiscard]] device_svm::Dual4
-  primitive_surface_attribute_float4_derivative(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &) const noexcept override {
-    return {.val = make_float4(0.0f),
-            .dx = make_float4(0.0f),
-            .dy = make_float4(0.0f)};
+  [[nodiscard]] Var<uchar4>
+  attribute_uchar4(Expr<std::int32_t>) const noexcept override {
+    Var<uchar4> value;
+    value.x = static_cast<std::uint8_t>(0u);
+    value.y = static_cast<std::uint8_t>(0u);
+    value.z = static_cast<std::uint8_t>(0u);
+    value.w = static_cast<std::uint8_t>(0u);
+    return value;
+  }
+
+  [[nodiscard]] Var<packed_normal>
+  attribute_normal(Expr<std::int32_t>) const noexcept override {
+    Var<packed_normal> value;
+    value.value = 0u;
+    return value;
+  }
+
+  [[nodiscard]] UInt3
+  triangle_vertex_indices(Expr<std::uint32_t>) const noexcept override {
+    return make_uint3(0u, 1u, 2u);
+  }
+
+  [[nodiscard]] Bool film_is_rec709() const noexcept override { return true; }
+
+  [[nodiscard]] Float3 film_rec709_to_r() const noexcept override {
+    return make_float3(1.0f, 0.0f, 0.0f);
+  }
+
+  [[nodiscard]] Float3 film_rec709_to_g() const noexcept override {
+    return make_float3(0.0f, 1.0f, 0.0f);
+  }
+
+  [[nodiscard]] Float3 film_rec709_to_b() const noexcept override {
+    return make_float3(0.0f, 0.0f, 1.0f);
   }
 
   [[nodiscard]] Float3 object_inverse_position_transform_if_object(
@@ -211,7 +221,6 @@ struct VectorTransformCase {
   }
   return result;
 }
-
 static constexpr auto vector_transform_cases = make_vector_transform_cases();
 
 [[nodiscard]] ShaderImage compile_dynamic_math() {

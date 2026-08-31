@@ -49,8 +49,8 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
     const AttributeNode &node) noexcept {
   auto descriptor = attribute_not_found();
   $if(shader_data.object != object_none) {
-    descriptor = kernel_globals.find_attribute(
-        shader_data, node.attr.cast<luisa::ulong>());
+    descriptor = find_attribute(kernel_globals, shader_data,
+                                node.attr.cast<luisa::ulong>());
     $if(!is_attribute_found(descriptor)) {
       descriptor = attribute_not_found();
       descriptor.type = node.output_type;
@@ -128,8 +128,8 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
         shader_data, shader_data.P);
   }
   $elif(descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_FLOAT)) {
-    const auto value = kernel_globals.primitive_surface_attribute_float(
-        shader_data, descriptor);
+    const auto value = primitive_surface_attribute_float(
+        kernel_globals, shader_data, descriptor);
     $if(node.output_type ==
         static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
       result = make_float3(1.0f);
@@ -137,8 +137,8 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
     $else { result = make_float3(value); };
   }
   $elif(descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_FLOAT2)) {
-    const auto value = kernel_globals.primitive_surface_attribute_float2(
-        shader_data, descriptor);
+    const auto value = primitive_surface_attribute_float2(
+        kernel_globals, shader_data, descriptor);
     $if(node.output_type ==
         static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT)) {
       result = make_float3(value.x);
@@ -151,8 +151,8 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
   }
   $elif((descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_FLOAT4)) |
         (descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_RGBA))) {
-    const auto value = kernel_globals.primitive_surface_attribute_float4(
-        shader_data, descriptor);
+    const auto value = primitive_surface_attribute_float4(
+        kernel_globals, shader_data, descriptor);
     $if(node.output_type ==
         static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT)) {
       result = make_float3(average(value.xyz()));
@@ -164,8 +164,8 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
     $else { result = value.xyz(); };
   }
   $else {
-    const auto value = kernel_globals.primitive_surface_attribute_float3(
-        shader_data, descriptor);
+    const auto value = primitive_surface_attribute_float3(
+        kernel_globals, shader_data, descriptor);
     $if(node.output_type ==
         static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT)) {
       result = make_float3(average(value));
@@ -202,9 +202,8 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
             shader_data, shading_position(shader_data));
   }
   $elif(descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_FLOAT)) {
-    const auto value =
-        kernel_globals.primitive_surface_attribute_float_derivative(
-            shader_data, descriptor);
+    const auto value = primitive_surface_attribute_float_derivative(
+        kernel_globals, shader_data, descriptor);
     $if(node.output_type ==
         static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT_ALPHA)) {
       result = dual3_one();
@@ -212,9 +211,8 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
     $else { result = dual3_from_dual1(value); };
   }
   $elif(descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_FLOAT2)) {
-    const auto value =
-        kernel_globals.primitive_surface_attribute_float2_derivative(
-            shader_data, descriptor);
+    const auto value = primitive_surface_attribute_float2_derivative(
+        kernel_globals, shader_data, descriptor);
     $if(node.output_type ==
         static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT)) {
       result = {.val = make_float3(value.val.x),
@@ -229,9 +227,8 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
   }
   $elif((descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_FLOAT4)) |
         (descriptor.type == static_cast<std::uint32_t>(NODE_ATTR_RGBA))) {
-    const auto value =
-        kernel_globals.primitive_surface_attribute_float4_derivative(
-            shader_data, descriptor);
+    const auto value = primitive_surface_attribute_float4_derivative(
+        kernel_globals, shader_data, descriptor);
     $if(node.output_type ==
         static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT)) {
       result = dual3_from_dual1(average(dual3_from_dual4(value)));
@@ -243,9 +240,8 @@ is_attribute_found(const AttributeDescriptor &descriptor) noexcept {
     $else { result = dual3_from_dual4(value); };
   }
   $else {
-    const auto value =
-        kernel_globals.primitive_surface_attribute_float3_derivative(
-            shader_data, descriptor);
+    const auto value = primitive_surface_attribute_float3_derivative(
+        kernel_globals, shader_data, descriptor);
     $if(node.output_type ==
         static_cast<std::uint32_t>(NODE_ATTR_OUTPUT_FLOAT)) {
       result = dual3_from_dual1(average(value));

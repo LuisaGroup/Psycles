@@ -15,6 +15,20 @@
 
 #include <luisa/luisa-compute.h>
 
+LUISA_STRUCT(
+    psycles::compiler::cycles_svm::packed_float3, x, y, z) {};
+LUISA_STRUCT(
+    psycles::compiler::cycles_svm::packed_normal, value) {};
+LUISA_STRUCT(
+    psycles::compiler::cycles_svm::uchar4, x, y, z, w) {};
+LUISA_STRUCT(
+    psycles::compiler::cycles_svm::AttributeMap,
+    id,
+    offset,
+    element,
+    type,
+    pad) {};
+
 namespace psycles::luisa_backend::cycles_svm {
 
 /* Kernel feature flags copied from Cycles 5.2.1 kernel/features.h. They are
@@ -192,36 +206,35 @@ public:
   primitive_tangent(const ShaderData &shader_data) const noexcept = 0;
   [[nodiscard]] virtual Dual3 primitive_tangent_derivative(
       const ShaderData &shader_data) const noexcept = 0;
-  [[nodiscard]] virtual AttributeDescriptor find_attribute(
-      const ShaderData &shader_data,
-      luisa::compute::Expr<luisa::ulong> id) const noexcept = 0;
-  [[nodiscard]] virtual luisa::compute::Float primitive_surface_attribute_float(
-      const ShaderData &shader_data,
-      const AttributeDescriptor &descriptor) const noexcept = 0;
-  [[nodiscard]] virtual Dual1 primitive_surface_attribute_float_derivative(
-      const ShaderData &shader_data,
-      const AttributeDescriptor &descriptor) const noexcept = 0;
-  [[nodiscard]] virtual luisa::compute::Float2
-  primitive_surface_attribute_float2(
-      const ShaderData &shader_data,
-      const AttributeDescriptor &descriptor) const noexcept = 0;
-  [[nodiscard]] virtual Dual2 primitive_surface_attribute_float2_derivative(
-      const ShaderData &shader_data,
-      const AttributeDescriptor &descriptor) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::UInt object_attribute_map_offset(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Var<compiler::cycles_svm::AttributeMap>
+  attribute_map(luisa::compute::Expr<std::uint32_t> offset) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float
+  attribute_float(luisa::compute::Expr<std::int32_t> offset) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float2 attribute_float2(
+      luisa::compute::Expr<std::int32_t> offset) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Var<compiler::cycles_svm::packed_float3>
+  attribute_float3(
+      luisa::compute::Expr<std::int32_t> offset) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float4 attribute_float4(
+      luisa::compute::Expr<std::int32_t> offset) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Var<compiler::cycles_svm::uchar4>
+  attribute_uchar4(
+      luisa::compute::Expr<std::int32_t> offset) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Var<compiler::cycles_svm::packed_normal>
+  attribute_normal(
+      luisa::compute::Expr<std::int32_t> offset) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::UInt3 triangle_vertex_indices(
+      luisa::compute::Expr<std::uint32_t> prim) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Bool
+  film_is_rec709() const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float3
-  primitive_surface_attribute_float3(
-      const ShaderData &shader_data,
-      const AttributeDescriptor &descriptor) const noexcept = 0;
-  [[nodiscard]] virtual Dual3 primitive_surface_attribute_float3_derivative(
-      const ShaderData &shader_data,
-      const AttributeDescriptor &descriptor) const noexcept = 0;
-  [[nodiscard]] virtual luisa::compute::Float4
-  primitive_surface_attribute_float4(
-      const ShaderData &shader_data,
-      const AttributeDescriptor &descriptor) const noexcept = 0;
-  [[nodiscard]] virtual Dual4 primitive_surface_attribute_float4_derivative(
-      const ShaderData &shader_data,
-      const AttributeDescriptor &descriptor) const noexcept = 0;
+  film_rec709_to_r() const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3
+  film_rec709_to_g() const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3
+  film_rec709_to_b() const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float3
   object_inverse_position_transform_if_object(
       const ShaderData &shader_data,
@@ -289,6 +302,36 @@ struct ShaderData {
       luisa::compute::Expr<luisa::float4x4> motion_object_to_world,
       luisa::compute::Expr<luisa::float4x4> motion_world_to_object) noexcept;
 };
+
+[[nodiscard]] AttributeDescriptor
+find_attribute(const KernelGlobals &kernel_globals,
+               const ShaderData &shader_data,
+               luisa::compute::Expr<luisa::ulong> id) noexcept;
+
+[[nodiscard]] luisa::compute::Float primitive_surface_attribute_float(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    const AttributeDescriptor &descriptor) noexcept;
+[[nodiscard]] Dual1 primitive_surface_attribute_float_derivative(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    const AttributeDescriptor &descriptor) noexcept;
+[[nodiscard]] luisa::compute::Float2 primitive_surface_attribute_float2(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    const AttributeDescriptor &descriptor) noexcept;
+[[nodiscard]] Dual2 primitive_surface_attribute_float2_derivative(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    const AttributeDescriptor &descriptor) noexcept;
+[[nodiscard]] luisa::compute::Float3 primitive_surface_attribute_float3(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    const AttributeDescriptor &descriptor) noexcept;
+[[nodiscard]] Dual3 primitive_surface_attribute_float3_derivative(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    const AttributeDescriptor &descriptor) noexcept;
+[[nodiscard]] luisa::compute::Float4 primitive_surface_attribute_float4(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    const AttributeDescriptor &descriptor) noexcept;
+[[nodiscard]] Dual4 primitive_surface_attribute_float4_derivative(
+    const KernelGlobals &kernel_globals, const ShaderData &shader_data,
+    const AttributeDescriptor &descriptor) noexcept;
 
 /* Integrator counters read by Cycles' Light Path node. */
 struct PathState {

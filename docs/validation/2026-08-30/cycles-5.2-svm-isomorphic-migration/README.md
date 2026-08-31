@@ -1738,12 +1738,11 @@ filter-width bits as Cycles' stochastic flag, calls the volume float4 fetch,
 and applies the same RGB average, RGB, or alpha projection. No generic float4
 attribute evaluator or locally invented conversion table exists.
 
-The primitive fetches and object/volume transforms are `KernelGlobals`
-services at the current SVM boundary. Their virtual calls run only while the
-host builds the Luisa AST; there is no device-side virtual dispatch. Keeping
-separate float, float2, float3, float4, dual, and volume services preserves the
-exact Cycles type branches instead of collapsing them into the previous weakly
-typed parameter model.
+At this checkpoint the primitive fetches and object/volume transforms were
+`KernelGlobals` services. Their virtual calls ran only while the host built the
+Luisa AST; there was no device-side virtual dispatch. The subsequent primitive
+attribute checkpoint below removes the surface semantic services and copies
+the Cycles map walk, typed arrays, and triangle interpolation directly.
 
 ### External oracle, HIP execution, and visual inspection
 
@@ -1845,3 +1844,109 @@ ctest --test-dir build --output-on-failure -j32 -E \
   '(_fallback|_vk|_hip)$'                                      77/77 PASS
 ctest --test-dir build --output-on-failure -R '_hip$' -j1     89/89 PASS
 ```
+
+## Attribute map, typed storage, and triangle primitive checkpoint
+
+This checkpoint replaces the temporary semantic surface-attribute callbacks
+with a direct Luisa DSL transcription of these Cycles 5.2.1 sources:
+
+| Operation | Cycles 5.2.1 source |
+|---|---|
+| map layout and descriptor ABI | `intern/cycles/kernel/types.h` |
+| map construction and object-to-geometry chaining | `intern/cycles/scene/geometry_attributes.cpp` |
+| lookup and typed table fetch | `intern/cycles/kernel/geom/attribute.h` |
+| triangle interpolation and derivatives | `intern/cycles/kernel/geom/triangle.h` |
+| surface primitive dispatch | `intern/cycles/kernel/geom/primitive.h` |
+| byte-color conversion | `intern/cycles/util/color.h`, `kernel/util/colorspace.h` |
+| packed-normal decode | `intern/cycles/util/types_normal.h` |
+
+`AttributeMap` is the native 16-byte record `(uint64 id, int offset, uint16
+element, uint8 type, uint8 pad)`. `AttributeDescriptor` remains the native
+12-byte record. `uchar4` and `packed_normal` remain four-byte storage records;
+they are not widened or decoded by the exporter. The six device tables remain
+separate `float`, `float2`, packed `float3`, `float4`, `uchar4`, and
+`packed_normal` arrays.
+
+For initial object map offset `o_0`, requested identifier `a`, and map `M`, the
+copied lookup relation is exactly:
+
+```text
+o := o_0
+while M[o].id != a:
+  if M[o].id == ATTR_STD_NONE:
+    if M[o].element == 0: return attribute_not_found()
+    o := uint(M[o].offset)
+  else:
+    o := o + ATTR_PRIM_TYPES
+
+d.element := M[o].element
+if prim == PRIM_NONE and
+   !(d.element & (MESH | VOXEL | OBJECT)):
+  return attribute_not_found()
+d.offset := M[o].element == NONE ? ATTR_STD_NOT_FOUND : M[o].offset
+d.type := M[o].type
+return d
+```
+
+The `ATTR_PRIM_TYPES == 2` stride and the terminator chain are both observable:
+the HIP regression includes a valid odd sub-entry that must not be reached by
+the geometry walk and an object terminator that jumps into the geometry table.
+The successful path deliberately reloads `M[o]` after `find_attr_offset`, as
+Cycles does; any redundant-load elimination is left to Luisa/XIR rather than
+changing the source machine.
+
+For vertex attributes the copied triangle path reads the three indices from
+`tri_vindex[prim]`; for corner attributes it uses `(3*prim + 0,1,2)`. With
+`w=(1-u-v,u,v)` it returns `sum(w_i*f_i)`. A dual fetch additionally returns
+
+```text
+dx = du.dx*f1 + dv.dx*f2 - (du.dx + dv.dx)*f0
+dy = du.dy*f1 + dv.dy*f2 - (du.dy + dv.dy)*f0
+```
+
+Face attributes read `offset + prim`; object and mesh attributes read `offset`
+directly. Float3 normal elements decode the native octahedral 2x16-bit record.
+Corner-byte RGBA reads raw bytes, divides by 255, applies Cycles' piecewise sRGB
+transfer to RGB only, then applies the film Rec.709-to-working-space rows; alpha
+remains linear. No Blender/Cycles pre-bake or Psycles texture representation is
+involved.
+
+The permanent HIP fixture covers every copied table, vertex/corner/face/object/
+mesh domains, chained and missing lookup, `PRIM_NONE`, the geometry/subdivision
+stride, value and dual interpolation, raw byte color in both Rec.709 and a
+non-Rec.709 working space, and packed normals. The byte-color and packed-normal
+goldens were produced by small executables compiled directly against the pinned
+Cycles headers, not by a Psycles CPU evaluator. The source-oracle values include:
+
+```text
+byte val = ( 0.204333156,  0.242081016,  0.119094752,  0.600392163)
+byte dx  = ( 0.104333155,  0.174352452, -0.0803067014,-0.349803925)
+byte dy  = (-0.194222465,  0.177606240, -0.0522118993,-0.300392151)
+normal val = ( 0.500004590,  0.200004578, 0.299989343)
+normal dx  = (-0.399995416,  0.100004576, 0.300004601)
+normal dy  = (-0.199993894, -0.199993894, 0.400006086)
+```
+
+Focused validation on the RX 9070 XT:
+
+```text
+cmake --build build --parallel 32 --target \
+  psycles_luisa_cycles_svm_primitive_attribute_tests \
+  psycles_luisa_cycles_svm_wireframe_tests \
+  psycles_cycles_svm_abi_tests                              PASS
+
+ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm(_primitive_attribute|_wireframe)?_hip|psycles\.cycles_svm_abi'
+                                                             4/4 PASS
+
+cmake --build build --parallel 32                            PASS
+ctest --test-dir build --output-on-failure -j32 -E \
+  '(_fallback|_vk|_hip)$'                                    77/77 PASS
+ctest --test-dir build --output-on-failure -R '_hip$' -j1    90/90 PASS
+```
+
+This checkpoint is intentionally limited to the copied triangle path. Cycles'
+curve, point, and volume primitive implementations, production scene table
+construction, insertion-ordered named attribute IDs, and `NODE_VERTEX_COLOR`
+remain required before the attribute family is production-complete; none may
+be substituted with the old semantic callback path.
