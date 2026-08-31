@@ -504,7 +504,10 @@ class RawGraphTrackingRandom final
 [[nodiscard]] bool approximately_equal(
     float actual,
     float expected,
-    float tolerance = 5.0e-6f) noexcept {
+    // Backends may use their native reciprocal-square-root approximation.
+    // Topology, support, pass routing and finite/invalid behavior are asserted
+    // separately; final-bit arithmetic is not part of this image oracle.
+    float tolerance = 1.0e-4f) noexcept {
     return std::abs(actual - expected) <=
            tolerance *
                std::max(
@@ -517,7 +520,7 @@ class RawGraphTrackingRandom final
 [[nodiscard]] bool approximately_equal(
     luisa::float4 actual,
     luisa::float4 expected,
-    float tolerance = 5.0e-6f) noexcept {
+    float tolerance = 1.0e-4f) noexcept {
     return
         approximately_equal(
             actual.x, expected.x, tolerance) &&

@@ -21,6 +21,13 @@ struct ShaderImage {
   std::uint32_t peak_stack_usage{};
 };
 
+// Exact scene-owned SVMCompiler mode which Cycles sets from Shader::is_background.
+// It is deliberately explicit: Texture Coordinate compilation cannot infer
+// world/background semantics from the graph topology.
+struct ShaderCompileContext {
+  bool background{};
+};
+
 // Scene-wide named-attribute identifier state corresponding to Cycles 5.2.1
 // ShaderManager::unique_attribute_id. The first request for a name assigns
 // ATTR_STD_NUM + current size; subsequent requests return the same identifier.
@@ -42,6 +49,7 @@ public:
 // Unsupported Cycles node families reject the image; they never select the
 // previous Psycles execution plan.
 [[nodiscard]] ShaderImage compile_shader(const ShaderProgram &shader,
-                                         AttributeIDMap &attribute_ids);
+                                         AttributeIDMap &attribute_ids,
+                                         ShaderCompileContext context);
 
 } // namespace psycles::compiler::cycles_svm

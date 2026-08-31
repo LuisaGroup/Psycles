@@ -4,6 +4,7 @@
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/native_vector_math.h>
 
 namespace psycles::luisa_backend::detail {
 namespace {
@@ -39,22 +40,14 @@ namespace {
 // relation at its degenerate boundary.
 [[nodiscard]] Float3 cycles_safe_normalize(
     Float3 value) noexcept {
-    const auto length = sqrt(dot(value, value));
-    const auto denominator = select(
-        1.0f, length, length != 0.0f);
-    return value / denominator;
+    return native_vector_math::safe_normalize_nonzero(value);
 }
 
 [[nodiscard]] Float3 cycles_safe_normalize_fallback(
     Float3 value,
     Float3 fallback) noexcept {
-    const auto length = sqrt(dot(value, value));
-    const auto denominator = select(
-        1.0f, length, length != 0.0f);
-    return select(
-        fallback,
-        value / denominator,
-        length != 0.0f);
+    return native_vector_math::safe_normalize_nonzero_or(
+        value, fallback);
 }
 
 }// namespace

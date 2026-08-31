@@ -1,0 +1,222 @@
+{
+  "actual_label": "Cycles 5.2.1 diagnostic",
+  "build_identity": {
+    "actual_metadata": null,
+    "blender_build": null,
+    "reference_metadata": null,
+    "verified": false
+  },
+  "cycles_channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Depth.Z",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.Diffuse Direct.R",
+    "ViewLayer.Diffuse Direct.G",
+    "ViewLayer.Diffuse Direct.B",
+    "ViewLayer.Diffuse Indirect.R",
+    "ViewLayer.Diffuse Indirect.G",
+    "ViewLayer.Diffuse Indirect.B",
+    "ViewLayer.Diffuse Color.R",
+    "ViewLayer.Diffuse Color.G",
+    "ViewLayer.Diffuse Color.B",
+    "ViewLayer.Glossy Direct.R",
+    "ViewLayer.Glossy Direct.G",
+    "ViewLayer.Glossy Direct.B",
+    "ViewLayer.Glossy Indirect.R",
+    "ViewLayer.Glossy Indirect.G",
+    "ViewLayer.Glossy Indirect.B",
+    "ViewLayer.Glossy Color.R",
+    "ViewLayer.Glossy Color.G",
+    "ViewLayer.Glossy Color.B",
+    "ViewLayer.Transmission Direct.R",
+    "ViewLayer.Transmission Direct.G",
+    "ViewLayer.Transmission Direct.B",
+    "ViewLayer.Transmission Indirect.R",
+    "ViewLayer.Transmission Indirect.G",
+    "ViewLayer.Transmission Indirect.B",
+    "ViewLayer.Transmission Color.R",
+    "ViewLayer.Transmission Color.G",
+    "ViewLayer.Transmission Color.B",
+    "ViewLayer.Volume Direct.R",
+    "ViewLayer.Volume Direct.G",
+    "ViewLayer.Volume Direct.B",
+    "ViewLayer.Volume Indirect.R",
+    "ViewLayer.Volume Indirect.G",
+    "ViewLayer.Volume Indirect.B",
+    "ViewLayer.Emission.R",
+    "ViewLayer.Emission.G",
+    "ViewLayer.Emission.B",
+    "ViewLayer.Environment.R",
+    "ViewLayer.Environment.G",
+    "ViewLayer.Environment.B",
+    "ViewLayer.Debug Sample Count.X"
+  ],
+  "passes": {
+    "Combined": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate-clean.exr",
+      "cycles_channel_mean": [
+        0.06941385567188263,
+        -0.043431174010038376,
+        0.3374974727630615
+      ],
+      "cycles_luminance_mean": 0.008063007146120071,
+      "cycles_rms": 0.5449164509773254,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.81173175573349,
+        "flip_xy": 0.7706282734870911,
+        "flip_y": 0.7706282734870911,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate-trace.exr",
+      "psycles_channel_mean": [
+        0.06941385567188263,
+        -0.043431174010038376,
+        0.3374974727630615
+      ],
+      "psycles_luminance_mean": 0.008063007146120071,
+      "psycles_rms": 0.5449164605640785,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        128,
+        128,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 0.3,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-30/cycles-5.2-svm-isomorphic-migration/texture-coordinate/combined.png",
+        "pixel_scale": 4
+      },
+      "valid_pixels": 16384
+    },
+    "DiffCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate-clean.exr",
+      "cycles_channel_mean": [
+        0.25001075863838196,
+        0.25001075863838196,
+        0.25001075863838196
+      ],
+      "cycles_luminance_mean": 0.2500000298023224,
+      "cycles_rms": 0.4472135901451111,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.4898979365825653,
+        "flip_xy": 0.6324555277824402,
+        "flip_y": 0.6324555277824402,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate-trace.exr",
+      "psycles_channel_mean": [
+        0.25001075863838196,
+        0.25001075863838196,
+        0.25001075863838196
+      ],
+      "psycles_luminance_mean": 0.2500000298023224,
+      "psycles_rms": 0.447213582171954,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        128,
+        128,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.1249999832361939,
+        "mapping": "shared_linear_srgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-30/cycles-5.2-svm-isomorphic-migration/texture-coordinate/diffcol.png",
+        "pixel_scale": 4
+      },
+      "valid_pixels": 16384
+    },
+    "Normal": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "cycles": "/tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate-clean.exr",
+      "cycles_channel_mean": [
+        -8.026503928704187e-05,
+        -1.5321200407925062e-05,
+        0.9375
+      ],
+      "cycles_luminance_mean": 0.06765947490930557,
+      "cycles_rms": 0.55901700258255,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.204124316573143,
+        "flip_xy": 0.204124316573143,
+        "flip_y": 0.204124316573143,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate-trace.exr",
+      "psycles_channel_mean": [
+        -8.026503928704187e-05,
+        -1.5321200407925062e-05,
+        0.9375
+      ],
+      "psycles_luminance_mean": 0.06765947490930557,
+      "psycles_rms": 0.5590169943749475,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        128,
+        128,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-08-30/cycles-5.2-svm-isomorphic-migration/texture-coordinate/normal.png",
+        "pixel_scale": 4
+      },
+      "valid_pixels": 16384
+    }
+  },
+  "reference_label": "Cycles 5.2.1 clean",
+  "schema": "psycles.cycles-differential.v2"
+}

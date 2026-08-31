@@ -1,5 +1,7 @@
 #include "graph_surface_internal.h"
 
+#include <psycles/luisa/native_vector_math.h>
+
 #include <cstdint>
 
 namespace psycles::luisa_backend::detail {
@@ -8,8 +10,7 @@ namespace {
 namespace operand = compiler::value_operand;
 
 [[nodiscard]] Float3 cycles_safe_normalize(Float3 value) noexcept {
-    const auto magnitude = sqrt(dot(value, value));
-    return value / select(1.0f, magnitude, magnitude != 0.0f);
+    return native_vector_math::safe_normalize_nonzero(value);
 }
 
 class AmbientOcclusionValueNode final : public ValueNode {

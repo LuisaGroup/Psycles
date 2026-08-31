@@ -111,6 +111,13 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "texture_coordinate_object_transform": (
         geometry_inputs._texture_coordinate_object_transform
     ),
+    "svm_texture_coordinate": geometry_inputs._svm_texture_coordinate,
+    "svm_texture_coordinate_background_generated": (
+        geometry_inputs._svm_texture_coordinate_background_generated
+    ),
+    "svm_texture_coordinate_background_reflection": (
+        geometry_inputs._svm_texture_coordinate_background_reflection
+    ),
     "gradient_spherical": texture_inputs._gradient_spherical,
     "gradient_matrix": values._gradient_matrix,
     "hosek_wilkie_diffuse_transport": (

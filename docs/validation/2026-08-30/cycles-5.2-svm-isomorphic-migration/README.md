@@ -2331,3 +2331,295 @@ ctest --test-dir build --output-on-failure -R '_hip$' -j1    90/90 PASS
 This checkpoint proves Cycles bytecode and HIP interpreter parity for the
 Background family. It does not claim production-render parity until the copied
 SVM interpreter replaces the old surface evaluator in the path tracer.
+
+## Texture Coordinate and UV Map
+
+This checkpoint copies the Texture Coordinate and UV Map compiler and device
+state transitions from the pinned Cycles 5.2.1 source at
+`9e2066aef7ef7e20c142ad7bd3303138a4304c93`. The source oracle is
+`TextureCoordinateNode::compile` and `UVMapNode::compile` in
+`scene/shader_nodes.cpp`, `svm_node_tex_coord_eval` and its plain/derivative
+entry points in `kernel/svm/tex_coord.h`, the motion-normal helpers in
+`kernel/geom/motion_triangle.h`, and the camera projection helpers used by that
+code. Psycles retains the raw Blender node and object transform through import;
+the SVM compiler, rather than the importer, selects the Cycles branch and emits
+its typed payload.
+
+The copied branch relation is:
+
+| Output | Cycles SVM source selected by the compiler |
+| --- | --- |
+| Generated | background Geometry `P`; dupli generated coordinate; volume generated transform; otherwise `ATTR_STD_GENERATED` |
+| Normal | `NODE_TEXCO_NORMAL` |
+| UV | dupli UV coordinate or `ATTR_STD_UV` |
+| Object | `NODE_TEXCO_OBJECT`, optionally followed by the 12-word inverse object transform |
+| Camera | `NODE_TEXCO_CAMERA` |
+| Window | `NODE_TEXCO_WINDOW` |
+| Reflection | background Geometry `I`; otherwise `NODE_TEXCO_REFLECTION` |
+| UV Map | named attribute lookup with the same SVM attribute ID and bump derivative selection as Cycles |
+
+The external probe contains 21 shaders and 758 SVM words. The host regression
+freezes the entire stream against the diagnostic Cycles executable. All words
+are exact except the 12 host-computed words of the explicit Object inverse
+transform, for which the test accepts at most one ULP: the clean Cycles x86
+build selects its AVX2/FMA transform inverse and one word differs from the
+ordinary scalar host result by one ULP. No runtime emulation, strict-math mode,
+extra instruction, or backend-specific path is permitted to reproduce that
+non-structural last bit. Stack offsets, opcodes, branch selection, attribute
+IDs, transform presence, node widths, and cursor endpoints remain exact.
+
+The independent device regression covers plain and dual Object coordinates,
+the packed explicit Object transform, flat/static-smooth/motion-smooth Normal,
+Camera, Window, orthographic-background Window, Reflection, dupli Generated
+and UV, volume Generated with the volume feature both enabled and compiled
+out, bump DX/DY dispatch, cursor consumption, and the unknown-type transition.
+It found and fixed two structural defects:
+
+- Orthographic background Window coordinates use `ray_P` and have zero
+  derivatives; applying the raster `(1/width, 1/height)` derivative to every
+  Window branch was incorrect.
+- Reading all 12 packed transform words as function arguments relied on
+  unspecified C++ argument evaluation order. Each cursor transition is now a
+  separate full expression, so the bytecode program counter advances in the
+  Cycles order under every host compiler.
+
+The clean Blender 5.2.1 executable identifies build `9e2066aef7ef`; the
+diagnostic executable identifies observation build `cb168525138f`. Combined,
+Normal, and DiffCol compare exactly over all 128x128 pixels: RMSE, MAE, and
+maximum absolute error are zero; all channel-mean ratios are one; and neither
+image contains an invalid pixel. I inspected all three retained 1552x582
+triptychs at original resolution. The clean and diagnostic panels have the
+same cell boundaries, orientation, masks, and coordinate gradients; every
+difference panel is completely black.
+
+![Texture Coordinate Combined clean versus diagnostic Cycles](texture-coordinate/combined.png)
+
+![Texture Coordinate Normal clean versus diagnostic Cycles](texture-coordinate/normal.png)
+
+![Texture Coordinate DiffCol clean versus diagnostic Cycles](texture-coordinate/diffcol.png)
+
+Validation commands:
+
+```text
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate.blend \
+  svm_texture_coordinate                                      PASS
+
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  /tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate-clean.exr \
+  128 128 1 0 --cycles-device CPU                             PASS
+
+PSYCLES_CYCLES_SVM_DUMP=\
+/tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate-trace.exr \
+  128 128 1 0 --cycles-device CPU                             PASS
+
+oiiotool -a \
+  /tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate-clean.exr \
+  /tmp/psycles-svm-texcoord.ss2ifR/svm_texture_coordinate-trace.exr \
+  --diff                                                      PASS
+
+cmake --build build --parallel 32 --target \
+  psycles_cycles_svm_texture_coordinate_tests \
+  psycles_blender_import_tests \
+  psycles_luisa_cycles_svm_texture_coordinate_tests           PASS
+build/psycles_cycles_svm_texture_coordinate_tests             PASS
+build/psycles_blender_import_tests                            PASS
+build/bin/psycles_luisa_cycles_svm_texture_coordinate_tests hip
+                                                              PASS
+build/bin/psycles_luisa_cycles_svm_texture_coordinate_tests fallback
+                                                              PASS
+LUISA_VULKAN_USE_XIR=1 \
+LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+LUISA_VULKAN_DISABLE_DXC=1 \
+  build/bin/psycles_luisa_cycles_svm_texture_coordinate_tests vk
+                                                              PASS
+```
+
+This proves Cycles bytecode and independent Luisa interpreter parity for this
+node family. It is not yet a full production-render claim: the copied SVM
+interpreter still has to replace the old surface evaluator before scene renders
+exercise this path.
+
+## Last-bit parity performance policy
+
+The migration now treats structural parity and floating-point representation
+parity as distinct obligations. Runtime cost is justified only by a structural
+semantic difference: control flow, visibility/support, sampling probability,
+energy, closure state, image filtering, or a safety invariant. A cross-backend
+one-ULP or last-bit difference by itself must never cause software emulation,
+strict floating-point mode, an extra branch or memory transaction, or bypass
+of a native texture/math instruction.
+
+The first-party Luisa source audit made the policy executable and removed old
+violations:
+
+- The dead `cycles_triangle_intersection_component` software Pluecker
+  re-intersection was deleted. It existed to repeat native traversal arithmetic
+  in an explicit operation order and was no longer reachable after the
+  Blender-5.2 Barbershop revalidation.
+- Displacement and the volume-guiding spatial filter now compile with normal
+  backend fast math. Displacement requires finite, structurally correct
+  geometry; the guide is an approximate proposal distribution. Neither has a
+  bit-exact transport contract.
+- The copied SVM no longer expands normalization as scalar
+  `sqrt(dot(v,v))` plus division under the old `normalize_exact` name. That
+  sequence only preserved one arithmetic rounding path and bypassed HIP's
+  native `NORMALIZE` lowering to reciprocal square root. All nonzero vector,
+  normal, bump, wireframe, and Texture Coordinate normalization now emits the
+  native Luisa operation. Cycles' zero-vector guard remains explicit because
+  returning zero instead of an invalid vector is structural behavior.
+- The sole strict-FP allowlisted production kernel is volume-majorant
+  construction. Its maximum is consumed as a delta-tracking majorant; rounding
+  it downward can violate the sampling bound and bias the probability measure,
+  so this is a formal safety exception rather than Cycles last-bit mimicry.
+- The existing texture-sampling XIR shape guard remains part of the policy:
+  nearest and linear use one native texture sample, cubic uses Cycles' four
+  native bilinear samples, and none of those paths may regress to explicit
+  texel reads merely to match interpolation rounding.
+
+`tests/test_luisa_shader_performance_policy.py` scans all first-party Luisa
+sources, freezes the single strict-FP exception, and rejects the removed
+software re-intersection and scalar-normalization tokens as well as stale
+source wiring. Volume-guiding and true displacement regressions pass on HIP,
+fallback, and strict native XIR-to-SPIR-V Vulkan after enabling fast math;
+their current expected outputs did not change. The SVM/bump normalization
+matrix passed all 13 selected fallback, HIP, and Vulkan tests with structural
+cursor/state checks and numerical tolerances intact.
+
+The native texture shape guard also exposed a Luisa fallback backend defect:
+all eight explicit-sampler bindless XIR operations (2D/3D crossed with
+sample/level/grad/grad-level) entered the generic unexpected-resource-query
+abort. This was fixed in LuisaCompute `next@86444f70d`, not hidden behind a
+Psycles software sampler. The Luisa runtime regression exercises every
+operation with a call-site sampler that overrides the descriptor sampler;
+`fallback_test_sampler` passes. Psycles' same native-texture canary now passes
+on fallback, HIP, and strict native XIR-to-SPIR-V Vulkan.
+
+Updating to that Luisa revision forced a complete rebuild and exposed a
+separate build invariant: the static `psycles_luisa` DSL archive is linked into
+the shared `psycles_luisa_runtime`, so its objects must be position independent.
+The target now sets `POSITION_INDEPENDENT_CODE` explicitly. The rebuilt shared
+runtime links successfully even with `Type::of<T>()` function-local TLS, whose
+non-PIC local-exec relocations previously made the link fail.
+
+### Whole-source last-bit audit
+
+The policy was then applied to the existing first-party Luisa renderer, not
+only to the newly copied Texture Coordinate family. For a vector `v`, let
+`l = dot(v, v)` and let `D(l)` be the source operation's accepted domain. The
+structural obligation is to preserve `D`: Cycles safe normalization has
+`D(l) = (l != 0)`, renderer safety fallbacks use an explicit positive
+threshold, and Cycles unchecked normalization keeps zero outside the finite
+domain. Within `D`, however, `v / sqrt(l)` and `v * rsqrt(l)` differ only in
+backend arithmetic and the latter is the native operation. This gives a single
+reviewable rule rather than a list of scene-specific exceptions.
+
+`include/psycles/luisa/native_vector_math.h` now owns that rule. It preserves
+zero/threshold fallback predicates, feeds inactive lanes a safe radicand, and
+uses native `rsqrt` for accepted lanes. Cycles unchecked normalization needs a
+small additional projection: Luisa fallback deliberately makes its generic
+normalize/rsqrt zero-safe, while Cycles' `normalize(0)` is non-finite. A quiet
+NaN is therefore selected only for the invalid zero domain; the ordinary path
+still uses native `rsqrt`. The all-mode Vector Math shape is 4100 XIR
+instructions, exactly four above the former 4096 ceiling for this structural
+finite/invalid projection. The test ceiling records that attribution rather
+than hiding it as arbitrary growth.
+
+The shared implementation replaced scalar normalization copies in legacy
+surface Vector Math, Principled layering, sheen tangent construction, Ambient
+Occlusion, volume-point setup, emissive-triangle setup, environment-map setup,
+spherical triangle sampling, analytic-light sampling, and the copied SVM
+vector/normal/bump/wireframe/Texture Coordinate paths. User-visible inverse
+square-root operations and the dual Texture Coordinate derivative now emit
+native `rsqrt` as well. The executable policy rejects whitespace-obfuscated
+`1.0f / sqrt(...)` and direct `value/direction/input/offset / sqrt(...)`
+spellings in production Luisa source.
+
+The rest of the audit was classified by semantic obligation:
+
+| Mechanism | Decision | Reason |
+|---|---|---|
+| Old exact-support completion and software triangle re-intersection | Removed | Blender 5.2 revalidation made the completion machinery unreachable; repeating native traversal arithmetic only froze accelerator rounding and cost work. The bulk completion path was already removed by `5eda3af`; the remaining dead Pluecker component and wiring are removed in this checkpoint. |
+| Nearest, linear, and cubic image filtering | Native `1 / 1 / 4` texture samples | Filter/address mode is structural; reproducing hardware interpolation with explicit texel reads is not. |
+| `integrate_surface_ray_offset` self-triangle test | Retained | This is the same Cycles 5.2.1 watertight containment test. Its result decides whether a neighboring triangle can be missed or falsely hit, so it changes visibility support rather than a result ULP. |
+| Curve AABB outward `nextafter` | Retained | An inward-rounded bound can remove a real procedural candidate from the BVH and is therefore a conservative-support obligation. |
+| Explicit fused affine transform tree | Retained | It uses native FMA and feeds triangle/self-intersection predicates; it neither emulates a slower instruction nor exists solely for image-bit parity. |
+| Canonical pole azimuth and stable spherical angle | Retained | SPIR-V leaves `atan2(0,0)` undefined and small-angle cancellation changes environment lookup or finite-cone membership, both structural sampling/support decisions. |
+| Cycles named fast-math polynomial approximations | Retained | These are Cycles' performance algorithms, not strict emulations of a more precise oracle. |
+| Volume-majorant strict FP | Retained and solely allowlisted | A downward maximum violates the delta-tracking probability bound and biases transport. |
+| Displacement and volume-guiding strict FP | Removed | They require finite geometry or a valid proposal, not a particular last bit. |
+
+No other production Luisa kernel disables fast math, no first-party callable
+forces inline/noinline policy, and no ordinary triangle path performs a
+software traversal completion. Procedural curve intersection remains software
+inside the procedural-candidate callback because it defines the ribbon
+primitive itself; it is not a second pass over native triangle hits.
+
+After the audit, 18 focused fallback/HIP tests and nine strict native
+XIR-to-SPIR-V Vulkan tests passed for spherical geometry, triangle and analytic
+light sampling, sample mapping, Principled sheen, random walk, base SVM,
+Texture Coordinate SVM, and Vector Math SVM. A further ten-test canary covers
+native texture sampling, bump, wireframe, and the policy scanner on all three
+backends. All affected targets were built with `--parallel 32`. These results
+prove structural boundaries and backend portability; they do not claim an
+end-to-end scene speedup before the copied SVM replaces the production surface
+evaluator.
+
+Selected validation commands:
+
+```text
+cmake --build build --parallel 32 --target \
+  psycles_luisa_runtime \
+  psycles_luisa_texture_sampling_callable_tests                 PASS
+
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.luisa_texture_sampling_callable_(fallback|hip|vk)$'
+                                                                3/3 PASS
+
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.(luisa_cycles_svm_(fallback|hip|vk)|luisa_cycles_svm_wireframe_(fallback|hip|vk)|luisa_cycles_svm_texture_coordinate_(fallback|hip|vk)|luisa_bump_callable_(fallback|hip|vk)|luisa_shader_performance_policy)$'
+                                                                13/13 PASS
+
+ctest --test-dir \
+  third_party/LuisaCompute/build-fallback-sampler \
+  --output-on-failure -R '^fallback_test_sampler$'              1/1 PASS
+```
+
+### Milestone-wide backend gate
+
+The complete configured test inventory was exercised before committing this
+checkpoint. The non-backend suite passed 83/83, HIP passed 91/91, and fallback
+passed 93/93. The strict Vulkan run used only the native XIR-to-SPIR-V route:
+
+```text
+LUISA_VULKAN_USE_XIR=1 \
+LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+LUISA_VULKAN_DISABLE_DXC=1 \
+  ctest --test-dir build --output-on-failure -j 1 -R '(_vk)$'
+```
+
+That run passed 88/91 immediately. The three failures were audited rather
+than hidden in production code: two rendered float32 oracle bounds did not
+cover native reciprocal-square-root variation, and one test kept a low-level
+Vulkan Device alive while constructing the renderer's Device in the same
+process. The numerical checks now separate rendered-oracle tolerance from
+exact shape/alpha and tighter proposal/evaluation consistency checks. The
+device-independent phases now have non-overlapping lifetimes. The three final
+strict-Vulkan reruns passed 3/3, while the changed tests also passed 6/6 across
+HIP and fallback. Thus every configured strict-Vulkan test was exercised and
+passed on the final production path; DXC remained disabled throughout.
+
+The source policy scanner passed, `git diff --check` was clean, and every
+first-party source/test/tool file remained below 2000 lines (the largest two
+are 1999 lines). These gates establish portability and structural correctness
+for this checkpoint. They do not constitute an end-to-end renderer speedup
+claim because the copied interpreter has not yet replaced the production
+surface evaluator.

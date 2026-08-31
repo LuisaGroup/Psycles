@@ -93,8 +93,13 @@ Float evaluate_surface_math_operation(
         }
         case compiler::MathOperation::square_root:
             return sqrt(max(a, 0.0f));
-        case compiler::MathOperation::inverse_square_root:
-            return select(0.0f, 1.0f / sqrt(a), a > 0.0f);
+        case compiler::MathOperation::inverse_square_root: {
+            const auto positive = a > 0.0f;
+            return select(
+                0.0f,
+                rsqrt(select(1.0f, a, positive)),
+                positive);
+        }
         case compiler::MathOperation::absolute:
             return abs(a);
         case compiler::MathOperation::exponent:

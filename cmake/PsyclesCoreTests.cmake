@@ -246,6 +246,19 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_background_tests)
 
     add_executable(
+        psycles_cycles_svm_texture_coordinate_tests
+        tests/test_cycles_svm_texture_coordinate.cpp)
+    target_link_libraries(
+        psycles_cycles_svm_texture_coordinate_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_cycles_svm_texture_coordinate_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.cycles_svm_texture_coordinate
+        COMMAND psycles_cycles_svm_texture_coordinate_tests)
+
+    add_executable(
         psycles_progressive_pixel_probe_tests
         tests/test_progressive_pixel_probe.cpp)
     target_link_libraries(
@@ -386,6 +399,12 @@ if(PSYCLES_BUILD_TESTS)
             COMMAND
                 "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/check_source_size.py"
+                "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(
+            NAME psycles.luisa_shader_performance_policy
+            COMMAND
+                "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_luisa_shader_performance_policy.py"
                 "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(
             NAME psycles.cycles_shader_node_inventory

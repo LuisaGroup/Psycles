@@ -1,6 +1,7 @@
 #include "hair_closure_component.h"
 
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/native_vector_math.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -47,7 +48,8 @@ TracedClosure HairClosureComponent::setup(
     if (graph_closure.hair_tangent_linked) {
         // This is Cycles' linked-input domain: normalize the authored vector
         // exactly. Link topology, never its numerical value, selects it.
-        closure.tangent = normalize(graph_closure.tangent);
+        closure.tangent =
+            native_vector_math::normalize_unchecked(graph_closure.tangent);
     } else {
         const auto curve_tangent = safe_normalize(
             _point.dpdu, make_float3(1.0f, 0.0f, 0.0f));

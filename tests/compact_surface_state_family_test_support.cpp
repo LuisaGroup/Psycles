@@ -1,6 +1,7 @@
 #include "compact_surface_program_test_support.h"
 
 #include <psycles/compiler/core_nodes.h>
+#include <psycles/compiler/cycles_transform.h>
 
 #include "path_tracer_internal.h"
 #include "path_tracer_surface_value_family.h"
@@ -50,6 +51,14 @@ ShaderGraph make_direct_state_bump_graph() {
       node_type::texture_coordinate, "Direct transformed coordinates");
   const auto position_to_vector = graph.add_node(
       node_type::point_to_vector, "Direct state position vector");
+  const auto uv_to_vector = graph.add_node(
+      node_type::point_to_vector, "Direct state UV vector");
+  const auto generated_to_vector = graph.add_node(
+      node_type::point_to_vector, "Direct state generated vector");
+  const auto object_to_vector = graph.add_node(
+      node_type::point_to_vector, "Direct state object vector");
+  const auto transformed_object_to_vector = graph.add_node(
+      node_type::point_to_vector, "Direct transformed object vector");
   const auto geometric_normal_to_vector = graph.add_node(
       node_type::normal_to_vector, "Direct state geometric normal vector");
   const auto add_position_normal = graph.add_node(
@@ -80,11 +89,12 @@ ShaderGraph make_direct_state_bump_graph() {
   world_to_object.elements = {1.7f,  0.0f,   0.0f,  0.0f, 0.0f, 0.8f,
                               0.0f,  0.0f,   0.0f,  0.0f, 1.2f, 0.0f,
                               0.13f, -0.27f, 0.41f, 1.0f};
+  const auto object_to_world = cycles_inverse_affine_transform(world_to_object);
   auto configured =
-      graph.set_property(transformed_coordinates, "ObjectUseTransform",
+      graph.set_property(transformed_coordinates, "UseTransform",
                          SocketValue::boolean(true)) &&
-      graph.set_property(transformed_coordinates, "ObjectWorldToObject",
-                         SocketValue::transform(world_to_object)) &&
+      graph.set_property(transformed_coordinates, "ObjectTransform",
+                         SocketValue::transform(object_to_world)) &&
       graph.connect({.node = geometry, .socket = "Position"},
                     position_to_vector, "Point") &&
       graph.connect({.node = geometry, .socket = "GeometricNormal"},
@@ -98,17 +108,25 @@ ShaderGraph make_direct_state_bump_graph() {
       graph.connect({.node = geometry, .socket = "Incoming"}, add_incoming,
                     "B") &&
       graph.connect({.node = add_incoming, .socket = "Vector"}, add_uv, "A") &&
-      graph.connect({.node = coordinates, .socket = "UV"}, add_uv, "B") &&
+      graph.connect({.node = coordinates, .socket = "UV"}, uv_to_vector,
+                    "Point") &&
+      graph.connect({.node = uv_to_vector, .socket = "Vector"}, add_uv, "B") &&
       graph.connect({.node = add_uv, .socket = "Vector"}, add_generated, "A") &&
-      graph.connect({.node = coordinates, .socket = "Generated"}, add_generated,
-                    "B") &&
+      graph.connect({.node = coordinates, .socket = "Generated"},
+                    generated_to_vector, "Point") &&
+      graph.connect({.node = generated_to_vector, .socket = "Vector"},
+                    add_generated, "B") &&
       graph.connect({.node = add_generated, .socket = "Vector"}, add_object,
                     "A") &&
-      graph.connect({.node = coordinates, .socket = "Object"}, add_object,
+      graph.connect({.node = coordinates, .socket = "Object"}, object_to_vector,
+                    "Point") &&
+      graph.connect({.node = object_to_vector, .socket = "Vector"}, add_object,
                     "B") &&
       graph.connect({.node = add_object, .socket = "Vector"},
                     add_transformed_object, "A") &&
       graph.connect({.node = transformed_coordinates, .socket = "Object"},
+                    transformed_object_to_vector, "Point") &&
+      graph.connect({.node = transformed_object_to_vector, .socket = "Vector"},
                     add_transformed_object, "B") &&
       graph.connect({.node = add_transformed_object, .socket = "Vector"},
                     height, "Vector") &&

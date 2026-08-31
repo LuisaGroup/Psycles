@@ -633,7 +633,11 @@ MeshDisplacementSceneComponent::build(
                 };
             luisa::compute::ShaderOption shader_options;
             shader_options.enable_cache = true;
-            shader_options.enable_fast_math = false;
+            // Cycles builds device displacement with the same fast-math
+            // policy as its render kernels. Displacement has a structural
+            // finite-value contract, but no cross-backend last-bit contract;
+            // do not serialize arithmetic merely to freeze an oracle hash.
+            shader_options.enable_fast_math = true;
             auto shader = scene->device.compile(
                 evaluate, shader_options);
             stream

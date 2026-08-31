@@ -82,6 +82,10 @@ using namespace psycles::contract;
         graph.add_node(
             node_type::texture_coordinate,
             "Texture Coordinate");
+    const auto point_to_vector =
+        graph.add_node(
+            node_type::point_to_vector,
+            "Generated point to vector");
     const auto scalar =
         graph.add_node(
             node_type::vector_to_scalar,
@@ -93,6 +97,11 @@ using namespace psycles::contract;
     static_cast<void>(graph.connect(
         {.node = coordinates,
          .socket = "Generated"},
+        point_to_vector,
+        "Point"));
+    static_cast<void>(graph.connect(
+        {.node = point_to_vector,
+         .socket = "Vector"},
         scalar,
         "Vector"));
     static_cast<void>(graph.connect(
@@ -678,7 +687,9 @@ make_narrow_ellipse_area_direct_scene() {
 [[nodiscard]] bool approximately_equal(
     float actual,
     float expected,
-    float tolerance = 3.0e-6f) noexcept {
+    // Cycles image oracles compare algorithms, not the last bits of a
+    // backend-native reciprocal-square-root implementation.
+    float tolerance = 1.0e-4f) noexcept {
     return std::abs(actual - expected) <=
            tolerance;
 }

@@ -10,6 +10,7 @@
 #include <luisa/dsl/sugar.h>
 
 #include <psycles/compiler/surface_execution_plan.h>
+#include <psycles/luisa/native_vector_math.h>
 #include <psycles/luisa/spherical_geometry.h>
 
 namespace psycles::luisa_backend::detail {
@@ -17,10 +18,7 @@ namespace {
 
 [[nodiscard]] Float3
 cycles_safe_normalize_direction(Float3 direction) noexcept {
-    const auto length = sqrt(dot(direction, direction));
-    const auto nonzero = length != 0.0f;
-    const auto safe_length = select(1.0f, length, nonzero);
-    return select(direction, direction * (1.0f / safe_length), nonzero);
+    return native_vector_math::safe_normalize_nonzero(direction);
 }
 
 [[nodiscard]] Float2
@@ -235,7 +233,7 @@ Float4 evaluate_surface_image_svm(
                                spherical_geometry::two_pi;
             };
             const auto z = luisa::compute::clamp(
-                direction.z / sqrt(length_squared), -1.0f, 1.0f);
+                direction.z * rsqrt(length_squared), -1.0f, 1.0f);
             spherical = make_float2(u, 1.0f - acos(z) / spherical_geometry::pi);
         };
         uv = spherical;

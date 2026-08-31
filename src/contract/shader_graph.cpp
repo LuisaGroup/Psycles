@@ -65,7 +65,10 @@ template<typename Schema>
         case ShaderDomain::surface:
             return type == SocketType::closure;
         case ShaderDomain::volume:
-            return type == SocketType::volume_closure;
+            // Cycles has one Shader socket type. Emission therefore serves
+            // both the Surface and Volume inputs of ShaderNodeOutputMaterial.
+            return type == SocketType::closure ||
+                   type == SocketType::volume_closure;
         case ShaderDomain::surface_normal:
             return type == SocketType::normal ||
                    type == SocketType::vector ||

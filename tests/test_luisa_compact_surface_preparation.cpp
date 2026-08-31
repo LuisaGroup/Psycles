@@ -1,4 +1,5 @@
 #include <psycles/compiler/core_nodes.h>
+#include <psycles/compiler/cycles_transform.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/graph_surface.h>
@@ -476,31 +477,29 @@ struct FixtureProgram {
 }
 
 [[nodiscard]] ShaderGraph make_transformed_emission_graph(
-    const std::array<float, 16u> &world_to_object,
-    std::string_view label) {
+    const std::array<float, 16u> &world_to_object, std::string_view label) {
     ShaderGraph graph;
-    const auto coordinates = graph.add_node(
-        node_type::texture_coordinate,
-        std::string{label} + " coordinates");
-    Mat4f transform;
-    transform.elements = world_to_object;
-    const auto conversion = graph.add_node(
-        node_type::vector_to_color,
-        std::string{label} + " vector to color");
-    const auto emission = graph.add_node(
-        node_type::emission,
-        std::string{label} + " emission");
+    const auto coordinates = graph.add_node(node_type::texture_coordinate,
+                                            std::string{label} + " coordinates");
+    const auto point_to_vector = graph.add_node(
+        node_type::point_to_vector, std::string{label} + " point to vector");
+    Mat4f world_to_object_transform;
+    world_to_object_transform.elements = world_to_object;
+    const auto object_to_world = cycles_inverse_affine_transform(
+        world_to_object_transform);
+    const auto conversion = graph.add_node(node_type::vector_to_color,
+                                           std::string{label} + " vector to color");
+    const auto emission = graph.add_node(node_type::emission,
+                                         std::string{label} + " emission");
     const auto configured =
-        graph.set_property(
-            coordinates,
-            "ObjectUseTransform",
-            SocketValue::boolean(true)) &&
-        graph.set_property(
-            coordinates,
-            "ObjectWorldToObject",
-            SocketValue::transform(transform)) &&
+        graph.set_property(coordinates, "UseTransform", SocketValue::boolean(true)) &&
+        graph.set_property(coordinates, "ObjectTransform", SocketValue::transform(object_to_world)) &&
         graph.connect(
             {.node = coordinates, .socket = "Object"},
+            point_to_vector,
+            "Point") &&
+        graph.connect(
+            {.node = point_to_vector, .socket = "Vector"},
             conversion,
             "Vector") &&
         graph.connect(

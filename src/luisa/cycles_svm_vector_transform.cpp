@@ -5,6 +5,7 @@
 #include "cycles_svm_internal.h"
 
 #include <psycles/luisa/cycles_transform.h>
+#include <psycles/luisa/native_vector_math.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -13,14 +14,19 @@ namespace psycles::luisa_backend::cycles_svm::detail {
 using namespace luisa::compute;
 using namespace compiler::cycles_svm;
 
-[[nodiscard]] Float3 normalize_exact(Expr<luisa::float3> value) noexcept {
-  return value / sqrt(dot(value, value));
+[[nodiscard]] Float3 normalize_cycles(Expr<luisa::float3> value) noexcept {
+  // Cycles' unchecked NORMALIZE preserves a non-finite zero-vector boundary.
+  // Use backend-native rsqrt rather than preserving a scalar sqrt/div path;
+  // Luisa's generic normalize is zero-safe on some backends.
+  return native_vector_math::normalize_unchecked(value);
 }
 
-[[nodiscard]] Float3 safe_normalize_exact(Expr<luisa::float3> value) noexcept {
-  const Float length = sqrt(dot(value, value));
+[[nodiscard]] Float3 safe_normalize_cycles(Expr<luisa::float3> value) noexcept {
+  const Float length_squared = dot(value, value);
   Float3 result = value;
-  $if (length != 0.0f) { result = value * (1.0f / length); };
+  // The zero-vector guard is structural Cycles behavior; only the non-zero
+  // arithmetic is delegated to the backend-native NORMALIZE operation.
+  $if (length_squared != 0.0f) { result = normalize(value); };
   return result;
 }
 
@@ -67,16 +73,16 @@ void object_normal_transform(Float3 &value,
   const Bool is_object = shader_data.object != object_none;
   if (object_motion_enabled) {
     $if (object_has_motion(shader_data)) {
-      value = normalize_exact(cycles_transform::direction_transposed(
+      value = normalize_cycles(cycles_transform::direction_transposed(
           shader_data.ob_itfm_motion, value));
     }
     $elif(is_object) {
-      value = normalize_exact(cycles_transform::direction_transposed(
+      value = normalize_cycles(cycles_transform::direction_transposed(
           transform_state.world_to_object, value));
     };
   } else {
     $if(is_object) {
-      value = normalize_exact(cycles_transform::direction_transposed(
+      value = normalize_cycles(cycles_transform::direction_transposed(
           transform_state.world_to_object, value));
     };
   }
@@ -90,17 +96,17 @@ void object_inverse_normal_transform(Float3 &value,
   if (object_motion_enabled) {
     $if (object_has_motion(shader_data)) {
       $if(is_object) {
-        value = safe_normalize_exact(cycles_transform::direction_transposed(
+        value = safe_normalize_cycles(cycles_transform::direction_transposed(
             shader_data.ob_tfm_motion, value));
       };
     }
     $elif(is_object) {
-      value = safe_normalize_exact(cycles_transform::direction_transposed(
+      value = safe_normalize_cycles(cycles_transform::direction_transposed(
           transform_state.object_to_world, value));
     };
   } else {
     $if(is_object) {
-      value = safe_normalize_exact(cycles_transform::direction_transposed(
+      value = safe_normalize_cycles(cycles_transform::direction_transposed(
           transform_state.object_to_world, value));
     };
   }
@@ -167,7 +173,7 @@ void node_vector_transform(Cursor &cursor, Stack &stack,
     $if (convert_to == static_cast<std::uint32_t>(
                           NODE_VECTOR_TRANSFORM_CONVERT_SPACE_CAMERA)) {
       $if (is_normal) {
-        value = normalize_exact(cycles_transform::direction_transposed(
+        value = normalize_cycles(cycles_transform::direction_transposed(
             transform_state.camera_to_world, value));
       }
       $else {
@@ -211,7 +217,7 @@ void node_vector_transform(Cursor &cursor, Stack &stack,
         (convert_to == static_cast<std::uint32_t>(
                            NODE_VECTOR_TRANSFORM_CONVERT_SPACE_OBJECT))) {
       $if (is_normal) {
-        value = normalize_exact(cycles_transform::direction_transposed(
+        value = normalize_cycles(cycles_transform::direction_transposed(
             transform_state.world_to_camera, value));
       }
       $else {
@@ -271,7 +277,7 @@ void node_vector_transform(Cursor &cursor, Stack &stack,
     $if (convert_to == static_cast<std::uint32_t>(
                           NODE_VECTOR_TRANSFORM_CONVERT_SPACE_CAMERA)) {
       $if (is_normal) {
-        value = normalize_exact(cycles_transform::direction_transposed(
+        value = normalize_cycles(cycles_transform::direction_transposed(
             transform_state.camera_to_world, value));
       }
       $else {

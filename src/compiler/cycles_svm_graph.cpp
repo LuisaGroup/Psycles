@@ -241,6 +241,15 @@ namespace {
   };
 }
 
+[[nodiscard]] auto texture_coordinate_properties() {
+  std::map<std::string, contract::SocketValue, std::less<>> properties;
+  properties.emplace("FromDupli", contract::SocketValue::boolean(false));
+  properties.emplace("UseTransform", contract::SocketValue::boolean(false));
+  properties.emplace("ObjectTransform",
+                     contract::SocketValue::transform(Mat4f{}));
+  return properties;
+}
+
 [[nodiscard]] std::vector<GraphInput> mix_weight_inputs() {
   return {
       {.name = "Weight",
@@ -741,7 +750,9 @@ void CyclesGraph::default_inputs() {
         if (texture_coordinate == nullptr) {
           texture_coordinate = add_node(
               cycles_synthetic_texture_coordinate, "Texture Coordinate",
-              texture_coordinate_inputs(), texture_coordinate_outputs());
+              texture_coordinate_inputs(), texture_coordinate_outputs(),
+              GraphNodeSpecialType::none,
+              texture_coordinate_properties());
         }
         auto *output = texture_coordinate->output(
             (input.flags & graph_socket_link_texture_generated) != 0u

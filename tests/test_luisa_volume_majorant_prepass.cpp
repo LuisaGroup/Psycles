@@ -59,6 +59,10 @@ make_spatial_volume_graph() {
         graph.add_node(
             node_type::texture_coordinate,
             "Raw volume coordinates");
+    const auto point_to_vector =
+        graph.add_node(
+            node_type::point_to_vector,
+            "Raw volume point to vector");
     const auto coefficients =
         graph.add_node(
             node_type::volume_coefficients,
@@ -77,6 +81,11 @@ make_spatial_volume_graph() {
             graph.connect(
                 {.node = coordinates,
                  .socket = "Generated"},
+                point_to_vector,
+                "Point") &&
+            graph.connect(
+                {.node = point_to_vector,
+                 .socket = "Vector"},
                 coefficients,
                 "EmissionCoefficients"),
         "failed to construct raw spatial volume graph");

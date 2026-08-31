@@ -58,7 +58,7 @@ using namespace compiler::cycles_svm;
 
 [[nodiscard]] Float inverse_sqrt(Float value) noexcept {
   Float result = 0.0f;
-  $if (value > 0.0f) { result = 1.0f / sqrt(value); };
+  $if (value > 0.0f) { result = rsqrt(value); };
   return result;
 }
 

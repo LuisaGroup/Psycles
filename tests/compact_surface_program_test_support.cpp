@@ -525,6 +525,8 @@ ShaderGraph make_direct_texture_trunk_graph(bool box_projection) {
     ShaderGraph graph;
     const auto coordinates = graph.add_node(node_type::texture_coordinate,
                                             "Direct SVM texture coordinates");
+    const auto point_to_vector = graph.add_node(
+        node_type::point_to_vector, "Direct SVM generated coordinates");
     const auto mapping =
         graph.add_node(node_type::mapping, "Direct SVM Mapping");
     const auto image =
@@ -536,7 +538,9 @@ ShaderGraph make_direct_texture_trunk_graph(bool box_projection) {
     const auto principled = graph.add_node(node_type::principled_bsdf,
                                            "Direct texture SVM Principled");
     const auto configured =
-        graph.connect({.node = coordinates, .socket = "Generated"}, mapping,
+        graph.connect({.node = coordinates, .socket = "Generated"},
+                      point_to_vector, "Point") &&
+        graph.connect({.node = point_to_vector, .socket = "Vector"}, mapping,
                       "Vector") &&
         graph.set_input(mapping, "Location",
                         SocketValue::vector({0.13f, -0.07f, 0.21f})) &&

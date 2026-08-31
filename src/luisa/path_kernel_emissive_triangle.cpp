@@ -1,6 +1,7 @@
 #include "path_kernel_emissive_triangle.h"
 
 #include <psycles/luisa/cycles_path_state.h>
+#include <psycles/luisa/native_vector_math.h>
 
 #include <utility>
 
@@ -10,16 +11,8 @@ namespace {
 [[nodiscard]] Float3 normalize_or(
     Float3 value,
     Float3 fallback) noexcept {
-    const auto magnitude_squared =
-        dot(value, value);
-    return select(
-        fallback,
-        value /
-            sqrt(max(
-                magnitude_squared,
-                1.0e-20f)),
-        magnitude_squared >
-            1.0e-20f);
+    return native_vector_math::normalize_above_or(
+        value, fallback, 1.0e-20f);
 }
 
 [[nodiscard]] Bool samples_front(

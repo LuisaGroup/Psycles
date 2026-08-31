@@ -109,15 +109,15 @@ def _node_special_data(node: Any) -> dict[str, Any]:
     if node.bl_idname == "ShaderNodeTexCoord":
         coordinate_object = getattr(node, "object", None)
         if coordinate_object is not None:
-            # Cycles' NODE_TEXCO_OBJECT_WITH_TRANSFORM applies the inverse
-            # of the explicitly referenced object's object-to-world matrix
-            # to the world-space shading point. Preserve that immutable
-            # affine transform in column-major order; the helper object need
-            # not itself be renderable or present in the instance table.
+            # Cycles stores the explicitly referenced object's object-to-world
+            # transform in TextureCoordinateNode::ob_tfm and performs the
+            # inverse while compiling NODE_TEXCO_OBJECT_WITH_TRANSFORM.
+            # Preserve that raw authored value; do not pre-bake SVM behavior in
+            # the Blender exporter.
             result["object_coordinates"] = {
                 "object": coordinate_object.name,
-                "world_to_object": _column_major(
-                    coordinate_object.matrix_world.inverted_safe()
+                "object_to_world": _column_major(
+                    coordinate_object.matrix_world
                 ),
             }
     if hasattr(node, "texture_mapping"):

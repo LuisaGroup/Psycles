@@ -215,8 +215,11 @@ int main(int argc, char **argv) {
     }
 
     const auto runtime_kernel = make_runtime_kernel();
+    // The unchecked Cycles NormalNode needs an explicit non-finite zero-domain
+    // projection because fallback's native rsqrt is zero-safe. The four XIR
+    // instructions are structural, not material-mode dispatch growth.
     if (!require_bounded_xir(
-            "surface Vector Math SVM", runtime_kernel, 4096u)) {
+            "surface Vector Math SVM", runtime_kernel, 4100u)) {
         return EXIT_FAILURE;
     }
 

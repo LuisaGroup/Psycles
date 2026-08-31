@@ -9,6 +9,8 @@
 
 #include <luisa/dsl/sugar.h>
 
+#include <psycles/luisa/native_vector_math.h>
+
 namespace psycles::luisa_backend::cycles_sample_mapping {
 
 inline constexpr float pi = 3.14159265358979323846f;
@@ -83,17 +85,17 @@ one_minus_cosine_from_angle(float angle) noexcept {
 
 // Cycles' Sheen LTC fixes its azimuthal frame with the incoming direction
 // when that tangent is usable, and falls back to make_orthonormals otherwise.
-// safe_normalize here has the exact zero-only contract from Cycles.
+// safe_normalize here has the exact zero-only contract from Cycles; its
+// accepted-domain arithmetic remains backend-native.
 [[nodiscard]] inline OrthonormalBasis make_orthonormals_safe_tangent(
     luisa::compute::Float3 normal,
     luisa::compute::Float3 candidate_tangent) noexcept {
     using namespace luisa::compute;
     const auto unnormalized_bitangent =
         cross(normal, candidate_tangent);
-    const auto length = sqrt(dot(
-        unnormalized_bitangent, unnormalized_bitangent));
-    const auto bitangent = unnormalized_bitangent /
-                           select(1.0f, length, length != 0.0f);
+    const auto bitangent =
+        native_vector_math::safe_normalize_nonzero(
+            unnormalized_bitangent);
     const auto candidate = OrthonormalBasis{
         .tangent = cross(bitangent, normal),
         .bitangent = bitangent};
@@ -113,7 +115,8 @@ one_minus_cosine_from_angle(float angle) noexcept {
     luisa::compute::Float3 normal,
     luisa::compute::Float3 tangent) noexcept {
     using namespace luisa::compute;
-    const auto bitangent = normalize(cross(normal, tangent));
+    const auto bitangent = native_vector_math::normalize_unchecked(
+        cross(normal, tangent));
     return {
         .tangent = cross(bitangent, normal),
         .bitangent = bitangent};

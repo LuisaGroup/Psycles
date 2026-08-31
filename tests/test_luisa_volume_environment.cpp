@@ -76,6 +76,10 @@ environment_shader() {
         graph.add_node(
             node_type::texture_coordinate,
             "World Texture Coordinate");
+    const auto point_to_vector =
+        graph.add_node(
+            node_type::point_to_vector,
+            "World Generated point to vector");
     const auto gradient =
         graph.add_node(
             node_type::gradient_texture,
@@ -126,6 +130,12 @@ environment_shader() {
         graph.connect(
             {.node = coordinates,
              .socket = "Generated"},
+            point_to_vector,
+            "Point"));
+    static_cast<void>(
+        graph.connect(
+            {.node = point_to_vector,
+             .socket = "Vector"},
             gradient,
             "Vector"));
     static_cast<void>(

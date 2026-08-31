@@ -173,13 +173,17 @@ VolumeGuidingFilter::VolumeGuidingFilter(
               make_filter_x(),
               ShaderOption{
                   .enable_cache = true,
-                  .enable_fast_math = false})},
+                  // The guide is an approximate proposal distribution. Its
+                  // RGBE records have no bit-exact transport contract, so
+                  // serializing IEEE operation order here would spend GPU
+                  // throughput solely to preserve last-bit test fixtures.
+                  .enable_fast_math = true})},
       _filter_y{
           device.compile(
               make_filter_y(),
               ShaderOption{
                   .enable_cache = true,
-                  .enable_fast_math = false})} {}
+                  .enable_fast_math = true})} {}
 
 void VolumeGuidingFilter::dispatch(
     Stream &stream,

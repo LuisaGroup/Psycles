@@ -24,7 +24,9 @@ inline constexpr std::size_t record_count = 59u;
 [[nodiscard]] bool approximately_equal(
     float actual,
     float expected,
-    float tolerance = 3.0e-5f) noexcept {
+    // Allow backend-native reciprocal-square-root arithmetic while retaining
+    // exact structural and probability-support assertions elsewhere.
+    float tolerance = 1.0e-4f) noexcept {
     return std::abs(actual - expected) <=
            tolerance *
                std::max(

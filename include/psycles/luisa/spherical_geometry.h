@@ -8,6 +8,8 @@
 
 #include <luisa/dsl/sugar.h>
 
+#include <psycles/luisa/native_vector_math.h>
+
 namespace psycles::luisa_backend::spherical_geometry {
 
 inline constexpr float pi = 3.1415926535897932f;
@@ -34,10 +36,8 @@ struct TriangleSample {
 [[nodiscard]] inline luisa::compute::Float3
 normalize_or(luisa::compute::Float3 value,
              luisa::compute::Float3 fallback) noexcept {
-    const auto length_squared = dot(value, value);
-    return select(fallback,
-                  value / sqrt(max(length_squared, 1.0e-20f)),
-                  length_squared > 1.0e-20f);
+    return native_vector_math::normalize_above_or(
+        value, fallback, 1.0e-20f);
 }
 
 // A direction on the z axis has no unique azimuth. Cycles' CPU and HIP math
@@ -167,7 +167,8 @@ triangle_directional_pdf(luisa::compute::Float3 reference,
     const auto normal = unnormalized_normal / max(doubled_area, 1.0e-20f);
     const auto offset = light_position - reference;
     const auto distance_squared = dot(offset, offset);
-    const auto direction = offset / sqrt(max(distance_squared, 1.0e-20f));
+    const auto direction =
+        offset * rsqrt(max(distance_squared, 1.0e-20f));
     const auto cosine = abs(dot(normal, -direction));
     const auto uses_solid_angle =
         use_triangle_solid_angle_sampling(reference, p0, p1, p2);

@@ -574,6 +574,10 @@ make_volume_graph(VolumeGraphKind kind) {
             graph.add_node(
                 node_type::texture_coordinate,
                 "Spatial runtime coordinates");
+        const auto point_to_vector =
+            graph.add_node(
+                node_type::point_to_vector,
+                "Spatial runtime point to vector");
         const auto scalar =
             graph.add_node(
                 node_type::vector_to_scalar,
@@ -595,6 +599,11 @@ make_volume_graph(VolumeGraphKind kind) {
                 graph.connect(
                     {.node = coordinates,
                      .socket = "Generated"},
+                    point_to_vector,
+                    "Point") &&
+                graph.connect(
+                    {.node = point_to_vector,
+                     .socket = "Vector"},
                     scalar,
                     "Vector") &&
                 graph.connect(
@@ -643,12 +652,21 @@ make_volume_graph(VolumeGraphKind kind) {
             graph.add_node(
                 node_type::texture_coordinate,
                 "Raw volume coordinates");
+        const auto point_to_vector =
+            graph.add_node(
+                node_type::point_to_vector,
+                "Raw volume point to vector");
         expect(
             graph.connect(
                 {.node = coordinates,
                  .socket = "Generated"},
-                coefficients,
-                "EmissionCoefficients"),
+                point_to_vector,
+                "Point") &&
+                graph.connect(
+                    {.node = point_to_vector,
+                     .socket = "Vector"},
+                    coefficients,
+                    "EmissionCoefficients"),
             "failed to construct raw spatial volume graph");
     } else {
         expect(

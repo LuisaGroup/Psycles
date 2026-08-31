@@ -77,61 +77,39 @@ public:
           context.constant_from_output(node, socket, SocketType::floating));
     }
     if (type == "TEX_COORD" || type == "UVMAP") {
-      if (type == "TEX_COORD" && socket == "Reflection") {
-        // Cycles' surface texture coordinate is
-        // -reflect(Incoming, N). Build it from existing typed graph
-        // operations so it observes an automatic SetNormal/bump that
-        // precedes the surface graph.
-        const auto incoming =
-            context.geometry_output("Incoming", SocketType::vector);
-        const auto normal = context.conversion(
-            context.geometry_output("Normal", SocketType::normal),
-            SocketType::vector);
-        const auto reflected = context.graph().add_node(
-            compiler::node_type::vector_math, node_name + " / Reflection");
-        static_cast<void>(
-            context.graph().connect(incoming.ref, reflected, "A"));
-        static_cast<void>(context.graph().connect(normal.ref, reflected, "B"));
-        static_cast<void>(context.graph().set_property(
-            reflected, "Operation", SocketValue::string("REFLECT")));
-
-        const auto negated =
-            context.graph().add_node(compiler::node_type::vector_math,
-                                     node_name + " / Reflection Direction");
-        static_cast<void>(context.graph().connect(
-            {.node = reflected, .socket = "Vector"}, negated, "A"));
-        static_cast<void>(context.graph().set_input(
-            negated, "Scale", SocketValue::floating(-1.0f)));
-        static_cast<void>(context.graph().set_property(
-            negated, "Operation", SocketValue::string("SCALE")));
-        return finish({.ref = {.node = negated, .socket = "Vector"},
-                       .type = SocketType::vector});
-      }
       const auto id = context.graph().add_node(
-          compiler::node_type::texture_coordinate, node_name);
+          type == "TEX_COORD" ? compiler::node_type::texture_coordinate
+                              : compiler::node_type::uv_map,
+          node_name);
+      const auto from_dupli =
+          context.node_property_bool(node, "from_instancer", false);
+      static_cast<void>(context.graph().set_property(
+          id, "FromDupli", SocketValue::boolean(from_dupli)));
       if (type == "TEX_COORD") {
         auto *object_coordinates =
             member(member(node, "special"), "object_coordinates");
-        auto *world_to_object = member(object_coordinates, "world_to_object");
-        if (world_to_object != nullptr) {
+        auto *object_to_world = member(object_coordinates, "object_to_world");
+        if (object_to_world != nullptr) {
           static_cast<void>(context.graph().set_property(
-              id, "ObjectUseTransform", SocketValue::boolean(true)));
+              id, "UseTransform", SocketValue::boolean(true)));
           static_cast<void>(context.graph().set_property(
-              id, "ObjectWorldToObject",
-              SocketValue::transform(matrix(world_to_object))));
+              id, "ObjectTransform",
+              SocketValue::transform(matrix(object_to_world))));
         }
       } else {
         const auto uv_map = context.node_property_text(node, "uv_map");
         static_cast<void>(context.graph().set_property(
-            id, "UvMapNamed", SocketValue::boolean(!uv_map.empty())));
+            id, "Attribute", SocketValue::string(uv_map)));
         static_cast<void>(context.graph().set_property(
-            id, "UvMapId",
+            id, "AttributeId",
             SocketValue::unsigned_integer(
                 uv_map.empty() ? 0u : contract::uv_attribute_id(uv_map))));
       }
       const auto output_socket = type == "UVMAP" ? std::string{"UV"} : socket;
       const auto output_type =
-          output_socket == "Normal" ? SocketType::vector : SocketType::vector;
+          output_socket == "Normal" || output_socket == "Reflection"
+              ? SocketType::normal
+              : SocketType::point;
       return finish(
           {.ref = {.node = id, .socket = output_socket}, .type = output_type});
     }

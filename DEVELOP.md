@@ -33,6 +33,39 @@ No deviation is implied by temporary regressions or by the convenience of the
 existing implementation. Only an explicit project-owner instruction can relax
 this lock.
 
+## Mandatory structural-parity performance lock
+
+The Cycles lock applies to the observable renderer state machine, not to an
+incidental floating-point bit pattern selected by one compiler or device. Until
+the project owner explicitly says otherwise, a non-structural one-ULP or
+last-bit difference must never justify a runtime performance cost:
+
+- do not disable fast math, emulate native math or texture filtering in
+  software, add branches or memory traffic, or replace a hardware instruction
+  solely to reproduce the final bit of one Cycles build;
+- keep structural facts exact: SVM words and cursor movement, control flow,
+  visibility/support, RNG dimensions, sampling probabilities, closure state,
+  energy, texture addressing/filter type, and finite/invalid behavior;
+- external-oracle regressions must compare structural words exactly and use a
+  documented numerical tolerance only for host/backend arithmetic whose small
+  representation difference does not alter those structural facts;
+- stricter arithmetic is permitted only with a written proof obligation, such
+  as maintaining an outward probability bound. Each exception must be narrowly
+  allowlisted and regression-tested rather than inferred from an exact-hash
+  fixture.
+
+Native texture operations are part of this lock: nearest and linear filtering
+must remain one native sample, and Cycles cubic filtering must remain its four
+native bilinear samples. A backend-specific software texel loop is not an
+acceptable way to match interpolation rounding.
+
+Vector normalization follows the same rule. Cycles' zero, fallback, and
+near-zero domain predicates remain explicit because they can change control
+flow or finite/invalid behavior; arithmetic inside the accepted domain uses
+the shared native reciprocal-square-root implementation in
+`native_vector_math.h`. Do not reintroduce scalar `sqrt` plus division merely
+to reproduce a CPU/GPU rounding sequence.
+
 ## Authoritative-reference policy
 
 The checked-out latest Blender/Cycles source and renders from the same

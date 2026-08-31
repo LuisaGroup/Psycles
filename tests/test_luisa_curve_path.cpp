@@ -10,6 +10,7 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -34,19 +35,24 @@ inline constexpr std::string_view curve_uv_name = "RootUV";
 [[nodiscard]] ShaderGraph hair_intercept_emission() {
     ShaderGraph graph;
     const auto hair = graph.add_node(node_type::hair_info, "Native Hair Info");
-    const auto coordinates = graph.add_node(
-        node_type::texture_coordinate, "Native curve UV");
+    const auto coordinates =
+        graph.add_node(node_type::uv_map, "Native curve UV");
+    const auto point_to_vector = graph.add_node(
+        node_type::point_to_vector, "Curve UV point to vector");
     const auto conversion = graph.add_node(
         node_type::vector_to_color, "Curve UV color");
     const auto emission = graph.add_node(node_type::emission, "Emission");
     static_cast<void>(graph.set_property(
-        coordinates, "UvMapNamed", SocketValue::boolean(true)));
+        coordinates, "Attribute",
+        SocketValue::string(std::string{curve_uv_name})));
     static_cast<void>(graph.set_property(
         coordinates,
-        "UvMapId",
+        "AttributeId",
         SocketValue::unsigned_integer(uv_attribute_id(curve_uv_name))));
     static_cast<void>(graph.connect(
-        {.node = coordinates, .socket = "UV"}, conversion, "Vector"));
+        {.node = coordinates, .socket = "UV"}, point_to_vector, "Point"));
+    static_cast<void>(graph.connect(
+        {.node = point_to_vector, .socket = "Vector"}, conversion, "Vector"));
     static_cast<void>(graph.connect(
         {.node = conversion, .socket = "Color"}, emission, "Color"));
     static_cast<void>(graph.connect(

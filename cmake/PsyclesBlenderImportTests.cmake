@@ -1,5 +1,6 @@
 add_executable(
     psycles_blender_import_tests
+    tests/blender_texture_coordinate_import_expectations.cpp
     tests/test_blender_import.cpp
     tests/test_blender_legacy_mix_import.cpp
     tests/test_blender_vector_import.cpp)

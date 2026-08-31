@@ -72,6 +72,11 @@ public:
     add_node_payload(node, type, &payload, sizeof(T), use_derivatives);
   }
 
+  template<SvmPayload T>
+  void add_node_data(const T &payload) {
+    add_node_data(static_cast<const void *>(&payload), sizeof(T));
+  }
+
   [[nodiscard]] virtual std::size_t add_node(ShaderNodeType type) = 0;
 
   template<SvmPayload T>
@@ -84,6 +89,7 @@ public:
   [[nodiscard]] virtual SVMStackOffset
   get_bump_state_offset() const noexcept = 0;
   [[nodiscard]] virtual ShaderType output_type() const noexcept = 0;
+  [[nodiscard]] virtual bool background() const noexcept = 0;
 };
 
 } // namespace psycles::compiler::cycles_svm

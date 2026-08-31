@@ -5,6 +5,7 @@
 #endif
 
 #include <psycles/luisa/cycles_sample_mapping.h>
+#include <psycles/luisa/native_vector_math.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -121,13 +122,8 @@ safe_divide(
 safe_normalize(
     luisa::compute::Float3 value,
     luisa::compute::Float3 fallback) noexcept {
-    using namespace luisa::compute;
-    const auto magnitude_squared = dot(value, value);
-    return select(
-        fallback,
-        value /
-            sqrt(max(magnitude_squared, 1.0e-30f)),
-        magnitude_squared > 0.0f);
+    return native_vector_math::normalize_above_or(
+        value, fallback, 0.0f);
 }
 
 // A lamp shader and a spot profile use Cycles' complete object transform,
@@ -415,8 +411,8 @@ point_light_uv(
         0.0f,
         1.0f -
             acos(clamp(
-                local.z /
-                    sqrt(max(
+                local.z *
+                    rsqrt(max(
                         magnitude_squared,
                         1.0e-30f)),
                 -1.0f,
@@ -742,10 +738,9 @@ sample_rectangle_solid_angle(
         cos(alpha) * b0 + b1,
         sin(alpha));
     auto cos_u = copysign(
-        1.0f /
-            sqrt(
-                f_u * f_u +
-                b0_squared),
+        rsqrt(
+            f_u * f_u +
+            b0_squared),
         f_u);
     cos_u = clamp(cos_u, -1.0f, 1.0f);
     auto sampled_u =
@@ -762,13 +757,13 @@ sample_rectangle_solid_angle(
         sampled_u * sampled_u +
         context.z0 * context.z0;
     const auto h0 =
-        context.y0 /
-        sqrt(
+        context.y0 *
+        rsqrt(
             distance_u_squared +
             context.y0 * context.y0);
     const auto h1 =
-        context.y1 /
-        sqrt(
+        context.y1 *
+        rsqrt(
             distance_u_squared +
             context.y1 * context.y1);
     const auto h_v =

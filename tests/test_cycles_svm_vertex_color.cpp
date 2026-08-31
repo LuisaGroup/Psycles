@@ -80,7 +80,9 @@ void require_words(std::span<const std::uint32_t> actual,
   const ShaderCompiler frontend{make_core_node_registry()};
   const auto shader = frontend.compile(graph);
   require(shader.ok(), "Vertex Color graph did not validate");
-  const auto image = compile_shader(*shader.program, attribute_ids);
+  const auto image = compile_shader(
+      *shader.program, attribute_ids,
+      ShaderCompileContext{.background = false});
   require(image.valid, image.diagnostic.c_str());
   return image;
 }
@@ -116,7 +118,9 @@ void require_words(std::span<const std::uint32_t> actual,
   const ShaderCompiler frontend{make_core_node_registry()};
   const auto shader = frontend.compile(graph);
   require(shader.ok(), "Attribute graph did not validate");
-  const auto image = compile_shader(*shader.program, attribute_ids);
+  const auto image = compile_shader(
+      *shader.program, attribute_ids,
+      ShaderCompileContext{.background = false});
   require(image.valid, image.diagnostic.c_str());
   return image;
 }
@@ -159,7 +163,9 @@ void require_words(std::span<const std::uint32_t> actual,
   const ShaderCompiler frontend{make_core_node_registry()};
   const auto shader = frontend.compile(graph);
   require(shader.ok(), "Attribute Bump graph did not validate");
-  const auto image = compile_shader(*shader.program, attribute_ids);
+  const auto image = compile_shader(
+      *shader.program, attribute_ids,
+      ShaderCompileContext{.background = false});
   require(image.valid, image.diagnostic.c_str());
   return image;
 }

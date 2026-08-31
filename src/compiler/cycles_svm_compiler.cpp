@@ -256,6 +256,7 @@ private:
   Stack _stack;
   GraphNode *_current_node{};
   ShaderType _current_type{SHADER_TYPE_SURFACE};
+  bool _background{};
   SVMStackOffset _mix_weight_offset{SVM_STACK_INVALID};
   SVMStackOffset _bump_state_offset{SVM_STACK_INVALID};
   std::string _diagnostic;
@@ -528,6 +529,10 @@ private:
 
   [[nodiscard]] ShaderType output_type() const noexcept override {
     return _current_type;
+  }
+
+  [[nodiscard]] bool background() const noexcept override {
+    return _background;
   }
 
   [[nodiscard]] bool is_sole_user(const GraphNode *node,
@@ -979,9 +984,11 @@ private:
   }
 
 public:
-  Compiler(const ShaderProgram &shader, AttributeIDMap &attribute_ids)
+  Compiler(const ShaderProgram &shader, AttributeIDMap &attribute_ids,
+           ShaderCompileContext context)
       : _graph{CyclesGraph::project(shader)},
-        _attribute_ids{attribute_ids} {}
+        _attribute_ids{attribute_ids},
+        _background{context.background} {}
 
   [[nodiscard]] ShaderImage compile() {
     if (!_graph.valid()) {
@@ -1045,8 +1052,9 @@ std::uint64_t AttributeIDMap::get_attribute_id(std::string_view name) {
 }
 
 ShaderImage compile_shader(const ShaderProgram &shader,
-                           AttributeIDMap &attribute_ids) {
-  return Compiler{shader, attribute_ids}.compile();
+                           AttributeIDMap &attribute_ids,
+                           ShaderCompileContext context) {
+  return Compiler{shader, attribute_ids, context}.compile();
 }
 
 } // namespace psycles::compiler::cycles_svm
