@@ -317,6 +317,11 @@ void eval_nodes(
           detail::node_tex_gradient(cursor, stack);
         };
       }
+      if (node_types_used[NODE_RGB_RAMP]) {
+        PSYCLES_SVM_CASE(NODE_RGB_RAMP) {
+          detail::node_rgb_ramp(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_TEX_ENVIRONMENT]) {
         PSYCLES_SVM_CASE(NODE_TEX_ENVIRONMENT) {
           detail::node_tex_environment(

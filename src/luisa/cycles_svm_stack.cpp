@@ -22,6 +22,11 @@ luisa::compute::Float Cursor::floating() noexcept {
   return word().bitcast<float>();
 }
 
+luisa::compute::Float Cursor::floating_at(
+    luisa::compute::Expr<std::uint32_t> relative_word) const noexcept {
+  return _words.read(_offset + relative_word).bitcast<float>();
+}
+
 void Cursor::advance(
     luisa::compute::Expr<std::uint32_t> word_count) noexcept {
   _offset += word_count;
