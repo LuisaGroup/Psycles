@@ -54,6 +54,92 @@ public:
             .dx = make_float3(0.0f),
             .dy = make_float3(0.0f)};
   }
+
+  [[nodiscard]] device_svm::AttributeDescriptor find_attribute(
+      const device_svm::ShaderData &,
+      Expr<luisa::ulong>) const noexcept override {
+    return {.element = static_cast<std::uint32_t>(ATTR_ELEMENT_NONE),
+            .type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT),
+            .offset = static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)};
+  }
+
+  [[nodiscard]] Float primitive_surface_attribute_float(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &) const noexcept override {
+    return 0.0f;
+  }
+
+  [[nodiscard]] device_svm::Dual1
+  primitive_surface_attribute_float_derivative(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &) const noexcept override {
+    return {.val = 0.0f, .dx = 0.0f, .dy = 0.0f};
+  }
+
+  [[nodiscard]] Float2 primitive_surface_attribute_float2(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &) const noexcept override {
+    return make_float2(0.0f);
+  }
+
+  [[nodiscard]] device_svm::Dual2
+  primitive_surface_attribute_float2_derivative(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &) const noexcept override {
+    return {.val = make_float2(0.0f),
+            .dx = make_float2(0.0f),
+            .dy = make_float2(0.0f)};
+  }
+
+  [[nodiscard]] Float3 primitive_surface_attribute_float3(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &) const noexcept override {
+    return make_float3(0.0f);
+  }
+
+  [[nodiscard]] device_svm::Dual3
+  primitive_surface_attribute_float3_derivative(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &) const noexcept override {
+    return {.val = make_float3(0.0f),
+            .dx = make_float3(0.0f),
+            .dy = make_float3(0.0f)};
+  }
+
+  [[nodiscard]] Float4 primitive_surface_attribute_float4(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &) const noexcept override {
+    return make_float4(0.0f);
+  }
+
+  [[nodiscard]] device_svm::Dual4
+  primitive_surface_attribute_float4_derivative(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &) const noexcept override {
+    return {.val = make_float4(0.0f),
+            .dx = make_float4(0.0f),
+            .dy = make_float4(0.0f)};
+  }
+
+  [[nodiscard]] Float3 object_inverse_position_transform_if_object(
+      const device_svm::ShaderData &,
+      Expr<luisa::float3> value) const noexcept override {
+    return value;
+  }
+
+  [[nodiscard]] device_svm::Dual3
+  object_inverse_position_transform_if_object_derivative(
+      const device_svm::ShaderData &,
+      const device_svm::Dual3 &value) const noexcept override {
+    return value;
+  }
+
+  [[nodiscard]] Float4 volume_attribute_float4(
+      const device_svm::ShaderData &,
+      const device_svm::AttributeDescriptor &,
+      Expr<bool>) const noexcept override {
+    return make_float4(0.0f);
+  }
 };
 
 constexpr std::array legacy_mix_modes{

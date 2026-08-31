@@ -5,6 +5,9 @@ surface execution plan. The sole oracle is Blender/Cycles 5.2.1 commit
 `9e2066aef7ef7e20c142ad7bd3303138a4304c93`. Unless the user explicitly changes
 the requirement, an implementation is acceptable only when it is an
 isomorphic Luisa DSL realization of that SVM. Similar output is not sufficient.
+This rule is the default hard constraint for every subsequent implementation:
+there is no discretion to substitute a locally designed shader VM, payload,
+compiler schedule, conversion rule, or runtime transition for the Cycles one.
 
 ## Authoritative source map
 
@@ -1677,4 +1680,168 @@ cmake --build build --parallel 32                              PASS
 ctest --test-dir build --output-on-failure -j32 -E \
   '(_fallback|_vk|_hip)$'                                      77/77 PASS
 ctest --test-dir build --output-on-failure -R '_hip$' -j1      89/89 PASS
+```
+
+## Attribute transition and Geometry standard attributes
+
+This checkpoint copies the Cycles 5.2.1 `NODE_ATTR` family before attempting
+to connect attributes to the production path tracer. Its authoritative source
+map is:
+
+| Stage | Cycles 5.2.1 source |
+|---|---|
+| Geometry Pointiness/Random emission | `intern/cycles/scene/shader_nodes.cpp::GeometryNode::compile` |
+| standard attribute identifiers | `intern/cycles/kernel/types.h::AttributeStandard` |
+| element and descriptor representation | `intern/cycles/kernel/types.h::AttributeElement`, `AttributeDescriptor` |
+| typed payload | `intern/cycles/kernel/svm/node_types.h::SVMNodeAttr` |
+| opcode feature dispatch | `intern/cycles/kernel/svm/svm.h` |
+| ATTR state transition | `intern/cycles/kernel/svm/attribute.h` |
+| descriptor lookup and typed fetch boundary | `intern/cycles/kernel/geom/attribute.h` |
+| volume conversion | `intern/cycles/kernel/geom/volume.h` |
+
+`AttributeElement` and every `AttributeStandard` enumerator are copied with
+their exact integral values and frozen by compile-time ABI assertions. As in
+Cycles' `GeometryNode::compile`, linked Pointiness and Random Per Island emit
+their standard enum values directly in `SVMNodeAttr::attr`; a volume graph
+emits a zero value node instead. Surface/Bump selection, CENTER/DX/DY state,
+the derivative-store bit, filter width, and output stack allocation remain the
+same compiler decisions as the preceding Geometry checkpoint.
+
+For a decoded attribute payload
+
+```text
+A = (a, o, t, b, d, w)
+```
+
+the copied transition first fixes `t` to the payload output type. If
+`sd.object != OBJECT_NONE`, it looks up the signed 32-bit payload ID `a` after
+the same conversion to the 64-bit attribute key used by Cycles. A failed lookup
+reconstructs `attribute_not_found()` and replaces only its descriptor type by
+`t`; the background path performs the same replacement without lookup.
+
+The surface evaluator then takes the first applicable branch, in Cycles order:
+
+1. lamp UV returns `(1-u-v, u, 0)` and the corresponding `du`/`dv` lanes;
+2. missing Generated returns the shading position after the conditional inverse
+   object position transform;
+3. FLOAT, FLOAT2, FLOAT3, FLOAT4, and RGBA use their distinct primitive fetch
+   functions;
+4. FLOAT output uses the first FLOAT2 component or the average of FLOAT3/4 RGB;
+5. alpha output uses FLOAT4/RGBA alpha and otherwise returns one;
+6. vector output preserves two, three, or the RGB components as Cycles does.
+
+The derivative path carries the same value, `dx`, and `dy` components through
+each type conversion. DX adds `dx*w` to the value, DY adds `dy*w`, and CENTER
+does not shift it. A nonzero `d` stores the complete three- or nine-lane dual;
+otherwise it stores only the shifted value. The volume path reinterprets the
+filter-width bits as Cycles' stochastic flag, calls the volume float4 fetch,
+and applies the same RGB average, RGB, or alpha projection. No generic float4
+attribute evaluator or locally invented conversion table exists.
+
+The primitive fetches and object/volume transforms are `KernelGlobals`
+services at the current SVM boundary. Their virtual calls run only while the
+host builds the Luisa AST; there is no device-side virtual dispatch. Keeping
+separate float, float2, float3, float4, dual, and volume services preserves the
+exact Cycles type branches instead of collapsing them into the previous weakly
+typed parameter model.
+
+### External oracle, HIP execution, and visual inspection
+
+The `svm_geometry_attributes` Blender probe has four disconnected curved mesh
+patches: Pointiness and Random Per Island as direct emission, followed by both
+outputs through Bump with Strength `0.73`, Distance `0.41`, and Filter Width
+`0.29`. The disconnected topology makes Random Per Island non-degenerate; the
+curvature makes Pointiness spatially varying. No attribute or closure is baked.
+
+The clean executable identifies Blender 5.2.1 commit `9e2066aef7ef`. The
+environment-gated diagnostic build dumped these exact shader-local streams:
+
+```text
+Pointiness surface       21 words, ATTR id 32
+Random Per Island surface 21 words, ATTR id 33
+Pointiness Bump          35 words, three derivative ATTR records with id 32
+Random Per Island Bump   35 words, three derivative ATTR records with id 33
+```
+
+All four streams are retained verbatim in the host and HIP tests. The host
+compiler produces word-for-word equality. The HIP PC loop consumes the same
+streams and reaches final PC 19 for direct graphs and PC 33 for Bump graphs.
+Under a controlled attribute service it produces Pointiness `0.25`, Random Per
+Island `0.75`, the source-derived Pointiness Bump normal
+`(0.097966006, 0.293898017, 0.950803143)`, and unchanged Random Per Island
+normal `(0,0,1)`.
+
+Separate HIP handler tests exercise 21 surface cases, 15 derivative cases, and
+four volume cases. They cover all typed fetch branches and projections,
+missing descriptors, `OBJECT_NONE`, lamp UV, Generated fallback and both the
+object-transform and background no-transform branches,
+dual stack layout, CENTER/DX/DY behavior, the derivative-store bit, and the
+volume stochastic flag. These expected values are direct consequences of the
+Cycles transitions above; no host reference evaluator was introduced.
+
+`oiiotool -a ... --diff` reports `PASS` between clean and diagnostic multilayer
+EXRs. The retained Combined report has RMSE `0`, maximum absolute error `0`,
+mean ratios `(1,1,1)`, and zero invalid pixels. The report deliberately marks
+build identity unverified because the comparison tool requires identical
+build hashes while the second executable contains the observation patch; the
+clean metadata and dump source revisions are recorded separately.
+
+I opened the retained 1552x582 triptych at original resolution. Both direct
+attribute panels have identical gray fields and boundaries; both Bump panels
+have identical signed normal colors and fine spatial variation. The difference
+panel is entirely black. Representative clean Combined pixels are
+`(-0.158013850, 0.301338583, 0.940333307)` at `(32,32)`,
+`(0.479246229, 0.441723287, 0.758421779)` at `(96,32)`,
+`(0.503282487, 0.503282487, 0.503282487)` at `(32,96)`, and
+`(0.569062233, 0.569062233, 0.569062233)` at `(96,96)`.
+
+![Geometry standard attributes clean versus diagnostic Cycles](attribute/combined.png)
+
+This checkpoint proves compiler bytecode and the copied ATTR transition. It
+does not yet claim a production render comparison: the new SVM remains a
+focused Luisa/HIP path, and the production Cycles attribute map, mesh/corner/
+curve interpolation, byte/normal decoding, motion interpolation, voxel fetch,
+and named-attribute ID allocation still have to be copied before connecting it
+to the path tracer.
+
+Oracle and focused validation commands:
+
+```text
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/psycles-svm-attr.D0XKvf/svm_geometry_attributes.blend \
+  svm_geometry_attributes                                      PASS
+
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  /tmp/psycles-svm-attr.D0XKvf/svm_geometry_attributes.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/psycles-svm-attr.D0XKvf/svm_geometry_attributes-clean.exr \
+  128 128 1 0 --cycles-device CPU                              PASS
+
+PSYCLES_CYCLES_SVM_DUMP=/tmp/psycles-svm-attr.D0XKvf/svm_geometry_attributes.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/psycles-svm-attr.D0XKvf/svm_geometry_attributes.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/psycles-svm-attr.D0XKvf/svm_geometry_attributes-trace.exr \
+  128 128 1 0 --cycles-device CPU                              PASS
+
+oiiotool -a \
+  /tmp/psycles-svm-attr.D0XKvf/svm_geometry_attributes-clean.exr \
+  /tmp/psycles-svm-attr.D0XKvf/svm_geometry_attributes-trace.exr \
+  --diff                                                       PASS
+
+cmake --build build --parallel 32 --target \
+  psycles_cycles_svm_abi_tests \
+  psycles_cycles_svm_wireframe_tests \
+  psycles_luisa_cycles_svm_tests \
+  psycles_luisa_cycles_svm_wireframe_tests                     PASS
+build/psycles_cycles_svm_abi_tests                             PASS
+build/psycles_cycles_svm_wireframe_tests                       PASS
+build/bin/psycles_luisa_cycles_svm_tests hip                   PASS
+build/bin/psycles_luisa_cycles_svm_wireframe_tests hip         PASS
+cmake --build build --parallel 32                              PASS
+ctest --test-dir build --output-on-failure -j32 -E \
+  '(_fallback|_vk|_hip)$'                                      77/77 PASS
+ctest --test-dir build --output-on-failure -R '_hip$' -j1     89/89 PASS
 ```

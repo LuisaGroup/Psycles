@@ -201,6 +201,54 @@ compile_geometry_bump(const char *geometry_output) {
   return image;
 }
 
+[[nodiscard]] ShaderImage compile_geometry_attribute(
+    const char *geometry_output, bool use_bump) {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Geometry");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  if (use_bump) {
+    const auto bump = graph.add_node(node_type::bump, "Geometry Attribute Bump");
+    const auto normal_to_vector =
+        graph.add_node(node_type::normal_to_vector, "Normal to Vector");
+    const auto normal_to_color =
+        graph.add_node(node_type::vector_to_color, "Normal to Color");
+    require(
+        graph.connect({geometry, geometry_output}, bump, "Height") &&
+            graph.set_input(bump, "Strength", SocketValue::floating(0.73f)) &&
+            graph.set_input(bump, "Distance", SocketValue::floating(0.41f)) &&
+            graph.set_input(bump, "FilterWidth",
+                            SocketValue::floating(0.29f)) &&
+            graph.set_property(bump, "Invert", SocketValue::boolean(false)) &&
+            graph.set_property(bump, "UseObjectSpace",
+                               SocketValue::boolean(false)) &&
+            graph.connect({bump, "Normal"}, normal_to_vector, "Normal") &&
+            graph.connect({normal_to_vector, "Vector"}, normal_to_color,
+                          "Vector") &&
+            graph.connect({normal_to_color, "Color"}, emission, "Color"),
+        "failed to construct Geometry attribute Bump graph");
+  } else {
+    const auto to_color =
+        graph.add_node(node_type::scalar_to_color, "Float to Color");
+    require(graph.connect({geometry, geometry_output}, to_color, "Value") &&
+                graph.connect({to_color, "Color"}, emission, "Color"),
+            "failed to construct Geometry attribute surface graph");
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  if (!shader.ok()) {
+    for (const auto &diagnostic : shader.diagnostics) {
+      std::cerr << diagnostic.message << '\n';
+    }
+    std::exit(EXIT_FAILURE);
+  }
+  auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+  return image;
+}
+
 [[nodiscard]] ShaderImage compile_unlinked_bump() {
   ShaderGraph graph;
   const auto bump = graph.add_node(node_type::bump, "Unlinked Height Bump");
@@ -408,6 +456,61 @@ void test_geometry_bump_derivative_streams() {
           "Geometry Bump did not select Cycles' derivative opcode");
 }
 
+void test_geometry_attribute_streams() {
+  static constexpr std::array pointiness_surface{
+      0x00000001u, 0x00000004u, 0x00000013u, 0x00000014u, 0x00000015u,
+      0x00000020u, 0x00000100u, 0x00000000u, 0x0000000du, 0x00000000u,
+      0x00000100u, 0x00000007u, 0x7fc00001u, 0x00000000u, 0x00000000u,
+      0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u, 0x00000000u,
+      0x00000000u,
+  };
+  static constexpr std::array random_surface{
+      0x00000001u, 0x00000004u, 0x00000013u, 0x00000014u, 0x00000015u,
+      0x00000021u, 0x00000100u, 0x00000000u, 0x0000000du, 0x00000000u,
+      0x00000100u, 0x00000007u, 0x7fc00001u, 0x00000000u, 0x00000000u,
+      0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u, 0x00000000u,
+      0x00000000u,
+  };
+  static constexpr std::array pointiness_bump{
+      0x00000001u, 0x00000004u, 0x00000021u, 0x00000022u, 0x0000000bu,
+      0x00000001u, 0x3e947ae1u, 0x00000016u, 0x00000020u, 0x00000103u,
+      0x3e947ae1u, 0x00000016u, 0x00000020u, 0x00010104u, 0x3e947ae1u,
+      0x00000016u, 0x00000020u, 0x00020105u, 0x3e947ae1u, 0x00000021u,
+      0x3ed1eb85u, 0x3f3ae148u, 0x3e947ae1u, 0x03000000u, 0xff060504u,
+      0x00000007u, 0x7fc00006u, 0x00000000u, 0x00000000u, 0x3f800000u,
+      0x00000003u, 0x000000ffu, 0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  static constexpr std::array random_bump{
+      0x00000001u, 0x00000004u, 0x00000021u, 0x00000022u, 0x0000000bu,
+      0x00000001u, 0x3e947ae1u, 0x00000016u, 0x00000021u, 0x00000103u,
+      0x3e947ae1u, 0x00000016u, 0x00000021u, 0x00010104u, 0x3e947ae1u,
+      0x00000016u, 0x00000021u, 0x00020105u, 0x3e947ae1u, 0x00000021u,
+      0x3ed1eb85u, 0x3f3ae148u, 0x3e947ae1u, 0x03000000u, 0xff060504u,
+      0x00000007u, 0x7fc00006u, 0x00000000u, 0x00000000u, 0x3f800000u,
+      0x00000003u, 0x000000ffu, 0x00000000u, 0x00000000u, 0x00000000u,
+  };
+
+  const auto pointiness = compile_geometry_attribute("Pointiness", false);
+  const auto random = compile_geometry_attribute("RandomPerIsland", false);
+  const auto pointiness_refined =
+      compile_geometry_attribute("Pointiness", true);
+  const auto random_refined =
+      compile_geometry_attribute("RandomPerIsland", true);
+  require_words(pointiness.words, pointiness_surface,
+                "Cycles 5.2.1 Geometry Pointiness surface oracle");
+  require_words(random.words, random_surface,
+                "Cycles 5.2.1 Geometry Random Per Island surface oracle");
+  require_words(pointiness_refined.words, pointiness_bump,
+                "Cycles 5.2.1 Geometry Pointiness Bump oracle");
+  require_words(random_refined.words, random_bump,
+                "Cycles 5.2.1 Geometry Random Per Island Bump oracle");
+  require(pointiness.node_types_used[NODE_ATTR] &&
+              random.node_types_used[NODE_ATTR] &&
+              pointiness_refined.node_types_used[NODE_ATTR_DERIVATIVE] &&
+              random_refined.node_types_used[NODE_ATTR_DERIVATIVE],
+          "Geometry standard attributes did not select Cycles ATTR opcodes");
+}
+
 } // namespace
 
 int main() {
@@ -417,5 +520,6 @@ int main() {
   test_bump_refinement_features();
   test_unlinked_height_bump_constant_fold();
   test_geometry_bump_derivative_streams();
+  test_geometry_attribute_streams();
   return EXIT_SUCCESS;
 }

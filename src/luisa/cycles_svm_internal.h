@@ -64,6 +64,9 @@ void stack_store_float(Stack &stack,
 void stack_store_float3(Stack &stack,
                         luisa::compute::Expr<std::uint32_t> offset,
                         luisa::compute::Expr<luisa::float3> value) noexcept;
+void stack_store_dual1(Stack &stack,
+                       luisa::compute::Expr<std::uint32_t> offset,
+                       const Dual1 &value) noexcept;
 void stack_store_dual3(Stack &stack,
                        luisa::compute::Expr<std::uint32_t> offset,
                        const Dual3 &value) noexcept;
@@ -104,6 +107,15 @@ void node_geometry(Cursor &cursor, Stack &stack,
                    const KernelGlobals &kernel_globals,
                    const ShaderData &shader_data,
                    bool use_derivatives) noexcept;
+void node_attr_surface(Cursor &cursor, Stack &stack,
+                       const KernelGlobals &kernel_globals,
+                       const ShaderData &shader_data) noexcept;
+void node_attr_derivative(Cursor &cursor, Stack &stack,
+                          const KernelGlobals &kernel_globals,
+                          const ShaderData &shader_data) noexcept;
+void node_attr_volume(Cursor &cursor, Stack &stack,
+                      const KernelGlobals &kernel_globals,
+                      const ShaderData &shader_data) noexcept;
 void node_convert(Cursor &cursor, Stack &stack,
                   const KernelGlobals &kernel_globals,
                   bool use_derivatives) noexcept;

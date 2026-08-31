@@ -6,6 +6,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_convert.cpp
     src/luisa/cycles_svm_math.cpp
     src/luisa/cycles_svm_stack.cpp
+    src/luisa/cycles_svm_attribute.cpp
     src/luisa/cycles_svm_value.cpp
     src/luisa/cycles_svm_vector.cpp
     src/luisa/cycles_svm_vector_rotate.cpp

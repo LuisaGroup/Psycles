@@ -78,6 +78,10 @@ inline constexpr std::uint32_t object_none = ~0u;
 inline constexpr std::uint32_t primitive_none = ~0u;
 inline constexpr std::uint32_t primitive_triangle = 1u << 0u;
 inline constexpr std::uint32_t primitive_curve_thick = 1u << 1u;
+inline constexpr std::uint32_t primitive_curve_ribbon = 1u << 2u;
+inline constexpr std::uint32_t primitive_point = 1u << 3u;
+inline constexpr std::uint32_t primitive_volume = 1u << 4u;
+inline constexpr std::uint32_t primitive_lamp = 1u << 5u;
 inline constexpr std::uint32_t primitive_motion = 1u << 6u;
 inline constexpr std::uint32_t shader_data_object_motion = 1u << 1u;
 inline constexpr std::uint32_t shader_data_object_transform_applied = 1u << 2u;
@@ -136,10 +140,34 @@ struct Differential {
   luisa::compute::Float dy;
 };
 
+struct Dual1 {
+  luisa::compute::Float val;
+  luisa::compute::Float dx;
+  luisa::compute::Float dy;
+};
+
+struct Dual2 {
+  luisa::compute::Float2 val;
+  luisa::compute::Float2 dx;
+  luisa::compute::Float2 dy;
+};
+
 struct Dual3 {
   luisa::compute::Float3 val;
   luisa::compute::Float3 dx;
   luisa::compute::Float3 dy;
+};
+
+struct Dual4 {
+  luisa::compute::Float4 val;
+  luisa::compute::Float4 dx;
+  luisa::compute::Float4 dy;
+};
+
+struct AttributeDescriptor {
+  luisa::compute::UInt element;
+  luisa::compute::UInt type;
+  luisa::compute::Int offset;
 };
 
 struct ShaderData;
@@ -164,6 +192,46 @@ public:
   primitive_tangent(const ShaderData &shader_data) const noexcept = 0;
   [[nodiscard]] virtual Dual3 primitive_tangent_derivative(
       const ShaderData &shader_data) const noexcept = 0;
+  [[nodiscard]] virtual AttributeDescriptor find_attribute(
+      const ShaderData &shader_data,
+      luisa::compute::Expr<luisa::ulong> id) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float primitive_surface_attribute_float(
+      const ShaderData &shader_data,
+      const AttributeDescriptor &descriptor) const noexcept = 0;
+  [[nodiscard]] virtual Dual1 primitive_surface_attribute_float_derivative(
+      const ShaderData &shader_data,
+      const AttributeDescriptor &descriptor) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float2
+  primitive_surface_attribute_float2(
+      const ShaderData &shader_data,
+      const AttributeDescriptor &descriptor) const noexcept = 0;
+  [[nodiscard]] virtual Dual2 primitive_surface_attribute_float2_derivative(
+      const ShaderData &shader_data,
+      const AttributeDescriptor &descriptor) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3
+  primitive_surface_attribute_float3(
+      const ShaderData &shader_data,
+      const AttributeDescriptor &descriptor) const noexcept = 0;
+  [[nodiscard]] virtual Dual3 primitive_surface_attribute_float3_derivative(
+      const ShaderData &shader_data,
+      const AttributeDescriptor &descriptor) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float4
+  primitive_surface_attribute_float4(
+      const ShaderData &shader_data,
+      const AttributeDescriptor &descriptor) const noexcept = 0;
+  [[nodiscard]] virtual Dual4 primitive_surface_attribute_float4_derivative(
+      const ShaderData &shader_data,
+      const AttributeDescriptor &descriptor) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3
+  object_inverse_position_transform_if_object(
+      const ShaderData &shader_data,
+      luisa::compute::Expr<luisa::float3> value) const noexcept = 0;
+  [[nodiscard]] virtual Dual3
+  object_inverse_position_transform_if_object_derivative(
+      const ShaderData &shader_data, const Dual3 &value) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float4 volume_attribute_float4(
+      const ShaderData &shader_data, const AttributeDescriptor &descriptor,
+      luisa::compute::Expr<bool> stochastic) const noexcept = 0;
 };
 
 /* The fields below are the exact ShaderData projection consumed by the first

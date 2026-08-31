@@ -166,6 +166,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
         svm_vector._svm_vector_transform_no_object_to_camera
     ),
     "svm_bump_constant_fold": svm_geometry._svm_bump_constant_fold,
+    "svm_geometry_attributes": svm_geometry._svm_geometry_attributes,
     "svm_geometry_bump_offsets": svm_geometry._svm_geometry_bump_offsets,
     "svm_wireframe_matrix": svm_geometry._svm_wireframe_matrix,
     "svm_wireframe_bump": svm_geometry._svm_wireframe_bump,
