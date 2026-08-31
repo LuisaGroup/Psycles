@@ -274,6 +274,46 @@ void eval_nodes(
           }
         };
       }
+      if (node_types_used[NODE_TEX_IMAGE]) {
+        PSYCLES_SVM_CASE(NODE_TEX_IMAGE) {
+          detail::node_tex_image(
+              cursor, stack, kernel_globals, shader_data, false);
+        };
+      }
+      if (node_types_used[NODE_TEX_IMAGE_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_TEX_IMAGE_DERIVATIVE) {
+          detail::node_tex_image(
+              cursor, stack, kernel_globals, shader_data, true);
+        };
+      }
+      if (node_types_used[NODE_TEX_IMAGE_BOX]) {
+        PSYCLES_SVM_CASE(NODE_TEX_IMAGE_BOX) {
+          detail::node_tex_image_box(
+              cursor, stack, kernel_globals, transform_state, shader_data,
+              false,
+              (kernel_features & kernel_feature_object_motion) != 0u);
+        };
+      }
+      if (node_types_used[NODE_TEX_IMAGE_BOX_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_TEX_IMAGE_BOX_DERIVATIVE) {
+          detail::node_tex_image_box(
+              cursor, stack, kernel_globals, transform_state, shader_data,
+              true,
+              (kernel_features & kernel_feature_object_motion) != 0u);
+        };
+      }
+      if (node_types_used[NODE_TEX_ENVIRONMENT]) {
+        PSYCLES_SVM_CASE(NODE_TEX_ENVIRONMENT) {
+          detail::node_tex_environment(
+              cursor, stack, kernel_globals, shader_data, false);
+        };
+      }
+      if (node_types_used[NODE_TEX_ENVIRONMENT_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_TEX_ENVIRONMENT_DERIVATIVE) {
+          detail::node_tex_environment(
+              cursor, stack, kernel_globals, shader_data, true);
+        };
+      }
       if (node_types_used[NODE_ATTR]) {
         PSYCLES_SVM_CASE(NODE_ATTR) {
           if ((node_feature_mask & kernel_feature_node_volume) != 0u) {

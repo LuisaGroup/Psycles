@@ -268,6 +268,13 @@ public:
     return value - make_float3(1.0f, 2.0f, 3.0f);
   }
 
+  [[nodiscard]] Float4 kernel_image_interp_with_udim(
+      device_svm::ShaderData &,
+      Expr<std::int32_t>,
+      const device_svm::Dual2 &) const noexcept override {
+    return make_float4(1.0f, 0.0f, 1.0f, 1.0f);
+  }
+
   [[nodiscard]] Float4 kernel_image_interp_3d(
       device_svm::ShaderData &, Expr<std::int32_t>, Expr<luisa::float3>,
       Expr<std::int32_t>, Expr<bool>) const noexcept override {

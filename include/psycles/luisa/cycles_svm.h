@@ -292,6 +292,11 @@ public:
   object_inverse_position_transform(
       const ShaderData &shader_data,
       luisa::compute::Expr<luisa::float3> value) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float4
+  kernel_image_interp_with_udim(
+      ShaderData &shader_data,
+      luisa::compute::Expr<std::int32_t> image_texture_id,
+      const Dual2 &uv) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float4 kernel_image_interp_3d(
       ShaderData &shader_data,
       luisa::compute::Expr<std::int32_t> image_texture_id,

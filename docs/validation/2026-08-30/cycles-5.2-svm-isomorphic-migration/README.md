@@ -2448,6 +2448,197 @@ node family. It is not yet a full production-render claim: the copied SVM
 interpreter still has to replace the old surface evaluator before scene renders
 exercise this path.
 
+## Image Texture and Environment Texture checkpoint
+
+This checkpoint copies Cycles 5.2.1 `ImageTextureNode::compile`,
+`EnvironmentTextureNode::compile`, and `kernel/svm/image.h` into the same SVM
+machine. The host compiler emits the original `SVMNodeTexImage`,
+`SVMNodeTexImageBox`, and `SVMNodeTexEnvironment` payloads; the Luisa
+interpreter consumes those payloads directly. No texture value is baked by
+Blender or Cycles, and there is no Psycles-specific image opcode or parameter
+stream.
+
+### Resource and bytecode model
+
+Cycles image handles are scene-global, while projection, color conversion and
+output stack locations remain node-local. Psycles therefore uses one
+scene-owned `ImageIDMap`. Its normalized key is
+
+```text
+(resource_id, interpolation, extension)
+```
+
+`resource_id` already identifies one exported `ImageDesc` together with its
+color-space, alpha and current-frame metadata. The remaining two fields are
+the node-varying part of Cycles `ImageParams`. Equal triples reuse one logical
+handle across materials; the same source with a different interpolation or
+extension receives a distinct handle. Projection deliberately does not
+participate in this identity, matching Cycles. Environment Texture always
+uses repeat extension.
+
+The exact payload mapping is:
+
+| Graph state | Cycles payload state |
+|---|---|
+| Image Texture flat/sphere/tube | `NODE_TEX_IMAGE` + `SVMNodeTexImage` |
+| Image Texture box | `NODE_TEX_IMAGE_BOX` + `SVMNodeTexImageBox` |
+| Environment Texture | `NODE_TEX_ENVIRONMENT` + `SVMNodeTexEnvironment` |
+| linked or unlinked Vector | `tex_mapping.compile_begin` / `stack_assign` equivalent |
+| sRGB-compressible storage | `NODE_IMAGE_COMPRESS_AS_SRGB` |
+| linked straight-alpha output | `NODE_IMAGE_ALPHA_UNASSOCIATE` |
+
+The external word oracle exposed a real compiler bug during implementation:
+an unlinked Vector socket was initially queried as though only a link were
+legal, producing `SVM_STACK_INVALID`. Cycles calls `stack_assign` here, which
+materializes the socket default into three stack lanes. The new
+`input_stack()` compiler operation expresses exactly that transition. All
+image node emitters now use it, and the golden streams would fail immediately
+if the default coordinate disappeared again.
+
+`tests/test_cycles_svm_image.cpp` freezes exact Cycles 5.2.1 streams for:
+
+- all 16 interpolation x extension combinations and their logical IDs;
+- equal-handle reuse and projection-independent handle identity;
+- flat, sphere, tube and box payload selection;
+- equirectangular and mirror-ball Environment Texture payloads;
+- sRGB, straight-alpha, and the default-UV attribute path.
+
+The interpolation and extension enum orders differ between the Cycles SVM ABI
+and Psycles' established native sampler helper. The permutation is isolated at
+the KernelGlobals image-service boundary; bytecode values are never rewritten:
+
+| Cycles value | Native sampler family |
+|---|---|
+| linear `0` | linear `1` |
+| closest `1` | point `0` |
+| cubic `2` | cubic `2` |
+| smart `3` | cubic `2` |
+
+| Cycles extension | Native address family |
+|---|---|
+| repeat `0` | repeat `0` |
+| extend `1` | edge `2` |
+| clip `2` | zero `1` |
+| mirror `3` | mirror `3` |
+
+The runtime handler retains Cycles' flat/spherical/tube mapping, guarded BOX
+face reads and left-to-right accumulation, object-space normal projection,
+equirectangular and mirror-ball direction maps, zero-vector cases, alpha
+unassociation followed by sRGB decoding, and ordinary/derivative opcode
+split. One shared `safe_normalize_dual` implementation is used by Texture
+Coordinate and Environment Texture.
+
+A second source audit found that dual `inversesqrt` must use Cycles'
+`safe_divide` for its derivative. Ordinary division changes the mirror-ball
+pole from the Cycles Inf/NaN classification to all NaNs. This is a
+finite/invalid semantic difference, not a one-ULP request. A dedicated device
+probe supplies tangential derivatives at the pole and locks the resulting
+classification and three-word cursor advance on every backend.
+
+### Native texture and backend validation
+
+`tests/test_luisa_cycles_svm_image.cpp` executes the copied handlers against a
+real bindless `FLOAT4` image. It covers all 16 sampler combinations,
+flat/sphere/tube including singular coordinates, positive and negative BOX
+faces, two- and three-face BOX blends, both environment projections, zero
+directions, sRGB plus straight alpha, invalid handles, derivative payloads,
+and exact cursor consumption. The comparison tolerance admits backend filter
+rounding only; support, orientation, alpha, projection and finite/invalid
+state remain exact.
+
+The same test inspects pre-codegen XIR and proves that the image-service
+adapter remains native:
+
+```text
+closest  1 native sample, 0 explicit texel reads
+linear   1 native sample, 0 explicit texel reads
+cubic    4 native bilinear samples, 0 explicit texel reads
+smart    4 native bilinear samples, 0 explicit texel reads
+```
+
+Thus the copied SVM does not revive the former four-read linear or sixteen-read
+cubic software sampler. The focused HIP kernels produced code objects of
+118592, 29632 and 7488 bytes for the sampler matrix, projection matrix and
+dual-pole probe respectively. These are test kernels containing deliberately
+exhaustive mode matrices, not production kernel-size claims.
+
+Focused execution passed on the RX 9070 XT HIP backend, fallback, and strict
+native Vulkan XIR-to-SPIR-V. Vulkan was run with
+`LUISA_VULKAN_DISABLE_DXC=1`; its three SPIR-V modules were 18319, 11425 and
+5234 words after the compute optimization preset.
+
+### External Cycles oracle and visual inspection
+
+Four Blender probes were compiled and rendered by the clean Cycles 5.2.1
+executable (`9e2066aef7ef`) and by the diagnostic build (`cb168525138f`), whose
+only relevant difference is the environment-gated SVM observation hook:
+
+- the 4 x 4 interpolation/extension matrix;
+- flat/sphere/tube/box projection matrix;
+- Environment Texture interpolation and projection matrix;
+- sRGB plus straight-alpha ordering.
+
+For every probe, `oiiotool -a ... --diff` reports `PASS`. The retained reports
+record Combined RMSE, MAE and maximum absolute error of zero, all channel-mean
+ratios equal to one, identity as the unique zero-error orientation, and no
+invalid pixels.
+
+I opened all four retained 1552x582 triptychs at original resolution. In the
+sampling matrix the clip-black cell, repeated/mirrored boundaries and filter
+blocks coincide. The projection matrix has the same 4 x 4 cell colors and
+orientation. Environment rows and interpolation columns coincide, and the
+sRGB/alpha gradient has identical row and column transitions. Every
+difference panel is completely black.
+
+![Image sampling modes clean versus diagnostic Cycles](image-texture/sampling/combined.png)
+
+![Image projection modes clean versus diagnostic Cycles](image-texture/projection/combined.png)
+
+![Environment Texture modes clean versus diagnostic Cycles](image-texture/environment/combined.png)
+
+![sRGB and straight alpha clean versus diagnostic Cycles](image-texture/srgb-alpha/combined.png)
+
+Selected validation commands and final milestone gates:
+
+```text
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  /tmp/psycles-svm-image.ZDEJEC/image_texture_sampling_modes.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/psycles-svm-image.ZDEJEC/image_texture_sampling_modes-clean.exr \
+  16 16 1 0 --cycles-device CPU                              PASS
+
+PSYCLES_CYCLES_SVM_DUMP=\
+/tmp/psycles-svm-image.ZDEJEC/image_texture_sampling_modes-rerun.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/psycles-svm-image.ZDEJEC/image_texture_sampling_modes.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/psycles-svm-image.ZDEJEC/image_texture_sampling_modes-diagnostic.exr \
+  16 16 1 0 --cycles-device CPU                              PASS
+
+oiiotool -a \
+  /tmp/psycles-svm-image.ZDEJEC/image_texture_sampling_modes-clean.exr \
+  /tmp/psycles-svm-image.ZDEJEC/image_texture_sampling_modes-diagnostic.exr \
+  --diff                                                       PASS
+
+cmake --build build --parallel 32                              PASS
+ctest --test-dir build --output-on-failure -j 32 \
+  -E '_(fallback|hip|vk|simd|metal)$'                         84/84 PASS
+ctest --test-dir build --output-on-failure -j 1 -R '_hip$'    92/92 PASS
+ctest --test-dir build --output-on-failure -j 8 \
+  -R '_fallback$'                                              94/94 PASS
+LUISA_VULKAN_USE_XIR=1 \
+LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+LUISA_VULKAN_DISABLE_DXC=1 \
+  ctest --test-dir build --output-on-failure -j 1 -R '_vk$'   92/92 PASS
+```
+
+This establishes exact host bytecode, copied Luisa handler behavior, native
+texture instruction shape, external-oracle integrity, and backend portability
+for the Image Texture and Environment Texture family. It is not yet a
+production scene-render claim: the scene-wide image service still needs UDIM
+tile-table support, and the copied SVM interpreter still has to replace the
+old surface evaluator before full Blender scenes execute this path.
+
 ## Last-bit parity performance policy
 
 The migration now treats structural parity and floating-point representation

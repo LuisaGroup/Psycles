@@ -7,6 +7,7 @@
 #include "cycles_svm_compiler_internal.h"
 #include "cycles_svm_constant_fold.h"
 #include "cycles_svm_geometry_nodes.h"
+#include "cycles_svm_image_nodes.h"
 #include "cycles_svm_texture_coordinate_nodes.h"
 #include "cycles_svm_vector_nodes.h"
 
@@ -1839,6 +1840,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
     return node;
   }
   if (auto node = make_texture_coordinate_graph_node(type)) {
+    return node;
+  }
+  if (auto node = make_image_graph_node(type)) {
     return node;
   }
   if (auto node = make_attribute_graph_node(type)) {
