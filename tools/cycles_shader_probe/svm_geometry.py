@@ -117,6 +117,212 @@ def _wireframe_row_mesh(
     return surface
 
 
+def _vertex_color_material(
+    name: str,
+    *,
+    layer_name: str,
+    output_name: str,
+) -> Any:
+    """Build an unbaked Vertex Color-to-Emission Cycles graph."""
+    material, tree, output = _material(name)
+    vertex_color = tree.nodes.new("ShaderNodeVertexColor")
+    vertex_color.name = f"{name} Vertex Color"
+    vertex_color.layer_name = layer_name
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = f"{name} Emission"
+    if output_name == "Color":
+        tree.links.new(
+            _output(vertex_color, "Color"),
+            _input(emission, "Color"),
+        )
+    elif output_name == "Alpha":
+        _input(emission, "Color").default_value = (0.31, 0.57, 0.83, 1.0)
+        tree.links.new(
+            _output(vertex_color, "Alpha"),
+            _input(emission, "Strength"),
+        )
+    else:
+        raise ValueError(f"unsupported Vertex Color output {output_name!r}")
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    return material
+
+
+def _attribute_material(
+    name: str,
+    *,
+    attribute_name: str,
+    output_name: str,
+) -> Any:
+    """Build an unbaked Attribute-to-Emission Cycles graph."""
+    material, tree, output = _material(name)
+    attribute = tree.nodes.new("ShaderNodeAttribute")
+    attribute.name = f"{name} Attribute"
+    attribute.attribute_name = attribute_name
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = f"{name} Emission"
+    if output_name in {"Color", "Vector"}:
+        tree.links.new(
+            _output(attribute, output_name),
+            _input(emission, "Color"),
+        )
+    elif output_name in {"Fac", "Alpha"}:
+        _input(emission, "Color").default_value = (0.31, 0.57, 0.83, 1.0)
+        tree.links.new(
+            _output(attribute, output_name),
+            _input(emission, "Strength"),
+        )
+    else:
+        raise ValueError(f"unsupported Attribute output {output_name!r}")
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    return material
+
+
+def _attribute_bump_material(
+    name: str,
+    *,
+    use_vertex_color: bool,
+) -> Any:
+    """Build the exact Attribute/Vertex Color subgraph cloned by Cycles Bump."""
+    material, tree, output = _material(name)
+    if use_vertex_color:
+        attribute = tree.nodes.new("ShaderNodeVertexColor")
+        attribute.name = f"{name} Vertex Color"
+        attribute.layer_name = "ProbeColor"
+    else:
+        attribute = tree.nodes.new("ShaderNodeAttribute")
+        attribute.name = f"{name} Attribute"
+        attribute.attribute_name = "ProbeColor"
+
+    bump = tree.nodes.new("ShaderNodeBump")
+    bump.name = f"{name} Bump"
+    bump.invert = False
+    _input(bump, "Strength").default_value = 0.73
+    _input(bump, "Distance").default_value = 0.41
+    _input(bump, "Filter Width").default_value = 0.29
+    tree.links.new(_output(attribute, "Alpha"), _input(bump, "Height"))
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = f"{name} Emission"
+    tree.links.new(_output(bump, "Normal"), _input(emission, "Color"))
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    return material
+
+
+def _volume_attribute_material(name: str, *, nonlinear: bool) -> Any:
+    """Build the Attribute volume path audited by optimize_volume_output."""
+    material, tree, output = _material(name)
+    attribute = tree.nodes.new("ShaderNodeAttribute")
+    attribute.name = f"{name} Attribute"
+    attribute.attribute_name = "density"
+    density = _output(attribute, "Fac")
+    if nonlinear:
+        math_node = tree.nodes.new("ShaderNodeMath")
+        math_node.name = f"{name} Sine"
+        math_node.operation = "SINE"
+        tree.links.new(density, math_node.inputs[0])
+        density = _output(math_node, "Value")
+
+    volume = tree.nodes.new("ShaderNodeVolumeAbsorption")
+    volume.name = f"{name} Volume Absorption"
+    tree.links.new(density, _input(volume, "Density"))
+    tree.links.new(_output(volume, "Volume"), _input(output, "Volume"))
+    return material
+
+
+def _svm_vertex_color(scene: Any) -> None:
+    """Freeze Cycles Vertex Color named/default IDs and output payloads."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+
+    materials = [
+        _vertex_color_material(
+            "SVM Vertex Color Named Color",
+            layer_name="ProbeColor",
+            output_name="Color",
+        ),
+        _vertex_color_material(
+            "SVM Vertex Color Named Alpha",
+            layer_name="ProbeColor",
+            output_name="Alpha",
+        ),
+        _vertex_color_material(
+            "SVM Vertex Color Named Second",
+            layer_name="ProbeColorSecond",
+            output_name="Color",
+        ),
+        _vertex_color_material(
+            "SVM Vertex Color Default",
+            layer_name="",
+            output_name="Color",
+        ),
+        _attribute_material(
+            "SVM Attribute Named Color",
+            attribute_name="ProbeColor",
+            output_name="Color",
+        ),
+        _attribute_material(
+            "SVM Attribute Named Alpha",
+            attribute_name="ProbeColorSecond",
+            output_name="Alpha",
+        ),
+        _attribute_material(
+            "SVM Attribute Standard Fac",
+            attribute_name="pointiness",
+            output_name="Fac",
+        ),
+        _attribute_material(
+            "SVM Attribute Empty Color",
+            attribute_name="",
+            output_name="Color",
+        ),
+        _volume_attribute_material(
+            "SVM Attribute Volume Linear",
+            nonlinear=False,
+        ),
+        _volume_attribute_material(
+            "SVM Attribute Volume Nonlinear",
+            nonlinear=True,
+        ),
+        _attribute_bump_material(
+            "SVM Vertex Color Bump",
+            use_vertex_color=True,
+        ),
+        _attribute_bump_material(
+            "SVM Attribute Bump",
+            use_vertex_color=False,
+        ),
+    ]
+    surface = _wireframe_row_mesh(
+        "SVM Vertex Color Surface",
+        materials,
+        -1.1,
+        1.1,
+        Matrix.Identity(4),
+    )
+
+    mesh = surface.data
+    probe_color = mesh.color_attributes.new(
+        name="ProbeColor",
+        type="FLOAT_COLOR",
+        domain="CORNER",
+    )
+    probe_color_second = mesh.color_attributes.new(
+        name="ProbeColorSecond",
+        type="BYTE_COLOR",
+        domain="CORNER",
+    )
+    for index, item in enumerate(probe_color.data):
+        u = (index % 11) / 10.0
+        item.color = (0.13 + 0.61 * u, 0.79 - 0.47 * u, 0.24, 0.37 + 0.53 * u)
+    for index, item in enumerate(probe_color_second.data):
+        u = (index % 7) / 6.0
+        item.color = (0.82 - 0.55 * u, 0.16 + 0.63 * u, 0.68, 0.91 - 0.41 * u)
+    mesh.color_attributes.active_color = probe_color
+
+
 def _svm_wireframe_matrix(scene: Any) -> None:
     """Exercise both size modes, input ABIs, and transform-applied branches."""
     scene.cycles.pixel_filter_type = "BOX"

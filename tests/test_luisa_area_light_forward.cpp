@@ -178,11 +178,11 @@ constexpr std::string_view zero_emission_attribute{
 [[nodiscard]] ShaderGraph diffuse_shader() {
     ShaderGraph graph;
     const auto oracle_color =
-        graph.add_node(node_type::vertex_color, "Corner Color");
+        graph.add_node(node_type::attribute, "Corner Color");
     const auto point_identity =
-        graph.add_node(node_type::vertex_color, "Point Identity");
+        graph.add_node(node_type::attribute, "Point Identity");
     const auto face_identity =
-        graph.add_node(node_type::vertex_color, "Face Identity");
+        graph.add_node(node_type::attribute, "Face Identity");
     const auto multiply_point =
         graph.add_node(node_type::multiply_color, "Multiply Point");
     const auto multiply_face =
@@ -298,7 +298,7 @@ constexpr std::string_view zero_emission_attribute{
 [[nodiscard]] ShaderGraph emission_shader() {
     ShaderGraph graph;
     const auto zero = graph.add_node(
-        node_type::vertex_color,
+        node_type::attribute,
         "Device zero emission attribute");
     const auto emission =
         graph.add_node(

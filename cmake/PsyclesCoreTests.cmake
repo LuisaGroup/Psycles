@@ -217,6 +217,22 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_wireframe_tests)
 
     add_executable(
+        psycles_cycles_svm_vertex_color_tests
+        tests/test_cycles_svm_vertex_color.cpp)
+    target_link_libraries(
+        psycles_cycles_svm_vertex_color_tests
+        PRIVATE Psycles::core)
+    target_include_directories(
+        psycles_cycles_svm_vertex_color_tests
+        PRIVATE ${PROJECT_SOURCE_DIR}/src/compiler)
+    target_compile_features(
+        psycles_cycles_svm_vertex_color_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.cycles_svm_vertex_color
+        COMMAND psycles_cycles_svm_vertex_color_tests)
+
+    add_executable(
         psycles_progressive_pixel_probe_tests
         tests/test_progressive_pixel_probe.cpp)
     target_link_libraries(

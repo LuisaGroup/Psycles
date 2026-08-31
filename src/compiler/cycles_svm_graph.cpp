@@ -900,6 +900,10 @@ void CyclesGraph::optimize_volume_output() {
   while (!traverse_queue.empty()) {
     auto [current, nonlinear] = traverse_queue.front();
     traverse_queue.pop();
+    if (nonlinear && current->type == node_type::attribute) {
+      current->properties["Stochastic"] =
+          contract::SocketValue::boolean(false);
+    }
     nonlinear = nonlinear || !current->is_linear_operation();
     has_valid_volume = has_valid_volume || current->has_volume_support();
     for (auto &input : current->inputs) {

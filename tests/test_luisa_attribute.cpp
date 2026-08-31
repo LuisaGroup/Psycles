@@ -361,7 +361,7 @@ struct PackedTableParameters {
     std::string_view output) {
     ShaderGraph graph;
     const auto source = graph.add_node(
-        node_type::vertex_color, "Cycles Attribute");
+        node_type::attribute, "Cycles Attribute");
     const auto emission = graph.add_node(
         node_type::emission, "Attribute oracle emission");
     static_cast<void>(graph.set_property(
@@ -469,7 +469,7 @@ int main(int argc, char **argv) {
                    SocketType::color},
         std::tuple{"Vector", ValueOperation::attribute_color,
                    SocketType::vector},
-        std::tuple{"Factor", ValueOperation::attribute_factor,
+        std::tuple{"Fac", ValueOperation::attribute_factor,
                    SocketType::floating},
         std::tuple{"Alpha", ValueOperation::attribute_alpha,
                    SocketType::floating}};

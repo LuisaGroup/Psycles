@@ -150,6 +150,7 @@ _ALL_PROBES = (
     "svm_bump_constant_fold",
     "svm_geometry_attributes",
     "svm_geometry_bump_offsets",
+    "svm_vertex_color",
     "svm_wireframe_matrix",
     "svm_wireframe_bump",
     "thin_film_surface",

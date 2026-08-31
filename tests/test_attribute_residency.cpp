@@ -25,7 +25,7 @@ void require(bool condition, std::string_view message) {
 [[nodiscard]] ShaderGraph attribute_graph(std::uint64_t id) {
     ShaderGraph graph;
     const auto attribute = graph.add_node(
-        node_type::vertex_color, "Attribute demand");
+        node_type::attribute, "Attribute demand");
     const auto emission = graph.add_node(
         node_type::emission, "Attribute consumer");
     require(
