@@ -376,6 +376,22 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_camera_tests)
 
     add_executable(
+        psycles_cycles_svm_fresnel_tests
+        tests/test_cycles_svm_fresnel.cpp)
+    target_link_libraries(
+        psycles_cycles_svm_fresnel_tests
+        PRIVATE Psycles::core)
+    target_include_directories(
+        psycles_cycles_svm_fresnel_tests
+        PRIVATE ${PROJECT_SOURCE_DIR}/src/compiler)
+    target_compile_features(
+        psycles_cycles_svm_fresnel_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.cycles_svm_fresnel
+        COMMAND psycles_cycles_svm_fresnel_tests)
+
+    add_executable(
         psycles_progressive_pixel_probe_tests
         tests/test_progressive_pixel_probe.cpp)
     target_link_libraries(
@@ -631,6 +647,10 @@ if(PSYCLES_BUILD_TESTS)
         psycles_add_blender_test(
             NAME psycles.blender_export_camera_data
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_camera_data.py"
+            ARGUMENTS "${blender_exporter}")
+        psycles_add_blender_test(
+            NAME psycles.blender_export_fresnel
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_fresnel.py"
             ARGUMENTS "${blender_exporter}")
         psycles_add_blender_test(
             NAME psycles.blender_export_particle_info

@@ -194,7 +194,15 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
       (node == node_type::layer_weight || node == node_type::fresnel ||
        node == node_type::ambient_occlusion || node == node_type::bump ||
        node == node_type::displacement || is_surface_closure(node))) {
-    return graph_socket_link_normal;
+    auto flags = static_cast<std::uint16_t>(graph_socket_link_normal);
+    // Fresnel and Layer Weight are the only Cycles 5.2 shader nodes whose
+    // Normal sockets combine LINK_NORMAL with OSL_INTERNAL. In SVM mode the
+    // latter suppresses ShaderGraph::default_inputs' Geometry.Normal edge;
+    // their handlers use sd->N when the explicit link remains absent.
+    if (node == node_type::layer_weight || node == node_type::fresnel) {
+      flags |= graph_socket_osl_internal;
+    }
+    return flags;
   }
   if (input == "CoatNormal" && node == node_type::principled_bsdf) {
     return graph_socket_link_normal;
@@ -592,9 +600,9 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
     }
 
     auto properties = source.properties;
-    if (source.type == node_type::bump) {
-      properties.erase("NormalLinked");
-    }
+    // NormalLinked belongs to the legacy surface-program representation.
+    // Cycles encodes this fact solely as the ShaderInput edge itself.
+    properties.erase("NormalLinked");
     auto *node = graph.add_node(source.type, source.label, std::move(inputs),
                                 std::move(outputs), special_type(source.type),
                                 std::move(properties));
@@ -847,7 +855,10 @@ void CyclesGraph::default_inputs() {
   for (auto index = std::size_t{}; index < _nodes.size(); ++index) {
     auto *node = _nodes[index].get();
     for (auto &input : node->inputs) {
-      if (input.link != nullptr) {
+      // This graph is the SVM graph (do_osl=false). Match Cycles' exact
+      // `!OSL_INTERNAL || do_osl` predicate before considering LINK_* flags.
+      if (input.link != nullptr ||
+          (input.flags & graph_socket_osl_internal) != 0u) {
         continue;
       }
       if ((input.flags & (graph_socket_link_texture_generated |
