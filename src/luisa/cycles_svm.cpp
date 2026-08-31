@@ -255,6 +255,11 @@ void eval_nodes(
           }
         };
       }
+      if (node_types_used[NODE_CAMERA]) {
+        PSYCLES_SVM_CASE(NODE_CAMERA) {
+          detail::node_camera(cursor, stack, transform_state, shader_data);
+        };
+      }
       if (node_types_used[NODE_TEX_COORD]) {
         PSYCLES_SVM_CASE(NODE_TEX_COORD) {
           detail::node_tex_coord(

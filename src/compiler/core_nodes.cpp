@@ -92,6 +92,15 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface) |
                                       feature_bit(ShaderFeature::ray_state)}));
 
+  static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::camera_data,
+                 .inputs = {},
+                 .outputs = {output("View Vector", SocketType::vector),
+                             output("View Z Depth", SocketType::floating),
+                             output("View Distance", SocketType::floating)},
+                 .properties = {},
+                 .required_features = {}}));
+
   static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::texture_coordinate,
       .inputs = {},

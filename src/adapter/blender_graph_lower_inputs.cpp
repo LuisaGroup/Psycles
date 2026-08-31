@@ -76,6 +76,32 @@ public:
       return finish(
           context.constant_from_output(node, socket, SocketType::floating));
     }
+    if (type == "CAMERA") {
+      static constexpr auto outputs = std::array{
+          std::pair{std::string_view{"View Vector"}, SocketType::vector},
+          std::pair{std::string_view{"View Z Depth"}, SocketType::floating},
+          std::pair{std::string_view{"View Distance"}, SocketType::floating}};
+      const auto selected = std::find_if(
+          outputs.begin(), outputs.end(),
+          [&](const auto &entry) noexcept { return entry.first == socket; });
+      if (selected == outputs.end()) {
+        return std::nullopt;
+      }
+      const auto semantic = "camera_data." + socket;
+      auto output = context.shared_output(node_name, semantic);
+      if (!output) {
+        const auto id = context.graph().add_node(
+            compiler::node_type::camera_data, node_name);
+        for (const auto &[name, output_type] : outputs) {
+          context.remember_shared_output(
+              node_name, "camera_data." + std::string{name},
+              TypedOutput{.ref = {.node = id, .socket = std::string{name}},
+                          .type = output_type});
+        }
+        output = context.shared_output(node_name, semantic);
+      }
+      return finish(*output);
+    }
     if (type == "TEX_COORD" || type == "UVMAP") {
       const auto id = context.graph().add_node(
           type == "TEX_COORD" ? compiler::node_type::texture_coordinate

@@ -27,6 +27,7 @@ if str(_TOOL_DIRECTORY) not in sys.path:
 
 from cycles_shader_probe import (  # noqa: E402
     bump_nested,
+    camera_inputs,
     closures,
     curve_inputs,
     environment_inputs,
@@ -61,6 +62,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "area_light_ellipse": lights_camera._area_light_ellipse,
     "area_light_spread": lights_camera._area_light_spread,
     "camera_blackman_harris_filter": lights_camera._camera_blackman_harris_filter,
+    "camera_data": camera_inputs._camera_data,
     "camera_dof_disk": lights_camera._camera_dof_disk,
     "flat_light_distribution": lights_camera._flat_light_distribution,
     "triangle_light_solid_angle": lights_camera._triangle_light_solid_angle,

@@ -34,6 +34,7 @@ _ALL_PROBES = (
     "brick_texture",
     "brick_texture_constants",
     "camera_blackman_harris_filter",
+    "camera_data",
     "camera_dof_disk",
     "checker_texture_matrix",
     "clamp",
