@@ -102,6 +102,38 @@ luisa::compute::Float3 stack_load_input_float3(
   return result;
 }
 
+Dual1 stack_load_input_dual_float(
+    Stack &stack, luisa::compute::Expr<std::uint32_t> bits) noexcept {
+  using namespace luisa::compute;
+  Dual1 result{.val = bits.bitcast<float>(), .dx = 0.0f, .dy = 0.0f};
+  $if ((bits >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+    const UInt offset = bits & 0xffu;
+    result.val = stack_load_float(stack, offset);
+    result.dx = stack_load_float(stack, offset + 1u);
+    result.dy = stack_load_float(stack, offset + 2u);
+  };
+  return result;
+}
+
+Dual3 stack_load_input_dual_float3(
+    Stack &stack, luisa::compute::Expr<std::uint32_t> x_bits,
+    luisa::compute::Expr<std::uint32_t> y_bits,
+    luisa::compute::Expr<std::uint32_t> z_bits) noexcept {
+  using namespace luisa::compute;
+  Dual3 result{.val = make_float3(x_bits.bitcast<float>(),
+                                   y_bits.bitcast<float>(),
+                                   z_bits.bitcast<float>()),
+               .dx = make_float3(0.0f),
+               .dy = make_float3(0.0f)};
+  $if ((x_bits >> 8u) == (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+    const UInt offset = x_bits & 0xffu;
+    result.val = stack_load_float3(stack, offset);
+    result.dx = stack_load_float3(stack, offset + 3u);
+    result.dy = stack_load_float3(stack, offset + 6u);
+  };
+  return result;
+}
+
 void stack_store_float(Stack &stack,
                        luisa::compute::Expr<std::uint32_t> offset,
                        luisa::compute::Expr<float> value) noexcept {

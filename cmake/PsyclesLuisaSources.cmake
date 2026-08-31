@@ -6,10 +6,12 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_color.cpp
     src/luisa/cycles_svm_convert.cpp
     src/luisa/cycles_svm_image.cpp
+    src/luisa/cycles_svm_mapping.cpp
     src/luisa/cycles_svm_math.cpp
     src/luisa/cycles_svm_primitive_attribute.cpp
     src/luisa/cycles_svm_volume_attribute.cpp
     src/luisa/cycles_svm_stack.cpp
+    src/luisa/cycles_svm_transform.cpp
     src/luisa/cycles_svm_texture_coordinate.cpp
     src/luisa/cycles_svm_attribute.cpp
     src/luisa/cycles_svm_value.cpp

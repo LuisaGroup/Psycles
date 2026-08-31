@@ -39,6 +39,7 @@ public:
   void fold_mix_color(NodeMix type, bool clamp_factor, bool clamp) const;
   void fold_mix_float(bool clamp_factor, bool clamp) const;
   void fold_math(NodeMathType type) const;
+  void fold_mapping(NodeMappingType type) const;
 };
 
 [[nodiscard]] float svm_math(NodeMathType type, float a, float b,

@@ -364,6 +364,41 @@ void eval_nodes(
       if (node_types_used[NODE_VALUE_V]) {
         PSYCLES_SVM_CASE(NODE_VALUE_V) { detail::node_value_v(cursor, stack); };
       }
+      if (node_types_used[NODE_MAPPING]) {
+        PSYCLES_SVM_CASE(NODE_MAPPING) {
+          detail::node_mapping(cursor, stack, false);
+        };
+      }
+      if (node_types_used[NODE_MAPPING_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_MAPPING_DERIVATIVE) {
+          detail::node_mapping(cursor, stack, true);
+        };
+      }
+      if (node_types_used[NODE_TEXTURE_MAPPING]) {
+        PSYCLES_SVM_CASE(NODE_TEXTURE_MAPPING) {
+          detail::node_texture_mapping(cursor, stack, false);
+        };
+      }
+      if (node_types_used[NODE_TEXTURE_MAPPING_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_TEXTURE_MAPPING_DERIVATIVE) {
+          detail::node_texture_mapping(cursor, stack, true);
+        };
+      }
+      if (node_types_used[NODE_MIN_MAX]) {
+        PSYCLES_SVM_CASE(NODE_MIN_MAX) {
+          detail::node_min_max(cursor, stack);
+        };
+      }
+      if (node_types_used[NODE_VECTOR_MATH]) {
+        PSYCLES_SVM_CASE(NODE_VECTOR_MATH) {
+          detail::node_vector_math_mapping_normalize(cursor, stack, false);
+        };
+      }
+      if (node_types_used[NODE_VECTOR_MATH_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_VECTOR_MATH_DERIVATIVE) {
+          detail::node_vector_math_mapping_normalize(cursor, stack, true);
+        };
+      }
       if (node_types_used[NODE_SET_BUMP]) {
         PSYCLES_SVM_CASE(NODE_SET_BUMP) {
           detail::node_set_bump(

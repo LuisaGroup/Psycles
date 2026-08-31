@@ -21,6 +21,7 @@ namespace psycles::compiler::cycles_svm {
 class SVMCompiler;
 class ConstantFolder;
 class CyclesGraph;
+class TextureMapping;
 
 inline constexpr auto cycles_synthetic_texture_coordinate =
     "cycles.synthetic.texture_coordinate";
@@ -122,6 +123,11 @@ struct GraphNode {
   virtual void expand(CyclesGraph &graph);
   virtual void constant_fold(const ConstantFolder &folder);
   virtual void simplify_settings();
+  // Subclass state which does not belong to the serialized socket/property
+  // maps is copied explicitly when ShaderGraph duplicates bump dependencies.
+  virtual void copy_runtime_state_from(const GraphNode &other);
+  [[nodiscard]] virtual TextureMapping *texture_mapping() noexcept;
+  [[nodiscard]] virtual const TextureMapping *texture_mapping() const noexcept;
   [[nodiscard]] virtual std::uint32_t get_feature() const noexcept;
   [[nodiscard]] virtual ShaderNodeType shader_node_type() const noexcept;
   [[nodiscard]] virtual bool equals(const GraphNode &other) const noexcept;
@@ -184,6 +190,7 @@ public:
   // Exact ShaderGraph::default_inputs and transform_multi_closure stages for
   // the SVM-visible graph. Unsupported source metadata fails projection.
   void default_inputs();
+  void project_texture_mappings();
   void transform_multi_closure(GraphNode *node, GraphOutput *weight_output,
                                bool volume);
   void expand();

@@ -5,6 +5,7 @@
 #include "cycles_svm_image_nodes.h"
 
 #include "cycles_svm_compiler_internal.h"
+#include "cycles_svm_mapping_nodes.h"
 
 #include <psycles/compiler/core_nodes.h>
 
@@ -153,7 +154,7 @@ image_flags(const GraphNode *node, bool include_alpha) noexcept {
   return flags;
 }
 
-class ImageTextureNode final : public GraphNode {
+class ImageTextureNode final : public TextureNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     const auto projection = string_property(this, "Projection");
@@ -189,6 +190,9 @@ public:
       compiler.fail("Cycles SVM image handle table overflow");
       return;
     }
+    auto *vector_in = input("Vector");
+    const auto vector_offset =
+        tex_mapping.compile_begin(compiler, vector_in, this);
     if (*projection == NODE_IMAGE_PROJ_BOX) {
       compiler.add_node(
           this, NODE_TEX_IMAGE_BOX,
@@ -196,24 +200,25 @@ public:
               .id = image_id,
               .blend = *projection_blend,
               .flags = *flags,
-              .co = compiler.input_stack("Vector"),
+              .co = vector_offset,
               .out_offset = compiler.output("Color"),
               .alpha_offset = compiler.output("Alpha")});
-      return;
+    } else {
+      compiler.add_node(
+          this, NODE_TEX_IMAGE,
+          SVMNodeTexImage{
+              .id = image_id,
+              .projection = *projection,
+              .flags = *flags,
+              .co = vector_offset,
+              .out_offset = compiler.output("Color"),
+              .alpha_offset = compiler.output("Alpha")});
     }
-    compiler.add_node(
-        this, NODE_TEX_IMAGE,
-        SVMNodeTexImage{
-            .id = image_id,
-            .projection = *projection,
-            .flags = *flags,
-            .co = compiler.input_stack("Vector"),
-            .out_offset = compiler.output("Color"),
-            .alpha_offset = compiler.output("Alpha")});
+    tex_mapping.compile_end(compiler, vector_in, vector_offset);
   }
 };
 
-class EnvironmentTextureNode final : public GraphNode {
+class EnvironmentTextureNode final : public TextureNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_TEX_ENVIRONMENT;
@@ -240,15 +245,19 @@ public:
       compiler.fail("Cycles SVM image handle table overflow");
       return;
     }
+    auto *vector_in = input("Vector");
+    const auto vector_offset =
+        tex_mapping.compile_begin(compiler, vector_in, this);
     compiler.add_node(
         this, NODE_TEX_ENVIRONMENT,
         SVMNodeTexEnvironment{
             .id = image_id,
             .projection = *projection,
             .flags = *flags,
-            .co = compiler.input_stack("Vector"),
+            .co = vector_offset,
             .out_offset = compiler.output("Color"),
             .alpha_offset = compiler.output("Alpha")});
+    tex_mapping.compile_end(compiler, vector_in, vector_offset);
   }
 };
 

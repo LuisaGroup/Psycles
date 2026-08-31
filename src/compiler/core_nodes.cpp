@@ -266,7 +266,14 @@ NodeRegistry make_core_node_registry() {
                     SocketValue::string("POINT")),
            property("XMapping", SocketType::string, SocketValue::string("X")),
            property("YMapping", SocketType::string, SocketValue::string("Y")),
-           property("ZMapping", SocketType::string, SocketValue::string("Z"))},
+           property("ZMapping", SocketType::string, SocketValue::string("Z")),
+           // The Blender adapter temporarily represents TextureNode's
+           // embedded TextureMapping as a graph node at the serialization
+           // boundary. Cycles SVM projection consumes this marker and folds
+           // the state back into the texture node before graph optimization;
+           // an authored Mapping node always keeps the default false value.
+           property("LegacyTextureMapping", SocketType::boolean,
+                    SocketValue::boolean(false))},
       .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(NodeSchema{

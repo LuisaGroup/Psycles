@@ -8,6 +8,7 @@
 #include "cycles_svm_constant_fold.h"
 #include "cycles_svm_geometry_nodes.h"
 #include "cycles_svm_image_nodes.h"
+#include "cycles_svm_mapping_nodes.h"
 #include "cycles_svm_texture_coordinate_nodes.h"
 #include "cycles_svm_vector_nodes.h"
 
@@ -1735,6 +1736,14 @@ void GraphNode::constant_fold(const ConstantFolder &) {}
 
 void GraphNode::simplify_settings() {}
 
+void GraphNode::copy_runtime_state_from(const GraphNode &) {}
+
+TextureMapping *GraphNode::texture_mapping() noexcept { return nullptr; }
+
+const TextureMapping *GraphNode::texture_mapping() const noexcept {
+  return nullptr;
+}
+
 std::uint32_t GraphNode::get_feature() const noexcept {
   return bump == SHADER_BUMP_NONE ? 0u : kernel_feature_node_bump;
 }
@@ -1843,6 +1852,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
     return node;
   }
   if (auto node = make_image_graph_node(type)) {
+    return node;
+  }
+  if (auto node = make_mapping_graph_node(type)) {
     return node;
   }
   if (auto node = make_attribute_graph_node(type)) {
