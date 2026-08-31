@@ -8,6 +8,7 @@ namespace node_type {
 inline constexpr auto constant_float = "psycles.constant.float";
 inline constexpr auto constant_color = "psycles.constant.color";
 inline constexpr auto geometry = "psycles.geometry";
+inline constexpr auto camera_data = "psycles.camera_data";
 inline constexpr auto texture_coordinate = "psycles.texture_coordinate";
 inline constexpr auto uv_map = "psycles.uv_map";
 inline constexpr auto mapping = "psycles.vector.mapping";

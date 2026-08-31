@@ -127,6 +127,9 @@ void node_geometry(Cursor &cursor, Stack &stack,
                    const KernelGlobals &kernel_globals,
                    const ShaderData &shader_data,
                    bool use_derivatives) noexcept;
+void node_camera(Cursor &cursor, Stack &stack,
+                 const TransformState &transform_state,
+                 const ShaderData &shader_data) noexcept;
 void node_tex_coord(Cursor &cursor, Stack &stack,
                     const KernelGlobals &kernel_globals,
                     const TransformState &transform_state,
