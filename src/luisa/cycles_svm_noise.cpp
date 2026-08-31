@@ -241,4 +241,50 @@ void node_tex_noise(Cursor &cursor, Stack &stack) noexcept {
   };
 }
 
+void node_tex_white_noise(Cursor &cursor, Stack &stack) noexcept {
+  const auto dimensions = cursor.word();
+  const auto vector_x = cursor.word();
+  const auto vector_y = cursor.word();
+  const auto vector_z = cursor.word();
+  const auto w_bits = cursor.word();
+  const auto packed_outputs = cursor.word();
+  const auto value_offset = cursor.byte(packed_outputs, 0u);
+  const auto color_offset = cursor.byte(packed_outputs, 1u);
+  const auto vector =
+      stack_load_input_float3(stack, vector_x, vector_y, vector_z);
+  const auto w = stack_load_input_float(stack, w_bits);
+
+  $if (color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    Float3 color = make_float3(1.0f, 0.0f, 1.0f);
+    $switch (dimensions) {
+      $case(1u) { color = cycles_noise::hash_float_to_color(w); };
+      $case(2u) {
+        color = cycles_noise::hash_float2_to_color(vector.xy());
+      };
+      $case(3u) { color = cycles_noise::hash_float3_to_color(vector); };
+      $case(4u) {
+        color = cycles_noise::hash_float4_to_color(make_float4(vector, w));
+      };
+      // Cycles keeps the magenta initializer after its debug kernel_assert.
+      $default {};
+    };
+    stack_store_float3(stack, color_offset, color);
+  };
+
+  $if (value_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    Float value = 0.0f;
+    $switch (dimensions) {
+      $case(1u) { value = cycles_noise::hash_float(w); };
+      $case(2u) { value = cycles_noise::hash_float2(vector.xy()); };
+      $case(3u) { value = cycles_noise::hash_float3(vector); };
+      $case(4u) {
+        value = cycles_noise::hash_float4(make_float4(vector, w));
+      };
+      // Cycles keeps the zero initializer after its debug kernel_assert.
+      $default {};
+    };
+    stack_store_float(stack, value_offset, value);
+  };
+}
+
 } // namespace psycles::luisa_backend::cycles_svm::detail

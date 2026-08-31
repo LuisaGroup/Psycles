@@ -307,6 +307,11 @@ void eval_nodes(
           detail::node_tex_noise(cursor, stack);
         };
       }
+      if (node_types_used[NODE_TEX_WHITE_NOISE]) {
+        PSYCLES_SVM_CASE(NODE_TEX_WHITE_NOISE) {
+          detail::node_tex_white_noise(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_TEX_ENVIRONMENT]) {
         PSYCLES_SVM_CASE(NODE_TEX_ENVIRONMENT) {
           detail::node_tex_environment(

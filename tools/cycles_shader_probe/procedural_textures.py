@@ -6,7 +6,7 @@ from typing import Any
 
 import bpy
 
-from .support import _input, _material, _output, _plane
+from .support import _input, _material, _material_matrix, _output, _plane
 
 
 def _brick_texture(scene: Any) -> None:
@@ -238,6 +238,83 @@ def _white_noise_dimensions(scene: Any) -> None:
     emission.name = "Emission"
     tree.links.new(
         _output(combine, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
+def _white_noise_matrix(scene: Any) -> None:
+    """Tile every dimension/output combination at one exact coordinate."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    materials: list[Any] = []
+    for output_name in ("Value", "Color"):
+        for dimensions in range(1, 5):
+            material, tree, output = _material(
+                f"White Noise {dimensions}D {output_name}"
+            )
+            white = tree.nodes.new("ShaderNodeTexWhiteNoise")
+            white.name = f"White Noise {dimensions}D {output_name}"
+            white.noise_dimensions = f"{dimensions}D"
+            if dimensions != 1:
+                _input(white, "Vector").default_value = (
+                    0.173,
+                    -0.625,
+                    1.375,
+                )
+            if dimensions in (1, 4):
+                _input(white, "W").default_value = -0.437
+            emission = tree.nodes.new("ShaderNodeEmission")
+            emission.name = "Emission"
+            tree.links.new(
+                _output(white, output_name),
+                _input(emission, "Color"),
+            )
+            tree.links.new(
+                _output(emission, "Emission"),
+                _input(output, "Surface"),
+            )
+            materials.append(material)
+    _material_matrix(
+        scene,
+        materials,
+        columns=4,
+        rows=2,
+        name="White Noise Matrix",
+    )
+
+
+def _white_noise_constant_fold(scene: Any) -> None:
+    """Force Blender's function-node inliner to fold a 4D White Noise."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    material, tree, output = _material(
+        "White Noise 4D Linked Constant Fold"
+    )
+    combine = tree.nodes.new("ShaderNodeCombineXYZ")
+    combine.name = "White Noise Constant Vector"
+    for socket, value in zip(
+        ("X", "Y", "Z"),
+        (0.173, -0.625, 1.375),
+        strict=True,
+    ):
+        _input(combine, socket).default_value = value
+    white = tree.nodes.new("ShaderNodeTexWhiteNoise")
+    white.name = "White Noise 4D Linked Constant"
+    white.noise_dimensions = "4D"
+    _input(white, "W").default_value = -0.437
+    tree.links.new(
+        _output(combine, "Vector"),
+        _input(white, "Vector"),
+    )
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    tree.links.new(
+        _output(white, "Color"),
         _input(emission, "Color"),
     )
     tree.links.new(

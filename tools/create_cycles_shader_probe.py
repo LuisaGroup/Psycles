@@ -257,6 +257,10 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "wave_texture_distortion": wave_inputs._wave_texture_distortion,
     "wave_texture_modes": wave_inputs._wave_texture_modes,
     "white_noise_dimensions": procedural_textures._white_noise_dimensions,
+    "white_noise_constant_fold": (
+        procedural_textures._white_noise_constant_fold
+    ),
+    "white_noise_matrix": procedural_textures._white_noise_matrix,
 }
 
 
