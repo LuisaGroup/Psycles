@@ -13,6 +13,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_vector.cpp
     src/luisa/cycles_svm_vector_rotate.cpp
     src/luisa/cycles_svm_vector_transform.cpp
+    src/luisa/cycles_svm_vertex_color.cpp
     src/luisa/cycles_svm_wireframe.cpp
     src/luisa/graph_surface.cpp
     src/luisa/graph_surface_closures.cpp

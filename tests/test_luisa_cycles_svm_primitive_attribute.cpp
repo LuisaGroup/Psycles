@@ -1,5 +1,7 @@
 #include <psycles/luisa/cycles_svm.h>
 
+#include "cycles_svm_internal.h"
+
 #include <array>
 #include <bit>
 #include <cmath>
@@ -31,6 +33,7 @@ constexpr auto id_curve = static_cast<std::uint64_t>(ATTR_STD_NUM) + 11u;
 constexpr auto id_point = static_cast<std::uint64_t>(ATTR_STD_NUM) + 12u;
 
 constexpr auto case_count = 17u;
+constexpr auto vertex_color_case_count = 9u;
 
 class BufferKernelGlobals final : public device_svm::KernelGlobals {
 private:
@@ -245,6 +248,24 @@ make_shader_data(Expr<std::uint32_t> object,
           .element = static_cast<std::uint16_t>(chain),
           .type = 0u,
           .pad = 0u};
+}
+
+[[nodiscard]] constexpr std::uint32_t pack_vertex_color_node(
+    std::uint8_t layer_id, std::uint8_t color_offset,
+    std::uint8_t alpha_offset, NodeBumpOffset bump_offset) noexcept {
+  return static_cast<std::uint32_t>(layer_id) |
+         (static_cast<std::uint32_t>(color_offset) << 8u) |
+         (static_cast<std::uint32_t>(alpha_offset) << 16u) |
+         (static_cast<std::uint32_t>(bump_offset) << 24u);
+}
+
+[[nodiscard]] std::array<bool, NODE_NUM> vertex_color_node_types() {
+  std::array<bool, NODE_NUM> types{};
+  for (const auto type : {NODE_END, NODE_SHADER_JUMP, NODE_VERTEX_COLOR,
+                          NODE_EMISSION_WEIGHT, NODE_CLOSURE_EMISSION}) {
+    types[type] = true;
+  }
+  return types;
 }
 
 } // namespace
@@ -577,6 +598,256 @@ int main(int argc, char **argv) {
                 << expected[i].z << ", " << expected[i].w << ")\n";
       return EXIT_FAILURE;
     }
+  }
+
+  static constexpr auto vertex_color_offset = std::uint8_t{4u};
+  static constexpr auto vertex_alpha_offset = std::uint8_t{7u};
+  static constexpr auto invalid_offset =
+      static_cast<std::uint8_t>(SVM_STACK_INVALID);
+  static constexpr std::array<std::uint32_t,
+                              vertex_color_case_count * 2u>
+      vertex_color_words{
+          pack_vertex_color_node(
+              static_cast<std::uint8_t>(id_mesh), vertex_color_offset,
+              vertex_alpha_offset, NODE_BUMP_OFFSET_CENTER),
+          std::bit_cast<std::uint32_t>(0.0f),
+          pack_vertex_color_node(
+              static_cast<std::uint8_t>(id_byte), vertex_color_offset,
+              vertex_alpha_offset, NODE_BUMP_OFFSET_CENTER),
+          std::bit_cast<std::uint32_t>(0.0f),
+          pack_vertex_color_node(
+              static_cast<std::uint8_t>(id_float3), vertex_color_offset,
+              vertex_alpha_offset, NODE_BUMP_OFFSET_CENTER),
+          std::bit_cast<std::uint32_t>(0.0f),
+          pack_vertex_color_node(
+              static_cast<std::uint8_t>(id_missing), vertex_color_offset,
+              vertex_alpha_offset, NODE_BUMP_OFFSET_CENTER),
+          std::bit_cast<std::uint32_t>(0.0f),
+          pack_vertex_color_node(
+              static_cast<std::uint8_t>(id_float3), vertex_color_offset,
+              vertex_alpha_offset, NODE_BUMP_OFFSET_DX),
+          std::bit_cast<std::uint32_t>(0.5f),
+          pack_vertex_color_node(
+              static_cast<std::uint8_t>(id_float3), vertex_color_offset,
+              vertex_alpha_offset, NODE_BUMP_OFFSET_DY),
+          std::bit_cast<std::uint32_t>(0.25f),
+          pack_vertex_color_node(
+              static_cast<std::uint8_t>(id_byte), vertex_color_offset,
+              vertex_alpha_offset, NODE_BUMP_OFFSET_DX),
+          std::bit_cast<std::uint32_t>(0.5f),
+          pack_vertex_color_node(
+              static_cast<std::uint8_t>(id_mesh), invalid_offset,
+              vertex_alpha_offset, NODE_BUMP_OFFSET_CENTER),
+          std::bit_cast<std::uint32_t>(0.0f),
+          pack_vertex_color_node(
+              static_cast<std::uint8_t>(id_mesh), vertex_color_offset,
+              invalid_offset, NODE_BUMP_OFFSET_CENTER),
+          std::bit_cast<std::uint32_t>(0.0f),
+      };
+  auto vertex_color_word_buffer =
+      device.create_buffer<std::uint32_t>(vertex_color_words.size());
+  auto vertex_color_output_buffer =
+      device.create_buffer<luisa::float4>(vertex_color_case_count);
+  auto vertex_color_cursor_buffer =
+      device.create_buffer<std::uint32_t>(vertex_color_case_count);
+  const auto vertex_color_kernel =
+      Kernel1D<Buffer<AttributeMap>, Buffer<float>, Buffer<luisa::float2>,
+               Buffer<packed_float3>, Buffer<luisa::float4>, Buffer<uchar4>,
+               Buffer<packed_normal>, Buffer<luisa::uint3>, Buffer<KernelCurve>,
+               Buffer<std::uint32_t>, Buffer<std::uint32_t>,
+               Buffer<luisa::float4>, Buffer<std::uint32_t>>{
+          [](BufferVar<AttributeMap> attribute_map,
+             BufferFloat attribute_float,
+             BufferVar<luisa::float2> attribute_float2,
+             BufferVar<packed_float3> attribute_float3,
+             BufferFloat4 attribute_float4,
+             BufferVar<uchar4> attribute_uchar4,
+             BufferVar<packed_normal> attribute_normal,
+             BufferVar<luisa::uint3> triangle_indices,
+             BufferVar<KernelCurve> curves,
+             BufferUInt object_map_offsets, BufferUInt words,
+             BufferFloat4 output, BufferUInt cursor_output) noexcept {
+            const UInt index = dispatch_x();
+            BufferKernelGlobals kernel_globals{
+                attribute_map, attribute_float, attribute_float2,
+                attribute_float3, attribute_float4, attribute_uchar4,
+                attribute_normal, triangle_indices, curves,
+                object_map_offsets, true};
+            const auto shader_data = make_shader_data(
+                0u, 0u, device_svm::primitive_triangle);
+            device_svm::detail::Stack stack;
+            for (auto lane = vertex_color_offset;
+                 lane <= vertex_alpha_offset; ++lane) {
+              stack[lane] = -9.0f;
+            }
+            UInt offset = index * 2u;
+            device_svm::detail::Cursor cursor{words, offset};
+            $if((index >= 4u) & (index <= 6u)) {
+              device_svm::detail::node_vertex_color_derivative(
+                  cursor, stack, kernel_globals, shader_data);
+            }
+            $else {
+              device_svm::detail::node_vertex_color(
+                  cursor, stack, kernel_globals, shader_data);
+            };
+            output.write(
+                index,
+                make_float4(
+                    device_svm::detail::stack_load_float3(
+                        stack, static_cast<std::uint32_t>(
+                                   vertex_color_offset)),
+                    device_svm::detail::stack_load_float(
+                        stack, static_cast<std::uint32_t>(
+                                   vertex_alpha_offset))));
+            cursor_output.write(index, offset);
+          }};
+  auto vertex_color_shader = device.compile(
+      vertex_color_kernel, ShaderOption{.enable_cache = false});
+  std::array<luisa::float4, vertex_color_case_count>
+      vertex_color_actual{};
+  std::array<std::uint32_t, vertex_color_case_count>
+      vertex_color_cursors{};
+  stream << vertex_color_word_buffer.copy_from(
+                luisa::span{vertex_color_words})
+         << vertex_color_shader(
+                map_buffer, float_buffer, float2_buffer, float3_buffer,
+                float4_buffer, byte_buffer, normal_buffer, triangle_buffer,
+                curve_buffer, object_offset_buffer, vertex_color_word_buffer,
+                vertex_color_output_buffer, vertex_color_cursor_buffer)
+                .dispatch(vertex_color_case_count)
+         << vertex_color_output_buffer.copy_to(
+                luisa::span{vertex_color_actual})
+         << vertex_color_cursor_buffer.copy_to(
+                luisa::span{vertex_color_cursors})
+         << synchronize();
+
+  static constexpr std::array<luisa::float4, vertex_color_case_count>
+      vertex_color_expected{
+          luisa::float4{0.11f, 0.22f, 0.33f, 0.44f},
+          luisa::float4{0.204333156f, 0.242081016f, 0.119094752f,
+                        0.600392163f},
+          luisa::float4{0.35f, 0.3f, 0.51f, 1.0f},
+          luisa::float4{0.0f},
+          luisa::float4{0.44f, 0.23f, 0.48f, 1.0f},
+          luisa::float4{0.435f, 0.22f, 0.515f, 1.0f},
+          luisa::float4{0.256499738f, 0.32925725f, 0.0789414048f,
+                        0.425490201f},
+          luisa::float4{-9.0f, -9.0f, -9.0f, 0.44f},
+          luisa::float4{0.11f, 0.22f, 0.33f, -9.0f},
+      };
+  for (auto i = std::size_t{}; i < vertex_color_actual.size(); ++i) {
+    const auto &value = vertex_color_actual[i];
+    const auto &expected_value = vertex_color_expected[i];
+    if (!near(value.x, expected_value.x) ||
+        !near(value.y, expected_value.y) ||
+        !near(value.z, expected_value.z) ||
+        !near(value.w, expected_value.w) ||
+        vertex_color_cursors[i] != i * 2u + 2u) {
+      std::cerr << "Cycles Vertex Color case " << i << " mismatch on "
+                << backend << ": (" << value.x << ", " << value.y << ", "
+                << value.z << ", " << value.w << "), pc "
+                << vertex_color_cursors[i] << '\n';
+      return EXIT_FAILURE;
+    }
+  }
+
+  // Exact local stream of shader 5, `SVM Vertex Color Named Color`, from the
+  // Cycles 5.2.1 svm_vertex_color diagnostic dump. Unlike the direct handler
+  // matrix above, this exercises ShaderJump, opcode dispatch, cursor advance,
+  // EmissionWeight, ClosureEmission, and NODE_END as one interpreter path.
+  static constexpr std::array<std::uint32_t, 17u>
+      vertex_color_stream_words{
+          0x00000001u, 0x00000004u, 0x0000000fu, 0x00000010u,
+          0x00000017u, 0x00ff0023u, 0x00000000u, 0x00000007u,
+          0x7fc00000u, 0x00000000u, 0x00000000u, 0x3f800000u,
+          0x00000003u, 0x000000ffu, 0x00000000u, 0x00000000u,
+          0x00000000u};
+  auto vertex_color_stream_buffer =
+      device.create_buffer<std::uint32_t>(vertex_color_stream_words.size());
+  auto vertex_color_stream_output = device.create_buffer<luisa::float4>(1u);
+  auto vertex_color_stream_status = device.create_buffer<luisa::uint4>(1u);
+  auto vertex_color_stream_maps = maps;
+  vertex_color_stream_maps[0] =
+      map_entry(id_object, 3, ATTR_ELEMENT_MESH, NODE_ATTR_FLOAT4);
+  const auto node_types = vertex_color_node_types();
+  const auto vertex_color_stream_kernel =
+      Kernel1D<Buffer<AttributeMap>, Buffer<float>, Buffer<luisa::float2>,
+               Buffer<packed_float3>, Buffer<luisa::float4>, Buffer<uchar4>,
+               Buffer<packed_normal>, Buffer<luisa::uint3>, Buffer<KernelCurve>,
+               Buffer<std::uint32_t>, Buffer<std::uint32_t>,
+               Buffer<luisa::float4>, Buffer<luisa::uint4>>{
+          [node_types](BufferVar<AttributeMap> attribute_map,
+                       BufferFloat attribute_float,
+                       BufferVar<luisa::float2> attribute_float2,
+                       BufferVar<packed_float3> attribute_float3,
+                       BufferFloat4 attribute_float4,
+                       BufferVar<uchar4> attribute_uchar4,
+                       BufferVar<packed_normal> attribute_normal,
+                       BufferVar<luisa::uint3> triangle_indices,
+                       BufferVar<KernelCurve> curves,
+                       BufferUInt object_map_offsets, BufferUInt words,
+                       BufferFloat4 output,
+                       BufferUInt4 status_output) noexcept {
+            BufferKernelGlobals kernel_globals{
+                attribute_map, attribute_float, attribute_float2,
+                attribute_float3, attribute_float4, attribute_uchar4,
+                attribute_normal, triangle_indices, curves,
+                object_map_offsets, true};
+            auto shader_data = make_shader_data(
+                0u, 0u, device_svm::primitive_triangle);
+            const auto identity = make_float4x4(1.0f);
+            const device_svm::TransformState transforms{
+                identity, identity, identity, identity};
+            const device_svm::PathState path_state{
+                device_svm::path_ray_visibility_camera, 0u};
+            device_svm::EvaluationResult result;
+            device_svm::eval_nodes(
+                kernel_globals, words, SHADER_TYPE_SURFACE, 0u,
+                device_svm::kernel_feature_node_emission, node_types,
+                transforms, shader_data, path_state, result);
+            output.write(
+                0u, make_float4(shader_data.closure_emission_background,
+                                result.closure_weight.x));
+            status_output.write(
+                0u, make_uint4(result.status, result.final_offset,
+                               shader_data.flag, 0u));
+          }};
+  auto vertex_color_stream_shader = device.compile(
+      vertex_color_stream_kernel, ShaderOption{.enable_cache = false});
+  luisa::float4 vertex_color_stream_actual{};
+  luisa::uint4 vertex_color_stream_state{};
+  stream << map_buffer.copy_from(luisa::span{vertex_color_stream_maps})
+         << vertex_color_stream_buffer.copy_from(
+                luisa::span{vertex_color_stream_words})
+         << vertex_color_stream_shader(
+                map_buffer, float_buffer, float2_buffer, float3_buffer,
+                float4_buffer, byte_buffer, normal_buffer, triangle_buffer,
+                curve_buffer, object_offset_buffer,
+                vertex_color_stream_buffer, vertex_color_stream_output,
+                vertex_color_stream_status)
+                .dispatch(1u)
+         << vertex_color_stream_output.copy_to(
+                luisa::span{&vertex_color_stream_actual, 1u})
+         << vertex_color_stream_status.copy_to(
+                luisa::span{&vertex_color_stream_state, 1u})
+         << synchronize();
+  if (!near(vertex_color_stream_actual.x, 0.11f) ||
+      !near(vertex_color_stream_actual.y, 0.22f) ||
+      !near(vertex_color_stream_actual.z, 0.33f) ||
+      !near(vertex_color_stream_actual.w, 0.11f) ||
+      vertex_color_stream_state.x !=
+          static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended) ||
+      vertex_color_stream_state.y != 15u ||
+      (vertex_color_stream_state.z & device_svm::shader_data_emission) == 0u) {
+    std::cerr << "Cycles Vertex Color full stream mismatch on " << backend
+              << ": (" << vertex_color_stream_actual.x << ", "
+              << vertex_color_stream_actual.y << ", "
+              << vertex_color_stream_actual.z << ", "
+              << vertex_color_stream_actual.w << "), state ("
+              << vertex_color_stream_state.x << ", "
+              << vertex_color_stream_state.y << ", "
+              << vertex_color_stream_state.z << ")\n";
+    return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
 }

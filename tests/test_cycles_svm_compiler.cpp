@@ -1,6 +1,8 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/cycles_svm_compiler.h>
 
+#include "cycles_svm_test_compile.h"
+
 #include <algorithm>
 #include <array>
 #include <bit>

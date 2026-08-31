@@ -267,6 +267,19 @@ void eval_nodes(
           }
         };
       }
+      if (node_types_used[NODE_VERTEX_COLOR]) {
+        PSYCLES_SVM_CASE(NODE_VERTEX_COLOR) {
+          detail::node_vertex_color(cursor, stack, kernel_globals, shader_data);
+        };
+      }
+      if (node_types_used[NODE_VERTEX_COLOR_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_VERTEX_COLOR_DERIVATIVE) {
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_vertex_color_derivative(
+                cursor, stack, kernel_globals, shader_data);
+          }
+        };
+      }
       if (node_types_used[NODE_CONVERT]) {
         PSYCLES_SVM_CASE(NODE_CONVERT) {
           detail::node_convert(cursor, stack, kernel_globals, false);

@@ -2,6 +2,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0 */
 
+#include "cycles_svm_attribute_nodes.h"
 #include "cycles_svm_compiler_internal.h"
 #include "cycles_svm_constant_fold.h"
 #include "cycles_svm_geometry_nodes.h"
@@ -1833,6 +1834,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
     return node;
   }
   if (auto node = make_geometry_graph_node(type)) {
+    return node;
+  }
+  if (auto node = make_attribute_graph_node(type)) {
     return node;
   }
   if (type == node_type::diffuse_bsdf) {

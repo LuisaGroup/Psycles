@@ -1035,14 +1035,30 @@ NodeRegistry make_core_node_registry() {
       .type = node_type::vertex_color,
       .inputs = {},
       .outputs = {output("Color", SocketType::color),
-                  output("Vector", SocketType::vector),
-                  output("Factor", SocketType::floating),
                   output("Alpha", SocketType::floating)},
-      .properties = {runtime_property(
-          "AttributeId", SocketType::unsigned_integer,
-          SocketValue::unsigned_integer(0u))},
+      .properties = {
+          property("Layer Name", SocketType::string,
+                   SocketValue::string("")),
+          runtime_property("AttributeId", SocketType::unsigned_integer,
+                           SocketValue::unsigned_integer(0u))},
       .required_features = feature_bit(ShaderFeature::surface) |
                            feature_bit(ShaderFeature::attributes)}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::attribute,
+      .inputs = {},
+      .outputs = {output("Color", SocketType::color),
+                  output("Vector", SocketType::vector),
+                  output("Fac", SocketType::floating),
+                  output("Alpha", SocketType::floating)},
+      .properties = {
+          property("Attribute", SocketType::string,
+                   SocketValue::string("")),
+          property("Stochastic", SocketType::boolean,
+                   SocketValue::boolean(true)),
+          runtime_property("AttributeId", SocketType::unsigned_integer,
+                           SocketValue::unsigned_integer(0u))},
+      .required_features = feature_bit(ShaderFeature::attributes)}));
 
   static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::diffuse_bsdf,

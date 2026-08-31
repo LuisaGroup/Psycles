@@ -2061,3 +2061,131 @@ Production attribute-table construction, Cycles insertion-ordered named
 attribute IDs, the concrete 3D image resource service, and
 `NODE_VERTEX_COLOR` remain open. None may be replaced with the previous
 attribute hash or surface evaluator.
+
+## Vertex Color and scene-wide named attribute IDs
+
+This checkpoint copies the two device transitions in
+`kernel/svm/vertex_color.h`, `VertexColorNode::compile` and
+`AttributeNode::compile` in `scene/shader_nodes.cpp`, and the named-attribute
+allocator in `ShaderManager::get_attribute_id` from the fixed Cycles 5.2.1
+source. The allocation state is shared across shader compilations and obeys
+the same locked first-request order:
+
+```text
+existing name  -> existing id
+new name       -> ATTR_STD_NUM + unique_attribute_id.size()
+standard attr  -> enum value unchanged
+```
+
+No hash participates in the new SVM bytecode. The old renderer path still
+receives its legacy runtime `AttributeId` property while the new SVM is not yet
+wired into production; the Cycles SVM compiler reads only `Layer Name` or
+`Attribute`, and its permanent tests prove that those hashes cannot affect the
+emitted words.
+
+The `svm_vertex_color` probe contains twelve raw materials on one mesh: named
+FLOAT_COLOR Color and Alpha, a second BYTE_COLOR name, the active/default
+vertex color, a generic named Attribute Color and Alpha, and standard
+Pointiness Fac, an empty named Attribute, followed by linear and nonlinear
+volume-density Attribute paths, a Vertex Color bump graph, and a generic
+Attribute bump graph. The diagnostic dump contains 340 words and 17 shaders.
+After normalizing only the global jump-table relocation, its relevant records
+are:
+
+```text
+Vertex Color named Color   layer 35  payload 00ff0023  17 words
+Vertex Color named Alpha   layer 35  payload 0000ff23  17 words
+Vertex Color second name   layer 36  payload 00ff0024  17 words
+Vertex Color default       layer 10  payload 00ff000a  17 words
+Attribute named Color      attr  35  payload 00000000  18 words
+Attribute named Alpha      attr  36  payload 00000200  18 words
+Attribute pointiness Fac   attr  32  payload 00000100  18 words
+Attribute empty Color      attr  37  payload 00000000  18 words
+Volume Attribute linear    attr  23  stochastic bits 00000001  21 words
+Volume Attribute nonlinear attr 23  stochastic bits 00000000  27 words
+Vertex Color bump          layer 35  base opcode x3             32 words
+Attribute bump             attr  35  derivative opcode x3       35 words
+```
+
+`tests/test_cycles_svm_vertex_color.cpp` freezes all ten surface local streams
+word for word. It also proves first-name allocation at
+`ATTR_STD_NUM == 35`, repeated-name reuse, the second-name increment, unchanged
+standard IDs, exact node masks, and Cycles stack peaks of three lanes for
+Color, one for scalar outputs, and nine for either bump graph. The external
+bump stream proves a non-obvious source contract: the CENTER/DX/DY copies of
+`VertexColorNode` retain `NODE_VERTEX_COLOR`, whereas the corresponding
+`AttributeNode` copies explicitly select `NODE_ATTR_DERIVATIVE`. Its
+graph-level volume regression also copies the queue-state ordering in
+`ShaderGraph::optimize_volume_output`: a direct linear density contribution
+retains stochastic sampling, while an Attribute reached with the nonlinear
+state set disables it before the Attribute's own linearity is considered.
+
+The Luisa implementation consumes the exact two-word
+`SVMNodeVertexColor` payload and preserves the Cycles transition:
+
+```text
+descriptor missing       -> color=(0,0,0), alpha=0
+FLOAT4 or RGBA            -> color=value.xyz, alpha=value.w
+all other descriptor types -> color=float3 fetch, alpha=1
+DX or DY derivative       -> value += derivative * bump_filter_width
+invalid output lane       -> do not store that output
+```
+
+The HIP handler matrix covers FLOAT4, RGBA, float3, missing lookup, DX, DY,
+RGBA derivative, invalid Color, and invalid Alpha, including exact two-word
+cursor advancement. A second HIP kernel executes the complete Cycles-generated
+named-Color stream through ShaderJump, the primary opcode switch,
+EmissionWeight, ClosureEmission, and NODE_END. It terminates at PC 15 with the
+expected emission flag and value; no host evaluator is used.
+
+The clean Blender executable identifies commit `9e2066aef7ef`. The diagnostic
+executable reports its observation-build hash `cb168525138f`. `oiiotool -a
+--diff` reports `PASS`; the retained Combined report has RMSE, MAE, and maximum
+absolute error all equal to zero, mean ratios `(1,1,1)`, and no invalid pixels.
+I opened the retained 1552x582 image at original resolution: the clean and
+diagnostic panels have identical material boundaries and vertex-color steps,
+including the black missing-attribute and zero-thickness volume regions and
+the two normal-encoded bump panels; the difference panel is completely black.
+
+![Vertex Color clean versus diagnostic Cycles](vertex-color/combined.png)
+
+Oracle and validation commands:
+
+```text
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  --background --factory-startup \
+  --python tools/create_cycles_shader_probe.py -- \
+  /tmp/psycles-svm-vertex-color.cDvKH1/svm_vertex_color.blend \
+  svm_vertex_color                                           PASS
+
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  /tmp/psycles-svm-vertex-color.cDvKH1/svm_vertex_color.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/psycles-svm-vertex-color.cDvKH1/svm_vertex_color-clean.exr \
+  128 128 1 0 --cycles-device CPU                            PASS
+
+PSYCLES_CYCLES_SVM_DUMP=/tmp/psycles-svm-vertex-color.cDvKH1/svm_vertex_color.svm52 \
+  /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+  /tmp/psycles-svm-vertex-color.cDvKH1/svm_vertex_color.blend \
+  --background --python tools/render_cycles_golden.py -- \
+  /tmp/psycles-svm-vertex-color.cDvKH1/svm_vertex_color-trace.exr \
+  128 128 1 0 --cycles-device CPU                            PASS
+
+oiiotool -a \
+  /tmp/psycles-svm-vertex-color.cDvKH1/svm_vertex_color-clean.exr \
+  /tmp/psycles-svm-vertex-color.cDvKH1/svm_vertex_color-trace.exr \
+  --diff                                                     PASS
+
+cmake --build build --parallel 32                            PASS
+build/psycles_cycles_svm_vertex_color_tests                  PASS
+build/bin/psycles_luisa_cycles_svm_primitive_attribute_tests hip
+                                                             PASS
+ctest --test-dir build --output-on-failure -j32 -E \
+  '(_fallback|_vk|_hip)$'                                    79/79 PASS
+ctest --test-dir build --output-on-failure -R '_hip$' -j1    90/90 PASS
+```
+
+This is still not a production-render parity claim. The copied SVM interpreter
+has not yet replaced the old surface evaluator in the path tracer, and scene
+attribute-table construction must be converted from the old hashed resource
+IDs to the same insertion-ordered Cycles IDs before that connection is legal.

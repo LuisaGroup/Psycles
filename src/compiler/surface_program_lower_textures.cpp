@@ -147,7 +147,8 @@ namespace operand = value_operand;
         }
         return true;
     }
-    if (node.type == node_type::vertex_color) {
+    if (node.type == node_type::vertex_color ||
+        node.type == node_type::attribute) {
         auto attribute = lower_property_parameter(node, "AttributeId");
         if (!attribute) {
             return true;
@@ -162,18 +163,17 @@ namespace operand = value_operand;
             node.id,
             "Color",
             append(instruction));
-        instruction.result_type = SocketType::vector;
-        publish(
-            node.id,
-            "Vector",
-            append(instruction));
-        instruction.operation =
-            ValueOperation::attribute_factor;
-        instruction.result_type = SocketType::floating;
-        publish(
-            node.id,
-            "Factor",
-            append(instruction));
+        if (node.type == node_type::attribute) {
+            instruction.result_type = SocketType::vector;
+            publish(
+                node.id,
+                "Vector",
+                append(instruction));
+            instruction.operation =
+                ValueOperation::attribute_factor;
+            instruction.result_type = SocketType::floating;
+            publish(node.id, "Fac", append(instruction));
+        }
         instruction.operation =
             ValueOperation::attribute_alpha;
         publish(

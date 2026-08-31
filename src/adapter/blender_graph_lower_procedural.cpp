@@ -430,13 +430,17 @@ public:
             const auto id = context.graph().add_node(
                 compiler::node_type::vertex_color,
                 node_name);
+            const auto layer_name = context.node_property_text(
+                node, "layer_name");
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Layer Name",
+                SocketValue::string(layer_name)));
             static_cast<void>(context.graph().set_property(
                 id,
                 "AttributeId",
                 SocketValue::unsigned_integer(
-                    contract::attribute_id(
-                    context.node_property_text(
-                        node, "layer_name")))));
+                    contract::attribute_id(layer_name))));
             return finish({
                 .ref = {
                     .node = id,
@@ -453,13 +457,16 @@ public:
                 "GEOMETRY") {
             const auto name = context.node_property_text(
                 node, "attribute_name");
-            if (!name.empty() &&
-                (socket == "Color" || socket == "Vector" ||
+            if (socket == "Color" || socket == "Vector" ||
                  socket == "Fac" || socket == "Factor" ||
-                 socket == "Alpha")) {
+                 socket == "Alpha") {
                 const auto id = context.graph().add_node(
-                    compiler::node_type::vertex_color,
+                    compiler::node_type::attribute,
                     node_name);
+                static_cast<void>(context.graph().set_property(
+                    id,
+                    "Attribute",
+                    SocketValue::string(name)));
                 static_cast<void>(context.graph().set_property(
                     id,
                     "AttributeId",
@@ -469,7 +476,7 @@ public:
                     .ref = {
                         .node = id,
                         .socket =
-                            socket == "Fac" ? "Factor" : socket},
+                            socket == "Factor" ? "Fac" : socket},
                     .type =
                         socket == "Color"
                             ? SocketType::color

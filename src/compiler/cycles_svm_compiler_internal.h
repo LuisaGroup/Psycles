@@ -55,6 +55,11 @@ public:
   [[nodiscard]] virtual SVMStackOffset input_link(std::string_view name) = 0;
   [[nodiscard]] virtual SVMStackOffset output(std::string_view name) = 0;
   virtual void stack_link(GraphInput *input, GraphOutput *output) = 0;
+  [[nodiscard]] virtual std::uint32_t attribute(std::string_view name) = 0;
+  [[nodiscard]] virtual std::uint32_t
+  attribute(AttributeStandard standard) = 0;
+  [[nodiscard]] virtual std::uint32_t
+  attribute_standard(std::string_view name) = 0;
 
   virtual void add_value_node(GraphNode *node, float value,
                               SVMStackOffset stack_offset) = 0;
