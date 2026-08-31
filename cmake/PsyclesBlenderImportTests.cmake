@@ -132,6 +132,19 @@ add_test(
     COMMAND psycles_blender_rgb_curve_import_tests)
 
 add_executable(
+    psycles_blender_curve_family_import_tests
+    tests/test_blender_curve_family_import.cpp)
+target_link_libraries(
+    psycles_blender_curve_family_import_tests
+    PRIVATE Psycles::luisa_runtime)
+target_compile_features(
+    psycles_blender_curve_family_import_tests
+    PRIVATE cxx_std_20)
+add_test(
+    NAME psycles.blender_curve_family_import
+    COMMAND psycles_blender_curve_family_import_tests)
+
+add_executable(
     psycles_blender_hair_import_tests
     tests/test_blender_hair_import.cpp)
 target_link_libraries(

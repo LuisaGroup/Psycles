@@ -30,8 +30,15 @@ struct RGBRampTable {
   bool interpolate{};
 };
 
-struct RGBCurveTable {
+struct Curve3Table {
   std::vector<packed_float4> values;
+  float min_x{};
+  float max_x{1.0f};
+  bool extrapolate{true};
+};
+
+struct FloatCurveTable {
+  std::vector<float> values;
   float min_x{};
   float max_x{1.0f};
   bool extrapolate{true};
@@ -171,8 +178,7 @@ rgb_ramp_table(const GraphNode *node) {
   return table;
 }
 
-[[nodiscard]] std::optional<RGBCurveTable>
-rgb_curve_table(const GraphNode *node) {
+[[nodiscard]] std::optional<Curve3Table> curve3_table(const GraphNode *node) {
   const auto sampled = boolean_property(node, "Sampled");
   const auto min_x = floating_property(node, "MinX");
   const auto max_x = floating_property(node, "MaxX");
@@ -183,11 +189,10 @@ rgb_curve_table(const GraphNode *node) {
     return std::nullopt;
   }
 
-  RGBCurveTable table{
-      .values = {},
-      .min_x = *min_x,
-      .max_x = *max_x,
-      .extrapolate = *extrapolate};
+  Curve3Table table{.values = {},
+                    .min_x = *min_x,
+                    .max_x = *max_x,
+                    .extrapolate = *extrapolate};
   auto remaining = *table_text;
   while (!remaining.empty()) {
     const auto delimiter = remaining.find(';');
@@ -200,8 +205,52 @@ rgb_curve_table(const GraphNode *node) {
     }
     // Cycles stores packed_float3 curve values as float4 table entries.
     // make_float4(packed_float3) supplies the otherwise unused w = 1.
-    table.values.emplace_back(packed_float4{
-        components[1u], components[2u], components[3u], 1.0f});
+    table.values.emplace_back(
+        packed_float4{components[1u], components[2u], components[3u], 1.0f});
+    if (delimiter == std::string_view::npos) {
+      remaining = {};
+    } else {
+      remaining.remove_prefix(delimiter + 1u);
+      if (remaining.empty()) {
+        return std::nullopt;
+      }
+    }
+  }
+  if (table.values.size() < 2u ||
+      table.values.size() > static_cast<std::size_t>(
+                                std::numeric_limits<std::int32_t>::max() / 4)) {
+    return std::nullopt;
+  }
+  return table;
+}
+
+[[nodiscard]] std::optional<FloatCurveTable>
+float_curve_table(const GraphNode *node) {
+  const auto sampled = boolean_property(node, "Sampled");
+  const auto min_x = floating_property(node, "MinX");
+  const auto max_x = floating_property(node, "MaxX");
+  const auto extrapolate = boolean_property(node, "Extrapolate");
+  const auto table_text = string_property(node, "Table");
+  if (!sampled || !*sampled || !min_x || !max_x || !extrapolate ||
+      !table_text) {
+    return std::nullopt;
+  }
+
+  FloatCurveTable table{.values = {},
+                        .min_x = *min_x,
+                        .max_x = *max_x,
+                        .extrapolate = *extrapolate};
+  auto remaining = *table_text;
+  while (!remaining.empty()) {
+    const auto delimiter = remaining.find(';');
+    const auto row = delimiter == std::string_view::npos
+                         ? remaining
+                         : remaining.substr(0u, delimiter);
+    std::array<float, 2u> components{};
+    if (!parse_row(row, components)) {
+      return std::nullopt;
+    }
+    table.values.emplace_back(components[1u]);
     if (delimiter == std::string_view::npos) {
       remaining = {};
     } else {
@@ -213,15 +262,14 @@ rgb_curve_table(const GraphNode *node) {
   }
   if (table.values.size() < 2u ||
       table.values.size() >
-          static_cast<std::size_t>(
-              std::numeric_limits<std::int32_t>::max() / 4)) {
+          static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
     return std::nullopt;
   }
   return table;
 }
 
 [[nodiscard]] std::optional<float>
-factor_literal(const GraphInput *input) noexcept {
+float_literal(const GraphInput *input) noexcept {
   if (input == nullptr || input->link != nullptr || !input->value ||
       input->value->type != contract::SocketType::floating) {
     return std::nullopt;
@@ -233,9 +281,9 @@ factor_literal(const GraphInput *input) noexcept {
 }
 
 [[nodiscard]] std::optional<Vec3f>
-color_literal(const GraphInput *input) noexcept {
+float3_literal(const GraphInput *input, contract::SocketType type) noexcept {
   if (input == nullptr || input->link != nullptr || !input->value ||
-      input->value->type != contract::SocketType::color) {
+      input->value->type != type) {
     return std::nullopt;
   }
   if (const auto *value = std::get_if<Vec3f>(&input->value->value)) {
@@ -286,27 +334,72 @@ rgb_ramp_lookup(const std::vector<packed_float4> &values, float factor,
   return result;
 }
 
+[[nodiscard]] float float_ramp_lookup(const std::vector<float> &values,
+                                      float factor, bool interpolate,
+                                      bool extrapolate) noexcept {
+  const auto last = values.size() - 1u;
+  if ((factor < 0.0f || factor > 1.0f) && extrapolate) {
+    float value{};
+    float delta{};
+    if (factor < 0.0f) {
+      value = values.front();
+      delta = value - values[1u];
+      factor = -factor;
+    } else {
+      value = values.back();
+      delta = value - values[last - 1u];
+      factor -= 1.0f;
+    }
+    return value + delta * factor * static_cast<float>(last);
+  }
+  const auto scaled = std::clamp(factor, 0.0f, 1.0f) * static_cast<float>(last);
+  const auto index =
+      std::clamp(static_cast<int>(scaled), 0, static_cast<int>(last));
+  const auto t = scaled - static_cast<float>(index);
+  auto result = values[static_cast<std::size_t>(index)];
+  if (interpolate && t > 0.0f) {
+    result =
+        (1.0f - t) * result + t * values[static_cast<std::size_t>(index) + 1u];
+  }
+  return result;
+}
+
 [[nodiscard]] std::optional<Vec3f>
-fold_rgb_curve(const GraphNode *node) noexcept {
-  const auto table = rgb_curve_table(node);
-  const auto factor = factor_literal(node->input("Factor"));
-  const auto color = color_literal(node->input("Color"));
-  if (!table || !factor || !color) {
+fold_curve3(const GraphNode *node, std::string_view value_name,
+            contract::SocketType value_type) noexcept {
+  const auto table = curve3_table(node);
+  const auto factor = float_literal(node->input("Factor"));
+  const auto value = float3_literal(node->input(value_name), value_type);
+  if (!table || !factor || !value) {
     return std::nullopt;
   }
   const auto range = table->max_x - table->min_x;
-  const Vec3f relative{(color->x - table->min_x) / range,
-                       (color->y - table->min_x) / range,
-                       (color->z - table->min_x) / range};
+  const Vec3f relative{(value->x - table->min_x) / range,
+                       (value->y - table->min_x) / range,
+                       (value->z - table->min_x) / range};
   const auto red =
       rgb_ramp_lookup(table->values, relative.x, true, table->extrapolate).x;
   const auto green =
       rgb_ramp_lookup(table->values, relative.y, true, table->extrapolate).y;
   const auto blue =
       rgb_ramp_lookup(table->values, relative.z, true, table->extrapolate).z;
-  return Vec3f{(1.0f - *factor) * color->x + *factor * red,
-               (1.0f - *factor) * color->y + *factor * green,
-               (1.0f - *factor) * color->z + *factor * blue};
+  return Vec3f{(1.0f - *factor) * value->x + *factor * red,
+               (1.0f - *factor) * value->y + *factor * green,
+               (1.0f - *factor) * value->z + *factor * blue};
+}
+
+[[nodiscard]] std::optional<float>
+fold_float_curve(const GraphNode *node) noexcept {
+  const auto table = float_curve_table(node);
+  const auto factor = float_literal(node->input("Factor"));
+  const auto value = float_literal(node->input("Value"));
+  if (!table || !factor || !value) {
+    return std::nullopt;
+  }
+  const auto relative = (*value - table->min_x) / (table->max_x - table->min_x);
+  const auto result =
+      float_ramp_lookup(table->values, relative, true, table->extrapolate);
+  return *value + *factor * (result - *value);
 }
 
 class RGBRampNode final : public GraphNode {
@@ -320,7 +413,7 @@ public:
       return;
     }
     const auto table = rgb_ramp_table(this);
-    const auto factor = factor_literal(input("Factor"));
+    const auto factor = float_literal(input("Factor"));
     if (!table || !factor) {
       return;
     }
@@ -362,57 +455,152 @@ public:
   }
 };
 
-class RGBCurveNode final : public GraphNode {
+class CurvesNode : public GraphNode {
+protected:
+  void constant_fold_curve3(const ConstantFolder &folder,
+                            std::string_view value_name,
+                            contract::SocketType value_type) {
+    if (folder.all_inputs_constant()) {
+      if (const auto value = fold_curve3(this, value_name, value_type)) {
+        folder.make_constant(*value);
+      }
+      return;
+    }
+    const auto factor = float_literal(input("Factor"));
+    auto *value = input(value_name);
+    if (factor && *factor == 0.0f && value != nullptr &&
+        value->link != nullptr) {
+      folder.bypass(value->link);
+    }
+  }
+
+  void inline_blender_constant_fold_curve3(const ConstantFolder &folder,
+                                           std::string_view value_name,
+                                           contract::SocketType value_type) {
+    // Blender's curve multi-functions fold only when both inputs are
+    // primitive. Cycles' later zero-Factor bypass must not feed back into
+    // this earlier graph stage.
+    if (folder.all_inputs_constant()) {
+      if (const auto value = fold_curve3(this, value_name, value_type)) {
+        folder.make_constant(*value);
+      }
+    }
+  }
+
+  void compile_curve3(SVMCompiler &compiler, std::string_view value_name,
+                      std::string_view label) {
+    const auto table = curve3_table(this);
+    if (!table) {
+      compiler.fail(std::string{label} +
+                    " requires a valid sampled Blender table");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_CURVES,
+        SVMNodeCurves{
+            .color = compiler.input_float3(value_name),
+            .fac = compiler.input_float("Factor"),
+            .min_x = table->min_x,
+            .max_x = table->max_x,
+            .table_size = static_cast<std::uint32_t>(table->values.size()),
+            .extrapolate = static_cast<std::uint8_t>(table->extrapolate),
+            .out_offset = compiler.output(value_name),
+            ._pad = {0u, 0u}});
+    for (const auto &value : table->values) {
+      compiler.add_node_data(value);
+    }
+  }
+};
+
+class RGBCurveNode final : public CurvesNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_CURVES;
   }
 
   void constant_fold(const ConstantFolder &folder) override {
+    constant_fold_curve3(folder, "Color", contract::SocketType::color);
+  }
+
+  void inline_blender_constant_fold(const ConstantFolder &folder) override {
+    inline_blender_constant_fold_curve3(folder, "Color",
+                                        contract::SocketType::color);
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    compile_curve3(compiler, "Color", "Cycles RGB Curves");
+  }
+};
+
+class VectorCurveNode final : public CurvesNode {
+public:
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_CURVES;
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    constant_fold_curve3(folder, "Vector", contract::SocketType::vector);
+  }
+
+  void inline_blender_constant_fold(const ConstantFolder &folder) override {
+    inline_blender_constant_fold_curve3(folder, "Vector",
+                                        contract::SocketType::vector);
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    compile_curve3(compiler, "Vector", "Cycles Vector Curves");
+  }
+};
+
+class FloatCurveNode final : public GraphNode {
+public:
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_FLOAT_CURVE;
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
     if (folder.all_inputs_constant()) {
-      if (const auto value = fold_rgb_curve(this)) {
+      if (const auto value = fold_float_curve(this)) {
         folder.make_constant(*value);
       }
       return;
     }
-    const auto factor = factor_literal(input("Factor"));
-    auto *color = input("Color");
-    if (factor && *factor == 0.0f && color != nullptr &&
-        color->link != nullptr) {
-      folder.bypass(color->link);
+    const auto factor = float_literal(input("Factor"));
+    auto *value = input("Value");
+    if (factor && *factor == 0.0f && value != nullptr &&
+        value->link != nullptr) {
+      folder.bypass(value->link);
     }
   }
 
   void inline_blender_constant_fold(const ConstantFolder &folder) override {
-    // Blender's CurveRGBFunction folds only when both inputs are primitive;
-    // Cycles' later zero-Fac bypass must not feed back into this earlier pass.
     if (folder.all_inputs_constant()) {
-      if (const auto value = fold_rgb_curve(this)) {
+      if (const auto value = fold_float_curve(this)) {
         folder.make_constant(*value);
       }
     }
   }
 
   void compile(SVMCompiler &compiler) override {
-    const auto table = rgb_curve_table(this);
+    const auto table = float_curve_table(this);
     if (!table) {
       compiler.fail(
-          "Cycles RGB Curves requires a valid sampled Blender table");
+          "Cycles Float Curve requires a valid sampled Blender table");
       return;
     }
     compiler.add_node(
-        this, NODE_CURVES,
-        SVMNodeCurves{
-            .color = compiler.input_float3("Color"),
+        this, NODE_FLOAT_CURVE,
+        SVMNodeFloatCurve{
             .fac = compiler.input_float("Factor"),
+            .value_in = compiler.input_float("Value"),
             .min_x = table->min_x,
             .max_x = table->max_x,
             .table_size = static_cast<std::uint32_t>(table->values.size()),
             .extrapolate = static_cast<std::uint8_t>(table->extrapolate),
-            .out_offset = compiler.output("Color"),
+            .out_offset = compiler.output("Value"),
             ._pad = {0u, 0u}});
-    for (const auto &value : table->values) {
-      compiler.add_node_data(value);
+    for (const auto value : table->values) {
+      compiler.add_node_data_float(value);
     }
   }
 };
@@ -425,6 +613,12 @@ std::unique_ptr<GraphNode> make_ramp_graph_node(std::string_view type) {
   }
   if (type == node_type::rgb_curve) {
     return std::make_unique<RGBCurveNode>();
+  }
+  if (type == node_type::vector_curve) {
+    return std::make_unique<VectorCurveNode>();
+  }
+  if (type == node_type::float_curve) {
+    return std::make_unique<FloatCurveNode>();
   }
   return nullptr;
 }

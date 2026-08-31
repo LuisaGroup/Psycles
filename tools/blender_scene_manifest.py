@@ -196,18 +196,24 @@ def _node_special_data(node: Any) -> dict[str, Any]:
                 for curve in curves
             ],
         }
-        if len(curves) >= 4:
+        curve_count = {
+            "ShaderNodeFloatCurve": 1,
+            "ShaderNodeVectorCurve": 3,
+            "ShaderNodeRGBCurve": 4,
+        }.get(node.bl_idname)
+        if curve_count is not None and len(curves) >= curve_count:
             # This is the exact normalized data route used by Cycles'
-            # Blender adapter for ShaderNodeRGBCurve: find the common
-            # domain across all four curves, sample 257 endpoints, apply
-            # the combined curve (index 3), then the R/G/B curves.
+            # Blender adapter: find the common domain of the curves consumed
+            # by this node, then sample the 257 endpoints that become inline
+            # SVM table data. RGB Curves additionally applies its fourth
+            # common curve before the per-channel curves.
             min_x = min(
                 float(curve.points[0].location[0])
-                for curve in curves[:4]
+                for curve in curves[:curve_count]
             )
             max_x = max(
                 float(curve.points[-1].location[0])
-                for curve in curves[:4]
+                for curve in curves[:curve_count]
             )
             curve_mapping = result["curve_mapping"]
             curve_mapping["min_x"] = min_x
@@ -215,13 +221,21 @@ def _node_special_data(node: Any) -> dict[str, Any]:
             curve_mapping["samples"] = []
             for index in range(257):
                 x = min_x + index / 256.0 * (max_x - min_x)
-                combined = mapping.evaluate(curves[3], x)
-                curve_mapping["samples"].append(
-                    [
-                        mapping.evaluate(curves[channel], combined)
+                if node.bl_idname == "ShaderNodeFloatCurve":
+                    sample: float | list[float] = mapping.evaluate(
+                        curves[0], x
+                    )
+                else:
+                    input_x = (
+                        mapping.evaluate(curves[3], x)
+                        if node.bl_idname == "ShaderNodeRGBCurve"
+                        else x
+                    )
+                    sample = [
+                        mapping.evaluate(curves[channel], input_x)
                         for channel in range(3)
                     ]
-                )
+                curve_mapping["samples"].append(sample)
     if hasattr(node, "image_user"):
         image_user = node.image_user
         result["image_user"] = {

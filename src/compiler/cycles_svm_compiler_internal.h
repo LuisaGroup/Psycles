@@ -90,6 +90,10 @@ public:
     add_node_data(static_cast<const void *>(&payload), sizeof(T));
   }
 
+  void add_node_data_float(float value) {
+    add_node_data(static_cast<const void *>(&value), sizeof(value));
+  }
+
   [[nodiscard]] virtual std::size_t add_node(ShaderNodeType type) = 0;
 
   template<SvmPayload T>

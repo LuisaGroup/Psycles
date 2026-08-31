@@ -2,6 +2,7 @@
 
 #include "blender_scene_internal.h"
 
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
@@ -113,8 +114,9 @@ public:
     [[nodiscard]] virtual std::string color_ramp_table(
         yyjson_val *node) const = 0;
 
-    [[nodiscard]] virtual std::string rgb_curve_table(
-        yyjson_val *node) const = 0;
+    [[nodiscard]] virtual std::string sampled_curve_table(
+        yyjson_val *node,
+        std::size_t component_count) const = 0;
 
     [[nodiscard]] virtual TypedOutput constant_from_output(
         yyjson_val *node,

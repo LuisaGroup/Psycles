@@ -735,17 +735,40 @@ public:
                         ? SocketType::floating
                         : SocketType::color});
         }
-        if (type == "CURVE_RGB") {
+        if (type == "CURVE_RGB" ||
+            type == "CURVE_VEC" ||
+            type == "CURVE_FLOAT") {
+            const auto scalar = type == "CURVE_FLOAT";
+            const auto vector = type == "CURVE_VEC";
+            const auto semantic_type =
+                scalar ? compiler::node_type::float_curve :
+                vector ? compiler::node_type::vector_curve :
+                         compiler::node_type::rgb_curve;
+            const auto value_socket =
+                scalar ? "Value" : vector ? "Vector" : "Color";
+            const auto value_type =
+                scalar ? SocketType::floating :
+                vector ? SocketType::vector : SocketType::color;
+            const auto factor_socket = scalar ? "Factor" : "Fac";
+            const auto component_count = scalar ? 1u : 3u;
             const auto id = context.graph().add_node(
-                compiler::node_type::rgb_curve,
+                semantic_type,
                 node_name);
             auto *mapping = member(
                 member(node, "special"), "curve_mapping");
             auto *samples = member(mapping, "samples");
             static_cast<void>(context.bind(
-                id, "Factor", node, "Fac", SocketType::floating));
+                id,
+                "Factor",
+                node,
+                factor_socket,
+                SocketType::floating));
             static_cast<void>(context.bind(
-                id, "Color", node, "Color", SocketType::color));
+                id,
+                value_socket,
+                node,
+                value_socket,
+                value_type));
             static_cast<void>(context.graph().set_property(
                 id,
                 "Sampled",
@@ -773,10 +796,12 @@ public:
             static_cast<void>(context.graph().set_property(
                 id,
                 "Table",
-                SocketValue::string(context.rgb_curve_table(node))));
+                SocketValue::string(context.sampled_curve_table(
+                    node,
+                    component_count))));
             return finish({
-                .ref = {.node = id, .socket = "Color"},
-                .type = SocketType::color});
+                .ref = {.node = id, .socket = value_socket},
+                .type = value_type});
         }
         if (type == "NORMAL_MAP") {
             const auto id = context.graph().add_node(
