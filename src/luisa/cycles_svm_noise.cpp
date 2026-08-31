@@ -287,4 +287,56 @@ void node_tex_white_noise(Cursor &cursor, Stack &stack) noexcept {
   };
 }
 
+void node_tex_gradient(Cursor &cursor, Stack &stack) noexcept {
+  const auto gradient_type = cursor.word();
+  const auto packed = cursor.word();
+  const auto coordinate_offset = cursor.byte(packed, 0u);
+  const auto factor_offset = cursor.byte(packed, 1u);
+  const auto color_offset = cursor.byte(packed, 2u);
+  const auto point = stack_load_float3(stack, coordinate_offset);
+
+  Float factor = 0.0f;
+  $if(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_LINEAR)) {
+    factor = point.x;
+  }
+  $elif(gradient_type ==
+        static_cast<std::uint32_t>(NODE_BLEND_QUADRATIC)) {
+    const auto r = max(point.x, 0.0f);
+    factor = r * r;
+  }
+  $elif(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_EASING)) {
+    const auto r = clamp(point.x, 0.0f, 1.0f);
+    const auto t = r * r;
+    factor = 3.0f * t - 2.0f * t * r;
+  }
+  $elif(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_DIAGONAL)) {
+    factor = (point.x + point.y) * 0.5f;
+  }
+  $elif(gradient_type == static_cast<std::uint32_t>(NODE_BLEND_RADIAL)) {
+    factor = atan2(point.y, point.x) / 6.2831853071795864f + 0.5f;
+  }
+  $else {
+    const auto r = max(
+        0.999999f -
+            sqrt(point.x * point.x + point.y * point.y + point.z * point.z),
+        0.0f);
+    $if(gradient_type ==
+        static_cast<std::uint32_t>(NODE_BLEND_QUADRATIC_SPHERE)) {
+      factor = r * r;
+    }
+    $elif(gradient_type ==
+          static_cast<std::uint32_t>(NODE_BLEND_SPHERICAL)) {
+      factor = r;
+    };
+  };
+  factor = clamp(factor, 0.0f, 1.0f);
+
+  $if(factor_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    stack_store_float(stack, factor_offset, factor);
+  };
+  $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    stack_store_float3(stack, color_offset, make_float3(factor));
+  };
+}
+
 } // namespace psycles::luisa_backend::cycles_svm::detail

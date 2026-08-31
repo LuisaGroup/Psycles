@@ -312,6 +312,11 @@ void eval_nodes(
           detail::node_tex_white_noise(cursor, stack);
         };
       }
+      if (node_types_used[NODE_TEX_GRADIENT]) {
+        PSYCLES_SVM_CASE(NODE_TEX_GRADIENT) {
+          detail::node_tex_gradient(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_TEX_ENVIRONMENT]) {
         PSYCLES_SVM_CASE(NODE_TEX_ENVIRONMENT) {
           detail::node_tex_environment(

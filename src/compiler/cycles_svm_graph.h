@@ -121,6 +121,11 @@ struct GraphNode {
 
   virtual void compile(SVMCompiler &compiler) = 0;
   virtual void expand(CyclesGraph &graph);
+  // Blender evaluates nodes backed by a multi-function before Cycles builds
+  // its ShaderGraph. Keep that fold stage distinct from Cycles' own
+  // ShaderNode::constant_fold pass: a value produced only by the latter must
+  // not make a downstream Blender function node retroactively foldable.
+  virtual void inline_blender_constant_fold(const ConstantFolder &folder);
   virtual void constant_fold(const ConstantFolder &folder);
   virtual void simplify_settings();
   // Subclass state which does not belong to the serialized socket/property
@@ -198,6 +203,7 @@ public:
   void refine_bump_nodes();
 
 private:
+  void inline_blender_functions();
   void constant_fold();
   void simplify_settings();
   void deduplicate_nodes();

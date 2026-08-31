@@ -58,6 +58,8 @@ _ALL_PROBES = (
     "geometry_pointiness",
     "glossy_bsdf_matrix",
     "gradient_matrix",
+    "gradient_mapping_constant_fold",
+    "gradient_opcode_matrix",
     "gradient_spherical",
     "hair_bsdf_matrix",
     "hosek_wilkie_diffuse_transport",
