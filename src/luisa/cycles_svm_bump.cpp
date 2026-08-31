@@ -68,7 +68,7 @@ void node_set_bump(Cursor &cursor, Stack &stack,
     strength = max(strength, 0.0f);
 
     const auto determinant_sign = select(1.0f, -1.0f, determinant < 0.0f);
-    Float3 normal_out = safe_normalize_exact(
+    Float3 normal_out = safe_normalize_cycles(
         bump_filter_width * absolute_determinant * normal_in -
         scale * determinant_sign * surface_gradient);
     $if((normal_out.x == 0.0f) & (normal_out.y == 0.0f) &
@@ -76,7 +76,7 @@ void node_set_bump(Cursor &cursor, Stack &stack,
       normal_out = normal_in;
     }
     $else {
-      normal_out = normalize_exact(strength * normal_out +
+      normal_out = normalize_cycles(strength * normal_out +
                                    (1.0f - strength) * normal_in);
     };
 

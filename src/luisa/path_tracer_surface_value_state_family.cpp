@@ -162,6 +162,11 @@ void emit_tex_coord_family(
         case compiler::ValueOperation::generated:
             write_surface_value_vector(locals, instruction, point.generated);
             return;
+        case compiler::ValueOperation::reflection:
+            write_surface_value_vector(
+                locals, instruction,
+                -reflect(point.incoming, point.shading_normal));
+            return;
         case compiler::ValueOperation::object_position:
             write_surface_value_vector(locals, instruction,
                                        point.object_position);

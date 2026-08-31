@@ -186,7 +186,9 @@ compile_material(
   expect(shader.ok(), "imported attribute graph did not validate");
   const auto image =
       psycles::compiler::cycles_svm::compile_shader(*shader.program,
-                                                    attribute_ids);
+          attribute_ids,
+          psycles::compiler::cycles_svm::ShaderCompileContext{
+              .background = false});
   expect(image.valid, image.diagnostic.c_str());
   return image;
 }

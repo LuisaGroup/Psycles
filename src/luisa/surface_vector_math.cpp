@@ -7,6 +7,8 @@
 
 #include <luisa/dsl/sugar.h>
 
+#include <psycles/luisa/native_vector_math.h>
+
 namespace psycles::luisa_backend::detail {
 namespace {
 
@@ -73,11 +75,7 @@ SurfaceVectorMathResult evaluate_surface_vector_math_operation(
                            safe_divide(numerator.z, denominator.z));
     };
     const auto safe_normalize_zero = [](Float3 input) noexcept {
-        const auto input_length = sqrt(dot(input, input));
-        const auto valid = input_length != 0.0f;
-        return select(input,
-                      input / select(1.0f, input_length, valid),
-                      valid);
+        return native_vector_math::safe_normalize_nonzero(input);
     };
     const auto wrap_component = [](Float input,
                                    Float maximum,
@@ -220,9 +218,9 @@ SurfaceVectorMathResult evaluate_surface_vector_math_operation(
             break;
         case compiler::VectorMathOperation::cycles_normalize:
             // Cycles NormalNode uses normalize(), not safe_normalize(). Keep
-            // the division explicit: the zero-vector result is non-finite and
-            // is intentionally sanitized later by the shared film boundary.
-            result.vector = a / sqrt(dot(a, a));
+            // the zero-vector result non-finite, but let the backend select
+            // the native implementation rather than freezing sqrt/div.
+            result.vector = native_vector_math::normalize_unchecked(a);
             break;
         default:
             std::abort();

@@ -9,10 +9,24 @@
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_svm {
-namespace {
 
 using namespace luisa::compute;
 using namespace compiler::cycles_svm;
+
+Float3 decode_packed_normal(Var<packed_normal> packed) noexcept {
+  constexpr auto mu = (1u << 16u) - 1u;
+  constexpr auto inv_hmu = 2.0f / static_cast<float>(mu);
+  const UInt bits = packed.value;
+  Float nx = (bits & mu).cast<float>() * inv_hmu - 1.0f;
+  Float ny = ((bits >> 16u) & mu).cast<float>() * inv_hmu - 1.0f;
+  const Float nz = 1.0f - abs(nx) - abs(ny);
+  const Float t = max(-nz, 0.0f);
+  nx += copysign(t, -nx);
+  ny += copysign(t, -ny);
+  return normalize(make_float3(nx, ny, nz));
+}
+
+namespace {
 
 template <typename T> [[nodiscard]] Var<T> zero_value() noexcept {
   if constexpr (std::is_same_v<T, float>) {
@@ -59,20 +73,6 @@ packed_float3_value(Var<compiler::cycles_svm::packed_float3> value) noexcept {
   return make_float3(value.x, value.y, value.z);
 }
 
-[[nodiscard]] Float3
-packed_normal_decode(Var<compiler::cycles_svm::packed_normal> packed) noexcept {
-  constexpr auto mu = (1u << 16u) - 1u;
-  constexpr auto inv_hmu = 2.0f / static_cast<float>(mu);
-  const UInt bits = packed.value;
-  Float nx = (bits & mu).cast<float>() * inv_hmu - 1.0f;
-  Float ny = ((bits >> 16u) & mu).cast<float>() * inv_hmu - 1.0f;
-  const Float nz = 1.0f - abs(nx) - abs(ny);
-  const Float t = max(-nz, 0.0f);
-  nx += copysign(t, -nx);
-  ny += copysign(t, -ny);
-  return normalize(make_float3(nx, ny, nz));
-}
-
 [[nodiscard]] Float color_srgb_to_linear(Expr<float> value) noexcept {
   Float result;
   $if(value < 0.04045f) { result = max(value * (1.0f / 12.92f), 0.0f); }
@@ -103,7 +103,7 @@ template <typename T>
     Float3 result =
         packed_float3_value(kernel_globals.attribute_float3(offset));
     $if((element & static_cast<std::uint32_t>(ATTR_ELEMENT_IS_NORMAL)) != 0u) {
-      result = packed_normal_decode(kernel_globals.attribute_normal(offset));
+      result = decode_packed_normal(kernel_globals.attribute_normal(offset));
     };
     return result;
   } else {

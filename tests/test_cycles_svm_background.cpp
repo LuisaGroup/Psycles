@@ -59,7 +59,9 @@ void test_background_stream_matches_cycles_5_2_1() {
   const auto shader = frontend.compile(graph);
   require(shader.ok(), "Background graph did not validate");
   AttributeIDMap attribute_ids;
-  const auto image = compile_shader(*shader.program, attribute_ids);
+  const auto image = compile_shader(
+      *shader.program, attribute_ids,
+      ShaderCompileContext{.background = true});
   require(image.valid, image.diagnostic.c_str());
 
   // Shader 3 (`default_background`) from the Cycles 5.2.1
@@ -92,7 +94,8 @@ void test_zero_background_fold_matches_cycles_5_2_1() {
     const auto shader = frontend.compile(graph);
     require(shader.ok(), "zero Background graph did not validate");
     AttributeIDMap attribute_ids;
-    return compile_shader(*shader.program, attribute_ids);
+    return compile_shader(*shader.program, attribute_ids,
+                          ShaderCompileContext{.background = true});
   };
 
   static constexpr std::array<std::uint32_t, 7u> expected{
@@ -134,7 +137,9 @@ void test_linked_background_stream_matches_cycles_5_2_1() {
   const auto shader = frontend.compile(graph);
   require(shader.ok(), "linked Background graph did not validate");
   AttributeIDMap attribute_ids;
-  const auto image = compile_shader(*shader.program, attribute_ids);
+  const auto image = compile_shader(
+      *shader.program, attribute_ids,
+      ShaderCompileContext{.background = true});
   require(image.valid, image.diagnostic.c_str());
 
   // Cycles 5.2.1 `background_world_linked`: Geometry Normal drives Color
@@ -183,7 +188,9 @@ void test_mixed_background_stream_matches_cycles_5_2_1() {
   const auto shader = frontend.compile(graph);
   require(shader.ok(), "mixed Background graph did not validate");
   AttributeIDMap attribute_ids;
-  const auto image = compile_shader(*shader.program, attribute_ids);
+  const auto image = compile_shader(
+      *shader.program, attribute_ids,
+      ShaderCompileContext{.background = true});
   require(image.valid, image.diagnostic.c_str());
 
   // Cycles 5.2.1 `background_world_mix`. This locks the two distinct

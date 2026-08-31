@@ -451,34 +451,40 @@ int main(int argc, char **argv) {
     }
 
     Context context{argv[0]};
-    auto device = context.create_device(backend);
-    auto stream = device.create_stream();
-    const ShaderOption uncached{.enable_cache = false};
-    auto svm_shader = device.compile(make_svm_kernel(), uncached);
-    auto static_shader = device.compile(make_static_kernel(), uncached);
-    auto svm_buffer = device.create_buffer<float>(9u);
-    auto static_buffer = device.create_buffer<float>(9u);
-    std::array<float, 9u> svm{};
-    std::array<float, 9u> statically_selected{};
-    stream << svm_shader(svm_buffer).dispatch(3u)
-           << static_shader(static_buffer).dispatch(3u)
-           << svm_buffer.copy_to(luisa::span{svm})
-           << static_buffer.copy_to(luisa::span{statically_selected})
-           << synchronize();
-    constexpr std::array expected{
-        2.0f, 1.5f, 2.0f,
-        8.0f, 3.0f, 2.0f,
-        32.0f, 6.0f, 2.0f};
-    for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
-        if (!approximately_equal(svm[index], expected[index]) ||
-            !approximately_equal(statically_selected[index], expected[index]) ||
-            !std::isfinite(svm[index]) ||
-            !std::isfinite(statically_selected[index])) {
-            std::cerr << "Light Falloff semantic mismatch on " << backend
-                      << " at " << index << ": svm=" << svm[index]
-                      << ", static=" << statically_selected[index]
-                      << ", expected=" << expected[index] << '\n';
-            return EXIT_FAILURE;
+    {
+        // Vulkan currently permits one live Device per process. End the
+        // low-level SVM/static parity fixture before the renderer creates its
+        // own Device; the two phases share no device-side state.
+        auto device = context.create_device(backend);
+        auto stream = device.create_stream();
+        const ShaderOption uncached{.enable_cache = false};
+        auto svm_shader = device.compile(make_svm_kernel(), uncached);
+        auto static_shader = device.compile(make_static_kernel(), uncached);
+        auto svm_buffer = device.create_buffer<float>(9u);
+        auto static_buffer = device.create_buffer<float>(9u);
+        std::array<float, 9u> svm{};
+        std::array<float, 9u> statically_selected{};
+        stream << svm_shader(svm_buffer).dispatch(3u)
+               << static_shader(static_buffer).dispatch(3u)
+               << svm_buffer.copy_to(luisa::span{svm})
+               << static_buffer.copy_to(luisa::span{statically_selected})
+               << synchronize();
+        constexpr std::array expected{
+            2.0f, 1.5f, 2.0f,
+            8.0f, 3.0f, 2.0f,
+            32.0f, 6.0f, 2.0f};
+        for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
+            if (!approximately_equal(svm[index], expected[index]) ||
+                !approximately_equal(
+                    statically_selected[index], expected[index]) ||
+                !std::isfinite(svm[index]) ||
+                !std::isfinite(statically_selected[index])) {
+                std::cerr << "Light Falloff semantic mismatch on " << backend
+                          << " at " << index << ": svm=" << svm[index]
+                          << ", static=" << statically_selected[index]
+                          << ", expected=" << expected[index] << '\n';
+                return EXIT_FAILURE;
+            }
         }
     }
     return validate_distant_scene(context, backend)

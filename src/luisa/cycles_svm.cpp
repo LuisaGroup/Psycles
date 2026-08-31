@@ -52,6 +52,7 @@ ShaderData::ShaderData(Expr<luisa::float3> position,
                        Expr<luisa::float4x4> motion_world_to_object,
                        Expr<std::uint32_t> random_state) noexcept
     : P{position},
+      ray_P{position},
       N{normal},
       Ng{geometric_normal},
       wi{incoming},
@@ -251,6 +252,25 @@ void eval_nodes(
           if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
             detail::node_geometry(cursor, stack, kernel_globals, shader_data,
                                   true);
+          }
+        };
+      }
+      if (node_types_used[NODE_TEX_COORD]) {
+        PSYCLES_SVM_CASE(NODE_TEX_COORD) {
+          detail::node_tex_coord(
+              cursor, stack, kernel_globals, transform_state, shader_data,
+              path_state, false,
+              (node_feature_mask & kernel_feature_node_volume) != 0u,
+              (kernel_features & kernel_feature_object_motion) != 0u);
+        };
+      }
+      if (node_types_used[NODE_TEX_COORD_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_TEX_COORD_DERIVATIVE) {
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_tex_coord(
+                cursor, stack, kernel_globals, transform_state, shader_data,
+                path_state, true, false,
+                (kernel_features & kernel_feature_object_motion) != 0u);
           }
         };
       }

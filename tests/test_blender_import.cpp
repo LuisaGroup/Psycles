@@ -3,6 +3,8 @@
 #include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_program.h>
 
+#include "blender_texture_coordinate_import_expectations.h"
+
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -924,7 +926,7 @@ void test_integrator_settings_round_trip() {
                 "default": [0.0, 0.0, 0.0]
               }
             ],
-            "properties": {"from_instancer": false},
+            "properties": {"from_instancer": true},
             "special": {},
             "image": null,
             "node_tree": null
@@ -948,11 +950,11 @@ void test_integrator_settings_round_trip() {
             "special": {
               "object_coordinates": {
                 "object": "Coordinate Projector",
-                "world_to_object": [
-                  2.0, -1.0, 0.25, 0.0,
-                  0.5, 3.0, 0.0, 0.0,
-                  0.0, 0.0, 4.0, 0.0,
-                  1.0, -2.0, 0.5, 1.0
+                "object_to_world": [
+                  0.46153846, 0.15384615, -0.02884615, 0.0,
+                  -0.07692308, 0.30769231, 0.00480769, 0.0,
+                  0.0, 0.0, 0.25, 0.0,
+                  -0.61538462, 0.46153846, -0.08653846, 1.0
                 ]
               }
             },
@@ -1150,7 +1152,6 @@ void test_integrator_settings_round_trip() {
          "automatic displacement bump did not lower to a surface program");
   bool has_bump_instruction = false;
   bool bump_uses_object_space = false;
-  bool has_projector_coordinates = false;
   bool has_texture_mapping = false;
   for (const auto &instruction : bump_surface.program->value_instructions()) {
     has_bump_instruction |=
@@ -1158,13 +1159,6 @@ void test_integrator_settings_round_trip() {
     bump_uses_object_space |=
         instruction.operation == psycles::compiler::ValueOperation::bump &&
         (instruction.static_u0 & 4u) != 0u;
-    has_projector_coordinates |=
-        instruction.operation ==
-            psycles::compiler::ValueOperation::object_position_with_transform &&
-        instruction.static_table ==
-            std::vector<float>{2.0f, -1.0f, 0.25f, 0.0f, 0.5f, 3.0f,
-                               0.0f, 0.0f,  0.0f,  0.0f, 4.0f, 0.0f,
-                               1.0f, -2.0f, 0.5f,  1.0f};
     has_texture_mapping |=
         instruction.operation == psycles::compiler::ValueOperation::mapping &&
         instruction.static_u0 == 1u && instruction.static_u1 == 19u;
@@ -1173,8 +1167,8 @@ void test_integrator_settings_round_trip() {
          "automatic displacement bump emitted no value instruction");
   expect(!bump_uses_object_space,
          "BUMP-only displacement incorrectly selected object-space bump");
-  expect(has_projector_coordinates,
-         "explicit Texture Coordinate object transform was not lowered");
+  psycles::tests::expect_texture_coordinate_import(
+      bump_material->second, *bump_surface.program);
   expect(has_texture_mapping,
          "legacy TextureNode mapping type or axis map was not lowered");
 
@@ -1469,6 +1463,11 @@ void test_integrator_settings_round_trip() {
   psycles::compiler::ShaderCompiler hosek_compiler{
       psycles::compiler::make_core_node_registry()};
   const auto hosek_shader = hosek_compiler.compile(hosek_world->second.shader);
+  if (!hosek_shader.ok()) {
+    for (const auto &diagnostic : hosek_shader.diagnostics) {
+      std::cerr << "Hosek graph diagnostic: " << diagnostic.message << '\n';
+    }
+  }
   expect(hosek_shader.ok(), "legacy Hosek-Wilkie graph did not validate");
   const auto hosek_surface =
       psycles::compiler::compile_surface_program(*hosek_shader.program);

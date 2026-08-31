@@ -4,6 +4,7 @@
 
 #include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/cycles_nishita.h>
+#include <psycles/luisa/native_vector_math.h>
 #include <psycles/sampling/background_distribution.h>
 
 namespace psycles::luisa_backend::detail {
@@ -404,15 +405,8 @@ void build_background_sampling_distribution(
         SafeNormalizeCallable safe_normalize =
             [](Float3 value,
                Float3 fallback) noexcept {
-                const auto length_squared =
-                    dot(value, value);
-                return select(
-                    fallback,
-                    value /
-                        sqrt(max(
-                            length_squared,
-                            1.0e-20f)),
-                    length_squared > 1.0e-20f);
+                return native_vector_math::normalize_above_or(
+                    value, fallback, 1.0e-20f);
             };
         auto surface_callables =
             make_surface_callables(data);

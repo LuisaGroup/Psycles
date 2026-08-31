@@ -1,4 +1,5 @@
 #include <psycles/compiler/core_nodes.h>
+#include <psycles/compiler/cycles_transform.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/compiler/surface_program.h>
 #include <psycles/luisa/graph_surface.h>
@@ -32,24 +33,33 @@ constexpr std::array<float, 16u> world_to_projector{
     2.0f, -1.0f, 0.25f, 0.0f, 0.5f, 3.0f,  0.0f, 0.0f,
     0.0f, 0.0f,  4.0f,  0.0f, 1.0f, -2.0f, 0.5f, 1.0f};
 
+[[nodiscard]] Mat4f projector_object_to_world() noexcept {
+  Mat4f world_to_object;
+  world_to_object.elements = world_to_projector;
+  return cycles_inverse_affine_transform(world_to_object);
+}
+
 [[nodiscard]] ShaderGraph coordinate_graph(bool explicit_object) {
   ShaderGraph graph;
   const auto coordinates =
       graph.add_node(node_type::texture_coordinate,
                      explicit_object ? "Explicit projector" : "Shading object");
+  const auto point_to_vector = graph.add_node(
+      node_type::point_to_vector, "Coordinate point to vector");
   if (explicit_object) {
-    Mat4f transform;
-    transform.elements = world_to_projector;
-    static_cast<void>(graph.set_property(coordinates, "ObjectUseTransform",
+    static_cast<void>(graph.set_property(coordinates, "UseTransform",
                                          SocketValue::boolean(true)));
-    static_cast<void>(graph.set_property(coordinates, "ObjectWorldToObject",
-                                         SocketValue::transform(transform)));
+    static_cast<void>(graph.set_property(coordinates, "ObjectTransform",
+                                         SocketValue::transform(
+                                             projector_object_to_world())));
   }
   const auto conversion =
       graph.add_node(node_type::vector_to_color, "Coordinate vector to color");
   const auto emission =
       graph.add_node(node_type::emission, "Coordinate oracle emission");
   static_cast<void>(graph.connect({.node = coordinates, .socket = "Object"},
+                                  point_to_vector, "Point"));
+  static_cast<void>(graph.connect({.node = point_to_vector, .socket = "Vector"},
                                   conversion, "Vector"));
   static_cast<void>(graph.connect({.node = conversion, .socket = "Color"},
                                   emission, "Color"));
@@ -73,6 +83,8 @@ compile_coordinate_program(ShaderCompiler &compiler, bool explicit_object) {
   const auto expected_operation =
       explicit_object ? ValueOperation::object_position_with_transform
                       : ValueOperation::object_position;
+  const auto expected_transform =
+      cycles_inverse_affine_transform(projector_object_to_world());
   auto found = false;
   for (const auto &instruction : lowered.program->value_instructions()) {
     if (instruction.operation != expected_operation) {
@@ -80,10 +92,10 @@ compile_coordinate_program(ShaderCompiler &compiler, bool explicit_object) {
     }
     found = true;
     if (explicit_object &&
-        (instruction.static_table.size() != world_to_projector.size() ||
+        (instruction.static_table.size() != expected_transform.elements.size() ||
          !std::equal(instruction.static_table.begin(),
                      instruction.static_table.end(),
-                     world_to_projector.begin()))) {
+                     expected_transform.elements.begin()))) {
       throw std::runtime_error{
           "explicit Object coordinate matrix changed during lowering"};
     }

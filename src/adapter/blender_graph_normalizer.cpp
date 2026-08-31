@@ -75,8 +75,8 @@ private:
     std::set<std::string, std::less<>> _building;
     std::set<std::string, std::less<>> _group_stack;
     std::set<std::string, std::less<>> _warned;
-    std::optional<contract::NodeId> _default_image_coordinates;
-    std::optional<contract::NodeId> _default_generated_coordinates;
+    std::optional<TypedOutput> _default_image_coordinates;
+    std::optional<TypedOutput> _default_generated_coordinates;
     std::optional<contract::NodeId> _geometry;
     bool _automatic_bump_from_displacement{};
     bool _true_displacement{};
@@ -325,31 +325,29 @@ private:
     [[nodiscard]] TypedOutput
     default_image_coordinates() override {
         if (!_default_image_coordinates) {
-            _default_image_coordinates =
-                _graph.add_node(
-                    compiler::node_type::texture_coordinate,
-                    "Default Image Coordinates");
+            const auto coordinate = _graph.add_node(
+                compiler::node_type::texture_coordinate,
+                "Default Image Coordinates");
+            _default_image_coordinates = conversion(
+                {.ref = {.node = coordinate, .socket = "UV"},
+                 .type = contract::SocketType::point},
+                contract::SocketType::vector);
         }
-        return {
-            .ref = {
-                .node = *_default_image_coordinates,
-                .socket = "UV"},
-            .type = contract::SocketType::vector};
+        return *_default_image_coordinates;
     }
 
     [[nodiscard]] TypedOutput
     default_generated_coordinates() override {
         if (!_default_generated_coordinates) {
-            _default_generated_coordinates =
-                _graph.add_node(
-                    compiler::node_type::texture_coordinate,
-                    "Default Generated Coordinates");
+            const auto coordinate = _graph.add_node(
+                compiler::node_type::texture_coordinate,
+                "Default Generated Coordinates");
+            _default_generated_coordinates = conversion(
+                {.ref = {.node = coordinate, .socket = "Generated"},
+                 .type = contract::SocketType::point},
+                contract::SocketType::vector);
         }
-        return {
-            .ref = {
-                .node = *_default_generated_coordinates,
-                .socket = "Generated"},
-            .type = contract::SocketType::vector};
+        return *_default_generated_coordinates;
     }
 
     [[nodiscard]] TypedOutput geometry_output(

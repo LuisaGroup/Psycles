@@ -106,14 +106,14 @@ def _main() -> None:
         raise AssertionError(
             f"coordinate object identity changed: {special['object']!r}"
         )
-    expected = _column_major(helper.matrix_world.inverted_safe())
-    actual = special["world_to_object"]
+    expected = _column_major(helper.matrix_world)
+    actual = special["object_to_world"]
     if len(actual) != 16 or any(
         abs(value - reference) > 1.0e-6
         for value, reference in zip(actual, expected)
     ):
         raise AssertionError(
-            f"world-to-object transform changed: {actual} != {expected}"
+            f"object-to-world transform changed: {actual} != {expected}"
         )
     if "object_coordinates" in nodes[implicit.name]["special"]:
         raise AssertionError(

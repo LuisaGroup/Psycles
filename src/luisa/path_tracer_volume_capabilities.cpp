@@ -15,6 +15,7 @@ is_spatial_source(compiler::ValueOperation operation) noexcept {
   case ValueOperation::shading_normal:
   case ValueOperation::geometric_normal:
   case ValueOperation::incoming:
+  case ValueOperation::reflection:
   case ValueOperation::tangent:
   case ValueOperation::uv:
   case ValueOperation::generated:

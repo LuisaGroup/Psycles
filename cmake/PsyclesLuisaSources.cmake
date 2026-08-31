@@ -8,6 +8,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_primitive_attribute.cpp
     src/luisa/cycles_svm_volume_attribute.cpp
     src/luisa/cycles_svm_stack.cpp
+    src/luisa/cycles_svm_texture_coordinate.cpp
     src/luisa/cycles_svm_attribute.cpp
     src/luisa/cycles_svm_value.cpp
     src/luisa/cycles_svm_vector.cpp
@@ -84,7 +85,6 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/shader_table_data.cpp
     src/luisa/cycles_transform.cpp
     src/luisa/cycles_magic.cpp
-    src/luisa/cycles_triangle_intersection_component.cpp
     src/luisa/cycles_triangle_surface_component.cpp
     src/luisa/cycles_wave.cpp
     src/luisa/cycles_voronoi.cpp

@@ -27,6 +27,7 @@ supports_context_value(compiler::ValueOperation operation) noexcept {
   case compiler::ValueOperation::shading_normal:
   case compiler::ValueOperation::geometric_normal:
   case compiler::ValueOperation::incoming:
+  case compiler::ValueOperation::reflection:
   case compiler::ValueOperation::tangent:
   case compiler::ValueOperation::uv:
   case compiler::ValueOperation::generated:
@@ -170,6 +171,10 @@ public:
       break;
     case compiler::ValueOperation::incoming:
       value = make_float4(point.incoming, 0.0f);
+      break;
+    case compiler::ValueOperation::reflection:
+      value = make_float4(
+          -reflect(point.incoming, point.shading_normal), 0.0f);
       break;
     case compiler::ValueOperation::tangent:
       value = make_float4(surface_geometry_tangent(point), 0.0f);

@@ -25,7 +25,7 @@ Differential3 differential_from_compact(Expr<luisa::float3> direction,
         make_float3(direction.z - direction.y, direction.x + direction.z,
                     -direction.y - direction.x);
   };
-  orthogonal = normalize_exact(orthogonal);
+  orthogonal = normalize_cycles(orthogonal);
   return {.dx = differential * orthogonal,
           .dy = differential * cross(direction, orthogonal)};
 }

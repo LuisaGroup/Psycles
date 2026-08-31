@@ -111,6 +111,14 @@ inline constexpr std::uint32_t primitive_lamp = 1u << 5u;
 inline constexpr std::uint32_t primitive_motion = 1u << 6u;
 inline constexpr std::uint32_t shader_data_object_motion = 1u << 1u;
 inline constexpr std::uint32_t shader_data_object_transform_applied = 1u << 2u;
+inline constexpr std::uint32_t shader_data_object_has_corner_normals =
+    1u << 12u;
+
+/* CameraType values copied from Cycles 5.2.1 kernel/types.h. */
+inline constexpr std::uint32_t camera_perspective = 0u;
+inline constexpr std::uint32_t camera_orthographic = 1u;
+inline constexpr std::uint32_t camera_panorama = 2u;
+inline constexpr std::uint32_t camera_custom = 3u;
 
 /* Shader id decoration bits copied from Cycles 5.2.1 kernel/types.h. */
 inline constexpr std::uint32_t shader_smooth_normal = 1u << 31u;
@@ -158,6 +166,12 @@ struct TriangleVertices {
   luisa::compute::Float3 v0;
   luisa::compute::Float3 v1;
   luisa::compute::Float3 v2;
+};
+
+struct TriangleNormals {
+  luisa::compute::Float3 n0;
+  luisa::compute::Float3 n1;
+  luisa::compute::Float3 n2;
 };
 
 /* Direct Luisa projections of Cycles' differential and dual3 value types. */
@@ -239,6 +253,24 @@ public:
       luisa::compute::Expr<std::int32_t> offset) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::UInt3 triangle_vertex_indices(
       luisa::compute::Expr<std::uint32_t> prim) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Int object_normal_offset(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::UInt object_num_geom_steps(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Int object_num_vertices(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Int object_num_primitives(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3 object_dupli_generated(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3 object_dupli_uv(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::UInt camera_type() const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float camera_width() const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float camera_height() const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3 camera_world_to_ndc(
+      const ShaderData &shader_data,
+      luisa::compute::Expr<luisa::float3> position) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Var<compiler::cycles_svm::KernelCurve>
   curve(luisa::compute::Expr<std::uint32_t> prim) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Bool
@@ -273,6 +305,7 @@ public:
  * handler is copied; no alternative shader state is consulted. */
 struct ShaderData {
   luisa::compute::Float3 P;
+  luisa::compute::Float3 ray_P;
   luisa::compute::Float3 N;
   luisa::compute::Float3 Ng;
   luisa::compute::Float3 wi;
@@ -325,6 +358,9 @@ struct ShaderData {
       luisa::compute::Expr<luisa::float4x4> motion_world_to_object,
       luisa::compute::Expr<std::uint32_t> random_state = 0u) noexcept;
 };
+
+[[nodiscard]] luisa::compute::Float3 decode_packed_normal(
+    luisa::compute::Var<compiler::cycles_svm::packed_normal> packed) noexcept;
 
 [[nodiscard]] AttributeDescriptor
 find_attribute(const KernelGlobals &kernel_globals,

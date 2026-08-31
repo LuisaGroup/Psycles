@@ -420,6 +420,10 @@ make_clamp_parameter_data(const CompiledSurface &surface) {
         incoming_source.x,
         incoming_source.y,
         incoming_source.z));
+    // Exercise Cycles' no-generated-attribute branch. A mesh with a Generated
+    // attribute at exactly (0.5, 0.5, z) has an intentionally non-finite
+    // radial tangent and is covered by the Geometry Tangent oracle instead.
+    point.geometry_index = ~0u;
     point.is_curve = is_curve;
     return point;
 }

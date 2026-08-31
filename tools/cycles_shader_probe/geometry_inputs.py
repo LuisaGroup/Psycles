@@ -122,6 +122,157 @@ def _texture_coordinate_object_transform(scene: Any) -> None:
     )
 
 
+def _svm_texture_coordinate(scene: Any) -> None:
+    """Freeze every Cycles Texture Coordinate compiler context."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+
+    projector = bpy.data.objects.new("SVM Coordinate Projector", None)
+    projector.matrix_world = Matrix(
+        (
+            (0.75, -0.20, 0.00, 0.35),
+            (0.15, 1.10, 0.00, -0.25),
+            (0.00, 0.00, 1.00, 0.10),
+            (0.00, 0.00, 0.00, 1.00),
+        )
+    )
+    scene.collection.objects.link(projector)
+
+    materials = []
+
+    def surface_material(
+        label: str,
+        socket: str,
+        *,
+        from_instancer: bool = False,
+        explicit_object: bool = False,
+    ) -> None:
+        material, tree, output = _material(f"SVM TexCoord {label}")
+        coordinates = tree.nodes.new("ShaderNodeTexCoord")
+        coordinates.name = f"{label} Coordinates"
+        coordinates.from_instancer = from_instancer
+        if explicit_object:
+            coordinates.object = projector
+        emission = tree.nodes.new("ShaderNodeEmission")
+        emission.name = f"{label} Emission"
+        tree.links.new(
+            _output(coordinates, socket), _input(emission, "Color")
+        )
+        tree.links.new(
+            _output(emission, "Emission"), _input(output, "Surface")
+        )
+        materials.append(material)
+
+    for label, socket in (
+        ("Generated", "Generated"),
+        ("Normal", "Normal"),
+        ("UV", "UV"),
+        ("Object", "Object"),
+        ("Camera", "Camera"),
+        ("Window", "Window"),
+        ("Reflection", "Reflection"),
+    ):
+        surface_material(label, socket)
+    surface_material("Object Transform", "Object", explicit_object=True)
+    surface_material(
+        "Dupli Generated", "Generated", from_instancer=True
+    )
+    surface_material("Dupli UV", "UV", from_instancer=True)
+
+    def bump_material(
+        label: str,
+        socket: str,
+        *,
+        from_instancer: bool = False,
+        explicit_object: bool = False,
+    ) -> None:
+        material, tree, output = _material(f"SVM TexCoord Bump {label}")
+        coordinates = tree.nodes.new("ShaderNodeTexCoord")
+        coordinates.name = f"Bump {label} Coordinates"
+        coordinates.from_instancer = from_instancer
+        if explicit_object:
+            coordinates.object = projector
+        separate = tree.nodes.new("ShaderNodeSeparateXYZ")
+        separate.name = f"Bump {label} Separate"
+        bump = tree.nodes.new("ShaderNodeBump")
+        bump.name = f"Bump {label}"
+        diffuse = tree.nodes.new("ShaderNodeBsdfDiffuse")
+        diffuse.name = f"Bump {label} Diffuse"
+        tree.links.new(
+            _output(coordinates, socket), _input(separate, "Vector")
+        )
+        tree.links.new(_output(separate, "X"), _input(bump, "Height"))
+        tree.links.new(_output(bump, "Normal"), _input(diffuse, "Normal"))
+        tree.links.new(
+            _output(diffuse, "BSDF"), _input(output, "Surface")
+        )
+        materials.append(material)
+
+    bump_material("Normal", "Normal")
+    bump_material("Object Transform", "Object", explicit_object=True)
+    bump_material("Reflection", "Reflection")
+    bump_material(
+        "Dupli Generated", "Generated", from_instancer=True
+    )
+    bump_material("Dupli UV", "UV", from_instancer=True)
+
+    volume, tree, output = _material("SVM TexCoord Volume Generated")
+    coordinates = tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = "Volume Generated Coordinates"
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Volume Generated Emission"
+    tree.links.new(
+        _output(coordinates, "Generated"), _input(emission, "Color")
+    )
+    tree.links.new(_output(emission, "Emission"), _input(output, "Volume"))
+    materials.append(volume)
+
+    _material_matrix(
+        scene,
+        materials,
+        columns=4,
+        rows=4,
+        name="SVM Texture Coordinate Matrix",
+        frame_bleed=0.02,
+    )
+
+    world_tree = scene.world.node_tree
+    world_background = world_tree.nodes.get("Background")
+    _input(world_background, "Strength").default_value = 1.0
+    world_coordinates = world_tree.nodes.new("ShaderNodeTexCoord")
+    world_coordinates.name = "World Coordinates"
+    add = world_tree.nodes.new("ShaderNodeVectorMath")
+    add.name = "World Generated Plus Reflection"
+    add.operation = "ADD"
+    world_tree.links.new(_output(world_coordinates, "Generated"), add.inputs[0])
+    world_tree.links.new(_output(world_coordinates, "Reflection"), add.inputs[1])
+    world_tree.links.new(_output(add, "Vector"), _input(world_background, "Color"))
+
+
+def _svm_texture_coordinate_world(scene: Any, socket: str) -> None:
+    """Freeze one Cycles background-only Texture Coordinate branch."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+    world_tree = scene.world.node_tree
+    world_background = world_tree.nodes.get("Background")
+    _input(world_background, "Strength").default_value = 1.0
+    coordinates = world_tree.nodes.new("ShaderNodeTexCoord")
+    coordinates.name = f"World {socket} Coordinates"
+    world_tree.links.new(
+        _output(coordinates, socket), _input(world_background, "Color")
+    )
+
+
+def _svm_texture_coordinate_background_generated(scene: Any) -> None:
+    _svm_texture_coordinate_world(scene, "Generated")
+
+
+def _svm_texture_coordinate_background_reflection(scene: Any) -> None:
+    _svm_texture_coordinate_world(scene, "Reflection")
+
+
 def _geometry_attribute_outputs(scene: Any) -> None:
     """Pin Cycles RGBA projection and missing-attribute semantics."""
 

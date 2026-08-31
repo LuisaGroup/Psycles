@@ -5,6 +5,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -44,29 +45,35 @@ void require(bool condition, std::string_view message) {
     return graph;
 }
 
-[[nodiscard]] ShaderGraph named_uv_graph(std::uint64_t id) {
+[[nodiscard]] ShaderGraph named_uv_graph(std::string_view attribute) {
     ShaderGraph graph;
     const auto coordinates = graph.add_node(
-        node_type::texture_coordinate, "Named UV demand");
-    const auto conversion = graph.add_node(
+        node_type::uv_map, "Named UV demand");
+    const auto to_vector = graph.add_node(
+        node_type::point_to_vector, "UV point conversion");
+    const auto to_color = graph.add_node(
         node_type::vector_to_color, "UV conversion");
     const auto emission = graph.add_node(
         node_type::emission, "UV consumer");
     require(
         graph.set_property(
             coordinates,
-            "UvMapNamed",
-            SocketValue::boolean(true)) &&
+            "Attribute",
+            SocketValue::string(std::string{attribute})) &&
             graph.set_property(
                 coordinates,
-                "UvMapId",
-                SocketValue::unsigned_integer(id)) &&
+                "AttributeId",
+                SocketValue::unsigned_integer(uv_attribute_id(attribute))) &&
             graph.connect(
                 {.node = coordinates, .socket = "UV"},
-                conversion,
+                to_vector,
+                "Point") &&
+            graph.connect(
+                {.node = to_vector, .socket = "Vector"},
+                to_color,
                 "Vector") &&
             graph.connect(
-                {.node = conversion, .socket = "Color"},
+                {.node = to_color, .socket = "Color"},
                 emission,
                 "Color"),
         "could not build named UV graph");
@@ -154,7 +161,7 @@ void test_per_geometry_union_and_tangent_dependency_closure() {
         uv_material,
         MaterialDesc{
             .name = "named UV",
-            .shader = named_uv_graph(uv_attribute_id(kept_uv))});
+            .shader = named_uv_graph(kept_uv)});
     snapshot.materials.emplace(
         tangent_material,
         MaterialDesc{
@@ -218,6 +225,12 @@ void test_per_geometry_union_and_tangent_dependency_closure() {
         build_scene_material_reachability(snapshot);
     const auto update = materials.update(
         snapshot, compiler, reachability.shader_materials);
+    if (!update.committed) {
+        for (const auto &diagnostic : update.diagnostics) {
+            std::cerr << "material " << diagnostic.material.value
+                      << ": " << diagnostic.message << '\n';
+        }
+    }
     require(update.committed, "material fixture did not compile");
     require(
         materials.materials().size() == 3u &&
@@ -296,7 +309,7 @@ void test_curve_domain_attribute_residency() {
         uv_material,
         MaterialDesc{
             .name = "curve UV",
-            .shader = named_uv_graph(uv_attribute_id(kept_uv))});
+            .shader = named_uv_graph(kept_uv)});
     snapshot.materials.emplace(
         color_material,
         MaterialDesc{
@@ -306,7 +319,7 @@ void test_curve_domain_attribute_residency() {
         unreachable_material,
         MaterialDesc{
             .name = "unreachable curve UV",
-            .shader = named_uv_graph(uv_attribute_id(dropped_uv))});
+            .shader = named_uv_graph(dropped_uv)});
     snapshot.curve_geometries.emplace(
         geometry_id,
         CurveGeometryDesc{

@@ -148,6 +148,7 @@ surface_svm_value_base_opcode(ValueOperation operation) noexcept {
     return SurfaceSvmValueOpcode::tangent;
   case ValueOperation::uv:
   case ValueOperation::generated:
+  case ValueOperation::reflection:
   case ValueOperation::object_position:
   case ValueOperation::object_position_with_transform:
     return SurfaceSvmValueOpcode::tex_coord;

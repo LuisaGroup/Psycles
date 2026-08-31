@@ -109,10 +109,10 @@ struct VectorRemap {
 }
 
 [[nodiscard]] Float diffusion_length(Float alpha) noexcept {
-    return 1.0f /
-           sqrt(1.0f -
-                pow(alpha,
-                    2.44294f - 0.0215813f * alpha + 0.578637f / alpha));
+    return rsqrt(
+        1.0f -
+        pow(alpha,
+            2.44294f - 0.0215813f * alpha + 0.578637f / alpha));
 }
 
 [[nodiscard]] Float dwivedi_pdf(

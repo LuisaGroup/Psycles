@@ -95,19 +95,40 @@ NodeRegistry make_core_node_registry() {
   static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::texture_coordinate,
       .inputs = {},
-      .outputs = {output("UV", SocketType::vector),
-                  output("Normal", SocketType::vector),
-                  output("Generated", SocketType::vector),
-                  output("Object", SocketType::vector)},
-      .properties = {property("UvMapNamed", SocketType::boolean,
+      .outputs = {output("Generated", SocketType::point),
+                  output("Normal", SocketType::normal),
+                  output("UV", SocketType::point),
+                  output("Object", SocketType::point),
+                  output("Camera", SocketType::point),
+                  output("Window", SocketType::point),
+                  output("Reflection", SocketType::normal)},
+      .properties = {property("FromDupli", SocketType::boolean,
+                              SocketValue::boolean(false)),
+                     property("UseTransform", SocketType::boolean,
+                              SocketValue::boolean(false)),
+                     property("ObjectTransform", SocketType::transform,
+                              SocketValue::transform(Mat4f{})),
+                     property("UvMapNamed", SocketType::boolean,
                               SocketValue::boolean(false)),
                      runtime_property(
                          "UvMapId", SocketType::unsigned_integer,
-                         SocketValue::unsigned_integer(0u)),
-                     property("ObjectUseTransform", SocketType::boolean,
+                         SocketValue::unsigned_integer(0u))},
+      .required_features = feature_bit(ShaderFeature::surface) |
+                           feature_bit(ShaderFeature::attributes)}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::uv_map,
+      .inputs = {},
+      .outputs = {output("UV", SocketType::point)},
+      .properties = {property("FromDupli", SocketType::boolean,
                               SocketValue::boolean(false)),
-                     property("ObjectWorldToObject", SocketType::transform,
-                              SocketValue::transform(Mat4f{}))},
+                     property("Attribute", SocketType::string,
+                              SocketValue::string("")),
+                     // Compatibility binding for the retiring surface-value
+                     // program. The Cycles SVM compiler consumes Attribute.
+                     runtime_property("AttributeId",
+                                      SocketType::unsigned_integer,
+                                      SocketValue::unsigned_integer(0u))},
       .required_features = feature_bit(ShaderFeature::surface) |
                            feature_bit(ShaderFeature::attributes)}));
 

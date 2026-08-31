@@ -147,6 +147,41 @@ public:
     return _triangle_indices.read(prim);
   }
 
+  [[nodiscard]] Int
+  object_normal_offset(Expr<std::uint32_t>) const noexcept override {
+    return 0;
+  }
+  [[nodiscard]] UInt
+  object_num_geom_steps(Expr<std::uint32_t>) const noexcept override {
+    return 2u;
+  }
+  [[nodiscard]] Int
+  object_num_vertices(Expr<std::uint32_t>) const noexcept override {
+    return 3;
+  }
+  [[nodiscard]] Int
+  object_num_primitives(Expr<std::uint32_t>) const noexcept override {
+    return 1;
+  }
+  [[nodiscard]] Float3
+  object_dupli_generated(Expr<std::uint32_t>) const noexcept override {
+    return make_float3(0.0f);
+  }
+  [[nodiscard]] Float3
+  object_dupli_uv(Expr<std::uint32_t>) const noexcept override {
+    return make_float3(0.0f);
+  }
+  [[nodiscard]] UInt camera_type() const noexcept override {
+    return device_svm::camera_perspective;
+  }
+  [[nodiscard]] Float camera_width() const noexcept override { return 1.0f; }
+  [[nodiscard]] Float camera_height() const noexcept override { return 1.0f; }
+  [[nodiscard]] Float3 camera_world_to_ndc(
+      const device_svm::ShaderData &,
+      Expr<luisa::float3> position) const noexcept override {
+    return position;
+  }
+
   [[nodiscard]] Var<KernelCurve>
   curve(Expr<std::uint32_t> prim) const noexcept override {
     return _curves.read(prim);

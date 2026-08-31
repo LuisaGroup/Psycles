@@ -251,8 +251,14 @@ int main(int argc, char **argv) {
         std::sqrt(portal_results[0u].x * portal_results[0u].x +
                   portal_results[0u].y * portal_results[0u].y +
                   portal_results[0u].z * portal_results[0u].z);
+    // The scalar Cycles oracle spans backend-native reciprocal-square-root
+    // implementations. Keep proposal/evaluation self-consistency below at
+    // the tighter tolerance so this does not hide a structural PDF mismatch.
+    constexpr auto portal_oracle_tolerance = 5.0e-5f;
     if (!near(portal_direction_length, 1.0f, 2.0e-5f) ||
-        !near(portal_results[0u].w, square_solid_angle_pdf, 2.0e-5f) ||
+        !near(portal_results[0u].w,
+              square_solid_angle_pdf,
+              portal_oracle_tolerance) ||
         !near(portal_results[1u].x, portal_results[0u].w, 2.0e-5f) ||
         portal_results[1u].y != 1.0f ||
         portal_results[1u].z != 1.0f ||

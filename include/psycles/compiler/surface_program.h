@@ -113,6 +113,7 @@ enum class ValueOperation : std::uint8_t {
   shading_normal,
   geometric_normal,
   incoming,
+  reflection,
   tangent,
   uv,
   generated,
@@ -608,6 +609,7 @@ value_operation_operand_count(ValueOperation operation) noexcept {
     case ValueOperation::shading_normal:
     case ValueOperation::geometric_normal:
     case ValueOperation::incoming:
+    case ValueOperation::reflection:
     case ValueOperation::tangent:
     case ValueOperation::generated:
     case ValueOperation::object_position:

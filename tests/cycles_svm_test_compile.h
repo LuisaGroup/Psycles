@@ -10,7 +10,8 @@ namespace psycles::compiler::cycles_svm {
 [[nodiscard]] inline ShaderImage
 compile_shader(const ShaderProgram &shader) {
   AttributeIDMap attribute_ids;
-  return compile_shader(shader, attribute_ids);
+  return compile_shader(shader, attribute_ids,
+                        ShaderCompileContext{.background = false});
 }
 
 } // namespace psycles::compiler::cycles_svm

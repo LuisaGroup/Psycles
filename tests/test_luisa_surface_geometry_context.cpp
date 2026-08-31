@@ -2,6 +2,7 @@
 #include "surface_geometry_context.h"
 
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
@@ -45,14 +46,18 @@ int main(int argc, char **argv) {
     objectless.geometry_index = ~0u;
     objectless.dpdu = make_float3(0.0f, 5.0f, 0.0f);
     output.write(2u, surface_geometry_tangent(objectless));
+
+    auto degenerate = triangle;
+    degenerate.generated = make_float3(0.5f);
+    output.write(3u, surface_geometry_tangent(degenerate));
   };
 
   Context context{argv[0]};
   auto device = context.create_device(backend);
   auto stream = device.create_stream();
-  auto output = device.create_buffer<luisa::float3>(3u);
+  auto output = device.create_buffer<luisa::float3>(4u);
   auto kernel = device.compile(evaluate);
-  std::array<luisa::float3, 3u> actual{};
+  std::array<luisa::float3, 4u> actual{};
   stream << kernel(output).dispatch(1u) << output.copy_to(luisa::span{actual})
          << synchronize();
 
@@ -62,13 +67,20 @@ int main(int argc, char **argv) {
   constexpr std::array expected{
       luisa::float3{-0.894427191f, 0.447213596f, 0.0f},
       luisa::float3{0.6f, 0.8f, 0.0f}, luisa::float3{0.0f, 1.0f, 0.0f}};
-  for (auto index = std::size_t{}; index < actual.size(); ++index) {
+  for (auto index = std::size_t{}; index < expected.size(); ++index) {
     if (!near(actual[index], expected[index])) {
       std::cerr << "Cycles Geometry Tangent oracle " << index << " failed on "
                 << backend << ": got {" << actual[index].x << ", "
                 << actual[index].y << ", " << actual[index].z << "}\n";
       return EXIT_FAILURE;
     }
+  }
+  if (std::isfinite(actual[3u].x) || std::isfinite(actual[3u].y) ||
+      std::isfinite(actual[3u].z)) {
+    std::cerr << "Cycles Geometry Tangent degenerate-domain oracle failed on "
+              << backend << ": got {" << actual[3u].x << ", " << actual[3u].y
+              << ", " << actual[3u].z << "}\n";
+    return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
 }

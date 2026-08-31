@@ -52,7 +52,9 @@ add_library(psycles_core
     src/compiler/cycles_svm_geometry_nodes.cpp
     src/compiler/cycles_svm_graph.cpp
     src/compiler/cycles_svm_nodes.cpp
+    src/compiler/cycles_svm_texture_coordinate_nodes.cpp
     src/compiler/cycles_svm_vector_nodes.cpp
+    src/compiler/cycles_transform.cpp
     src/compiler/cycles_emission_sampling.cpp
     src/compiler/hosek_sky.cpp
     src/compiler/material_library.cpp
@@ -249,6 +251,14 @@ if(PSYCLES_ENABLE_LUISA)
             psycles_luisa
             STATIC
             ${PSYCLES_LUISA_SOURCES})
+        # The Luisa DSL archive is linked into psycles_luisa_runtime, which is
+        # a shared library when BUILD_SHARED_LIBS is enabled.  Keep every
+        # object in the archive position-independent; in particular,
+        # Type::of<T>() owns function-local TLS whose local-exec relocations
+        # cannot be promoted by the shared-library link step.
+        set_target_properties(
+            psycles_luisa
+            PROPERTIES POSITION_INDEPENDENT_CODE ON)
         add_library(Psycles::luisa ALIAS psycles_luisa)
         target_include_directories(psycles_luisa PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

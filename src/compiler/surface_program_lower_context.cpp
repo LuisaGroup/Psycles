@@ -1,5 +1,7 @@
 #include "surface_program_builder.h"
 
+#include <psycles/compiler/cycles_transform.h>
+
 #include <tuple>
 #include <utility>
 
@@ -66,10 +68,11 @@ SurfaceProgramBuilder::lower_context_node(const contract::ShaderNode &node) {
   }
   if (node.type == node_type::texture_coordinate) {
     const auto uv_map = lower_property_parameter(node, "UvMapId");
-    const auto object_use_transform = property_bool(node, "ObjectUseTransform");
+    const auto object_use_transform = property_bool(node, "UseTransform");
     std::vector<float> object_world_to_object;
     if (object_use_transform) {
-      const auto transform = property_transform(node, "ObjectWorldToObject");
+      const auto transform = cycles_inverse_affine_transform(
+          property_transform(node, "ObjectTransform"));
       object_world_to_object.assign(transform.elements.begin(),
                                     transform.elements.end());
     }
@@ -86,11 +89,15 @@ SurfaceProgramBuilder::lower_context_node(const contract::ShaderNode &node) {
     publish(node.id, "Normal",
             append(ValueInstruction{.operation = ValueOperation::shading_normal,
                                     .source_node = node.id,
-                                    .result_type = SocketType::vector}));
+                                    .result_type = SocketType::normal}));
+    publish(node.id, "Reflection",
+            append(ValueInstruction{.operation = ValueOperation::reflection,
+                                    .source_node = node.id,
+                                    .result_type = SocketType::normal}));
     publish(node.id, "Generated",
             append(ValueInstruction{.operation = ValueOperation::generated,
                                     .source_node = node.id,
-                                    .result_type = SocketType::vector}));
+                                    .result_type = SocketType::point}));
     publish(
         node.id, "Object",
         append(ValueInstruction{
@@ -98,8 +105,23 @@ SurfaceProgramBuilder::lower_context_node(const contract::ShaderNode &node) {
                              ? ValueOperation::object_position_with_transform
                              : ValueOperation::object_position,
             .source_node = node.id,
-            .result_type = SocketType::vector,
+            .result_type = SocketType::point,
             .static_table = std::move(object_world_to_object)}));
+    return true;
+  }
+  if (node.type == node_type::uv_map) {
+    const auto map = lower_property_parameter(node, "AttributeId");
+    if (map) {
+      const auto attribute = property_string(node, "Attribute");
+      publish(node.id, "UV",
+              append(ValueInstruction{
+                  .operation = ValueOperation::uv,
+                  .source_node = node.id,
+                  .result_type = SocketType::point,
+                  .operands = make_value_operands<operand::uv>({
+                      {operand::uv::map, *map}}),
+                  .static_u0 = attribute.empty() ? 0u : 1u}));
+    }
     return true;
   }
   if (node.type == node_type::object_info) {

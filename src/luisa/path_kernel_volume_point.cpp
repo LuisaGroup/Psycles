@@ -1,5 +1,7 @@
 #include "path_kernel_volume_point.h"
 
+#include <psycles/luisa/native_vector_math.h>
+
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
@@ -11,12 +13,7 @@ namespace {
     // zero. This matters for the volume-majorant prepass: bake rays have an
     // exactly zero direction, so ShaderData N/Ng/wi and their object-space
     // transforms must remain zero rather than becoming NaN.
-    const auto value_length = length(value);
-    return value /
-           select(
-               1.0f,
-               value_length,
-               value_length != 0.0f);
+    return native_vector_math::safe_normalize_nonzero(value);
 }
 
 class SceneVolumeStackEntryPointProvider final

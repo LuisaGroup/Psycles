@@ -414,6 +414,7 @@ bool value_instruction_observes_shading_normal(
     const ValueInstruction &instruction) noexcept {
   switch (instruction.operation) {
   case ValueOperation::shading_normal:
+  case ValueOperation::reflection:
   case ValueOperation::normal_map:
   case ValueOperation::sampled_normal_map:
     return true;
