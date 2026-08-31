@@ -340,7 +340,7 @@ NodeRegistry make_core_node_registry() {
       .properties = {property("Dimensions", SocketType::unsigned_integer,
                               SocketValue::unsigned_integer(3u)),
                      property("Normalize", SocketType::boolean,
-                              SocketValue::boolean(false)),
+                              SocketValue::boolean(true)),
                      property("NoiseType", SocketType::string,
                               SocketValue::string("FBM")),
                      property("NeedsColor", SocketType::boolean,

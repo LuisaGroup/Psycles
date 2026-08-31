@@ -15,7 +15,7 @@
 
 namespace psycles::luisa_backend::cycles_noise {
 
-// This is a Luisa DSL lowering of Blender 4.5.10 Cycles' SVM Noise
+// This is a Luisa DSL lowering of Blender 5.2.1 Cycles' SVM Noise
 // Texture. The hash, Perlin gradients, output scales, fractal recurrence,
 // coordinate precision correction, distortion seeds, and color seeds are
 // intentionally kept in the same order as Cycles so every Luisa backend
@@ -808,7 +808,8 @@ template<typename P>
     Float value = 1.0f;
     Float power = 1.0f;
     auto whole_octaves =
-        cast<luisa::uint>(floor(detail)) + 1u;
+        cast<luisa::uint>(
+            max(cast<int>(detail) + 1, 0));
     $for (octave, whole_octaves) {
         static_cast<void>(octave);
         value *= power * signed_noise(p) + 1.0f;
@@ -834,7 +835,7 @@ template<typename P>
     Float value = offset + signed_noise(p);
     p *= lacunarity;
     auto whole_octaves =
-        cast<luisa::uint>(floor(detail));
+        cast<luisa::uint>(max(cast<int>(detail), 0));
     $for (octave, whole_octaves) {
         static_cast<void>(octave);
         auto increment =
@@ -863,19 +864,17 @@ template<typename P>
     Float power = 1.0f;
     Float value = 0.0f;
     Float weight = 1.0f;
-    auto whole_octaves =
-        cast<luisa::uint>(floor(detail)) + 1u;
-    $for (octave, whole_octaves) {
-        static_cast<void>(octave);
-        $if (weight > 0.001f) {
-            weight = min(weight, 1.0f);
-            auto signal =
-                (signed_noise(p) + offset) * power;
-            power *= roughness;
-            value += weight * signal;
-            weight *= gain * signal;
-            p *= lacunarity;
-        };
+    luisa::compute::Int octave = 0;
+    $while((weight > 0.001f) &
+           (octave <= cast<int>(detail))) {
+        weight = min(weight, 1.0f);
+        auto signal =
+            (signed_noise(p) + offset) * power;
+        power *= roughness;
+        value += weight * signal;
+        weight *= gain * signal;
+        p *= lacunarity;
+        octave += 1;
     };
     auto remainder = detail - floor(detail);
     $if ((remainder != 0.0f) & (weight > 0.001f)) {
@@ -899,7 +898,7 @@ template<typename P>
     signal *= signal;
     Float value = signal;
     auto remaining_octaves =
-        cast<luisa::uint>(floor(detail));
+        cast<luisa::uint>(max(cast<int>(detail), 0));
     $for (octave, remaining_octaves) {
         static_cast<void>(octave);
         p *= lacunarity;

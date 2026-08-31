@@ -285,6 +285,19 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_mapping_tests)
 
     add_executable(
+        psycles_cycles_svm_noise_tests
+        tests/test_cycles_svm_noise.cpp)
+    target_link_libraries(
+        psycles_cycles_svm_noise_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_cycles_svm_noise_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.cycles_svm_noise
+        COMMAND psycles_cycles_svm_noise_tests)
+
+    add_executable(
         psycles_progressive_pixel_probe_tests
         tests/test_progressive_pixel_probe.cpp)
     target_link_libraries(

@@ -302,6 +302,11 @@ void eval_nodes(
               (kernel_features & kernel_feature_object_motion) != 0u);
         };
       }
+      if (node_types_used[NODE_TEX_NOISE]) {
+        PSYCLES_SVM_CASE(NODE_TEX_NOISE) {
+          detail::node_tex_noise(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_TEX_ENVIRONMENT]) {
         PSYCLES_SVM_CASE(NODE_TEX_ENVIRONMENT) {
           detail::node_tex_environment(
