@@ -52,6 +52,11 @@ public:
   input_float3_from_offset(SVMStackOffset offset) const noexcept {
     return cycles_svm::input_float3(offset);
   }
+  // Cycles SVMCompiler::stack_assign(ShaderInput *): unlike input_link(),
+  // this materializes an unlinked socket default in the SVM stack. Texture
+  // Mapping uses this transition because image coordinates are never encoded
+  // as an immediate payload.
+  [[nodiscard]] virtual SVMStackOffset input_stack(std::string_view name) = 0;
   [[nodiscard]] virtual SVMStackOffset input_link(std::string_view name) = 0;
   [[nodiscard]] virtual SVMStackOffset output(std::string_view name) = 0;
   virtual void stack_link(GraphInput *input, GraphOutput *output) = 0;
@@ -60,6 +65,10 @@ public:
   attribute(AttributeStandard standard) = 0;
   [[nodiscard]] virtual std::uint32_t
   attribute_standard(std::string_view name) = 0;
+  [[nodiscard]] virtual std::int32_t image(
+      std::uint64_t resource_id,
+      ImageInterpolation interpolation,
+      ImageExtension extension) = 0;
 
   virtual void add_value_node(GraphNode *node, float value,
                               SVMStackOffset stack_offset) = 0;

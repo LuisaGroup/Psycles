@@ -78,6 +78,7 @@ void stack_store_int(Stack &stack,
 normalize_cycles(luisa::compute::Expr<luisa::float3> value) noexcept;
 [[nodiscard]] luisa::compute::Float3
 safe_normalize_cycles(luisa::compute::Expr<luisa::float3> value) noexcept;
+[[nodiscard]] Dual3 safe_normalize_dual(const Dual3 &value) noexcept;
 void object_position_transform(luisa::compute::Float3 &value,
                                const TransformState &transform_state,
                                const ShaderData &shader_data,
@@ -115,6 +116,20 @@ void node_tex_coord(Cursor &cursor, Stack &stack,
                     bool use_derivatives,
                     bool volume_enabled,
                     bool object_motion_enabled) noexcept;
+void node_tex_image(Cursor &cursor, Stack &stack,
+                    const KernelGlobals &kernel_globals,
+                    ShaderData &shader_data,
+                    bool use_derivatives) noexcept;
+void node_tex_image_box(Cursor &cursor, Stack &stack,
+                        const KernelGlobals &kernel_globals,
+                        const TransformState &transform_state,
+                        ShaderData &shader_data,
+                        bool use_derivatives,
+                        bool object_motion_enabled) noexcept;
+void node_tex_environment(Cursor &cursor, Stack &stack,
+                          const KernelGlobals &kernel_globals,
+                          ShaderData &shader_data,
+                          bool use_derivatives) noexcept;
 void node_attr_surface(Cursor &cursor, Stack &stack,
                        const KernelGlobals &kernel_globals,
                        const ShaderData &shader_data) noexcept;

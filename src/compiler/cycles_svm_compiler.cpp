@@ -252,6 +252,7 @@ private:
 
   CyclesGraph _graph;
   AttributeIDMap &_attribute_ids;
+  ImageIDMap &_image_ids;
   BytecodeBuilder _stream;
   Stack _stack;
   GraphNode *_current_node{};
@@ -443,6 +444,16 @@ private:
                : SVM_STACK_INVALID;
   }
 
+  [[nodiscard]] SVMStackOffset input_stack(std::string_view name) override {
+    auto *input = _current_node->input(name);
+    if (input == nullptr) {
+      static_cast<void>(reject("Cycles SVM stack input is absent: " +
+                               std::string{name}));
+      return SVM_STACK_INVALID;
+    }
+    return stack_assign(input);
+  }
+
   [[nodiscard]] SVMStackOffset output(std::string_view name) override {
     auto *shader_output = _current_node->output(name);
     if (shader_output == nullptr) {
@@ -467,6 +478,16 @@ private:
 
   [[nodiscard]] std::uint32_t
   attribute_standard(std::string_view name) override;
+
+  [[nodiscard]] std::int32_t image(
+      std::uint64_t resource_id,
+      ImageInterpolation interpolation,
+      ImageExtension extension) override {
+    return _image_ids.get_image_id(
+        {.resource_id = resource_id,
+         .interpolation = interpolation,
+         .extension = extension});
+  }
 
   void stack_link(GraphInput *input, GraphOutput *output_socket) override {
     if (input == nullptr || output_socket == nullptr || input->link == nullptr ||
@@ -985,9 +1006,10 @@ private:
 
 public:
   Compiler(const ShaderProgram &shader, AttributeIDMap &attribute_ids,
-           ShaderCompileContext context)
+           ImageIDMap &image_ids, ShaderCompileContext context)
       : _graph{CyclesGraph::project(shader)},
         _attribute_ids{attribute_ids},
+        _image_ids{image_ids},
         _background{context.background} {}
 
   [[nodiscard]] ShaderImage compile() {
@@ -1051,10 +1073,38 @@ std::uint64_t AttributeIDMap::get_attribute_id(std::string_view name) {
   return id;
 }
 
+std::int32_t ImageIDMap::get_image_id(ImageBinding binding) {
+  const std::scoped_lock lock{_image_lock};
+  if (const auto iter = _image_ids.find(binding); iter != _image_ids.end()) {
+    return iter->second;
+  }
+  if (_bindings.size() >=
+      static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max())) {
+    return std::numeric_limits<std::int32_t>::max();
+  }
+  const auto id = static_cast<std::int32_t>(_bindings.size());
+  _bindings.emplace_back(binding);
+  _image_ids.emplace(binding, id);
+  return id;
+}
+
+std::vector<ImageBinding> ImageIDMap::bindings() const {
+  const std::scoped_lock lock{_image_lock};
+  return _bindings;
+}
+
+ShaderImage compile_shader(const ShaderProgram &shader,
+                           AttributeIDMap &attribute_ids,
+                           ImageIDMap &image_ids,
+                           ShaderCompileContext context) {
+  return Compiler{shader, attribute_ids, image_ids, context}.compile();
+}
+
 ShaderImage compile_shader(const ShaderProgram &shader,
                            AttributeIDMap &attribute_ids,
                            ShaderCompileContext context) {
-  return Compiler{shader, attribute_ids, context}.compile();
+  ImageIDMap image_ids;
+  return compile_shader(shader, attribute_ids, image_ids, context);
 }
 
 } // namespace psycles::compiler::cycles_svm
