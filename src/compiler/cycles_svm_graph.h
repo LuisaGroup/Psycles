@@ -80,6 +80,7 @@ enum GraphSocketFlag : std::uint16_t {
   graph_socket_link_normal = 1u << 5u,
   graph_socket_link_position = 1u << 6u,
   graph_socket_link_tangent = 1u << 7u,
+  graph_socket_osl_internal = 1u << 8u,
 };
 
 struct GraphNode;

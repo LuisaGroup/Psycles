@@ -260,6 +260,16 @@ void eval_nodes(
           detail::node_camera(cursor, stack, transform_state, shader_data);
         };
       }
+      if (node_types_used[NODE_FRESNEL]) {
+        PSYCLES_SVM_CASE(NODE_FRESNEL) {
+          detail::node_fresnel(cursor, stack, shader_data);
+        };
+      }
+      if (node_types_used[NODE_LAYER_WEIGHT]) {
+        PSYCLES_SVM_CASE(NODE_LAYER_WEIGHT) {
+          detail::node_layer_weight(cursor, stack, shader_data);
+        };
+      }
       if (node_types_used[NODE_TEX_COORD]) {
         PSYCLES_SVM_CASE(NODE_TEX_COORD) {
           detail::node_tex_coord(

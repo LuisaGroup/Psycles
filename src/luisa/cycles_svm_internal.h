@@ -130,6 +130,10 @@ void node_geometry(Cursor &cursor, Stack &stack,
 void node_camera(Cursor &cursor, Stack &stack,
                  const TransformState &transform_state,
                  const ShaderData &shader_data) noexcept;
+void node_fresnel(Cursor &cursor, Stack &stack,
+                  const ShaderData &shader_data) noexcept;
+void node_layer_weight(Cursor &cursor, Stack &stack,
+                       const ShaderData &shader_data) noexcept;
 void node_tex_coord(Cursor &cursor, Stack &stack,
                     const KernelGlobals &kernel_globals,
                     const TransformState &transform_state,

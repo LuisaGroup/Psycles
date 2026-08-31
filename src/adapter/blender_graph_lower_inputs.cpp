@@ -232,20 +232,31 @@ public:
                      .type = SocketType::floating});
     }
     if (type == "LAYER_WEIGHT") {
-      const auto id = context.graph().add_node(
-          compiler::node_type::layer_weight, node_name);
-      static_cast<void>(context.graph().set_property(
-          id, "NormalLinked",
-          SocketValue::boolean(
-              context.input_source(node, "Normal").has_value())));
-      static_cast<void>(
-          context.bind(id, "Blend", node, "Blend", SocketType::floating));
-      static_cast<void>(
-          context.bind(id, "Normal", node, "Normal", SocketType::normal));
-      return finish(
-          {.ref = {.node = id,
-                   .socket = socket == "Facing" ? "Facing" : "Fresnel"},
-           .type = SocketType::floating});
+      const auto output_name = socket == "Facing" ? std::string_view{"Facing"}
+                                                   : std::string_view{"Fresnel"};
+      const auto semantic = "layer_weight." + std::string{output_name};
+      auto output = context.shared_output(node_name, semantic);
+      if (!output) {
+        const auto id = context.graph().add_node(
+            compiler::node_type::layer_weight, node_name);
+        static_cast<void>(context.graph().set_property(
+            id, "NormalLinked",
+            SocketValue::boolean(
+                context.input_source(node, "Normal").has_value())));
+        static_cast<void>(context.bind(id, "Blend", node, "Blend",
+                                       SocketType::floating));
+        static_cast<void>(context.bind(id, "Normal", node, "Normal",
+                                       SocketType::normal));
+        for (const auto name : {std::string_view{"Fresnel"},
+                                std::string_view{"Facing"}}) {
+          context.remember_shared_output(
+              node_name, "layer_weight." + std::string{name},
+              TypedOutput{.ref = {.node = id, .socket = std::string{name}},
+                          .type = SocketType::floating});
+        }
+        output = context.shared_output(node_name, semantic);
+      }
+      return finish(*output);
     }
     if (type == "FRESNEL") {
       const auto id =
