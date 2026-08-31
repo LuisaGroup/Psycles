@@ -36,6 +36,16 @@ public:
       std::uint32_t byte_index) const noexcept;
 };
 
+[[nodiscard]] luisa::compute::Float4x4 transform_from_rows(
+    luisa::compute::Expr<luisa::float4> x,
+    luisa::compute::Expr<luisa::float4> y,
+    luisa::compute::Expr<luisa::float4> z) noexcept;
+[[nodiscard]] luisa::compute::Float4x4 packed_transform(
+    Cursor &cursor) noexcept;
+[[nodiscard]] Dual3 transform_point(
+    luisa::compute::Expr<luisa::float4x4> transform,
+    const Dual3 &value) noexcept;
+
 [[nodiscard]] luisa::compute::Float stack_load_float(
     Stack &stack, luisa::compute::Expr<std::uint32_t> offset) noexcept;
 [[nodiscard]] luisa::compute::Float stack_load_float_default(
@@ -53,6 +63,13 @@ public:
 [[nodiscard]] luisa::compute::Float stack_load_input_float(
     Stack &stack, luisa::compute::Expr<std::uint32_t> bits) noexcept;
 [[nodiscard]] luisa::compute::Float3 stack_load_input_float3(
+    Stack &stack,
+    luisa::compute::Expr<std::uint32_t> x_bits,
+    luisa::compute::Expr<std::uint32_t> y_bits,
+    luisa::compute::Expr<std::uint32_t> z_bits) noexcept;
+[[nodiscard]] Dual1 stack_load_input_dual_float(
+    Stack &stack, luisa::compute::Expr<std::uint32_t> bits) noexcept;
+[[nodiscard]] Dual3 stack_load_input_dual_float3(
     Stack &stack,
     luisa::compute::Expr<std::uint32_t> x_bits,
     luisa::compute::Expr<std::uint32_t> y_bits,
@@ -130,6 +147,13 @@ void node_tex_environment(Cursor &cursor, Stack &stack,
                           const KernelGlobals &kernel_globals,
                           ShaderData &shader_data,
                           bool use_derivatives) noexcept;
+void node_mapping(Cursor &cursor, Stack &stack,
+                  bool use_derivatives) noexcept;
+void node_texture_mapping(Cursor &cursor, Stack &stack,
+                          bool use_derivatives) noexcept;
+void node_min_max(Cursor &cursor, Stack &stack) noexcept;
+void node_vector_math_mapping_normalize(Cursor &cursor, Stack &stack,
+                                        bool use_derivatives) noexcept;
 void node_attr_surface(Cursor &cursor, Stack &stack,
                        const KernelGlobals &kernel_globals,
                        const ShaderData &shader_data) noexcept;

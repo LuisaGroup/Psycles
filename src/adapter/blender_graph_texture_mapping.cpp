@@ -52,6 +52,10 @@ void bind_blender_texture_vector(
     const auto mapping_node = context.graph().add_node(
         compiler::node_type::mapping,
         text(member(raw_node, "name")) + " / Texture Mapping");
+    static_cast<void>(context.graph().set_property(
+        mapping_node,
+        "LegacyTextureMapping",
+        contract::SocketValue::boolean(true)));
     connect_source(
         context, mapping_node, raw_node, implicit_coordinates);
 

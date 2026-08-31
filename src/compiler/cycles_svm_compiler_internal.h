@@ -59,6 +59,10 @@ public:
   [[nodiscard]] virtual SVMStackOffset input_stack(std::string_view name) = 0;
   [[nodiscard]] virtual SVMStackOffset input_link(std::string_view name) = 0;
   [[nodiscard]] virtual SVMStackOffset output(std::string_view name) = 0;
+  [[nodiscard]] virtual SVMStackOffset stack_assign(GraphInput *input) = 0;
+  [[nodiscard]] virtual SVMStackOffset stack_find_offset(GraphInput *input) = 0;
+  virtual void stack_clear_offset(GraphInput *input,
+                                  SVMStackOffset offset) = 0;
   virtual void stack_link(GraphInput *input, GraphOutput *output) = 0;
   [[nodiscard]] virtual std::uint32_t attribute(std::string_view name) = 0;
   [[nodiscard]] virtual std::uint32_t

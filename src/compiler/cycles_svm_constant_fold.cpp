@@ -387,6 +387,22 @@ void ConstantFolder::fold_mix(NodeMix type, bool clamp) const {
   }
 }
 
+void ConstantFolder::fold_mapping(NodeMappingType type) const {
+  auto *vector = node->input("Vector");
+  auto *location = node->input("Location");
+  auto *rotation = node->input("Rotation");
+  auto *scale = node->input("Scale");
+
+  if (is_zero(scale)) {
+    make_zero();
+  } else if (type != NODE_MAPPING_TYPE_NORMAL &&
+             (is_zero(location) || type == NODE_MAPPING_TYPE_VECTOR ||
+              type == NODE_MAPPING_TYPE_NORMAL) &&
+             is_zero(rotation) && is_one(scale)) {
+    static_cast<void>(try_bypass_or_make_constant(vector));
+  }
+}
+
 void ConstantFolder::fold_mix_color(NodeMix type, bool clamp_factor,
                                     bool clamp) const {
   auto *factor = node->input("Factor");

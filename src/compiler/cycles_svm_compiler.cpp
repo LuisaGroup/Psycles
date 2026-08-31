@@ -312,7 +312,7 @@ private:
                       .value = packed_float3{value.x, value.y, value.z}}));
   }
 
-  [[nodiscard]] SVMStackOffset stack_assign(GraphInput *input) {
+  [[nodiscard]] SVMStackOffset stack_assign(GraphInput *input) override {
     if (input->stack_offset == SVM_STACK_INVALID) {
       if (input->link != nullptr) {
         if (input->link->stack_offset == SVM_STACK_INVALID) {
@@ -374,6 +374,23 @@ private:
       }
     }
     return input->stack_offset;
+  }
+
+  [[nodiscard]] SVMStackOffset stack_find_offset(GraphInput *input) override {
+    if (input == nullptr) {
+      static_cast<void>(reject("Cycles SVM temporary stack input is absent"));
+      return 0u;
+    }
+    return stack_find_offset(stack_size(input));
+  }
+
+  void stack_clear_offset(GraphInput *input,
+                          SVMStackOffset offset) override {
+    if (input == nullptr) {
+      static_cast<void>(reject("Cycles SVM temporary stack input is absent"));
+      return;
+    }
+    _stack.release(offset, stack_size(input));
   }
 
   [[nodiscard]] SVMStackOffset stack_assign(GraphOutput *output_socket) {

@@ -4,6 +4,7 @@
 
 #include "cycles_svm_graph.h"
 #include "cycles_svm_constant_fold.h"
+#include "cycles_svm_mapping_nodes.h"
 
 #include <psycles/compiler/core_nodes.h>
 
@@ -610,6 +611,10 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
     }
   }
 
+  graph.project_texture_mappings();
+  if (!graph.valid()) {
+    return graph;
+  }
   graph.expand();
   graph.default_inputs();
   graph.clean();
@@ -660,6 +665,7 @@ void CyclesGraph::copy_nodes(
         add_node(node->type, node->label, std::move(inputs), std::move(outputs),
                  node->special_type, node->properties);
     copy->bump = node->bump;
+    copy->copy_runtime_state_from(*node);
     node_map.emplace(node, copy);
   }
 
@@ -675,6 +681,63 @@ void CyclesGraph::copy_nodes(
         reject("Cycles bump dependency copy could not recreate a link");
         return;
       }
+    }
+  }
+}
+
+void CyclesGraph::project_texture_mappings() {
+  for (const auto &node_owner : _nodes) {
+    auto *mapping_node = node_owner.get();
+    if (mapping_node->type != node_type::mapping) {
+      continue;
+    }
+    const auto marker_iter =
+        mapping_node->properties.find("LegacyTextureMapping");
+    if (marker_iter == mapping_node->properties.end() ||
+        marker_iter->second.type != contract::SocketType::boolean) {
+      reject("Cycles Mapping legacy marker is absent or ill typed");
+      return;
+    }
+    const auto *marked = std::get_if<bool>(&marker_iter->second.value);
+    if (marked == nullptr) {
+      reject("Cycles Mapping legacy marker is ill typed");
+      return;
+    }
+    if (!*marked) {
+      continue;
+    }
+
+    auto *mapping_input = mapping_node->input("Vector");
+    auto *mapping_output = mapping_node->output("Vector");
+    if (mapping_input == nullptr || mapping_output == nullptr ||
+        mapping_output->links.size() != 1u) {
+      reject("Cycles legacy TextureMapping must have one texture consumer");
+      return;
+    }
+    auto *texture_input = mapping_output->links.front();
+    auto *texture_node = texture_input->parent;
+    auto *texture_mapping = texture_node->texture_mapping();
+    if (texture_input->name != "Vector" || texture_mapping == nullptr) {
+      reject("Cycles legacy TextureMapping consumer is not a TextureNode");
+      return;
+    }
+    std::string diagnostic;
+    if (!configure_texture_mapping_from_legacy_node(
+            *texture_mapping, *mapping_node, diagnostic)) {
+      reject(std::move(diagnostic));
+      return;
+    }
+
+    auto *source = mapping_input->link;
+    const auto value = mapping_input->value;
+    disconnect(texture_input);
+    if (source != nullptr) {
+      if (!connect(source, texture_input)) {
+        reject("Cycles legacy TextureMapping input bypass failed");
+        return;
+      }
+    } else {
+      texture_input->value = value;
     }
   }
 }
