@@ -518,9 +518,11 @@ public:
                 type == "EMISSION" &&
                 requested == SocketType::volume_closure;
             const auto id = context.graph().add_node(
-                volume
-                    ? compiler::node_type::volume_emission
-                    : compiler::node_type::emission,
+                type == "BACKGROUND"
+                    ? compiler::node_type::background
+                    : (volume
+                           ? compiler::node_type::volume_emission
+                           : compiler::node_type::emission),
                 node_name);
             static_cast<void>(context.bind(
                 id, "Color", node, "Color", SocketType::color));

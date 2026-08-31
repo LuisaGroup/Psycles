@@ -43,6 +43,7 @@ namespace {
          type == node_type::sheen_bsdf || type == node_type::hair_bsdf ||
          type == node_type::glass_bsdf ||
          type == node_type::refraction_bsdf || type == node_type::emission ||
+         type == node_type::background ||
          type == node_type::transparent_bsdf;
 }
 

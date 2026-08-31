@@ -64,6 +64,9 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "flat_light_distribution": lights_camera._flat_light_distribution,
     "triangle_light_solid_angle": lights_camera._triangle_light_solid_angle,
     "background_world": values._background_world,
+    "background_world_zero": values._background_world_zero,
+    "background_world_linked": values._background_world_linked,
+    "background_world_mix": values._background_world_mix,
     "blackbody_matrix": texture_inputs._blackbody_matrix,
     "bump_matrix": closures._bump_matrix,
     "bump_nested_matrix": bump_nested._bump_nested_matrix,
@@ -294,7 +297,7 @@ def _main() -> None:
     scene.cycles.use_light_tree = False
     scene["psycles_probe"] = probe_name
     support._camera(scene)
-    if probe_name != "background_world":
+    if not probe_name.startswith("background_world"):
         support._world(scene, (0.0, 0.0, 0.0, 1.0), 0.0)
     create(scene)
 

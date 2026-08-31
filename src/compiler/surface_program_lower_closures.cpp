@@ -397,7 +397,12 @@ namespace {
         }
         return true;
     }
-    if (node.type == node_type::emission) {
+    if (node.type == node_type::emission ||
+        node.type == node_type::background) {
+        // Cycles' background_setup() and emission_setup() are identical for
+        // surface evaluation. Keep the legacy surface-only execution path
+        // compatible while the SVM path retains the distinct opcodes (and
+        // therefore the volume-density distinction) used by Cycles.
         auto color = lower_value_input(node, "Color");
         auto strength = lower_value_input(node, "Strength");
         if (color && strength) {

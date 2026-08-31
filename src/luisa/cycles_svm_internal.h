@@ -174,6 +174,10 @@ void node_closure_emission(Cursor &cursor, Stack &stack,
                            luisa::compute::Expr<luisa::float3> closure_weight,
                            ShaderData &shader_data,
                            luisa::compute::Bool &supported) noexcept;
+void node_closure_background(
+    Cursor &cursor, Stack &stack,
+    luisa::compute::Expr<luisa::float3> closure_weight,
+    ShaderData &shader_data) noexcept;
 void node_closure_bsdf_skip(Cursor &cursor,
                             luisa::compute::Expr<std::uint32_t> closure_type)
     noexcept;
