@@ -28,6 +28,7 @@ if str(_TOOL_DIRECTORY) not in sys.path:
 from cycles_shader_probe import (  # noqa: E402
     bump_nested,
     closures,
+    curve_inputs,
     environment_inputs,
     geometry_inputs,
     hair_closures,
@@ -95,6 +96,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
         environment_inputs._environment_texture_world_default
     ),
     "fresnel_matrix": texture_inputs._fresnel_matrix,
+    "float_curve_matrix": curve_inputs._float_curve_matrix,
     "gamma_color": values._gamma_color,
     "glass_transport": closures._glass_transport,
     "geometry_attribute_outputs": (
@@ -254,6 +256,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
         volume_closures._volume_emission_transport
     ),
     "vector_math_matrix": texture_inputs._vector_math_matrix,
+    "vector_curve_matrix": curve_inputs._vector_curve_matrix,
     "voronoi_texture_distance": voronoi_inputs._voronoi_texture_distance,
     "voronoi_texture_edges": voronoi_inputs._voronoi_texture_edges,
     "voronoi_texture_fractal": voronoi_inputs._voronoi_texture_fractal,

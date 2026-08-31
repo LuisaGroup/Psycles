@@ -951,6 +951,54 @@ NodeRegistry make_core_node_registry() {
                SocketValue::string(""))},
       .required_features = {}}));
 
+  static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::vector_curve,
+      .inputs = {input("Factor", SocketType::floating,
+                       SocketValue::floating(1.0f)),
+                 input("Vector", SocketType::vector,
+                       SocketValue::vector({0.0f, 0.0f, 0.0f}))},
+      .outputs = {output("Vector", SocketType::vector)},
+      .properties =
+          {property("Sampled", SocketType::boolean,
+                    SocketValue::boolean(false)),
+           runtime_property(
+               "MinX", SocketType::floating,
+               SocketValue::floating(0.0f)),
+           runtime_property(
+               "MaxX", SocketType::floating,
+               SocketValue::floating(1.0f)),
+           runtime_property(
+               "Extrapolate", SocketType::boolean,
+               SocketValue::boolean(true)),
+           runtime_property(
+               "Table", SocketType::string,
+               SocketValue::string(""))},
+      .required_features = {}}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::float_curve,
+      .inputs = {input("Factor", SocketType::floating,
+                       SocketValue::floating(1.0f)),
+                 input("Value", SocketType::floating,
+                       SocketValue::floating(1.0f))},
+      .outputs = {output("Value", SocketType::floating)},
+      .properties =
+          {property("Sampled", SocketType::boolean,
+                    SocketValue::boolean(false)),
+           runtime_property(
+               "MinX", SocketType::floating,
+               SocketValue::floating(0.0f)),
+           runtime_property(
+               "MaxX", SocketType::floating,
+               SocketValue::floating(1.0f)),
+           runtime_property(
+               "Extrapolate", SocketType::boolean,
+               SocketValue::boolean(true)),
+           runtime_property(
+               "Table", SocketType::string,
+               SocketValue::string(""))},
+      .required_features = {}}));
+
   static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::separate_color,
                  .inputs = {input("Color", SocketType::color,

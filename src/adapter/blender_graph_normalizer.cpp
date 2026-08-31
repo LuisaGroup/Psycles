@@ -625,43 +625,6 @@ private:
             literal(member(socket, "default"), target_type));
     }
 
-    [[nodiscard]] static float evaluate_curve(
-        yyjson_val *curve,
-        float x) noexcept {
-        auto *points = member(curve, "points");
-        if (points == nullptr || !yyjson_is_arr(points) ||
-            yyjson_arr_size(points) == 0u) {
-            return x;
-        }
-        auto *first = yyjson_arr_get(points, 0u);
-        auto previous = float3(
-            member(first, "location"),
-            {0.0f, 0.0f, 0.0f});
-        for (std::size_t i = 1u;
-             i < yyjson_arr_size(points);
-             ++i) {
-            auto current = float3(
-                member(
-                    yyjson_arr_get(points, i),
-                    "location"),
-                {1.0f, 1.0f, 0.0f});
-            if (x <= current.x) {
-                const auto t =
-                    std::clamp(
-                        (x - previous.x) /
-                            std::max(
-                                current.x - previous.x,
-                                1.0e-20f),
-                        0.0f,
-                        1.0f);
-                return previous.y +
-                       (current.y - previous.y) * t;
-            }
-            previous = current;
-        }
-        return previous.y;
-    }
-
     [[nodiscard]] std::string color_ramp_table(
         yyjson_val *node) const override {
         auto *ramp = member(
@@ -713,53 +676,46 @@ private:
         return stream.str();
     }
 
-    [[nodiscard]] std::string rgb_curve_table(
-        yyjson_val *node) const override {
+    [[nodiscard]] std::string sampled_curve_table(
+        yyjson_val *node,
+        std::size_t component_count) const override {
         auto *mapping = member(
             member(node, "special"), "curve_mapping");
         auto *samples = member(mapping, "samples");
-        if (
-            samples != nullptr &&
-            yyjson_is_arr(samples) &&
-            yyjson_arr_size(samples) >= 2u) {
-            std::ostringstream stream;
-            stream << std::setprecision(9);
-            const auto count = yyjson_arr_size(samples);
-            for (std::size_t i = 0u; i < count; ++i) {
-                auto *sample = yyjson_arr_get(samples, i);
-                if (i != 0u) {
-                    stream << ';';
-                }
-                stream
-                    << static_cast<double>(i) /
-                           static_cast<double>(count - 1u)
-                    << ',' << number(yyjson_arr_get(sample, 0u))
-                    << ',' << number(yyjson_arr_get(sample, 1u))
-                    << ',' << number(yyjson_arr_get(sample, 2u));
-            }
-            return stream.str();
-        }
-        auto *curves = member(mapping, "curves");
-        if (curves == nullptr || !yyjson_is_arr(curves) ||
-            yyjson_arr_size(curves) < 4u) {
+        if (samples == nullptr || !yyjson_is_arr(samples) ||
+            yyjson_arr_size(samples) < 2u ||
+            component_count == 0u) {
             return {};
         }
         std::ostringstream stream;
         stream << std::setprecision(9);
-        for (std::uint32_t i = 0u; i <= 16u; ++i) {
-            const auto x = static_cast<float>(i) / 16.0f;
+        const auto count = yyjson_arr_size(samples);
+        for (std::size_t i = 0u; i < count; ++i) {
+            auto *sample = yyjson_arr_get(samples, i);
             if (i != 0u) {
                 stream << ';';
             }
-            stream << x;
-            for (std::size_t channel = 1u;
-                 channel <= 3u;
-                 ++channel) {
-                auto value = evaluate_curve(
-                    yyjson_arr_get(curves, channel), x);
-                value = evaluate_curve(
-                    yyjson_arr_get(curves, 0u), value);
-                stream << ',' << value;
+            stream << static_cast<double>(i) /
+                          static_cast<double>(count - 1u);
+            if (component_count == 1u) {
+                if (!yyjson_is_num(sample)) {
+                    return {};
+                }
+                stream << ',' << number(sample);
+                continue;
+            }
+            if (!yyjson_is_arr(sample) ||
+                yyjson_arr_size(sample) != component_count) {
+                return {};
+            }
+            for (std::size_t component = 0u;
+                 component < component_count;
+                 ++component) {
+                auto *value = yyjson_arr_get(sample, component);
+                if (!yyjson_is_num(value)) {
+                    return {};
+                }
+                stream << ',' << number(value);
             }
         }
         return stream.str();

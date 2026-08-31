@@ -68,6 +68,51 @@ namespace {
   return result;
 }
 
+[[nodiscard]] Float
+float_ramp_lookup_clamped(Cursor &cursor, Expr<float> factor,
+                          Expr<bool> interpolate,
+                          Expr<std::uint32_t> table_size) noexcept {
+  const UInt last = table_size - 1u;
+  const Float scaled = clamp(factor, 0.0f, 1.0f) * cast<float>(last);
+  const Int index = clamp(cast<int>(scaled), 0, cast<int>(last));
+  const UInt element = cast<uint>(index);
+  const Float t = scaled - cast<float>(index);
+  Float result = cursor.floating_at(element);
+  $if(interpolate & (t > 0.0f)) {
+    const Float next = cursor.floating_at(element + 1u);
+    result = (1.0f - t) * result + t * next;
+  };
+  return result;
+}
+
+[[nodiscard]] Float
+float_ramp_lookup_extrapolated(Cursor &cursor, Expr<float> factor,
+                               Expr<bool> interpolate, Expr<bool> extrapolate,
+                               Expr<std::uint32_t> table_size) noexcept {
+  const UInt last = table_size - 1u;
+  Float result = 0.0f;
+  $if(((factor < 0.0f) | (factor > 1.0f)) & extrapolate) {
+    Float value = 0.0f;
+    Float delta = 0.0f;
+    Float distance = factor;
+    $if(factor < 0.0f) {
+      value = cursor.floating_at(0u);
+      delta = value - cursor.floating_at(1u);
+      distance = -factor;
+    }
+    $else {
+      value = cursor.floating_at(last);
+      delta = value - cursor.floating_at(last - 1u);
+      distance = factor - 1.0f;
+    };
+    result = value + delta * distance * cast<float>(last);
+  }
+  $else {
+    result = float_ramp_lookup_clamped(cursor, factor, interpolate, table_size);
+  };
+  return result;
+}
+
 } // namespace
 
 void node_rgb_ramp(Cursor &cursor, Stack &stack) noexcept {
@@ -119,6 +164,24 @@ void node_curves(Cursor &cursor, Stack &stack) noexcept {
   stack_store_float3(stack, output_offset,
                      (1.0f - factor) * color + factor * mapped);
   cursor.advance(table_size * 4u);
+}
+
+void node_float_curve(Cursor &cursor, Stack &stack) noexcept {
+  const Float factor = stack_load_input_float(stack, cursor.word());
+  const Float input = stack_load_input_float(stack, cursor.word());
+  const Float min_x = cursor.floating();
+  const Float max_x = cursor.floating();
+  const UInt table_size = cursor.word();
+  const UInt packed = cursor.word();
+  const Bool extrapolate = cursor.byte(packed, 0u) != 0u;
+  const UInt output_offset = cursor.byte(packed, 1u);
+
+  const Float relative = (input - min_x) / (max_x - min_x);
+  const Float value = float_ramp_lookup_extrapolated(cursor, relative, true,
+                                                     extrapolate, table_size);
+  stack_store_float(stack, output_offset,
+                    (1.0f - factor) * input + factor * value);
+  cursor.advance(table_size);
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

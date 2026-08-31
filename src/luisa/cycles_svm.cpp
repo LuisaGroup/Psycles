@@ -327,6 +327,11 @@ void eval_nodes(
           detail::node_curves(cursor, stack);
         };
       }
+      if (node_types_used[NODE_FLOAT_CURVE]) {
+        PSYCLES_SVM_CASE(NODE_FLOAT_CURVE) {
+          detail::node_float_curve(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_TEX_ENVIRONMENT]) {
         PSYCLES_SVM_CASE(NODE_TEX_ENVIRONMENT) {
           detail::node_tex_environment(
