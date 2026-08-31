@@ -322,6 +322,11 @@ void eval_nodes(
           detail::node_rgb_ramp(cursor, stack);
         };
       }
+      if (node_types_used[NODE_CURVES]) {
+        PSYCLES_SVM_CASE(NODE_CURVES) {
+          detail::node_curves(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_TEX_ENVIRONMENT]) {
         PSYCLES_SVM_CASE(NODE_TEX_ENVIRONMENT) {
           detail::node_tex_environment(

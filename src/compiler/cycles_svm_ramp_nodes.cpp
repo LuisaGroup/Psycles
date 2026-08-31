@@ -10,6 +10,7 @@
 #include <psycles/compiler/core_nodes.h>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
@@ -27,6 +28,13 @@ namespace {
 struct RGBRampTable {
   std::vector<packed_float4> values;
   bool interpolate{};
+};
+
+struct RGBCurveTable {
+  std::vector<packed_float4> values;
+  float min_x{};
+  float max_x{1.0f};
+  bool extrapolate{true};
 };
 
 [[nodiscard]] std::optional<std::string_view>
@@ -50,6 +58,19 @@ boolean_property(const GraphNode *node, std::string_view name) noexcept {
     return std::nullopt;
   }
   if (const auto *value = std::get_if<bool>(&iter->second.value)) {
+    return *value;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<float>
+floating_property(const GraphNode *node, std::string_view name) noexcept {
+  const auto iter = node->properties.find(name);
+  if (iter == node->properties.end() ||
+      iter->second.type != contract::SocketType::floating) {
+    return std::nullopt;
+  }
+  if (const auto *value = std::get_if<float>(&iter->second.value)) {
     return *value;
   }
   return std::nullopt;
@@ -79,17 +100,17 @@ boolean_property(const GraphNode *node, std::string_view name) noexcept {
   return result.ec == std::errc{} && result.ptr == end;
 }
 
-[[nodiscard]] bool parse_row(std::string_view row,
-                             packed_float4 &value) noexcept {
-  float components[5u]{};
-  for (auto index = std::size_t{}; index < 5u; ++index) {
+template<std::size_t N>
+[[nodiscard]] bool parse_row(
+    std::string_view row, std::array<float, N> &components) noexcept {
+  for (auto index = std::size_t{}; index < N; ++index) {
     const auto delimiter = row.find(',');
     const auto token =
         delimiter == std::string_view::npos ? row : row.substr(0u, delimiter);
     if (!parse_float(token, components[index])) {
       return false;
     }
-    if (index == 4u) {
+    if (index + 1u == N) {
       if (delimiter != std::string_view::npos) {
         return false;
       }
@@ -100,7 +121,6 @@ boolean_property(const GraphNode *node, std::string_view name) noexcept {
       row.remove_prefix(delimiter + 1u);
     }
   }
-  value = {components[1u], components[2u], components[3u], components[4u]};
   return true;
 }
 
@@ -128,11 +148,12 @@ rgb_ramp_table(const GraphNode *node) {
     const auto row = delimiter == std::string_view::npos
                          ? remaining
                          : remaining.substr(0u, delimiter);
-    packed_float4 value{};
-    if (!parse_row(row, value)) {
+    std::array<float, 5u> components{};
+    if (!parse_row(row, components)) {
       return std::nullopt;
     }
-    table.values.emplace_back(value);
+    table.values.emplace_back(packed_float4{
+        components[1u], components[2u], components[3u], components[4u]});
     if (delimiter == std::string_view::npos) {
       remaining = {};
     } else {
@@ -150,6 +171,55 @@ rgb_ramp_table(const GraphNode *node) {
   return table;
 }
 
+[[nodiscard]] std::optional<RGBCurveTable>
+rgb_curve_table(const GraphNode *node) {
+  const auto sampled = boolean_property(node, "Sampled");
+  const auto min_x = floating_property(node, "MinX");
+  const auto max_x = floating_property(node, "MaxX");
+  const auto extrapolate = boolean_property(node, "Extrapolate");
+  const auto table_text = string_property(node, "Table");
+  if (!sampled || !*sampled || !min_x || !max_x || !extrapolate ||
+      !table_text) {
+    return std::nullopt;
+  }
+
+  RGBCurveTable table{
+      .values = {},
+      .min_x = *min_x,
+      .max_x = *max_x,
+      .extrapolate = *extrapolate};
+  auto remaining = *table_text;
+  while (!remaining.empty()) {
+    const auto delimiter = remaining.find(';');
+    const auto row = delimiter == std::string_view::npos
+                         ? remaining
+                         : remaining.substr(0u, delimiter);
+    std::array<float, 4u> components{};
+    if (!parse_row(row, components)) {
+      return std::nullopt;
+    }
+    // Cycles stores packed_float3 curve values as float4 table entries.
+    // make_float4(packed_float3) supplies the otherwise unused w = 1.
+    table.values.emplace_back(packed_float4{
+        components[1u], components[2u], components[3u], 1.0f});
+    if (delimiter == std::string_view::npos) {
+      remaining = {};
+    } else {
+      remaining.remove_prefix(delimiter + 1u);
+      if (remaining.empty()) {
+        return std::nullopt;
+      }
+    }
+  }
+  if (table.values.size() < 2u ||
+      table.values.size() >
+          static_cast<std::size_t>(
+              std::numeric_limits<std::int32_t>::max() / 4)) {
+    return std::nullopt;
+  }
+  return table;
+}
+
 [[nodiscard]] std::optional<float>
 factor_literal(const GraphInput *input) noexcept {
   if (input == nullptr || input->link != nullptr || !input->value ||
@@ -162,22 +232,81 @@ factor_literal(const GraphInput *input) noexcept {
   return std::nullopt;
 }
 
-[[nodiscard]] packed_float4 rgb_ramp_lookup(const RGBRampTable &table,
-                                            float factor) noexcept {
-  const auto last = table.values.size() - 1u;
+[[nodiscard]] std::optional<Vec3f>
+color_literal(const GraphInput *input) noexcept {
+  if (input == nullptr || input->link != nullptr || !input->value ||
+      input->value->type != contract::SocketType::color) {
+    return std::nullopt;
+  }
+  if (const auto *value = std::get_if<Vec3f>(&input->value->value)) {
+    return *value;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] packed_float4
+rgb_ramp_lookup(const std::vector<packed_float4> &values, float factor,
+                bool interpolate, bool extrapolate = false) noexcept {
+  const auto last = values.size() - 1u;
+  if ((factor < 0.0f || factor > 1.0f) && extrapolate) {
+    packed_float4 value{};
+    packed_float4 delta{};
+    if (factor < 0.0f) {
+      value = values.front();
+      const auto &next = values[1u];
+      delta = {value.x - next.x, value.y - next.y, value.z - next.z,
+               value.w - next.w};
+      factor = -factor;
+    } else {
+      value = values.back();
+      const auto &previous = values[last - 1u];
+      delta = {value.x - previous.x, value.y - previous.y,
+               value.z - previous.z, value.w - previous.w};
+      factor -= 1.0f;
+    }
+    const auto scale = factor * static_cast<float>(last);
+    value.x += delta.x * scale;
+    value.y += delta.y * scale;
+    value.z += delta.z * scale;
+    value.w += delta.w * scale;
+    return value;
+  }
   const auto scaled = std::clamp(factor, 0.0f, 1.0f) * static_cast<float>(last);
   const auto index =
       std::clamp(static_cast<int>(scaled), 0, static_cast<int>(last));
   const auto t = scaled - static_cast<float>(index);
-  auto result = table.values[static_cast<std::size_t>(index)];
-  if (table.interpolate && t > 0.0f) {
-    const auto &next = table.values[static_cast<std::size_t>(index) + 1u];
+  auto result = values[static_cast<std::size_t>(index)];
+  if (interpolate && t > 0.0f) {
+    const auto &next = values[static_cast<std::size_t>(index) + 1u];
     result.x = (1.0f - t) * result.x + t * next.x;
     result.y = (1.0f - t) * result.y + t * next.y;
     result.z = (1.0f - t) * result.z + t * next.z;
     result.w = (1.0f - t) * result.w + t * next.w;
   }
   return result;
+}
+
+[[nodiscard]] std::optional<Vec3f>
+fold_rgb_curve(const GraphNode *node) noexcept {
+  const auto table = rgb_curve_table(node);
+  const auto factor = factor_literal(node->input("Factor"));
+  const auto color = color_literal(node->input("Color"));
+  if (!table || !factor || !color) {
+    return std::nullopt;
+  }
+  const auto range = table->max_x - table->min_x;
+  const Vec3f relative{(color->x - table->min_x) / range,
+                       (color->y - table->min_x) / range,
+                       (color->z - table->min_x) / range};
+  const auto red =
+      rgb_ramp_lookup(table->values, relative.x, true, table->extrapolate).x;
+  const auto green =
+      rgb_ramp_lookup(table->values, relative.y, true, table->extrapolate).y;
+  const auto blue =
+      rgb_ramp_lookup(table->values, relative.z, true, table->extrapolate).z;
+  return Vec3f{(1.0f - *factor) * color->x + *factor * red,
+               (1.0f - *factor) * color->y + *factor * green,
+               (1.0f - *factor) * color->z + *factor * blue};
 }
 
 class RGBRampNode final : public GraphNode {
@@ -195,7 +324,8 @@ public:
     if (!table || !factor) {
       return;
     }
-    const auto value = rgb_ramp_lookup(*table, *factor);
+    const auto value = rgb_ramp_lookup(table->values, *factor,
+                                       table->interpolate);
     if (folder.output->name == "Color") {
       folder.make_constant(Vec3f{value.x, value.y, value.z});
     } else if (folder.output->name == "Alpha") {
@@ -232,11 +362,69 @@ public:
   }
 };
 
+class RGBCurveNode final : public GraphNode {
+public:
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_CURVES;
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    if (folder.all_inputs_constant()) {
+      if (const auto value = fold_rgb_curve(this)) {
+        folder.make_constant(*value);
+      }
+      return;
+    }
+    const auto factor = factor_literal(input("Factor"));
+    auto *color = input("Color");
+    if (factor && *factor == 0.0f && color != nullptr &&
+        color->link != nullptr) {
+      folder.bypass(color->link);
+    }
+  }
+
+  void inline_blender_constant_fold(const ConstantFolder &folder) override {
+    // Blender's CurveRGBFunction folds only when both inputs are primitive;
+    // Cycles' later zero-Fac bypass must not feed back into this earlier pass.
+    if (folder.all_inputs_constant()) {
+      if (const auto value = fold_rgb_curve(this)) {
+        folder.make_constant(*value);
+      }
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto table = rgb_curve_table(this);
+    if (!table) {
+      compiler.fail(
+          "Cycles RGB Curves requires a valid sampled Blender table");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_CURVES,
+        SVMNodeCurves{
+            .color = compiler.input_float3("Color"),
+            .fac = compiler.input_float("Factor"),
+            .min_x = table->min_x,
+            .max_x = table->max_x,
+            .table_size = static_cast<std::uint32_t>(table->values.size()),
+            .extrapolate = static_cast<std::uint8_t>(table->extrapolate),
+            .out_offset = compiler.output("Color"),
+            ._pad = {0u, 0u}});
+    for (const auto &value : table->values) {
+      compiler.add_node_data(value);
+    }
+  }
+};
+
 } // namespace
 
 std::unique_ptr<GraphNode> make_ramp_graph_node(std::string_view type) {
   if (type == node_type::color_ramp) {
     return std::make_unique<RGBRampNode>();
+  }
+  if (type == node_type::rgb_curve) {
+    return std::make_unique<RGBCurveNode>();
   }
   return nullptr;
 }
