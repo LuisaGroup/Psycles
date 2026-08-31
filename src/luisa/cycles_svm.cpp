@@ -192,6 +192,12 @@ void eval_nodes(
           }
         };
       }
+      if (node_types_used[NODE_CLOSURE_BACKGROUND]) {
+        PSYCLES_SVM_CASE(NODE_CLOSURE_BACKGROUND) {
+          detail::node_closure_background(cursor, stack, closure_weight,
+                                          shader_data);
+        };
+      }
       if (node_types_used[NODE_CLOSURE_SET_WEIGHT]) {
         PSYCLES_SVM_CASE(NODE_CLOSURE_SET_WEIGHT) {
           detail::node_closure_set_weight(cursor, closure_weight);

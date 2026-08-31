@@ -94,6 +94,34 @@ void node_closure_emission(Cursor &cursor, Stack &stack,
   };
 }
 
+void node_closure_background(Cursor &cursor, Stack &stack,
+                             Expr<luisa::float3> closure_weight,
+                             ShaderData &shader_data) noexcept {
+  const auto packed = cursor.word();
+  const auto mix_weight_offset = cursor.byte(packed, 0u);
+  Float3 weight = closure_weight;
+  Bool active = true;
+
+  $if (mix_weight_offset !=
+       static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
+    const auto mix_weight = stack_load_float(stack, mix_weight_offset);
+    $if (mix_weight == 0.0f) {
+      active = false;
+    } $else {
+      weight *= mix_weight;
+    };
+  };
+
+  $if (active) {
+    $if ((shader_data.flag & shader_data_emission) != 0u) {
+      shader_data.closure_emission_background += weight;
+    } $else {
+      shader_data.flag |= shader_data_emission;
+      shader_data.closure_emission_background = weight;
+    };
+  };
+}
+
 void node_closure_bsdf_skip(
     Cursor &cursor, Expr<std::uint32_t> closure_type) noexcept {
   UInt words =

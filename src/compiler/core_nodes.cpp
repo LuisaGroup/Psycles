@@ -1302,6 +1302,17 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface) |
                                       feature_bit(ShaderFeature::emission)}));
 
+  static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::background,
+                 .inputs = {input("Color", SocketType::color,
+                                  SocketValue::color({0.8f, 0.8f, 0.8f})),
+                            input("Strength", SocketType::floating,
+                                  SocketValue::floating(1.0f))},
+                 .outputs = {output("Closure", SocketType::closure)},
+                 .properties = {},
+                 .required_features = feature_bit(ShaderFeature::surface) |
+                                      feature_bit(ShaderFeature::emission)}));
+
   static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::transparent_bsdf,
       .inputs = {input("Color", SocketType::color,

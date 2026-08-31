@@ -2189,3 +2189,145 @@ This is still not a production-render parity claim. The copied SVM interpreter
 has not yet replaced the old surface evaluator in the path tracer, and scene
 attribute-table construction must be converted from the old hashed resource
 IDs to the same insertion-ordered Cycles IDs before that connection is legal.
+
+## Background closure
+
+This checkpoint copies `BackgroundNode::compile` and
+`BackgroundNode::constant_fold` from `scene/shader_nodes.cpp`,
+`svm_node_closure_background` from `kernel/svm/closure.h`, and
+`background_setup` from `kernel/closure/emissive.h` in the fixed Cycles 5.2.1
+source. Blender `BACKGROUND` now remains a distinct Background closure through
+import and SVM graph projection; it is no longer mislabeled as surface
+Emission merely because the simplest world case happens to produce the same
+numeric radiance.
+
+The copied compiler transition is exhaustive over its source branches:
+
+```text
+Color or Strength linked:
+    NODE_EMISSION_WEIGHT(Color, Strength)
+otherwise:
+    NODE_CLOSURE_SET_WEIGHT(Color * Strength)
+always:
+    NODE_CLOSURE_BACKGROUND(SurfaceMixWeight)
+
+constant fold:
+    discard iff an unlinked Color is exactly zero
+            or an unlinked Strength is exactly zero
+```
+
+The device transition loads the optional mix weight, returns without changing
+shader state when it is zero, otherwise multiplies the closure weight and calls
+the exact `background_setup` state transition. Repeated Background closures
+therefore add to `closure_emission_background`; the first sets `SD_EMISSION`
+and initializes it. Unlike `NODE_CLOSURE_EMISSION`, Background never applies
+the object-volume-density multiplier.
+
+The initial implementation exposed a structural omission rather than a local
+opcode error: the SVM graph's closed surface-closure classification did not yet
+contain Background. Consequently Cycles' `transform_multi_closure` analogue
+could not attach `SurfaceMixWeight`, and a dynamic Mix Shader emitted two
+unweighted Background records. Adding Background to that classification makes
+the projection follow Cycles' closure transform: `NODE_MIX_CLOSURE` writes
+distinct weight lanes and the two Background records consume lanes 1 and 2.
+The regression freezes branch order and both jump distances, so this cannot
+silently regress to an unweighted pair.
+
+The legacy surface-program compiler still accepts the new node while the path
+tracer is being migrated. This compatibility is justified by a domain
+invariant, not by treating the opcodes as generally interchangeable: that
+compiler only evaluates the surface domain, and Cycles' `background_setup`
+and `emission_setup` have identical state transitions when
+`SD_IS_VOLUME_SHADER_EVAL` is false. The distinct SVM opcode and its different
+volume behavior remain intact.
+
+Four reproducible Cycles probes lock all compiler arms. After normalizing only
+global jump-table relocation, the local streams are:
+
+```text
+background_world (constant, 13 words, peak stack 0)
+00000001 00000004 0000000b 0000000c
+00000005 3ebc6a7e 3f8d4fdf 3fe2b020
+00000004 000000ff 00000000 00000000 00000000
+
+background_world_zero (folded, 7 words, peak stack 0)
+00000001 00000004 00000005 00000006
+00000000 00000000 00000000
+
+background_world_linked (Geometry Normal/Backfacing, 20 words, peak stack 4)
+00000001 00000004 00000012 00000013
+0000000b 00000001 00000000 00000032
+00000008 00000003 00000007 7fc00000
+00000000 00000000 7fc00003 00000004
+000000ff 00000000 00000000 00000000
+
+background_world_mix (dynamic factor, 31 words, peak stack 3)
+00000001 00000004 0000001d 0000001e
+00000032 00000008 00000000 00000008
+7fc00000 000201ff 0000000a 00000006
+00000000 00000005 3e99999a 3f19999a
+3f666667 00000004 00000001 00000009
+00000006 00000000 00000005 3f0f5c29
+3e75c290 3da3d70b 00000004 00000002
+00000000 00000000 00000000
+```
+
+The host tests compare all 71 words exactly, including `NODE_GEOMETRY` versus
+`NODE_LIGHT_PATH` routing, immediate NaN encodings, stack peaks, node masks,
+mix lanes, jumps, and closure order. A dedicated importer test starts from raw
+Blender JSON, proves that `BACKGROUND` remains `node_type::background`, and
+then reproduces the constant Cycles stream. The HIP full-interpreter test runs
+the constant and dynamic-mix streams and a focused valid-but-zero mix-weight
+transition. The zero-weight transition leaves both the emission flag and
+accumulator untouched. In the external mixed stream, the front-facing lane
+selects `(0.3, 0.6, 0.9)` and the back-facing lane selects
+`(0.56, 0.24, 0.08)`, with the exact emission/backfacing flags and final
+program counter.
+
+The clean Blender executable identifies commit `9e2066aef7ef`; the diagnostic
+executable identifies observation build `cb168525138f`. For the constant world,
+`oiiotool -a --diff` reports `PASS`. The retained Combined report has RMSE,
+MAE, and maximum absolute error all equal to zero, channel mean ratios
+`(1,1,1)`, and no invalid pixels. I inspected the retained 1552x582 triptych at
+original resolution: both blue world panels are visually identical and the
+difference panel is completely black.
+
+![Background clean versus diagnostic Cycles](background-closure/combined.png)
+
+Oracle and validation commands:
+
+```text
+for probe in background_world background_world_zero \
+             background_world_linked background_world_mix; do
+  /home/mike/Projects/blender-install-5.2-hiprt/blender \
+    --background --factory-startup \
+    --python tools/create_cycles_shader_probe.py -- \
+    /tmp/$probe.blend $probe                                  PASS
+  PSYCLES_CYCLES_SVM_DUMP=/tmp/$probe.svm52 \
+    /home/mike/Projects/blender-install-psycles-trace-5.2/blender \
+    /tmp/$probe.blend --background \
+    --python tools/render_cycles_golden.py -- \
+    /tmp/$probe-trace.exr 128 128 1 0 --cycles-device CPU     PASS
+done
+
+/home/mike/Projects/blender-install-5.2-hiprt/blender \
+  /tmp/background_world.blend --background \
+  --python tools/render_cycles_golden.py -- \
+  /tmp/background_world-clean.exr 128 128 1 0 \
+  --cycles-device CPU                                        PASS
+
+oiiotool -a /tmp/background_world-clean.exr \
+  /tmp/background_world-trace.exr --diff                     PASS
+
+cmake --build build --parallel 32                            PASS
+build/psycles_cycles_svm_background_tests                    PASS
+build/psycles_blender_background_import_tests                PASS
+build/bin/psycles_luisa_cycles_svm_tests hip                 PASS
+ctest --test-dir build --output-on-failure -j32 -E \
+  '(_fallback|_vk|_hip)$'                                    81/81 PASS
+ctest --test-dir build --output-on-failure -R '_hip$' -j1    90/90 PASS
+```
+
+This checkpoint proves Cycles bytecode and HIP interpreter parity for the
+Background family. It does not claim production-render parity until the copied
+SVM interpreter replaces the old surface evaluator in the path tracer.

@@ -23,6 +23,46 @@ def _background_world(scene: Any) -> None:
     _world(scene, (0.16, 0.48, 0.77, 1.0), 2.3)
 
 
+def _background_world_zero(scene: Any) -> None:
+    _world(scene, (0.16, 0.48, 0.77, 1.0), 0.0)
+
+
+def _background_world_linked(scene: Any) -> None:
+    _, tree, background = _world(
+        scene, (0.16, 0.48, 0.77, 1.0), 2.3
+    )
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.name = "Geometry"
+    tree.links.new(
+        _output(geometry, "Normal"), _input(background, "Color")
+    )
+    tree.links.new(
+        _output(geometry, "Backfacing"),
+        _input(background, "Strength"),
+    )
+
+
+def _background_world_mix(scene: Any) -> None:
+    _, tree, background_a = _world(
+        scene, (0.2, 0.4, 0.6, 1.0), 1.5
+    )
+    background_a.name = "Background A"
+    background_b = tree.nodes.new("ShaderNodeBackground")
+    background_b.name = "Background B"
+    _input(background_b, "Color").default_value = (0.7, 0.3, 0.1, 1.0)
+    _input(background_b, "Strength").default_value = 0.8
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.name = "Geometry"
+    mix = tree.nodes.new("ShaderNodeMixShader")
+    mix.name = "Mix Shader"
+    output = tree.nodes.get("World Output")
+    tree.links.remove(_input(output, "Surface").links[0])
+    tree.links.new(_output(geometry, "Backfacing"), mix.inputs[0])
+    tree.links.new(_output(background_a, "Background"), mix.inputs[1])
+    tree.links.new(_output(background_b, "Background"), mix.inputs[2])
+    tree.links.new(_output(mix, "Shader"), _input(output, "Surface"))
+
+
 def _ambient_occlusion_matrix(scene: Any) -> None:
     configurations = (
         ("Explicit Distance", 0.5, False, False, None, None),

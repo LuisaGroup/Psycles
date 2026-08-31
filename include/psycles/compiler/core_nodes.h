@@ -98,6 +98,7 @@ inline constexpr auto hair_bsdf = "psycles.closure.hair";
 inline constexpr auto glass_bsdf = "psycles.closure.glass";
 inline constexpr auto refraction_bsdf = "psycles.closure.refraction";
 inline constexpr auto emission = "psycles.closure.emission";
+inline constexpr auto background = "psycles.closure.background";
 inline constexpr auto transparent_bsdf = "psycles.closure.transparent";
 inline constexpr auto null_closure = "psycles.closure.null";
 inline constexpr auto add_closure = "psycles.closure.add";

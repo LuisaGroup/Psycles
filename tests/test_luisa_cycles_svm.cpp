@@ -1047,6 +1047,47 @@ void run_image(Device &device, Stream &stream, const ShaderImage &image,
 
 int main(int argc, char **argv) {
   const auto backend = std::string_view{argc > 1 ? argv[1] : "hip"};
+  ShaderImage background_image;
+  background_image.valid = true;
+  background_image.words = {
+      0x00000001u, 0x00000004u, 0x0000000bu, 0x0000000cu, 0x00000005u,
+      0x3ebc6a7eu, 0x3f8d4fdfu, 0x3fe2b020u, 0x00000004u, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u};
+  for (const auto type : {NODE_END, NODE_SHADER_JUMP,
+                          NODE_CLOSURE_SET_WEIGHT,
+                          NODE_CLOSURE_BACKGROUND}) {
+    background_image.node_types_used[type] = true;
+  }
+  ShaderImage zero_weight_background_image;
+  zero_weight_background_image.valid = true;
+  zero_weight_background_image.words = {
+      NODE_SHADER_JUMP, 4u, 14u, 15u,
+      NODE_VALUE_F, 0x00000000u, 0x00000000u,
+      NODE_CLOSURE_SET_WEIGHT, 0x3e4ccccdu, 0x3ecccccdu, 0x3f19999au,
+      NODE_CLOSURE_BACKGROUND, 0x00000000u,
+      NODE_END, NODE_END, NODE_END};
+  for (const auto type : {NODE_END, NODE_SHADER_JUMP, NODE_VALUE_F,
+                          NODE_CLOSURE_SET_WEIGHT,
+                          NODE_CLOSURE_BACKGROUND}) {
+    zero_weight_background_image.node_types_used[type] = true;
+  }
+  ShaderImage mixed_background_image;
+  mixed_background_image.valid = true;
+  mixed_background_image.words = {
+      0x00000001u, 0x00000004u, 0x0000001du, 0x0000001eu,
+      0x00000032u, 0x00000008u, 0x00000000u, 0x00000008u,
+      0x7fc00000u, 0x000201ffu, 0x0000000au, 0x00000006u,
+      0x00000000u, 0x00000005u, 0x3e99999au, 0x3f19999au,
+      0x3f666667u, 0x00000004u, 0x00000001u, 0x00000009u,
+      0x00000006u, 0x00000000u, 0x00000005u, 0x3f0f5c29u,
+      0x3e75c290u, 0x3da3d70bu, 0x00000004u, 0x00000002u,
+      0x00000000u, 0x00000000u, 0x00000000u};
+  for (const auto type : {NODE_END, NODE_SHADER_JUMP, NODE_LIGHT_PATH,
+                          NODE_MIX_CLOSURE, NODE_JUMP_IF_ZERO,
+                          NODE_JUMP_IF_ONE, NODE_CLOSURE_SET_WEIGHT,
+                          NODE_CLOSURE_BACKGROUND}) {
+    mixed_background_image.node_types_used[type] = true;
+  }
   const auto math_image = compile_dynamic_math();
   const auto mix_image = compile_dynamic_mix();
   const auto color_image = compile_dynamic_color_pipeline();
@@ -1103,9 +1144,78 @@ int main(int argc, char **argv) {
 
   std::array<luisa::float4, 2u> floating{};
   std::array<luisa::uint4, 2u> integer{};
-  run_image(device, stream, math_image, floating, integer);
   const auto ended =
       static_cast<std::uint32_t>(device_svm::EvaluationStatus::ended);
+  run_image(device, stream, background_image, floating, integer);
+  if (!require_float3(floating[0], {0.368f, 1.104f, 1.771f},
+                      "front-facing Background") ||
+      !require_float3(floating[1], {0.368f, 1.104f, 1.771f},
+                      "back-facing Background") ||
+      !approximately_equal(floating[0].w, 0.368f) ||
+      !approximately_equal(floating[1].w, 0.368f) ||
+      integer[0].x != ended || integer[1].x != ended ||
+      integer[0].y != 11u || integer[1].y != 11u ||
+      integer[0].z != device_svm::shader_data_emission ||
+      integer[1].z != (device_svm::shader_data_backfacing |
+                       device_svm::shader_data_emission)) {
+    std::cerr << "Background Cycles SVM state mismatch on " << backend
+              << '\n';
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run_image(device, stream, zero_weight_background_image, floating, integer);
+  if (!require_float3(floating[0], {0.0f, 0.0f, 0.0f},
+                      "front-facing zero-weight Background") ||
+      !require_float3(floating[1], {0.0f, 0.0f, 0.0f},
+                      "back-facing zero-weight Background") ||
+      !approximately_equal(floating[0].w, 0.2f) ||
+      !approximately_equal(floating[1].w, 0.2f) ||
+      integer[0].x != ended || integer[1].x != ended ||
+      integer[0].y != 14u || integer[1].y != 14u ||
+      integer[0].z != 0u ||
+      integer[1].z != device_svm::shader_data_backfacing) {
+    std::cerr << "zero-weight Background Cycles SVM state mismatch on "
+              << backend << ": front=(" << floating[0].x << ", "
+              << floating[0].y << ", " << floating[0].z << ", "
+              << floating[0].w << ") state=(" << integer[0].x << ", "
+              << integer[0].y << ", " << integer[0].z << "); back=("
+              << floating[1].x << ", " << floating[1].y << ", "
+              << floating[1].z << ", " << floating[1].w << ") state=("
+              << integer[1].x << ", " << integer[1].y << ", "
+              << integer[1].z << ")\n";
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run_image(device, stream, mixed_background_image, floating, integer);
+  if (!require_float3(floating[0], {0.3f, 0.6f, 0.9f},
+                      "front-facing mixed Background") ||
+      !require_float3(floating[1], {0.56f, 0.24f, 0.08f},
+                      "back-facing mixed Background") ||
+      !approximately_equal(floating[0].w, 0.3f) ||
+      !approximately_equal(floating[1].w, 0.56f) ||
+      integer[0].x != ended || integer[1].x != ended ||
+      integer[0].y != 29u || integer[1].y != 29u ||
+      integer[0].z != device_svm::shader_data_emission ||
+      integer[1].z != (device_svm::shader_data_backfacing |
+                       device_svm::shader_data_emission)) {
+    std::cerr << "mixed Background Cycles SVM state mismatch on " << backend
+              << ": front=(" << floating[0].x << ", " << floating[0].y
+              << ", " << floating[0].z << ", " << floating[0].w
+              << ") state=(" << integer[0].x << ", " << integer[0].y
+              << ", " << integer[0].z << "); back=(" << floating[1].x
+              << ", " << floating[1].y << ", " << floating[1].z << ", "
+              << floating[1].w << ") state=(" << integer[1].x << ", "
+              << integer[1].y << ", " << integer[1].z << ")\n";
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run_image(device, stream, math_image, floating, integer);
   if (!require_float3(floating[0], {0.0f, 0.0f, 0.0f},
                       "front-facing Math emission") ||
       !require_float3(floating[1], {0.42f, 0.94f, 1.66f},
