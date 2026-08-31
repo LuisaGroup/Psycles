@@ -175,7 +175,9 @@ _ALL_PROBES = (
     "wavelength_matrix",
     "wave_texture_distortion",
     "wave_texture_modes",
+    "white_noise_constant_fold",
     "white_noise_dimensions",
+    "white_noise_matrix",
 )
 
 _REPORT_PASSES = (

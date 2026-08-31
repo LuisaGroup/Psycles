@@ -5,6 +5,8 @@
 #include "cycles_svm_noise_nodes.h"
 
 #include "cycles_svm_compiler_internal.h"
+#include "cycles_svm_constant_fold.h"
+#include "cycles_svm_host_hash.h"
 #include "cycles_svm_mapping_nodes.h"
 
 #include <psycles/compiler/core_nodes.h>
@@ -117,11 +119,97 @@ public:
   }
 };
 
+class WhiteNoiseTextureNode final : public GraphNode {
+public:
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_TEX_WHITE_NOISE;
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    const auto dimensions = dimensions_property(this);
+    auto *vector_input = input("Vector");
+    auto *w_input = input("W");
+    if (!dimensions || vector_input == nullptr || w_input == nullptr) {
+      return;
+    }
+
+    auto vector = Vec3f{};
+    auto w = 0.0f;
+
+    // Blender 5.2.1 inline_shader_node_tree constant-folds a function node
+    // exactly when every available input is primitive. White Noise's Vector
+    // socket is unavailable in 1D. In 2D/3D/4D its unlinked declaration uses
+    // NODE_DEFAULT_INPUT_POSITION_FIELD, which is deliberately non-primitive;
+    // only an upstream fold marks it constant_folded_in. This predicate is
+    // therefore the source condition, not a dimension-specific shortcut.
+    if (*dimensions == 1u) {
+      if (w_input->link != nullptr || !w_input->value) {
+        return;
+      }
+      const auto *value = std::get_if<float>(&w_input->value->value);
+      if (value == nullptr) {
+        return;
+      }
+      w = *value;
+    } else {
+      if (vector_input->link != nullptr || !vector_input->value ||
+          !vector_input->constant_folded_in) {
+        return;
+      }
+      const auto *value =
+          std::get_if<Vec3f>(&vector_input->value->value);
+      if (value == nullptr) {
+        return;
+      }
+      vector = *value;
+      if (*dimensions == 4u) {
+        if (w_input->link != nullptr || !w_input->value) {
+          return;
+        }
+        const auto *w_value =
+            std::get_if<float>(&w_input->value->value);
+        if (w_value == nullptr) {
+          return;
+        }
+        w = *w_value;
+      }
+    }
+
+    if (folder.output->name == "Value") {
+      folder.make_constant(
+          host_hash::evaluate_value(vector, w, *dimensions));
+    } else if (folder.output->name == "Color") {
+      folder.make_constant(
+          host_hash::evaluate_color(vector, w, *dimensions));
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto dimensions = dimensions_property(this);
+    if (!dimensions) {
+      compiler.fail("Cycles White Noise Texture dimensions are invalid");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_TEX_WHITE_NOISE,
+        SVMNodeTexWhiteNoise{
+            .dimensions = *dimensions,
+            .vector = compiler.input_float3("Vector"),
+            .w = compiler.input_float("W"),
+            .value_offset = compiler.output("Value"),
+            .color_offset = compiler.output("Color"),
+            ._pad = {0u, 0u}});
+  }
+};
+
 } // namespace
 
 std::unique_ptr<GraphNode> make_noise_graph_node(std::string_view type) {
   if (type == node_type::noise_texture) {
     return std::make_unique<NoiseTextureNode>();
+  }
+  if (type == node_type::white_noise_texture) {
+    return std::make_unique<WhiteNoiseTextureNode>();
   }
   return nullptr;
 }
