@@ -33,6 +33,24 @@ struct packed_float4 {
 static_assert(sizeof(packed_float4) == 16u);
 static_assert(alignof(packed_float4) == alignof(float));
 
+/* Exact host storage projections of Cycles' device attribute arrays. The
+ * names and fields follow util/types_normal.h, util/types_uchar4.h, and
+ * kernel/types.h; no widened or pre-decoded representation is stored. */
+struct packed_normal {
+  uint value;
+};
+static_assert(sizeof(packed_normal) == 4u);
+static_assert(alignof(packed_normal) == alignof(uint));
+
+struct uchar4 {
+  uint8_t x;
+  uint8_t y;
+  uint8_t z;
+  uint8_t w;
+};
+static_assert(sizeof(uchar4) == 4u);
+static_assert(alignof(uchar4) == alignof(uint8_t));
+
 struct PackedTransform {
   packed_float4 x;
   packed_float4 y;
@@ -102,6 +120,13 @@ enum NodeAttributeType : uint8_t {
   NODE_ATTR_MATRIX
 };
 
+enum AttributePrimitive {
+  ATTR_PRIM_GEOMETRY = 0,
+  ATTR_PRIM_SUBD,
+
+  ATTR_PRIM_TYPES
+};
+
 enum AttributeElement {
   ATTR_ELEMENT_NONE = 0,
   ATTR_ELEMENT_OBJECT = (1 << 0),
@@ -161,6 +186,24 @@ enum AttributeStandard : int {
   ATTR_STD_NUM,
   ATTR_STD_NOT_FOUND = -0x7fffffff,
 };
+
+struct AttributeDescriptor {
+  AttributeElement element;
+  NodeAttributeType type;
+  int offset;
+};
+static_assert(sizeof(AttributeDescriptor) == 12u);
+static_assert(alignof(AttributeDescriptor) == alignof(int));
+
+struct AttributeMap {
+  std::uint64_t id;
+  int offset;
+  uint16_t element;
+  uint8_t type;
+  uint8_t pad;
+};
+static_assert(sizeof(AttributeMap) == 16u);
+static_assert(alignof(AttributeMap) == alignof(std::uint64_t));
 
 enum NodeGeometry : uint8_t {
   NODE_GEOM_P = 0,

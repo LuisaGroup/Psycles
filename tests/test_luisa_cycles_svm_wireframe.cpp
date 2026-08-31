@@ -37,7 +37,6 @@ constexpr auto attribute_missing_id = 999u;
          (static_cast<std::uint32_t>(bump_offset) << 16u) |
          (static_cast<std::uint32_t>(store_derivatives) << 24u);
 }
-
 [[nodiscard]] bool near(float actual, float expected,
                         float tolerance = 3.0e-5f) noexcept {
   return std::abs(actual - expected) <= tolerance;
@@ -88,150 +87,139 @@ public:
             .dy = make_float3(-0.5f, 0.625f, 0.75f)};
   }
 
-  [[nodiscard]] device_svm::AttributeDescriptor find_attribute(
-      const device_svm::ShaderData &,
-      Expr<luisa::ulong> id) const noexcept override {
-    device_svm::AttributeDescriptor descriptor{
-        .element = static_cast<std::uint32_t>(ATTR_ELEMENT_NONE),
-        .type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT),
-        .offset = static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)};
-    $if(id == static_cast<luisa::ulong>(ATTR_STD_POINTINESS)) {
-      descriptor.element = static_cast<std::uint32_t>(ATTR_ELEMENT_VERTEX);
-      descriptor.type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT);
-      descriptor.offset = static_cast<std::int32_t>(ATTR_STD_POINTINESS);
-    }
-    $elif(id == static_cast<luisa::ulong>(ATTR_STD_RANDOM_PER_ISLAND)) {
-      descriptor.element = static_cast<std::uint32_t>(ATTR_ELEMENT_FACE);
-      descriptor.type = static_cast<std::uint32_t>(NODE_ATTR_FLOAT);
-      descriptor.offset =
-          static_cast<std::int32_t>(ATTR_STD_RANDOM_PER_ISLAND);
-    }
-    $elif((id >= static_cast<luisa::ulong>(100u)) &
-          (id <= static_cast<luisa::ulong>(104u))) {
-      descriptor.element = static_cast<std::uint32_t>(ATTR_ELEMENT_VERTEX);
-      descriptor.type = (id - static_cast<luisa::ulong>(100u))
-                            .cast<std::uint32_t>();
-      descriptor.offset = id.cast<std::int32_t>();
-    };
-    return descriptor;
+  [[nodiscard]] UInt
+  object_attribute_map_offset(Expr<std::uint32_t>) const noexcept override {
+    return 0u;
   }
 
-  [[nodiscard]] Float primitive_surface_attribute_float(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
+  [[nodiscard]] Var<AttributeMap>
+  attribute_map(Expr<std::uint32_t> offset) const noexcept override {
+    Var<AttributeMap> entry;
+    entry.id = static_cast<luisa::ulong>(ATTR_STD_NONE);
+    entry.offset = 0;
+    entry.element = static_cast<std::uint16_t>(0u);
+    entry.type = static_cast<std::uint8_t>(0u);
+    entry.pad = static_cast<std::uint8_t>(0u);
+    $if(offset == 0u) {
+      entry.id = static_cast<luisa::ulong>(attribute_float_id);
+      entry.element = static_cast<std::uint16_t>(ATTR_ELEMENT_VERTEX);
+      entry.type = static_cast<std::uint8_t>(NODE_ATTR_FLOAT);
+      entry.offset = 0;
+    }
+    $elif(offset == 2u) {
+      entry.id = static_cast<luisa::ulong>(attribute_float2_id);
+      entry.element = static_cast<std::uint16_t>(ATTR_ELEMENT_VERTEX);
+      entry.type = static_cast<std::uint8_t>(NODE_ATTR_FLOAT2);
+      entry.offset = 0;
+    }
+    $elif(offset == 4u) {
+      entry.id = static_cast<luisa::ulong>(attribute_float3_id);
+      entry.element = static_cast<std::uint16_t>(ATTR_ELEMENT_VERTEX);
+      entry.type = static_cast<std::uint8_t>(NODE_ATTR_FLOAT3);
+      entry.offset = 0;
+    }
+    $elif(offset == 6u) {
+      entry.id = static_cast<luisa::ulong>(attribute_float4_id);
+      entry.element = static_cast<std::uint16_t>(ATTR_ELEMENT_VERTEX);
+      entry.type = static_cast<std::uint8_t>(NODE_ATTR_FLOAT4);
+      entry.offset = 0;
+    }
+    $elif(offset == 8u) {
+      entry.id = static_cast<luisa::ulong>(attribute_rgba_id);
+      entry.element = static_cast<std::uint16_t>(ATTR_ELEMENT_VERTEX);
+      entry.type = static_cast<std::uint8_t>(NODE_ATTR_RGBA);
+      entry.offset = 0;
+    }
+    $elif(offset == 10u) {
+      entry.id = static_cast<luisa::ulong>(ATTR_STD_POINTINESS);
+      entry.element = static_cast<std::uint16_t>(ATTR_ELEMENT_VERTEX);
+      entry.type = static_cast<std::uint8_t>(NODE_ATTR_FLOAT);
+      entry.offset = 3;
+    }
+    $elif(offset == 12u) {
+      entry.id = static_cast<luisa::ulong>(ATTR_STD_RANDOM_PER_ISLAND);
+      entry.element = static_cast<std::uint16_t>(ATTR_ELEMENT_FACE);
+      entry.type = static_cast<std::uint8_t>(NODE_ATTR_FLOAT);
+      entry.offset = 6;
+    };
+    return entry;
+  }
+
+  [[nodiscard]] Float
+  attribute_float(Expr<std::int32_t> offset) const noexcept override {
     Float value = 0.0f;
-    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
-      value = 0.125f;
-      $if(descriptor.offset ==
-          static_cast<std::int32_t>(ATTR_STD_POINTINESS)) {
-        value = 0.25f;
-      };
-      $if(descriptor.offset ==
-          static_cast<std::int32_t>(ATTR_STD_RANDOM_PER_ISLAND)) {
-        value = 0.75f;
-      };
-    };
+    $if(offset == 0) { value = 0.0625f; }
+    $elif(offset == 1) { value = 0.375f; }
+    $elif(offset == 2) { value = 0.0625f; }
+    $elif(offset == 3) { value = 0.05f; }
+    $elif(offset == 4) { value = 1.05f; }
+    $elif(offset == 5) { value = 0.05f; }
+    $elif(offset == 6) { value = 0.75f; };
     return value;
   }
 
-  [[nodiscard]] device_svm::Dual1
-  primitive_surface_attribute_float_derivative(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
-    device_svm::Dual1 value{.val = 0.0f, .dx = 0.0f, .dy = 0.0f};
-    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
-      value.val = 0.125f;
-      value.dx = 0.03125f;
-      value.dy = -0.0625f;
-      $if(descriptor.offset ==
-          static_cast<std::int32_t>(ATTR_STD_POINTINESS)) {
-        value.val = 0.25f;
-        value.dx = 0.1f;
-        value.dy = -0.2f;
-      };
-      $if(descriptor.offset ==
-          static_cast<std::int32_t>(ATTR_STD_RANDOM_PER_ISLAND)) {
-        value.val = 0.75f;
-        value.dx = 0.0f;
-        value.dy = 0.0f;
-      };
-    };
+  [[nodiscard]] Float2
+  attribute_float2(Expr<std::int32_t> offset) const noexcept override {
+    Float2 value = make_float2(0.177f, 0.384f);
+    $if(offset == 1) { value = make_float2(0.307f, 0.344f); }
+    $elif(offset == 2) { value = make_float2(0.167f, 0.464f); };
     return value;
   }
 
-  [[nodiscard]] Float2 primitive_surface_attribute_float2(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
-    Float2 value = make_float2(0.0f);
-    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
-      value = make_float2(0.2f, 0.4f);
-    };
+  [[nodiscard]] Var<packed_float3>
+  attribute_float3(Expr<std::int32_t> offset) const noexcept override {
+    Float3 source = make_float3(0.174f, 0.387f, 0.74f);
+    $if(offset == 1) { source = make_float3(0.334f, 0.317f, 1.04f); }
+    $elif(offset == 2) { source = make_float3(0.154f, 0.477f, 0.74f); };
+    Var<packed_float3> value;
+    value.x = source.x;
+    value.y = source.y;
+    value.z = source.z;
     return value;
   }
 
-  [[nodiscard]] device_svm::Dual2
-  primitive_surface_attribute_float2_derivative(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
-    device_svm::Dual2 value{.val = make_float2(0.0f),
-                            .dx = make_float2(0.0f),
-                            .dy = make_float2(0.0f)};
-    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
-      value.val = make_float2(0.2f, 0.4f);
-      value.dx = make_float2(0.01f, 0.02f);
-      value.dy = make_float2(-0.03f, 0.04f);
-    };
+  [[nodiscard]] Float4
+  attribute_float4(Expr<std::int32_t> offset) const noexcept override {
+    Float4 value = make_float4(0.174f, 0.387f, 0.74f, 0.565f);
+    $if(offset == 1) { value = make_float4(0.334f, 0.317f, 1.04f, 0.515f); }
+    $elif(offset == 2) { value = make_float4(0.154f, 0.477f, 0.74f, 0.715f); };
     return value;
   }
 
-  [[nodiscard]] Float3 primitive_surface_attribute_float3(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
-    Float3 value = make_float3(0.0f);
-    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
-      value = make_float3(0.2f, 0.4f, 0.8f);
-    };
+  [[nodiscard]] Var<uchar4>
+  attribute_uchar4(Expr<std::int32_t>) const noexcept override {
+    Var<uchar4> value;
+    value.x = static_cast<std::uint8_t>(0u);
+    value.y = static_cast<std::uint8_t>(0u);
+    value.z = static_cast<std::uint8_t>(0u);
+    value.w = static_cast<std::uint8_t>(0u);
     return value;
   }
 
-  [[nodiscard]] device_svm::Dual3
-  primitive_surface_attribute_float3_derivative(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
-    device_svm::Dual3 value{.val = make_float3(0.0f),
-                            .dx = make_float3(0.0f),
-                            .dy = make_float3(0.0f)};
-    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
-      value.val = make_float3(0.2f, 0.4f, 0.8f);
-      value.dx = make_float3(0.01f, 0.02f, 0.03f);
-      value.dy = make_float3(-0.04f, 0.05f, -0.06f);
-    };
+  [[nodiscard]] Var<packed_normal>
+  attribute_normal(Expr<std::int32_t>) const noexcept override {
+    Var<packed_normal> value;
+    value.value = 0u;
     return value;
   }
 
-  [[nodiscard]] Float4 primitive_surface_attribute_float4(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
-    Float4 value = make_float4(0.0f);
-    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
-      value = make_float4(0.2f, 0.4f, 0.8f, 0.6f);
-    };
-    return value;
+  [[nodiscard]] UInt3
+  triangle_vertex_indices(Expr<std::uint32_t>) const noexcept override {
+    return make_uint3(0u, 1u, 2u);
   }
 
-  [[nodiscard]] device_svm::Dual4
-  primitive_surface_attribute_float4_derivative(
-      const device_svm::ShaderData &,
-      const device_svm::AttributeDescriptor &descriptor) const noexcept override {
-    device_svm::Dual4 value{.val = make_float4(0.0f),
-                            .dx = make_float4(0.0f),
-                            .dy = make_float4(0.0f)};
-    $if(descriptor.offset != static_cast<std::int32_t>(ATTR_STD_NOT_FOUND)) {
-      value.val = make_float4(0.2f, 0.4f, 0.8f, 0.6f);
-      value.dx = make_float4(0.01f, 0.02f, 0.03f, 0.04f);
-      value.dy = make_float4(-0.04f, 0.05f, -0.06f, 0.07f);
-    };
-    return value;
+  [[nodiscard]] Bool film_is_rec709() const noexcept override { return true; }
+
+  [[nodiscard]] Float3 film_rec709_to_r() const noexcept override {
+    return make_float3(1.0f, 0.0f, 0.0f);
+  }
+
+  [[nodiscard]] Float3 film_rec709_to_g() const noexcept override {
+    return make_float3(0.0f, 1.0f, 0.0f);
+  }
+
+  [[nodiscard]] Float3 film_rec709_to_b() const noexcept override {
+    return make_float3(0.0f, 0.0f, 1.0f);
   }
 
   [[nodiscard]] Float3 object_inverse_position_transform_if_object(
@@ -1246,10 +1234,13 @@ int main(int argc, char **argv) {
 
   floating = {};
   integer = {};
-  run(device, stream, geometry_pointiness_bump,
-      attribute_node_types(true), true, floating, integer);
+  run(device, stream, geometry_pointiness_bump, attribute_node_types(true),
+      true, floating, integer);
+  // This is the Cycles triangle-attribute derivative obtained from the three
+  // source values and ShaderData du/dv below. The former semantic callback
+  // supplied unrelated hand-authored derivatives and is intentionally gone.
   static constexpr auto expected_pointiness_bump =
-      luisa::float3{0.097966006f, 0.293898017f, 0.950803143f};
+      luisa::float3{-0.198768035f, 0.198768035f, 0.959678471f};
   if (!near(floating[0u].x, expected_pointiness_bump.x) ||
       !near(floating[0u].y, expected_pointiness_bump.y) ||
       !near(floating[0u].z, expected_pointiness_bump.z) ||
