@@ -28,6 +28,12 @@ LUISA_STRUCT(
     element,
     type,
     pad) {};
+LUISA_STRUCT(
+    psycles::compiler::cycles_svm::KernelCurve,
+    shader_id,
+    first_key,
+    num_keys,
+    type) {};
 
 namespace psycles::luisa_backend::cycles_svm {
 
@@ -93,7 +99,11 @@ inline constexpr std::uint32_t primitive_none = ~0u;
 inline constexpr std::uint32_t primitive_triangle = 1u << 0u;
 inline constexpr std::uint32_t primitive_curve_thick = 1u << 1u;
 inline constexpr std::uint32_t primitive_curve_ribbon = 1u << 2u;
+inline constexpr std::uint32_t primitive_curve =
+    primitive_curve_thick | primitive_curve_ribbon;
 inline constexpr std::uint32_t primitive_point = 1u << 3u;
+inline constexpr std::uint32_t primitive_num_bits =
+    static_cast<std::uint32_t>(compiler::cycles_svm::PRIMITIVE_NUM_BITS);
 inline constexpr std::uint32_t primitive_volume = 1u << 4u;
 inline constexpr std::uint32_t primitive_lamp = 1u << 5u;
 inline constexpr std::uint32_t primitive_motion = 1u << 6u;
@@ -227,6 +237,8 @@ public:
       luisa::compute::Expr<std::int32_t> offset) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::UInt3 triangle_vertex_indices(
       luisa::compute::Expr<std::uint32_t> prim) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Var<compiler::cycles_svm::KernelCurve>
+  curve(luisa::compute::Expr<std::uint32_t> prim) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Bool
   film_is_rec709() const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float3

@@ -1950,3 +1950,55 @@ curve, point, and volume primitive implementations, production scene table
 construction, insertion-ordered named attribute IDs, and `NODE_VERTEX_COLOR`
 remain required before the attribute family is production-complete; none may
 be substituted with the old semantic callback path.
+
+## Curve and point primitive attributes
+
+The next checkpoint copies `kernel/geom/curve.h::curve_attribute` and
+`kernel/geom/point.h::point_attribute` into the same typed primitive dispatcher.
+It also copies the complete `PrimitiveType` enum and native 16-byte
+`KernelCurve` record from `kernel/types.h`; their values, sizes, alignment, and
+field offsets are permanent ABI assertions.
+
+For a curve-key descriptor, Cycles identifies the two values by
+
+```text
+segment = sd.type >> PRIMITIVE_NUM_BITS
+k0 = curves[sd.prim].first_key + segment
+k1 = k0 + 1
+```
+
+and returns `mix(f0, f1, sd.u)`. The dual path returns
+`du.dx*(f1-f0)` and `du.dy*(f1-f0)`. A curve-domain descriptor reads
+`offset + sd.prim` and has zero differentials. Point attributes accept only the
+vertex element, read `offset + sd.prim`, and likewise construct a dual with zero
+differentials. Object/mesh, triangle, curve, and point selection remains in the
+same order as `kernel/geom/primitive.h`.
+
+The HIP fixture uses a packed Curve Thick type with segment one and a
+`KernelCurve.first_key` of two, so the expected float2 endpoints are table
+indices three and four. It separately covers curve-domain float4 and
+point-domain float3 records. This makes the segment unpack, table selection,
+interpolation, and derivative rules observable; a constant semantic callback
+cannot satisfy the regression.
+
+```text
+cmake --build build --parallel 32 --target \
+  psycles_luisa_cycles_svm_primitive_attribute_tests \
+  psycles_luisa_cycles_svm_wireframe_tests \
+  psycles_luisa_cycles_svm_tests \
+  psycles_cycles_svm_abi_tests                              PASS
+
+ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm(_primitive_attribute|_wireframe)?_hip|psycles\.cycles_svm_abi'
+                                                             4/4 PASS
+
+cmake --build build --parallel 32                            PASS
+ctest --test-dir build --output-on-failure -j32 -E \
+  '(_fallback|_vk|_hip)$'                                    77/77 PASS
+ctest --test-dir build --output-on-failure -R '_hip$' -j1    90/90 PASS
+```
+
+Volume grids remain the next primitive dependency. Production table
+construction, insertion-ordered named attribute IDs, and
+`NODE_VERTEX_COLOR` also remain open; no old evaluator is used for curve or
+point fallback.

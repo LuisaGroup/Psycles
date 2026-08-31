@@ -26,8 +26,11 @@ constexpr auto id_none = static_cast<std::uint64_t>(ATTR_STD_NUM) + 6u;
 constexpr auto id_odd = static_cast<std::uint64_t>(ATTR_STD_NUM) + 7u;
 constexpr auto id_missing = static_cast<std::uint64_t>(ATTR_STD_NUM) + 8u;
 constexpr auto id_float3 = static_cast<std::uint64_t>(ATTR_STD_NUM) + 9u;
+constexpr auto id_curve_key = static_cast<std::uint64_t>(ATTR_STD_NUM) + 10u;
+constexpr auto id_curve = static_cast<std::uint64_t>(ATTR_STD_NUM) + 11u;
+constexpr auto id_point = static_cast<std::uint64_t>(ATTR_STD_NUM) + 12u;
 
-constexpr auto case_count = 14u;
+constexpr auto case_count = 17u;
 
 class BufferKernelGlobals final : public device_svm::KernelGlobals {
 private:
@@ -39,6 +42,7 @@ private:
   Expr<Buffer<uchar4>> _attribute_uchar4;
   Expr<Buffer<packed_normal>> _attribute_normal;
   Expr<Buffer<luisa::uint3>> _triangle_indices;
+  Expr<Buffer<KernelCurve>> _curves;
   Expr<Buffer<std::uint32_t>> _object_map_offsets;
   Bool _film_is_rec709;
 
@@ -51,6 +55,7 @@ public:
                       Expr<Buffer<uchar4>> attribute_uchar4,
                       Expr<Buffer<packed_normal>> attribute_normal,
                       Expr<Buffer<luisa::uint3>> triangle_indices,
+                      Expr<Buffer<KernelCurve>> curves,
                       Expr<Buffer<std::uint32_t>> object_map_offsets,
                       Expr<bool> film_is_rec709) noexcept
       : _attribute_map{attribute_map}, _attribute_float{attribute_float},
@@ -60,6 +65,7 @@ public:
         _attribute_uchar4{attribute_uchar4},
         _attribute_normal{attribute_normal},
         _triangle_indices{triangle_indices},
+        _curves{curves},
         _object_map_offsets{object_map_offsets},
         _film_is_rec709{film_is_rec709} {}
 
@@ -138,6 +144,11 @@ public:
     return _triangle_indices.read(prim);
   }
 
+  [[nodiscard]] Var<KernelCurve>
+  curve(Expr<std::uint32_t> prim) const noexcept override {
+    return _curves.read(prim);
+  }
+
   [[nodiscard]] Bool film_is_rec709() const noexcept override {
     return _film_is_rec709;
   }
@@ -177,13 +188,14 @@ public:
 
 [[nodiscard]] device_svm::ShaderData
 make_shader_data(Expr<std::uint32_t> object,
-                 Expr<std::uint32_t> prim) noexcept {
+                 Expr<std::uint32_t> prim,
+                 Expr<std::uint32_t> primitive_type) noexcept {
   const auto identity = make_float4x4(1.0f);
   return {make_float3(0.0f),
           make_float3(0.0f, 0.0f, 1.0f),
           make_float3(0.0f, 0.0f, 1.0f),
           make_float3(0.0f, 0.0f, -1.0f),
-          device_svm::primitive_triangle,
+          primitive_type,
           0u,
           0u,
           0u,
@@ -238,8 +250,9 @@ int main(int argc, char **argv) {
   static_assert(offsetof(AttributeMap, type) == 14u);
   static_assert(sizeof(uchar4) == 4u);
   static_assert(sizeof(packed_normal) == 4u);
+  static_assert(sizeof(KernelCurve) == 16u);
 
-  std::array<AttributeMap, 20u> maps{};
+  std::array<AttributeMap, 26u> maps{};
   maps[0] = map_entry(id_object, 0, ATTR_ELEMENT_OBJECT, NODE_ATTR_FLOAT);
   maps[2] = terminator(true, 4);
   maps[3] = terminator(true, 5);
@@ -253,26 +266,35 @@ int main(int argc, char **argv) {
   maps[10] = map_entry(id_face, 3, ATTR_ELEMENT_FACE, NODE_ATTR_FLOAT);
   maps[12] = map_entry(id_mesh, 3, ATTR_ELEMENT_MESH, NODE_ATTR_FLOAT4);
   maps[14] = map_entry(id_float3, 0, ATTR_ELEMENT_CORNER, NODE_ATTR_FLOAT3);
-  maps[16] = map_entry(id_none, 123, ATTR_ELEMENT_NONE, NODE_ATTR_FLOAT);
-  maps[18] = terminator(false, 0);
-  maps[19] = terminator(false, 0);
+  maps[16] =
+      map_entry(id_curve_key, 0, ATTR_ELEMENT_CURVE_KEY, NODE_ATTR_FLOAT2);
+  maps[18] = map_entry(id_curve, 4, ATTR_ELEMENT_CURVE, NODE_ATTR_FLOAT4);
+  maps[20] = map_entry(id_point, 3, ATTR_ELEMENT_VERTEX, NODE_ATTR_FLOAT3);
+  maps[22] = map_entry(id_none, 123, ATTR_ELEMENT_NONE, NODE_ATTR_FLOAT);
+  maps[24] = terminator(false, 0);
+  maps[25] = terminator(false, 0);
 
   static constexpr std::array float_values{0.625f, 0.0f, 0.0f, 0.875f};
   static constexpr std::array float2_values{
       luisa::float2{0.1f, 0.2f},
       luisa::float2{0.4f, 0.8f},
       luisa::float2{0.9f, -0.2f},
+      luisa::float2{0.2f, 0.6f},
+      luisa::float2{0.8f, -0.4f},
   };
   static constexpr std::array float3_values{
       packed_float3{0.2f, 0.4f, 0.6f},
       packed_float3{-0.1f, 0.8f, 0.3f},
       packed_float3{0.9f, -0.2f, 0.5f},
+      packed_float3{0.0f, 0.0f, 0.0f},
+      packed_float3{0.7f, 0.8f, 0.9f},
   };
   static constexpr std::array float4_values{
       luisa::float4{0.0f},
       luisa::float4{0.0f},
       luisa::float4{0.0f},
       luisa::float4{0.11f, 0.22f, 0.33f, 0.44f},
+      luisa::float4{0.55f, 0.65f, 0.75f, 0.85f},
   };
   static constexpr std::array byte_values{
       uchar4{0u, 64u, 128u, 255u},
@@ -286,6 +308,9 @@ int main(int argc, char **argv) {
   };
   static constexpr std::array triangle_indices{
       luisa::uint3{0u, 1u, 2u},
+  };
+  static constexpr std::array curves{
+      KernelCurve{0, 2, 4, 0},
   };
   static constexpr std::array object_offsets{0u, 4u};
 
@@ -307,6 +332,7 @@ int main(int argc, char **argv) {
       device.create_buffer<packed_normal>(normal_values.size());
   auto triangle_buffer =
       device.create_buffer<luisa::uint3>(triangle_indices.size());
+  auto curve_buffer = device.create_buffer<KernelCurve>(curves.size());
   auto object_offset_buffer =
       device.create_buffer<std::uint32_t>(object_offsets.size());
   auto output_buffer = device.create_buffer<luisa::float4>(case_count * 3u);
@@ -315,20 +341,22 @@ int main(int argc, char **argv) {
   const auto kernel = Kernel1D<
       Buffer<AttributeMap>, Buffer<float>, Buffer<luisa::float2>,
       Buffer<packed_float3>, Buffer<luisa::float4>, Buffer<uchar4>,
-      Buffer<packed_normal>, Buffer<luisa::uint3>, Buffer<std::uint32_t>,
-      Buffer<luisa::float4>, Buffer<luisa::uint4>>{
+      Buffer<packed_normal>, Buffer<luisa::uint3>, Buffer<KernelCurve>,
+      Buffer<std::uint32_t>, Buffer<luisa::float4>, Buffer<luisa::uint4>>{
       [](BufferVar<AttributeMap> attribute_map, BufferFloat attribute_float,
          BufferVar<luisa::float2> attribute_float2,
          BufferVar<packed_float3> attribute_float3,
          BufferFloat4 attribute_float4, BufferVar<uchar4> attribute_uchar4,
          BufferVar<packed_normal> attribute_normal,
          BufferVar<luisa::uint3> triangle_indices,
-         BufferUInt object_map_offsets, BufferFloat4 output,
+         BufferVar<KernelCurve> curves, BufferUInt object_map_offsets,
+         BufferFloat4 output,
          BufferUInt4 descriptor_output) noexcept {
         const UInt index = dispatch_x();
         ULong id = static_cast<luisa::ulong>(id_object);
         UInt object = 0u;
         UInt prim = 0u;
+        UInt primitive_type = device_svm::primitive_triangle;
         $if(index == 1u) { id = static_cast<luisa::ulong>(id_vertex); }
         $elif(index == 2u) { id = static_cast<luisa::ulong>(id_byte); }
         $elif(index == 3u) { id = static_cast<luisa::ulong>(id_normal); }
@@ -350,14 +378,31 @@ int main(int argc, char **argv) {
           prim = device_svm::primitive_none;
         }
         $elif(index == 12u) { id = static_cast<luisa::ulong>(id_float3); }
-        $elif(index == 13u) { id = static_cast<luisa::ulong>(id_byte); };
+        $elif(index == 13u) { id = static_cast<luisa::ulong>(id_byte); }
+        $elif(index == 14u) {
+          id = static_cast<luisa::ulong>(id_curve_key);
+          primitive_type =
+              device_svm::primitive_curve_thick |
+              (1u << device_svm::primitive_num_bits);
+        }
+        $elif(index == 15u) {
+          id = static_cast<luisa::ulong>(id_curve);
+          primitive_type = device_svm::primitive_curve_thick;
+        }
+        $elif(index == 16u) {
+          id = static_cast<luisa::ulong>(id_point);
+          primitive_type = device_svm::primitive_point;
+          prim = 1u;
+        };
 
         BufferKernelGlobals kernel_globals{attribute_map,      attribute_float,
                                            attribute_float2,   attribute_float3,
                                            attribute_float4,   attribute_uchar4,
                                            attribute_normal,   triangle_indices,
-                                           object_map_offsets, index != 13u};
-        auto shader_data = make_shader_data(object, prim);
+                                           curves,              object_map_offsets,
+                                           index != 13u};
+        auto shader_data =
+            make_shader_data(object, prim, primitive_type);
         const auto descriptor =
             device_svm::find_attribute(kernel_globals, shader_data, id);
         Float4 value = make_float4(0.0f);
@@ -418,10 +463,12 @@ int main(int argc, char **argv) {
          << byte_buffer.copy_from(luisa::span{byte_values})
          << normal_buffer.copy_from(luisa::span{normal_values})
          << triangle_buffer.copy_from(luisa::span{triangle_indices})
+         << curve_buffer.copy_from(luisa::span{curves})
          << object_offset_buffer.copy_from(luisa::span{object_offsets})
          << shader(map_buffer, float_buffer, float2_buffer, float3_buffer,
                    float4_buffer, byte_buffer, normal_buffer, triangle_buffer,
-                   object_offset_buffer, output_buffer, descriptor_buffer)
+                   curve_buffer, object_offset_buffer, output_buffer,
+                   descriptor_buffer)
                 .dispatch(case_count)
          << output_buffer.copy_to(luisa::span{actual})
          << descriptor_buffer.copy_to(luisa::span{descriptors})
@@ -444,6 +491,9 @@ int main(int argc, char **argv) {
       luisa::uint4{ATTR_ELEMENT_NONE, NODE_ATTR_FLOAT, not_found_bits, 0u},
       luisa::uint4{ATTR_ELEMENT_CORNER, NODE_ATTR_FLOAT3, 0u, 1u},
       luisa::uint4{ATTR_ELEMENT_CORNER_BYTE, NODE_ATTR_RGBA, 0u, 1u},
+      luisa::uint4{ATTR_ELEMENT_CURVE_KEY, NODE_ATTR_FLOAT2, 0u, 1u},
+      luisa::uint4{ATTR_ELEMENT_CURVE, NODE_ATTR_FLOAT4, 4u, 1u},
+      luisa::uint4{ATTR_ELEMENT_VERTEX, NODE_ATTR_FLOAT3, 3u, 1u},
   };
   static constexpr std::array<luisa::float4, case_count * 3u> expected{
       luisa::float4{0.625f, 0.0f, 0.0f, 0.0f},
@@ -488,6 +538,15 @@ int main(int argc, char **argv) {
       luisa::float4{0.242081016f, 0.119094752f, 0.204333156f, 0.600392163f},
       luisa::float4{0.174352452f, -0.0803067014f, 0.104333155f, -0.349803925f},
       luisa::float4{0.17760624f, -0.0522118993f, -0.194222465f, -0.300392151f},
+      luisa::float4{0.32f, 0.4f, 0.0f, 0.0f},
+      luisa::float4{0.06f, -0.1f, 0.0f, 0.0f},
+      luisa::float4{-0.12f, 0.2f, 0.0f, 0.0f},
+      luisa::float4{0.55f, 0.65f, 0.75f, 0.85f},
+      luisa::float4{0.0f},
+      luisa::float4{0.0f},
+      luisa::float4{0.7f, 0.8f, 0.9f, 0.0f},
+      luisa::float4{0.0f},
+      luisa::float4{0.0f},
   };
 
   for (auto i = std::size_t{}; i < descriptors.size(); ++i) {

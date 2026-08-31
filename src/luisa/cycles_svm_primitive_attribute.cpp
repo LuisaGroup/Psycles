@@ -210,6 +210,67 @@ triangle_attribute(const KernelGlobals &kernel_globals,
   return result;
 }
 
+template <typename T>
+[[nodiscard]] Var<T> curve_attribute_dfdx(const Differential &du, Expr<T> f0,
+                                          Expr<T> f1) noexcept {
+  return du.dx * (f1 - f0);
+}
+
+template <typename T>
+[[nodiscard]] Var<T> curve_attribute_dfdy(const Differential &du, Expr<T> f0,
+                                          Expr<T> f1) noexcept {
+  return du.dy * (f1 - f0);
+}
+
+template <typename T, bool derivatives>
+[[nodiscard]] DualValue<T>
+curve_attribute(const KernelGlobals &kernel_globals,
+                const ShaderData &shader_data,
+                const AttributeDescriptor &descriptor) noexcept {
+  auto result = zero_dual_value<T>();
+  $if((descriptor.element &
+       static_cast<std::uint32_t>(ATTR_ELEMENT_CURVE_KEY)) != 0u) {
+    const auto curve = kernel_globals.curve(shader_data.prim);
+    const Int k0 =
+        curve.first_key +
+        (shader_data.type >> primitive_num_bits).cast<std::int32_t>();
+    const Int k1 = k0 + 1;
+
+    const auto f0 = attribute_data_fetch<T>(
+        kernel_globals, descriptor.element, descriptor.offset + k0);
+    const auto f1 = attribute_data_fetch<T>(
+        kernel_globals, descriptor.element, descriptor.offset + k1);
+
+    result.val = f0 + shader_data.u * (f1 - f0);
+    if constexpr (derivatives) {
+      result.dx = curve_attribute_dfdx<T>(shader_data.du, f0, f1);
+      result.dy = curve_attribute_dfdy<T>(shader_data.du, f0, f1);
+    }
+  }
+  $elif((descriptor.element &
+         static_cast<std::uint32_t>(ATTR_ELEMENT_CURVE)) != 0u) {
+    result.val = attribute_data_fetch<T>(
+        kernel_globals, descriptor.element,
+        descriptor.offset + shader_data.prim.cast<std::int32_t>());
+  };
+  return result;
+}
+
+template <typename T>
+[[nodiscard]] DualValue<T>
+point_attribute(const KernelGlobals &kernel_globals,
+                const ShaderData &shader_data,
+                const AttributeDescriptor &descriptor) noexcept {
+  auto result = zero_dual_value<T>();
+  $if((descriptor.element &
+       static_cast<std::uint32_t>(ATTR_ELEMENT_VERTEX)) != 0u) {
+    result.val = attribute_data_fetch<T>(
+        kernel_globals, descriptor.element,
+        descriptor.offset + shader_data.prim.cast<std::int32_t>());
+  };
+  return result;
+}
+
 template <typename T, bool derivatives>
 [[nodiscard]] DualValue<T> primitive_surface_attribute_impl(
     const KernelGlobals &kernel_globals, const ShaderData &shader_data,
@@ -224,6 +285,13 @@ template <typename T, bool derivatives>
   $elif((shader_data.type & primitive_triangle) != 0u) {
     result = triangle_attribute<T, derivatives>(kernel_globals, shader_data,
                                                 descriptor);
+  }
+  $elif((shader_data.type & primitive_curve) != 0u) {
+    result = curve_attribute<T, derivatives>(kernel_globals, shader_data,
+                                             descriptor);
+  }
+  $elif((shader_data.type & primitive_point) != 0u) {
+    result = point_attribute<T>(kernel_globals, shader_data, descriptor);
   };
   return result;
 }
