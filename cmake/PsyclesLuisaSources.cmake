@@ -10,6 +10,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_math.cpp
     src/luisa/cycles_svm_noise.cpp
     src/luisa/cycles_svm_primitive_attribute.cpp
+    src/luisa/cycles_svm_ramp.cpp
     src/luisa/cycles_svm_volume_attribute.cpp
     src/luisa/cycles_svm_stack.cpp
     src/luisa/cycles_svm_transform.cpp

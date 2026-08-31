@@ -30,6 +30,8 @@ public:
 
   [[nodiscard]] luisa::compute::UInt word() noexcept;
   [[nodiscard]] luisa::compute::Float floating() noexcept;
+  [[nodiscard]] luisa::compute::Float floating_at(
+      luisa::compute::Expr<std::uint32_t> relative_word) const noexcept;
   void advance(luisa::compute::Expr<std::uint32_t> word_count) noexcept;
   [[nodiscard]] luisa::compute::UInt byte(
       luisa::compute::Expr<std::uint32_t> word,
@@ -157,6 +159,7 @@ void node_vector_math_mapping_normalize(Cursor &cursor, Stack &stack,
 void node_tex_noise(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_white_noise(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_gradient(Cursor &cursor, Stack &stack) noexcept;
+void node_rgb_ramp(Cursor &cursor, Stack &stack) noexcept;
 void node_attr_surface(Cursor &cursor, Stack &stack,
                        const KernelGlobals &kernel_globals,
                        const ShaderData &shader_data) noexcept;
