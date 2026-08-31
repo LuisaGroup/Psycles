@@ -117,6 +117,16 @@ public:
     return make_uint3(0u, 1u, 2u);
   }
 
+  [[nodiscard]] Var<KernelCurve>
+  curve(Expr<std::uint32_t>) const noexcept override {
+    Var<KernelCurve> value;
+    value.shader_id = 0;
+    value.first_key = 0;
+    value.num_keys = 0;
+    value.type = 0;
+    return value;
+  }
+
   [[nodiscard]] Bool film_is_rec709() const noexcept override { return true; }
 
   [[nodiscard]] Float3 film_rec709_to_r() const noexcept override {
