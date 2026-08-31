@@ -12,6 +12,7 @@
 #include "cycles_svm_noise_nodes.h"
 #include "cycles_svm_ramp_nodes.h"
 #include "cycles_svm_texture_coordinate_nodes.h"
+#include "cycles_svm_value_nodes.h"
 #include "cycles_svm_vector_nodes.h"
 
 #include <psycles/compiler/core_nodes.h>
@@ -1852,6 +1853,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   }
   if (type == node_type::separate_xyz) {
     return std::make_unique<SeparateXYZNode>();
+  }
+  if (auto node = make_value_graph_node(type)) {
+    return node;
   }
   if (auto node = make_vector_graph_node(type)) {
     return node;
