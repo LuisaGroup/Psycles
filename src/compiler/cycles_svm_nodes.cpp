@@ -1527,6 +1527,13 @@ public:
       folder.make_constant({*x, *y, *z});
     }
   }
+
+  void inline_blender_constant_fold(
+      const ConstantFolder &folder) override {
+    // Combine XYZ has both a Blender multi-function and a Cycles host-side
+    // constant fold, with identical scalar-to-vector semantics.
+    constant_fold(folder);
+  }
 };
 
 class SeparateXYZNode final : public GraphNode {
@@ -1732,6 +1739,8 @@ public:
 } // namespace
 
 void GraphNode::expand(CyclesGraph &) {}
+
+void GraphNode::inline_blender_constant_fold(const ConstantFolder &) {}
 
 void GraphNode::constant_fold(const ConstantFolder &) {}
 

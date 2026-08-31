@@ -9,6 +9,92 @@ import bpy
 from .support import _input, _material, _material_matrix, _output, _plane
 
 
+def _gradient_opcode_matrix(scene: Any) -> None:
+    """Keep every Cycles Gradient opcode variant and both live outputs."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    modes = (
+        "LINEAR",
+        "QUADRATIC",
+        "EASING",
+        "DIAGONAL",
+        "RADIAL",
+        "QUADRATIC_SPHERE",
+        "SPHERICAL",
+    )
+    materials = []
+    for index, gradient_type in enumerate(modes):
+        material, tree, output = _material(
+            f"Gradient Opcode {index:02d} {gradient_type} Factor"
+        )
+        gradient = tree.nodes.new("ShaderNodeTexGradient")
+        gradient.name = f"Gradient {index:02d} {gradient_type} Factor"
+        gradient.gradient_type = gradient_type
+        emission = tree.nodes.new("ShaderNodeEmission")
+        emission.name = f"Gradient Emission {index:02d}"
+        tree.links.new(
+            _output(gradient, "Fac"),
+            _input(emission, "Color"),
+        )
+        tree.links.new(
+            _output(emission, "Emission"),
+            _input(output, "Surface"),
+        )
+        materials.append(material)
+
+    # The eighth cell uses Color so the external stream locks the independent
+    # output-liveness bytes; the seven Factor cells lock every enum value.
+    material, tree, output = _material("Gradient Opcode Color")
+    gradient = tree.nodes.new("ShaderNodeTexGradient")
+    gradient.name = "Gradient Spherical Color"
+    gradient.gradient_type = "SPHERICAL"
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Gradient Color Emission"
+    tree.links.new(
+        _output(gradient, "Color"),
+        _input(emission, "Color"),
+    )
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    materials.append(material)
+
+    _material_matrix(
+        scene,
+        materials,
+        columns=4,
+        rows=2,
+        name="Gradient Opcode Matrix",
+    )
+
+
+def _gradient_mapping_constant_fold(scene: Any) -> None:
+    """Lock Blender's constant Mapping-to-Gradient inliner boundary."""
+    material, tree, output = _material("Gradient Mapping Constant Fold")
+    vector = tree.nodes.new("ShaderNodeCombineXYZ")
+    vector.name = "Gradient Constant Vector"
+    _input(vector, "X").default_value = 0.2
+    _input(vector, "Y").default_value = -0.4
+    _input(vector, "Z").default_value = 0.3
+    mapping = tree.nodes.new("ShaderNodeMapping")
+    mapping.name = "Gradient Point Mapping"
+    mapping.vector_type = "POINT"
+    _input(mapping, "Location").default_value = (0.1, 0.2, -0.1)
+    _input(mapping, "Rotation").default_value = (0.17, -0.11, 0.3)
+    _input(mapping, "Scale").default_value = (2.0, 0.5, 1.3)
+    gradient = tree.nodes.new("ShaderNodeTexGradient")
+    gradient.name = "Mapped Diagonal Gradient"
+    gradient.gradient_type = "DIAGONAL"
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Gradient Mapping Emission"
+    tree.links.new(_output(vector, "Vector"), _input(mapping, "Vector"))
+    tree.links.new(_output(mapping, "Vector"), _input(gradient, "Vector"))
+    tree.links.new(_output(gradient, "Fac"), _input(emission, "Color"))
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    _plane(material)
+
+
 def _brick_texture(scene: Any) -> None:
     """Exercise both Brick Color and Fac with non-default row controls."""
     material, tree, output = _material("Brick Texture Probe")

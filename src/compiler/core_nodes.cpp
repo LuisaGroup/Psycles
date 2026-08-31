@@ -497,7 +497,8 @@ NodeRegistry make_core_node_registry() {
       NodeSchema{.type = node_type::gradient_texture,
                  .inputs = {input("Vector", SocketType::vector,
                                   SocketValue::vector({0.0f, 0.0f, 0.0f}))},
-                 .outputs = {output("Factor", SocketType::floating)},
+                 .outputs = {output("Color", SocketType::color),
+                             output("Factor", SocketType::floating)},
                  .properties = {property("GradientType", SocketType::string,
                                          SocketValue::string("LINEAR"))},
                  .required_features = feature_bit(ShaderFeature::surface)}));

@@ -156,6 +156,7 @@ void node_vector_math_mapping_normalize(Cursor &cursor, Stack &stack,
                                         bool use_derivatives) noexcept;
 void node_tex_noise(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_white_noise(Cursor &cursor, Stack &stack) noexcept;
+void node_tex_gradient(Cursor &cursor, Stack &stack) noexcept;
 void node_attr_surface(Cursor &cursor, Stack &stack,
                        const KernelGlobals &kernel_globals,
                        const ShaderData &shader_data) noexcept;

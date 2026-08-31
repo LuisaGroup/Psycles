@@ -307,9 +307,15 @@ public:
                 "GradientType",
                 SocketValue::string(context.node_property_text(
                     node, "gradient_type", "LINEAR"))));
+            const auto factor =
+                socket == "Fac" || socket == "Factor";
             return finish({
-                .ref = {.node = id, .socket = "Factor"},
-                .type = SocketType::floating});
+                .ref = {
+                    .node = id,
+                    .socket = factor ? "Factor" : "Color"},
+                .type = factor
+                            ? SocketType::floating
+                            : SocketType::color});
         }
         if (type == "TEX_VORONOI") {
             const auto id = context.graph().add_node(

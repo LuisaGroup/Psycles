@@ -120,6 +120,10 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     ),
     "gradient_spherical": texture_inputs._gradient_spherical,
     "gradient_matrix": values._gradient_matrix,
+    "gradient_mapping_constant_fold": (
+        procedural_textures._gradient_mapping_constant_fold
+    ),
+    "gradient_opcode_matrix": procedural_textures._gradient_opcode_matrix,
     "hosek_wilkie_diffuse_transport": (
         closures._hosek_wilkie_diffuse_transport
     ),

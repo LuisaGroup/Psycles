@@ -34,6 +34,48 @@ namespace {
                      });
 }
 
+enum class ConstantFoldStage : std::uint8_t {
+  blender_inline,
+  cycles_graph,
+};
+
+void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
+  GraphNodeSet done;
+  GraphNodeSet scheduled;
+  std::queue<GraphNode *> traverse_queue;
+
+  for (const auto &node : graph.nodes()) {
+    if (!check_node_inputs_has_links(node.get())) {
+      traverse_queue.push(node.get());
+      scheduled.insert(node.get());
+    }
+  }
+
+  while (!traverse_queue.empty()) {
+    auto *node = traverse_queue.front();
+    traverse_queue.pop();
+    done.insert(node);
+    for (auto &output_socket : node->outputs) {
+      if (output_socket.links.empty()) {
+        continue;
+      }
+      for (auto *input : output_socket.links) {
+        if (!scheduled.contains(input->parent) &&
+            check_node_inputs_traversed(input->parent, done)) {
+          traverse_queue.push(input->parent);
+          scheduled.insert(input->parent);
+        }
+      }
+      const ConstantFolder folder{&graph, node, &output_socket};
+      if (stage == ConstantFoldStage::blender_inline) {
+        node->inline_blender_constant_fold(folder);
+      } else {
+        node->constant_fold(folder);
+      }
+    }
+  }
+}
+
 [[nodiscard]] bool is_surface_closure(std::string_view type) noexcept {
   return type == node_type::diffuse_bsdf ||
          type == node_type::translucent_bsdf ||
@@ -611,6 +653,7 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
     }
   }
 
+  graph.inline_blender_functions();
   graph.project_texture_mappings();
   if (!graph.valid()) {
     return graph;
@@ -850,39 +893,18 @@ void CyclesGraph::expand() {
   }
 }
 
+void CyclesGraph::inline_blender_functions() {
+  // Blender's shader-node inliner evaluates a node only when it has a
+  // multi-function and every available input is primitive. Individual node
+  // implementations encode socket availability and field-valued defaults;
+  // this topological pass supplies the same one-way primitive propagation.
+  run_constant_fold_stage(*this, ConstantFoldStage::blender_inline);
+}
+
 void CyclesGraph::constant_fold() {
-  GraphNodeSet done;
-  GraphNodeSet scheduled;
-  std::queue<GraphNode *> traverse_queue;
   const auto has_displacement =
       root(GraphDomain::displacement) != nullptr;
-
-  for (const auto &node : _nodes) {
-    if (!check_node_inputs_has_links(node.get())) {
-      traverse_queue.push(node.get());
-      scheduled.insert(node.get());
-    }
-  }
-
-  while (!traverse_queue.empty()) {
-    auto *node = traverse_queue.front();
-    traverse_queue.pop();
-    done.insert(node);
-    for (auto &output_socket : node->outputs) {
-      if (output_socket.links.empty()) {
-        continue;
-      }
-      for (auto *input : output_socket.links) {
-        if (!scheduled.contains(input->parent) &&
-            check_node_inputs_traversed(input->parent, done)) {
-          traverse_queue.push(input->parent);
-          scheduled.insert(input->parent);
-        }
-      }
-      const ConstantFolder folder{this, node, &output_socket};
-      node->constant_fold(folder);
-    }
-  }
+  run_constant_fold_stage(*this, ConstantFoldStage::cycles_graph);
 
   // Cycles restores a ColorNode when folding removes the displacement root.
   // Until ColorNode plus the exact automatic Color-to-Vector ConvertNode are
