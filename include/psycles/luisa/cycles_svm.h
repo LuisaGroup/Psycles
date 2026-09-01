@@ -335,6 +335,12 @@ public:
   [[nodiscard]] virtual luisa::compute::Bool
   film_is_rec709() const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float3
+  film_xyz_to_r() const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3
+  film_xyz_to_g() const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3
+  film_xyz_to_b() const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3
   film_rec709_to_r() const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float3
   film_rec709_to_g() const noexcept = 0;

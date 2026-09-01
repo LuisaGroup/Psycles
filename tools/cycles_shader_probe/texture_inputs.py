@@ -1851,6 +1851,53 @@ def _blackbody_matrix(scene: Any) -> None:
     )
 
 
+def _svm_spectral_dynamic(scene: Any) -> None:
+    """Keep both spectral nodes dynamic for an exact Cycles SVM dump."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    materials = []
+    cases = (
+        (
+            "Dynamic Blackbody",
+            "ShaderNodeBlackbody",
+            "Temperature",
+        ),
+        (
+            "Dynamic Wavelength",
+            "ShaderNodeWavelength",
+            "Wavelength",
+        ),
+    )
+    for name, node_type, input_name in cases:
+        material, tree, output = _material(name)
+        light_path = tree.nodes.new("ShaderNodeLightPath")
+        light_path.name = f"{name} Dynamic Input"
+        spectral = tree.nodes.new(node_type)
+        spectral.name = name
+        emission = tree.nodes.new("ShaderNodeEmission")
+        emission.name = f"{name} Emission"
+        tree.links.new(
+            _output(light_path, "Ray Depth"),
+            _input(spectral, input_name),
+        )
+        tree.links.new(
+            _output(spectral, "Color"),
+            _input(emission, "Color"),
+        )
+        tree.links.new(
+            _output(emission, "Emission"),
+            _input(output, "Surface"),
+        )
+        materials.append(material)
+    _material_matrix(
+        scene,
+        materials,
+        columns=2,
+        rows=1,
+        name="Dynamic Spectral",
+    )
+
+
 def _wavelength_matrix(scene: Any) -> None:
     """Cover Cycles CIE interpolation, truncation, and range guards."""
     scene.cycles.pixel_filter_type = "BOX"

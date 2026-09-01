@@ -498,6 +498,16 @@ void eval_nodes(
           detail::node_brightness(cursor, stack);
         };
       }
+      if (node_types_used[NODE_WAVELENGTH]) {
+        PSYCLES_SVM_CASE(NODE_WAVELENGTH) {
+          detail::node_wavelength(cursor, stack, kernel_globals);
+        };
+      }
+      if (node_types_used[NODE_BLACKBODY]) {
+        PSYCLES_SVM_CASE(NODE_BLACKBODY) {
+          detail::node_blackbody(cursor, stack, kernel_globals);
+        };
+      }
       if (node_types_used[NODE_LIGHT_PATH]) {
         PSYCLES_SVM_CASE(NODE_LIGHT_PATH) {
           detail::node_light_path(cursor, stack, shader_data, path_state,

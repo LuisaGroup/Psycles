@@ -734,8 +734,11 @@ void CyclesGraph::reject(std::string diagnostic) {
   }
 }
 
-CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
+CyclesGraph CyclesGraph::project(
+    const ShaderProgram &shader,
+    const contract::ShaderColorSpace &color_space) {
   CyclesGraph graph;
+  graph._color_space = color_space;
   const auto registry = make_core_node_registry();
   std::unordered_map<std::uint32_t, GraphNode *> nodes;
 
@@ -925,6 +928,20 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
     graph.transform_multi_closure(volume->parent, nullptr, true);
   }
   return graph;
+}
+
+Vec3f CyclesGraph::rec709_to_scene_linear(Vec3f value) const noexcept {
+  return {
+      _color_space.rec709_to_r.x * value.x +
+          _color_space.rec709_to_r.y * value.y +
+          _color_space.rec709_to_r.z * value.z,
+      _color_space.rec709_to_g.x * value.x +
+          _color_space.rec709_to_g.y * value.y +
+          _color_space.rec709_to_g.z * value.z,
+      _color_space.rec709_to_b.x * value.x +
+          _color_space.rec709_to_b.y * value.y +
+          _color_space.rec709_to_b.z * value.z,
+  };
 }
 
 void CyclesGraph::find_dependencies(GraphNodeSet &dependencies,

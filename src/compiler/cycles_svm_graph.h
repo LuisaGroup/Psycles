@@ -6,6 +6,7 @@
 
 #include <psycles/compiler/cycles_svm_types.h>
 #include <psycles/compiler/shader_program.h>
+#include <psycles/contract/scene.h>
 
 #include <cstdint>
 #include <map>
@@ -166,9 +167,12 @@ private:
   std::vector<std::unique_ptr<GraphNode>> _nodes;
   std::uint32_t _next_node_id{};
   std::string _diagnostic;
+  contract::ShaderColorSpace _color_space;
 
 public:
-  [[nodiscard]] static CyclesGraph project(const ShaderProgram &shader);
+  [[nodiscard]] static CyclesGraph
+  project(const ShaderProgram &shader,
+          const contract::ShaderColorSpace &color_space = {});
 
   [[nodiscard]] bool valid() const noexcept { return _diagnostic.empty(); }
   [[nodiscard]] const std::string &diagnostic() const noexcept {
@@ -181,6 +185,8 @@ public:
   [[nodiscard]] std::size_t node_id_capacity() const noexcept {
     return _next_node_id;
   }
+  [[nodiscard]] Vec3f
+  rec709_to_scene_linear(Vec3f value) const noexcept;
   [[nodiscard]] GraphOutput *root(GraphDomain domain) const noexcept;
   [[nodiscard]] GraphNode *output_node() const noexcept {
     return _nodes.empty() ? nullptr : _nodes.front().get();

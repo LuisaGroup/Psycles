@@ -13,7 +13,7 @@
 
 namespace psycles::luisa_backend::cycles_color_nodes {
 
-// Blender 4.5.10 Cycles tables from intern/cycles/kernel/tables.h. These are
+// Blender 5.2.1 Cycles tables from intern/cycles/kernel/tables.h. These are
 // deliberately device constants in the Luisa AST, not host-evaluated shader
 // values, so linked Temperature/Wavelength inputs remain fully dynamic.
 inline constexpr std::array<luisa::float3, 7u> blackbody_r{{
@@ -138,48 +138,49 @@ inline constexpr std::array<luisa::float3, 81u> cie_color_match{{
 }};
 
 [[nodiscard]] inline Float3 blackbody_rec709(Float temperature) noexcept {
-    const auto valid_temperature = select(
-        800.0f,
-        temperature,
-        (temperature >= 800.0f) & (temperature < 12000.0f));
-    const auto inverse_temperature = 1.0f / valid_temperature;
-    auto segment = [&](std::size_t index) noexcept {
-        const auto r = blackbody_r[index];
-        const auto g = blackbody_g[index];
-        const auto b = blackbody_b[index];
-        return make_float3(
-            r.x * inverse_temperature +
-                r.y * valid_temperature + r.z,
-            g.x * inverse_temperature +
-                g.y * valid_temperature + g.z,
-            ((b.x * valid_temperature + b.y) *
-                     valid_temperature +
-                 b.z) *
-                    valid_temperature +
-                b.w);
-    };
-
-    auto color = segment(0u);
-    color = select(color, segment(1u), temperature >= 965.0f);
-    color = select(color, segment(2u), temperature >= 1167.0f);
-    color = select(color, segment(3u), temperature >= 1449.0f);
-    color = select(color, segment(4u), temperature >= 1902.0f);
-    color = select(color, segment(5u), temperature >= 3315.0f);
-    color = select(color, segment(6u), temperature >= 6365.0f);
-    color = select(
-        color,
-        make_float3(
+    Float3 color;
+    $if (temperature >= 12000.0f) {
+        color = make_float3(
             0.8262954810464208f,
             0.9945080501520986f,
-            1.566307710274283f),
-        temperature >= 12000.0f);
-    color = select(
-        color,
-        make_float3(
+            1.566307710274283f);
+    }
+    $elif (temperature < 800.0f) {
+        color = make_float3(
             5.413294490189271f,
             -0.20319390035873933f,
-            -0.0822535242887164f),
-        temperature < 800.0f);
+            -0.0822535242887164f);
+    }
+    $else {
+        luisa::compute::Int segment = 0;
+        $if (temperature >= 6365.0f) { segment = 6; }
+        $elif (temperature >= 3315.0f) { segment = 5; }
+        $elif (temperature >= 1902.0f) { segment = 4; }
+        $elif (temperature >= 1449.0f) { segment = 3; }
+        $elif (temperature >= 1167.0f) { segment = 2; }
+        $elif (temperature >= 965.0f) { segment = 1; };
+
+        std::vector<luisa::float3> r_values{
+            blackbody_r.begin(), blackbody_r.end()};
+        std::vector<luisa::float3> g_values{
+            blackbody_g.begin(), blackbody_g.end()};
+        std::vector<luisa::float4> b_values{
+            blackbody_b.begin(), blackbody_b.end()};
+        luisa::compute::Constant<luisa::float3> r_table{r_values};
+        luisa::compute::Constant<luisa::float3> g_table{g_values};
+        luisa::compute::Constant<luisa::float4> b_table{b_values};
+        const auto index = segment.cast<luisa::uint>();
+        const Float3 r = r_table.read(index);
+        const Float3 g = g_table.read(index);
+        const Float4 b = b_table.read(index);
+        const Float inverse_temperature = 1.0f / temperature;
+        color = make_float3(
+            r.x * inverse_temperature + r.y * temperature + r.z,
+            g.x * inverse_temperature + g.y * temperature + g.z,
+            ((b.x * temperature + b.y) * temperature + b.z) *
+                    temperature +
+                b.w);
+    };
     return color;
 }
 

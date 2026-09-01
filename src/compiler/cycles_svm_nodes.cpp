@@ -19,6 +19,7 @@
 #include "cycles_svm_normal_nodes.h"
 #include "cycles_svm_procedural_texture_nodes.h"
 #include "cycles_svm_ramp_nodes.h"
+#include "cycles_svm_spectral_nodes.h"
 #include "cycles_svm_texture_coordinate_nodes.h"
 #include "cycles_svm_value_nodes.h"
 #include "cycles_svm_vector_nodes.h"
@@ -1918,6 +1919,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
     return node;
   }
   if (auto node = make_ramp_graph_node(type)) {
+    return node;
+  }
+  if (auto node = make_spectral_graph_node(type)) {
     return node;
   }
   if (auto node = make_attribute_graph_node(type)) {

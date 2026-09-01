@@ -98,6 +98,12 @@ normalize_cycles(luisa::compute::Expr<luisa::float3> value) noexcept;
 [[nodiscard]] luisa::compute::Float3
 safe_normalize_cycles(luisa::compute::Expr<luisa::float3> value) noexcept;
 [[nodiscard]] Dual3 safe_normalize_dual(const Dual3 &value) noexcept;
+[[nodiscard]] luisa::compute::Float3 rec709_to_rgb(
+    const KernelGlobals &kernel_globals,
+    luisa::compute::Expr<luisa::float3> rec709) noexcept;
+[[nodiscard]] luisa::compute::Float3 xyz_to_rgb(
+    const KernelGlobals &kernel_globals,
+    luisa::compute::Expr<luisa::float3> xyz) noexcept;
 void object_position_transform(luisa::compute::Float3 &value,
                                const TransformState &transform_state,
                                const ShaderData &shader_data,
@@ -249,6 +255,10 @@ void node_set_bump(Cursor &cursor, Stack &stack,
                    bool bump_feature_enabled,
                    bool object_motion_enabled) noexcept;
 void node_clamp(Cursor &cursor, Stack &stack) noexcept;
+void node_blackbody(Cursor &cursor, Stack &stack,
+                    const KernelGlobals &kernel_globals) noexcept;
+void node_wavelength(Cursor &cursor, Stack &stack,
+                     const KernelGlobals &kernel_globals) noexcept;
 
 void node_closure_set_weight(Cursor &cursor,
                              luisa::compute::Float3 &closure_weight) noexcept;
