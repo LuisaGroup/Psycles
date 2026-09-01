@@ -1,7 +1,10 @@
 #include "blender_graph_lowering_component.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdlib>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -318,6 +321,27 @@ public:
                             : SocketType::color});
         }
         if (type == "TEX_VORONOI") {
+            static constexpr auto outputs = std::array{
+                std::pair{std::string_view{"Distance"},
+                          SocketType::floating},
+                std::pair{std::string_view{"Color"}, SocketType::color},
+                std::pair{std::string_view{"Position"}, SocketType::vector},
+                std::pair{std::string_view{"W"}, SocketType::floating},
+                std::pair{std::string_view{"Radius"},
+                          SocketType::floating}};
+            const auto selected = std::ranges::find_if(
+                outputs, [&](const auto &entry) noexcept {
+                    return entry.first == socket;
+                });
+            if (selected == outputs.end()) {
+                return std::nullopt;
+            }
+            const auto semantic =
+                std::string{"voronoi."} + std::string{selected->first};
+            if (auto output = context.shared_output(node_name, semantic)) {
+                return finish(*output);
+            }
+
             const auto id = context.graph().add_node(
                 compiler::node_type::voronoi_texture,
                 node_name);
@@ -369,19 +393,18 @@ public:
                 "Normalize",
                 SocketValue::boolean(context.node_property_bool(
                     node, "normalize"))));
-            static_cast<void>(context.graph().set_property(
-                id,
-                "Output",
-                SocketValue::string(socket)));
-            const auto output_type =
-                socket == "Color"
-                    ? SocketType::color
-                    : socket == "Position"
-                          ? SocketType::vector
-                          : SocketType::floating;
-            return finish({
-                .ref = {.node = id, .socket = socket},
-                .type = output_type});
+            for (const auto &[name, output_type] : outputs) {
+                context.remember_shared_output(
+                    node_name,
+                    std::string{"voronoi."} + std::string{name},
+                    TypedOutput{.ref = {.node = id, .socket = std::string{name}},
+                                .type = output_type});
+            }
+            const auto output = context.shared_output(node_name, semantic);
+            if (!output) {
+                std::abort();
+            }
+            return finish(*output);
         }
         if (type == "TEX_WAVE") {
             const auto id = context.graph().add_node(

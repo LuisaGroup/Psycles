@@ -515,9 +515,7 @@ NodeRegistry make_core_node_registry() {
                      property("DistanceMetric", SocketType::string,
                               SocketValue::string("EUCLIDEAN")),
                      property("Normalize", SocketType::boolean,
-                              SocketValue::boolean(false)),
-                     property("Output", SocketType::string,
-                              SocketValue::string("Distance"))},
+                              SocketValue::boolean(false))},
       .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(

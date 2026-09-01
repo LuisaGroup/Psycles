@@ -97,6 +97,9 @@ private:
 
   [[nodiscard]] VolumeExpressionId append(VolumeInstruction instruction);
 
+  [[nodiscard]] bool output_is_used(contract::NodeId node,
+                                    std::string_view socket) const noexcept;
+
   template <typename Id>
   [[nodiscard]] std::optional<Id>
   source_output(const contract::ShaderNode &node, std::string_view socket,
