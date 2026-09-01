@@ -410,6 +410,19 @@ struct OrenNayarClosure {
   OrenNayarParam param;
 };
 
+struct SheenParam {
+  luisa::compute::Float roughness;
+  luisa::compute::Float transform_a;
+  luisa::compute::Float transform_b;
+  luisa::compute::Float3 T;
+  luisa::compute::Float3 B;
+};
+
+struct SheenClosure {
+  ShaderClosureCommon common;
+  SheenParam param;
+};
+
 /* MicrofacetFresnel values copied from Cycles 5.2.1
  * kernel/closure/bsdf_microfacet.h. */
 enum class MicrofacetFresnel : std::uint32_t {
@@ -491,20 +504,18 @@ private:
   luisa::compute::Local<luisa::float4> _weight_and_sample;
   luisa::compute::Local<luisa::float4> _normal;
   luisa::compute::Local<luisa::uint> _type;
-  luisa::compute::Local<luisa::float4> _oren_nayar_scalars;
-  luisa::compute::Local<luisa::float4> _oren_nayar_multiscatter;
-  luisa::compute::Local<luisa::float4> _microfacet_alpha_ior_energy;
-  luisa::compute::Local<luisa::float4> _microfacet_tangent;
-  luisa::compute::Local<luisa::uint> _microfacet_fresnel_type;
-  /* Cycles' MicrofacetBsdf points at a discriminated Fresnel union. These
-   * five SoA fields are that same union storage: payload0/payload1 mean
-   * reflection/transmission tint, conductor n/k, or F82 f0/b according to
-   * _microfacet_fresnel_type. */
-  luisa::compute::Local<luisa::float4> _fresnel_thin_film;
-  luisa::compute::Local<luisa::float4> _fresnel_payload0;
-  luisa::compute::Local<luisa::float4> _fresnel_payload1;
-  luisa::compute::Local<luisa::float4> _fresnel_f0;
-  luisa::compute::Local<luisa::float4> _fresnel_f90;
+  /* ShaderClosure is a tagged union in Cycles. These SoA rows are the same
+   * union, not one allocation per closure family. The current largest live
+   * member is MicrofacetBsdf plus its discriminated Fresnel extra payload;
+   * Oren-Nayar and Sheen reuse its prefix rows. */
+  luisa::compute::Local<luisa::float4> _payload0;
+  luisa::compute::Local<luisa::float4> _payload1;
+  luisa::compute::Local<luisa::float4> _payload2;
+  luisa::compute::Local<luisa::float4> _payload3;
+  luisa::compute::Local<luisa::float4> _payload4;
+  luisa::compute::Local<luisa::float4> _payload5;
+  luisa::compute::Local<luisa::float4> _payload6;
+  luisa::compute::Local<luisa::uint> _payload_tag;
   luisa::compute::UInt _count;
   luisa::compute::UInt _left;
 
@@ -542,6 +553,8 @@ public:
                   luisa::compute::Expr<luisa::float3> normal) noexcept;
   void set_oren_nayar_param(luisa::compute::Expr<std::uint32_t> index,
                             const OrenNayarParam &param) noexcept;
+  void set_sheen_param(luisa::compute::Expr<std::uint32_t> index,
+                       const SheenParam &param) noexcept;
   void set_microfacet_param(luisa::compute::Expr<std::uint32_t> index,
                             const MicrofacetParam &param) noexcept;
   void set_generalized_schlick(
@@ -559,6 +572,8 @@ public:
   common(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] OrenNayarClosure
   oren_nayar(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] SheenClosure
+  sheen(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetParam
   microfacet_param(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetClosure

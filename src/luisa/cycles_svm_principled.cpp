@@ -5,6 +5,7 @@
 #include "cycles_svm_principled.h"
 
 #include "cycles_svm_microfacet.h"
+#include "cycles_svm_sheen.h"
 #include "cycles_svm_simple_closure.h"
 
 #include <psycles/luisa/native_vector_math.h>
@@ -242,8 +243,7 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
 
   const auto sheen_weight = max(data.sheen_weight(stack), 0.0f);
   const auto coat_weight = max(data.coat_weight(stack), 0.0f);
-  Bool subset_supported = (sheen_weight <= CLOSURE_WEIGHT_CUTOFF) &
-                          (coat_weight <= CLOSURE_WEIGHT_CUTOFF);
+  Bool subset_supported = coat_weight <= CLOSURE_WEIGHT_CUTOFF;
   Float metallic = 0.0f;
   Float transmission_weight = 0.0f;
   Float subsurface_weight = 0.0f;
@@ -279,8 +279,25 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
       weight *= alpha;
     };
 
-    /* Sheen and coat are the first two layers in Cycles. Their nonzero
-     * transitions are intentionally outside this proved subset for now. */
+    /* First layer: Sheen. Cycles blends its normal toward Coat Normal before
+     * LTC setup, even though Coat itself is the next layer. */
+    $if(sheen_weight > CLOSURE_WEIGHT_CUTOFF) {
+      const auto sheen_tint = max(data.sheen_tint(stack), make_float3(0.0f));
+      const auto sheen_roughness =
+          clamp(data.sheen_roughness(stack), 0.0f, 1.0f);
+      const auto coat_normal = native_vector_math::safe_normalize_nonzero_or(
+          stack_load_float3_default(stack, normal_offsets.coat_normal, normal),
+          shader_data.N);
+      const auto sheen_normal = native_vector_math::safe_normalize_nonzero(
+          lerp(normal, coat_normal, clamp(coat_weight, 0.0f, 1.0f)));
+      const auto layer_albedo = principled_sheen_setup(
+          kernel_globals, shader_data, path_state,
+          sheen_weight * sheen_tint * weight, sheen_normal, sheen_roughness);
+      weight = closure_layering_weight(layer_albedo, weight);
+    };
+
+    /* Second layer: Coat. Its nonzero transition remains outside this proved
+     * subset and is rejected before any observable state is mutated. */
 
     const auto emission =
         data.emission_color(stack) * data.emission_strength(stack);

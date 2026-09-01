@@ -179,3 +179,36 @@ def _principled_svm_oracle(scene: Any) -> None:
         rows=1,
         name="Principled SVM Oracle",
     )
+
+
+def _principled_sheen_svm_oracle(scene: Any) -> None:
+    """Isolate Cycles' ordered Principled sheen transition.
+
+    IOR 1 removes the dielectric closure and every other optional layer is
+    zero.  Transparency, emission, and diffuse remain live so the closure
+    trace observes both sheen allocation and its attenuation of all lower
+    layers without relying on a pre-evaluated material result.
+    """
+    material, tree, output = _material("Principled Sheen SVM Oracle")
+    principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+    principled.name = "Principled Sheen SVM Oracle"
+    _set_color(_input(principled, "Base Color"), (0.31, 0.57, 0.83))
+    _input(principled, "IOR").default_value = 1.0
+    _input(principled, "Roughness").default_value = 0.42
+    _input(principled, "Alpha").default_value = 0.8
+    _input(principled, "Sheen Weight").default_value = 0.6
+    _input(principled, "Sheen Roughness").default_value = 0.37
+    _set_color(_input(principled, "Sheen Tint"), (0.25, 0.70, 0.45))
+    _set_color(_input(principled, "Emission Color"), (0.20, 0.10, 0.60))
+    _input(principled, "Emission Strength").default_value = 1.3
+    tree.links.new(
+        _output(principled, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _material_matrix(
+        scene,
+        [material],
+        columns=1,
+        rows=1,
+        name="Principled Sheen SVM Oracle",
+    )
