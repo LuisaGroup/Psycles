@@ -609,6 +609,29 @@ void eval_nodes(
           detail::node_normal(cursor, stack);
         };
       }
+      if (node_types_used[NODE_NORMAL_MAP]) {
+        PSYCLES_SVM_CASE(NODE_NORMAL_MAP) {
+          detail::node_normal_map(
+              cursor, stack, kernel_globals, transform_state, shader_data,
+              (kernel_features & kernel_feature_object_motion) != 0u);
+        };
+      }
+      if (node_types_used[NODE_TANGENT]) {
+        PSYCLES_SVM_CASE(NODE_TANGENT) {
+          detail::node_tangent(
+              cursor, stack, kernel_globals, transform_state, shader_data,
+              false,
+              (kernel_features & kernel_feature_object_motion) != 0u);
+        };
+      }
+      if (node_types_used[NODE_TANGENT_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_TANGENT_DERIVATIVE) {
+          detail::node_tangent(
+              cursor, stack, kernel_globals, transform_state, shader_data,
+              true,
+              (kernel_features & kernel_feature_object_motion) != 0u);
+        };
+      }
       if (node_types_used[NODE_LIGHT_FALLOFF]) {
         PSYCLES_SVM_CASE(NODE_LIGHT_FALLOFF) {
           detail::node_light_falloff(cursor, stack, shader_data);

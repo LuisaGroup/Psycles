@@ -49,6 +49,58 @@ def _normal_map_surface(scene: Any) -> None:
     _sphere(material)
 
 
+def _svm_tangent_dynamic(scene: Any) -> None:
+    """Keep radial and UV Tangent nodes live in one Cycles stream."""
+    _world(scene, (0.1, 0.1, 0.1, 1.0), 0.0)
+    material, tree, output = _material("SVM Tangent Dynamic")
+
+    radial = tree.nodes.new("ShaderNodeTangent")
+    radial.name = "Radial Tangent"
+    radial.direction_type = "RADIAL"
+    radial.axis = "Y"
+
+    uv_tangent = tree.nodes.new("ShaderNodeTangent")
+    uv_tangent.name = "UV Tangent"
+    uv_tangent.direction_type = "UV_MAP"
+    uv_tangent.axis = "Z"
+
+    image = bpy.data.images.new("Tangent UV Image", width=2, height=2)
+    image.pixels = (
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+    )
+    texture = tree.nodes.new("ShaderNodeTexImage")
+    texture.name = "Tangent UV Consumer"
+    texture.image = image
+    tree.links.new(_output(uv_tangent, "Tangent"), _input(texture, "Vector"))
+
+    mix = tree.nodes.new("ShaderNodeMixRGB")
+    mix.name = "Keep Both Tangents Live"
+    _input(mix, "Fac").default_value = 0.5
+    tree.links.new(_output(radial, "Tangent"), _input(mix, "Color1"))
+    tree.links.new(_output(texture, "Color"), _input(mix, "Color2"))
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Tangent Emission"
+    tree.links.new(_output(mix, "Color"), _input(emission, "Color"))
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    _sphere(material)
+
+
 def _normal_map_matrix(scene: Any) -> None:
     """Expose Normal Map output for spaces, strength, signs, and backsides."""
     scene.cycles.pixel_filter_type = "BOX"

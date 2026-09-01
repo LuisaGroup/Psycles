@@ -207,12 +207,26 @@ def _main() -> None:
         str(probe_creator.with_name("run_cycles_shader_probes.py")),
         run_name="psycles_test_cycles_shader_probe_runner",
     )
-    registered_probes = tuple(sorted(probes["_PROBES"]))
+    registered_probes = tuple(sorted(probes["_CANONICAL_PROBES"]))
     expected_probes = tuple(sorted(runner["_ALL_PROBES"]))
     if registered_probes != expected_probes:
         raise AssertionError(
             "shader-probe registry differs from the canonical runner: "
             f"registered={registered_probes}, expected={expected_probes}"
+        )
+    oracle_probes = set(probes["_CYCLES_SVM_ORACLE_PROBES"])
+    if oracle_probes & set(registered_probes):
+        raise AssertionError(
+            "Cycles SVM oracle probes overlap the canonical runner"
+        )
+    if set(probes["_PROBES"]) != set(registered_probes) | oracle_probes:
+        raise AssertionError(
+            "combined shader-probe registry is not an exact partition"
+        )
+    if oracle_probes != {"svm_tangent_dynamic"}:
+        raise AssertionError(
+            "unexpected Cycles SVM oracle-only probe set: "
+            f"{sorted(oracle_probes)}"
         )
     golden = runpy.run_path(
         str(exporter.with_name("render_cycles_golden.py")),

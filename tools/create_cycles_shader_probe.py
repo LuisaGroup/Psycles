@@ -29,6 +29,7 @@ from cycles_shader_probe import (  # noqa: E402
     bump_nested,
     camera_inputs,
     closures,
+    color_operations,
     curve_inputs,
     environment_inputs,
     gabor_inputs,
@@ -57,7 +58,7 @@ from cycles_shader_probe import (  # noqa: E402
 )
 
 
-_PROBES: dict[str, Callable[[Any], None]] = {
+_CANONICAL_PROBES: dict[str, Callable[[Any], None]] = {
     "add_shader_emission": closures._add_shader_emission,
     "ambient_occlusion_matrix": values._ambient_occlusion_matrix,
     "area_light": lights_camera._area_light,
@@ -148,7 +149,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "indirect_diffuse": closures._indirect_diffuse,
     "indirect_principled": closures._indirect_principled,
     "integrator_clamp_direct": lights_camera._integrator_clamp_direct,
-    "invert_color_matrix": texture_inputs._invert_color_matrix,
+    "invert_color_matrix": color_operations._invert_color_matrix,
     "legacy_separate_combine_matrix": values._legacy_separate_combine_matrix,
     "layer_weight_matrix": texture_inputs._layer_weight_matrix,
     "light_path_matrix": camera_inputs._light_path_matrix,
@@ -281,6 +282,20 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     ),
     "white_noise_matrix": procedural_textures._white_noise_matrix,
 }
+
+# These probes reproduce and freeze Cycles SVM streams whose exact Psycles
+# handlers are implemented, but whose production renderer route is still
+# blocked on replacing the former SurfaceProgram. Keeping them out of the
+# canonical end-to-end runner prevents a known-unroutable graph from being
+# reported as a rendering regression or motivating a transitional lowering.
+_CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
+    "svm_tangent_dynamic": normal_maps._svm_tangent_dynamic,
+}
+
+if _CANONICAL_PROBES.keys() & _CYCLES_SVM_ORACLE_PROBES.keys():
+    raise RuntimeError("canonical and Cycles SVM oracle probes overlap")
+
+_PROBES = _CANONICAL_PROBES | _CYCLES_SVM_ORACLE_PROBES
 
 
 def _main() -> None:

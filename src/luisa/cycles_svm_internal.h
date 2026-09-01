@@ -98,6 +98,18 @@ normalize_cycles(luisa::compute::Expr<luisa::float3> value) noexcept;
 [[nodiscard]] luisa::compute::Float3
 safe_normalize_cycles(luisa::compute::Expr<luisa::float3> value) noexcept;
 [[nodiscard]] Dual3 safe_normalize_dual(const Dual3 &value) noexcept;
+[[nodiscard]] Dual3 normalize_dual_cycles(const Dual3 &value) noexcept;
+[[nodiscard]] Dual3 shading_position_dual(
+    const ShaderData &shader_data) noexcept;
+[[nodiscard]] TriangleNormals triangle_normals(
+    const KernelGlobals &kernel_globals,
+    const ShaderData &shader_data) noexcept;
+[[nodiscard]] luisa::compute::Float3
+triangle_smooth_normal_unnormalized_object_space(
+    const KernelGlobals &kernel_globals,
+    const TransformState &transform_state,
+    const ShaderData &shader_data,
+    bool object_motion_enabled) noexcept;
 [[nodiscard]] luisa::compute::Float3 rec709_to_rgb(
     const KernelGlobals &kernel_globals,
     luisa::compute::Expr<luisa::float3> rec709) noexcept;
@@ -113,6 +125,10 @@ void object_inverse_normal_transform(luisa::compute::Float3 &value,
                                      const ShaderData &shader_data,
                                      bool object_motion_enabled) noexcept;
 void object_normal_transform(luisa::compute::Float3 &value,
+                             const TransformState &transform_state,
+                             const ShaderData &shader_data,
+                             bool object_motion_enabled) noexcept;
+void object_normal_transform(Dual3 &value,
                              const TransformState &transform_state,
                              const ShaderData &shader_data,
                              bool object_motion_enabled) noexcept;
@@ -147,6 +163,17 @@ void node_point_info(Cursor &cursor, Stack &stack,
                      const InfoServices &services,
                      const ShaderData &shader_data) noexcept;
 void node_normal(Cursor &cursor, Stack &stack) noexcept;
+void node_normal_map(Cursor &cursor, Stack &stack,
+                     const KernelGlobals &kernel_globals,
+                     const TransformState &transform_state,
+                     const ShaderData &shader_data,
+                     bool object_motion_enabled) noexcept;
+void node_tangent(Cursor &cursor, Stack &stack,
+                  const KernelGlobals &kernel_globals,
+                  const TransformState &transform_state,
+                  const ShaderData &shader_data,
+                  bool use_derivatives,
+                  bool object_motion_enabled) noexcept;
 void node_camera(Cursor &cursor, Stack &stack,
                  const TransformState &transform_state,
                  const ShaderData &shader_data) noexcept;

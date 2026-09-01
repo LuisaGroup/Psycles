@@ -90,6 +90,7 @@ inline constexpr auto combine_color = "psycles.color.combine";
 inline constexpr auto separate_xyz = "psycles.vector.separate_xyz";
 inline constexpr auto combine_xyz = "psycles.vector.combine_xyz";
 inline constexpr auto normal_map = "psycles.normal_map";
+inline constexpr auto tangent = "psycles.tangent";
 inline constexpr auto bump = "psycles.bump";
 inline constexpr auto displacement = "psycles.displacement";
 inline constexpr auto vertex_color = "psycles.attribute.vertex_color";
