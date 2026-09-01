@@ -11,29 +11,19 @@
 #include <psycles/compiler/cycles_svm_node_types.h>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
+#include <luisa/dsl/local.h>
 #include <luisa/luisa-compute.h>
 
-LUISA_STRUCT(
-    psycles::compiler::cycles_svm::packed_float3, x, y, z) {};
-LUISA_STRUCT(
-    psycles::compiler::cycles_svm::packed_normal, value) {};
-LUISA_STRUCT(
-    psycles::compiler::cycles_svm::uchar4, x, y, z, w) {};
-LUISA_STRUCT(
-    psycles::compiler::cycles_svm::AttributeMap,
-    id,
-    offset,
-    element,
-    type,
-    pad) {};
-LUISA_STRUCT(
-    psycles::compiler::cycles_svm::KernelCurve,
-    shader_id,
-    first_key,
-    num_keys,
-    type) {};
+LUISA_STRUCT(psycles::compiler::cycles_svm::packed_float3, x, y, z){};
+LUISA_STRUCT(psycles::compiler::cycles_svm::packed_normal, value){};
+LUISA_STRUCT(psycles::compiler::cycles_svm::uchar4, x, y, z, w){};
+LUISA_STRUCT(psycles::compiler::cycles_svm::AttributeMap, id, offset, element,
+             type, pad){};
+LUISA_STRUCT(psycles::compiler::cycles_svm::KernelCurve, shader_id, first_key,
+             num_keys, type){};
 
 namespace psycles::luisa_backend::cycles_svm {
 
@@ -78,22 +68,33 @@ inline constexpr std::uint32_t path_ray_visibility_diffuse = 1u << 2u;
 inline constexpr std::uint32_t path_ray_visibility_glossy = 1u << 3u;
 inline constexpr std::uint32_t path_ray_visibility_volume_scatter = 1u << 4u;
 inline constexpr std::uint32_t path_ray_visibility_shadow_opaque = 1u << 5u;
-inline constexpr std::uint32_t path_ray_visibility_shadow_transparent =
-    1u << 6u;
+inline constexpr std::uint32_t path_ray_visibility_shadow_transparent = 1u
+                                                                        << 6u;
 inline constexpr std::uint32_t path_ray_visibility_shadow =
-    path_ray_visibility_shadow_opaque |
-    path_ray_visibility_shadow_transparent;
+    path_ray_visibility_shadow_opaque | path_ray_visibility_shadow_transparent;
 
 inline constexpr std::uint32_t path_ray_reflect = 1u << 0u;
 inline constexpr std::uint32_t path_ray_singular = 1u << 1u;
 inline constexpr std::uint32_t path_ray_emission = 1u << 5u;
+inline constexpr std::uint32_t path_ray_terminate_on_next_surface = 1u << 10u;
+inline constexpr std::uint32_t path_ray_terminate_in_next_volume = 1u << 11u;
+inline constexpr std::uint32_t path_ray_terminate_after_transparent = 1u << 12u;
+inline constexpr std::uint32_t path_ray_terminate_after_volume = 1u << 13u;
+inline constexpr std::uint32_t path_ray_terminate =
+    path_ray_terminate_on_next_surface | path_ray_terminate_in_next_volume |
+    path_ray_terminate_after_transparent | path_ray_terminate_after_volume;
 
 /* Runtime ShaderData flags copied from Cycles 5.2.1 kernel/types.h. */
 inline constexpr std::uint32_t shader_data_backfacing = 1u << 0u;
 inline constexpr std::uint32_t shader_data_emission = 1u << 1u;
+inline constexpr std::uint32_t shader_data_bsdf = 1u << 2u;
+inline constexpr std::uint32_t shader_data_bsdf_has_eval = 1u << 3u;
 inline constexpr std::uint32_t shader_data_is_volume_shader_eval = 1u << 8u;
+inline constexpr std::uint32_t shader_data_transparent = 1u << 9u;
+inline constexpr std::uint32_t shader_data_bsdf_has_transmission = 1u << 10u;
 inline constexpr std::uint32_t shader_data_volume_cubic =
     static_cast<std::uint32_t>(compiler::cycles_svm::SD_VOLUME_CUBIC);
+inline constexpr std::uint32_t shader_data_use_bump_map_correction = 1u << 15u;
 
 /* Object sentinel and object flag copied from Cycles 5.2.1 kernel/types.h. */
 inline constexpr std::uint32_t object_none = ~0u;
@@ -111,8 +112,8 @@ inline constexpr std::uint32_t primitive_lamp = 1u << 5u;
 inline constexpr std::uint32_t primitive_motion = 1u << 6u;
 inline constexpr std::uint32_t shader_data_object_motion = 1u << 1u;
 inline constexpr std::uint32_t shader_data_object_transform_applied = 1u << 2u;
-inline constexpr std::uint32_t shader_data_object_has_corner_normals =
-    1u << 12u;
+inline constexpr std::uint32_t shader_data_object_has_corner_normals = 1u
+                                                                       << 12u;
 
 /* CameraType values copied from Cycles 5.2.1 kernel/types.h. */
 inline constexpr std::uint32_t camera_perspective = 0u;
@@ -131,9 +132,9 @@ inline constexpr std::uint32_t shader_exclude_camera = 1u << 24u;
 inline constexpr std::uint32_t shader_exclude_scatter = 1u << 23u;
 inline constexpr std::uint32_t shader_exclude_shadow_catcher = 1u << 22u;
 inline constexpr std::uint32_t shader_exclude_any =
-    shader_exclude_diffuse | shader_exclude_glossy |
-    shader_exclude_transmit | shader_exclude_camera |
-    shader_exclude_scatter | shader_exclude_shadow_catcher;
+    shader_exclude_diffuse | shader_exclude_glossy | shader_exclude_transmit |
+    shader_exclude_camera | shader_exclude_scatter |
+    shader_exclude_shadow_catcher;
 inline constexpr std::uint32_t shader_mask =
     ~(shader_smooth_normal | shader_cast_shadow | shader_use_mis |
       shader_exclude_any);
@@ -222,12 +223,12 @@ public:
 
   [[nodiscard]] virtual luisa::compute::Float3
   object_location(const ShaderData &shader_data) const noexcept = 0;
-  [[nodiscard]] virtual luisa::compute::Float3 object_color(
-      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
-  [[nodiscard]] virtual luisa::compute::Float object_alpha(
-      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
-  [[nodiscard]] virtual luisa::compute::Float object_pass_id(
-      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3
+  object_color(luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float
+  object_alpha(luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float
+  object_pass_id(luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float
   shader_pass_id(const ShaderData &shader_data) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float object_random_number(
@@ -237,12 +238,12 @@ public:
       luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::UInt particle_index(
       luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
-  [[nodiscard]] virtual luisa::compute::Float particle_age(
-      luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float
+  particle_age(luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float particle_lifetime(
       luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
-  [[nodiscard]] virtual luisa::compute::Float particle_size(
-      luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float
+  particle_size(luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float3 particle_location(
       luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float3 particle_velocity(
@@ -273,8 +274,7 @@ public:
     return luisa::compute::Expr<std::int32_t>{-1}.bitcast<float>();
   }
 
-  [[nodiscard]] virtual const InfoServices *
-  info_services() const noexcept {
+  [[nodiscard]] virtual const InfoServices *info_services() const noexcept {
     return nullptr;
   }
 
@@ -326,7 +326,8 @@ public:
       luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::UInt camera_type() const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float camera_width() const noexcept = 0;
-  [[nodiscard]] virtual luisa::compute::Float camera_height() const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float
+  camera_height() const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float3 camera_world_to_ndc(
       const ShaderData &shader_data,
       luisa::compute::Expr<luisa::float3> position) const noexcept = 0;
@@ -357,8 +358,7 @@ public:
   object_inverse_position_transform(
       const ShaderData &shader_data,
       luisa::compute::Expr<luisa::float3> value) const noexcept = 0;
-  [[nodiscard]] virtual luisa::compute::Float4
-  kernel_image_interp_with_udim(
+  [[nodiscard]] virtual luisa::compute::Float4 kernel_image_interp_with_udim(
       ShaderData &shader_data,
       luisa::compute::Expr<std::int32_t> image_texture_id,
       const Dual2 &uv) const noexcept = 0;
@@ -368,6 +368,91 @@ public:
       luisa::compute::Expr<luisa::float3> position,
       luisa::compute::Expr<std::int32_t> interpolation,
       luisa::compute::Expr<bool> stochastic) const noexcept = 0;
+};
+
+/* Cycles kernel/types.h::MAX_CLOSURE. Scene analysis may instantiate a
+ * smaller live pool, but the semantic allocation domain never exceeds this
+ * ABI limit. */
+inline constexpr std::size_t maximum_closure_capacity = 64u;
+
+/* Common ShaderClosure prefix copied from Cycles 5.2.1 kernel/types.h. These
+ * are host bundles of Luisa expressions; they do not invent a second closure
+ * model or pre-evaluate a directional response. */
+struct ShaderClosureCommon {
+  luisa::compute::Float3 weight;
+  luisa::compute::UInt type;
+  luisa::compute::Float sample_weight;
+  luisa::compute::Float3 N;
+};
+
+struct OrenNayarParam {
+  luisa::compute::Float roughness;
+  luisa::compute::Float a;
+  luisa::compute::Float b;
+  luisa::compute::Float3 multiscatter_term;
+};
+
+struct OrenNayarClosure {
+  ShaderClosureCommon common;
+  OrenNayarParam param;
+};
+
+/* Device-local realization of ShaderData::closure[], num_closure and
+ * num_closure_left. Storage is SoA, but its state machine is exactly Cycles'
+ * prefix allocator: successful allocations append one common record, extra
+ * payloads belong to the record's runtime ClosureType, and only [0, count)
+ * is observable. */
+class ClosurePool final {
+public:
+  struct Allocation {
+    luisa::compute::UInt index;
+    luisa::compute::Bool valid;
+  };
+
+private:
+  std::size_t _capacity;
+  luisa::compute::Local<luisa::float4> _weight_and_sample;
+  luisa::compute::Local<luisa::float4> _normal;
+  luisa::compute::Local<luisa::uint> _type;
+  luisa::compute::Local<luisa::float4> _oren_nayar_scalars;
+  luisa::compute::Local<luisa::float4> _oren_nayar_multiscatter;
+  luisa::compute::UInt _count;
+  luisa::compute::UInt _left;
+
+public:
+  explicit ClosurePool(std::size_t capacity) noexcept;
+  ClosurePool(const ClosurePool &) = delete;
+  ClosurePool(ClosurePool &&) = delete;
+  ClosurePool &operator=(const ClosurePool &) = delete;
+  ClosurePool &operator=(ClosurePool &&) = delete;
+
+  [[nodiscard]] std::size_t capacity() const noexcept;
+  [[nodiscard]] luisa::compute::UInt count() const noexcept;
+  [[nodiscard]] luisa::compute::UInt left() const noexcept;
+
+  [[nodiscard]] Allocation
+  allocate(luisa::compute::Expr<std::uint32_t> type,
+           luisa::compute::Expr<luisa::float3> weight) noexcept;
+  void set_type(luisa::compute::Expr<std::uint32_t> index,
+                luisa::compute::Expr<std::uint32_t> type) noexcept;
+  void set_weight(luisa::compute::Expr<std::uint32_t> index,
+                  luisa::compute::Expr<luisa::float3> weight) noexcept;
+  void add_weight(luisa::compute::Expr<std::uint32_t> index,
+                  luisa::compute::Expr<luisa::float3> weight) noexcept;
+  void set_sample_weight(luisa::compute::Expr<std::uint32_t> index,
+                         luisa::compute::Expr<float> sample_weight) noexcept;
+  void add_sample_weight(luisa::compute::Expr<std::uint32_t> index,
+                         luisa::compute::Expr<float> sample_weight) noexcept;
+  void set_normal(luisa::compute::Expr<std::uint32_t> index,
+                  luisa::compute::Expr<luisa::float3> normal) noexcept;
+  void set_oren_nayar_param(luisa::compute::Expr<std::uint32_t> index,
+                            const OrenNayarParam &param) noexcept;
+  void set_left(luisa::compute::Expr<std::uint32_t> left) noexcept;
+
+  [[nodiscard]] ShaderClosureCommon
+  common(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] OrenNayarClosure
+  oren_nayar(luisa::compute::Expr<std::uint32_t> index) const noexcept;
 };
 
 /* The fields below are the exact ShaderData projection consumed by the first
@@ -400,33 +485,34 @@ struct ShaderData {
   luisa::compute::UInt lcg_state;
   luisa::compute::Float3 closure_emission_background;
   luisa::compute::Float3 closure_transparent_extinction;
+  ClosurePool *closure;
 
-  ShaderData(
-      luisa::compute::Expr<luisa::float3> position,
-      luisa::compute::Expr<luisa::float3> normal,
-      luisa::compute::Expr<luisa::float3> geometric_normal,
-      luisa::compute::Expr<luisa::float3> incoming,
-      luisa::compute::Expr<std::uint32_t> primitive_type,
-      luisa::compute::Expr<std::uint32_t> shader_id,
-      luisa::compute::Expr<std::uint32_t> shader_flags,
-      luisa::compute::Expr<std::uint32_t> object_flags,
-      luisa::compute::Expr<std::uint32_t> primitive_id,
-      luisa::compute::Expr<float> parametric_u,
-      luisa::compute::Expr<float> parametric_v,
-      luisa::compute::Expr<std::uint32_t> object_id,
-      luisa::compute::Expr<float> motion_time,
-      luisa::compute::Expr<float> length,
-      luisa::compute::Expr<float> position_differential,
-      luisa::compute::Expr<float> incoming_differential,
-      luisa::compute::Expr<float> parametric_u_dx,
-      luisa::compute::Expr<float> parametric_u_dy,
-      luisa::compute::Expr<float> parametric_v_dx,
-      luisa::compute::Expr<float> parametric_v_dy,
-      luisa::compute::Expr<luisa::float3> position_u_derivative,
-      luisa::compute::Expr<luisa::float3> position_v_derivative,
-      luisa::compute::Expr<luisa::float4x4> motion_object_to_world,
-      luisa::compute::Expr<luisa::float4x4> motion_world_to_object,
-      luisa::compute::Expr<std::uint32_t> random_state = 0u) noexcept;
+  ShaderData(luisa::compute::Expr<luisa::float3> position,
+             luisa::compute::Expr<luisa::float3> normal,
+             luisa::compute::Expr<luisa::float3> geometric_normal,
+             luisa::compute::Expr<luisa::float3> incoming,
+             luisa::compute::Expr<std::uint32_t> primitive_type,
+             luisa::compute::Expr<std::uint32_t> shader_id,
+             luisa::compute::Expr<std::uint32_t> shader_flags,
+             luisa::compute::Expr<std::uint32_t> object_flags,
+             luisa::compute::Expr<std::uint32_t> primitive_id,
+             luisa::compute::Expr<float> parametric_u,
+             luisa::compute::Expr<float> parametric_v,
+             luisa::compute::Expr<std::uint32_t> object_id,
+             luisa::compute::Expr<float> motion_time,
+             luisa::compute::Expr<float> length,
+             luisa::compute::Expr<float> position_differential,
+             luisa::compute::Expr<float> incoming_differential,
+             luisa::compute::Expr<float> parametric_u_dx,
+             luisa::compute::Expr<float> parametric_u_dy,
+             luisa::compute::Expr<float> parametric_v_dx,
+             luisa::compute::Expr<float> parametric_v_dy,
+             luisa::compute::Expr<luisa::float3> position_u_derivative,
+             luisa::compute::Expr<luisa::float3> position_v_derivative,
+             luisa::compute::Expr<luisa::float4x4> motion_object_to_world,
+             luisa::compute::Expr<luisa::float4x4> motion_world_to_object,
+             luisa::compute::Expr<std::uint32_t> random_state = 0u,
+             ClosurePool *closure_pool = nullptr) noexcept;
 };
 
 [[nodiscard]] luisa::compute::Float3 decode_packed_normal(
@@ -464,10 +550,11 @@ find_attribute(const KernelGlobals &kernel_globals,
 
 [[nodiscard]] luisa::compute::Bool
 primitive_is_volume_attribute(const ShaderData &shader_data) noexcept;
-[[nodiscard]] luisa::compute::Float4 volume_attribute_float4(
-    const KernelGlobals &kernel_globals, ShaderData &shader_data,
-    const AttributeDescriptor &descriptor,
-    luisa::compute::Expr<bool> stochastic) noexcept;
+[[nodiscard]] luisa::compute::Float4
+volume_attribute_float4(const KernelGlobals &kernel_globals,
+                        ShaderData &shader_data,
+                        const AttributeDescriptor &descriptor,
+                        luisa::compute::Expr<bool> stochastic) noexcept;
 [[nodiscard]] luisa::compute::Float primitive_volume_attribute_float(
     const KernelGlobals &kernel_globals, ShaderData &shader_data,
     const AttributeDescriptor &descriptor,
@@ -517,17 +604,15 @@ struct EvaluationResult {
 /* Luisa DSL realization of Cycles 5.2.1 svm_eval_nodes. `node_feature_mask`
  * and `node_types_used` are host/JIT constants, corresponding respectively
  * to Cycles' template feature mask and kernel_data_svm_usage_NODE_* constants.
- * The device machine still has one word PC loop and one primary opcode switch. */
+ * The device machine still has one word PC loop and one primary opcode switch.
+ */
 void eval_nodes(
     const KernelGlobals &kernel_globals,
     const luisa::compute::BufferUInt &words,
-    compiler::cycles_svm::ShaderType shader_type,
-    std::uint32_t kernel_features,
+    compiler::cycles_svm::ShaderType shader_type, std::uint32_t kernel_features,
     std::uint32_t node_feature_mask,
     const std::array<bool, compiler::cycles_svm::NODE_NUM> &node_types_used,
-    const TransformState &transform_state,
-    ShaderData &shader_data,
-    const PathState &path_state,
-    EvaluationResult &result) noexcept;
+    const TransformState &transform_state, ShaderData &shader_data,
+    const PathState &path_state, EvaluationResult &result) noexcept;
 
 } // namespace psycles::luisa_backend::cycles_svm
