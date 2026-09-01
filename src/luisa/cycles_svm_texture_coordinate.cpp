@@ -89,40 +89,6 @@ namespace {
   return data;
 }
 
-[[nodiscard]] Int normal_index(Expr<std::uint32_t> index) noexcept {
-  return index.cast<std::int32_t>();
-}
-
-[[nodiscard]] TriangleNormals triangle_normals(
-    const KernelGlobals &kernel_globals,
-    const ShaderData &shader_data) noexcept {
-  UInt i0;
-  UInt i1;
-  UInt i2;
-  $if((shader_data.object_flag &
-       shader_data_object_has_corner_normals) != 0u) {
-    i0 = shader_data.prim * 3u;
-    i1 = i0 + 1u;
-    i2 = i0 + 2u;
-  }
-  $else {
-    const auto indices =
-        kernel_globals.triangle_vertex_indices(shader_data.prim);
-    i0 = indices.x;
-    i1 = indices.y;
-    i2 = indices.z;
-  };
-  const auto offset =
-      kernel_globals.object_normal_offset(shader_data.object);
-  return {
-      .n0 = decode_packed_normal(
-          kernel_globals.attribute_normal(offset + normal_index(i0))),
-      .n1 = decode_packed_normal(
-          kernel_globals.attribute_normal(offset + normal_index(i1))),
-      .n2 = decode_packed_normal(
-          kernel_globals.attribute_normal(offset + normal_index(i2)))};
-}
-
 [[nodiscard]] Int motion_normal_step_offset(
     const KernelGlobals &kernel_globals,
     const ShaderData &shader_data,
@@ -168,11 +134,11 @@ namespace {
       kernel_globals, shader_data, step, num_steps);
   return {
       .n0 = decode_packed_normal(
-          kernel_globals.attribute_normal(offset + normal_index(i0))),
+          kernel_globals.attribute_normal(offset + i0.cast<std::int32_t>())),
       .n1 = decode_packed_normal(
-          kernel_globals.attribute_normal(offset + normal_index(i1))),
+          kernel_globals.attribute_normal(offset + i1.cast<std::int32_t>())),
       .n2 = decode_packed_normal(
-          kernel_globals.attribute_normal(offset + normal_index(i2)))};
+          kernel_globals.attribute_normal(offset + i2.cast<std::int32_t>()))};
 }
 
 [[nodiscard]] TriangleNormals motion_triangle_normals(

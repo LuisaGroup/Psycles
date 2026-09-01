@@ -1126,6 +1126,8 @@ NodeRegistry make_core_node_registry() {
                               SocketValue::string("OPENGL")),
                      property("Base", SocketType::string,
                               SocketValue::string("ORIGINAL")),
+                     property("Attribute", SocketType::string,
+                              SocketValue::string("")),
                      property("UvMapNamed", SocketType::boolean,
                               SocketValue::boolean(false)),
                      runtime_property(
@@ -1133,6 +1135,19 @@ NodeRegistry make_core_node_registry() {
                          SocketValue::unsigned_integer(0u))},
       .required_features = feature_bit(ShaderFeature::surface) |
                            feature_bit(ShaderFeature::derivatives)}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::tangent,
+      .inputs = {},
+      .outputs = {output("Tangent", SocketType::normal)},
+      .properties = {property("Direction Type", SocketType::string,
+                              SocketValue::string("RADIAL")),
+                     property("Axis", SocketType::string,
+                              SocketValue::string("X")),
+                     property("Attribute", SocketType::string,
+                              SocketValue::string(""))},
+      .required_features = feature_bit(ShaderFeature::surface) |
+                           feature_bit(ShaderFeature::attributes)}));
 
   static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::bump,

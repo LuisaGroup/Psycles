@@ -793,6 +793,10 @@ public:
                 SocketValue::string(base)));
             static_cast<void>(context.graph().set_property(
                 id,
+                "Attribute",
+                SocketValue::string(uv_map)));
+            static_cast<void>(context.graph().set_property(
+                id,
                 "UvMapNamed",
                 SocketValue::boolean(!uv_map.empty())));
             static_cast<void>(context.graph().set_property(
@@ -809,6 +813,29 @@ public:
                                     uv_map))));
             return finish({
                 .ref = {.node = id, .socket = "Normal"},
+                .type = SocketType::normal});
+        }
+        if (type == "TANGENT") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::tangent,
+                node_name);
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Direction Type",
+                SocketValue::string(context.node_property_text(
+                    node, "direction_type", "RADIAL"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Axis",
+                SocketValue::string(context.node_property_text(
+                    node, "axis", "X"))));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Attribute",
+                SocketValue::string(context.node_property_text(
+                    node, "uv_map"))));
+            return finish({
+                .ref = {.node = id, .socket = "Tangent"},
                 .type = SocketType::normal});
         }
         if (type == "WIREFRAME") {

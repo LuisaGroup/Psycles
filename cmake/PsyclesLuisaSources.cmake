@@ -25,6 +25,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_stack.cpp
     src/luisa/cycles_svm_transform.cpp
     src/luisa/cycles_svm_texture_coordinate.cpp
+    src/luisa/cycles_svm_triangle.cpp
     src/luisa/cycles_svm_attribute.cpp
     src/luisa/cycles_svm_value.cpp
     src/luisa/cycles_svm_vector.cpp

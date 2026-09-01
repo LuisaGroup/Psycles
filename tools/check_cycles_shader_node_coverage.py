@@ -83,6 +83,7 @@ DEVICE_VERIFIED_UNVERSIONED = {
     "AMBIENT_OCCLUSION",
     "LIGHT_FALLOFF",
     "NORMAL",
+    "TANGENT",
 }
 
 # These nodes have a device implementation with known missing modes, inputs, or

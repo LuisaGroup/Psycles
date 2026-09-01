@@ -88,6 +88,35 @@ void object_normal_transform(Float3 &value,
   }
 }
 
+void object_normal_transform(Dual3 &value,
+                             const TransformState &transform_state,
+                             const ShaderData &shader_data,
+                             bool object_motion_enabled) noexcept {
+  const auto transform = [](Expr<luisa::float4x4> matrix,
+                            const Dual3 &input) noexcept {
+    return Dual3{
+        .val = cycles_transform::direction_transposed(matrix, input.val),
+        .dx = cycles_transform::direction_transposed(matrix, input.dx),
+        .dy = cycles_transform::direction_transposed(matrix, input.dy)};
+  };
+  const Bool is_object = shader_data.object != object_none;
+  if (object_motion_enabled) {
+    $if(object_has_motion(shader_data)) {
+      value = normalize_dual_cycles(transform(shader_data.ob_itfm_motion,
+                                              value));
+    }
+    $elif(is_object) {
+      value = normalize_dual_cycles(transform(transform_state.world_to_object,
+                                              value));
+    };
+  } else {
+    $if(is_object) {
+      value = normalize_dual_cycles(transform(transform_state.world_to_object,
+                                              value));
+    };
+  }
+}
+
 void object_inverse_normal_transform(Float3 &value,
                                      const TransformState &transform_state,
                                      const ShaderData &shader_data,
