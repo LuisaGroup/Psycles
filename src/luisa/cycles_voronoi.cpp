@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <type_traits>
 
 #include <luisa/dsl/func.h>
 #include <luisa/dsl/sugar.h>
@@ -18,8 +19,16 @@ using luisa::compute::Int;
 using luisa::compute::Int4;
 using luisa::compute::make_int4;
 
+struct RuntimeConfiguration {
+    std::uint32_t dimensions;
+    UInt feature;
+    UInt metric;
+    Bool normalize;
+};
+
+template<typename ConfigurationType>
 struct Parameters {
-    Configuration configuration;
+    ConfigurationType configuration;
     Float scale;
     Float detail;
     Float roughness;
@@ -38,6 +47,11 @@ struct Octave {
 
 using VoronoiCallable = luisa::compute::Callable<luisa::float4(
     luisa::float3, float, float, float, float, float, float, float, float)>;
+
+using RuntimeVoronoiCallable =
+    luisa::compute::Callable<EvaluationCall(
+        luisa::float3, float, float, float, float, float, float, float,
+        float, luisa::uint, luisa::uint, bool)>;
 
 [[nodiscard]] std::uint64_t
 configuration_key(const Configuration &configuration) noexcept {
@@ -65,6 +79,22 @@ configuration_key(const Configuration &configuration) noexcept {
 [[nodiscard]] bool needs_position(const Configuration &configuration) noexcept {
     return configuration.output == compiler::VoronoiOutput::position ||
            configuration.output == compiler::VoronoiOutput::w;
+}
+
+[[nodiscard]] constexpr bool
+needs_color(const RuntimeConfiguration &) noexcept {
+    return true;
+}
+
+[[nodiscard]] constexpr bool
+needs_position(const RuntimeConfiguration &) noexcept {
+    return true;
+}
+
+template<typename ConfigurationType>
+[[nodiscard]] std::uint32_t dimensions(
+    const ConfigurationType &configuration) noexcept {
+    return configuration.dimensions;
 }
 
 [[nodiscard]] bool
@@ -140,49 +170,108 @@ is_distance_feature(const Configuration &configuration) noexcept {
     return component_sum(delta * delta, dimensions);
 }
 
-[[nodiscard]] Float voronoi_distance(Float4 a, Float4 b,
-                                     const Parameters &parameters) noexcept {
-    const auto dimensions = parameters.configuration.dimensions;
+template<typename ConfigurationType>
+[[nodiscard]] Float voronoi_distance(
+    Float4 a, Float4 b,
+    const Parameters<ConfigurationType> &parameters) noexcept {
+    const auto dimension_count = dimensions(parameters.configuration);
     const auto delta = abs(a - b);
-    if (dimensions == 1u) {
+    if (dimension_count == 1u) {
         return delta.x;
     }
-    switch (parameters.configuration.metric) {
-        case compiler::VoronoiDistanceMetric::euclidean:
-            return sqrt(component_sum(delta * delta, dimensions));
-        case compiler::VoronoiDistanceMetric::manhattan:
-            return component_sum(delta, dimensions);
-        case compiler::VoronoiDistanceMetric::chebychev:
-            return component_max(delta, dimensions);
-        case compiler::VoronoiDistanceMetric::minkowski: {
-            auto powered = make_float4(
-                pow(delta.x, parameters.exponent), pow(delta.y, parameters.exponent),
-                pow(delta.z, parameters.exponent), pow(delta.w, parameters.exponent));
-            return pow(component_sum(powered, dimensions), 1.0f / parameters.exponent);
+    const auto minkowski = [&] noexcept {
+        const auto powered = make_float4(
+            pow(delta.x, parameters.exponent),
+            pow(delta.y, parameters.exponent),
+            pow(delta.z, parameters.exponent),
+            pow(delta.w, parameters.exponent));
+        return pow(component_sum(powered, dimension_count),
+                   1.0f / parameters.exponent);
+    };
+    if constexpr (std::is_same_v<ConfigurationType, Configuration>) {
+        switch (parameters.configuration.metric) {
+            case compiler::VoronoiDistanceMetric::euclidean:
+                return sqrt(component_sum(delta * delta, dimension_count));
+            case compiler::VoronoiDistanceMetric::manhattan:
+                return component_sum(delta, dimension_count);
+            case compiler::VoronoiDistanceMetric::chebychev:
+                return component_max(delta, dimension_count);
+            case compiler::VoronoiDistanceMetric::minkowski:
+                return minkowski();
         }
+        return 0.0f;
+    } else {
+        Float result = 0.0f;
+        $switch (parameters.configuration.metric) {
+            $case(static_cast<std::uint32_t>(
+                compiler::VoronoiDistanceMetric::euclidean)) {
+                result = sqrt(component_sum(delta * delta, dimension_count));
+            };
+            $case(static_cast<std::uint32_t>(
+                compiler::VoronoiDistanceMetric::manhattan)) {
+                result = component_sum(delta, dimension_count);
+            };
+            $case(static_cast<std::uint32_t>(
+                compiler::VoronoiDistanceMetric::chebychev)) {
+                result = component_max(delta, dimension_count);
+            };
+            $case(static_cast<std::uint32_t>(
+                compiler::VoronoiDistanceMetric::minkowski)) {
+                result = minkowski();
+            };
+            $default {
+                luisa::compute::dsl::unreachable(
+                    "invalid Cycles Voronoi distance metric");
+            };
+        };
+        return result;
     }
-    return 0.0f;
 }
 
+template<typename ConfigurationType>
 [[nodiscard]] Float
 voronoi_distance_bound(Float4 a, Float4 b,
-                       const Parameters &parameters) noexcept {
-    if (parameters.configuration.dimensions == 1u) {
+                       const Parameters<ConfigurationType> &parameters) noexcept {
+    const auto dimension_count = dimensions(parameters.configuration);
+    if (dimension_count == 1u) {
         return abs(a.x - b.x);
     }
-    if (parameters.configuration.metric !=
-        compiler::VoronoiDistanceMetric::euclidean) {
-        if (parameters.configuration.metric ==
-            compiler::VoronoiDistanceMetric::minkowski) {
-            const auto delta = abs(a - b);
-            const auto powered = make_float4(
-                pow(delta.x, parameters.exponent), pow(delta.y, parameters.exponent),
-                pow(delta.z, parameters.exponent), pow(delta.w, parameters.exponent));
-            return component_sum(powered, parameters.configuration.dimensions);
+    const auto minkowski_bound = [&] noexcept {
+        const auto delta = abs(a - b);
+        const auto powered = make_float4(
+            pow(delta.x, parameters.exponent),
+            pow(delta.y, parameters.exponent),
+            pow(delta.z, parameters.exponent),
+            pow(delta.w, parameters.exponent));
+        return component_sum(powered, dimension_count);
+    };
+    if constexpr (std::is_same_v<ConfigurationType, Configuration>) {
+        if (parameters.configuration.metric !=
+            compiler::VoronoiDistanceMetric::euclidean) {
+            if (parameters.configuration.metric ==
+                compiler::VoronoiDistanceMetric::minkowski) {
+                return minkowski_bound();
+            }
+            return voronoi_distance(a, b, parameters);
         }
-        return voronoi_distance(a, b, parameters);
+        return distance_squared(a, b, dimension_count);
+    } else {
+        Float result;
+        $if (parameters.configuration.metric ==
+             static_cast<std::uint32_t>(
+                 compiler::VoronoiDistanceMetric::euclidean)) {
+            result = distance_squared(a, b, dimension_count);
+        }
+        $elif (parameters.configuration.metric ==
+               static_cast<std::uint32_t>(
+                   compiler::VoronoiDistanceMetric::minkowski)) {
+            result = minkowski_bound();
+        }
+        $else {
+            result = voronoi_distance(a, b, parameters);
+        };
+        return result;
     }
-    return distance_squared(a, b, parameters.configuration.dimensions);
 }
 
 template<typename Function>
@@ -297,29 +386,34 @@ void for_each_offset(std::uint32_t dimensions, int radius,
            inverse_maximum;
 }
 
-[[nodiscard]] Float4 random_point(Float4 cell_position, Int4 cell, Int4 offset,
-                                  const Parameters &parameters) noexcept {
+template<typename ConfigurationType>
+[[nodiscard]] Float4 random_point(
+    Float4 cell_position, Int4 cell, Int4 offset,
+    const Parameters<ConfigurationType> &parameters) noexcept {
     const auto offset_float = float_cell(offset);
-    if (parameters.configuration.dimensions == 1u) {
+    const auto dimension_count = dimensions(parameters.configuration);
+    if (dimension_count == 1u) {
         return offset_float + make_float4(cycles_noise::hash_float(
                                   cell_position.x + offset_float.x)) *
                                   parameters.randomness;
     }
     return offset_float +
-           point_hash(cell + offset, parameters.configuration.dimensions) *
+           point_hash(cell + offset, dimension_count) *
                parameters.randomness;
 }
 
-[[nodiscard]] Octave voronoi_f1(const Parameters &parameters,
-                                Float4 coordinate) noexcept {
-    const auto dimensions = parameters.configuration.dimensions;
+template<typename ConfigurationType>
+[[nodiscard]] Octave
+voronoi_f1(const Parameters<ConfigurationType> &parameters,
+           Float4 coordinate) noexcept {
+    const auto dimension_count = dimensions(parameters.configuration);
     const auto cell_position = floor(coordinate);
     const auto local_position = coordinate - cell_position;
     const auto cell = floor_cell(cell_position);
     Float minimum_distance = std::numeric_limits<float>::max();
     Int4 target_offset = make_int4(0);
     Float4 target_position = make_float4(0.0f);
-    for_each_offset(dimensions, 1, [&](Int4 offset) noexcept {
+    for_each_offset(dimension_count, 1, [&](Int4 offset) noexcept {
         const auto point_position =
             random_point(cell_position, cell, offset, parameters);
         const auto distance_to_point =
@@ -335,18 +429,21 @@ void for_each_offset(std::uint32_t dimensions, int radius,
         voronoi_distance(target_position, local_position, parameters);
     if (needs_color(parameters.configuration)) {
         octave.color = color_hash(cell_position + float_cell(target_offset),
-                                  cell + target_offset, dimensions);
+                                  cell + target_offset, dimension_count);
     }
     if (needs_position(parameters.configuration)) {
         octave.position =
-            voronoi_position(dimensions, target_position + cell_position);
+            voronoi_position(dimension_count,
+                             target_position + cell_position);
     }
     return octave;
 }
 
-[[nodiscard]] Octave voronoi_f2(const Parameters &parameters,
-                                Float4 coordinate) noexcept {
-    const auto dimensions = parameters.configuration.dimensions;
+template<typename ConfigurationType>
+[[nodiscard]] Octave
+voronoi_f2(const Parameters<ConfigurationType> &parameters,
+           Float4 coordinate) noexcept {
+    const auto dimension_count = dimensions(parameters.configuration);
     const auto cell_position = floor(coordinate);
     const auto local_position = coordinate - cell_position;
     const auto cell = floor_cell(cell_position);
@@ -356,7 +453,7 @@ void for_each_offset(std::uint32_t dimensions, int radius,
     Int4 offset_f2 = make_int4(0);
     Float4 position_f1 = make_float4(0.0f);
     Float4 position_f2 = make_float4(0.0f);
-    for_each_offset(dimensions, 1, [&](Int4 offset) noexcept {
+    for_each_offset(dimension_count, 1, [&](Int4 offset) noexcept {
         const auto point_position =
             random_point(cell_position, cell, offset, parameters);
         const auto distance_to_point =
@@ -381,17 +478,20 @@ void for_each_offset(std::uint32_t dimensions, int radius,
     octave.distance = distance_f2;
     if (needs_color(parameters.configuration)) {
         octave.color = color_hash(cell_position + float_cell(offset_f2),
-                                  cell + offset_f2, dimensions);
+                                  cell + offset_f2, dimension_count);
     }
     if (needs_position(parameters.configuration)) {
-        octave.position = voronoi_position(dimensions, position_f2 + cell_position);
+        octave.position =
+            voronoi_position(dimension_count, position_f2 + cell_position);
     }
     return octave;
 }
 
-[[nodiscard]] Octave voronoi_smooth_f1(const Parameters &parameters,
-                                       Float4 coordinate) noexcept {
-    const auto dimensions = parameters.configuration.dimensions;
+template<typename ConfigurationType>
+[[nodiscard]] Octave
+voronoi_smooth_f1(const Parameters<ConfigurationType> &parameters,
+                  Float4 coordinate) noexcept {
+    const auto dimension_count = dimensions(parameters.configuration);
     const auto cell_position = floor(coordinate);
     const auto local_position = coordinate - cell_position;
     const auto cell = floor_cell(cell_position);
@@ -399,7 +499,7 @@ void for_each_offset(std::uint32_t dimensions, int radius,
     Float3 smooth_color = make_float3(0.0f);
     Float4 smooth_position = make_float4(0.0f);
     Float h = -1.0f;
-    for_each_offset(dimensions, 2, [&](Int4 offset) noexcept {
+    for_each_offset(dimension_count, 2, [&](Int4 offset) noexcept {
         const auto point_position =
             random_point(cell_position, cell, offset, parameters);
         const auto distance_to_point =
@@ -413,7 +513,7 @@ void for_each_offset(std::uint32_t dimensions, int radius,
         correction /= 1.0f + 3.0f * parameters.smoothness;
         if (needs_color(parameters.configuration)) {
             const auto cell_color = color_hash(cell_position + float_cell(offset),
-                                               cell + offset, dimensions);
+                                               cell + offset, dimension_count);
             smooth_color = lerp(smooth_color, cell_color, h) - correction;
         }
         if (needs_position(parameters.configuration)) {
@@ -427,7 +527,8 @@ void for_each_offset(std::uint32_t dimensions, int radius,
     }
     if (needs_position(parameters.configuration)) {
         octave.position =
-            voronoi_position(dimensions, cell_position + smooth_position);
+            voronoi_position(dimension_count,
+                             cell_position + smooth_position);
     }
     return octave;
 }
@@ -438,35 +539,73 @@ void assign_octave(Octave &destination, const Octave &source) noexcept {
     destination.position = source.position;
 }
 
-[[nodiscard]] Octave evaluate_octave(const Parameters &parameters,
-                                     Float4 coordinate) noexcept {
-    switch (parameters.configuration.feature) {
-        case compiler::VoronoiFeature::f2:
-            return voronoi_f2(parameters, coordinate);
-        case compiler::VoronoiFeature::smooth_f1: {
-            Octave octave;
-            $if (parameters.smoothness != 0.0f) {
-                const auto smooth = voronoi_smooth_f1(parameters, coordinate);
-                assign_octave(octave, smooth);
+template<typename ConfigurationType>
+[[nodiscard]] Octave
+evaluate_octave(const Parameters<ConfigurationType> &parameters,
+                Float4 coordinate) noexcept {
+    if constexpr (std::is_same_v<ConfigurationType, Configuration>) {
+        switch (parameters.configuration.feature) {
+            case compiler::VoronoiFeature::f2:
+                return voronoi_f2(parameters, coordinate);
+            case compiler::VoronoiFeature::smooth_f1: {
+                Octave octave;
+                $if (parameters.smoothness != 0.0f) {
+                    const auto smooth =
+                        voronoi_smooth_f1(parameters, coordinate);
+                    assign_octave(octave, smooth);
+                }
+                $else {
+                    const auto f1 = voronoi_f1(parameters, coordinate);
+                    assign_octave(octave, f1);
+                };
+                return octave;
             }
-            $else {
-                const auto f1 = voronoi_f1(parameters, coordinate);
-                assign_octave(octave, f1);
-            };
-            return octave;
+            case compiler::VoronoiFeature::f1:
+            default:
+                return voronoi_f1(parameters, coordinate);
         }
-        case compiler::VoronoiFeature::f1:
-        default:
-            return voronoi_f1(parameters, coordinate);
+    } else {
+        Octave result;
+        $switch (parameters.configuration.feature) {
+            $case(static_cast<std::uint32_t>(
+                compiler::VoronoiFeature::f1)) {
+                const auto f1 = voronoi_f1(parameters, coordinate);
+                assign_octave(result, f1);
+            };
+            $case(static_cast<std::uint32_t>(
+                compiler::VoronoiFeature::f2)) {
+                const auto f2 = voronoi_f2(parameters, coordinate);
+                assign_octave(result, f2);
+            };
+            $case(static_cast<std::uint32_t>(
+                compiler::VoronoiFeature::smooth_f1)) {
+                $if (parameters.smoothness != 0.0f) {
+                    const auto smooth =
+                        voronoi_smooth_f1(parameters, coordinate);
+                    assign_octave(result, smooth);
+                }
+                $else {
+                    const auto f1 = voronoi_f1(parameters, coordinate);
+                    assign_octave(result, f1);
+                };
+            };
+            $default {
+                luisa::compute::dsl::unreachable(
+                    "invalid Cycles Voronoi distance feature");
+            };
+        };
+        return result;
     }
 }
 
-[[nodiscard]] Float distance_to_edge(const Parameters &parameters,
-                                     Float4 coordinate) noexcept {
-    const auto dimensions = parameters.configuration.dimensions;
+template<typename ConfigurationType>
+[[nodiscard]] Float
+distance_to_edge(const Parameters<ConfigurationType> &parameters,
+                 Float4 coordinate) noexcept {
+    const auto dimension_count = dimensions(parameters.configuration);
     const auto cell_position = floor(coordinate);
     const auto local_position = coordinate - cell_position;
-    if (dimensions == 1u) {
+    if (dimension_count == 1u) {
         const auto middle =
             cycles_noise::hash_float(cell_position.x) * parameters.randomness;
         const auto left = -1.0f + cycles_noise::hash_float(cell_position.x - 1.0f) *
@@ -479,27 +618,27 @@ void assign_octave(Octave &destination, const Octave &source) noexcept {
     const auto cell = floor_cell(cell_position);
     Float4 vector_to_closest = make_float4(0.0f);
     Float minimum_distance = std::numeric_limits<float>::max();
-    for_each_offset(dimensions, 1, [&](Int4 offset) noexcept {
+    for_each_offset(dimension_count, 1, [&](Int4 offset) noexcept {
         const auto vector_to_point =
             random_point(cell_position, cell, offset, parameters) - local_position;
         const auto distance_to_point =
-            component_sum(vector_to_point * vector_to_point, dimensions);
+            component_sum(vector_to_point * vector_to_point, dimension_count);
         $if (distance_to_point < minimum_distance) {
             minimum_distance = distance_to_point;
             vector_to_closest = vector_to_point;
         };
     });
     minimum_distance = std::numeric_limits<float>::max();
-    for_each_offset(dimensions, 1, [&](Int4 offset) noexcept {
+    for_each_offset(dimension_count, 1, [&](Int4 offset) noexcept {
         const auto vector_to_point =
             random_point(cell_position, cell, offset, parameters) - local_position;
         const auto perpendicular = vector_to_point - vector_to_closest;
         const auto perpendicular_squared =
-            component_sum(perpendicular * perpendicular, dimensions);
+            component_sum(perpendicular * perpendicular, dimension_count);
         $if (perpendicular_squared > 0.0001f) {
             const auto distance =
                 component_sum((vector_to_closest + vector_to_point) * perpendicular,
-                              dimensions) /
+                              dimension_count) /
                 (2.0f * sqrt(perpendicular_squared));
             minimum_distance = min(minimum_distance, distance);
         };
@@ -522,17 +661,19 @@ void assign_octave(Octave &destination, const Octave &source) noexcept {
     return result;
 }
 
-[[nodiscard]] Float n_sphere_radius(const Parameters &parameters,
-                                    Float4 coordinate) noexcept {
-    const auto dimensions = parameters.configuration.dimensions;
+template<typename ConfigurationType>
+[[nodiscard]] Float
+n_sphere_radius(const Parameters<ConfigurationType> &parameters,
+                Float4 coordinate) noexcept {
+    const auto dimension_count = dimensions(parameters.configuration);
     const auto cell_position = floor(coordinate);
     const auto local_position = coordinate - cell_position;
     const auto cell = floor_cell(cell_position);
-    if (dimensions == 1u) {
+    if (dimension_count == 1u) {
         Float closest_point = 0.0f;
         Int closest_offset = 0;
         Float minimum_distance = std::numeric_limits<float>::max();
-        for_each_offset(dimensions, 1, [&](Int4 offset) noexcept {
+        for_each_offset(dimension_count, 1, [&](Int4 offset) noexcept {
             const auto point = random_point(cell_position, cell, offset, parameters);
             const auto distance = abs(point.x - local_position.x);
             $if (distance < minimum_distance) {
@@ -543,7 +684,7 @@ void assign_octave(Octave &destination, const Octave &source) noexcept {
         });
         minimum_distance = std::numeric_limits<float>::max();
         Float closest_neighbor = 0.0f;
-        for_each_offset(dimensions, 1, [&](Int4 neighbor) noexcept {
+        for_each_offset(dimension_count, 1, [&](Int4 neighbor) noexcept {
             $if (neighbor.x != 0) {
                 const auto offset =
                     make_int4(neighbor.x + closest_offset, 0, 0, 0);
@@ -561,9 +702,10 @@ void assign_octave(Octave &destination, const Octave &source) noexcept {
     Float4 closest_point = make_float4(0.0f);
     Int4 closest_offset = make_int4(0);
     Float minimum_distance_squared = std::numeric_limits<float>::max();
-    for_each_offset(dimensions, 1, [&](Int4 offset) noexcept {
+    for_each_offset(dimension_count, 1, [&](Int4 offset) noexcept {
         const auto point = random_point(cell_position, cell, offset, parameters);
-        const auto squared = distance_squared(point, local_position, dimensions);
+        const auto squared =
+            distance_squared(point, local_position, dimension_count);
         $if (squared < minimum_distance_squared) {
             minimum_distance_squared = squared;
             closest_point = point;
@@ -572,23 +714,27 @@ void assign_octave(Octave &destination, const Octave &source) noexcept {
     });
     minimum_distance_squared = std::numeric_limits<float>::max();
     Float4 closest_neighbor = make_float4(0.0f);
-    for_each_offset(dimensions, 1, [&](Int4 neighbor_offset) noexcept {
-        $if (nonzero_offset(neighbor_offset, dimensions)) {
+    for_each_offset(dimension_count, 1, [&](Int4 neighbor_offset) noexcept {
+        $if (nonzero_offset(neighbor_offset, dimension_count)) {
             const auto offset = neighbor_offset + closest_offset;
             const auto point = random_point(cell_position, cell, offset, parameters);
-            const auto squared = distance_squared(closest_point, point, dimensions);
+            const auto squared =
+                distance_squared(closest_point, point, dimension_count);
             $if (squared < minimum_distance_squared) {
                 minimum_distance_squared = squared;
                 closest_neighbor = point;
             };
         };
     });
-    return sqrt(distance_squared(closest_neighbor, closest_point, dimensions)) *
+    return sqrt(distance_squared(closest_neighbor, closest_point,
+                                 dimension_count)) *
            0.5f;
 }
 
-[[nodiscard]] Octave fractal_distance_feature(const Parameters &parameters,
-                                              Float4 coordinate) noexcept {
+template<typename ConfigurationType>
+[[nodiscard]] Octave
+fractal_distance_feature(const Parameters<ConfigurationType> &parameters,
+                         Float4 coordinate) noexcept {
     Float amplitude = 1.0f;
     Float maximum_amplitude = 0.0f;
     Float frequency = 1.0f;
@@ -637,11 +783,18 @@ void assign_octave(Octave &destination, const Octave &source) noexcept {
             };
         };
     };
-    if (parameters.configuration.normalize) {
+    const auto normalize = [&] noexcept {
         output.distance /= maximum_amplitude * parameters.max_distance;
         if (needs_color(parameters.configuration)) {
             output.color /= maximum_amplitude;
         }
+    };
+    if constexpr (std::is_same_v<ConfigurationType, Configuration>) {
+        if (parameters.configuration.normalize) {
+            normalize();
+        }
+    } else {
+        $if (parameters.configuration.normalize) { normalize(); };
     }
     if (needs_position(parameters.configuration)) {
         output.position =
@@ -651,8 +804,10 @@ void assign_octave(Octave &destination, const Octave &source) noexcept {
     return output;
 }
 
-[[nodiscard]] Float fractal_distance_to_edge(const Parameters &parameters,
-                                             Float4 coordinate) noexcept {
+template<typename ConfigurationType>
+[[nodiscard]] Float
+fractal_distance_to_edge(const Parameters<ConfigurationType> &parameters,
+                         Float4 coordinate) noexcept {
     Float amplitude = 1.0f;
     Float maximum_amplitude = parameters.max_distance;
     Float frequency = 1.0f;
@@ -687,20 +842,35 @@ void assign_octave(Octave &destination, const Octave &source) noexcept {
             };
         };
     };
-    if (parameters.configuration.normalize) {
-        distance /= maximum_amplitude;
+    if constexpr (std::is_same_v<ConfigurationType, Configuration>) {
+        if (parameters.configuration.normalize) {
+            distance /= maximum_amplitude;
+        }
+    } else {
+        $if (parameters.configuration.normalize) {
+            distance /= maximum_amplitude;
+        };
     }
     return distance;
 }
 
-[[nodiscard]] Float maximum_distance(const Parameters &parameters) noexcept {
+template<typename ConfigurationType>
+[[nodiscard]] Float maximum_distance(
+    const Parameters<ConfigurationType> &parameters) noexcept {
     auto result = 0.5f + 0.5f * parameters.randomness;
-    if (parameters.configuration.dimensions > 1u) {
+    if (dimensions(parameters.configuration) > 1u) {
         auto extent = make_float4(result);
         result = voronoi_distance(make_float4(0.0f), extent, parameters);
     }
-    if (parameters.configuration.feature == compiler::VoronoiFeature::f2) {
-        result *= 2.0f;
+    if constexpr (std::is_same_v<ConfigurationType, Configuration>) {
+        if (parameters.configuration.feature == compiler::VoronoiFeature::f2) {
+            result *= 2.0f;
+        }
+    } else {
+        result *= select(
+            1.0f, 2.0f,
+            parameters.configuration.feature ==
+                static_cast<std::uint32_t>(compiler::VoronoiFeature::f2));
     }
     return result;
 }
@@ -711,15 +881,16 @@ void assign_octave(Octave &destination, const Octave &source) noexcept {
                                           Float lacunarity, Float smoothness,
                                           Float exponent,
                                           Float randomness) noexcept {
-    Parameters parameters{.configuration = configuration,
-                          .scale = scale,
-                          .detail = clamp(detail, 0.0f, 15.0f),
-                          .roughness = clamp(roughness, 0.0f, 1.0f),
-                          .lacunarity = lacunarity,
-                          .smoothness = clamp(smoothness * 0.5f, 0.0f, 0.5f),
-                          .exponent = exponent,
-                          .randomness = clamp(randomness, 0.0f, 1.0f),
-                          .max_distance = 0.0f};
+    Parameters<Configuration> parameters{
+        .configuration = configuration,
+        .scale = scale,
+        .detail = clamp(detail, 0.0f, 15.0f),
+        .roughness = clamp(roughness, 0.0f, 1.0f),
+        .lacunarity = lacunarity,
+        .smoothness = clamp(smoothness * 0.5f, 0.0f, 0.5f),
+        .exponent = exponent,
+        .randomness = clamp(randomness, 0.0f, 1.0f),
+        .max_distance = 0.0f};
     const auto coordinate =
         input_coordinate(configuration.dimensions, vector, w) * scale;
     if (configuration.feature == compiler::VoronoiFeature::distance_to_edge) {
@@ -754,6 +925,80 @@ void assign_octave(Octave &destination, const Octave &source) noexcept {
             return make_float4(0.0f);
     }
     return make_float4(0.0f);
+}
+
+template<std::uint32_t DimensionCount, bool VoronoiExtraEnabled>
+[[nodiscard]] luisa::compute::Var<EvaluationCall>
+evaluate_runtime_dimension(
+    Float3 vector, Float w, Float scale, Float detail, Float roughness,
+    Float lacunarity, Float smoothness, Float exponent, Float randomness,
+    UInt feature, UInt metric, Bool normalize) noexcept {
+    static_assert(DimensionCount >= 1u && DimensionCount <= 4u);
+    Parameters<RuntimeConfiguration> parameters{
+        .configuration = RuntimeConfiguration{
+            .dimensions = DimensionCount,
+            .feature = feature,
+            .metric = metric,
+            .normalize = normalize},
+        .scale = scale,
+        .detail = clamp(detail, 0.0f, 15.0f),
+        .roughness = clamp(roughness, 0.0f, 1.0f),
+        .lacunarity = lacunarity,
+        .smoothness = clamp(smoothness * 0.5f, 0.0f, 0.5f),
+        .exponent = exponent,
+        .randomness = clamp(randomness, 0.0f, 1.0f),
+        .max_distance = 0.0f};
+    const auto coordinate =
+        input_coordinate(DimensionCount, vector, w) * scale;
+
+    luisa::compute::Var<EvaluationCall> result;
+    result.color_distance = make_float4(0.0f);
+    result.position = make_float4(0.0f);
+    result.radius = 0.0f;
+    $switch (feature) {
+        $case(static_cast<std::uint32_t>(
+            compiler::VoronoiFeature::distance_to_edge)) {
+            parameters.max_distance =
+                0.5f + 0.5f * parameters.randomness;
+            result.color_distance.w =
+                fractal_distance_to_edge(parameters, coordinate);
+        };
+        $case(static_cast<std::uint32_t>(
+            compiler::VoronoiFeature::n_sphere_radius)) {
+            result.radius = n_sphere_radius(parameters, coordinate);
+        };
+        $default {
+            // Cycles' IF_KERNEL_NODES_FEATURE(VORONOI_EXTRA) guards only
+            // multidimensional X-FX. 1D X-FX and every Edge/Radius path are
+            // present in the base node mask. Valid SVM programs guarantee
+            // that multidimensional Smooth F1/4D nodes request the bit.
+            if constexpr (DimensionCount == 1u || VoronoiExtraEnabled) {
+                parameters.max_distance = maximum_distance(parameters);
+                const auto output =
+                    fractal_distance_feature(parameters, coordinate);
+                result.color_distance =
+                    make_float4(output.color, output.distance);
+                result.position = output.position;
+            }
+        };
+    };
+    return result;
+}
+
+template<std::uint32_t DimensionCount, bool VoronoiExtraEnabled>
+[[nodiscard]] const RuntimeVoronoiCallable &
+runtime_callable() noexcept {
+    static RuntimeVoronoiCallable callable{
+        [](Float3 vector, Float w, Float scale, Float detail, Float roughness,
+           Float lacunarity, Float smoothness, Float exponent,
+           Float randomness, UInt feature, UInt metric,
+           Bool normalize) noexcept {
+            return evaluate_runtime_dimension<DimensionCount,
+                                              VoronoiExtraEnabled>(
+                vector, w, scale, detail, roughness, lacunarity, smoothness,
+                exponent, randomness, feature, metric, normalize);
+        }};
+    return callable;
 }
 
 [[nodiscard]] std::unique_ptr<VoronoiCallable>
@@ -863,6 +1108,51 @@ Float4 evaluate(const Configuration &configuration, Float3 vector, Float w,
     }
     return (*callable)(vector, w, scale, detail, roughness, lacunarity,
                        smoothness, exponent, randomness);
+}
+
+luisa::compute::Var<EvaluationCall> evaluate_runtime(
+    bool voronoi_extra_enabled,
+    luisa::compute::Expr<std::uint32_t> dimensions_expression,
+    luisa::compute::Expr<std::uint32_t> feature_expression,
+    luisa::compute::Expr<std::uint32_t> metric_expression,
+    luisa::compute::Expr<bool> normalize_expression,
+    Float3 vector, Float w, Float scale, Float detail, Float roughness,
+    Float lacunarity, Float smoothness, Float exponent,
+    Float randomness) noexcept {
+    const UInt dimension_count{dimensions_expression};
+    const UInt feature{feature_expression};
+    const UInt metric{metric_expression};
+    const Bool normalize{normalize_expression};
+    luisa::compute::Var<EvaluationCall> result;
+    const auto evaluate_dimension = [&]<std::uint32_t DimensionCount>() noexcept {
+        if (voronoi_extra_enabled) {
+            return runtime_callable<DimensionCount, true>()(
+                vector, w, scale, detail, roughness, lacunarity, smoothness,
+                exponent, randomness, feature, metric, normalize);
+        }
+        return runtime_callable<DimensionCount, false>()(
+            vector, w, scale, detail, roughness, lacunarity, smoothness,
+            exponent, randomness, feature, metric, normalize);
+    };
+    $switch (dimension_count) {
+        $case(1u) {
+            result = evaluate_dimension.template operator()<1u>();
+        };
+        $case(2u) {
+            result = evaluate_dimension.template operator()<2u>();
+        };
+        $case(3u) {
+            result = evaluate_dimension.template operator()<3u>();
+        };
+        $case(4u) {
+            result = evaluate_dimension.template operator()<4u>();
+        };
+        $default {
+            luisa::compute::dsl::unreachable(
+                "invalid Cycles Voronoi dimensions");
+        };
+    };
+    return result;
 }
 
 }// namespace psycles::luisa_backend::cycles_voronoi
