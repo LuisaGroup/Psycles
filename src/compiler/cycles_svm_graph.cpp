@@ -378,7 +378,7 @@ projected_binary_math_operation(std::string_view type) noexcept {
   }
   if (input == "Tangent" &&
       (node == node_type::principled_bsdf || node == node_type::glossy_bsdf ||
-       node == node_type::metallic_bsdf || node == node_type::hair_bsdf)) {
+       node == node_type::metallic_bsdf)) {
     return graph_socket_link_tangent;
   }
   if (input == "Vector") {

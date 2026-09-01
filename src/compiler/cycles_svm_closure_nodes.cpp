@@ -44,6 +44,24 @@ template<typename T>
   return std::nullopt;
 }
 
+[[nodiscard]] bool
+enum_token_is(std::string_view value,
+              std::string_view canonical_uppercase) noexcept {
+  if (value.size() != canonical_uppercase.size()) {
+    return false;
+  }
+  for (auto index = std::size_t{}; index < value.size(); ++index) {
+    auto character = value[index];
+    if (character >= 'a' && character <= 'z') {
+      character = static_cast<char>(character - 'a' + 'A');
+    }
+    if (character != canonical_uppercase[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 [[nodiscard]] std::optional<ClosureType>
 principled_distribution(const GraphNode *node) noexcept {
   const auto distribution = string_property(node, "Distribution");
@@ -148,6 +166,18 @@ toon_component(const GraphNode *node) noexcept {
   }
   if (component == "GLOSSY") {
     return CLOSURE_BSDF_GLOSSY_TOON_ID;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<ClosureType>
+hair_component(const GraphNode *node) noexcept {
+  const auto component = string_property(node, "Component");
+  if (component && enum_token_is(*component, "REFLECTION")) {
+    return CLOSURE_BSDF_HAIR_REFLECTION_ID;
+  }
+  if (component && enum_token_is(*component, "TRANSMISSION")) {
+    return CLOSURE_BSDF_HAIR_TRANSMISSION_ID;
   }
   return std::nullopt;
 }
@@ -353,6 +383,27 @@ public:
         SVMNodeRayPortalBsdfData{
             .direction = compiler.input_float3("Direction"),
             .position_offset = compiler.input_link("Position"),
+            ._pad = {0u, 0u, 0u}});
+  }
+};
+
+class HairBsdfNode final : public BsdfNode {
+public:
+  HairBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_HAIR_REFLECTION_ID} {}
+
+  void compile(SVMCompiler &compiler) override {
+    const auto component = hair_component(this);
+    if (!component) {
+      compiler.fail("Cycles Hair BSDF component is not migrated exactly");
+      return;
+    }
+    compile_bsdf(
+        compiler, *component,
+        SVMNodeHairBsdfData{
+            .roughness1 = compiler.input_float("RoughnessU"),
+            .roughness2 = compiler.input_float("RoughnessV"),
+            .offset = compiler.input_float("Offset"),
+            .tangent_offset = compiler.input_link("Tangent"),
             ._pad = {0u, 0u, 0u}});
   }
 };
@@ -931,6 +982,9 @@ make_closure_graph_node(std::string_view type) {
   }
   if (type == node_type::ray_portal_bsdf) {
     return std::make_unique<RayPortalBsdfNode>();
+  }
+  if (type == node_type::hair_bsdf) {
+    return std::make_unique<HairBsdfNode>();
   }
   if (type == node_type::emission) {
     return std::make_unique<EmissionNode>();

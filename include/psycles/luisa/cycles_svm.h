@@ -459,6 +459,19 @@ struct RayPortalClosure {
   RayPortalParam param;
 };
 
+/* Typed projection of Cycles 5.2.1 kernel/closure/bsdf_hair.h::HairBsdf. */
+struct HairParam {
+  luisa::compute::Float3 T;
+  luisa::compute::Float roughness1;
+  luisa::compute::Float roughness2;
+  luisa::compute::Float offset;
+};
+
+struct HairClosure {
+  ShaderClosureCommon common;
+  HairParam param;
+};
+
 /* Typed projection of Cycles 5.2.1 kernel/closure/bssrdf.h::Bssrdf. */
 struct BssrdfParam {
   luisa::compute::Float3 radius;
@@ -611,6 +624,8 @@ public:
                       const ToonParam &param) noexcept;
   void set_ray_portal_param(luisa::compute::Expr<std::uint32_t> index,
                             const RayPortalParam &param) noexcept;
+  void set_hair_param(luisa::compute::Expr<std::uint32_t> index,
+                      const HairParam &param) noexcept;
   void set_bssrdf_param(luisa::compute::Expr<std::uint32_t> index,
                         const BssrdfParam &param) noexcept;
   void set_microfacet_param(luisa::compute::Expr<std::uint32_t> index,
@@ -638,6 +653,8 @@ public:
   toon(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] RayPortalClosure
   ray_portal(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] HairClosure
+  hair(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] BssrdfClosure
   bssrdf(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetParam

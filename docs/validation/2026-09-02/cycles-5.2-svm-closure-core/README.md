@@ -19,6 +19,7 @@ The implementation follows these pinned Cycles sources at
 - `kernel/closure/bsdf_ashikhmin_velvet.h`
 - `kernel/closure/bsdf_toon.h`
 - `kernel/closure/bsdf_ray_portal.h`
+- `kernel/closure/bsdf_hair.h`
 - `kernel/closure/bsdf_util.h::maybe_ensure_valid_specular_reflection`
 - `kernel/closure/bsdf_microfacet.h::{bsdf_microfacet_*_glass_setup,`
   `bsdf_microfacet_ggx_setup,bsdf_microfacet_beckmann_setup,`
@@ -44,7 +45,9 @@ Toon family includes Diffuse and Glossy Toon with the exact typed
 `SVMNodeToonBsdfData` payload and reflective-caustics gate. The standalone
 Ray Portal family includes the exact typed `SVMNodeRayPortalBsdfData`
 payload, direct signed-weight allocation, transparent extinction, and portal
-position/direction state. The standalone
+position/direction state. The standalone legacy Hair family includes
+Reflection and Transmission with the exact typed `SVMNodeHairBsdfData`
+payload, primitive-dependent tangent construction, and signed offset. The standalone
 Subsurface Scattering family includes Christensen-Burley,
 Random Walk, Random Walk Legacy, and Random Walk Skin with the exact typed
 `SVMNodeBssrdfData` payload.
@@ -234,6 +237,8 @@ relocated from the original global offsets to its compact test buffer.
 | Standalone Glossy Toon | type 18; weight `(0.84,0.22,0.56)`; sample weight `0.5399999619`; normal `(0,0,1)` |
 | Standalone default Ray Portal | type 29; weight `(0.26,0.71,0.43)`; sample weight `0.4666666687`; normal `(0,0,1)` |
 | Standalone authored Ray Portal | type 29; weight `(0.83,0.17,0.52)`; sample weight `0.5066666603`; normal `(0,0,1)` |
+| Standalone Blender-default Hair Reflection | type 19; weight `(0.8,0.8,0.8)`; sample weight `0.8000000715`; normal `(0,0,1)` |
+| Standalone authored Hair Transmission | type 23; weight `(0.83,0.17,0.52)`; sample weight `0.5066666603`; normal `(0,0,1)` |
 | Standalone Random Walk | type 32; weight/albedo `(0.37,0.62,0.14)`; sample weight `1.1299999952`; normal `(0,0,1)` |
 | Standalone Burley | type 31; weight/albedo `(0.21,0.74,0.48)`; sample weight `1.4299999475`; normal `(0,0,1)` |
 
@@ -392,6 +397,14 @@ Artifact hashes:
 | Standalone authored Ray Portal diagnostic path trace | `0ef35b984b64d4cbbf385b969a40182f740ea51d05b57fbaad2cfd5e8c3be4b1` |
 | Standalone authored Ray Portal decoded diagnostic trace | `654b44de2155581a74d593a2a33483e21fcfb5fe6e54e6db58a58f5bae95a2c7` |
 | Standalone authored Ray Portal render metadata | `7ba9b1e869805347da32b807d3c72822f87092d5fb52cc6755c18e0994e44379` |
+| Standalone Blender-default Hair Reflection oracle `.blend` | `9314cdf798fedf9139a3097112cc31780713d195f9580d003e23fa2d6e54782e` |
+| Standalone Blender-default Hair Reflection final SVM buffer | `8c313ad247feaf4160c5bbf17dba5f70c943095ff2595c4e6b4f2c1baa52ceed` |
+| Standalone Blender-default Hair Reflection diagnostic path trace / decoded trace | `8b94b5b41e2cdb5dc602f916ea23b846e7bc3a3b06c1d270c6ccac663317c274` / `a954bd7ac49afcc1bf16720092490a502cd3d07461022d13430f45abe130d247` |
+| Standalone Blender-default Hair Reflection render metadata | `afb35d32840a4741e314c192236fdbbc0f31a7e5a88b85fab985dcdc896d7c97` |
+| Standalone authored Hair Transmission oracle `.blend` | `db2fbe44dbb2ef57f5725fcb80bfeb86163c036874d10e6d8390d4744ae6ab5e` |
+| Standalone authored Hair Transmission final SVM buffer | `d7316f111a07eed781d5f25ffae2e85892c339c8f6b331287a2e9f6bcb681f29` |
+| Standalone authored Hair Transmission diagnostic path trace / decoded trace | `f99fcedf325a75c033a8ff951562b83f3c522d4bf184d1b8b952621eff2f7d65` / `1d0f9a541a8cf6a90bdf5145657ccbf42ad224d4fbb6fab7d30f534e293ccd55` |
+| Standalone authored Hair Transmission render metadata | `45ff54e1e90a3491e6525b23273838c8d93d1fe46699595257e5a76db7e874e7` |
 
 No `.svm52` binary is checked in.
 
@@ -547,6 +560,72 @@ so those two fields are locked by the exact Cycles word stream, the pinned
 source transition above, and the three-backend typed-state regression rather
 than misrepresented as externally observed. Exact portal path integration is
 a later stage; this checkpoint makes no production-render parity claim.
+
+### Standalone Hair Reflection and Transmission runtime checkpoint
+
+Both legacy Hair components consume the exact four-word
+`SVMNodeHairBsdfData` record:
+
+```text
+roughness1, roughness2, offset, tangent_offset
+```
+
+The cursor advances over all four words before allocation. Let
+`w = max(closure_weight * mix_weight, 0)`, `A = bsdf_alloc(w)`, and `curve`
+mean `(sd.type & PRIMITIVE_CURVE) != 0`. The copied transition is
+
+```text
+A failed: no typed payload or flags
+A succeeded:
+  N = maybe_ensure_valid_specular_reflection(sd, sd.N)
+  roughness1 = clamp(input(RoughnessU), 0.001, 1)
+  roughness2 = clamp(input(RoughnessV), 0.001, 1)
+  offset = -input(Offset)
+  linked Tangent:    T = normalize(stack[Tangent])
+  unlinked triangle: T = normalize(sd.dPdv); offset = 0
+  unlinked curve:    T = normalize(sd.dPdu)
+  Reflection:   type = 19; flags |= SD_BSDF | SD_BSDF_HAS_EVAL
+  Transmission: type = 23; flags |= SD_BSDF | SD_BSDF_HAS_EVAL |
+                                  SD_BSDF_HAS_TRANSMISSION
+```
+
+This is a total partition over allocation, Tangent linkage, primitive class,
+and component tag. It uses Cycles' unchecked `normalize`, not a zero-safe
+replacement, and ordinary `bsdf_alloc`, so negative spectral components are
+clamped before cutoff and sample-weight calculation.
+
+Two distinct defaults are intentionally preserved at their actual abstraction
+boundaries. Cycles' internal `HairBsdfNode` schema declares
+`RoughnessU = RoughnessV = 0.2`; Blender 5.2's UI
+`ShaderNodeBsdfHair` declares `0.1/1.0`. The core registry follows the former,
+while raw Blender export/import carries the latter unchanged. The compiler
+regression freezes the internal-default compact image plus the external
+18-word Blender-default Reflection and 23-word authored Transmission images.
+
+That comparison exposed and fixed a structural graph bug: Psycles had marked
+legacy Hair Tangent with Cycles' `LINK_TANGENT` flag. `default_inputs()` then
+invented a `Geometry.Tangent` edge for both unlinked and explicitly linked
+Hair nodes. Cycles 5.2 declares this socket as a plain `SOCKET_IN_VECTOR`; only
+Principled, Glossy, and Metallic use the implicit Tangent flag. Removing Hair
+from that flag restores `SVM_STACK_INVALID` for the unlinked stream and
+preserves the authored `NODE_VALUE_V` producer for the linked stream. Both
+forms are permanent exact-word regressions.
+
+The device regression covers Reflection and Transmission, both roughness
+clamps, linked non-unit Tangent, unlinked triangle and curve derivation,
+signed input weight, non-unit and zero mix weight, cutoff, zero-capacity
+allocation, feature-erased payload skipping, flags, prefix-pool accounting,
+and final cursor positions. It passes on fallback, HIP, and strict native
+Vulkan XIR-to-SPIR-V. The Blender export regression proves that the raw
+`BSDF_HAIR` closure and sockets are not pre-baked, and the bundle test carries
+the authored graph through raw lowering, validation, and exact SVM
+compilation.
+
+The external trace exposes Hair type, common weight, sample weight, and normal;
+`T`, roughness, and signed offset are not fields in the diagnostic trace. They
+are therefore claimed only from the pinned Cycles source transition, exact
+word images, and typed three-backend regression. Exact Hair evaluation and
+sampling, and production shade-surface replacement, remain later work.
 
 ### Standalone BSSRDF runtime checkpoint
 
@@ -721,9 +800,12 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_standalone_sheen_tests \
            psycles_luisa_cycles_svm_standalone_toon_tests \
            psycles_luisa_cycles_svm_standalone_ray_portal_tests \
+           psycles_luisa_cycles_svm_standalone_hair_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_cycles_svm_ray_portal_compiler_tests \
+           psycles_cycles_svm_hair_compiler_tests \
            psycles_blender_ray_portal_import_tests \
+           psycles_blender_hair_svm_import_tests \
            psycles_luisa_thin_film_fresnel_tests \
            psycles_luisa_thin_film_surface_tests
 
@@ -764,25 +846,28 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_standalone_ray_portal_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_standalone_hair_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
-  '^psycles\.cycles_svm(_ray_portal)?_compiler$'
+  '^psycles\.cycles_svm(_ray_portal|_hair)?_compiler$'
 
 ctest --test-dir build --output-on-failure -R \
-  '^psycles\.blender_ray_portal_import$'
+  '^psycles\.blender_(ray_portal|hair_svm)_import$'
 ```
 
 Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
 3/3, Principled Metallic 3/3, Principled thick Transmission 3/3, Principled
 Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, standalone
 Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
-6/6, compiler 2/2, and Ray Portal bundle import 1/1 passed. The
-compiler test
-locks the standalone graph-to-word-image mapping independently of the device
+6/6, standalone Hair 3/3, compiler 3/3, and Ray Portal/Hair bundle imports
+2/2 passed. The
+compiler test locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 499/499 tests in 117.23 seconds. The Vulkan test
+expanded checkpoint passed 504/504 tests in 155.29 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
@@ -816,11 +901,11 @@ shade-surface.
 
 This checkpoint establishes ordinary and extra closure allocation plus the
 simple, Glass, standalone Glossy, standalone Refraction, and Metallic
-F82/conductor setup families inside the exact interpreter. Production still
+F82/conductor, Ray Portal, and legacy Hair setup families inside the exact
+interpreter. Production still
 calls the old custom
 `SurfaceProgram` path. The next required structural steps are the remaining
-standalone typed closure payload (Hair),
-exact closure evaluation/sampling, and only then replacement and deletion of
-the old shade-surface route. The Cycles-style global shader linker is already
-staged, but this document makes no production-render parity or performance
-claim.
+exact closure evaluation/sampling families and only then replacement and
+deletion of the old shade-surface route. The Cycles-style global shader linker
+is already staged, but this document makes no production-render parity or
+performance claim.

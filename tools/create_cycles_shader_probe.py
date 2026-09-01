@@ -327,6 +327,12 @@ _CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
     "standalone_ray_portal_default_svm_oracle": (
         ray_portal_closures._standalone_ray_portal_default_svm_oracle
     ),
+    "standalone_hair_reflection_svm_oracle": (
+        hair_closures._standalone_hair_reflection_svm_oracle
+    ),
+    "standalone_hair_transmission_svm_oracle": (
+        hair_closures._standalone_hair_transmission_svm_oracle
+    ),
     "standalone_toon_diffuse_svm_oracle": (
         toon_closures._standalone_toon_diffuse_svm_oracle
     ),

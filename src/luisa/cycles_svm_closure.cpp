@@ -4,6 +4,7 @@
 
 #include "cycles_svm_internal.h"
 #include "cycles_svm_bssrdf.h"
+#include "cycles_svm_hair.h"
 #include "cycles_svm_microfacet.h"
 #include "cycles_svm_principled.h"
 #include "cycles_svm_ray_portal.h"
@@ -146,6 +147,13 @@ void ClosurePool::set_ray_portal_param(Expr<std::uint32_t> index,
   _payload1.write(index, make_float4(param.D, 0.0f));
 }
 
+void ClosurePool::set_hair_param(Expr<std::uint32_t> index,
+                                 const HairParam &param) noexcept {
+  _payload0.write(index, make_float4(param.T, param.roughness1));
+  _payload1.write(index,
+                  make_float4(param.roughness2, param.offset, 0.0f, 0.0f));
+}
+
 void ClosurePool::set_bssrdf_param(Expr<std::uint32_t> index,
                                    const BssrdfParam &param) noexcept {
   _payload0.write(index, make_float4(param.radius, param.anisotropy));
@@ -237,6 +245,16 @@ ClosurePool::ray_portal(Expr<std::uint32_t> index) const noexcept {
   return {.common = common(index),
           .param = {.P = _payload0.read(index).xyz(),
                     .D = _payload1.read(index).xyz()}};
+}
+
+HairClosure ClosurePool::hair(Expr<std::uint32_t> index) const noexcept {
+  const auto tangent_roughness = _payload0.read(index);
+  const auto roughness_offset = _payload1.read(index);
+  return {.common = common(index),
+          .param = {.T = tangent_roughness.xyz(),
+                    .roughness1 = tangent_roughness.w,
+                    .roughness2 = roughness_offset.x,
+                    .offset = roughness_offset.y}};
 }
 
 BssrdfClosure ClosurePool::bssrdf(Expr<std::uint32_t> index) const noexcept {
@@ -447,6 +465,11 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
         const Bool is_ray_portal =
             closure_type ==
             static_cast<std::uint32_t>(CLOSURE_BSDF_RAY_PORTAL_ID);
+        const Bool is_hair =
+            (closure_type ==
+             static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_REFLECTION_ID)) |
+            (closure_type ==
+             static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_TRANSMISSION_ID));
         const Bool is_glass =
             (closure_type == static_cast<std::uint32_t>(
                                  CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
@@ -488,6 +511,10 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
         $elif(is_ray_portal) {
           node_ray_portal(cursor, stack, closure_weight, mix_weight,
                           shader_data);
+        }
+        $elif(is_hair) {
+          node_hair(cursor, stack, closure_type, closure_weight, mix_weight,
+                    shader_data);
         }
         $elif(is_glass) {
           const auto color_x = cursor.word();
