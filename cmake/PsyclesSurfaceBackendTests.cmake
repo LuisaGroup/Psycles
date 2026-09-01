@@ -735,7 +735,10 @@ psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_closure_tests
     SOURCE tests/test_luisa_cycles_svm_closure.cpp
     TEST_STEM luisa_cycles_svm_closure
-    LIBRARIES Psycles::luisa)
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_cycles_svm_closure_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
 if(TEST psycles.luisa_cycles_svm_closure_vk)
     set_tests_properties(
         psycles.luisa_cycles_svm_closure_vk

@@ -50,6 +50,11 @@ private:
   Bool _film_is_rec709;
 
 public:
+  [[nodiscard]] Float cycles_bsdf_data(
+      Expr<std::uint32_t>) const noexcept override {
+    return 0.0f;
+  }
+
   BufferKernelGlobals(Expr<Buffer<AttributeMap>> attribute_map,
                       Expr<Buffer<float>> attribute_float,
                       Expr<Buffer<luisa::float2>> attribute_float2,

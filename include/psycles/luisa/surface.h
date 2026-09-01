@@ -11,6 +11,7 @@
 
 #include <psycles/contract/cycles_abi.h>
 #include <psycles/contract/surface.h>
+#include <psycles/luisa/cycles_bsdf_tables.h>
 
 #include <luisa/core/stl/vector.h>
 #include <luisa/dsl/polymorphic.h>
@@ -1113,7 +1114,8 @@ public:
         Expr<std::uint32_t> slot) const noexcept = 0;
 };
 
-class ShaderServices : public SurfaceParameterServices {
+class ShaderServices : public SurfaceParameterServices,
+                       public CyclesBsdfTableReader {
 
 public:
     ~ShaderServices() noexcept override = default;
@@ -1188,13 +1190,6 @@ public:
                 static_cast<luisa::ulong>(attribute_id)},
             point);
     }
-
-    // Versioned Cycles compatibility data. The index addresses the
-    // contiguous Blender BSDF table buffer; interpolation and table shape
-    // remain explicit in the Luisa shader so all backends execute the same
-    // semantics.
-    [[nodiscard]] virtual Float cycles_bsdf_data(
-        Expr<std::uint32_t> index) const noexcept = 0;
 
     [[nodiscard]] virtual Float3 xyz_to_rgb(
         Expr<luisa::float3> xyz) const noexcept = 0;

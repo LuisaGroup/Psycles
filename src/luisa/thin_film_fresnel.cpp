@@ -5,6 +5,9 @@
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::detail {
+
+using namespace luisa::compute;
+
 namespace {
 
 struct ComplexFloat {
@@ -38,6 +41,11 @@ struct PolarizedConductorFresnel {
 }
 
 [[nodiscard]] Float square(Float value) noexcept { return value * value; }
+
+[[nodiscard]] Float f0_from_ior(Float ior) noexcept {
+  const auto ratio = (ior - 1.0f) / (ior + 1.0f);
+  return ratio * ratio;
+}
 
 [[nodiscard]] Float fresnel_f82_scalar(Float cosine, Float f0,
                                        Float b) noexcept {
@@ -160,7 +168,7 @@ fresnel_conductor_polarized(Float cosine_incoming, Float ambient_ior,
 
 template <std::uint32_t Channel>
 [[nodiscard]] ComplexFloat
-lookup_sensitivity(const ShaderServices &services,
+lookup_sensitivity(const CyclesBsdfTableReader &services,
                    Float optical_path_difference) noexcept {
   static_assert(Channel < 3u);
   constexpr float two_pi = 6.28318530717958647692f;
@@ -176,7 +184,7 @@ lookup_sensitivity(const ShaderServices &services,
 }
 
 template <std::uint32_t Channel>
-[[nodiscard]] Float airy_summation(const ShaderServices &services,
+[[nodiscard]] Float airy_summation(const CyclesBsdfTableReader &services,
                                    Float reflection_12, Float reflection_23,
                                    Float optical_path_difference,
                                    ComplexFloat phase) noexcept {
@@ -213,7 +221,7 @@ template <std::uint32_t Channel>
 
 template <std::uint32_t Channel, bool Conductive, bool F82Model = false>
 [[nodiscard]] Float
-iridescence_channel(const ShaderServices &services, Float thickness,
+iridescence_channel(const CyclesBsdfTableReader &services, Float thickness,
                     Float authored_film_ior, Float ambient_ior,
                     Float substrate_n, Float substrate_k, Float f82,
                     Float cosine_incoming, Float &cosine_transmitted) noexcept {
@@ -269,7 +277,7 @@ iridescence_channel(const ShaderServices &services, Float thickness,
 }
 
 template <std::uint32_t Channel>
-[[nodiscard]] Float f82_channel(const ShaderServices &services, Float thickness,
+[[nodiscard]] Float f82_channel(const CyclesBsdfTableReader &services, Float thickness,
                                 Float film_ior, Float f0, Float b,
                                 Float cosine_incoming) noexcept {
   const auto r = min(f0, 0.999f);
@@ -289,7 +297,7 @@ template <std::uint32_t Channel>
 } // namespace
 
 ThinFilmDielectricFresnel
-thin_film_dielectric_fresnel(const ShaderServices &services, Float thickness,
+thin_film_dielectric_fresnel(const CyclesBsdfTableReader &services, Float thickness,
                              Float film_ior, Float substrate_ior, Float3 f0,
                              Float cosine_incoming) noexcept {
   Float cosine_transmitted;
@@ -315,7 +323,7 @@ thin_film_dielectric_fresnel(const ShaderServices &services, Float thickness,
   return {.reflectance = reflectance, .cosine_transmitted = cosine_transmitted};
 }
 
-Float3 thin_film_f82_fresnel(const ShaderServices &services, Float thickness,
+Float3 thin_film_f82_fresnel(const CyclesBsdfTableReader &services, Float thickness,
                              Float film_ior, Float3 f0, Float3 b,
                              Float cosine_incoming) noexcept {
   return make_float3(f82_channel<0u>(services, thickness, film_ior, f0.x, b.x,
@@ -327,7 +335,7 @@ Float3 thin_film_f82_fresnel(const ShaderServices &services, Float thickness,
 }
 
 Float3 thin_film_conductor_fresnel(
-    const ShaderServices &services, Float thickness, Float film_ior,
+    const CyclesBsdfTableReader &services, Float thickness, Float film_ior,
     Float3 substrate_ior, Float3 substrate_extinction,
     Float cosine_incoming) noexcept {
   Float unused_cosine;

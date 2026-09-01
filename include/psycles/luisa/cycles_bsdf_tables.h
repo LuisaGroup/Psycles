@@ -2,7 +2,51 @@
 
 #include <cstdint>
 
-namespace psycles::luisa_backend::cycles45_tables {
+#include <luisa/dsl/syntax.h>
+
+namespace psycles::luisa_backend {
+
+/* Minimal device-side projection of Cycles' contiguous BSDF lookup-table
+ * buffer. Both the native SVM KernelGlobals and the legacy graph surface
+ * services implement this interface; table interpolation therefore has one
+ * implementation and does not depend on either shading architecture. */
+class CyclesBsdfTableReader {
+public:
+    virtual ~CyclesBsdfTableReader() noexcept = default;
+
+    [[nodiscard]] virtual luisa::compute::Float cycles_bsdf_data(
+        luisa::compute::Expr<std::uint32_t> index) const noexcept = 0;
+};
+
+namespace detail {
+
+[[nodiscard]] luisa::compute::Float cycles_table_1d(
+    const CyclesBsdfTableReader &reader,
+    luisa::compute::Float x,
+    luisa::compute::Expr<std::uint32_t> offset,
+    std::uint32_t size) noexcept;
+
+[[nodiscard]] luisa::compute::Float cycles_table_2d(
+    const CyclesBsdfTableReader &reader,
+    luisa::compute::Float x,
+    luisa::compute::Float y,
+    luisa::compute::Expr<std::uint32_t> offset,
+    std::uint32_t x_size,
+    std::uint32_t y_size) noexcept;
+
+[[nodiscard]] luisa::compute::Float cycles_table_3d(
+    const CyclesBsdfTableReader &reader,
+    luisa::compute::Float x,
+    luisa::compute::Float y,
+    luisa::compute::Float z,
+    luisa::compute::Expr<std::uint32_t> offset,
+    std::uint32_t x_size,
+    std::uint32_t y_size,
+    std::uint32_t z_size) noexcept;
+
+}// namespace detail
+
+namespace cycles45_tables {
 
 // Offsets into the contiguous Blender 4.5.10 Cycles BSDF lookup-table
 // buffer. The table payload is copied verbatim from
@@ -57,4 +101,6 @@ inline constexpr std::uint32_t thin_film_size =
 inline constexpr std::uint32_t total_size =
     thin_film_offset + thin_film_size;
 
-}// namespace psycles::luisa_backend::cycles45_tables
+}// namespace cycles45_tables
+
+}// namespace psycles::luisa_backend

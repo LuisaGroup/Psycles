@@ -1,9 +1,11 @@
 set(PSYCLES_LUISA_SOURCES
+    src/luisa/cycles_bsdf_tables.cpp
     src/luisa/cycles_svm.cpp
     src/luisa/cycles_svm_dual_math.cpp
     src/luisa/cycles_svm_bump.cpp
     src/luisa/cycles_svm_camera.cpp
     src/luisa/cycles_svm_closure.cpp
+    src/luisa/cycles_svm_microfacet.cpp
     src/luisa/cycles_svm_color.cpp
     src/luisa/cycles_svm_convert.cpp
     src/luisa/cycles_svm_fresnel.cpp
