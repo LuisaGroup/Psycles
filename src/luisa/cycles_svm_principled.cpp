@@ -266,10 +266,7 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
          static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
         (distribution == static_cast<std::uint32_t>(
                              CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
-    const Bool supported_transmission =
-        (transmission_weight <= CLOSURE_WEIGHT_CUTOFF) | (thin_wall == 0);
-    subset_supported &= supported_transmission &
-                        (subsurface_weight <= CLOSURE_WEIGHT_CUTOFF) &
+    subset_supported &= (subsurface_weight <= CLOSURE_WEIGHT_CUTOFF) &
                         valid_distribution;
   }
 
@@ -397,17 +394,28 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
         weight *= 1.0f - metallic;
       };
 
-      /* Thick-walled Transmission component. Thin Wall remains an explicit
-       * unsupported transition until its two-lobe setup is copied. */
+      /* Transmission component. Cycles' thin-walled branch first resolves
+       * the two-interface Fresnel series into two independent closures;
+       * thick walls retain the generalized-Schlick glass closure. */
       $if (transmission_weight > CLOSURE_WEIGHT_CUTOFF) {
         $if (reflective_caustics | refractive_caustics) {
-          principled_transmission_setup(
-              kernel_globals, shader_data, transmission_weight * weight,
-              valid_reflection_normal, roughness, ior, reflective_caustics,
-              refractive_caustics, specular_tint,
-              sqrt(clamped_base_color), thin_film_thickness, thin_film_ior,
-              distribution == static_cast<std::uint32_t>(
-                                  CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
+          $if(thin_wall != 0) {
+            principled_thin_wall_setup(
+                kernel_globals, shader_data, path_state,
+                transmission_weight * weight, valid_reflection_normal,
+                square(roughness), ior, reflective_caustics,
+                refractive_caustics, specular_tint, clamped_base_color,
+                thin_film_thickness, thin_film_ior);
+          }
+          $else {
+            principled_transmission_setup(
+                kernel_globals, shader_data, transmission_weight * weight,
+                valid_reflection_normal, roughness, ior, reflective_caustics,
+                refractive_caustics, specular_tint,
+                sqrt(clamped_base_color), thin_film_thickness, thin_film_ior,
+                distribution == static_cast<std::uint32_t>(
+                                    CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
+          };
         };
         weight *= 1.0f - transmission_weight;
       };

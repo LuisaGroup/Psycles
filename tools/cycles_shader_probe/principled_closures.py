@@ -320,3 +320,38 @@ def _principled_transmission_svm_oracle(scene: Any) -> None:
         rows=1,
         name="Principled Transmission SVM Oracle",
     )
+
+
+def _principled_thin_wall_svm_oracle(scene: Any) -> None:
+    """Isolate Cycles' thin-walled Principled transmission transition.
+
+    This is the exact thick-transmission finite product with Thin Wall enabled.
+    Keeping every other field fixed makes the oracle isolate Cycles' two-lobe
+    thin-sheet setup: GGX reflection plus type-22 mirrored transmission.
+    """
+    material, tree, output = _material("Principled Thin Wall SVM Oracle")
+    principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+    principled.name = "Principled Thin Wall SVM Oracle"
+    principled.distribution = "MULTI_GGX"
+    _set_color(_input(principled, "Base Color"), (0.36, 0.64, 0.91))
+    _input(principled, "Transmission Weight").default_value = 0.72
+    _input(principled, "Roughness").default_value = 0.31
+    _input(principled, "IOR").default_value = 1.48
+    _input(principled, "Alpha").default_value = 0.81
+    _input(principled, "Thin Wall").default_value = True
+    _set_color(_input(principled, "Specular Tint"), (0.76, 0.41, 0.93))
+    _set_color(_input(principled, "Emission Color"), (0.17, 0.09, 0.51))
+    _input(principled, "Emission Strength").default_value = 1.4
+    _input(principled, "Thin Film Thickness").default_value = 330.0
+    _input(principled, "Thin Film IOR").default_value = 1.56
+    tree.links.new(
+        _output(principled, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _material_matrix(
+        scene,
+        [material],
+        columns=1,
+        rows=1,
+        name="Principled Thin Wall SVM Oracle",
+    )

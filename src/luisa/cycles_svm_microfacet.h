@@ -78,6 +78,24 @@ void principled_transmission_setup(
     luisa::compute::Expr<float> thin_film_ior,
     luisa::compute::Expr<bool> preserve_energy) noexcept;
 
+/* Exact Cycles Principled thin-walled Transmission transition. Cycles first
+ * sums the two-interface Fresnel series, then allocates independent GGX
+ * reflection and type-22 mirrored-transmission closures. Near-singular
+ * non-camera transmission is routed through bsdf_transparent_setup instead. */
+void principled_thin_wall_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const PathState &path_state,
+    luisa::compute::Expr<luisa::float3> weight,
+    luisa::compute::Expr<luisa::float3> normal,
+    luisa::compute::Expr<float> alpha,
+    luisa::compute::Expr<float> ior,
+    luisa::compute::Expr<bool> reflective_caustics,
+    luisa::compute::Expr<bool> refractive_caustics,
+    luisa::compute::Expr<luisa::float3> specular_tint,
+    luisa::compute::Expr<luisa::float3> transmission_tint,
+    luisa::compute::Expr<float> thin_film_thickness,
+    luisa::compute::Expr<float> thin_film_ior) noexcept;
+
 void glass_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
                  const PathState &path_state,
                  luisa::compute::Expr<std::uint32_t> input_type,

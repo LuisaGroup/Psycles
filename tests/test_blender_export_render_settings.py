@@ -229,6 +229,7 @@ def _main() -> None:
         "principled_metallic_svm_oracle",
         "principled_sheen_svm_oracle",
         "principled_svm_oracle",
+        "principled_thin_wall_svm_oracle",
         "principled_transmission_svm_oracle",
         "svm_tangent_dynamic",
         "vector_to_scalar",
