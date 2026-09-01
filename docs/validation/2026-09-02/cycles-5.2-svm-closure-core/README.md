@@ -405,6 +405,12 @@ Artifact hashes:
 | Standalone authored Hair Transmission final SVM buffer | `d7316f111a07eed781d5f25ffae2e85892c339c8f6b331287a2e9f6bcb681f29` |
 | Standalone authored Hair Transmission diagnostic path trace / decoded trace | `f99fcedf325a75c033a8ff951562b83f3c522d4bf184d1b8b952621eff2f7d65` / `1d0f9a541a8cf6a90bdf5145657ccbf42ad224d4fbb6fab7d30f534e293ccd55` |
 | Standalone authored Hair Transmission render metadata | `45ff54e1e90a3491e6525b23273838c8d93d1fe46699595257e5a76db7e874e7` |
+| Hair Reflection direct-eval oracle `.blend` | `0a804d03e5e5c5da6b4a44feb2633b15b0d0595a31830d996a4c59f6fbe73eaf` |
+| Hair Reflection direct-eval path trace / decoded trace | `f4d15f73fbc455694b12d49abc156263f9d0a307ed9767619f39fa8af3a00491` / `8ebd5fe4224892727b110245e45154c8520790d1fc71b96941f9c467dd1f1c25` |
+| Hair Reflection direct-eval render metadata | `cb92b0d4977bae3614ddd33e35a7ba121a007db7ae89c4909cbcb42456eecd73` |
+| Hair Transmission direct-eval oracle `.blend` | `45a1391c63b29f6952158c8cf7c81d8eb354f3665cdb24d432388f1284cfd737` |
+| Hair Transmission direct-eval path trace / decoded trace | `3bb87fc276ffb5e139bcb1082a08169c50f483ee1218e0ff5b8e877057d81639` / `f63cde7cdea31657f0d8d69b245a7c5cd33498cd479cf232f9638464f41836c8` |
+| Hair Transmission direct-eval render metadata | `4224bcd7c36e78c437ece942cf8e30c600cb6a382c50f1d32dd12c71895b1c32` |
 
 No `.svm52` binary is checked in.
 
@@ -621,11 +627,56 @@ Vulkan XIR-to-SPIR-V. The Blender export regression proves that the raw
 the authored graph through raw lowering, validation, and exact SVM
 compilation.
 
-The external trace exposes Hair type, common weight, sample weight, and normal;
-`T`, roughness, and signed offset are not fields in the diagnostic trace. They
-are therefore claimed only from the pinned Cycles source transition, exact
-word images, and typed three-backend regression. Exact Hair evaluation and
-sampling, and production shade-surface replacement, remain later work.
+The external setup trace exposes Hair type, common weight, sample weight, and
+normal; `T`, roughness, and signed offset are not fields in the diagnostic
+trace. They are therefore claimed only from the pinned Cycles source
+transition, exact word images, and typed three-backend regression.
+
+The same checkpoint now includes direct Luisa projections of all four legacy
+Hair scattering functions: Reflection/Transmission evaluation and sampling.
+They use the exact Cycles 5.2 fast-acos, fast-atan2, fast-sincos, and safe-asin
+arithmetic. The shared `cycles_fast_math` layer performs the polynomial and
+range reduction in DSL rather than selecting unrelated backend-native
+approximations; the paired sin/cos form performs one range reduction, as
+Cycles does. Signed-zero atan2 quadrants, out-of-domain fast-acos clamping,
+and the source predicate that maps a NaN fast-acos input to zero are permanent
+regressions.
+
+The formal support partition is preserved as written in Cycles:
+
+```text
+Reflection eval:
+  dot(N, wo) < 0                                    -> zero
+  pi/2 - abs(theta_i) < 0.001 or cos(phi_i) < 0    -> zero
+  otherwise                                         -> density
+Transmission eval:
+  dot(N, wo) >= 0                                   -> zero
+  pi/2 - abs(theta_i) < 0.001                       -> zero
+  otherwise                                         -> density
+Sampling:
+  construct wo and both densities first
+  pi/2 - abs(theta_i) < 0.001                       -> zero pdf
+  otherwise                                         -> sampled pdf/value
+```
+
+The negated predicates are not rewritten as positive complements: that would
+change Cycles' non-finite boundary. Reflection sampling also deliberately does
+not reapply the evaluation hemisphere test. The external sample oracle in
+fact produces `wo.z = -0.08913364` for a closure with `N = +Z`; the sample is
+valid with PDF `0.03163304` and label 10, while independently evaluating that
+direction returns zero. Transmission produces label 9, PDF `1.7582085`, and
+weighted value `(1.4593130, 0.29889545, 0.91426837)`.
+
+An additional Cycles CPU trace adds one zero-angle Sun to each unchanged
+standalone material. Reflection evaluates direction `(0,0,1)` to weighted
+value `(0.34622371,0.34622371,0.34622371)`. Transmission evaluates direction
+`(0,8.7422777e-8,-1)` to `(0.0009033323,0.0001850199,0.0005659431)`. These
+values independently cover the eval path; the test does not assume that a
+sample PDF must equal re-evaluation of its generated direction. Cycles' fast
+trigonometric maps are approximate and that false invariant differs by about
+0.3% in the Transmission oracle. The three-backend regression passes on
+fallback, HIP, and strict native Vulkan XIR-to-SPIR-V. Production
+shade-surface replacement remains later work.
 
 ### Standalone BSSRDF runtime checkpoint
 
@@ -801,6 +852,7 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_standalone_toon_tests \
            psycles_luisa_cycles_svm_standalone_ray_portal_tests \
            psycles_luisa_cycles_svm_standalone_hair_tests \
+           psycles_luisa_cycles_svm_hair_scattering_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_cycles_svm_ray_portal_compiler_tests \
            psycles_cycles_svm_hair_compiler_tests \
@@ -849,6 +901,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_standalone_hair_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_hair_scattering_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -862,12 +917,13 @@ Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
 3/3, Principled Metallic 3/3, Principled thick Transmission 3/3, Principled
 Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, standalone
 Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
-6/6, standalone Hair 3/3, compiler 3/3, and Ray Portal/Hair bundle imports
-2/2 passed. The
+6/6, standalone Hair setup 3/3, Hair scattering 3/3, compiler 3/3, and Ray
+Portal/Hair bundle imports 2/2 passed. The Hair scattering kernels were built
+with the production `enable_fast_math=true` setting. The
 compiler test locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 504/504 tests in 155.29 seconds. The Vulkan test
+expanded checkpoint passed 507/507 tests in 152.07 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
