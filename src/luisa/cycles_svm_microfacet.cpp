@@ -4,6 +4,7 @@
 
 #include "cycles_svm_microfacet.h"
 
+#include "cycles_svm_simple_closure.h"
 #include "thin_film_fresnel.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
@@ -34,6 +35,150 @@ inline constexpr float two_pi = 6.28318530717958647692f;
 [[nodiscard]] Float f0_from_ior(Expr<float> ior) noexcept {
     const auto r = (ior - 1.0f) / (ior + 1.0f);
     return r * r;
+}
+
+[[nodiscard]] Float3 color_power(Expr<luisa::float3> value,
+                                 Expr<float> exponent) noexcept {
+    return make_float3(pow(value.x, exponent), pow(value.y, exponent),
+                       pow(value.z, exponent));
+}
+
+[[nodiscard]] Float3 safe_divide(Expr<luisa::float3> numerator,
+                                 Expr<luisa::float3> denominator) noexcept {
+    return make_float3(
+        select(0.0f, numerator.x / denominator.x, denominator.x != 0.0f),
+        select(0.0f, numerator.y / denominator.y, denominator.y != 0.0f),
+        select(0.0f, numerator.z / denominator.z, denominator.z != 0.0f));
+}
+
+[[nodiscard]] Float3 reflect_direction(Expr<luisa::float3> incident,
+                                       Expr<luisa::float3> normal) noexcept {
+    return incident - 2.0f * normal * dot(incident, normal);
+}
+
+struct DielectricFresnel {
+    Float reflectance;
+    Float cosine_transmitted;
+};
+
+[[nodiscard]] DielectricFresnel
+fresnel_dielectric(Expr<float> cosine_incoming, Expr<float> ior) noexcept {
+    const auto eta_cosine_transmitted_squared =
+        square(ior) - (1.0f - square(cosine_incoming));
+    DielectricFresnel result{.reflectance = 1.0f,
+                             .cosine_transmitted = 0.0f};
+    $if (eta_cosine_transmitted_squared > 0.0f) {
+        const auto cosine_i = abs(cosine_incoming);
+        const auto cosine_t =
+            -safe_sqrt(eta_cosine_transmitted_squared) / ior;
+        const auto reflection_s =
+            (cosine_i + ior * cosine_t) / (cosine_i - ior * cosine_t);
+        const auto reflection_p =
+            (cosine_t + ior * cosine_i) / (ior * cosine_i - cosine_t);
+        result.reflectance =
+            0.5f * (square(reflection_s) + square(reflection_p));
+        result.cosine_transmitted = cosine_t;
+    };
+    return result;
+}
+
+struct GeneralizedSchlickEvaluation {
+    Float3 reflectance;
+    Float3 transmittance;
+    Float cosine_transmitted;
+};
+
+[[nodiscard]] GeneralizedSchlickEvaluation
+principled_generalized_schlick_fresnel(
+    const KernelGlobals &kernel_globals, Expr<float> endpoint_ior,
+    Expr<float> evaluation_ior, Expr<float> cosine_incoming,
+    Expr<bool> reflective_caustics, Expr<bool> refractive_caustics,
+    Expr<luisa::float3> reflection_tint,
+    Expr<luisa::float3> transmission_tint,
+    Expr<float> thin_film_thickness,
+    Expr<float> thin_film_ior) noexcept {
+    const auto f0 = make_float3(f0_from_ior(endpoint_ior)) * reflection_tint;
+    Float3 fresnel;
+    Float cosine_transmitted;
+    $if (thin_film_thickness > table_detail::thin_film_thickness_cutoff) {
+        const auto film = table_detail::thin_film_dielectric_fresnel(
+            kernel_globals, thin_film_thickness, thin_film_ior,
+            evaluation_ior, f0, cosine_incoming);
+        fresnel = film.reflectance;
+        cosine_transmitted = film.cosine_transmitted;
+    }
+    $else {
+        const auto dielectric =
+            fresnel_dielectric(cosine_incoming, evaluation_ior);
+        const auto real_f0 = f0_from_ior(evaluation_ior);
+        const auto interpolation =
+            clamp((dielectric.reflectance - real_f0) / (1.0f - real_f0),
+                  0.0f, 1.0f);
+        fresnel = lerp(f0, make_float3(1.0f), interpolation);
+        cosine_transmitted = dielectric.cosine_transmitted;
+    };
+    return {
+        .reflectance =
+            fresnel * select(make_float3(0.0f), make_float3(1.0f),
+                             reflective_caustics),
+        .transmittance =
+            (make_float3(1.0f) - fresnel) *
+            select(make_float3(0.0f), transmission_tint,
+                   refractive_caustics),
+        .cosine_transmitted = cosine_transmitted};
+}
+
+struct ThinGlassFresnel {
+    Float3 reflectance;
+    Float3 transmittance;
+};
+
+[[nodiscard]] ThinGlassFresnel principled_thin_glass_fresnel(
+    const KernelGlobals &kernel_globals, Expr<float> cosine_incoming,
+    Expr<float> ior, Expr<bool> reflective_caustics,
+    Expr<bool> refractive_caustics,
+    Expr<luisa::float3> reflection_tint,
+    Expr<luisa::float3> transmission_tint,
+    Expr<float> thin_film_thickness,
+    Expr<float> thin_film_ior) noexcept {
+    const auto front = principled_generalized_schlick_fresnel(
+        kernel_globals, ior, ior, cosine_incoming, reflective_caustics,
+        refractive_caustics, reflection_tint, make_float3(1.0f),
+        thin_film_thickness, thin_film_ior);
+    ThinGlassFresnel result{.reflectance = make_float3(0.0f),
+                            .transmittance = make_float3(0.0f)};
+    $if (any(front.reflectance != make_float3(0.0f)) |
+         any(front.transmittance != make_float3(0.0f))) {
+        Float3 back_reflectance = front.reflectance;
+        Float3 back_transmittance = front.transmittance;
+        $if (thin_film_thickness >
+             table_detail::thin_film_thickness_cutoff) {
+            const auto inverse_ior = 1.0f / ior;
+            const auto back = principled_generalized_schlick_fresnel(
+                kernel_globals, ior, inverse_ior,
+                -front.cosine_transmitted, reflective_caustics,
+                refractive_caustics, reflection_tint, make_float3(1.0f),
+                thin_film_thickness, thin_film_ior * inverse_ior);
+            back_reflectance = back.reflectance;
+            back_transmittance = back.transmittance;
+        };
+
+        const auto nonzero_cosine = front.cosine_transmitted != 0.0f;
+        const auto safe_cosine =
+            select(-1.0f, front.cosine_transmitted, nonzero_cosine);
+        const auto absorption = select(
+            make_float3(0.0f),
+            color_power(transmission_tint, -1.0f / safe_cosine),
+            nonzero_cosine);
+        const auto round_trip = back_reflectance * absorption;
+        result.transmittance = safe_divide(
+            absorption * front.transmittance * back_transmittance,
+            make_float3(1.0f) - round_trip * round_trip);
+        result.reflectance =
+            front.reflectance +
+            result.transmittance * back_reflectance * absorption;
+    };
+    return result;
 }
 
 [[nodiscard]] Float fresnel_dielectric_fss(Expr<float> ior) noexcept {
@@ -656,6 +801,99 @@ void principled_transmission_setup(
             flags |= shader_data_bsdf_has_eval;
         };
         shader_data.flag |= flags;
+    };
+}
+
+void principled_thin_wall_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const PathState &path_state, Expr<luisa::float3> weight,
+    Expr<luisa::float3> normal, Expr<float> alpha, Expr<float> ior,
+    Expr<bool> reflective_caustics, Expr<bool> refractive_caustics,
+    Expr<luisa::float3> specular_tint,
+    Expr<luisa::float3> transmission_tint,
+    Expr<float> thin_film_thickness,
+    Expr<float> thin_film_ior) noexcept {
+    auto &pool = *shader_data.closure;
+    const auto fresnel = principled_thin_glass_fresnel(
+        kernel_globals, dot(normal, shader_data.wi), ior,
+        reflective_caustics, refractive_caustics, specular_tint,
+        transmission_tint, thin_film_thickness, thin_film_ior);
+
+    $if (any(fresnel.reflectance != make_float3(0.0f))) {
+        const auto allocated =
+            bsdf_allocate(shader_data, fresnel.reflectance * weight);
+        $if (allocated.valid) {
+            MicrofacetParam microfacet{
+                .alpha_x = clamp(alpha, 0.0f, 1.0f),
+                .alpha_y = clamp(alpha, 0.0f, 1.0f),
+                .ior = 1.0f,
+                .energy_scale = 1.0f,
+                .fresnel_type =
+                    static_cast<std::uint32_t>(MicrofacetFresnel::none),
+                .T = make_float3(0.0f)};
+            pool.set_normal(allocated.index, normal);
+            pool.set_type(
+                allocated.index,
+                static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID));
+            preserve_multi_ggx_reflection_energy(
+                kernel_globals, pool, allocated, shader_data.wi, normal,
+                microfacet, specular_tint);
+            pool.set_microfacet_param(allocated.index, microfacet);
+
+            UInt flags = shader_data_bsdf;
+            $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
+                flags |= shader_data_bsdf_has_eval;
+            };
+            shader_data.flag |= flags;
+        };
+    };
+
+    $if (any(fresnel.transmittance != make_float3(0.0f))) {
+        const auto ior_squared = square(ior);
+        const auto transmission_alpha = clamp(
+            alpha * sqrt(3.4f * (ior - 1.0f) * square(ior - 0.5f) /
+                         (ior_squared * ior)),
+            0.0f, 1.0f);
+        const auto non_camera =
+            (path_state.visibility & path_ray_visibility_camera) == 0u;
+        const auto almost_specular =
+            square(transmission_alpha) <= 2.0e-10f;
+        $if (non_camera & almost_specular) {
+            transparent_setup(shader_data, path_state,
+                              fresnel.transmittance * weight);
+        }
+        $else {
+            const auto allocated =
+                bsdf_allocate(shader_data, fresnel.transmittance * weight);
+            $if (allocated.valid) {
+                MicrofacetParam microfacet{
+                    .alpha_x = transmission_alpha,
+                    .alpha_y = transmission_alpha,
+                    .ior = 1.0f,
+                    .energy_scale = 1.0f,
+                    .fresnel_type =
+                        static_cast<std::uint32_t>(MicrofacetFresnel::none),
+                    .T = make_float3(0.0f)};
+                const auto transmission_normal = -normal;
+                pool.set_normal(allocated.index, transmission_normal);
+                pool.set_type(
+                    allocated.index,
+                    static_cast<std::uint32_t>(
+                        CLOSURE_BSDF_THIN_GLASS_TRANSMISSION_ID));
+                preserve_multi_ggx_reflection_energy(
+                    kernel_globals, pool, allocated,
+                    reflect_direction(shader_data.wi, normal),
+                    transmission_normal, microfacet, make_float3(1.0f));
+                pool.set_microfacet_param(allocated.index, microfacet);
+
+                UInt flags = shader_data_bsdf |
+                             shader_data_bsdf_has_transmission;
+                $if (square(transmission_alpha) > 2.0e-10f) {
+                    flags |= shader_data_bsdf_has_eval;
+                };
+                shader_data.flag |= flags;
+            };
+        };
     };
 }
 
