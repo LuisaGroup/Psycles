@@ -4,6 +4,7 @@
 
 #include "cycles_svm_internal.h"
 
+#include <psycles/luisa/cycles_checker.h>
 #include <psycles/luisa/cycles_magic.h>
 #include <psycles/luisa/cycles_wave.h>
 
@@ -210,15 +211,10 @@ void node_tex_checker(Cursor &cursor, Stack &stack) noexcept {
   const auto color_offset = cursor.byte(packed, 1u);
   const auto factor_offset = cursor.byte(packed, 2u);
 
-  auto point = stack_load_float3(stack, coordinate_offset) *
-               stack_load_input_float(stack, scale_bits);
-  point = (point + 0.000001f) * 0.999999f;
-  const Int x = abs(floor(point.x).cast<std::int32_t>());
-  const Int y = abs(floor(point.y).cast<std::int32_t>());
-  const Int z = abs(floor(point.z).cast<std::int32_t>());
-  const auto xy_parity = select(0, 1, (x % 2) == (y % 2));
-  const Bool first = xy_parity == (z % 2);
-  const Float factor = select(0.0f, 1.0f, first);
+  const auto point = stack_load_float3(stack, coordinate_offset) *
+                     stack_load_input_float(stack, scale_bits);
+  const auto factor = cycles_checker::evaluate(point);
+  const auto first = factor == 1.0f;
   $if(color_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) {
     const auto color1 =
         stack_load_input_float3(stack, color1_x, color1_y, color1_z);

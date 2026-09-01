@@ -4,6 +4,7 @@
 #include <luisa/dsl/sugar.h>
 
 #include <psycles/compiler/surface_execution_plan.h>
+#include <psycles/luisa/cycles_checker.h>
 #include <psycles/luisa/cycles_noise.h>
 
 #include <algorithm>
@@ -282,48 +283,20 @@ public:
                 }
                 case compiler::ValueOperation::checker_color:
                 case compiler::ValueOperation::checker_factor: {
-                    auto scaled_raw =
+                    auto p =
                         vector(
                             instruction.operand(operand::checker::vector),
                             result) *
                         scalar(
                             instruction.operand(operand::checker::scale),
                             result);
-                    auto p = select(
-                        scaled_raw,
-                        make_float3(0.0f),
-                        luisa::compute::dsl::isnan(
-                            scaled_raw));
-                    // Cycles computes `(p + 1e-6f) * 0.999999f`.
-                    // Express the second factor as `1 - 0x1.1p-20f`,
-                    // which is bit-identical in float32 but remains below
-                    // the unit boundary even if a backend contracts the
-                    // arithmetic.
-                    auto shifted_raw = p + 0.000001f;
-                    auto shifted = select(
-                        shifted_raw,
-                        make_float3(0.0f),
-                        luisa::compute::dsl::isnan(
-                            shifted_raw));
-                    p =
-                        shifted -
-                        shifted * 0x1.1p-20f;
-                    auto xi = abs(cast<int>(floor(p.x)));
-                    auto yi = abs(cast<int>(floor(p.y)));
-                    auto zi = abs(cast<int>(floor(p.z)));
-                    auto xy_same = select(
-                        0,
-                        1,
-                        (xi % 2) == (yi % 2));
-                    auto is_first =
-                        xy_same == (zi % 2);
-                    auto factor = select(
-                        0.0f, 1.0f, is_first);
+                    const auto factor = cycles_checker::evaluate(p);
+                    const auto is_first = factor == 1.0f;
                     if (instruction.operation ==
                         compiler::ValueOperation::
                             checker_color) {
                         value = make_float4(
-                            lerp(
+                            select(
                                 vector(
                                     instruction.operand(
                                         operand::checker::color2),
@@ -332,7 +305,7 @@ public:
                                     instruction.operand(
                                         operand::checker::color1),
                                     result),
-                                factor),
+                                is_first),
                             1.0f);
                     } else {
                         value = make_float4(factor);
