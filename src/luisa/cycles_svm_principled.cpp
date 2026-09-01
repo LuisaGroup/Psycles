@@ -4,6 +4,7 @@
 
 #include "cycles_svm_principled.h"
 
+#include "cycles_svm_bssrdf.h"
 #include "cycles_svm_microfacet.h"
 #include "cycles_svm_sheen.h"
 #include "cycles_svm_simple_closure.h"
@@ -266,8 +267,7 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
          static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
         (distribution == static_cast<std::uint32_t>(
                              CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
-    subset_supported &= (subsurface_weight <= CLOSURE_WEIGHT_CUTOFF) &
-                        valid_distribution;
+    subset_supported &= valid_distribution;
   }
 
   const auto diffuse_visibility =
@@ -438,6 +438,34 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
             distribution == static_cast<std::uint32_t>(
                                 CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
         weight = closure_layering_weight(layer_albedo, weight);
+      };
+
+      /* Diffuse/Subsurface component. Thin Wall emits ordinary surface lobes;
+       * thick walls allocate and finalize Cycles' typed Bssrdf record. */
+      $if(subsurface_weight > CLOSURE_WEIGHT_CUTOFF) {
+        const auto subsurface_anisotropy = data.subsurface_anisotropy(stack);
+        const auto closure_weight =
+            clamped_base_color * subsurface_weight * weight;
+        $if(thin_wall != 0) {
+          thin_subsurface_setup(
+              shader_data, normal, closure_weight, subsurface_anisotropy,
+              clamp(data.diffuse_roughness(stack), 0.0f, 1.0f),
+              clamped_base_color);
+        }
+        $else {
+          const auto method = data.subsurface_method();
+          Float subsurface_ior = eta;
+          $if(method ==
+              static_cast<std::uint32_t>(CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID)) {
+            subsurface_ior = data.subsurface_ior(stack);
+          };
+          bssrdf_setup(
+              shader_data, path_state, method, closure_weight,
+              max(data.subsurface_radius(stack) * data.subsurface_scale(stack),
+                  make_float3(0.0f)),
+              clamped_base_color, valid_reflection_normal, square(roughness),
+              subsurface_ior, subsurface_anisotropy);
+        };
       };
 
       const auto diffuse_roughness =

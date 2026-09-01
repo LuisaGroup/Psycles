@@ -43,9 +43,11 @@ inline constexpr float two_pi = 6.28318530717958647692f;
   return result;
 }
 
-[[nodiscard]] OrenNayarParam oren_nayar_param(
-    Expr<luisa::float3> color, Expr<float> normal_view,
-    Expr<float> roughness) noexcept {
+}// namespace
+
+OrenNayarParam oren_nayar_param(Expr<luisa::float3> color,
+                                Expr<float> normal_view,
+                                Expr<float> roughness) noexcept {
   const auto sigma = clamp(roughness, 0.0f, 1.0f);
   const auto a = 1.0f / (pi + sigma * (half_pi - 2.0f / 3.0f));
   const auto b = sigma * a;
@@ -62,8 +64,6 @@ inline constexpr float two_pi = 6.28318530717958647692f;
           .b = b,
           .multiscatter_term = multiple_scatter * (1.0f - view_energy)};
 }
-
-}// namespace
 
 void diffuse_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
                    Expr<luisa::float3> weight) noexcept {

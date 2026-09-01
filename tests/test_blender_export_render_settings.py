@@ -225,8 +225,10 @@ def _main() -> None:
         )
     if oracle_probes != {
         "metallic_svm_oracle",
+        "principled_burley_svm_oracle",
         "principled_coat_svm_oracle",
         "principled_metallic_svm_oracle",
+        "principled_random_walk_skin_svm_oracle",
         "principled_sheen_svm_oracle",
         "principled_svm_oracle",
         "principled_thin_wall_svm_oracle",

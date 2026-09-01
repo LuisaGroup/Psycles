@@ -125,6 +125,13 @@ void ClosurePool::set_sheen_param(Expr<std::uint32_t> index,
   _payload2.write(index, make_float4(param.B, 0.0f));
 }
 
+void ClosurePool::set_bssrdf_param(Expr<std::uint32_t> index,
+                                   const BssrdfParam &param) noexcept {
+  _payload0.write(index, make_float4(param.radius, param.anisotropy));
+  _payload1.write(index, make_float4(param.albedo, param.ior));
+  _payload2.write(index, make_float4(param.alpha, 0.0f, 0.0f, 0.0f));
+}
+
 void ClosurePool::set_microfacet_param(Expr<std::uint32_t> index,
                                        const MicrofacetParam &param) noexcept {
   _payload0.write(index, make_float4(param.alpha_x, param.alpha_y, param.ior,
@@ -190,6 +197,17 @@ SheenClosure ClosurePool::sheen(Expr<std::uint32_t> index) const noexcept {
                     .transform_b = scalars.z,
                     .T = _payload1.read(index).xyz(),
                     .B = _payload2.read(index).xyz()}};
+}
+
+BssrdfClosure ClosurePool::bssrdf(Expr<std::uint32_t> index) const noexcept {
+  const auto radius_anisotropy = _payload0.read(index);
+  const auto albedo_ior = _payload1.read(index);
+  return {.common = common(index),
+          .param = {.radius = radius_anisotropy.xyz(),
+                    .albedo = albedo_ior.xyz(),
+                    .anisotropy = radius_anisotropy.w,
+                    .ior = albedo_ior.w,
+                    .alpha = _payload2.read(index).x}};
 }
 
 MicrofacetClosure
