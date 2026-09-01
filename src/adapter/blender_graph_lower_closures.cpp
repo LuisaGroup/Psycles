@@ -463,6 +463,20 @@ public:
                 .ref = {.node = id, .socket = "Closure"},
                 .type = SocketType::closure});
         }
+        if (type == "BSDF_RAY_PORTAL") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::ray_portal_bsdf,
+                node_name);
+            static_cast<void>(context.bind(
+                id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(context.bind(
+                id, "Position", node, "Position", SocketType::vector));
+            static_cast<void>(context.bind(
+                id, "Direction", node, "Direction", SocketType::vector));
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
         if (type == "BSDF_HAIR") {
             const auto id = context.graph().add_node(
                 compiler::node_type::hair_bsdf,

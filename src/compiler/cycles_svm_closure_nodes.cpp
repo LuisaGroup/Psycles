@@ -339,6 +339,24 @@ public:
   }
 };
 
+class RayPortalBsdfNode final : public BsdfNode {
+public:
+  RayPortalBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_RAY_PORTAL_ID} {}
+
+  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
+    return BsdfNode::get_feature() | kernel_feature_node_portal;
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    compile_bsdf(
+        compiler, CLOSURE_BSDF_RAY_PORTAL_ID,
+        SVMNodeRayPortalBsdfData{
+            .direction = compiler.input_float3("Direction"),
+            .position_offset = compiler.input_link("Position"),
+            ._pad = {0u, 0u, 0u}});
+  }
+};
+
 class GlassBsdfNode final : public BsdfNode {
 public:
   GlassBsdfNode() noexcept
@@ -910,6 +928,9 @@ make_closure_graph_node(std::string_view type) {
   }
   if (type == node_type::toon_bsdf) {
     return std::make_unique<ToonBsdfNode>();
+  }
+  if (type == node_type::ray_portal_bsdf) {
+    return std::make_unique<RayPortalBsdfNode>();
   }
   if (type == node_type::emission) {
     return std::make_unique<EmissionNode>();

@@ -85,6 +85,7 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
          type == node_type::glossy_bsdf ||
          type == node_type::metallic_bsdf ||
          type == node_type::sheen_bsdf || type == node_type::toon_bsdf ||
+         type == node_type::ray_portal_bsdf ||
          type == node_type::hair_bsdf ||
          type == node_type::glass_bsdf ||
          type == node_type::refraction_bsdf || type == node_type::emission ||
@@ -333,6 +334,9 @@ projected_binary_math_operation(std::string_view type) noexcept {
        node == node_type::brick_texture)) {
     return GraphSocketType::point;
   }
+  if (node == node_type::ray_portal_bsdf && input == "Position") {
+    return GraphSocketType::point;
+  }
   return contract_type;
 }
 
@@ -368,6 +372,9 @@ projected_binary_math_operation(std::string_view type) noexcept {
   }
   if (input == "CoatNormal" && node == node_type::principled_bsdf) {
     return graph_socket_link_normal;
+  }
+  if (input == "Position" && node == node_type::ray_portal_bsdf) {
+    return graph_socket_link_position;
   }
   if (input == "Tangent" &&
       (node == node_type::principled_bsdf || node == node_type::glossy_bsdf ||

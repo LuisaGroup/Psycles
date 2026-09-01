@@ -236,6 +236,8 @@ def _main() -> None:
         "svm_tangent_dynamic",
         "standalone_sheen_ashikhmin_svm_oracle",
         "standalone_sheen_microfiber_svm_oracle",
+        "standalone_ray_portal_authored_svm_oracle",
+        "standalone_ray_portal_default_svm_oracle",
         "standalone_toon_diffuse_svm_oracle",
         "standalone_toon_glossy_svm_oracle",
         "subsurface_burley_svm_oracle",
@@ -389,6 +391,88 @@ def _main() -> None:
         ):
             raise AssertionError(
                 f"Toon oracle was altered or pre-baked during export: {node}"
+            )
+
+    ray_portal_oracles = (
+        (
+            "standalone_ray_portal_default_svm_oracle",
+            "Standalone Default Ray Portal SVM Oracle",
+            (0.26, 0.71, 0.43, 1.0),
+            False,
+            (0.0, 0.0, 0.0),
+        ),
+        (
+            "standalone_ray_portal_authored_svm_oracle",
+            "Standalone Authored Ray Portal SVM Oracle",
+            (0.83, 0.17, 0.52, 1.0),
+            True,
+            (0.3, -0.4, 1.2),
+        ),
+    )
+    for probe, _name, _color, _position_linked, _direction in (
+        ray_portal_oracles
+    ):
+        probes["_PROBES"][probe](scene)
+    with tempfile.TemporaryDirectory(
+        prefix="psycles-blender-ray-portal-oracle-"
+    ) as temporary:
+        payload = _export(exporter, pathlib.Path(temporary))
+    materials = {
+        material["name"]: material for material in payload["materials"]
+    }
+    for (
+        _probe,
+        name,
+        color,
+        position_linked,
+        direction,
+    ) in ray_portal_oracles:
+        material = materials.get(name)
+        if material is None:
+            raise AssertionError(
+                f"Ray Portal oracle material is absent: {name}"
+            )
+        nodes = [
+            node
+            for node in material["node_tree"]["nodes"]
+            if node["type"] == "BSDF_RAY_PORTAL"
+        ]
+        if len(nodes) != 1:
+            raise AssertionError(
+                "Ray Portal oracle did not export one raw "
+                f"BSDF_RAY_PORTAL: {name}"
+            )
+        node = nodes[0]
+        inputs = {entry["identifier"]: entry for entry in node["inputs"]}
+        if (
+            any(
+                abs(float(actual) - expected) > 1.0e-6
+                for actual, expected in zip(
+                    inputs["Color"]["default"], color, strict=True
+                )
+            )
+            or bool(inputs["Position"]["linked"]) != position_linked
+            or (
+                not position_linked
+                and tuple(
+                    float(value) for value in inputs["Position"]["default"]
+                )
+                != (0.0, 0.0, 0.0)
+            )
+            or inputs["Direction"]["linked"]
+            or any(
+                abs(float(actual) - expected) > 1.0e-6
+                for actual, expected in zip(
+                    inputs["Direction"]["default"],
+                    direction,
+                    strict=True,
+                )
+            )
+            or node["outputs"][0]["identifier"] != "BSDF"
+        ):
+            raise AssertionError(
+                "Ray Portal oracle was altered or pre-baked during export: "
+                f"{node}"
             )
 
     print("Psycles Blender render-settings regression passed")

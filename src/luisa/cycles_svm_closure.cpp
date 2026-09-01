@@ -6,6 +6,7 @@
 #include "cycles_svm_bssrdf.h"
 #include "cycles_svm_microfacet.h"
 #include "cycles_svm_principled.h"
+#include "cycles_svm_ray_portal.h"
 #include "cycles_svm_sheen.h"
 #include "cycles_svm_simple_closure.h"
 #include "cycles_svm_toon.h"
@@ -139,6 +140,12 @@ void ClosurePool::set_toon_param(Expr<std::uint32_t> index,
   _payload0.write(index, make_float4(param.size, param.smooth, 0.0f, 0.0f));
 }
 
+void ClosurePool::set_ray_portal_param(Expr<std::uint32_t> index,
+                                       const RayPortalParam &param) noexcept {
+  _payload0.write(index, make_float4(param.P, 0.0f));
+  _payload1.write(index, make_float4(param.D, 0.0f));
+}
+
 void ClosurePool::set_bssrdf_param(Expr<std::uint32_t> index,
                                    const BssrdfParam &param) noexcept {
   _payload0.write(index, make_float4(param.radius, param.anisotropy));
@@ -223,6 +230,13 @@ ToonClosure ClosurePool::toon(Expr<std::uint32_t> index) const noexcept {
   const auto scalars = _payload0.read(index);
   return {.common = common(index),
           .param = {.size = scalars.x, .smooth = scalars.y}};
+}
+
+RayPortalClosure
+ClosurePool::ray_portal(Expr<std::uint32_t> index) const noexcept {
+  return {.common = common(index),
+          .param = {.P = _payload0.read(index).xyz(),
+                    .D = _payload1.read(index).xyz()}};
 }
 
 BssrdfClosure ClosurePool::bssrdf(Expr<std::uint32_t> index) const noexcept {
@@ -430,6 +444,9 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                                  CLOSURE_BSDF_DIFFUSE_TOON_ID)) |
             (closure_type == static_cast<std::uint32_t>(
                                  CLOSURE_BSDF_GLOSSY_TOON_ID));
+        const Bool is_ray_portal =
+            closure_type ==
+            static_cast<std::uint32_t>(CLOSURE_BSDF_RAY_PORTAL_ID);
         const Bool is_glass =
             (closure_type == static_cast<std::uint32_t>(
                                  CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
@@ -467,6 +484,10 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
         $elif(is_toon) {
           node_toon(kernel_globals, cursor, stack, closure_type,
                     closure_weight, mix_weight, shader_data, path_state);
+        }
+        $elif(is_ray_portal) {
+          node_ray_portal(cursor, stack, closure_weight, mix_weight,
+                          shader_data);
         }
         $elif(is_glass) {
           const auto color_x = cursor.word();

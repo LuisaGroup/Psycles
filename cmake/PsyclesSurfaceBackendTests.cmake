@@ -822,6 +822,21 @@ if(TEST psycles.luisa_cycles_svm_standalone_toon_vk)
 endif()
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_standalone_ray_portal_tests
+    SOURCE tests/test_luisa_cycles_svm_standalone_ray_portal.cpp
+    TEST_STEM luisa_cycles_svm_standalone_ray_portal
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_cycles_svm_standalone_ray_portal_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+if(TEST psycles.luisa_cycles_svm_standalone_ray_portal_vk)
+    set_tests_properties(
+        psycles.luisa_cycles_svm_standalone_ray_portal_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_principled_sheen_tests
     SOURCE tests/test_luisa_cycles_svm_principled_sheen.cpp
     TEST_STEM luisa_cycles_svm_principled_sheen
