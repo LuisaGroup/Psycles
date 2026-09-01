@@ -290,6 +290,8 @@ _CANONICAL_PROBES: dict[str, Callable[[Any], None]] = {
 # reported as a rendering regression or motivating a transitional lowering.
 _CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
     "svm_tangent_dynamic": normal_maps._svm_tangent_dynamic,
+    "vector_to_scalar": values._vector_to_scalar,
+    "volume_scatter_svm": volume_closures._volume_scatter_svm,
 }
 
 if _CANONICAL_PROBES.keys() & _CYCLES_SVM_ORACLE_PROBES.keys():

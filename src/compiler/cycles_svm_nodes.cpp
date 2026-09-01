@@ -26,6 +26,7 @@
 
 #include <psycles/compiler/core_nodes.h>
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <string>
@@ -75,6 +76,7 @@ template<typename T>
   }
   return std::nullopt;
 }
+
 
 [[nodiscard]] std::optional<NodeMathType>
 math_type(const GraphNode *node) noexcept {
@@ -845,6 +847,36 @@ public:
   }
 };
 
+class VectorToScalarNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    auto *input = this->input("Vector");
+    auto *output = this->output("Value");
+    if (input == nullptr || output == nullptr) {
+      compiler.fail("Cycles Vector-to-Float Convert sockets are absent");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_CONVERT,
+        SVMNodeConvert{.convert_type = NODE_CONVERT_VF,
+                       .from_offset = compiler.input_link("Vector"),
+                       .to_offset = compiler.output("Value"),
+                       ._pad = {0u, 0u}});
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    const auto *input = this->input("Vector");
+    if (input == nullptr || !folder.all_inputs_constant()) {
+      return;
+    }
+    const auto value =
+        literal<Vec3f>(input, contract::SocketType::vector);
+    if (value) {
+      folder.make_constant((value->x + value->y + value->z) / 3.0f);
+    }
+  }
+};
+
 class NullNode final : public GraphNode {
 public:
   void compile(SVMCompiler &) override {}
@@ -1600,161 +1632,6 @@ public:
   }
 };
 
-class BsdfNode : public GraphNode {
-private:
-  ClosureType _closure;
-
-protected:
-  explicit BsdfNode(ClosureType closure) noexcept : _closure{closure} {}
-
-  template<SvmPayload T>
-  void compile_bsdf(SVMCompiler &compiler, const T &data) {
-    auto *color = input("Color");
-    if (color == nullptr) {
-      compiler.fail("Cycles BSDF Color input is absent");
-      return;
-    }
-    if (color->link != nullptr) {
-      compiler.add_node(
-          this, NODE_CLOSURE_WEIGHT,
-          SVMNodeClosureWeight{.weight_offset =
-                                   compiler.input_link("Color"),
-                               ._pad = {0u, 0u, 0u}});
-    } else {
-      const auto value = literal<Vec3f>(color, contract::SocketType::color);
-      if (!value) {
-        compiler.fail("Cycles BSDF Color input is ill typed");
-        return;
-      }
-      compiler.add_node(
-          this, NODE_CLOSURE_SET_WEIGHT,
-          SVMNodeClosureSetWeight{
-              .rgb = packed_float3{value->x, value->y, value->z}});
-    }
-    compiler.add_bsdf_node(
-        SVMNodeClosureBsdf{
-            .closure_type = _closure,
-            .mix_weight_offset = compiler.closure_mix_weight_offset(),
-            ._pad = {0u, 0u, 0u}},
-        data);
-  }
-
-public:
-  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
-    return GraphNode::get_feature() | kernel_feature_node_bsdf;
-  }
-  [[nodiscard]] bool equals(const GraphNode &) const noexcept override {
-    return false;
-  }
-  [[nodiscard]] bool is_linear_operation() const noexcept override {
-    return true;
-  }
-  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
-    return NODE_CLOSURE_BSDF;
-  }
-};
-
-class DiffuseBsdfNode final : public BsdfNode {
-public:
-  DiffuseBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_DIFFUSE_ID} {}
-
-  void compile(SVMCompiler &compiler) override {
-    compile_bsdf(
-        compiler,
-        SVMNodeDiffuseBsdfData{.color = compiler.input_float3("Color"),
-                               .roughness =
-                                   compiler.input_float("Roughness"),
-                               .normal_offset =
-                                   compiler.input_link("Normal"),
-                               ._pad = {0u, 0u, 0u}});
-  }
-};
-
-class TranslucentBsdfNode final : public BsdfNode {
-public:
-  TranslucentBsdfNode() noexcept
-      : BsdfNode{CLOSURE_BSDF_TRANSLUCENT_ID} {}
-
-  void compile(SVMCompiler &compiler) override {
-    compile_bsdf(
-        compiler,
-        SVMNodeSimpleBsdfData{.param1 = {},
-                              .normal_offset =
-                                  compiler.input_link("Normal"),
-                              ._pad = {0u, 0u, 0u}});
-  }
-};
-
-class TransparentBsdfNode final : public BsdfNode {
-public:
-  TransparentBsdfNode() noexcept
-      : BsdfNode{CLOSURE_BSDF_TRANSPARENT_ID} {}
-
-  void compile(SVMCompiler &compiler) override {
-    compile_bsdf(compiler, SVMNodeSimpleBsdfData{});
-  }
-};
-
-class EmissionNode final : public GraphNode {
-public:
-  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
-    return GraphNode::get_feature() | kernel_feature_node_emission;
-  }
-
-  [[nodiscard]] bool has_volume_support() const noexcept override {
-    return true;
-  }
-
-  [[nodiscard]] bool is_linear_operation() const noexcept override {
-    return true;
-  }
-
-  void constant_fold(const ConstantFolder &folder) override {
-    auto *color = input("Color");
-    auto *strength = input("Strength");
-    const auto color_value =
-        literal<Vec3f>(color, contract::SocketType::color);
-    const auto strength_value =
-        literal<float>(strength, contract::SocketType::floating);
-    if ((color_value && *color_value == Vec3f{}) ||
-        (strength_value && *strength_value == 0.0f)) {
-      folder.discard();
-    }
-  }
-
-  void compile(SVMCompiler &compiler) override {
-    auto *color = input("Color");
-    auto *strength = input("Strength");
-    if (color == nullptr || strength == nullptr) {
-      compiler.fail("Cycles Emission inputs are absent");
-      return;
-    }
-    if (color->link != nullptr || strength->link != nullptr) {
-      compiler.add_node(
-          this, NODE_EMISSION_WEIGHT,
-          SVMNodeEmissionWeight{.color = compiler.input_float3("Color"),
-                                .strength =
-                                    compiler.input_float("Strength")});
-    } else {
-      const auto c = literal<Vec3f>(color, contract::SocketType::color);
-      const auto s =
-          literal<float>(strength, contract::SocketType::floating);
-      if (!c || !s) {
-        compiler.fail("Cycles Emission inputs are ill typed");
-        return;
-      }
-      compiler.add_node(
-          this, NODE_CLOSURE_SET_WEIGHT,
-          SVMNodeClosureSetWeight{.rgb = packed_float3{
-                                      c->x * *s, c->y * *s, c->z * *s}});
-    }
-    compiler.add_node(
-        this, NODE_CLOSURE_EMISSION,
-        SVMNodeClosureEmission{
-            .mix_weight_offset = compiler.closure_mix_weight_offset(),
-            ._pad = {0u, 0u, 0u}});
-  }
-};
 
 } // namespace
 
@@ -1827,6 +1704,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   }
   if (type == node_type::scalar_to_color) {
     return std::make_unique<ScalarToColorNode>();
+  }
+  if (type == node_type::vector_to_scalar) {
+    return std::make_unique<VectorToScalarNode>();
   }
   if (type == cycles_synthetic_math || type == node_type::math) {
     return std::make_unique<MathNode>();
@@ -1930,23 +1810,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   if (auto node = make_closure_graph_node(type)) {
     return node;
   }
-  if (type == node_type::diffuse_bsdf) {
-    return std::make_unique<DiffuseBsdfNode>();
-  }
-  if (type == node_type::translucent_bsdf) {
-    return std::make_unique<TranslucentBsdfNode>();
-  }
-  if (type == node_type::transparent_bsdf) {
-    return std::make_unique<TransparentBsdfNode>();
-  }
-  if (type == node_type::emission) {
-    return std::make_unique<EmissionNode>();
-  }
-  if (type == node_type::principled_bsdf ||
-      type == node_type::subsurface_scattering ||
-      type == node_type::glossy_bsdf || type == node_type::metallic_bsdf ||
+  if (type == node_type::glossy_bsdf || type == node_type::metallic_bsdf ||
       type == node_type::sheen_bsdf || type == node_type::hair_bsdf ||
-      type == node_type::glass_bsdf || type == node_type::refraction_bsdf) {
+      type == node_type::refraction_bsdf) {
     return std::make_unique<UnsupportedBsdfNode>();
   }
   if (type == node_type::null_closure || type == node_type::null_volume) {
@@ -1958,9 +1824,7 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   if (type == node_type::mix_closure || type == node_type::mix_volume) {
     return std::make_unique<MixClosureNode>();
   }
-  if (type == node_type::volume_absorption ||
-      type == node_type::volume_scatter ||
-      type == node_type::volume_coefficients ||
+  if (type == node_type::volume_coefficients ||
       type == node_type::volume_emission ||
       type == node_type::principled_volume) {
     return std::make_unique<UnsupportedVolumeNode>();

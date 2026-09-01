@@ -1,3 +1,4 @@
+#include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/cycles_svm_scene.h>
 
 #include <algorithm>
@@ -6,6 +7,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -13,6 +15,8 @@
 namespace {
 
 using namespace psycles::compiler::cycles_svm;
+using namespace psycles::compiler;
+using namespace psycles::contract;
 
 void require(bool condition, std::string_view message) {
   if (!condition) {
@@ -146,11 +150,71 @@ void test_malformed_local_images_are_rejected() {
           "linker accepted a shader exceeding the Cycles stack");
 }
 
+std::shared_ptr<const ShaderProgram> compile_diffuse(float roughness) {
+  ShaderGraph graph;
+  const auto diffuse = graph.add_node(node_type::diffuse_bsdf, "Diffuse");
+  require(
+      graph.set_input(diffuse, "Color", SocketValue::color({0.3f, 0.5f, 0.7f})),
+      "failed to set scene-test diffuse color");
+  require(
+      graph.set_input(diffuse, "Roughness", SocketValue::floating(roughness)),
+      "failed to set scene-test diffuse roughness");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = diffuse, .socket = "Closure"});
+  const ShaderCompiler compiler{make_core_node_registry()};
+  auto compiled = compiler.compile(graph);
+  require(compiled.ok(), "scene-test diffuse graph did not compile");
+  return std::move(compiled.program);
+}
+
+void test_scene_compile_transaction_preserves_shader_identity() {
+  const auto diffuse = compile_diffuse(0.0f);
+  const std::array units{
+      ShaderTableCompileUnit{.shader_index = 2u, .shader = diffuse.get()},
+      ShaderTableCompileUnit{.shader_index = 5u, .shader = diffuse.get()},
+      ShaderTableCompileUnit{.shader_index = 5u, .shader = diffuse.get()}};
+  const auto compiled = compile_shader_table(units);
+  require(compiled.table.valid, compiled.table.diagnostic);
+  require(compiled.table.shader_count == 6u,
+          "scene compiler did not preserve the maximum Cycles shader id");
+  require(compiled.table.node_types_used[NODE_CLOSURE_BSDF],
+          "scene compiler lost a live shader opcode");
+  require(compiled.named_attributes.empty() && compiled.images.empty() &&
+              compiled.ies.empty(),
+          "resource-free scene unexpectedly allocated SVM resources");
+
+  for (const auto hole : {0u, 1u, 3u, 4u}) {
+    const auto jump = static_cast<std::size_t>(hole) * 4u;
+    const auto surface = compiled.table.words[jump + 1u];
+    const auto volume = compiled.table.words[jump + 2u];
+    const auto displacement = compiled.table.words[jump + 3u];
+    require(volume == surface + 1u && displacement == surface + 2u,
+            "inert shader does not contain three adjacent routines");
+    require(compiled.table.words[surface] == NODE_END &&
+                compiled.table.words[volume] == NODE_END &&
+                compiled.table.words[displacement] == NODE_END,
+            "inert shader routine is not an END node");
+  }
+
+  const auto distinct = compile_diffuse(0.47f);
+  const std::array collision{
+      ShaderTableCompileUnit{.shader_index = 7u, .shader = diffuse.get()},
+      ShaderTableCompileUnit{.shader_index = 7u, .shader = distinct.get()}};
+  require(!compile_shader_table(collision).table.valid,
+          "scene compiler merged distinct shaders with the same source id");
+
+  const std::array missing{
+      ShaderTableCompileUnit{.shader_index = 0u, .shader = nullptr}};
+  require(!compile_shader_table(missing).table.valid,
+          "scene compiler accepted an absent ShaderProgram");
+}
+
 } // namespace
 
 int main() {
   test_global_link_matches_cycles_5_2_1();
   test_malformed_local_images_are_rejected();
+  test_scene_compile_transaction_preserves_shader_identity();
   std::cout << "Cycles SVM scene linker tests passed\n";
   return 0;
 }

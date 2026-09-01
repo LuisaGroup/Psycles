@@ -46,6 +46,7 @@ public:
   virtual ~SVMCompiler() noexcept = default;
 
   virtual void fail(std::string diagnostic) = 0;
+  [[nodiscard]] virtual SVMInputInt input_int(std::string_view name) = 0;
   [[nodiscard]] virtual SVMInputFloat input_float(std::string_view name) = 0;
   [[nodiscard]] virtual SVMInputFloat3 input_float3(std::string_view name) = 0;
   [[nodiscard]] SVMInputFloat3

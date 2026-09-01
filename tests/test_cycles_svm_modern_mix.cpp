@@ -166,6 +166,50 @@ void test_dynamic_mix_color() {
   }
 }
 
+void test_multiply_color_projects_to_cycles_mix_color() {
+  ShaderGraph graph;
+  const auto factor = add_dynamic_factor(graph);
+  const auto multiply =
+      graph.add_node(node_type::multiply_color, "Multiply Color");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.connect({factor, "Value"}, multiply, "Factor") &&
+              graph.set_input(
+                  multiply, "A",
+                  SocketValue::color({0.17f, 0.63f, 0.89f})) &&
+              graph.set_input(
+                  multiply, "B",
+                  SocketValue::color({0.82f, 0.24f, 0.51f})) &&
+              graph.connect({multiply, "Color"}, emission, "Color"),
+          "failed to create canonical Multiply Color graph");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const auto image = compile(graph);
+  // This is the same external Cycles 5.2.1 dynamic Mix Color oracle used
+  // above, specialized to MULTIPLY, Clamp Factor=true, Clamp Result=false.
+  // It proves that the canonical Psycles helper is normalized to the exact
+  // Cycles node rather than acquiring a separate SVM encoding.
+  static constexpr std::array expected{
+      0x00000001u, 0x00000004u, 0x0000001fu, 0x00000020u,
+      0x00000032u, 0x00000008u, 0x00000000u,
+      0x0000002cu, 0x00000024u, 0x7fc00000u, 0x3fc00000u,
+      0xbe800000u, 0x00000001u,
+      0x00000067u, 0x00000002u,
+      0x3e2e147bu, 0x3f2147aeu, 0x3f63d70au,
+      0x3f51eb85u, 0x3e75c28fu, 0x3f028f5cu,
+      0x7fc00001u, 0x00020001u,
+      0x00000007u, 0x7fc00002u, 0x00000000u, 0x00000000u,
+      0x3f800000u, 0x00000003u, 0x000000ffu, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
+  require_words(image.words, expected,
+                "canonical Multiply Color projection");
+  require(image.peak_stack_usage == 5u &&
+              image.node_types_used[NODE_MIX_COLOR] &&
+              !image.node_types_used[NODE_MIX],
+          "canonical Multiply Color opcode or stack differs from Cycles");
+}
+
 void test_dynamic_mix_float() {
   static constexpr std::array base{
       0x00000001u, 0x00000004u, 0x0000001au, 0x0000001bu,
@@ -526,6 +570,7 @@ void test_partial_fold_edges() {
 
 int main() {
   test_dynamic_mix_color();
+  test_multiply_color_projects_to_cycles_mix_color();
   test_dynamic_mix_float();
   test_dynamic_mix_vectors();
   test_constant_modern_mix();

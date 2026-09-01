@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace psycles::compiler::cycles_svm {
@@ -67,11 +68,13 @@ struct ShaderCompileContext {
 // ATTR_STD_NUM + current size; subsequent requests return the same identifier.
 class AttributeIDMap final {
 private:
-  std::mutex _attribute_lock;
+  mutable std::mutex _attribute_lock;
   std::unordered_map<std::string, std::uint64_t> _unique_attribute_id;
 
 public:
   [[nodiscard]] std::uint64_t get_attribute_id(std::string_view name);
+  [[nodiscard]] std::vector<std::pair<std::string, std::uint64_t>>
+  bindings() const;
   [[nodiscard]] static constexpr std::uint64_t
   get_attribute_id(AttributeStandard standard) noexcept {
     return static_cast<std::uint64_t>(standard);

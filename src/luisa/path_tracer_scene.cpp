@@ -2,6 +2,7 @@
 #include "graph_surface_value_expression.h"
 #include "path_tracer_bsdf_tables.h"
 #include "path_tracer_curve_scene.h"
+#include "path_tracer_cycles_svm_scene.h"
 #include "path_tracer_displacement_scene.h"
 #include "path_tracer_environment.h"
 #include "path_tracer_generated_coordinates.h"
@@ -128,6 +129,17 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     ": " + diagnostic.message);
         }
         return result;
+    }
+    {
+        std::string diagnostic;
+        data->cycles_svm = build_cycles_svm_runtime(
+            data, snapshot, diagnostic);
+        if (!data->cycles_svm) {
+            diagnose(
+                result.diagnostics,
+                "Cycles 5.2 SVM scene compilation: " + diagnostic + ".");
+            return result;
+        }
     }
     std::set<contract::MaterialId> surface_bssrdf_materials;
     std::set<contract::MaterialId> surface_bssrdf_bump_materials;
@@ -596,6 +608,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         upload_surface_value_runtime(
             stream, *data->surface_values);
     }
+    upload_cycles_svm_runtime(stream, *data->cycles_svm);
 
     std::size_t texture_slot_count = 1u;
     for (const auto &[image_id, image] : snapshot.images) {

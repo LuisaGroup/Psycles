@@ -273,6 +273,27 @@ def _rgb_to_bw(scene: Any) -> None:
     _plane(material)
 
 
+def _vector_to_scalar(scene: Any) -> None:
+    """Force Cycles' VECTOR-to-FLOAT ConvertNode to remain dynamic."""
+    material, tree, output = _material("Vector to Scalar")
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.name = "Geometry Position"
+    add = tree.nodes.new("ShaderNodeMath")
+    add.name = "Converted Position Plus Bias"
+    add.operation = "ADD"
+    add.inputs[1].default_value = 0.25
+    tree.links.new(_output(geometry, "Position"), add.inputs[0])
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    _input(emission, "Color").default_value = (0.31, 0.57, 0.83, 1.0)
+    tree.links.new(_output(add, "Value"), _input(emission, "Strength"))
+    tree.links.new(
+        _output(emission, "Emission"),
+        _input(output, "Surface"),
+    )
+    _plane(material)
+
+
 def _gamma_color(scene: Any) -> None:
     material, tree, output = _material("Gamma")
     combine = tree.nodes.new("ShaderNodeCombineColor")

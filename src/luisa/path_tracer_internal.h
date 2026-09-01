@@ -3,6 +3,7 @@
 #include <psycles/luisa/path_tracer.h>
 
 #include <psycles/compiler/material_library.h>
+#include <psycles/compiler/cycles_svm_scene.h>
 #include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/compiler/surface_svm_program.h>
 #include <psycles/luisa/cycles_path_state.h>
@@ -456,6 +457,19 @@ struct SurfaceValueRuntime {
     BindlessArray device_view;
 };
 
+// Transactional host/device image of Cycles' native scene-wide SVM program.
+// `material_shader_indices` is required only for renderer-authored scenes that
+// lack Blender's source index; Blender bundles preserve their exact
+// Scene::shaders identity. Resources remain typed and separately indexed just
+// as in Cycles DeviceScene.
+struct CyclesSvmRuntime {
+    compiler::cycles_svm::CompiledShaderTable compilation;
+    std::map<contract::MaterialId, std::uint32_t>
+        material_shader_indices;
+    std::optional<Buffer<luisa::uint>> word_buffer;
+    std::optional<Buffer<float>> ies_buffer;
+};
+
 struct LuisaSceneData {
     luisa::compute::Device device;
     std::uint64_t revision{};
@@ -465,6 +479,11 @@ struct LuisaSceneData {
     // environment opt-out is retained only as an exact expanded-graph A/B
     // oracle for diagnosing interpreter and population effects separately.
     bool populate_surface_once{};
+    // Replacement native Cycles bytecode image. During the migration this is
+    // built and uploaded transactionally before the legacy surface evaluator
+    // is constructed; shade_surface wiring consumes only this image once all
+    // closure families are present.
+    std::unique_ptr<CyclesSvmRuntime> cycles_svm;
     // Production scene-pruned ShaderGraph -> SVM image. A transactional build
     // failure produces no partial device image; an explicit environment
     // opt-out selects the established expanded diagnostic implementation.
