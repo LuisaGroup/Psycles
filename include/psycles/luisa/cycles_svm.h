@@ -425,6 +425,16 @@ struct SheenClosure {
   SheenParam param;
 };
 
+struct VelvetParam {
+  luisa::compute::Float sigma;
+  luisa::compute::Float invsigma2;
+};
+
+struct VelvetClosure {
+  ShaderClosureCommon common;
+  VelvetParam param;
+};
+
 /* Typed projection of Cycles 5.2.1 kernel/closure/bssrdf.h::Bssrdf. */
 struct BssrdfParam {
   luisa::compute::Float3 radius;
@@ -571,6 +581,8 @@ public:
                             const OrenNayarParam &param) noexcept;
   void set_sheen_param(luisa::compute::Expr<std::uint32_t> index,
                        const SheenParam &param) noexcept;
+  void set_velvet_param(luisa::compute::Expr<std::uint32_t> index,
+                        const VelvetParam &param) noexcept;
   void set_bssrdf_param(luisa::compute::Expr<std::uint32_t> index,
                         const BssrdfParam &param) noexcept;
   void set_microfacet_param(luisa::compute::Expr<std::uint32_t> index,
@@ -592,6 +604,8 @@ public:
   oren_nayar(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] SheenClosure
   sheen(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] VelvetClosure
+  velvet(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] BssrdfClosure
   bssrdf(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetParam

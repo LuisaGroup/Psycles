@@ -1070,6 +1070,75 @@ void test_subsurface_methods_match_cycles_5_2_1() {
   }
 }
 
+void test_standalone_sheen_matches_cycles_5_2_1() {
+  struct SheenOracle {
+    const char *distribution;
+    Vec3f color;
+    float roughness;
+    std::array<std::uint32_t, 19u> words;
+  };
+  static constexpr SheenOracle cases[]{
+      {"MICROFIBER",
+       {0.38f, 0.77f, 0.16f},
+       0.43f,
+       {0x00000001u, 0x00000004u, 0x00000011u, 0x00000012u,
+        0x0000000bu, 0x00000001u, 0x00000000u, 0x00000005u,
+        0x3ec28f5cu, 0x3f451eb8u, 0x3e23d70au, 0x00000002u,
+        0x00000007u, 0x000000ffu, 0x3edc28f6u, 0x00000000u,
+        0x00000000u, 0x00000000u, 0x00000000u}},
+      {"ASHIKHMIN",
+       {0.82f, 0.19f, 0.57f},
+       0.24f,
+       {0x00000001u, 0x00000004u, 0x00000011u, 0x00000012u,
+        0x0000000bu, 0x00000001u, 0x00000000u, 0x00000005u,
+        0x3f51eb85u, 0x3e428f5cu, 0x3f11eb85u, 0x00000002u,
+        0x00000010u, 0x000000ffu, 0x3e75c28fu, 0x00000000u,
+        0x00000000u, 0x00000000u, 0x00000000u}},
+  };
+
+  const auto registry = make_core_node_registry();
+  const auto *schema = registry.find(node_type::sheen_bsdf);
+  require(schema != nullptr, "Cycles Sheen schema is absent");
+  const auto roughness_default = std::find_if(
+      schema->inputs.begin(), schema->inputs.end(),
+      [](const auto &socket) { return socket.name == "Roughness"; });
+  require(roughness_default != schema->inputs.end() &&
+              roughness_default->default_value &&
+              std::get_if<float>(&roughness_default->default_value->value) !=
+                  nullptr &&
+              *std::get_if<float>(&roughness_default->default_value->value) ==
+                  1.0f,
+          "Cycles Sheen roughness default must be 1.0");
+
+  for (const auto &item : cases) {
+    ShaderGraph graph;
+    const auto sheen = graph.add_node(node_type::sheen_bsdf,
+                                      "Standalone Sheen SVM Oracle");
+    require(graph.set_property(sheen, "Distribution",
+                               SocketValue::string(item.distribution)) &&
+                graph.set_input(sheen, "Color",
+                                SocketValue::color(item.color)) &&
+                graph.set_input(sheen, "Roughness",
+                                SocketValue::floating(item.roughness)),
+            "failed to configure standalone Sheen");
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = sheen, .socket = "Closure"});
+
+    const ShaderCompiler frontend{registry};
+    const auto shader = frontend.compile(graph);
+    require(shader.ok(), "raw standalone Sheen graph did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+    require_words(image.words, item.words,
+                  "Psycles standalone Sheen differs from Cycles");
+    require(image.peak_stack_usage == 3u &&
+                image.node_types_used[NODE_GEOMETRY] &&
+                image.node_types_used[NODE_CLOSURE_SET_WEIGHT] &&
+                image.node_types_used[NODE_CLOSURE_BSDF],
+            "standalone Sheen stack or opcode mask differs from Cycles");
+  }
+}
+
 void test_constant_math_fold_matches_cycles_5_2_1() {
   ShaderGraph graph;
   const auto math = graph.add_node(node_type::math, "Constant Add");
@@ -1824,6 +1893,7 @@ int main() {
   test_vector_to_scalar_matches_cycles_5_2_1();
   test_scatter_volume_phases_match_cycles_5_2_1();
   test_subsurface_methods_match_cycles_5_2_1();
+  test_standalone_sheen_matches_cycles_5_2_1();
   test_constant_math_fold_matches_cycles_5_2_1();
   test_zero_mix_closure_fold_matches_cycles_5_2_1();
   test_dynamic_color_pipeline_matches_cycles_5_2_1();
