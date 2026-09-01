@@ -4,6 +4,11 @@
 
 namespace psycles::luisa_backend::cycles_svm::detail {
 
+[[nodiscard]] OrenNayarParam
+oren_nayar_param(luisa::compute::Expr<luisa::float3> color,
+                 luisa::compute::Expr<float> normal_view,
+                 luisa::compute::Expr<float> roughness) noexcept;
+
 void diffuse_setup(
     ShaderData &shader_data,
     luisa::compute::Expr<luisa::float3> normal,

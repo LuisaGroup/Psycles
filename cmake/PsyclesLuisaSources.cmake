@@ -3,6 +3,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm.cpp
     src/luisa/cycles_svm_dual_math.cpp
     src/luisa/cycles_svm_bump.cpp
+    src/luisa/cycles_svm_bssrdf.cpp
     src/luisa/cycles_svm_camera.cpp
     src/luisa/cycles_svm_closure.cpp
     src/luisa/cycles_svm_microfacet.cpp

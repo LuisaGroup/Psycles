@@ -211,6 +211,8 @@ relocated from the original global offsets to its compact test buffer.
 | Principled Metallic | Transparent type 30, F82 Metallic GGX type 12, dielectric GGX type 12, then Diffuse type 2; compensated Metallic weight `(0.4725275,0.4821480,0.4927247)` and sample weight `0.2328374`; lower Diffuse `(0.04782301,0.1461259,0.2178604)`; emission `(0.2145,0.06825,0.468)` precedes Metallic attenuation |
 | Principled thick Transmission | Transparent type 30, generalized-Schlick GGX Glass type 25, dielectric GGX type 12, then Diffuse type 2; compensated Glass weight `(0.5829386,0.5830691,0.5831698)` and sample weight `0.4619407`; lower Diffuse `(0.07780470,0.1383195,0.1966730)`; emission `(0.19278,0.10206,0.57834)` precedes Transmission attenuation |
 | Principled Thin Wall | Transparent type 30, GGX reflection type 12, Thin Glass Transmission type 22, dielectric GGX type 12, then Diffuse type 2; reflection weight `(0.02744345,0.01416836,0.05171960)` and sample weight `0.03107580`; transmission weight `(0.1949813,0.3594840,0.4788061)` and sample weight `0.3444238` |
+| Principled Random Walk Skin | Transparent type 30, Random Walk Skin BSSRDF type 34, then Diffuse type 2; BSSRDF weight `(0.2291900,0.1119300,0.4050800)` and sample weight `0.7462000`; residual Diffuse `(0.1234100,0.0602700,0.2181200)` |
+| Principled Burley | Transparent type 30, Christensen-Burley BSSRDF type 31, then Diffuse type 2; BSSRDF weight `(0.1057920,0.2997440,0.1719120)` and sample weight `0.5774480`; residual Diffuse `(0.0766080,0.2170560,0.1244880)` |
 
 The Glass test additionally freezes the source-derived typed setup state:
 alpha, IOR, energy scale, tangent, generalized-Schlick discriminator, film
@@ -317,6 +319,16 @@ Artifact hashes:
 | Principled Thin Wall diagnostic path trace | `df299c20d4a2daa3e5745b816e6f52352e10e8a9b18923d2edafb6f7bf4ac5ca` |
 | Principled Thin Wall decoded diagnostic trace | `ee03ef5ff6b160deb032e1ec84c9a8a038bacd79c02d3096fe6be28fbabc126e` |
 | Principled Thin Wall render metadata | `76774bd3ff7caaf441bd6febd228a6f277d1eeebdb82c34d3ce9698f2fe43ee1` |
+| Principled Random Walk Skin oracle `.blend` | `5c59c194dcde8448b7a101b7854a92501bc5ed6549b8b8cfe1dbaf8a53641dcc` |
+| Principled Random Walk Skin final SVM buffer | `23a53385c0d7bcb3c4aff294b97a7bb937fa97af26c0e63dab50e6debec82837` |
+| Principled Random Walk Skin diagnostic path trace | `ecc954ee2ed064b1fde7a35b3702caf67e5d766094e28da2c8a80b8180a6d7e7` |
+| Principled Random Walk Skin decoded diagnostic trace | `44c3f499ec2a3f25b8810c136646dc6652dca289f071898230396104f34a1ef1` |
+| Principled Random Walk Skin render metadata | `b6cacfb65817491062befc0eadbe2599649d2a31f0e9b162eee6f3bb75351ebf` |
+| Principled Burley oracle `.blend` | `8a72b1bbd7491d55ff983d8b7ea24b9a90d4a9a420bd1277b7104b8e7630e934` |
+| Principled Burley final SVM buffer | `ebdda594ae0fe8a2a6176e03bd9345921b6fd45b74e985c3ac22a3551b49ba0b` |
+| Principled Burley diagnostic path trace | `394c8cd6972adc86f10ec7bc4cddf7e43cc38e462ba9e9d991f7185d6f3e1d0b` |
+| Principled Burley decoded diagnostic trace | `7183e845f038fd23f481cc6d748276e4c9ab5cd3561874d2c8ebbad17c5cfc91` |
+| Principled Burley render metadata | `40711f5aa1eb623685a7f6066761142db7404c13ca31830531953dd533206595` |
 
 No `.svm52` binary is checked in.
 
@@ -329,11 +341,11 @@ view does not turn the typed record into 44 unconditional device loads.
 
 The proved runtime subset preserves Cycles' layer order and implements alpha,
 Sheen LTC, Coat dielectric GGX and tint absorption, emission, anisotropic F82
-Metallic, thick- and thin-walled Principled Transmission, anisotropic
-dielectric specular, Multi-GGX energy preservation, dielectric layer
-attenuation, and diffuse/Oren-Nayar. Subsurface still takes an explicit
-unsupported transition when its source-clamped weight is live; it is not
-silently approximated by the legacy surface program.
+Metallic, thick- and thin-walled Principled Transmission, Random Walk Skin and
+Christensen-Burley Subsurface, anisotropic dielectric specular, Multi-GGX
+energy preservation, dielectric layer attenuation, and diffuse/Oren-Nayar.
+None of these transitions consults or translates through the legacy
+SurfaceProgram.
 
 The Sheen transition copies `bsdf_alloc_maybe_emission` rather than treating
 the layer as a color multiplier. On ordinary surface evaluation it appends a
@@ -389,6 +401,30 @@ weight/sample weight/extinction merge into the pre-existing type-30 record.
 The external word image differs from the paired thick oracle in exactly one
 word, the literal Thin Wall field at compact word 52.
 
+Thick Principled Subsurface now allocates the exact typed Cycles `Bssrdf`
+state: common closure prefix followed by radius, albedo, anisotropy, entry IOR,
+and alpha. Random Walk Skin copies the 12-step dipole inversion per spectrum
+channel, uses the socket IOR, and forces entry roughness to one. Burley copies
+the compatibility radius scale and the diffuse-ancestor policy. IOR and
+anisotropy clamps, allocation cutoff, final sample-weight recomputation, flags,
+and closure ordering are source-isomorphic.
+
+The regression also proves the nontrivial setup partitions. A source-derived
+one-small-channel stream moves only that channel's weight into a newly appended
+Diffuse closure. Burley after a diffuse ancestor preserves the already
+allocated `CLOSURE_NONE` record's original weight and unscaled radius, clears
+only its sample weight/type, and appends the full BSSRDF weight as Diffuse.
+Pool exhaustion cannot invent a BSSRDF flag. The `bssrdf_alloc` comparison is
+kept as Cycles' negated `< cutoff` rejection, including its non-finite
+allocation behavior; a structural regression prevents it from being rewritten
+as `>= cutoff`.
+
+Thin Wall remains a disjoint state machine. Live Subsurface is split by
+anisotropy into reflection and transmission. Smooth inputs produce Diffuse and
+Translucent; rough inputs share one copied Oren-Nayar parameter block and emit
+Oren-Nayar plus type-4 Rough Translucent with normal `-N`. No BSSRDF tag or
+`SD_BSSRDF` flag is present on that path.
+
 For the untouched Blender 5.2.1 Principled default, the external diagnostic
 trace records the following closure sequence at normal incidence. The new
 device regression checks these values with numerical tolerance rather than
@@ -418,6 +454,7 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_principled_metallic_tests \
            psycles_luisa_cycles_svm_principled_transmission_tests \
            psycles_luisa_cycles_svm_principled_thin_wall_tests \
+           psycles_luisa_cycles_svm_principled_subsurface_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_luisa_thin_film_fresnel_tests \
            psycles_luisa_thin_film_surface_tests
@@ -444,6 +481,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_principled_thin_wall_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_principled_subsurface_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -452,13 +492,13 @@ ctest --test-dir build --output-on-failure -R \
 
 Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
 3/3, Principled Metallic 3/3, Principled thick Transmission 3/3, Principled
-Thin Wall 3/3, thin-film
+Thin Wall 3/3, Principled Subsurface 3/3, thin-film
 6/6, and compiler 1/1 passed. The
 compiler test
 locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 482/482 tests in 14.52 seconds. The Vulkan test
+expanded checkpoint passed 485/485 tests in 15.29 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.

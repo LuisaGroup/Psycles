@@ -76,6 +76,7 @@ inline constexpr std::uint32_t path_ray_visibility_shadow =
 
 inline constexpr std::uint32_t path_ray_reflect = 1u << 0u;
 inline constexpr std::uint32_t path_ray_singular = 1u << 1u;
+inline constexpr std::uint32_t path_ray_diffuse_ancestor = 1u << 4u;
 inline constexpr std::uint32_t path_ray_emission = 1u << 5u;
 inline constexpr std::uint32_t path_ray_terminate_on_next_surface = 1u << 10u;
 inline constexpr std::uint32_t path_ray_terminate_in_next_volume = 1u << 11u;
@@ -90,6 +91,7 @@ inline constexpr std::uint32_t shader_data_backfacing = 1u << 0u;
 inline constexpr std::uint32_t shader_data_emission = 1u << 1u;
 inline constexpr std::uint32_t shader_data_bsdf = 1u << 2u;
 inline constexpr std::uint32_t shader_data_bsdf_has_eval = 1u << 3u;
+inline constexpr std::uint32_t shader_data_bssrdf = 1u << 4u;
 inline constexpr std::uint32_t shader_data_is_volume_shader_eval = 1u << 8u;
 inline constexpr std::uint32_t shader_data_transparent = 1u << 9u;
 inline constexpr std::uint32_t shader_data_bsdf_has_transmission = 1u << 10u;
@@ -423,6 +425,20 @@ struct SheenClosure {
   SheenParam param;
 };
 
+/* Typed projection of Cycles 5.2.1 kernel/closure/bssrdf.h::Bssrdf. */
+struct BssrdfParam {
+  luisa::compute::Float3 radius;
+  luisa::compute::Float3 albedo;
+  luisa::compute::Float anisotropy;
+  luisa::compute::Float ior;
+  luisa::compute::Float alpha;
+};
+
+struct BssrdfClosure {
+  ShaderClosureCommon common;
+  BssrdfParam param;
+};
+
 /* MicrofacetFresnel values copied from Cycles 5.2.1
  * kernel/closure/bsdf_microfacet.h. */
 enum class MicrofacetFresnel : std::uint32_t {
@@ -555,6 +571,8 @@ public:
                             const OrenNayarParam &param) noexcept;
   void set_sheen_param(luisa::compute::Expr<std::uint32_t> index,
                        const SheenParam &param) noexcept;
+  void set_bssrdf_param(luisa::compute::Expr<std::uint32_t> index,
+                        const BssrdfParam &param) noexcept;
   void set_microfacet_param(luisa::compute::Expr<std::uint32_t> index,
                             const MicrofacetParam &param) noexcept;
   void set_generalized_schlick(
@@ -574,6 +592,8 @@ public:
   oren_nayar(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] SheenClosure
   sheen(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] BssrdfClosure
+  bssrdf(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetParam
   microfacet_param(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetClosure

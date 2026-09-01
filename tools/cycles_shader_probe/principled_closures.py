@@ -355,3 +355,95 @@ def _principled_thin_wall_svm_oracle(scene: Any) -> None:
         rows=1,
         name="Principled Thin Wall SVM Oracle",
     )
+
+
+def _principled_subsurface_material(
+    name: str,
+    method: str,
+    *,
+    base_color: tuple[float, float, float],
+    alpha: float,
+    roughness: float,
+    weight: float,
+    radius: tuple[float, float, float],
+    scale: float,
+    ior: float,
+    anisotropy: float,
+    emission_color: tuple[float, float, float],
+    emission_strength: float,
+) -> Any:
+    """Build one literal Principled BSSRDF oracle material.
+
+    IOR 1 removes the ordinary dielectric layer and every other optional layer
+    remains at zero. The resulting Cycles transition therefore exposes alpha,
+    emission, one typed BSSRDF, and the residual diffuse closure in source
+    order without relying on Psycles' legacy SurfaceProgram representation.
+    """
+    material, tree, output = _material(name)
+    principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+    principled.name = name
+    principled.subsurface_method = method
+    _set_color(_input(principled, "Base Color"), base_color)
+    _input(principled, "IOR").default_value = 1.0
+    _input(principled, "Roughness").default_value = roughness
+    _input(principled, "Alpha").default_value = alpha
+    _input(principled, "Subsurface Weight").default_value = weight
+    _input(principled, "Subsurface Radius").default_value = radius
+    _input(principled, "Subsurface Scale").default_value = scale
+    if method == "RANDOM_WALK_SKIN":
+        _input(principled, "Subsurface IOR").default_value = ior
+    _input(principled, "Subsurface Anisotropy").default_value = anisotropy
+    _set_color(_input(principled, "Emission Color"), emission_color)
+    _input(principled, "Emission Strength").default_value = emission_strength
+    tree.links.new(_output(principled, "BSDF"), _input(output, "Surface"))
+    return material
+
+
+def _principled_random_walk_skin_svm_oracle(scene: Any) -> None:
+    """Isolate Cycles 5.2's Principled Random Walk Skin BSSRDF setup."""
+    material = _principled_subsurface_material(
+        "Principled Random Walk Skin SVM Oracle",
+        "RANDOM_WALK_SKIN",
+        base_color=(0.43, 0.21, 0.76),
+        alpha=0.82,
+        roughness=0.38,
+        weight=0.65,
+        radius=(1.20, 0.35, 0.08),
+        scale=0.025,
+        ior=1.37,
+        anisotropy=0.27,
+        emission_color=(0.15, 0.05, 0.40),
+        emission_strength=1.2,
+    )
+    _material_matrix(
+        scene,
+        [material],
+        columns=1,
+        rows=1,
+        name="Principled Random Walk Skin SVM Oracle",
+    )
+
+
+def _principled_burley_svm_oracle(scene: Any) -> None:
+    """Isolate Cycles 5.2's Principled Christensen-Burley BSSRDF setup."""
+    material = _principled_subsurface_material(
+        "Principled Burley SVM Oracle",
+        "BURLEY",
+        base_color=(0.24, 0.68, 0.39),
+        alpha=0.76,
+        roughness=0.51,
+        weight=0.58,
+        radius=(0.90, 0.30, 0.04),
+        scale=0.018,
+        ior=1.0,
+        anisotropy=-0.42,
+        emission_color=(0.32, 0.08, 0.19),
+        emission_strength=0.9,
+    )
+    _material_matrix(
+        scene,
+        [material],
+        columns=1,
+        rows=1,
+        name="Principled Burley SVM Oracle",
+    )
