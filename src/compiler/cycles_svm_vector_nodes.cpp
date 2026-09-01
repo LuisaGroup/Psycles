@@ -8,8 +8,10 @@
 
 #include <psycles/compiler/core_nodes.h>
 
+#include <array>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 
 namespace psycles::compiler::cycles_svm {
@@ -58,6 +60,60 @@ vector_rotate_type(const GraphNode *node) noexcept {
   }
   if (type == "EULER_XYZ") {
     return NODE_VECTOR_ROTATE_TYPE_EULER_XYZ;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<NodeVectorMathType>
+vector_math_type(const GraphNode *node) noexcept {
+  // This table is the Blender operation spelling -> Cycles 5.2.1
+  // NodeVectorMathType ABI. Keep it complete and in the exact enum order so a
+  // newly introduced operation cannot silently acquire different semantics.
+  static constexpr std::array<std::pair<std::string_view, NodeVectorMathType>,
+                              30u>
+      operations{{
+          {"ADD", NODE_VECTOR_MATH_ADD},
+          {"SUBTRACT", NODE_VECTOR_MATH_SUBTRACT},
+          {"MULTIPLY", NODE_VECTOR_MATH_MULTIPLY},
+          {"DIVIDE", NODE_VECTOR_MATH_DIVIDE},
+          {"CROSS_PRODUCT", NODE_VECTOR_MATH_CROSS_PRODUCT},
+          {"PROJECT", NODE_VECTOR_MATH_PROJECT},
+          {"REFLECT", NODE_VECTOR_MATH_REFLECT},
+          {"DOT_PRODUCT", NODE_VECTOR_MATH_DOT_PRODUCT},
+          {"DISTANCE", NODE_VECTOR_MATH_DISTANCE},
+          {"LENGTH", NODE_VECTOR_MATH_LENGTH},
+          {"SCALE", NODE_VECTOR_MATH_SCALE},
+          {"NORMALIZE", NODE_VECTOR_MATH_NORMALIZE},
+          {"SNAP", NODE_VECTOR_MATH_SNAP},
+          {"FLOOR", NODE_VECTOR_MATH_FLOOR},
+          {"CEIL", NODE_VECTOR_MATH_CEIL},
+          {"MODULO", NODE_VECTOR_MATH_MODULO},
+          {"FRACTION", NODE_VECTOR_MATH_FRACTION},
+          {"ABSOLUTE", NODE_VECTOR_MATH_ABSOLUTE},
+          {"MINIMUM", NODE_VECTOR_MATH_MINIMUM},
+          {"MAXIMUM", NODE_VECTOR_MATH_MAXIMUM},
+          {"WRAP", NODE_VECTOR_MATH_WRAP},
+          {"SINE", NODE_VECTOR_MATH_SINE},
+          {"COSINE", NODE_VECTOR_MATH_COSINE},
+          {"TANGENT", NODE_VECTOR_MATH_TANGENT},
+          {"REFRACT", NODE_VECTOR_MATH_REFRACT},
+          {"FACEFORWARD", NODE_VECTOR_MATH_FACEFORWARD},
+          {"MULTIPLY_ADD", NODE_VECTOR_MATH_MULTIPLY_ADD},
+          {"POWER", NODE_VECTOR_MATH_POWER},
+          {"SIGN", NODE_VECTOR_MATH_SIGN},
+          {"ROUND", NODE_VECTOR_MATH_ROUND},
+      }};
+  static_assert(operations.front().second == NODE_VECTOR_MATH_ADD);
+  static_assert(operations.back().second == NODE_VECTOR_MATH_ROUND);
+
+  const auto operation = string_property(node, "Operation");
+  if (!operation) {
+    return std::nullopt;
+  }
+  for (const auto &[name, type] : operations) {
+    if (*operation == name) {
+      return type;
+    }
   }
   return std::nullopt;
 }
@@ -116,6 +172,27 @@ public:
   }
 };
 
+class VectorMathNode final : public GraphNode {
+public:
+  void compile(SVMCompiler &compiler) override {
+    const auto operation = vector_math_type(this);
+    if (!operation) {
+      compiler.fail("Cycles Vector Math Operation is invalid");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_VECTOR_MATH,
+        SVMNodeVectorMath{.math_type = *operation,
+                          .a = compiler.input_float3("Vector1"),
+                          .b = compiler.input_float3("Vector2"),
+                          .c = compiler.input_float3("Vector3"),
+                          .param1 = compiler.input_float("Scale"),
+                          .value_offset = compiler.output("Value"),
+                          .vector_offset = compiler.output("Vector"),
+                          ._pad = {0u, 0u}});
+  }
+};
+
 class VectorTransformNode final : public GraphNode {
 public:
   void compile(SVMCompiler &compiler) override {
@@ -140,6 +217,9 @@ public:
 } // namespace
 
 std::unique_ptr<GraphNode> make_vector_graph_node(std::string_view type) {
+  if (type == node_type::vector_math) {
+    return std::make_unique<VectorMathNode>();
+  }
   if (type == node_type::vector_rotate) {
     return std::make_unique<VectorRotateNode>();
   }

@@ -23,6 +23,7 @@ inline constexpr auto checker_texture =
 inline constexpr auto brick_texture = "psycles.texture.brick";
 inline constexpr auto magic_texture = "psycles.texture.magic";
 inline constexpr auto wave_texture = "psycles.texture.wave";
+inline constexpr auto gabor_texture = "psycles.texture.gabor";
 inline constexpr auto voronoi_texture = "psycles.texture.voronoi";
 inline constexpr auto gradient_texture = "psycles.texture.gradient";
 inline constexpr auto ies_light = "psycles.texture.ies";

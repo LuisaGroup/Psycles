@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <span>
 #include <string>
@@ -201,6 +202,142 @@ void test_brick_record() {
   require_record(image, expected, "NODE_TEX_BRICK");
 }
 
+void test_gabor_record() {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Geometry");
+  const auto normal_to_vector =
+      graph.add_node(node_type::normal_to_vector, "Normal to Vector");
+  const auto add = graph.add_node(node_type::vector_math, "Vector Math ADD");
+  const auto gabor =
+      graph.add_node(node_type::gabor_texture, "Gabor Texture");
+  require(
+      graph.connect({geometry, "Normal"}, normal_to_vector, "Normal") &&
+          graph.connect({normal_to_vector, "Vector"}, add, "A") &&
+          graph.connect({add, "Vector"}, gabor, "Vector") &&
+          graph.set_input(add, "B",
+                          SocketValue::vector({-0.73f, 0.41f, -1.17f})) &&
+          graph.set_property(add, "Operation", SocketValue::string("ADD")) &&
+          graph.set_property(gabor, "Type", SocketValue::string("2D")) &&
+          graph.set_input(gabor, "Scale", SocketValue::floating(2.3f)) &&
+          graph.set_input(gabor, "Frequency", SocketValue::floating(0.0f)) &&
+          graph.set_input(gabor, "Anisotropy",
+                          SocketValue::floating(0.0f)) &&
+          graph.set_input(gabor, "Orientation 2D",
+                          SocketValue::floating(-1.2f)),
+      "failed to author Gabor Texture oracle topology");
+
+  const auto scalar_to_color =
+      graph.add_node(node_type::scalar_to_color, "Value to Color");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.connect({gabor, "Value"}, scalar_to_color, "Value") &&
+              graph.connect({scalar_to_color, "Color"}, emission, "Color"),
+          "failed to keep Gabor Value live");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const auto image = compile_graph(graph);
+  require(image.valid && image.node_types_used[NODE_VECTOR_MATH] &&
+              image.node_types_used[NODE_TEX_GABOR],
+          "Gabor oracle topology did not compile to Cycles SVM");
+
+  // Final Cycles 5.2.1 global stream for the external Gabor oracle's first
+  // material. The coordinate is Geometry Normal plus a constant Vector Math
+  // ADD. Only Value is live; Phase and Intensity remain invalid.
+  static constexpr std::array expected{
+      0x00000042u, 0x00000000u, 0x3fb504f3u, 0x3fb504f3u, 0x00000000u,
+      0x40133333u, 0x00000000u, 0x00000000u, 0xbf99999au, 0xffff0003u};
+  require_record(image, expected, "NODE_TEX_GABOR");
+}
+
+void test_vector_math_host_operations() {
+  static constexpr std::array<std::pair<std::string_view, NodeVectorMathType>,
+                              30u>
+      operations{{
+          {"ADD", NODE_VECTOR_MATH_ADD},
+          {"SUBTRACT", NODE_VECTOR_MATH_SUBTRACT},
+          {"MULTIPLY", NODE_VECTOR_MATH_MULTIPLY},
+          {"DIVIDE", NODE_VECTOR_MATH_DIVIDE},
+          {"CROSS_PRODUCT", NODE_VECTOR_MATH_CROSS_PRODUCT},
+          {"PROJECT", NODE_VECTOR_MATH_PROJECT},
+          {"REFLECT", NODE_VECTOR_MATH_REFLECT},
+          {"DOT_PRODUCT", NODE_VECTOR_MATH_DOT_PRODUCT},
+          {"DISTANCE", NODE_VECTOR_MATH_DISTANCE},
+          {"LENGTH", NODE_VECTOR_MATH_LENGTH},
+          {"SCALE", NODE_VECTOR_MATH_SCALE},
+          {"NORMALIZE", NODE_VECTOR_MATH_NORMALIZE},
+          {"SNAP", NODE_VECTOR_MATH_SNAP},
+          {"FLOOR", NODE_VECTOR_MATH_FLOOR},
+          {"CEIL", NODE_VECTOR_MATH_CEIL},
+          {"MODULO", NODE_VECTOR_MATH_MODULO},
+          {"FRACTION", NODE_VECTOR_MATH_FRACTION},
+          {"ABSOLUTE", NODE_VECTOR_MATH_ABSOLUTE},
+          {"MINIMUM", NODE_VECTOR_MATH_MINIMUM},
+          {"MAXIMUM", NODE_VECTOR_MATH_MAXIMUM},
+          {"WRAP", NODE_VECTOR_MATH_WRAP},
+          {"SINE", NODE_VECTOR_MATH_SINE},
+          {"COSINE", NODE_VECTOR_MATH_COSINE},
+          {"TANGENT", NODE_VECTOR_MATH_TANGENT},
+          {"REFRACT", NODE_VECTOR_MATH_REFRACT},
+          {"FACEFORWARD", NODE_VECTOR_MATH_FACEFORWARD},
+          {"MULTIPLY_ADD", NODE_VECTOR_MATH_MULTIPLY_ADD},
+          {"POWER", NODE_VECTOR_MATH_POWER},
+          {"SIGN", NODE_VECTOR_MATH_SIGN},
+          {"ROUND", NODE_VECTOR_MATH_ROUND},
+      }};
+
+  for (const auto &[name, type] : operations) {
+    ShaderGraph graph;
+    const auto geometry = graph.add_node(node_type::geometry, "Geometry");
+    const auto convert =
+        graph.add_node(node_type::normal_to_vector, "Normal to Vector");
+    const auto math = graph.add_node(node_type::vector_math, "Vector Math");
+    const auto to_color =
+        graph.add_node(node_type::vector_to_color, "Vector to Color");
+    const auto emission = graph.add_node(node_type::emission, "Emission");
+    require(
+        graph.connect({geometry, "Normal"}, convert, "Normal") &&
+            graph.connect({convert, "Vector"}, math, "A") &&
+            graph.connect({math, "Vector"}, to_color, "Vector") &&
+            graph.connect({to_color, "Color"}, emission, "Color") &&
+            graph.connect({math, "Value"}, emission, "Strength") &&
+            graph.set_input(math, "B",
+                            SocketValue::vector({2.0f, 3.0f, 4.0f})) &&
+            graph.set_input(math, "C",
+                            SocketValue::vector({5.0f, 6.0f, 7.0f})) &&
+            graph.set_input(math, "Scale", SocketValue::floating(0.25f)) &&
+            graph.set_property(math, "Operation",
+                               SocketValue::string(std::string{name})),
+        "failed to author Vector Math host operation");
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = emission, .socket = "Closure"});
+
+    const auto image = compile_graph(graph);
+    require(image.valid && image.node_types_used[NODE_VECTOR_MATH],
+            "Vector Math host operation did not compile");
+
+    std::size_t matching_records{};
+    for (auto index = std::size_t{};
+         index + 1u + sizeof(SVMNodeVectorMath) / sizeof(std::uint32_t) <=
+         image.words.size(); ++index) {
+      if (image.words[index] != NODE_VECTOR_MATH) {
+        continue;
+      }
+      SVMNodeVectorMath payload{};
+      std::memcpy(&payload, image.words.data() + index + 1u, sizeof(payload));
+      if (payload.math_type != type) {
+        continue;
+      }
+      ++matching_records;
+      require(payload.a.x.bits != 0u &&
+                  payload.value_offset != SVM_STACK_INVALID &&
+                  payload.vector_offset != SVM_STACK_INVALID,
+              "Vector Math record lost linked input or live outputs");
+    }
+    require(matching_records == 1u,
+            "Vector Math operation did not emit one exact host record");
+  }
+}
+
 void test_voronoi_record() {
   ShaderGraph graph;
   const auto voronoi =
@@ -271,6 +408,13 @@ void test_schema_and_point_projection() {
               voronoi_schema->outputs.size() == 5u &&
               make_graph_node(node_type::voronoi_texture) != nullptr,
           "Voronoi schema has no isomorphic Cycles SVM host node");
+  const auto *gabor_schema = registry.find(node_type::gabor_texture);
+  require(gabor_schema != nullptr && gabor_schema->inputs.size() == 6u &&
+              gabor_schema->outputs.size() == 3u &&
+              make_graph_node(node_type::gabor_texture) != nullptr,
+          "Gabor schema has no isomorphic Cycles SVM host node");
+  require(make_graph_node(node_type::vector_math) != nullptr,
+          "Vector Math schema has no Cycles SVM host node");
 
   ShaderGraph graph;
   const auto checker = graph.add_node(node_type::checker_texture, "Checker");
@@ -303,6 +447,24 @@ void test_invalid_properties_fail_closed() {
   const auto image = compile_graph(graph);
   require(!image.valid,
           "invalid Wave enum silently changed Cycles SVM semantics");
+
+  ShaderGraph gabor_graph;
+  const auto gabor =
+      gabor_graph.add_node(node_type::gabor_texture, "Invalid Gabor");
+  require(gabor_graph.set_property(
+              gabor, "Type", SocketValue::string("NOT_A_GABOR_TYPE")),
+          "failed to author invalid Gabor type");
+  const auto convert =
+      gabor_graph.add_node(node_type::scalar_to_color, "Value to Color");
+  const auto emission = gabor_graph.add_node(node_type::emission, "Emission");
+  require(gabor_graph.connect({gabor, "Value"}, convert, "Value") &&
+              gabor_graph.connect({convert, "Color"}, emission, "Color"),
+          "failed to keep invalid Gabor live");
+  gabor_graph.set_root(
+      ShaderDomain::surface,
+      OutputRef{.node = emission, .socket = "Closure"});
+  require(!compile_graph(gabor_graph).valid,
+          "invalid Gabor enum silently changed Cycles SVM semantics");
 }
 
 } // namespace
@@ -313,7 +475,9 @@ int main() {
   test_magic_record();
   test_checker_record();
   test_brick_record();
+  test_gabor_record();
   test_voronoi_record();
+  test_vector_math_host_operations();
   test_invalid_properties_fail_closed();
   return EXIT_SUCCESS;
 }

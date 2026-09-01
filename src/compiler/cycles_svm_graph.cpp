@@ -116,6 +116,12 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
            : input == "C" ? "Value3"
                           : input;
   }
+  if (node == node_type::vector_math) {
+    return input == "A"   ? "Vector1"
+           : input == "B" ? "Vector2"
+           : input == "C" ? "Vector3"
+                          : input;
+  }
   if (node == node_type::mix_closure || node == node_type::mix_volume) {
     return input == "Factor" ? "Fac"
            : input == "A"    ? "Closure1"
@@ -348,6 +354,7 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
       return graph_socket_link_position;
     }
     if (node == node_type::gradient_texture || node == node_type::noise_texture ||
+        node == node_type::gabor_texture ||
         node == node_type::voronoi_texture || node == node_type::wave_texture ||
         node == node_type::magic_texture || node == node_type::checker_texture ||
         node == node_type::brick_texture) {

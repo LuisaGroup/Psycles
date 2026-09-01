@@ -487,6 +487,28 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::gabor_texture,
+      .inputs =
+          {input("Vector", SocketType::vector,
+                 SocketValue::vector({0.0f, 0.0f, 0.0f})),
+           input("Scale", SocketType::floating, SocketValue::floating(5.0f)),
+           input("Frequency", SocketType::floating,
+                 SocketValue::floating(2.0f)),
+           input("Anisotropy", SocketType::floating,
+                 SocketValue::floating(1.0f)),
+           input("Orientation 2D", SocketType::floating,
+                 SocketValue::floating(0.7853981633974483f)),
+           input("Orientation 3D", SocketType::vector,
+                 SocketValue::vector(
+                     {1.4142135623730951f, 1.4142135623730951f, 0.0f}))},
+      .outputs = {output("Value", SocketType::floating),
+                  output("Phase", SocketType::floating),
+                  output("Intensity", SocketType::floating)},
+      .properties = {property("Type", SocketType::string,
+                              SocketValue::string("2D"))},
+      .required_features = feature_bit(ShaderFeature::surface)}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::voronoi_texture,
       .inputs =
           {input("Vector", SocketType::vector,

@@ -174,6 +174,17 @@ voronoi_metric(std::string_view value) noexcept {
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<NodeGaborType>
+gabor_type(std::string_view value) noexcept {
+  if (value == "2D") {
+    return NODE_GABOR_TYPE_2D;
+  }
+  if (value == "3D") {
+    return NODE_GABOR_TYPE_3D;
+  }
+  return std::nullopt;
+}
+
 class WaveTextureNode final : public TextureNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
@@ -315,6 +326,40 @@ public:
   }
 };
 
+class GaborTextureNode final : public TextureNode {
+public:
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_TEX_GABOR;
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto type_name = string_property(this, "Type");
+    const auto type = type_name ? gabor_type(*type_name) : std::nullopt;
+    if (!type) {
+      compiler.fail("Cycles Gabor Texture Type is invalid");
+      return;
+    }
+
+    auto *vector_in = input("Vector");
+    const auto vector_offset =
+        tex_mapping.compile_begin(compiler, vector_in, nullptr);
+    compiler.add_node(
+        this, NODE_TEX_GABOR,
+        SVMNodeTexGabor{
+            .gabor_type = *type,
+            .orientation_3d = compiler.input_float3("Orientation 3D"),
+            .scale = compiler.input_float("Scale"),
+            .frequency = compiler.input_float("Frequency"),
+            .anisotropy = compiler.input_float("Anisotropy"),
+            .orientation_2d = compiler.input_float("Orientation 2D"),
+            .coordinates = vector_offset,
+            .value_offset = compiler.output("Value"),
+            .phase_offset = compiler.output("Phase"),
+            .intensity_offset = compiler.output("Intensity")});
+    tex_mapping.compile_end(compiler, vector_in, vector_offset);
+  }
+};
+
 class VoronoiTextureNode final : public TextureNode {
 private:
   [[nodiscard]] std::optional<NodeVoronoiFeature>
@@ -399,6 +444,9 @@ make_procedural_texture_graph_node(std::string_view type) {
   }
   if (type == node_type::brick_texture) {
     return std::make_unique<BrickTextureNode>();
+  }
+  if (type == node_type::gabor_texture) {
+    return std::make_unique<GaborTextureNode>();
   }
   if (type == node_type::voronoi_texture) {
     return std::make_unique<VoronoiTextureNode>();
