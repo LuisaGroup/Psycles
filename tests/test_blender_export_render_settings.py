@@ -234,6 +234,8 @@ def _main() -> None:
         "principled_thin_wall_svm_oracle",
         "principled_transmission_svm_oracle",
         "svm_tangent_dynamic",
+        "subsurface_burley_svm_oracle",
+        "subsurface_random_walk_svm_oracle",
         "vector_to_scalar",
         "volume_scatter_svm",
     }:

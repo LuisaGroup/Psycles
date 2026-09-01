@@ -314,6 +314,12 @@ _CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
     ),
     "principled_svm_oracle": principled_closures._principled_svm_oracle,
     "svm_tangent_dynamic": normal_maps._svm_tangent_dynamic,
+    "subsurface_burley_svm_oracle": (
+        subsurface_closures._subsurface_burley_svm_oracle
+    ),
+    "subsurface_random_walk_svm_oracle": (
+        subsurface_closures._subsurface_random_walk_svm_oracle
+    ),
     "vector_to_scalar": values._vector_to_scalar,
     "volume_scatter_svm": volume_closures._volume_scatter_svm,
 }

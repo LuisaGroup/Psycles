@@ -7,6 +7,8 @@
 #include "cycles_svm_microfacet.h"
 #include "cycles_svm_simple_closure.h"
 
+#include <psycles/luisa/native_vector_math.h>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
@@ -75,6 +77,35 @@ inline constexpr float minimum_radius = 1.0e-8f;
 }
 
 } // namespace
+
+void node_bssrdf(Cursor &cursor, Stack &stack, Expr<std::uint32_t> type,
+                 Expr<luisa::float3> closure_weight, Expr<float> mix_weight,
+                 ShaderData &shader_data, const PathState &path_state) noexcept {
+  const auto radius_x = cursor.word();
+  const auto radius_y = cursor.word();
+  const auto radius_z = cursor.word();
+  const auto scale_input = cursor.word();
+  const auto ior_input = cursor.word();
+  const auto anisotropy_input = cursor.word();
+  const auto roughness_input = cursor.word();
+  const auto normal_packed = cursor.word();
+  const auto normal_offset = cursor.byte(normal_packed, 0u);
+  auto normal =
+      stack_load_float3_default(stack, normal_offset, shader_data.N);
+  normal = native_vector_math::safe_normalize_nonzero_or(normal, shader_data.N);
+
+  const auto radius = max(
+      stack_load_input_float3(stack, radius_x, radius_y, radius_z) *
+          stack_load_input_float(stack, scale_input),
+      make_float3(0.0f));
+  bssrdf_setup(
+      shader_data, path_state, type, closure_weight * mix_weight, radius,
+      closure_weight,
+      maybe_ensure_valid_specular_reflection(shader_data, normal),
+      clamp(stack_load_input_float(stack, roughness_input), 0.0f, 1.0f),
+      stack_load_input_float(stack, ior_input),
+      stack_load_input_float(stack, anisotropy_input));
+}
 
 void bssrdf_setup(ShaderData &shader_data, const PathState &path_state,
                   Expr<std::uint32_t> type, Expr<luisa::float3> input_weight,
