@@ -201,6 +201,56 @@ void test_brick_record() {
   require_record(image, expected, "NODE_TEX_BRICK");
 }
 
+void test_voronoi_record() {
+  ShaderGraph graph;
+  const auto voronoi =
+      graph.add_node(node_type::voronoi_texture, "Voronoi Texture");
+  static_cast<void>(add_generated_coordinates(graph, voronoi));
+  require(
+      graph.set_property(voronoi, "Dimensions",
+                         SocketValue::unsigned_integer(2u)) &&
+          graph.set_property(voronoi, "Feature",
+                             SocketValue::string("F1")) &&
+          graph.set_property(voronoi, "DistanceMetric",
+                             SocketValue::string("EUCLIDEAN")) &&
+          graph.set_property(voronoi, "Normalize",
+                             SocketValue::boolean(true)) &&
+          graph.set_input(voronoi, "W", SocketValue::floating(0.0f)) &&
+          graph.set_input(voronoi, "Scale", SocketValue::floating(-3.5f)) &&
+          graph.set_input(voronoi, "Detail", SocketValue::floating(1.25f)) &&
+          graph.set_input(voronoi, "Roughness",
+                          SocketValue::floating(0.35f)) &&
+          graph.set_input(voronoi, "Lacunarity",
+                          SocketValue::floating(2.3f)) &&
+          graph.set_input(voronoi, "Smoothness",
+                          SocketValue::floating(5.0f)) &&
+          graph.set_input(voronoi, "Exponent", SocketValue::floating(0.5f)) &&
+          graph.set_input(voronoi, "Randomness",
+                          SocketValue::floating(-0.5f)),
+      "failed to author Voronoi Texture");
+  const auto vector_to_color =
+      graph.add_node(node_type::vector_to_color, "Position to Color");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.connect({voronoi, "Position"}, vector_to_color, "Vector") &&
+              graph.connect({vector_to_color, "Color"}, emission, "Color"),
+          "failed to keep Voronoi Position live");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const auto image = compile_graph(graph);
+  require(image.valid && image.node_types_used[NODE_TEX_VORONOI],
+          "Voronoi Texture did not compile to NODE_TEX_VORONOI");
+
+  // NODE_TEX_VORONOI from the final Cycles 5.2.1 global stream for
+  // `Voronoi Fractal 04 2D F1`. Only Position is live: coordinate=0 and
+  // Position=3. Every other output carries SVM_STACK_INVALID.
+  static constexpr std::array expected{
+      0x00000041u, 0x00000002u, 0x00000000u, 0x00000000u, 0x00000000u,
+      0xc0600000u, 0x3fa00000u, 0x3eb33333u, 0x40133333u, 0x40a00000u,
+      0x3f000000u, 0xbf000000u, 0xffff0001u, 0x00ffff03u};
+  require_record(image, expected, "NODE_TEX_VORONOI");
+}
+
 void test_schema_and_point_projection() {
   const auto registry = make_core_node_registry();
   for (const auto type :
@@ -216,6 +266,11 @@ void test_schema_and_point_projection() {
     const auto node = make_graph_node(type);
     require(node != nullptr, "procedural texture has no Cycles SVM host node");
   }
+  const auto *voronoi_schema = registry.find(node_type::voronoi_texture);
+  require(voronoi_schema != nullptr && voronoi_schema->inputs.size() == 9u &&
+              voronoi_schema->outputs.size() == 5u &&
+              make_graph_node(node_type::voronoi_texture) != nullptr,
+          "Voronoi schema has no isomorphic Cycles SVM host node");
 
   ShaderGraph graph;
   const auto checker = graph.add_node(node_type::checker_texture, "Checker");
@@ -258,6 +313,7 @@ int main() {
   test_magic_record();
   test_checker_record();
   test_brick_record();
+  test_voronoi_record();
   test_invalid_properties_fail_closed();
   return EXIT_SUCCESS;
 }

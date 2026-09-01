@@ -705,12 +705,6 @@ void test_voronoi_texture_configuration_lowers_structurally() {
             SocketValue::boolean(true)),
         "failed to set Voronoi normalization");
     expect(
-        graph.set_property(
-            voronoi,
-            "Output",
-            SocketValue::string("Color")),
-        "failed to select Voronoi Color");
-    expect(
         graph.connect(
             {.node = voronoi, .socket = "Color"},
             emission,

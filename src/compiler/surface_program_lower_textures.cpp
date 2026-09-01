@@ -526,44 +526,46 @@ namespace operand = value_operand;
                           : metric_name == "MINKOWSKI"
                                 ? VoronoiDistanceMetric::minkowski
                                 : VoronoiDistanceMetric::euclidean;
-            const auto output_name =
-                property_string(node, "Output", "Distance");
-            auto operation = ValueOperation::voronoi_distance;
-            auto result_type = SocketType::floating;
-            if (output_name == "Color") {
-                operation = ValueOperation::voronoi_color;
-                result_type = SocketType::color;
-            } else if (output_name == "Position") {
-                operation = ValueOperation::voronoi_position;
-                result_type = SocketType::vector;
-            } else if (output_name == "W") {
-                operation = ValueOperation::voronoi_w;
-            } else if (output_name == "Radius") {
-                operation = ValueOperation::voronoi_radius;
-            }
             const auto configuration =
                 property_uint(node, "Dimensions", 3u) |
                 (static_cast<std::uint64_t>(feature) << 8u) |
                 (static_cast<std::uint64_t>(metric) << 16u) |
                 (property_bool(node, "Normalize") ? 1ull << 24u : 0u);
-            publish(
-                node.id,
-                output_name,
-                append(ValueInstruction{
-                    .operation = operation,
-                    .source_node = node.id,
-                    .result_type = result_type,
-                    .operands = make_value_operands<operand::voronoi>({
-                        {operand::voronoi::vector, *vector},
-                        {operand::voronoi::w, *w},
-                        {operand::voronoi::scale, *scale},
-                        {operand::voronoi::detail, *detail},
-                        {operand::voronoi::roughness, *roughness},
-                        {operand::voronoi::lacunarity, *lacunarity},
-                        {operand::voronoi::smoothness, *smoothness},
-                        {operand::voronoi::exponent, *exponent},
-                        {operand::voronoi::randomness, *randomness}}),
-                    .static_u0 = configuration}));
+            for (const auto &[output_name, operation, result_type] : {
+                     std::tuple{"Distance",
+                                ValueOperation::voronoi_distance,
+                                SocketType::floating},
+                     std::tuple{"Color", ValueOperation::voronoi_color,
+                                SocketType::color},
+                     std::tuple{"Position",
+                                ValueOperation::voronoi_position,
+                                SocketType::vector},
+                     std::tuple{"W", ValueOperation::voronoi_w,
+                                SocketType::floating},
+                     std::tuple{"Radius", ValueOperation::voronoi_radius,
+                                SocketType::floating}}) {
+                if (!output_is_used(node.id, output_name)) {
+                    continue;
+                }
+                publish(
+                    node.id,
+                    output_name,
+                    append(ValueInstruction{
+                        .operation = operation,
+                        .source_node = node.id,
+                        .result_type = result_type,
+                        .operands = make_value_operands<operand::voronoi>({
+                            {operand::voronoi::vector, *vector},
+                            {operand::voronoi::w, *w},
+                            {operand::voronoi::scale, *scale},
+                            {operand::voronoi::detail, *detail},
+                            {operand::voronoi::roughness, *roughness},
+                            {operand::voronoi::lacunarity, *lacunarity},
+                            {operand::voronoi::smoothness, *smoothness},
+                            {operand::voronoi::exponent, *exponent},
+                            {operand::voronoi::randomness, *randomness}}),
+                        .static_u0 = configuration}));
+            }
         }
         return true;
     }

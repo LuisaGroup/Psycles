@@ -79,6 +79,29 @@ find_property(const contract::ShaderNode &node,
   return std::get<float>(value->value);
 }
 
+bool SurfaceProgramBuilder::output_is_used(
+    contract::NodeId node, std::string_view socket) const noexcept {
+  for (const auto &consumer : _shader.graph().nodes()) {
+    for (const auto &[name, binding] : consumer.inputs) {
+      static_cast<void>(name);
+      if (binding.source && binding.source->node == node &&
+          binding.source->socket == socket) {
+        return true;
+      }
+    }
+  }
+  for (auto domain = std::size_t{};
+       domain < static_cast<std::size_t>(contract::ShaderDomain::count);
+       ++domain) {
+    const auto &root = _shader.graph().root(
+        static_cast<contract::ShaderDomain>(domain));
+    if (root && root->node == node && root->socket == socket) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] Mat4f property_transform(const contract::ShaderNode &node,
                                        std::string_view name,
                                        Mat4f fallback) noexcept {
