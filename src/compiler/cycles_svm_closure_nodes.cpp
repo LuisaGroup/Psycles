@@ -129,6 +129,18 @@ metallic_fresnel_type(const GraphNode *node) noexcept {
 }
 
 [[nodiscard]] std::optional<ClosureType>
+sheen_distribution(const GraphNode *node) noexcept {
+  const auto distribution = string_property(node, "Distribution");
+  if (distribution == "MICROFIBER") {
+    return CLOSURE_BSDF_SHEEN_ID;
+  }
+  if (distribution == "ASHIKHMIN") {
+    return CLOSURE_BSDF_ASHIKHMIN_VELVET_ID;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<ClosureType>
 volume_phase(const GraphNode *node) noexcept {
   const auto phase = string_property(node, "Phase");
   if (phase == "HENYEY_GREENSTEIN") {
@@ -275,6 +287,24 @@ public:
 
   void compile(SVMCompiler &compiler) override {
     compile_bsdf(compiler, SVMNodeSimpleBsdfData{});
+  }
+};
+
+class SheenBsdfNode final : public BsdfNode {
+public:
+  SheenBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_SHEEN_ID} {}
+
+  void compile(SVMCompiler &compiler) override {
+    const auto distribution = sheen_distribution(this);
+    if (!distribution) {
+      compiler.fail("Cycles Sheen BSDF distribution is not migrated exactly");
+      return;
+    }
+    compile_bsdf(
+        compiler, *distribution,
+        SVMNodeSimpleBsdfData{.param1 = compiler.input_float("Roughness"),
+                              .normal_offset = compiler.input_link("Normal"),
+                              ._pad = {0u, 0u, 0u}});
   }
 };
 
@@ -843,6 +873,9 @@ make_closure_graph_node(std::string_view type) {
   }
   if (type == node_type::transparent_bsdf) {
     return std::make_unique<TransparentBsdfNode>();
+  }
+  if (type == node_type::sheen_bsdf) {
+    return std::make_unique<SheenBsdfNode>();
   }
   if (type == node_type::emission) {
     return std::make_unique<EmissionNode>();

@@ -1391,7 +1391,7 @@ NodeRegistry make_core_node_registry() {
                  .inputs = {input("Color", SocketType::color,
                                   SocketValue::color({0.8f, 0.8f, 0.8f})),
                             input("Roughness", SocketType::floating,
-                                  SocketValue::floating(0.5f)),
+                                  SocketValue::floating(1.0f)),
                             input("Normal", SocketType::normal,
                                   SocketValue::normal({0.0f, 0.0f, 0.0f}))},
                  .outputs = {output("Closure", SocketType::closure)},

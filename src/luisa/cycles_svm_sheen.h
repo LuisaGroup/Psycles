@@ -4,9 +4,17 @@
 
 #pragma once
 
-#include <psycles/luisa/cycles_svm.h>
+#include "cycles_svm_internal.h"
 
 namespace psycles::luisa_backend::cycles_svm::detail {
+
+/* Cycles 5.2.1 standalone Microfiber Sheen and Ashikhmin Velvet cases. The
+ * cursor consumes exactly one SVMNodeSimpleBsdfData record. */
+void node_sheen(const KernelGlobals &kernel_globals, Cursor &cursor,
+                Stack &stack, luisa::compute::Expr<std::uint32_t> type,
+                luisa::compute::Expr<luisa::float3> closure_weight,
+                luisa::compute::Expr<float> mix_weight,
+                ShaderData &shader_data) noexcept;
 
 /* Exact Cycles Principled SheenBsdf transition. The returned value is the
  * post-LTC closure albedo consumed by closure_layering_weight(). */

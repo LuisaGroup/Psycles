@@ -16,6 +16,7 @@ The implementation follows these pinned Cycles sources at
 - `kernel/closure/bsdf_oren_nayar.h`
 - `kernel/closure/bsdf_transparent.h`
 - `kernel/closure/bsdf_sheen.h`
+- `kernel/closure/bsdf_ashikhmin_velvet.h`
 - `kernel/closure/bsdf_util.h::maybe_ensure_valid_specular_reflection`
 - `kernel/closure/bsdf_microfacet.h::{bsdf_microfacet_*_glass_setup,`
   `bsdf_microfacet_ggx_setup,bsdf_microfacet_beckmann_setup,`
@@ -35,7 +36,9 @@ Translucent, Transparent, Beckmann/GGX/Multi-GGX Glass,
 Beckmann/GGX/Ashikhmin-Shirley/Multi-GGX Glossy, and Beckmann/GGX Refraction.
 The copied Metallic family includes F82-tint and physical-conductor Fresnel
 models over Beckmann, GGX, and Multi-GGX distributions.
-The standalone Subsurface Scattering family includes Christensen-Burley,
+The standalone Sheen family includes Microfiber LTC Sheen and Ashikhmin
+Velvet with the exact typed `SVMNodeSimpleBsdfData` payload. The standalone
+Subsurface Scattering family includes Christensen-Burley,
 Random Walk, Random Walk Legacy, and Random Walk Skin with the exact typed
 `SVMNodeBssrdfData` payload.
 Other closure payloads still take Cycles' exact typed skip transition and
@@ -218,6 +221,8 @@ relocated from the original global offsets to its compact test buffer.
 | Principled Thin Wall | Transparent type 30, GGX reflection type 12, Thin Glass Transmission type 22, dielectric GGX type 12, then Diffuse type 2; reflection weight `(0.02744345,0.01416836,0.05171960)` and sample weight `0.03107580`; transmission weight `(0.1949813,0.3594840,0.4788061)` and sample weight `0.3444238` |
 | Principled Random Walk Skin | Transparent type 30, Random Walk Skin BSSRDF type 34, then Diffuse type 2; BSSRDF weight `(0.2291900,0.1119300,0.4050800)` and sample weight `0.7462000`; residual Diffuse `(0.1234100,0.0602700,0.2181200)` |
 | Principled Burley | Transparent type 30, Christensen-Burley BSSRDF type 31, then Diffuse type 2; BSSRDF weight `(0.1057920,0.2997440,0.1719120)` and sample weight `0.5774480`; residual Diffuse `(0.0766080,0.2170560,0.1244880)` |
+| Standalone Microfiber Sheen | type 7; post-LTC weight `(0.0028833640,0.0058426056,0.0012140479)`; sample weight `0.0033133393`; normal `(0,0,1)` |
+| Standalone Ashikhmin Velvet | type 16; weight `(0.82,0.19,0.57)`; sample weight `0.5266666412`; normal `(0,0,1)` |
 | Standalone Random Walk | type 32; weight/albedo `(0.37,0.62,0.14)`; sample weight `1.1299999952`; normal `(0,0,1)` |
 | Standalone Burley | type 31; weight/albedo `(0.21,0.74,0.48)`; sample weight `1.4299999475`; normal `(0,0,1)` |
 
@@ -346,8 +351,71 @@ Artifact hashes:
 | Standalone Burley diagnostic path trace | `e5be5ef7958f24d287c957ced005d515c9329982b6c6a2c73e722ba40c591b48` |
 | Standalone Burley decoded diagnostic trace | `f1358235826ce5555c09fa7872a1a3d7c9ba4b3f8eca6430374ce82ab937cdc7` |
 | Standalone Burley render metadata | `22cfa882eb042b5f396d4181cd9441a2e11bfc39f8acf559dae7374a80548e3a` |
+| Standalone Microfiber Sheen oracle `.blend` | `5211802094af3e3609d8f3517051ae1557a3eae64be1c9bbe9b85cb831d6cbd3` |
+| Standalone Microfiber Sheen final SVM buffer | `bc20d02c75ead201d58035f3d4fc9f5f3ea15bd9c93cb42311fde41ae53dd863` |
+| Standalone Microfiber Sheen diagnostic path trace | `836706080c2c76b3744868e39122361a6c4cb375f0c8582042e4f3b91cad33ef` |
+| Standalone Microfiber Sheen decoded diagnostic trace | `6baae2943d1c853190bfb36521b108db8aca0b4c2e513037906eea45d3799010` |
+| Standalone Microfiber Sheen render metadata | `97e8d13bf4afe6cd78eaed6e60cb18726b18f1a02a55b7f5edfa2bd31de3e7f9` |
+| Standalone Ashikhmin Velvet oracle `.blend` | `e54799eafeb51b8c45a940afe2383701ddd66378690ef56f3e2b28cd56b38784` |
+| Standalone Ashikhmin Velvet final SVM buffer | `25361469daf2c3f17db1f39a564f7c7b3361f3db989f84159b4e44a4452cd7a9` |
+| Standalone Ashikhmin Velvet diagnostic path trace | `bb5f21ec48f666f61d83e9fd171476c2d9f5d28c71e0fa97dcfadcf466b0642d` |
+| Standalone Ashikhmin Velvet decoded diagnostic trace | `df318c40fc9432170ff6b7e6cbe375ad658253fbb1a626c84160acc16525ccba` |
+| Standalone Ashikhmin Velvet render metadata | `256959ff1929c98c9daa1236810e96b6308d72d43d6259c5c7a8dddfefb748b6` |
 
 No `.svm52` binary is checked in.
+
+### Standalone Sheen and Velvet runtime checkpoint
+
+Both Cycles variants consume the same two-word `SVMNodeSimpleBsdfData`
+record:
+
+```text
+param1, normal_offset
+```
+
+The handler always advances both words, loads the optional normal with
+`stack_load_float3_default`, applies Cycles' exact-zero
+`safe_normalize_fallback`, and calls `bsdf_alloc` with
+`closure_weight * mix_weight`. It does not apply the specular bump-normal
+correction used by Microfacet families.
+
+Let `w = max(closure_weight * mix_weight, 0)` and
+`s = abs(average(w))`. Allocation failure leaves the closure pool and shader
+flags unchanged. After successful allocation, the two statically selected
+transitions are the following disjoint sum:
+
+```text
+Microfiber:
+  r0 = saturate(param1)
+  r = clamp(r0, 1e-3, 1)
+  (T, B) = make_orthonormals_safe_tangent(N, wi)
+  (A, B_ltc, albedo) = three Cycles Sheen LTC table reads
+  if abs(A) < 1e-5 or albedo < 1e-5:
+    retain allocated input weight and typed payload
+    type = NONE; sample_weight = 0; add no flags
+  else:
+    type = SHEEN
+    weight = w * albedo; sample_weight = s * albedo
+    flags |= SD_BSDF | SD_BSDF_HAS_EVAL
+
+Ashikhmin Velvet:
+  sigma = saturate(param1)
+  invsigma2 = 1 / max(sigma, 0.01)^2
+  type = ASHIKHMIN_VELVET
+  weight = w; sample_weight = s
+  flags |= SD_BSDF | SD_BSDF_HAS_EVAL
+```
+
+These branches share only cursor decoding, normal normalization, and prefix
+allocation. The LTC invalid branch is not normalized into allocation failure:
+it consumes one slot exactly as Cycles does. The permanent regression freezes
+the two external 104-word global buffers as compact 19-word images, their
+externally observed common closure states, the typed payloads, a real-table
+invalid endpoint, an all-zero malformed table, a legal non-unit mix-weight
+stream, and zero-capacity allocation. It passes on fallback, HIP, and strict
+native Vulkan XIR-to-SPIR-V. The compiler regression also corrected and locks
+Cycles 5.2.1's standalone Sheen roughness default of `1.0`; the previous
+Psycles schema incorrectly used `0.5`.
 
 ### Standalone BSSRDF runtime checkpoint
 
@@ -519,6 +587,7 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_principled_thin_wall_tests \
            psycles_luisa_cycles_svm_principled_subsurface_tests \
            psycles_luisa_cycles_svm_standalone_bssrdf_tests \
+           psycles_luisa_cycles_svm_standalone_sheen_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_luisa_thin_film_fresnel_tests \
            psycles_luisa_thin_film_surface_tests
@@ -551,6 +620,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_standalone_bssrdf_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_standalone_sheen_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -559,13 +631,14 @@ ctest --test-dir build --output-on-failure -R \
 
 Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
 3/3, Principled Metallic 3/3, Principled thick Transmission 3/3, Principled
-Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, thin-film
+Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, standalone
+Sheen/Velvet 3/3, thin-film
 6/6, and compiler 1/1 passed. The
 compiler test
 locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 488/488 tests in 14.79 seconds. The Vulkan test
+expanded checkpoint passed 491/491 tests in 138.78 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
@@ -602,7 +675,7 @@ simple, Glass, standalone Glossy, standalone Refraction, and Metallic
 F82/conductor setup families inside the exact interpreter. Production still
 calls the old custom
 `SurfaceProgram` path. The next required structural steps are the remaining
-standalone typed closure payloads (Ray Portal, Velvet/Sheen, Toon, and Hair),
+standalone typed closure payloads (Ray Portal, Toon, and Hair),
 exact closure evaluation/sampling, and only then replacement and deletion of
 the old shade-surface route. The Cycles-style global shader linker is already
 staged, but this document makes no production-render parity or performance

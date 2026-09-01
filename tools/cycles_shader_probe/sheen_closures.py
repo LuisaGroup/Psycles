@@ -32,6 +32,47 @@ def _linked_float(tree: Any, name: str, value: float) -> Any:
     return _output(node, "Value")
 
 
+def _standalone_sheen_svm_oracle(
+    scene: Any,
+    *,
+    name: str,
+    distribution: str,
+    color: tuple[float, float, float],
+    roughness: float,
+) -> None:
+    """Build one literal standalone Cycles Sheen word-image oracle."""
+    material, tree, output = _material(name)
+    closure = tree.nodes.new("ShaderNodeBsdfSheen")
+    closure.name = name
+    closure.distribution = distribution
+    _input(closure, "Color").default_value = (*color, 1.0)
+    _input(closure, "Roughness").default_value = roughness
+    tree.links.new(_output(closure, "BSDF"), _input(output, "Surface"))
+    _material_matrix(scene, [material], columns=1, rows=1, name=name)
+
+
+def _standalone_sheen_microfiber_svm_oracle(scene: Any) -> None:
+    """Isolate Cycles 5.2's standalone Microfiber Sheen transition."""
+    _standalone_sheen_svm_oracle(
+        scene,
+        name="Standalone Microfiber Sheen SVM Oracle",
+        distribution="MICROFIBER",
+        color=(0.38, 0.77, 0.16),
+        roughness=0.43,
+    )
+
+
+def _standalone_sheen_ashikhmin_svm_oracle(scene: Any) -> None:
+    """Isolate Cycles 5.2's standalone Ashikhmin Velvet transition."""
+    _standalone_sheen_svm_oracle(
+        scene,
+        name="Standalone Ashikhmin Sheen SVM Oracle",
+        distribution="ASHIKHMIN",
+        color=(0.82, 0.19, 0.57),
+        roughness=0.24,
+    )
+
+
 def _sheen_bsdf_matrix(scene: Any) -> None:
     """Exercise both unmodified Cycles 5.2 standalone Sheen closures.
 
