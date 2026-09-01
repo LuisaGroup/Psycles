@@ -320,6 +320,62 @@ public:
                             ? SocketType::floating
                             : SocketType::color});
         }
+        if (type == "TEX_GABOR") {
+            static constexpr auto outputs = std::array{
+                std::pair{std::string_view{"Value"},
+                          SocketType::floating},
+                std::pair{std::string_view{"Phase"},
+                          SocketType::floating},
+                std::pair{std::string_view{"Intensity"},
+                          SocketType::floating}};
+            const auto selected = std::ranges::find_if(
+                outputs, [&](const auto &entry) noexcept {
+                    return entry.first == socket;
+                });
+            if (selected == outputs.end()) {
+                return std::nullopt;
+            }
+            const auto semantic =
+                std::string{"gabor."} + std::string{selected->first};
+            if (auto output = context.shared_output(node_name, semantic)) {
+                return finish(*output);
+            }
+
+            const auto id = context.graph().add_node(
+                compiler::node_type::gabor_texture,
+                node_name);
+            bind_blender_texture_vector(
+                context,
+                id,
+                node,
+                context.default_generated_coordinates());
+            for (const auto &[name, input_type] : {
+                     std::pair{"Scale", SocketType::floating},
+                     std::pair{"Frequency", SocketType::floating},
+                     std::pair{"Anisotropy", SocketType::floating},
+                     std::pair{"Orientation 2D", SocketType::floating},
+                     std::pair{"Orientation 3D", SocketType::vector}}) {
+                static_cast<void>(context.bind(
+                    id, name, node, name, input_type));
+            }
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Type",
+                SocketValue::string(context.node_property_text(
+                    node, "gabor_type", "2D"))));
+            for (const auto &[name, output_type] : outputs) {
+                context.remember_shared_output(
+                    node_name,
+                    std::string{"gabor."} + std::string{name},
+                    TypedOutput{.ref = {.node = id, .socket = std::string{name}},
+                                .type = output_type});
+            }
+            const auto output = context.shared_output(node_name, semantic);
+            if (!output) {
+                std::abort();
+            }
+            return finish(*output);
+        }
         if (type == "TEX_VORONOI") {
             static constexpr auto outputs = std::array{
                 std::pair{std::string_view{"Distance"},
