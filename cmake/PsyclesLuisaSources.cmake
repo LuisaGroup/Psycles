@@ -6,6 +6,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_camera.cpp
     src/luisa/cycles_svm_closure.cpp
     src/luisa/cycles_svm_microfacet.cpp
+    src/luisa/cycles_svm_principled.cpp
     src/luisa/cycles_svm_simple_closure.cpp
     src/luisa/cycles_svm_color.cpp
     src/luisa/cycles_svm_convert.cpp

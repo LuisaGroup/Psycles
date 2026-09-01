@@ -282,8 +282,39 @@ Artifact hashes:
 | Principled oracle `.blend` | `9e747eeffac3fad668d67b6b78ed9cfcdd43549b0c174d2eae9c5f4e4a6ad7cd` |
 | Principled final SVM buffer | `7a74aff57508b422f0a7c19e6eb9ab20fb9209a8ba217cf29571b91bb65cc4d1` |
 | Principled diagnostic path trace | `752a6e150adca4cb128a76d59093d955125decfd5d46c24c0b6caeca7bcb9bd3` |
+| Principled decoded diagnostic trace | `ca5ffcbce0488aa37b6ee9a96ea978161a29b921bcabf763f7a01ec8d4ed0bc5` |
 
 No `.svm52` binary is checked in.
+
+### Principled runtime checkpoint
+
+The production SVM interpreter now consumes the complete typed 176-byte
+`SVMNodePrincipledBsdfData` payload through named field offsets and advances
+the PC by the exact Cycles struct size. Field reads remain lazy: the payload
+view does not turn the typed record into 44 unconditional device loads.
+
+The first proved runtime subset preserves Cycles' layer order and implements
+alpha, emission, anisotropic dielectric specular, Multi-GGX energy
+preservation, dielectric layer attenuation, and diffuse/Oren-Nayar. Sheen,
+coat, metallic, transmission, and subsurface take an explicit unsupported
+transition when their source-clamped weights are live; they are not silently
+approximated by the legacy surface program. Their nonzero transitions will be
+enabled only as the corresponding Cycles closure families are copied.
+
+For the untouched Blender 5.2.1 Principled default, the external diagnostic
+trace records the following closure sequence at normal incidence. The new
+device regression checks these values with numerical tolerance rather than
+requiring irrelevant one-ULP identity:
+
+| index | Cycles closure | weight | sample weight |
+| --- | --- | --- | --- |
+| 0 | Microfacet GGX | `(0.9220424294, 0.9220424294, 0.9220424294)` | `0.03738487884` |
+| 1 | Diffuse | `(0.7700921297, 0.7700921297, 0.7700921297)` | `0.7700921893` |
+
+The regression also locks the typed specular state (`alpha_x = alpha_y =
+0.25`, `eta = 1.5`, generalized-Schlick `f0 = 0.04`, `f90 = 1`, exponent
+`-1.5`), closure order/types, pool accounting, runtime flags, and final PC.
+It passes on fallback, HIP, and strict native Vulkan XIR-to-SPIR-V.
 
 ## Backend validation
 
@@ -293,6 +324,7 @@ XIR-to-SPIR-V:
 ```sh
 cmake --build build --parallel 32 \
   --target psycles_luisa_cycles_svm_closure_tests \
+           psycles_luisa_cycles_svm_principled_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_luisa_thin_film_fresnel_tests \
            psycles_luisa_thin_film_surface_tests
@@ -301,17 +333,20 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_closure_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_principled_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
   '^psycles\.cycles_svm_compiler$'
 ```
 
-Result: closure 3/3, thin-film 6/6, and compiler 1/1 passed. The compiler test
+Result: closure 3/3, Principled 3/3, thin-film 6/6, and compiler 1/1 passed. The compiler test
 locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 464/464 tests in 46.67 seconds. The Vulkan test
+expanded checkpoint passed 467/467 tests in 14.17 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.

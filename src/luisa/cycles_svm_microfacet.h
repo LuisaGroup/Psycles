@@ -12,6 +12,28 @@ bsdf_allocate(ShaderData &shader_data,
     const ShaderData &shader_data,
     luisa::compute::Expr<luisa::float3> normal) noexcept;
 
+[[nodiscard]] luisa::compute::Float3 rotate_around_axis(
+    luisa::compute::Expr<luisa::float3> point,
+    luisa::compute::Expr<luisa::float3> axis,
+    luisa::compute::Expr<float> angle) noexcept;
+
+/* Exact Cycles Principled dielectric layer transition. The returned albedo
+ * includes the post-Multi-GGX closure weight and is therefore ready for
+ * closure_layering_weight(). A failed allocation returns zero, matching the
+ * source branch that leaves lower-layer weight unchanged. */
+[[nodiscard]] luisa::compute::Float3 principled_specular_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    luisa::compute::Expr<luisa::float3> weight,
+    luisa::compute::Expr<luisa::float3> normal,
+    luisa::compute::Expr<luisa::float3> tangent,
+    luisa::compute::Expr<float> alpha_x,
+    luisa::compute::Expr<float> alpha_y, luisa::compute::Expr<float> eta,
+    luisa::compute::Expr<float> f0,
+    luisa::compute::Expr<luisa::float3> specular_tint,
+    luisa::compute::Expr<float> thin_film_thickness,
+    luisa::compute::Expr<float> thin_film_ior,
+    luisa::compute::Expr<bool> preserve_energy) noexcept;
+
 void glass_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
                  const PathState &path_state,
                  luisa::compute::Expr<std::uint32_t> input_type,
