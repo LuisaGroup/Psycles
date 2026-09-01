@@ -1306,7 +1306,7 @@ NodeRegistry make_core_node_registry() {
                  SocketValue::normal({0.0f, 0.0f, 0.0f}))},
       .outputs = {output("Closure", SocketType::closure)},
       .properties = {property("Distribution", SocketType::string,
-                              SocketValue::string("GGX")),
+                              SocketValue::string("MULTI_GGX")),
                      property("SubsurfaceMethod", SocketType::string,
                               SocketValue::string("RANDOM_WALK"))},
       .required_features = feature_bit(ShaderFeature::surface) |

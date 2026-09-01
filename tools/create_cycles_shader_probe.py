@@ -41,6 +41,7 @@ from cycles_shader_probe import (  # noqa: E402
     metallic_closures,
     normal_inputs,
     normal_maps,
+    principled_closures,
     procedural_textures,
     refraction_closures,
     sheen_closures,
@@ -290,6 +291,7 @@ _CANONICAL_PROBES: dict[str, Callable[[Any], None]] = {
 # reported as a rendering regression or motivating a transitional lowering.
 _CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
     "metallic_svm_oracle": metallic_closures._metallic_svm_oracle,
+    "principled_svm_oracle": principled_closures._principled_svm_oracle,
     "svm_tangent_dynamic": normal_maps._svm_tangent_dynamic,
     "vector_to_scalar": values._vector_to_scalar,
     "volume_scatter_svm": volume_closures._volume_scatter_svm,

@@ -153,6 +153,22 @@ regression freezes `a`, `b`, and the three multi-scatter components, so this
 structural error cannot return while insignificant backend ULP differences
 remain tolerated.
 
+## Staged Principled word image
+
+The compiler now has an external full-payload oracle for
+`SVMNodePrincipledBsdfData`; this does not yet claim an executable Principled
+device transition. The oracle finite product contains the untouched Blender
+node plus two all-field nodes. It freezes all 44 payload words, both
+distribution enums, Random Walk Skin and Burley subsurface tags, both Thin
+Wall values, and Cycles' automatic Normal/Coat Normal/Tangent topology.
+
+This audit found that the Psycles core schema defaulted Principled to GGX,
+while the pinned Blender/Cycles 5.2.1 node defaults to Multi-GGX. The schema is
+now corrected, and the untouched-node word image permanently locks the
+default. Its peak stack use is three values because Normal and Coat Normal
+share the default normal; the anisotropic all-field cases use six values after
+Cycles inserts the default tangent conversion.
+
 ## External Cycles oracle
 
 Seven closure families represented by eighteen frozen transitions were created with
@@ -263,6 +279,9 @@ Artifact hashes:
 | Metallic conductor GGX decoded trace | `89e4d69659388bf7a9bd1a9be5e4b52895236e39aeab211475a8ff0830cd2abd` |
 | Metallic conductor Beckmann decoded trace | `27b34532f6e5ef01717579d0bf918a031cdc317fddde654813e4600f92065780` |
 | Metallic conductor Multi-GGX decoded trace | `e7acdf099184f9323260819c40b36714293a87de224878d76e2da8b16cb004b5` |
+| Principled oracle `.blend` | `9e747eeffac3fad668d67b6b78ed9cfcdd43549b0c174d2eae9c5f4e4a6ad7cd` |
+| Principled final SVM buffer | `7a74aff57508b422f0a7c19e6eb9ab20fb9209a8ba217cf29571b91bb65cc4d1` |
+| Principled diagnostic path trace | `752a6e150adca4cb128a76d59093d955125decfd5d46c24c0b6caeca7bcb9bd3` |
 
 No `.svm52` binary is checked in.
 
@@ -292,7 +311,7 @@ Result: closure 3/3, thin-film 6/6, and compiler 1/1 passed. The compiler test
 locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 464/464 tests in 13.91 seconds. The Vulkan test
+expanded checkpoint passed 464/464 tests in 46.67 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.

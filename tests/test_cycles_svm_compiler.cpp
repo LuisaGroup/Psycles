@@ -472,6 +472,208 @@ void test_metallic_surfaces_match_cycles_5_2_1() {
   }
 }
 
+void test_principled_surfaces_match_cycles_5_2_1() {
+  // Complete compact surface images from the external Cycles 5.2.1
+  // `principled_svm_oracle` dump. Case 00 is the untouched Blender node and
+  // therefore locks every node-type default, including Multi-GGX.
+  static constexpr std::uint32_t defaults_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000037u, 0x00000038u,
+      0x0000000bu, 0x00000001u, 0x00000000u, 0x00000002u,
+      0x0000002bu, 0x000000ffu, 0x0000001au, 0x3fc00000u,
+      0x3f000000u, 0x00000000u, 0x00000000u, 0x00000000u,
+      0x00000000u, 0x00000000u, 0x3f4ccccdu, 0x3f4ccccdu,
+      0x3f4ccccdu, 0x3f800000u, 0x00000000u, 0x0000ff00u,
+      0x3f800000u, 0x3f800000u, 0x3f800000u, 0x3f000000u,
+      0x00000000u, 0x00000000u, 0x3f800000u, 0x3f800000u,
+      0x3f800000u, 0x00000000u, 0x3f800000u, 0x3f800000u,
+      0x3f800000u, 0x3f000000u, 0x3f800000u, 0x3f800000u,
+      0x3f800000u, 0x3cf5c28fu, 0x3fc00000u, 0x00000020u,
+      0x3f800000u, 0x3e4ccccdu, 0x3dcccccdu, 0x3ba3d70au,
+      0x3fb33333u, 0x00000000u, 0x00000000u, 0x3faa3d71u,
+      0x00000000u, 0x000000ffu, 0x00000000u, 0x00000000u,
+      0x00000000u,
+  };
+  static constexpr std::uint32_t all_live_multi_expected[] = {
+      0x00000001u, 0x00000004u, 0x0000003au, 0x0000003bu,
+      0x0000000bu, 0x00000001u, 0x00000000u, 0x0000000bu,
+      0x03000002u, 0x00000000u, 0x00000002u, 0x0000002bu,
+      0x000000ffu, 0x0000001au, 0x3fbc28f6u, 0x3e947ae1u,
+      0x3e428f5cu, 0x3e8f5c29u, 0x3ebd70a4u, 0x3e9eb852u,
+      0x3e851eb8u, 0x3e6b851fu, 0x3ed1eb85u, 0x3f2b851fu,
+      0x3f3ae148u, 0x3e3851ecu, 0x00000300u, 0x3f4f5c29u,
+      0x3f6e147bu, 0x3f11eb85u, 0x3f1c28f6u, 0x3ee147aeu,
+      0x3e2e147bu, 0x3de147aeu, 0x3ea3d70au, 0x3f451eb8u,
+      0x3fd9999au, 0x3eb851ecu, 0x3f570a3du, 0x3f147ae1u,
+      0x3f2147aeu, 0x3f733333u, 0x3f3851ecu, 0x3f028f5cu,
+      0x3df5c28fu, 0x3fb1eb85u, 0x00000022u, 0x3f99999au,
+      0x3eae147bu, 0x3da3d70au, 0x3c54fdf4u, 0x3fb0a3d7u,
+      0x3e6147aeu, 0x43b90000u, 0x3fca3d71u, 0x00000000u,
+      0x000000ffu, 0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  static constexpr std::uint32_t all_live_thin_wall_expected[] = {
+      0x00000001u, 0x00000004u, 0x0000003au, 0x0000003bu,
+      0x0000000bu, 0x00000001u, 0x00000000u, 0x0000000bu,
+      0x03000002u, 0x00000000u, 0x00000002u, 0x0000002bu,
+      0x000000ffu, 0x00000019u, 0x3f9c28f6u, 0x3f0a3d71u,
+      0x3f051eb8u, 0x3ed1eb85u, 0x3da3d70au, 0x3f23d70au,
+      0x3f11eb85u, 0x3f35c28fu, 0x3e428f5cu, 0x3d6147aeu,
+      0x3eeb851fu, 0x3edc28f6u, 0x00000300u, 0x3ed70a3du,
+      0x3f2e147bu, 0x3f7851ecu, 0x3eae147bu, 0x3e6b851fu,
+      0x3ec7ae14u, 0x3f2147aeu, 0x3e0f5c29u, 0x3e947ae1u,
+      0x3f51eb85u, 0x3f68f5c3u, 0x3e75c28fu, 0x3ef0a3d7u,
+      0x3eb851ecu, 0x3f1eb852u, 0x3f6147aeu, 0x3f3ae148u,
+      0x3e8a3d71u, 0x3fce147bu, 0x0000001fu, 0x3e8a3d71u,
+      0x3f547ae1u, 0x3fb47ae1u, 0x3cdd2f1bu, 0x3fb33333u,
+      0xbe9eb852u, 0x4400c000u, 0x3fa7ae14u, 0x00000001u,
+      0x000000ffu, 0x00000000u, 0x00000000u, 0x00000000u,
+  };
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  {
+    ShaderGraph graph;
+    const auto principled =
+        graph.add_node(node_type::principled_bsdf, "Principled defaults");
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = principled, .socket = "Closure"});
+    const auto shader = frontend.compile(graph);
+    require(shader.ok(), "default Principled graph did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+    require_words(image.words, defaults_expected,
+                  "Psycles default Principled SVM differs from Cycles");
+    if (image.peak_stack_usage != 3u ||
+        !image.node_types_used[NODE_CLOSURE_BSDF]) {
+      std::cerr << "default Principled peak stack "
+                << image.peak_stack_usage << '\n';
+    }
+    require(image.peak_stack_usage == 3u &&
+                image.node_types_used[NODE_CLOSURE_BSDF],
+            "default Principled SVM stack or opcode mask differs from Cycles");
+  }
+
+  struct Case {
+    const char *name;
+    const char *distribution;
+    const char *subsurface_method;
+    std::array<float, 3u> base_color;
+    float metallic;
+    float roughness;
+    float ior;
+    float alpha;
+    bool thin_wall;
+    float diffuse_roughness;
+    float subsurface_weight;
+    std::array<float, 3u> subsurface_radius;
+    float subsurface_scale;
+    float subsurface_ior;
+    float subsurface_anisotropy;
+    float specular_ior_level;
+    std::array<float, 3u> specular_tint;
+    float anisotropic;
+    float anisotropic_rotation;
+    float transmission_weight;
+    float coat_weight;
+    float coat_roughness;
+    float coat_ior;
+    std::array<float, 3u> coat_tint;
+    float sheen_weight;
+    float sheen_roughness;
+    std::array<float, 3u> sheen_tint;
+    std::array<float, 3u> emission_color;
+    float emission_strength;
+    float thin_film_thickness;
+    float thin_film_ior;
+    std::span<const std::uint32_t> expected;
+  };
+  const std::array cases{
+      Case{"Principled SVM Oracle 01", "MULTI_GGX", "RANDOM_WALK_SKIN",
+           {0.23f, 0.41f, 0.67f}, 0.37f, 0.29f, 1.47f, 0.73f, false,
+           0.18f, 0.26f, {1.20f, 0.34f, 0.08f}, 0.013f, 1.38f, 0.22f,
+           0.61f, {0.81f, 0.93f, 0.57f}, 0.44f, 0.17f, 0.31f, 0.28f,
+           0.12f, 1.39f, {0.95f, 0.72f, 0.51f}, 0.19f, 0.63f,
+           {0.36f, 0.84f, 0.58f}, {0.11f, 0.32f, 0.77f}, 1.70f, 370.0f,
+           1.58f, all_live_multi_expected},
+      Case{"Principled SVM Oracle 02", "GGX", "BURLEY",
+           {0.71f, 0.19f, 0.055f}, 0.08f, 0.54f, 1.22f, 0.46f, true,
+           0.43f, 0.57f, {0.27f, 0.83f, 1.41f}, 0.027f, 1.4f, -0.31f,
+           0.34f, {0.42f, 0.68f, 0.97f}, 0.23f, 0.39f, 0.64f, 0.41f,
+           0.27f, 1.61f, {0.62f, 0.88f, 0.73f}, 0.52f, 0.36f,
+           {0.91f, 0.24f, 0.47f}, {0.63f, 0.14f, 0.29f}, 0.82f, 515.0f,
+           1.31f, all_live_thin_wall_expected},
+  };
+
+  for (const auto &item : cases) {
+    ShaderGraph graph;
+    const auto principled =
+        graph.add_node(node_type::principled_bsdf, item.name);
+    const auto set_float = [&](const char *name, float value) {
+      return graph.set_input(principled, name, SocketValue::floating(value));
+    };
+    const auto set_color = [&](const char *name,
+                               const std::array<float, 3u> &value) {
+      return graph.set_input(
+          principled, name,
+          SocketValue::color({value[0], value[1], value[2]}));
+    };
+    const auto set_vector = [&](const char *name,
+                                const std::array<float, 3u> &value) {
+      return graph.set_input(
+          principled, name,
+          SocketValue::vector({value[0], value[1], value[2]}));
+    };
+    require(
+        graph.set_property(principled, "Distribution",
+                           SocketValue::string(item.distribution)) &&
+            graph.set_property(principled, "SubsurfaceMethod",
+                               SocketValue::string(item.subsurface_method)) &&
+            set_color("BaseColor", item.base_color) &&
+            set_float("Metallic", item.metallic) &&
+            set_float("Roughness", item.roughness) &&
+            set_float("IOR", item.ior) && set_float("Alpha", item.alpha) &&
+            graph.set_input(principled, "ThinWall",
+                            SocketValue::boolean(item.thin_wall)) &&
+            set_float("DiffuseRoughness", item.diffuse_roughness) &&
+            set_float("SubsurfaceWeight", item.subsurface_weight) &&
+            set_vector("SubsurfaceRadius", item.subsurface_radius) &&
+            set_float("SubsurfaceScale", item.subsurface_scale) &&
+            set_float("SubsurfaceIOR", item.subsurface_ior) &&
+            set_float("SubsurfaceAnisotropy", item.subsurface_anisotropy) &&
+            set_float("SpecularIORLevel", item.specular_ior_level) &&
+            set_color("SpecularTint", item.specular_tint) &&
+            set_float("Anisotropic", item.anisotropic) &&
+            set_float("AnisotropicRotation", item.anisotropic_rotation) &&
+            set_float("TransmissionWeight", item.transmission_weight) &&
+            set_float("CoatWeight", item.coat_weight) &&
+            set_float("CoatRoughness", item.coat_roughness) &&
+            set_float("CoatIOR", item.coat_ior) &&
+            set_color("CoatTint", item.coat_tint) &&
+            set_float("SheenWeight", item.sheen_weight) &&
+            set_float("SheenRoughness", item.sheen_roughness) &&
+            set_color("SheenTint", item.sheen_tint) &&
+            set_color("EmissionColor", item.emission_color) &&
+            set_float("EmissionStrength", item.emission_strength) &&
+            set_float("ThinFilmThickness", item.thin_film_thickness) &&
+            set_float("ThinFilmIOR", item.thin_film_ior),
+        "failed to configure Principled compiler oracle");
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = principled, .socket = "Closure"});
+    const auto shader = frontend.compile(graph);
+    require(shader.ok(), "all-live Principled graph did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+    require_words(image.words, item.expected,
+                  "Psycles Principled SVM differs from the Cycles word oracle");
+    if (image.peak_stack_usage != 6u ||
+        !image.node_types_used[NODE_CLOSURE_BSDF]) {
+      std::cerr << "all-live Principled peak stack "
+                << image.peak_stack_usage << '\n';
+    }
+    require(image.peak_stack_usage == 6u &&
+                image.node_types_used[NODE_CLOSURE_BSDF],
+            "all-live Principled stack or opcode mask differs from Cycles");
+  }
+}
+
 void test_constant_mix_closure_matches_cycles_5_2_1() {
   ShaderGraph graph;
   const auto transparent =
@@ -1615,6 +1817,7 @@ int main() {
   test_glossy_surfaces_match_cycles_5_2_1();
   test_refraction_surfaces_match_cycles_5_2_1();
   test_metallic_surfaces_match_cycles_5_2_1();
+  test_principled_surfaces_match_cycles_5_2_1();
   test_constant_mix_closure_matches_cycles_5_2_1();
   test_linked_mix_closure_jumps_match_cycles_5_2_1();
   test_dynamic_math_and_dedup_match_cycles_5_2_1();
