@@ -291,6 +291,9 @@ _CANONICAL_PROBES: dict[str, Callable[[Any], None]] = {
 # reported as a rendering regression or motivating a transitional lowering.
 _CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
     "metallic_svm_oracle": metallic_closures._metallic_svm_oracle,
+    "principled_coat_svm_oracle": (
+        principled_closures._principled_coat_svm_oracle
+    ),
     "principled_sheen_svm_oracle": (
         principled_closures._principled_sheen_svm_oracle
     ),

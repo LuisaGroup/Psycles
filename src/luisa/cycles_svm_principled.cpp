@@ -193,6 +193,12 @@ public:
 
 [[nodiscard]] Float square(Expr<float> value) noexcept { return value * value; }
 
+[[nodiscard]] Float3 color_power(Expr<luisa::float3> value,
+                                 Expr<float> exponent) noexcept {
+  return make_float3(pow(value.x, exponent), pow(value.y, exponent),
+                     pow(value.z, exponent));
+}
+
 [[nodiscard]] Float f0_from_ior(Expr<float> ior) noexcept {
   return square((ior - 1.0f) / (ior + 1.0f));
 }
@@ -243,7 +249,7 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
 
   const auto sheen_weight = max(data.sheen_weight(stack), 0.0f);
   const auto coat_weight = max(data.coat_weight(stack), 0.0f);
-  Bool subset_supported = coat_weight <= CLOSURE_WEIGHT_CUTOFF;
+  Bool subset_supported = true;
   Float metallic = 0.0f;
   Float transmission_weight = 0.0f;
   Float subsurface_weight = 0.0f;
@@ -263,6 +269,11 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                         (subsurface_weight <= CLOSURE_WEIGHT_CUTOFF) &
                         valid_distribution;
   }
+
+  const auto diffuse_visibility =
+      (path_state.visibility & path_ray_visibility_diffuse) != 0u;
+  const Bool reflective_caustics =
+      kernel_globals.caustics_reflective() | !diffuse_visibility;
 
   $if(subset_supported) {
     const auto normal_offsets = data.normal_offsets();
@@ -296,8 +307,37 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
       weight = closure_layering_weight(layer_albedo, weight);
     };
 
-    /* Second layer: Coat. Its nonzero transition remains outside this proved
-     * subset and is rejected before any observable state is mutated. */
+    /* Second layer: Coat. The reflective dielectric closure and the tinted
+     * medium attenuation are distinct Cycles transitions: disabling
+     * reflective caustics skips only the former. */
+    $if(coat_weight > CLOSURE_WEIGHT_CUTOFF) {
+      const auto coat_roughness =
+          clamp(data.coat_roughness(stack), 0.0f, 1.0f);
+      const auto coat_ior = max(data.coat_ior(stack), 1.0f);
+      const auto coat_tint = max(data.coat_tint(stack), make_float3(0.0f));
+      const auto coat_normal = native_vector_math::safe_normalize_nonzero_or(
+          stack_load_float3_default(stack, normal_offsets.coat_normal, normal),
+          shader_data.N);
+      const auto valid_coat_normal =
+          maybe_ensure_valid_specular_reflection(shader_data, coat_normal);
+
+      $if(reflective_caustics) {
+        const auto layer_albedo = principled_coat_setup(
+            kernel_globals, shader_data, path_state, coat_weight * weight,
+            valid_coat_normal, coat_roughness, coat_ior);
+        weight = closure_layering_weight(layer_albedo, weight);
+      };
+
+      $if(any(coat_tint != make_float3(1.0f))) {
+        const auto cosine_incoming = dot(shader_data.wi, valid_coat_normal);
+        const auto cosine_transmitted =
+            sqrt(1.0f - square(1.0f / coat_ior) *
+                            (1.0f - square(cosine_incoming)));
+        const auto optical_depth = 1.0f / cosine_transmitted;
+        weight *= lerp(make_float3(1.0f),
+                       color_power(coat_tint, optical_depth), coat_weight);
+      };
+    };
 
     const auto emission =
         data.emission_color(stack) * data.emission_strength(stack);
@@ -346,10 +386,6 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
         $if(ior < 1.0f) { eta = 1.0f / eta; };
       };
 
-      const auto diffuse_visibility =
-          (path_state.visibility & path_ray_visibility_diffuse) != 0u;
-      const Bool reflective_caustics =
-          kernel_globals.caustics_reflective() | !diffuse_visibility;
       $if(reflective_caustics &
           ((eta != 1.0f) | (thin_film_thickness > THINFILM_THICKNESS_CUTOFF))) {
         const auto layer_albedo = principled_specular_setup(

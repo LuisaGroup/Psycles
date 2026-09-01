@@ -207,6 +207,7 @@ relocated from the original global offsets to its compact test buffer.
 | Metallic conductor Beckmann | type 13 (Beckmann); weight `1`; sample weight `0.6516747475`; alpha `(0.1224999949,0.1224999949)` |
 | Metallic conductor Multi-GGX anisotropic film | output type 12; weight `(0.9931033254,0.9784969091,0.9566794634)`; sample weight `0.5281172991`; alpha `(0.2977624834,0.1503700614)`; energy scale `1.06322` |
 | Principled Sheen | Transparent type 30, Sheen type 7, then Diffuse type 2; Sheen weight `(0.0003624241,0.0010147875,0.0006523633)` and sample weight `0.0006765249`; attenuated emission `(0.2077361,0.1038681,0.6232085)` |
+| Principled Coat | Transparent type 30, dielectric GGX type 12, then Diffuse type 2; Coat weight `(0.5166048,0.5166048,0.5166048)` and sample weight `0.01746508`; tinted Diffuse `(0.1952816,0.4025556,0.4595241)`; attenuated emission `(0.1637846,0.09181092,0.4318419)` |
 
 The Glass test additionally freezes the source-derived typed setup state:
 alpha, IOR, energy scale, tangent, generalized-Schlick discriminator, film
@@ -296,6 +297,10 @@ Artifact hashes:
 | Principled Sheen final SVM buffer | `1fa274d1c7b8a7610d9d8c5e5d5edbe0d1bd89ffcf6c9237534e3abc3297d777` |
 | Principled Sheen diagnostic path trace | `7dfbbe58edf8c51f060df3fe6e3d0adeefad88e11b8f00cd23d2e28b42a262b9` |
 | Principled Sheen decoded diagnostic trace | `2eaec51b67a38f6a9a09dc368f610b7ea32a7dde655525b0860cea9bdc7b9a33` |
+| Principled Coat oracle `.blend` | `97bce9ee4a90886d51a9b0f937a5d5d95cf60f51e68bbef4b71452bac335e414` |
+| Principled Coat final SVM buffer | `6865e185e8570a3921a9ebf845b6cfe4dff6e2f322997046ac06e0fbb320cfdd` |
+| Principled Coat diagnostic path trace | `ebb438bef6583d5d7e4b45ed8aefac36f40aca831a232cbc38037b51cf5cbd4d` |
+| Principled Coat decoded diagnostic trace | `6f64ca4347a22fc9adc24c0fcce52548f9897ce2559eed285b035842e465a319` |
 
 No `.svm52` binary is checked in.
 
@@ -307,12 +312,13 @@ the PC by the exact Cycles struct size. Field reads remain lazy: the payload
 view does not turn the typed record into 44 unconditional device loads.
 
 The proved runtime subset preserves Cycles' layer order and implements alpha,
-Sheen LTC, emission, anisotropic dielectric specular, Multi-GGX energy
-preservation, dielectric layer attenuation, and diffuse/Oren-Nayar. Coat,
-metallic, transmission, and subsurface take an explicit unsupported transition
-when their source-clamped weights are live; they are not silently approximated
-by the legacy surface program. Their nonzero transitions will be enabled only
-as the corresponding Cycles closure families are copied.
+Sheen LTC, Coat dielectric GGX and tint absorption, emission, anisotropic
+dielectric specular, Multi-GGX energy preservation, dielectric layer
+attenuation, and diffuse/Oren-Nayar. Metallic, transmission, and subsurface
+take an explicit unsupported transition when their source-clamped weights are
+live; they are not silently approximated by the legacy surface program. Their
+nonzero transitions will be enabled only as the corresponding Cycles closure
+families are copied.
 
 The Sheen transition copies `bsdf_alloc_maybe_emission` rather than treating
 the layer as a color multiplier. On ordinary surface evaluation it appends a
@@ -322,6 +328,15 @@ attenuates lower layers. With `PATH_RAY_EMISSION` it computes the same setup in
 temporary state and consumes no closure slot. An invalid LTC preserves the
 already consumed `CLOSURE_NONE` slot, clears only sample weight, and leaves
 lower-layer weight unchanged.
+
+The Coat transition likewise copies `bsdf_alloc_maybe_emission`. It runs
+Cycles' dielectric GGX albedo estimate and unconditional multiple-scattering
+energy preservation before attenuating lower layers. Its colored medium is a
+separate Beer-law transition: disabling reflective caustics skips allocation
+and reflective layer attenuation, but deliberately keeps Coat tint absorption.
+The regression freezes both branches. With `PATH_RAY_EMISSION`, the typed
+Microfacet state is temporary and changes emission/flags without consuming a
+closure slot.
 
 For the untouched Blender 5.2.1 Principled default, the external diagnostic
 trace records the following closure sequence at normal incidence. The new
@@ -348,6 +363,7 @@ cmake --build build --parallel 32 \
   --target psycles_luisa_cycles_svm_closure_tests \
            psycles_luisa_cycles_svm_principled_tests \
            psycles_luisa_cycles_svm_principled_sheen_tests \
+           psycles_luisa_cycles_svm_principled_coat_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_luisa_thin_film_fresnel_tests \
            psycles_luisa_thin_film_surface_tests
@@ -362,18 +378,21 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_principled_sheen_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_principled_coat_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
   '^psycles\.cycles_svm_compiler$'
 ```
 
-Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, thin-film 6/6, and
-compiler 1/1 passed. The compiler test
+Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
+3/3, thin-film 6/6, and compiler 1/1 passed. The compiler test
 locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 470/470 tests in 13.40 seconds. The Vulkan test
+expanded checkpoint passed 473/473 tests in 13.73 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
