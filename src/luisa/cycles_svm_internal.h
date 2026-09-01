@@ -127,6 +127,19 @@ void node_geometry(Cursor &cursor, Stack &stack,
                    const KernelGlobals &kernel_globals,
                    const ShaderData &shader_data,
                    bool use_derivatives) noexcept;
+void node_object_info(Cursor &cursor, Stack &stack,
+                      const InfoServices &services,
+                      const ShaderData &shader_data) noexcept;
+void node_particle_info(Cursor &cursor, Stack &stack,
+                        const InfoServices &services,
+                        const ShaderData &shader_data) noexcept;
+void node_hair_info(Cursor &cursor, Stack &stack,
+                    const InfoServices *services,
+                    const ShaderData &shader_data,
+                    luisa::compute::Bool &supported) noexcept;
+void node_point_info(Cursor &cursor, Stack &stack,
+                     const InfoServices &services,
+                     const ShaderData &shader_data) noexcept;
 void node_camera(Cursor &cursor, Stack &stack,
                  const TransformState &transform_state,
                  const ShaderData &shader_data) noexcept;

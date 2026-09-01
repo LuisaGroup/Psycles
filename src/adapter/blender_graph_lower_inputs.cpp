@@ -17,6 +17,12 @@ struct BlenderImageBinding {
   bool unassociate_alpha{};
 };
 
+struct InfoSocket {
+  std::string_view blender_name;
+  std::string_view graph_name;
+  contract::SocketType type;
+};
+
 [[nodiscard]] BlenderImageBinding
 resolve_image_binding(BlenderNodeLoweringContext &context, yyjson_val *node,
                       bool alpha_output_controls_unassociation) {
@@ -68,6 +74,36 @@ public:
     [[maybe_unused]] auto *node = request.node;
     [[maybe_unused]] const auto &type = request.type;
     [[maybe_unused]] const auto &finish = request.finish;
+    const auto shared_info_output =
+        [&](std::string_view graph_type, std::string_view semantic_prefix,
+            const auto &outputs) -> std::optional<TypedOutput> {
+      const auto selected = std::find_if(
+          outputs.begin(), outputs.end(),
+          [&](const InfoSocket &entry) noexcept {
+            return entry.blender_name == socket;
+          });
+      if (selected == outputs.end()) {
+        return std::nullopt;
+      }
+      const auto semantic = std::string{semantic_prefix} + "." +
+                            std::string{selected->graph_name};
+      auto output = context.shared_output(node_name, semantic);
+      if (!output) {
+        const auto id =
+            context.graph().add_node(std::string{graph_type}, node_name);
+        for (const auto &entry : outputs) {
+          context.remember_shared_output(
+              node_name,
+              std::string{semantic_prefix} + "." +
+                  std::string{entry.graph_name},
+              TypedOutput{.ref = {.node = id,
+                                  .socket = std::string{entry.graph_name}},
+                          .type = entry.type});
+        }
+        output = context.shared_output(node_name, semantic);
+      }
+      return output;
+    };
     if (type == "RGB") {
       return finish(
           context.constant_from_output(node, socket, SocketType::color));
@@ -140,31 +176,57 @@ public:
           {.ref = {.node = id, .socket = output_socket}, .type = output_type});
     }
     if (type == "OBJECT_INFO") {
-      const auto id =
-          context.graph().add_node(compiler::node_type::object_info, node_name);
-      const auto output_socket = socket == "Location" ? "Location" : "Random";
-      return finish({.ref = {.node = id, .socket = output_socket},
-                     .type = output_socket == std::string_view{"Location"}
-                                 ? SocketType::vector
-                                 : SocketType::floating});
+      static constexpr auto outputs = std::array{
+          InfoSocket{"Location", "Location", SocketType::vector},
+          InfoSocket{"Color", "Color", SocketType::color},
+          InfoSocket{"Alpha", "Alpha", SocketType::floating},
+          InfoSocket{"Object Index", "ObjectIndex", SocketType::floating},
+          InfoSocket{"Material Index", "MaterialIndex",
+                     SocketType::floating},
+          InfoSocket{"Random", "Random", SocketType::floating},
+      };
+      const auto output = shared_info_output(
+          compiler::node_type::object_info, "object_info", outputs);
+      return output ? std::optional{finish(*output)} : std::nullopt;
     }
     if (type == "PARTICLE_INFO") {
-      const auto id = context.graph().add_node(
-          compiler::node_type::particle_info, node_name);
-      const auto output_socket = socket == "Index" ? "Index" : "Random";
-      return finish({.ref = {.node = id, .socket = output_socket},
-                     .type = SocketType::floating});
+      static constexpr auto outputs = std::array{
+          InfoSocket{"Index", "Index", SocketType::floating},
+          InfoSocket{"Random", "Random", SocketType::floating},
+          InfoSocket{"Age", "Age", SocketType::floating},
+          InfoSocket{"Lifetime", "Lifetime", SocketType::floating},
+          InfoSocket{"Location", "Location", SocketType::point},
+          InfoSocket{"Size", "Size", SocketType::floating},
+          InfoSocket{"Velocity", "Velocity", SocketType::vector},
+          InfoSocket{"Angular Velocity", "AngularVelocity",
+                     SocketType::vector},
+      };
+      const auto output = shared_info_output(
+          compiler::node_type::particle_info, "particle_info", outputs);
+      return output ? std::optional{finish(*output)} : std::nullopt;
     }
     if (type == "HAIR_INFO") {
-      const auto id =
-          context.graph().add_node(compiler::node_type::hair_info, node_name);
-      const auto output_socket = socket == "Is Strand"        ? "IsStrand"
-                                 : socket == "Tangent Normal" ? "TangentNormal"
-                                                              : socket;
-      return finish({.ref = {.node = id, .socket = output_socket},
-                     .type = socket == "Tangent Normal"
-                                 ? SocketType::normal
-                                 : SocketType::floating});
+      static constexpr auto outputs = std::array{
+          InfoSocket{"Is Strand", "IsStrand", SocketType::floating},
+          InfoSocket{"Intercept", "Intercept", SocketType::floating},
+          InfoSocket{"Length", "Length", SocketType::floating},
+          InfoSocket{"Thickness", "Thickness", SocketType::floating},
+          InfoSocket{"Tangent Normal", "TangentNormal", SocketType::normal},
+          InfoSocket{"Random", "Random", SocketType::floating},
+      };
+      const auto output = shared_info_output(
+          compiler::node_type::hair_info, "hair_info", outputs);
+      return output ? std::optional{finish(*output)} : std::nullopt;
+    }
+    if (type == "POINT_INFO") {
+      static constexpr auto outputs = std::array{
+          InfoSocket{"Position", "Position", SocketType::point},
+          InfoSocket{"Radius", "Radius", SocketType::floating},
+          InfoSocket{"Random", "Random", SocketType::floating},
+      };
+      const auto output = shared_info_output(
+          compiler::node_type::point_info, "point_info", outputs);
+      return output ? std::optional{finish(*output)} : std::nullopt;
     }
     if (type == "LIGHT_FALLOFF") {
       // Cycles gives Light Falloff a semantic distant-light branch: an exact

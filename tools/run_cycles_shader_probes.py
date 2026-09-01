@@ -72,6 +72,7 @@ _ALL_PROBES = (
     "image_texture_projection_modes",
     "indirect_diffuse",
     "indirect_principled",
+    "info_nodes_matrix",
     "integrator_clamp_direct",
     "invert_color_matrix",
     "legacy_separate_combine_matrix",
