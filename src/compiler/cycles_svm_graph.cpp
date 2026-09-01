@@ -178,6 +178,20 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
            : output == "RandomPerIsland" ? "Random Per Island"
                                           : output;
   }
+  if (node == node_type::object_info) {
+    return output == "ObjectIndex"     ? "Object Index"
+           : output == "MaterialIndex" ? "Material Index"
+                                        : output;
+  }
+  if (node == node_type::particle_info &&
+      output == "AngularVelocity") {
+    return "Angular Velocity";
+  }
+  if (node == node_type::hair_info) {
+    return output == "IsStrand"       ? "Is Strand"
+           : output == "TangentNormal" ? "Tangent Normal"
+                                        : output;
+  }
   if (node == node_type::light_path) {
     static constexpr auto outputs = std::array{
         std::pair{std::string_view{"IsCameraRay"},

@@ -472,6 +472,48 @@ void eval_nodes(
                                   node_feature_mask);
         };
       }
+      if (node_types_used[NODE_OBJECT_INFO]) {
+        PSYCLES_SVM_CASE(NODE_OBJECT_INFO) {
+          if (const auto *services = kernel_globals.info_services()) {
+            detail::node_object_info(
+                cursor, stack, *services, shader_data);
+          } else {
+            cursor.advance(2u);
+            transition_supported = false;
+          }
+        };
+      }
+      if (node_types_used[NODE_PARTICLE_INFO]) {
+        PSYCLES_SVM_CASE(NODE_PARTICLE_INFO) {
+          if (const auto *services = kernel_globals.info_services()) {
+            detail::node_particle_info(
+                cursor, stack, *services, shader_data);
+          } else {
+            cursor.advance(2u);
+            transition_supported = false;
+          }
+        };
+      }
+      if (node_types_used[NODE_HAIR_INFO] &&
+          (kernel_features & kernel_feature_hair) != 0u) {
+        PSYCLES_SVM_CASE(NODE_HAIR_INFO) {
+          detail::node_hair_info(cursor, stack,
+                                 kernel_globals.info_services(),
+                                 shader_data, transition_supported);
+        };
+      }
+      if (node_types_used[NODE_POINT_INFO] &&
+          (kernel_features & kernel_feature_pointcloud) != 0u) {
+        PSYCLES_SVM_CASE(NODE_POINT_INFO) {
+          if (const auto *services = kernel_globals.info_services()) {
+            detail::node_point_info(
+                cursor, stack, *services, shader_data);
+          } else {
+            cursor.advance(2u);
+            transition_supported = false;
+          }
+        };
+      }
       if (node_types_used[NODE_INVERT]) {
         PSYCLES_SVM_CASE(NODE_INVERT) { detail::node_invert(cursor, stack); };
       }

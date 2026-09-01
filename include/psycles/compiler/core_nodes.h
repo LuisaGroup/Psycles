@@ -58,6 +58,7 @@ inline constexpr auto normal_to_vector = "psycles.convert.normal_to_vector";
 inline constexpr auto object_info = "psycles.object_info";
 inline constexpr auto particle_info = "psycles.particle_info";
 inline constexpr auto hair_info = "psycles.hair_info";
+inline constexpr auto point_info = "psycles.point_info";
 inline constexpr auto light_path = "psycles.light_path";
 inline constexpr auto light_falloff = "psycles.light_falloff";
 inline constexpr auto layer_weight = "psycles.layer_weight";

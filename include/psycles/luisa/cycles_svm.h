@@ -212,12 +212,63 @@ struct AttributeDescriptor {
 
 struct ShaderData;
 
+/* Exact geometry/object-table services consumed by Cycles' Info nodes. The
+ * interface is resolved while Luisa records the AST. A KernelGlobals provider
+ * that does not expose this interface makes the corresponding transition
+ * explicitly unsupported; it never substitutes legacy SurfacePoint fields. */
+class InfoServices {
+public:
+  virtual ~InfoServices() noexcept = default;
+
+  [[nodiscard]] virtual luisa::compute::Float3
+  object_location(const ShaderData &shader_data) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3 object_color(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float object_alpha(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float object_pass_id(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float
+  shader_pass_id(const ShaderData &shader_data) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float object_random_number(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+
+  [[nodiscard]] virtual luisa::compute::Int object_particle_id(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::UInt particle_index(
+      luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float particle_age(
+      luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float particle_lifetime(
+      luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float particle_size(
+      luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3 particle_location(
+      luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3 particle_velocity(
+      luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3 particle_angular_velocity(
+      luisa::compute::Expr<std::int32_t> particle) const noexcept = 0;
+
+  [[nodiscard]] virtual luisa::compute::Float
+  curve_thickness(const ShaderData &shader_data) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float3
+  point_position(const ShaderData &shader_data) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float
+  point_radius(const ShaderData &shader_data) const noexcept = 0;
+};
+
 /* Host/JIT projection of the exact KernelGlobals services consumed by the
  * copied SVM handlers. Virtual dispatch happens while Luisa records the AST;
  * generated device code contains only the resulting buffer operations. */
 class KernelGlobals {
 public:
   virtual ~KernelGlobals() noexcept = default;
+
+  [[nodiscard]] virtual const InfoServices *
+  info_services() const noexcept {
+    return nullptr;
+  }
 
   [[nodiscard]] virtual TriangleVertices triangle_vertices(
       luisa::compute::Expr<std::uint32_t> object,

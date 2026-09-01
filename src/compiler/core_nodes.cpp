@@ -145,6 +145,10 @@ NodeRegistry make_core_node_registry() {
       NodeSchema{.type = node_type::object_info,
                  .inputs = {},
                  .outputs = {output("Location", SocketType::vector),
+                             output("Color", SocketType::color),
+                             output("Alpha", SocketType::floating),
+                             output("ObjectIndex", SocketType::floating),
+                             output("MaterialIndex", SocketType::floating),
                              output("Random", SocketType::floating)},
                  .properties = {},
                  .required_features = feature_bit(ShaderFeature::surface) |
@@ -154,6 +158,22 @@ NodeRegistry make_core_node_registry() {
       NodeSchema{.type = node_type::particle_info,
                  .inputs = {},
                  .outputs = {output("Index", SocketType::floating),
+                             output("Random", SocketType::floating),
+                             output("Age", SocketType::floating),
+                             output("Lifetime", SocketType::floating),
+                             output("Location", SocketType::point),
+                             output("Size", SocketType::floating),
+                             output("Velocity", SocketType::vector),
+                             output("AngularVelocity", SocketType::vector)},
+                 .properties = {},
+                 .required_features = feature_bit(ShaderFeature::surface) |
+                                      feature_bit(ShaderFeature::attributes)}));
+
+  static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::point_info,
+                 .inputs = {},
+                 .outputs = {output("Position", SocketType::point),
+                             output("Radius", SocketType::floating),
                              output("Random", SocketType::floating)},
                  .properties = {},
                  .required_features = feature_bit(ShaderFeature::surface) |
