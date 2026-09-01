@@ -51,6 +51,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_closure_nodes.cpp
     src/compiler/cycles_svm_constant_fold.cpp
     src/compiler/cycles_svm_compiler.cpp
+    src/compiler/cycles_svm_scene.cpp
     src/compiler/cycles_svm_fresnel_nodes.cpp
     src/compiler/cycles_svm_geometry_nodes.cpp
     src/compiler/cycles_svm_graph.cpp
