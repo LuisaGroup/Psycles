@@ -775,6 +775,15 @@ private:
             type);
     }
 
+    [[nodiscard]] SocketValue output_default(
+        yyjson_val *node,
+        std::string_view socket,
+        contract::SocketType type) const override {
+        return literal(
+            member(raw_output(node, socket), "default"),
+            type);
+    }
+
     [[nodiscard]] std::optional<TypedOutput> shared_output(
         std::string_view raw_node_name,
         std::string_view semantic) const override {

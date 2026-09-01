@@ -536,79 +536,36 @@ public:
                 .type = SocketType::vector});
         }
         if (type == "NORMAL") {
-            // Cycles' NormalNode has one authored direction shared by both
-            // outputs. It is stored on the Blender output socket rather than
-            // on the input socket: D = normalize(direction), Normal = D, and
-            // Dot = dot(D, normalize(input Normal)). Build that definition as
-            // a typed DAG so output-driven lowering cannot duplicate D and so
-            // ordinary value scheduling/compaction remains authoritative.
-            auto direction = context.shared_output(
-                node_name, "normalized_direction");
-            if (!direction) {
-                const auto authored_direction =
-                    context.constant_from_output(
-                        node, "Normal", SocketType::vector);
-                const auto normalize_direction =
-                    context.graph().add_node(
-                        compiler::node_type::vector_math,
-                        node_name + " / Normalize Direction");
-                static_cast<void>(context.graph().connect(
-                    authored_direction.ref,
-                    normalize_direction,
-                    "A"));
+            const auto semantic = "normal." + socket;
+            auto output = context.shared_output(node_name, semantic);
+            if (!output) {
+                const auto id = context.graph().add_node(
+                    compiler::node_type::normal,
+                    node_name);
+                static_cast<void>(context.bind(
+                    id, "Normal", node, "Normal", SocketType::normal));
                 static_cast<void>(context.graph().set_property(
-                    normalize_direction,
-                    "Operation",
-                    SocketValue::string("CYCLES_NORMALIZE")));
-                direction = TypedOutput{
-                    .ref = {
-                        .node = normalize_direction,
-                        .socket = "Vector"},
-                    .type = SocketType::vector};
+                    id,
+                    "Direction",
+                    context.output_default(
+                        node, "Normal", SocketType::vector)));
                 context.remember_shared_output(
                     node_name,
-                    "normalized_direction",
-                    *direction);
+                    "normal.Normal",
+                    TypedOutput{
+                        .ref = {.node = id, .socket = "Normal"},
+                        .type = SocketType::normal});
+                context.remember_shared_output(
+                    node_name,
+                    "normal.Dot",
+                    TypedOutput{
+                        .ref = {.node = id, .socket = "Dot"},
+                        .type = SocketType::floating});
+                output = context.shared_output(node_name, semantic);
             }
-            if (socket == "Normal") {
-                return finish(context.conversion(
-                    *direction, SocketType::normal));
-            }
-            if (socket == "Dot") {
-                const auto normalize_input =
-                    context.graph().add_node(
-                        compiler::node_type::vector_math,
-                        node_name + " / Normalize Input");
-                static_cast<void>(context.bind(
-                    normalize_input,
-                    "A",
-                    node,
-                    "Normal",
-                    SocketType::vector));
-                static_cast<void>(context.graph().set_property(
-                    normalize_input,
-                    "Operation",
-                    SocketValue::string("CYCLES_NORMALIZE")));
-
-                const auto dot = context.graph().add_node(
-                    compiler::node_type::vector_math,
-                    node_name + " / Dot");
-                static_cast<void>(context.graph().connect(
-                    direction->ref, dot, "A"));
-                static_cast<void>(context.graph().connect(
-                    {.node = normalize_input,
-                     .socket = "Vector"},
-                    dot,
-                    "B"));
-                static_cast<void>(context.graph().set_property(
-                    dot,
-                    "Operation",
-                    SocketValue::string("DOT_PRODUCT")));
-                return finish({
-                    .ref = {.node = dot, .socket = "Value"},
-                    .type = SocketType::floating});
-            }
-            return std::nullopt;
+            return output
+                       ? std::optional{finish(*output)}
+                       : std::nullopt;
         }
         if (type == "MATH") {
             const auto operation =

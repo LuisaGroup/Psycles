@@ -701,6 +701,17 @@ NodeRegistry make_core_node_registry() {
                               SocketValue::boolean(false))},
       .required_features = {}}));
 
+  static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::normal,
+      .inputs = {input("Normal", SocketType::normal,
+                       SocketValue::normal({0.0f, 0.0f, 0.0f}))},
+      .outputs = {output("Normal", SocketType::normal),
+                  output("Dot", SocketType::floating)},
+      .properties = {runtime_property(
+          "Direction", SocketType::vector,
+          SocketValue::vector({0.0f, 0.0f, 0.0f}))},
+      .required_features = {}}));
+
   static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::vector_transform,
                  .inputs = {input("Vector", SocketType::vector,
