@@ -4,6 +4,7 @@
 
 #include "cycles_svm_internal.h"
 #include "cycles_svm_microfacet.h"
+#include "cycles_svm_principled.h"
 #include "cycles_svm_simple_closure.h"
 
 #include <psycles/luisa/native_vector_math.h>
@@ -352,6 +353,12 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
         node_closure_bsdf_skip(cursor, closure_type);
         supported = false;
       } else {
+        $if(closure_type ==
+            static_cast<std::uint32_t>(CLOSURE_BSDF_PRINCIPLED_ID)) {
+          node_principled_bsdf(kernel_globals, cursor, stack, mix_weight, true,
+                               shader_data, path_state, supported);
+        }
+        $else {
         const Bool is_glass =
             (closure_type == static_cast<std::uint32_t>(
                                  CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
@@ -536,6 +543,7 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
           };
           };
         };
+        };
       }
     };
     return;
@@ -548,11 +556,13 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
       node_closure_bsdf_skip(cursor, closure_type);
     }
     $else {
-      /* Cycles evaluates Principled emission from this node even without
-       * NODE_FEATURE_BSDF. Keep the exact cursor transition, but reject the
-       * state transition until that Principled payload has been copied. */
-      node_closure_bsdf_skip(cursor, closure_type);
-      supported = false;
+      if (shader_data.closure == nullptr) {
+        node_closure_bsdf_skip(cursor, closure_type);
+        supported = false;
+      } else {
+        node_principled_bsdf(kernel_globals, cursor, stack, mix_weight, false,
+                             shader_data, path_state, supported);
+      }
     };
     return;
   }

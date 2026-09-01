@@ -115,28 +115,6 @@ inline constexpr float two_pi = 6.28318530717958647692f;
                  make_float3(0.0f), make_float3(1.0f));
 }
 
-[[nodiscard]] Float3 rotate_around_axis(Expr<luisa::float3> point,
-                                        Expr<luisa::float3> axis,
-                                        Expr<float> angle) noexcept {
-    const auto cosine = cos(angle);
-    const auto sine = sin(angle);
-    const auto one_minus_cosine = 1.0f - cosine;
-    Float3 result;
-    result.x =
-        (cosine + one_minus_cosine * axis.x * axis.x) * point.x +
-        (one_minus_cosine * axis.x * axis.y - axis.z * sine) * point.y +
-        (one_minus_cosine * axis.x * axis.z + axis.y * sine) * point.z;
-    result.y =
-        (one_minus_cosine * axis.x * axis.y + axis.z * sine) * point.x +
-        (cosine + one_minus_cosine * axis.y * axis.y) * point.y +
-        (one_minus_cosine * axis.y * axis.z - axis.x * sine) * point.z;
-    result.z =
-        (one_minus_cosine * axis.x * axis.z - axis.y * sine) * point.x +
-        (one_minus_cosine * axis.y * axis.z + axis.x * sine) * point.y +
-        (cosine + one_minus_cosine * axis.z * axis.z) * point.z;
-    return result;
-}
-
 [[nodiscard]] Float3
 ensure_valid_specular_reflection(Expr<luisa::float3> geometric_normal,
                                  Expr<luisa::float3> incident,
@@ -316,6 +294,28 @@ void preserve_multi_ggx_reflection_energy(
 
 }// namespace
 
+Float3 rotate_around_axis(Expr<luisa::float3> point,
+                          Expr<luisa::float3> axis,
+                          Expr<float> angle) noexcept {
+    const auto cosine = cos(angle);
+    const auto sine = sin(angle);
+    const auto one_minus_cosine = 1.0f - cosine;
+    Float3 result;
+    result.x =
+        (cosine + one_minus_cosine * axis.x * axis.x) * point.x +
+        (one_minus_cosine * axis.x * axis.y - axis.z * sine) * point.y +
+        (one_minus_cosine * axis.x * axis.z + axis.y * sine) * point.z;
+    result.y =
+        (one_minus_cosine * axis.x * axis.y + axis.z * sine) * point.x +
+        (cosine + one_minus_cosine * axis.y * axis.y) * point.y +
+        (one_minus_cosine * axis.y * axis.z - axis.x * sine) * point.z;
+    result.z =
+        (one_minus_cosine * axis.x * axis.z - axis.y * sine) * point.x +
+        (one_minus_cosine * axis.y * axis.z + axis.x * sine) * point.y +
+        (cosine + one_minus_cosine * axis.z * axis.z) * point.z;
+    return result;
+}
+
 ClosurePool::Allocation
 bsdf_allocate(ShaderData &shader_data,
               Expr<luisa::float3> input_weight) noexcept {
@@ -336,6 +336,71 @@ bsdf_allocate(ShaderData &shader_data,
         };
     };
     return result;
+}
+
+Float3 principled_specular_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    Expr<luisa::float3> weight, Expr<luisa::float3> normal,
+    Expr<luisa::float3> tangent, Expr<float> alpha_x,
+    Expr<float> alpha_y, Expr<float> eta, Expr<float> f0,
+    Expr<luisa::float3> specular_tint, Expr<float> thin_film_thickness,
+    Expr<float> thin_film_ior, Expr<bool> preserve_energy) noexcept {
+    auto &pool = *shader_data.closure;
+    Float3 layer_albedo = make_float3(0.0f);
+    const auto allocated = bsdf_allocate(shader_data, weight);
+    const auto extra_allocated = pool.allocate_extra(allocated, 1u);
+    $if (extra_allocated) {
+        MicrofacetParam microfacet{
+            .alpha_x = clamp(alpha_x, 0.0f, 1.0f),
+            .alpha_y = clamp(alpha_y, 0.0f, 1.0f),
+            .ior = eta,
+            .energy_scale = 1.0f,
+            .fresnel_type = static_cast<std::uint32_t>(
+                MicrofacetFresnel::generalized_schlick),
+            .T = tangent};
+        const FresnelGeneralizedSchlick fresnel{
+            .thin_film = {.thickness = thin_film_thickness,
+                          .ior = thin_film_ior},
+            .reflection_tint = make_float3(1.0f),
+            .transmission_tint = make_float3(0.0f),
+            .f0 = clamp(make_float3(f0) * specular_tint,
+                        make_float3(0.0f), make_float3(1.0f)),
+            .f90 = make_float3(1.0f),
+            .exponent = -eta};
+
+        pool.set_normal(allocated.index, normal);
+        pool.set_type(
+            allocated.index,
+            static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID));
+        pool.set_generalized_schlick(allocated.index, fresnel);
+
+        const auto albedo = generalized_schlick_albedo(
+            kernel_globals, shader_data.wi, normal, microfacet, fresnel);
+        const auto common = pool.common(allocated.index);
+        pool.set_sample_weight(allocated.index,
+                               common.sample_weight * average(albedo));
+        $if (preserve_energy) {
+            const auto real_f0 = f0_from_ior(eta);
+            const auto real_fss = fresnel_dielectric_fss(eta);
+            const auto interpolation =
+                clamp((real_fss - real_f0) / (1.0f - real_f0), 0.0f, 1.0f);
+            const auto average_fresnel = fresnel.reflection_tint *
+                                         lerp(fresnel.f0, fresnel.f90,
+                                              interpolation);
+            preserve_multi_ggx_reflection_energy(
+                kernel_globals, pool, allocated, shader_data.wi, normal,
+                microfacet, average_fresnel);
+        };
+        pool.set_microfacet_param(allocated.index, microfacet);
+
+        UInt flags = shader_data_bsdf;
+        $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
+            flags |= shader_data_bsdf_has_eval;
+        };
+        shader_data.flag |= flags;
+        layer_albedo = pool.common(allocated.index).weight * albedo;
+    };
+    return layer_albedo;
 }
 
 Float3

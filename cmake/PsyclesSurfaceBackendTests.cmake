@@ -747,6 +747,21 @@ if(TEST psycles.luisa_cycles_svm_closure_vk)
 endif()
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_principled_tests
+    SOURCE tests/test_luisa_cycles_svm_principled.cpp
+    TEST_STEM luisa_cycles_svm_principled
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_cycles_svm_principled_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+if(TEST psycles.luisa_cycles_svm_principled_vk)
+    set_tests_properties(
+        psycles.luisa_cycles_svm_principled_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_light_falloff_tests
     SOURCE tests/test_luisa_cycles_svm_light_falloff.cpp
     TEST_STEM luisa_cycles_svm_light_falloff

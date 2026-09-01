@@ -18,6 +18,11 @@ luisa::compute::UInt Cursor::word() noexcept {
   return value;
 }
 
+luisa::compute::UInt Cursor::word_at(
+    luisa::compute::Expr<std::uint32_t> relative_word) const noexcept {
+  return _words.read(_offset + relative_word);
+}
+
 luisa::compute::Float Cursor::floating() noexcept {
   return word().bitcast<float>();
 }

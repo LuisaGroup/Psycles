@@ -29,6 +29,8 @@ public:
          luisa::compute::UInt &offset) noexcept;
 
   [[nodiscard]] luisa::compute::UInt word() noexcept;
+  [[nodiscard]] luisa::compute::UInt
+  word_at(luisa::compute::Expr<std::uint32_t> relative_word) const noexcept;
   [[nodiscard]] luisa::compute::Float floating() noexcept;
   [[nodiscard]] luisa::compute::Float
   floating_at(luisa::compute::Expr<std::uint32_t> relative_word) const noexcept;
