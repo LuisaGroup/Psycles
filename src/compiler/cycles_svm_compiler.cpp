@@ -1030,7 +1030,7 @@ public:
   Compiler(const ShaderProgram &shader, AttributeIDMap &attribute_ids,
            ImageIDMap &image_ids, IESIDMap &ies_ids,
            ShaderCompileContext context)
-      : _graph{CyclesGraph::project(shader)},
+      : _graph{CyclesGraph::project(shader, context.color_space)},
         _attribute_ids{attribute_ids},
         _image_ids{image_ids},
         _ies_ids{ies_ids},

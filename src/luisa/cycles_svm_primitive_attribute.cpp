@@ -2,7 +2,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0 */
 
-#include <psycles/luisa/cycles_svm.h>
+#include "cycles_svm_internal.h"
 
 #include <type_traits>
 
@@ -80,17 +80,6 @@ packed_float3_value(Var<compiler::cycles_svm::packed_float3> value) noexcept {
   return result;
 }
 
-[[nodiscard]] Float3 rec709_to_rgb(const KernelGlobals &kernel_globals,
-                                   Expr<luisa::float3> rec709) noexcept {
-  Float3 result = rec709;
-  $if(!kernel_globals.film_is_rec709()) {
-    result = make_float3(dot(kernel_globals.film_rec709_to_r(), rec709),
-                         dot(kernel_globals.film_rec709_to_g(), rec709),
-                         dot(kernel_globals.film_rec709_to_b(), rec709));
-  };
-  return result;
-}
-
 template <typename T>
 [[nodiscard]] Var<T> attribute_data_fetch(const KernelGlobals &kernel_globals,
                                           Expr<std::uint32_t> element,
@@ -118,8 +107,10 @@ template <typename T>
       const Float4 linear_rec709 = make_float4(
           color_srgb_to_linear(encoded.x), color_srgb_to_linear(encoded.y),
           color_srgb_to_linear(encoded.z), encoded.w);
-      result = make_float4(rec709_to_rgb(kernel_globals, linear_rec709.xyz()),
-                           linear_rec709.w);
+      result = make_float4(
+          ::psycles::luisa_backend::cycles_svm::detail::rec709_to_rgb(
+              kernel_globals, linear_rec709.xyz()),
+          linear_rec709.w);
     };
     return result;
   }

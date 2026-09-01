@@ -73,6 +73,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "background_world_linked": values._background_world_linked,
     "background_world_mix": values._background_world_mix,
     "blackbody_matrix": texture_inputs._blackbody_matrix,
+    "svm_spectral_dynamic": texture_inputs._svm_spectral_dynamic,
     "bump_matrix": closures._bump_matrix,
     "bump_nested_matrix": bump_nested._bump_nested_matrix,
     "bump_surface": closures._bump_surface,

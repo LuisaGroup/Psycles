@@ -2,6 +2,7 @@
 
 #include <psycles/compiler/cycles_svm_bytecode.h>
 #include <psycles/compiler/shader_program.h>
+#include <psycles/contract/scene.h>
 
 #include <array>
 #include <compare>
@@ -54,6 +55,11 @@ struct ShaderImage {
 // world/background semantics from the graph topology.
 struct ShaderCompileContext {
   bool background{};
+  // Cycles' Blackbody constant folder evaluates in Rec.709 and projects the
+  // result through ShaderManager's active scene-linear transform. Keeping the
+  // same scene-owned value here prevents host folding from silently assuming
+  // Rec.709 when the device interpreter would use another working space.
+  contract::ShaderColorSpace color_space{};
 };
 
 // Scene-wide named-attribute identifier state corresponding to Cycles 5.2.1

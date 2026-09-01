@@ -65,6 +65,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_nodes.cpp
     src/compiler/cycles_svm_procedural_texture_nodes.cpp
     src/compiler/cycles_svm_ramp_nodes.cpp
+    src/compiler/cycles_svm_spectral_nodes.cpp
     src/compiler/cycles_svm_texture_coordinate_nodes.cpp
     src/compiler/cycles_svm_value_nodes.cpp
     src/compiler/cycles_svm_vector_nodes.cpp

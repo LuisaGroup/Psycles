@@ -567,6 +567,21 @@ if(TEST psycles.luisa_cycles_svm_gabor_vk)
 endif()
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_spectral_tests
+    SOURCE tests/test_luisa_cycles_svm_spectral.cpp
+    TEST_STEM luisa_cycles_svm_spectral
+    LIBRARIES Psycles::luisa)
+target_include_directories(
+    psycles_luisa_cycles_svm_spectral_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+if(TEST psycles.luisa_cycles_svm_spectral_vk)
+    set_tests_properties(
+        psycles.luisa_cycles_svm_spectral_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_procedural_texture_tests
     SOURCE tests/test_luisa_cycles_svm_procedural_texture.cpp
     TEST_STEM luisa_cycles_svm_procedural_texture
