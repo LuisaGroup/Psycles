@@ -339,6 +339,11 @@ void eval_nodes(
               (node_feature_mask & kernel_feature_node_voronoi_extra) != 0u);
         };
       }
+      if (node_types_used[NODE_TEX_GABOR]) {
+        PSYCLES_SVM_CASE(NODE_TEX_GABOR) {
+          detail::node_tex_gabor(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_TEX_WAVE]) {
         PSYCLES_SVM_CASE(NODE_TEX_WAVE) {
           detail::node_tex_wave(cursor, stack);
@@ -463,12 +468,12 @@ void eval_nodes(
       }
       if (node_types_used[NODE_VECTOR_MATH]) {
         PSYCLES_SVM_CASE(NODE_VECTOR_MATH) {
-          detail::node_vector_math_mapping_normalize(cursor, stack, false);
+          detail::node_vector_math(cursor, stack, false);
         };
       }
       if (node_types_used[NODE_VECTOR_MATH_DERIVATIVE]) {
         PSYCLES_SVM_CASE(NODE_VECTOR_MATH_DERIVATIVE) {
-          detail::node_vector_math_mapping_normalize(cursor, stack, true);
+          detail::node_vector_math(cursor, stack, true);
         };
       }
       if (node_types_used[NODE_SET_BUMP]) {

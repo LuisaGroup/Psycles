@@ -31,6 +31,7 @@ from cycles_shader_probe import (  # noqa: E402
     closures,
     curve_inputs,
     environment_inputs,
+    gabor_inputs,
     geometry_inputs,
     hair_closures,
     ies_inputs,
@@ -101,6 +102,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "fresnel_matrix": texture_inputs._fresnel_matrix,
     "float_curve_matrix": curve_inputs._float_curve_matrix,
     "gamma_color": values._gamma_color,
+    "svm_gabor_matrix": gabor_inputs._svm_gabor_matrix,
     "glass_transport": closures._glass_transport,
     "geometry_attribute_outputs": (
         geometry_inputs._geometry_attribute_outputs
