@@ -43,6 +43,7 @@ from cycles_shader_probe import (  # noqa: E402
     normal_maps,
     principled_closures,
     procedural_textures,
+    ray_portal_closures,
     refraction_closures,
     sheen_closures,
     svm_geometry,
@@ -319,6 +320,12 @@ _CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
     ),
     "standalone_sheen_microfiber_svm_oracle": (
         sheen_closures._standalone_sheen_microfiber_svm_oracle
+    ),
+    "standalone_ray_portal_authored_svm_oracle": (
+        ray_portal_closures._standalone_ray_portal_authored_svm_oracle
+    ),
+    "standalone_ray_portal_default_svm_oracle": (
+        ray_portal_closures._standalone_ray_portal_default_svm_oracle
     ),
     "standalone_toon_diffuse_svm_oracle": (
         toon_closures._standalone_toon_diffuse_svm_oracle

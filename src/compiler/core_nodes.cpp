@@ -1417,6 +1417,18 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::ray_portal_bsdf,
+                 .inputs = {input("Color", SocketType::color,
+                                  SocketValue::color({1.0f, 1.0f, 1.0f})),
+                            input("Position", SocketType::vector,
+                                  SocketValue::vector({0.0f, 0.0f, 0.0f})),
+                            input("Direction", SocketType::vector,
+                                  SocketValue::vector({0.0f, 0.0f, 0.0f}))},
+                 .outputs = {output("Closure", SocketType::closure)},
+                 .properties = {},
+                 .required_features = feature_bit(ShaderFeature::surface)}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::hair_bsdf,
                  .inputs = {input("Color", SocketType::color,
                                   SocketValue::color({0.8f, 0.8f, 0.8f})),

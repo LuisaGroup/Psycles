@@ -95,6 +95,7 @@ inline constexpr std::uint32_t shader_data_bssrdf = 1u << 4u;
 inline constexpr std::uint32_t shader_data_is_volume_shader_eval = 1u << 8u;
 inline constexpr std::uint32_t shader_data_transparent = 1u << 9u;
 inline constexpr std::uint32_t shader_data_bsdf_has_transmission = 1u << 10u;
+inline constexpr std::uint32_t shader_data_ray_portal = 1u << 11u;
 inline constexpr std::uint32_t shader_data_volume_cubic =
     static_cast<std::uint32_t>(compiler::cycles_svm::SD_VOLUME_CUBIC);
 inline constexpr std::uint32_t shader_data_use_bump_map_correction = 1u << 15u;
@@ -446,6 +447,18 @@ struct ToonClosure {
   ToonParam param;
 };
 
+/* Typed projection of Cycles 5.2.1
+ * kernel/closure/bsdf_ray_portal.h::RayPortalClosure. */
+struct RayPortalParam {
+  luisa::compute::Float3 P;
+  luisa::compute::Float3 D;
+};
+
+struct RayPortalClosure {
+  ShaderClosureCommon common;
+  RayPortalParam param;
+};
+
 /* Typed projection of Cycles 5.2.1 kernel/closure/bssrdf.h::Bssrdf. */
 struct BssrdfParam {
   luisa::compute::Float3 radius;
@@ -596,6 +609,8 @@ public:
                         const VelvetParam &param) noexcept;
   void set_toon_param(luisa::compute::Expr<std::uint32_t> index,
                       const ToonParam &param) noexcept;
+  void set_ray_portal_param(luisa::compute::Expr<std::uint32_t> index,
+                            const RayPortalParam &param) noexcept;
   void set_bssrdf_param(luisa::compute::Expr<std::uint32_t> index,
                         const BssrdfParam &param) noexcept;
   void set_microfacet_param(luisa::compute::Expr<std::uint32_t> index,
@@ -621,6 +636,8 @@ public:
   velvet(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] ToonClosure
   toon(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] RayPortalClosure
+  ray_portal(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] BssrdfClosure
   bssrdf(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetParam

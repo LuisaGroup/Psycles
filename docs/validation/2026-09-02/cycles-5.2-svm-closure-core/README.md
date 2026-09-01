@@ -18,6 +18,7 @@ The implementation follows these pinned Cycles sources at
 - `kernel/closure/bsdf_sheen.h`
 - `kernel/closure/bsdf_ashikhmin_velvet.h`
 - `kernel/closure/bsdf_toon.h`
+- `kernel/closure/bsdf_ray_portal.h`
 - `kernel/closure/bsdf_util.h::maybe_ensure_valid_specular_reflection`
 - `kernel/closure/bsdf_microfacet.h::{bsdf_microfacet_*_glass_setup,`
   `bsdf_microfacet_ggx_setup,bsdf_microfacet_beckmann_setup,`
@@ -41,6 +42,9 @@ The standalone Sheen family includes Microfiber LTC Sheen and Ashikhmin
 Velvet with the exact typed `SVMNodeSimpleBsdfData` payload. The standalone
 Toon family includes Diffuse and Glossy Toon with the exact typed
 `SVMNodeToonBsdfData` payload and reflective-caustics gate. The standalone
+Ray Portal family includes the exact typed `SVMNodeRayPortalBsdfData`
+payload, direct signed-weight allocation, transparent extinction, and portal
+position/direction state. The standalone
 Subsurface Scattering family includes Christensen-Burley,
 Random Walk, Random Walk Legacy, and Random Walk Skin with the exact typed
 `SVMNodeBssrdfData` payload.
@@ -228,6 +232,8 @@ relocated from the original global offsets to its compact test buffer.
 | Standalone Ashikhmin Velvet | type 16; weight `(0.82,0.19,0.57)`; sample weight `0.5266666412`; normal `(0,0,1)` |
 | Standalone Diffuse Toon | type 8; weight `(0.31,0.73,0.19)`; sample weight `0.4100000262`; normal `(0,0,1)` |
 | Standalone Glossy Toon | type 18; weight `(0.84,0.22,0.56)`; sample weight `0.5399999619`; normal `(0,0,1)` |
+| Standalone default Ray Portal | type 29; weight `(0.26,0.71,0.43)`; sample weight `0.4666666687`; normal `(0,0,1)` |
+| Standalone authored Ray Portal | type 29; weight `(0.83,0.17,0.52)`; sample weight `0.5066666603`; normal `(0,0,1)` |
 | Standalone Random Walk | type 32; weight/albedo `(0.37,0.62,0.14)`; sample weight `1.1299999952`; normal `(0,0,1)` |
 | Standalone Burley | type 31; weight/albedo `(0.21,0.74,0.48)`; sample weight `1.4299999475`; normal `(0,0,1)` |
 
@@ -376,6 +382,16 @@ Artifact hashes:
 | Standalone Glossy Toon diagnostic path trace | `5847772f912bf9a3e90ae0d0f16054c4c453f33fb0594d9f499fce37bab829e4` |
 | Standalone Glossy Toon decoded diagnostic trace | `706a4c8fe7e12523126591cb362de409874726b28c507a311de9b2cff9583e0a` |
 | Standalone Glossy Toon render metadata | `e898f5a75c2e95fbc9cefe8ad8b0f38a7e3c9b5155daab7675df4c808afcc8cb` |
+| Standalone default Ray Portal oracle `.blend` | `ba85f13c06ed878546dce0ff24a87ca167fc96bb9c866b3e42b8fa5e32246376` |
+| Standalone default Ray Portal final SVM buffer | `9ae8c8903a8043a69194d8523d82a194c11c2eb69c8e813b7b38394a1debfbbf` |
+| Standalone default Ray Portal diagnostic path trace | `1c5590b2a77866416a087963cf0568fa4cddc6ef425415694042838daa722e89` |
+| Standalone default Ray Portal decoded diagnostic trace | `3d80a40ac1eda9b93082e4555dd1a8b16a1eb3cba8e2eb7c4501ec90a737f246` |
+| Standalone default Ray Portal render metadata | `38e47ba9ded190ae6e4cbe4d1b70bc8788cdbd0ad84545ad1ea0b5edada33fc7` |
+| Standalone authored Ray Portal oracle `.blend` | `c332ddb666f4796daabe5b2371dff822296cad3d37dce8ad760ae10a3f8b0646` |
+| Standalone authored Ray Portal final SVM buffer | `67c35805f377c567a794bd272f00229818cc917568576267093f356b096a6f49` |
+| Standalone authored Ray Portal diagnostic path trace | `0ef35b984b64d4cbbf385b969a40182f740ea51d05b57fbaad2cfd5e8c3be4b1` |
+| Standalone authored Ray Portal decoded diagnostic trace | `654b44de2155581a74d593a2a33483e21fcfb5fe6e54e6db58a58f5bae95a2c7` |
+| Standalone authored Ray Portal render metadata | `7ba9b1e869805347da32b807d3c72822f87092d5fb52cc6755c18e0994e44379` |
 
 No `.svm52` binary is checked in.
 
@@ -481,6 +497,56 @@ strict native Vulkan XIR-to-SPIR-V.
 This checkpoint copies setup state only. Exact Toon evaluation and sampling
 remain part of the later closure-evaluation stage; no production-render
 parity or performance claim is made here.
+
+### Standalone Ray Portal runtime checkpoint
+
+Ray Portal consumes the exact four-word `SVMNodeRayPortalBsdfData` record:
+
+```text
+direction[3], position_offset
+```
+
+Cursor advancement is unconditional. Let `w = closure_weight * mix_weight`,
+`s = abs(average(w))`, `E` be transparent extinction, and `A` be the prefix
+allocator result. Cycles' transition is exactly
+
+```text
+not (s >= 1e-5): identity
+s >= 1e-5:        E' = E + w; A = closure_alloc(type 29, w)
+A failed:         retain E'; do not set portal flags
+A succeeded:      sample_weight = s; N = sd.N; P = input(Position, sd.P)
+                  D = safe_normalize(input(Direction) == 0 ? -sd.wi
+                                                            : input(Direction))
+                  flags |= SD_BSDF | SD_RAY_PORTAL
+```
+
+The comparison form deliberately rejects NaN. Unlike ordinary BSDF setup,
+Ray Portal calls `closure_alloc` directly: it neither clamps negative weight
+components nor rolls back extinction when the pool is full. This makes the
+four branches above a complete partition and prevents the implementation from
+being expressed through the superficially similar `bsdf_alloc` helper.
+
+The compiler regressions freeze the exact 21-word default and 23-word
+authored compact images from Cycles 5.2.1. The default stream contains
+Cycles' implicit Geometry Position node; the authored stream contains the
+linked constant Position and immediate non-unit Direction. The runtime
+regression additionally covers non-unit mix weight, signed spectra, cutoff,
+NaN, zero capacity, feature-erased zero mix, pool accounting, flags, typed
+`P/D/N`, extinction, and final cursor positions. Blender export checks prove
+that the raw `ShaderNodeBsdfRayPortal` and its Color, Position, Direction, and
+BSDF sockets survive without pre-baking. A separate bundle-import regression
+takes the authored Blender JSON through raw lowering, core graph validation,
+and SVM compilation, then compares the resulting 23 words to the same Cycles
+oracle; this closes the adapter-composition gap instead of testing its layers
+only in isolation. It passes on fallback, HIP, and strict native Vulkan
+XIR-to-SPIR-V.
+
+The external diagnostic trace exposes type, common weight, sample weight, and
+normal. Its current record does not expose the internal portal `P/D` payload,
+so those two fields are locked by the exact Cycles word stream, the pinned
+source transition above, and the three-backend typed-state regression rather
+than misrepresented as externally observed. Exact portal path integration is
+a later stage; this checkpoint makes no production-render parity claim.
 
 ### Standalone BSSRDF runtime checkpoint
 
@@ -654,7 +720,10 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_standalone_bssrdf_tests \
            psycles_luisa_cycles_svm_standalone_sheen_tests \
            psycles_luisa_cycles_svm_standalone_toon_tests \
+           psycles_luisa_cycles_svm_standalone_ray_portal_tests \
            psycles_cycles_svm_compiler_tests \
+           psycles_cycles_svm_ray_portal_compiler_tests \
+           psycles_blender_ray_portal_import_tests \
            psycles_luisa_thin_film_fresnel_tests \
            psycles_luisa_thin_film_surface_tests
 
@@ -692,22 +761,28 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_standalone_toon_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_standalone_ray_portal_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
-  '^psycles\.cycles_svm_compiler$'
+  '^psycles\.cycles_svm(_ray_portal)?_compiler$'
+
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.blender_ray_portal_import$'
 ```
 
 Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
 3/3, Principled Metallic 3/3, Principled thick Transmission 3/3, Principled
 Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, standalone
-Sheen/Velvet 3/3, standalone Toon 3/3, thin-film
-6/6, and compiler 1/1 passed. The
+Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
+6/6, compiler 2/2, and Ray Portal bundle import 1/1 passed. The
 compiler test
 locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 494/494 tests in 145.18 seconds. The Vulkan test
+expanded checkpoint passed 499/499 tests in 117.23 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
@@ -744,7 +819,7 @@ simple, Glass, standalone Glossy, standalone Refraction, and Metallic
 F82/conductor setup families inside the exact interpreter. Production still
 calls the old custom
 `SurfaceProgram` path. The next required structural steps are the remaining
-standalone typed closure payloads (Ray Portal and Hair),
+standalone typed closure payload (Hair),
 exact closure evaluation/sampling, and only then replacement and deletion of
 the old shade-surface route. The Cycles-style global shader linker is already
 staged, but this document makes no production-render parity or performance
