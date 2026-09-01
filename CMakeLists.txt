@@ -58,6 +58,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_light_path_nodes.cpp
     src/compiler/cycles_svm_mapping_nodes.cpp
     src/compiler/cycles_svm_noise_nodes.cpp
+    src/compiler/cycles_svm_normal_nodes.cpp
     src/compiler/cycles_svm_nodes.cpp
     src/compiler/cycles_svm_ramp_nodes.cpp
     src/compiler/cycles_svm_texture_coordinate_nodes.cpp

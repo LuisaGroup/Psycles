@@ -140,6 +140,7 @@ void node_hair_info(Cursor &cursor, Stack &stack,
 void node_point_info(Cursor &cursor, Stack &stack,
                      const InfoServices &services,
                      const ShaderData &shader_data) noexcept;
+void node_normal(Cursor &cursor, Stack &stack) noexcept;
 void node_camera(Cursor &cursor, Stack &stack,
                  const TransformState &transform_state,
                  const ShaderData &shader_data) noexcept;

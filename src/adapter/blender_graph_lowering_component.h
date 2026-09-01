@@ -123,6 +123,11 @@ public:
         std::string_view socket,
         contract::SocketType type) = 0;
 
+    [[nodiscard]] virtual contract::SocketValue output_default(
+        yyjson_val *node,
+        std::string_view socket,
+        contract::SocketType type) const = 0;
+
     // A Blender node may expose several outputs backed by one semantic
     // computation (AO is one ray trace whose scalar also multiplies Color).
     // Cache those normalized subexpressions by raw-node identity and semantic

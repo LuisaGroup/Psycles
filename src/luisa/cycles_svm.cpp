@@ -562,6 +562,11 @@ void eval_nodes(
               (kernel_features & kernel_feature_object_motion) != 0u);
         };
       }
+      if (node_types_used[NODE_NORMAL]) {
+        PSYCLES_SVM_CASE(NODE_NORMAL) {
+          detail::node_normal(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_WIREFRAME]) {
         PSYCLES_SVM_CASE(NODE_WIREFRAME) {
           detail::node_wireframe(
