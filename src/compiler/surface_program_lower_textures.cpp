@@ -671,6 +671,55 @@ namespace operand = value_operand;
         }
         return true;
     }
+    if (node.type == node_type::separate_xyz) {
+        if (auto vector = lower_value_input(node, "Vector")) {
+            // The legacy SurfaceProgram has one typed float3 storage bank.
+            // In RGB mode Separate Color is exactly the component projection
+            // used by Separate XYZ, so reuse that execution family while
+            // retaining the graph's scalar result types. The copied Cycles
+            // SVM path still emits NODE_SEPARATE_VECTOR directly.
+            for (const auto [name, operation] :
+                 {std::pair{"X", ValueOperation::separate_r},
+                  std::pair{"Y", ValueOperation::separate_g},
+                  std::pair{"Z", ValueOperation::separate_b}}) {
+                publish(
+                    node.id,
+                    name,
+                    append(ValueInstruction{
+                        .operation = operation,
+                        .source_node = node.id,
+                        .result_type = SocketType::floating,
+                        .operands =
+                            make_value_operands<operand::separate_color>({
+                                {operand::separate_color::color, *vector}}),
+                        .static_u0 = 0u}));
+            }
+        }
+        return true;
+    }
+    if (node.type == node_type::combine_xyz) {
+        auto x = lower_value_input(node, "X");
+        auto y = lower_value_input(node, "Y");
+        auto z = lower_value_input(node, "Z");
+        if (x && y && z) {
+            // RGB Combine is the identity component constructor. Preserve the
+            // vector result type so parameter binding and downstream typed
+            // conversions remain those of Combine XYZ.
+            publish(
+                node.id,
+                "Vector",
+                append(ValueInstruction{
+                    .operation = ValueOperation::combine_color,
+                    .source_node = node.id,
+                    .result_type = SocketType::vector,
+                    .operands = make_value_operands<operand::combine_color>({
+                        {operand::combine_color::r, *x},
+                        {operand::combine_color::g, *y},
+                        {operand::combine_color::b, *z}}),
+                    .static_u0 = 0u}));
+        }
+        return true;
+    }
     if (node.type == node_type::hosek_wilkie_sky) {
         if (auto direction = lower_value_input(node, "Vector")) {
             publish(
