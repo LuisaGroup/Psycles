@@ -71,6 +71,19 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_surface_svm_record_immediate_tests)
 
     add_executable(
+        psycles_surface_program_vector_components_tests
+        tests/test_surface_program_vector_components.cpp)
+    target_link_libraries(
+        psycles_surface_program_vector_components_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_surface_program_vector_components_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.surface_program_vector_components
+        COMMAND psycles_surface_program_vector_components_tests)
+
+    add_executable(
         psycles_surface_closure_execution_plan_tests
         tests/test_surface_closure_execution_plan.cpp)
     target_link_libraries(
