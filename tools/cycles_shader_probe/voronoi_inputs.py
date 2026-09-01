@@ -6,6 +6,7 @@ from typing import Any
 
 from .support import (
     _input,
+    _input_identifier,
     _linked_vector,
     _material,
     _material_matrix,
@@ -38,6 +39,7 @@ def _voronoi_material(
     exponent: float,
     randomness: float,
     link_scalars: bool = False,
+    runtime_coordinates: bool = False,
 ) -> Any:
     material, tree, output = _material(name)
     voronoi = tree.nodes.new("ShaderNodeTexVoronoi")
@@ -48,7 +50,36 @@ def _voronoi_material(
     voronoi.normalize = normalize
 
     vector_input = voronoi.inputs.get("Vector")
-    if coordinates is not None and vector_input is not None:
+    runtime_w = None
+    if runtime_coordinates:
+        if coordinates is None:
+            raise ValueError("runtime Voronoi coordinates require a vector")
+        geometry = tree.nodes.new("ShaderNodeNewGeometry")
+        geometry.name = f"{name} Geometry"
+        if vector_input is not None:
+            vector_add = tree.nodes.new("ShaderNodeVectorMath")
+            vector_add.name = f"{name} Runtime Vector"
+            vector_add.operation = "ADD"
+            _input_identifier(vector_add, "Vector_001").default_value = coordinates
+            tree.links.new(
+                _output(geometry, "Normal"),
+                _input_identifier(vector_add, "Vector"),
+            )
+            tree.links.new(_output(vector_add, "Vector"), vector_input)
+
+        separate = tree.nodes.new("ShaderNodeSeparateXYZ")
+        separate.name = f"{name} Runtime W Source"
+        w_scale = tree.nodes.new("ShaderNodeMath")
+        w_scale.name = f"{name} Runtime W"
+        w_scale.operation = "MULTIPLY"
+        _input_identifier(w_scale, "Value_001").default_value = w
+        tree.links.new(_output(geometry, "Normal"), _input(separate, "Vector"))
+        tree.links.new(
+            _output(separate, "Z"),
+            _input_identifier(w_scale, "Value"),
+        )
+        runtime_w = _output(w_scale, "Value")
+    elif coordinates is not None and vector_input is not None:
         vector = _linked_vector(
             tree,
             f"{name} Coordinates",
@@ -69,6 +100,9 @@ def _voronoi_material(
     for input_name, value in scalar_inputs:
         input_socket = voronoi.inputs.get(input_name)
         if input_socket is None:
+            continue
+        if runtime_coordinates and input_name == "W":
+            tree.links.new(runtime_w, input_socket)
             continue
         if link_scalars:
             tree.links.new(
@@ -93,6 +127,74 @@ def _voronoi_material(
         _input(output, "Surface"),
     )
     return material
+
+
+def _svm_voronoi_matrix(scene: Any) -> None:
+    """Force Cycles' Voronoi SVM handler with known runtime coordinates."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    cases = (
+        ("1D", "F1", "EUCLIDEAN", False, "Distance"),
+        ("1D", "F2", "CHEBYCHEV", True, "W"),
+        ("1D", "SMOOTH_F1", "MINKOWSKI", False, "Color"),
+        ("1D", "DISTANCE_TO_EDGE", "EUCLIDEAN", True, "Distance"),
+        ("1D", "N_SPHERE_RADIUS", "EUCLIDEAN", False, "Radius"),
+        ("2D", "F1", "MANHATTAN", False, "Color"),
+        ("2D", "F2", "MINKOWSKI", False, "Position"),
+        ("2D", "SMOOTH_F1", "CHEBYCHEV", True, "Distance"),
+        ("2D", "DISTANCE_TO_EDGE", "EUCLIDEAN", True, "Distance"),
+        ("2D", "N_SPHERE_RADIUS", "EUCLIDEAN", False, "Radius"),
+        ("3D", "F1", "EUCLIDEAN", False, "Position"),
+        ("3D", "F2", "MANHATTAN", True, "Distance"),
+        ("3D", "SMOOTH_F1", "MINKOWSKI", False, "Color"),
+        ("3D", "DISTANCE_TO_EDGE", "EUCLIDEAN", False, "Distance"),
+        ("3D", "N_SPHERE_RADIUS", "EUCLIDEAN", True, "Radius"),
+        ("4D", "F1", "CHEBYCHEV", False, "W"),
+        ("4D", "F2", "EUCLIDEAN", True, "Color"),
+        ("4D", "SMOOTH_F1", "MANHATTAN", True, "Position"),
+        ("4D", "DISTANCE_TO_EDGE", "EUCLIDEAN", False, "Distance"),
+        ("4D", "N_SPHERE_RADIUS", "EUCLIDEAN", True, "Radius"),
+    )
+    materials = []
+    for index, (dimension, feature, metric, normalize, output_name) in enumerate(
+        cases
+    ):
+        name = f"SVM Voronoi {index:02d} {dimension} {feature}"
+        materials.append(
+            _voronoi_material(
+                name,
+                dimensions=dimension,
+                feature=feature,
+                metric=metric,
+                normalize=normalize,
+                output_name=output_name,
+                # Geometry Normal keeps the path shader-varying. The flat
+                # matrix has N=(0, 0, 1), so the exact node input remains
+                # known: Vector=coordinates+N and W=w.
+                coordinates=(
+                    -0.73 + 0.097 * index,
+                    0.41 - 0.061 * index,
+                    -1.17 + 0.083 * index,
+                ),
+                w=-0.83 + 0.071 * index,
+                scale=(-2.3, 0.75, 1.9, 4.1)[index % 4],
+                detail=(0.0, 0.375, 2.625, 5.25)[index % 4],
+                roughness=(0.0, 0.37, 0.68, 1.0)[index % 4],
+                lacunarity=(2.0, -1.25, 0.73, 2.4)[index % 4],
+                smoothness=(0.0, 0.2, 0.83, 3.0)[index % 4],
+                exponent=(0.5, 1.3, 2.0, 3.7)[index % 4],
+                randomness=(0.0, 0.29, 0.71, 1.0)[index % 4],
+                runtime_coordinates=True,
+            )
+        )
+
+    _material_matrix(
+        scene,
+        materials,
+        columns=5,
+        rows=4,
+        name="SVM Voronoi Matrix",
+    )
 
 
 def _voronoi_texture_distance(scene: Any) -> None:

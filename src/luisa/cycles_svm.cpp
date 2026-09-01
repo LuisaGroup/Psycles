@@ -332,6 +332,13 @@ void eval_nodes(
           detail::node_tex_gradient(cursor, stack);
         };
       }
+      if (node_types_used[NODE_TEX_VORONOI]) {
+        PSYCLES_SVM_CASE(NODE_TEX_VORONOI) {
+          detail::node_tex_voronoi(
+              cursor, stack,
+              (node_feature_mask & kernel_feature_node_voronoi_extra) != 0u);
+        };
+      }
       if (node_types_used[NODE_TEX_WAVE]) {
         PSYCLES_SVM_CASE(NODE_TEX_WAVE) {
           detail::node_tex_wave(cursor, stack);

@@ -163,6 +163,7 @@ _ALL_PROBES = (
     "svm_geometry_attributes",
     "svm_geometry_bump_offsets",
     "svm_vertex_color",
+    "svm_voronoi_matrix",
     "svm_wireframe_matrix",
     "svm_wireframe_bump",
     "thin_film_surface",
@@ -283,6 +284,10 @@ _PROBE_RATIO_GATES = {
         "Emit": (0.99999, 1.00001),
     },
     "voronoi_texture_distance": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
+    "svm_voronoi_matrix": {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
     },
@@ -529,6 +534,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
         "Emit": 0.000001,
     },
     "voronoi_texture_distance": {
+        "Combined": 0.00001,
+        "Emit": 0.00001,
+    },
+    "svm_voronoi_matrix": {
         "Combined": 0.00001,
         "Emit": 0.00001,
     },

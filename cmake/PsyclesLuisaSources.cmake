@@ -14,6 +14,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_mapping.cpp
     src/luisa/cycles_svm_math.cpp
     src/luisa/cycles_svm_noise.cpp
+    src/luisa/cycles_svm_voronoi.cpp
     src/luisa/cycles_svm_normal.cpp
     src/luisa/cycles_svm_primitive_attribute.cpp
     src/luisa/cycles_svm_procedural_texture.cpp
