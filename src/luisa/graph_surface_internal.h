@@ -292,24 +292,6 @@ template <typename Id, typename Values>
 [[nodiscard]] Float3 bsdf_allocated_weight(Float3 value) noexcept;
 [[nodiscard]] Float pass_weight(Float3 value) noexcept;
 [[nodiscard]] Float max_component(Float3 value) noexcept;
-[[nodiscard]] Float cycles_table_1d(const ShaderServices &services,
-    Float x,
-    Expr<std::uint32_t> offset,
-    std::uint32_t size) noexcept;
-[[nodiscard]] Float cycles_table_2d(const ShaderServices &services,
-    Float x,
-    Float y,
-    Expr<std::uint32_t> offset,
-    std::uint32_t x_size,
-    std::uint32_t y_size) noexcept;
-[[nodiscard]] Float cycles_table_3d(const ShaderServices &services,
-    Float x,
-    Float y,
-    Float z,
-    Expr<std::uint32_t> offset,
-    std::uint32_t x_size,
-    std::uint32_t y_size,
-    std::uint32_t z_size) noexcept;
 [[nodiscard]] Float f0_from_ior(Float ior) noexcept;
 [[nodiscard]] Float ior_from_f0(Float f0) noexcept;
 [[nodiscard]] Float fresnel_dielectric_fss(Float eta) noexcept;

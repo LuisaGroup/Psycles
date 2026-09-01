@@ -9,6 +9,7 @@
 #endif
 
 #include <psycles/compiler/cycles_svm_node_types.h>
+#include <psycles/luisa/cycles_bsdf_tables.h>
 
 #include <array>
 #include <cstddef>
@@ -262,9 +263,21 @@ public:
 /* Host/JIT projection of the exact KernelGlobals services consumed by the
  * copied SVM handlers. Virtual dispatch happens while Luisa records the AST;
  * generated device code contains only the resulting buffer operations. */
-class KernelGlobals {
+class KernelGlobals : public CyclesBsdfTableReader {
 public:
   virtual ~KernelGlobals() noexcept = default;
+
+  /* kernel_data.integrator.caustics_* in Cycles. Returning true is the exact
+   * no-caustics-tricks configuration; production scene services override
+   * these when the corresponding integrator controls are enabled. */
+  [[nodiscard]] virtual luisa::compute::Bool
+  caustics_reflective() const noexcept {
+    return true;
+  }
+  [[nodiscard]] virtual luisa::compute::Bool
+  caustics_refractive() const noexcept {
+    return true;
+  }
 
   // Packed scene-owned IES table from Cycles LightManager. The default is
   // intentionally inert so node families that do not use NODE_IES do not
@@ -397,6 +410,46 @@ struct OrenNayarClosure {
   OrenNayarParam param;
 };
 
+/* MicrofacetFresnel values copied from Cycles 5.2.1
+ * kernel/closure/bsdf_microfacet.h. */
+enum class MicrofacetFresnel : std::uint32_t {
+  none = 0u,
+  dielectric = 1u,
+  dielectric_tint = 2u,
+  conductor = 3u,
+  generalized_schlick = 4u,
+  f82_tint = 5u,
+};
+
+struct FresnelThinFilm {
+  luisa::compute::Float thickness;
+  luisa::compute::Float ior;
+};
+
+struct FresnelGeneralizedSchlick {
+  FresnelThinFilm thin_film;
+  luisa::compute::Float3 reflection_tint;
+  luisa::compute::Float3 transmission_tint;
+  luisa::compute::Float3 f0;
+  luisa::compute::Float3 f90;
+  luisa::compute::Float exponent;
+};
+
+struct MicrofacetParam {
+  luisa::compute::Float alpha_x;
+  luisa::compute::Float alpha_y;
+  luisa::compute::Float ior;
+  luisa::compute::Float energy_scale;
+  luisa::compute::UInt fresnel_type;
+  luisa::compute::Float3 T;
+};
+
+struct MicrofacetClosure {
+  ShaderClosureCommon common;
+  MicrofacetParam param;
+  FresnelGeneralizedSchlick generalized_schlick;
+};
+
 /* Device-local realization of ShaderData::closure[], num_closure and
  * num_closure_left. Storage is SoA, but its state machine is exactly Cycles'
  * prefix allocator: successful allocations append one common record, extra
@@ -416,6 +469,14 @@ private:
   luisa::compute::Local<luisa::uint> _type;
   luisa::compute::Local<luisa::float4> _oren_nayar_scalars;
   luisa::compute::Local<luisa::float4> _oren_nayar_multiscatter;
+  luisa::compute::Local<luisa::float4> _microfacet_alpha_ior_energy;
+  luisa::compute::Local<luisa::float4> _microfacet_tangent;
+  luisa::compute::Local<luisa::uint> _microfacet_fresnel_type;
+  luisa::compute::Local<luisa::float4> _generalized_schlick_thin_film;
+  luisa::compute::Local<luisa::float4> _generalized_schlick_reflection_tint;
+  luisa::compute::Local<luisa::float4> _generalized_schlick_transmission_tint;
+  luisa::compute::Local<luisa::float4> _generalized_schlick_f0;
+  luisa::compute::Local<luisa::float4> _generalized_schlick_f90;
   luisa::compute::UInt _count;
   luisa::compute::UInt _left;
 
@@ -433,6 +494,12 @@ public:
   [[nodiscard]] Allocation
   allocate(luisa::compute::Expr<std::uint32_t> type,
            luisa::compute::Expr<luisa::float3> weight) noexcept;
+  /* Exact closure_alloc_extra transition. Extra records consume tail slots
+   * without increasing count. Failure atomically rolls back the immediately
+   * preceding ordinary allocation identified by owner. */
+  [[nodiscard]] luisa::compute::Bool
+  allocate_extra(const Allocation &owner,
+                 luisa::compute::Expr<std::uint32_t> slot_count) noexcept;
   void set_type(luisa::compute::Expr<std::uint32_t> index,
                 luisa::compute::Expr<std::uint32_t> type) noexcept;
   void set_weight(luisa::compute::Expr<std::uint32_t> index,
@@ -447,12 +514,19 @@ public:
                   luisa::compute::Expr<luisa::float3> normal) noexcept;
   void set_oren_nayar_param(luisa::compute::Expr<std::uint32_t> index,
                             const OrenNayarParam &param) noexcept;
+  void set_microfacet_param(luisa::compute::Expr<std::uint32_t> index,
+                            const MicrofacetParam &param) noexcept;
+  void set_generalized_schlick(
+      luisa::compute::Expr<std::uint32_t> index,
+      const FresnelGeneralizedSchlick &fresnel) noexcept;
   void set_left(luisa::compute::Expr<std::uint32_t> left) noexcept;
 
   [[nodiscard]] ShaderClosureCommon
   common(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] OrenNayarClosure
   oren_nayar(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] MicrofacetClosure
+  microfacet(luisa::compute::Expr<std::uint32_t> index) const noexcept;
 };
 
 /* The fields below are the exact ShaderData projection consumed by the first

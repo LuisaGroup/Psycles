@@ -16,6 +16,13 @@ using namespace luisa::compute;
 // state belongs to the node family under test.
 class DefaultCyclesSvmKernelGlobals : public device_svm::KernelGlobals {
 public:
+  [[nodiscard]] Float cycles_bsdf_data(
+      Expr<std::uint32_t>) const noexcept override {
+    // Focused node tests which need a table override this neutral reader and
+    // bind the exact Cycles payload. Unrelated families never record a read.
+    return 0.0f;
+  }
+
   [[nodiscard]] device_svm::TriangleVertices triangle_vertices(
       Expr<std::uint32_t>, Expr<std::uint32_t>) const noexcept override {
     return {.v0 = make_float3(0.0f),

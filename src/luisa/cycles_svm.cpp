@@ -124,7 +124,8 @@ void eval_nodes(const KernelGlobals &kernel_globals, const BufferUInt &words,
       }
       if (node_types_used[NODE_CLOSURE_BSDF]) {
         PSYCLES_SVM_CASE(NODE_CLOSURE_BSDF) {
-          detail::node_closure_bsdf(cursor, stack, closure_weight, shader_type,
+          detail::node_closure_bsdf(kernel_globals, cursor, stack,
+                                    closure_weight, shader_type,
                                     node_feature_mask, shader_data, path_state,
                                     transition_supported);
         };

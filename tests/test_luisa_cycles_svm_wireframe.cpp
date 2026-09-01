@@ -45,6 +45,11 @@ constexpr auto attribute_missing_id = 999u;
 
 class ProbeKernelGlobals final : public device_svm::KernelGlobals {
 public:
+  [[nodiscard]] Float cycles_bsdf_data(
+      Expr<std::uint32_t>) const noexcept override {
+    return 0.0f;
+  }
+
   [[nodiscard]] device_svm::TriangleVertices
   triangle_vertices(Expr<std::uint32_t>,
                     Expr<std::uint32_t> prim) const noexcept override {

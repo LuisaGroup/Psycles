@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0 */
 
 #include "cycles_svm_internal.h"
+#include "cycles_svm_microfacet.h"
 
 #include <psycles/luisa/native_vector_math.h>
 
@@ -67,73 +68,10 @@ inline constexpr float two_pi = 6.28318530717958647692f;
           .multiscatter_term = multiple_scatter * (1.0f - view_energy)};
 }
 
-[[nodiscard]] Float3
-ensure_valid_specular_reflection(Expr<luisa::float3> geometric_normal,
-                                 Expr<luisa::float3> incident,
-                                 Expr<luisa::float3> normal) noexcept {
-  Float3 result = normal;
-  const auto reflection = 2.0f * dot(normal, incident) * normal - incident;
-  const auto incident_z = dot(incident, geometric_normal);
-  const auto threshold = min(0.9f * incident_z, 0.01f);
-  $if(dot(geometric_normal, reflection) < threshold) {
-    const auto x_axis = native_vector_math::safe_normalize_nonzero_or(
-        normal - dot(normal, geometric_normal) * geometric_normal, normal);
-    const auto incident_x = dot(incident, x_axis);
-    const auto a = square(incident_x) + square(incident_z);
-    const auto b = 2.0f * (a + incident_z * threshold);
-    const auto c = square(threshold + incident_z);
-    const auto root = safe_sqrt(square(b) - 4.0f * a * c);
-    Float normal_z_squared;
-    $if(incident_x < 0.0f) { normal_z_squared = 0.25f * (b + root) / a; }
-    $else { normal_z_squared = 0.25f * (b - root) / a; };
-    const auto normal_x = safe_sqrt(1.0f - normal_z_squared);
-    const auto normal_z = safe_sqrt(normal_z_squared);
-    result = normal_x * x_axis + normal_z * geometric_normal;
-  };
-  return result;
-}
-
-[[nodiscard]] Float3
-maybe_ensure_valid_specular_reflection(const ShaderData &shader_data,
-                                       Expr<luisa::float3> normal) noexcept {
-  Float3 result = normal;
-  $if((shader_data.flag & shader_data_use_bump_map_correction) != 0u) {
-    const auto is_curve =
-        (shader_data.type & static_cast<std::uint32_t>(PRIMITIVE_CURVE)) != 0u;
-    $if(!is_curve & !all(shader_data.Ng == normal)) {
-      result = ensure_valid_specular_reflection(shader_data.Ng, shader_data.wi,
-                                                normal);
-    };
-  };
-  return result;
-}
-
-[[nodiscard]] ClosurePool::Allocation
-bsdf_allocate(ShaderData &shader_data,
-              Expr<luisa::float3> input_weight) noexcept {
-  auto &pool = *shader_data.closure;
-  const Float3 weight = max(input_weight, make_float3(0.0f));
-  const Float sample_weight = abs(average(weight));
-  const Bool survives_cutoff =
-      (sample_weight >= CLOSURE_WEIGHT_CUTOFF) |
-      ((shader_data.flag & shader_data_is_volume_shader_eval) != 0u);
-  ClosurePool::Allocation result{.index = 0u, .valid = false};
-  $if(survives_cutoff & (sample_weight > 0.0f)) {
-    const auto allocated =
-        pool.allocate(static_cast<std::uint32_t>(CLOSURE_NONE_ID), weight);
-    result.index = allocated.index;
-    result.valid = allocated.valid;
-    $if(allocated.valid) {
-      pool.set_sample_weight(allocated.index, sample_weight);
-    };
-  };
-  return result;
-}
-
 void diffuse_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
                    Expr<luisa::float3> weight) noexcept {
   auto &pool = *shader_data.closure;
-  const auto allocated = bsdf_allocate(shader_data, weight);
+  const auto allocated = detail::bsdf_allocate(shader_data, weight);
   $if(allocated.valid) {
     pool.set_normal(allocated.index, normal);
     pool.set_type(allocated.index,
@@ -146,7 +84,7 @@ void oren_nayar_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
                       Expr<luisa::float3> weight, Expr<float> roughness,
                       Expr<luisa::float3> color) noexcept {
   auto &pool = *shader_data.closure;
-  const auto allocated = bsdf_allocate(shader_data, weight);
+  const auto allocated = detail::bsdf_allocate(shader_data, weight);
   $if(allocated.valid) {
     pool.set_normal(allocated.index, normal);
     pool.set_type(allocated.index,
@@ -161,7 +99,7 @@ void oren_nayar_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
 void translucent_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
                        Expr<luisa::float3> weight) noexcept {
   auto &pool = *shader_data.closure;
-  const auto allocated = bsdf_allocate(shader_data, weight);
+  const auto allocated = detail::bsdf_allocate(shader_data, weight);
   $if(allocated.valid) {
     pool.set_normal(allocated.index, normal);
     pool.set_type(allocated.index,
@@ -215,6 +153,16 @@ ClosurePool::ClosurePool(std::size_t capacity) noexcept
       _type{std::max(_capacity, std::size_t{1u})},
       _oren_nayar_scalars{std::max(_capacity, std::size_t{1u})},
       _oren_nayar_multiscatter{std::max(_capacity, std::size_t{1u})},
+      _microfacet_alpha_ior_energy{std::max(_capacity, std::size_t{1u})},
+      _microfacet_tangent{std::max(_capacity, std::size_t{1u})},
+      _microfacet_fresnel_type{std::max(_capacity, std::size_t{1u})},
+      _generalized_schlick_thin_film{std::max(_capacity, std::size_t{1u})},
+      _generalized_schlick_reflection_tint{
+          std::max(_capacity, std::size_t{1u})},
+      _generalized_schlick_transmission_tint{
+          std::max(_capacity, std::size_t{1u})},
+      _generalized_schlick_f0{std::max(_capacity, std::size_t{1u})},
+      _generalized_schlick_f90{std::max(_capacity, std::size_t{1u})},
       _count{0u}, _left{static_cast<std::uint32_t>(_capacity)} {}
 
 std::size_t ClosurePool::capacity() const noexcept { return _capacity; }
@@ -235,6 +183,27 @@ ClosurePool::allocate(Expr<std::uint32_t> closure_type,
     allocation.valid = true;
   };
   return allocation;
+}
+
+Bool ClosurePool::allocate_extra(const Allocation &owner,
+                                 Expr<std::uint32_t> slot_count) noexcept {
+  Bool allocated = false;
+  $if(owner.valid) {
+    $if(slot_count <= _left) {
+      _left -= slot_count;
+      allocated = true;
+    }
+    $else {
+      /* closure_alloc_extra is called immediately after bsdf_alloc. The
+       * owner identity makes that source precondition explicit and prevents
+       * an unrelated closure from being removed by a malformed caller. */
+      $if((_count != 0u) & (owner.index + 1u == _count)) {
+        _count -= 1u;
+        _left += 1u;
+      };
+    };
+  };
+  return allocated;
 }
 
 void ClosurePool::set_type(Expr<std::uint32_t> index,
@@ -280,6 +249,29 @@ void ClosurePool::set_oren_nayar_param(Expr<std::uint32_t> index,
                                  make_float4(param.multiscatter_term, 0.0f));
 }
 
+void ClosurePool::set_microfacet_param(
+    Expr<std::uint32_t> index, const MicrofacetParam &param) noexcept {
+  _microfacet_alpha_ior_energy.write(
+      index, make_float4(param.alpha_x, param.alpha_y, param.ior,
+                         param.energy_scale));
+  _microfacet_tangent.write(index, make_float4(param.T, 0.0f));
+  _microfacet_fresnel_type.write(index, param.fresnel_type);
+}
+
+void ClosurePool::set_generalized_schlick(
+    Expr<std::uint32_t> index,
+    const FresnelGeneralizedSchlick &fresnel) noexcept {
+  _generalized_schlick_thin_film.write(
+      index, make_float4(fresnel.thin_film.thickness,
+                         fresnel.thin_film.ior, fresnel.exponent, 0.0f));
+  _generalized_schlick_reflection_tint.write(
+      index, make_float4(fresnel.reflection_tint, 0.0f));
+  _generalized_schlick_transmission_tint.write(
+      index, make_float4(fresnel.transmission_tint, 0.0f));
+  _generalized_schlick_f0.write(index, make_float4(fresnel.f0, 0.0f));
+  _generalized_schlick_f90.write(index, make_float4(fresnel.f90, 0.0f));
+}
+
 void ClosurePool::set_left(Expr<std::uint32_t> left) noexcept { _left = left; }
 
 ShaderClosureCommon
@@ -300,6 +292,29 @@ ClosurePool::oren_nayar(Expr<std::uint32_t> index) const noexcept {
                     .b = scalars.z,
                     .multiscatter_term =
                         _oren_nayar_multiscatter.read(index).xyz()}};
+}
+
+MicrofacetClosure
+ClosurePool::microfacet(Expr<std::uint32_t> index) const noexcept {
+  const auto microfacet = _microfacet_alpha_ior_energy.read(index);
+  const auto film = _generalized_schlick_thin_film.read(index);
+  return {
+      .common = common(index),
+      .param = {.alpha_x = microfacet.x,
+                .alpha_y = microfacet.y,
+                .ior = microfacet.z,
+                .energy_scale = microfacet.w,
+                .fresnel_type = _microfacet_fresnel_type.read(index),
+                .T = _microfacet_tangent.read(index).xyz()},
+      .generalized_schlick = {
+          .thin_film = {.thickness = film.x, .ior = film.y},
+          .reflection_tint =
+              _generalized_schlick_reflection_tint.read(index).xyz(),
+          .transmission_tint =
+              _generalized_schlick_transmission_tint.read(index).xyz(),
+          .f0 = _generalized_schlick_f0.read(index).xyz(),
+          .f90 = _generalized_schlick_f90.read(index).xyz(),
+          .exponent = film.z}};
 }
 
 namespace detail {
@@ -402,7 +417,8 @@ void node_closure_background(Cursor &cursor, Stack &stack,
   };
 }
 
-void node_closure_bsdf(Cursor &cursor, Stack &stack,
+void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
+                       Stack &stack,
                        Expr<luisa::float3> closure_weight,
                        ShaderType shader_type, std::uint32_t node_feature_mask,
                        ShaderData &shader_data, const PathState &path_state,
@@ -425,7 +441,38 @@ void node_closure_bsdf(Cursor &cursor, Stack &stack,
         node_closure_bsdf_skip(cursor, closure_type);
         supported = false;
       } else {
-        $switch(closure_type) {
+        const Bool is_glass =
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID)) |
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
+        $if(is_glass) {
+          const auto color_x = cursor.word();
+          const auto color_y = cursor.word();
+          const auto color_z = cursor.word();
+          const auto roughness_input = cursor.word();
+          const auto ior_input = cursor.word();
+          const auto thin_film_thickness_input = cursor.word();
+          const auto thin_film_ior_input = cursor.word();
+          const auto normal_packed = cursor.word();
+          const auto normal_offset = cursor.byte(normal_packed, 0u);
+          auto normal =
+              stack_load_float3_default(stack, normal_offset, shader_data.N);
+          normal = native_vector_math::safe_normalize_nonzero_or(
+              normal, shader_data.N);
+          detail::glass_setup(
+              kernel_globals, shader_data, path_state, closure_type, mix_weight,
+              normal,
+              stack_load_input_float3(stack, color_x, color_y, color_z),
+              stack_load_input_float(stack, roughness_input),
+              stack_load_input_float(stack, ior_input),
+              stack_load_input_float(stack, thin_film_thickness_input),
+              stack_load_input_float(stack, thin_film_ior_input));
+        }
+        $else {
+          $switch(closure_type) {
           PSYCLES_SVM_CASE(CLOSURE_BSDF_DIFFUSE_ID) {
             const auto color_x = cursor.word();
             const auto color_y = cursor.word();
@@ -463,7 +510,8 @@ void node_closure_bsdf(Cursor &cursor, Stack &stack,
             const auto weight = closure_weight * mix_weight;
             translucent_setup(
                 shader_data,
-                maybe_ensure_valid_specular_reflection(shader_data, normal),
+                detail::maybe_ensure_valid_specular_reflection(shader_data,
+                                                               normal),
                 weight);
           };
           PSYCLES_SVM_CASE(CLOSURE_BSDF_TRANSPARENT_ID) {
@@ -477,6 +525,7 @@ void node_closure_bsdf(Cursor &cursor, Stack &stack,
           $default {
             node_closure_bsdf_skip(cursor, closure_type);
             supported = false;
+          };
           };
         };
       }
