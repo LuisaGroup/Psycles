@@ -175,13 +175,14 @@ void node_mapping(Cursor &cursor, Stack &stack,
 void node_texture_mapping(Cursor &cursor, Stack &stack,
                           bool use_derivatives) noexcept;
 void node_min_max(Cursor &cursor, Stack &stack) noexcept;
-void node_vector_math_mapping_normalize(Cursor &cursor, Stack &stack,
-                                        bool use_derivatives) noexcept;
+void node_vector_math(Cursor &cursor, Stack &stack,
+                      bool use_derivatives) noexcept;
 void node_tex_noise(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_white_noise(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_gradient(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_voronoi(Cursor &cursor, Stack &stack,
                       bool voronoi_extra_enabled) noexcept;
+void node_tex_gabor(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_wave(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_magic(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_checker(Cursor &cursor, Stack &stack) noexcept;

@@ -14,6 +14,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_mapping.cpp
     src/luisa/cycles_svm_math.cpp
     src/luisa/cycles_svm_noise.cpp
+    src/luisa/cycles_svm_gabor.cpp
     src/luisa/cycles_svm_voronoi.cpp
     src/luisa/cycles_svm_normal.cpp
     src/luisa/cycles_svm_primitive_attribute.cpp
@@ -26,6 +27,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_attribute.cpp
     src/luisa/cycles_svm_value.cpp
     src/luisa/cycles_svm_vector.cpp
+    src/luisa/cycles_svm_vector_math.cpp
     src/luisa/cycles_svm_vector_rotate.cpp
     src/luisa/cycles_svm_vector_transform.cpp
     src/luisa/cycles_svm_vertex_color.cpp
@@ -102,6 +104,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_triangle_surface_component.cpp
     src/luisa/cycles_wave.cpp
     src/luisa/cycles_voronoi.cpp
+    src/luisa/cycles_gabor.cpp
     src/luisa/curve_ribbon_component.cpp
     src/luisa/heterogeneous_volume_candidate.cpp
     src/luisa/heterogeneous_volume_collision.cpp

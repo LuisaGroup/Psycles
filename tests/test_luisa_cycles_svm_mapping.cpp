@@ -131,8 +131,7 @@ void append_payload(std::vector<std::uint32_t> &words,
         UInt normalize_offset =
             texture_mapping_word_count + min_max_word_count;
         svm_detail::Cursor normalize_cursor{words, normalize_offset};
-        svm_detail::node_vector_math_mapping_normalize(
-            normalize_cursor, normalize_stack, true);
+        svm_detail::node_vector_math(normalize_cursor, normalize_stack, true);
         output.write(6u,
                      svm_detail::stack_load_float3(normalize_stack,
                                                    output_offset));

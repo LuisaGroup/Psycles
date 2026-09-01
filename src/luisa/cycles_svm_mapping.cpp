@@ -172,33 +172,4 @@ void node_min_max(Cursor &cursor, Stack &stack) noexcept {
                          make_float3(maximum_x, maximum_y, maximum_z)));
 }
 
-void node_vector_math_mapping_normalize(Cursor &cursor, Stack &stack,
-                                        bool use_derivatives) noexcept {
-  const auto math_type = cursor.word();
-  const auto a_x = cursor.word();
-  const auto a_y = cursor.word();
-  const auto a_z = cursor.word();
-  cursor.advance(7u); // B, C, and Param1 are unused by Normalize.
-  const auto packed = cursor.word();
-  const auto vector_offset = cursor.byte(packed, 1u);
-
-  // Until authored Vector Math is projected, TextureMapping NORMAL is the
-  // sole reachable producer of NODE_VECTOR_MATH and always emits Normalize.
-  $if ((math_type ==
-        static_cast<std::uint32_t>(NODE_VECTOR_MATH_NORMALIZE)) &
-       (vector_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID))) {
-    if (use_derivatives) {
-      stack_store_dual3(
-          stack, vector_offset,
-          safe_normalize_dual(
-              stack_load_input_dual_float3(stack, a_x, a_y, a_z)));
-    } else {
-      stack_store_float3(
-          stack, vector_offset,
-          safe_normalize_cycles(
-              stack_load_input_float3(stack, a_x, a_y, a_z)));
-    }
-  };
-}
-
 } // namespace psycles::luisa_backend::cycles_svm::detail
