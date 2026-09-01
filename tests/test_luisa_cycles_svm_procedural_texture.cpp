@@ -1,4 +1,5 @@
 #include <psycles/compiler/cycles_svm_bytecode.h>
+#include <psycles/luisa/cycles_checker.h>
 #include <psycles/luisa/cycles_svm.h>
 
 #include "cycles_svm_internal.h"
@@ -165,6 +166,76 @@ brick_payload(SVMStackOffset color_out, SVMStackOffset factor_out) noexcept {
                         svm_detail::stack_load_float(stack, factor_offset)));
         cursors.write(index, cursor_offset - begin);
       }};
+}
+
+[[nodiscard]] auto checker_formula_kernel() {
+  return Kernel1D<Buffer<luisa::float4>, Buffer<float>>{
+      [](BufferFloat4 input, BufferFloat output) noexcept {
+        const auto sample = input.read(dispatch_x());
+        output.write(dispatch_x(),
+                     psycles::luisa_backend::cycles_checker::evaluate(
+                         sample.xyz() * sample.w));
+      }};
+}
+
+[[nodiscard]] bool checker_formula_is_structural() {
+  auto module = luisa::compute::xir::ast_to_xir_translate(
+      checker_formula_kernel().function()->function(), {});
+  auto add = std::size_t{};
+  auto subtract = std::size_t{};
+  auto multiply = std::size_t{};
+  auto modulo = std::size_t{};
+  auto floor_count = std::size_t{};
+  auto isnan_count = std::size_t{};
+  auto select_count = std::size_t{};
+  for (auto *function : module->function_list()) {
+    if (auto *definition = function->definition()) {
+      definition->traverse_instructions(
+          [&](luisa::compute::xir::Instruction *instruction) noexcept {
+            if (!instruction->isa<luisa::compute::xir::ArithmeticInst>()) {
+              return;
+            }
+            switch (static_cast<luisa::compute::xir::ArithmeticInst *>(
+                        instruction)
+                        ->op()) {
+            case luisa::compute::xir::ArithmeticOp::BINARY_ADD:
+              ++add;
+              break;
+            case luisa::compute::xir::ArithmeticOp::BINARY_SUB:
+              ++subtract;
+              break;
+            case luisa::compute::xir::ArithmeticOp::BINARY_MUL:
+              ++multiply;
+              break;
+            case luisa::compute::xir::ArithmeticOp::BINARY_MOD:
+              ++modulo;
+              break;
+            case luisa::compute::xir::ArithmeticOp::FLOOR:
+              ++floor_count;
+              break;
+            case luisa::compute::xir::ArithmeticOp::ISNAN:
+              ++isnan_count;
+              break;
+            case luisa::compute::xir::ArithmeticOp::SELECT:
+              ++select_count;
+              break;
+            default:
+              break;
+            }
+          });
+    }
+  }
+  const auto valid = add == 1u && subtract == 0u && multiply == 2u &&
+                     modulo == 3u && floor_count == 3u && isnan_count == 0u &&
+                     select_count == 2u;
+  if (!valid) {
+    std::cerr << "Cycles Checker operation-graph mismatch: add=" << add
+              << ", sub=" << subtract << ", mul=" << multiply
+              << ", mod=" << modulo << ", floor=" << floor_count
+              << ", isnan=" << isnan_count << ", select=" << select_count
+              << '\n';
+  }
+  return valid;
 }
 
 struct ModuleShape {
@@ -422,6 +493,9 @@ run_interpreter_case(Device &device, Stream &stream, Shader &shader,
 
 int main(int argc, char **argv) {
   const auto backend = std::string_view{argc > 1 ? argv[1] : "hip"};
+  if (!checker_formula_is_structural()) {
+    return EXIT_FAILURE;
+  }
   const auto shape = module_shape(direct_kernel());
   if (std::getenv("PSYCLES_REPORT_SHADER_SHAPES") != nullptr) {
     std::cout << "Cycles procedural SVM XIR: instructions="
