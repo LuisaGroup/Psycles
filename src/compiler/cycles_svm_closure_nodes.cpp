@@ -102,6 +102,33 @@ refraction_distribution(const GraphNode *node) noexcept {
 }
 
 [[nodiscard]] std::optional<ClosureType>
+metallic_distribution(const GraphNode *node) noexcept {
+  const auto distribution = string_property(node, "Distribution");
+  if (distribution == "BECKMANN") {
+    return CLOSURE_BSDF_MICROFACET_BECKMANN_ID;
+  }
+  if (distribution == "GGX") {
+    return CLOSURE_BSDF_MICROFACET_GGX_ID;
+  }
+  if (distribution == "MULTI_GGX") {
+    return CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<ClosureType>
+metallic_fresnel_type(const GraphNode *node) noexcept {
+  const auto fresnel_type = string_property(node, "FresnelType");
+  if (fresnel_type == "F82") {
+    return CLOSURE_BSDF_F82_CONDUCTOR;
+  }
+  if (fresnel_type == "PHYSICAL_CONDUCTOR") {
+    return CLOSURE_BSDF_PHYSICAL_CONDUCTOR;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<ClosureType>
 volume_phase(const GraphNode *node) noexcept {
   const auto phase = string_property(node, "Phase");
   if (phase == "HENYEY_GREENSTEIN") {
@@ -336,6 +363,56 @@ public:
             .ior = compiler.input_float("IOR"),
             .normal_offset = compiler.input_link("Normal"),
             ._pad = {0u, 0u, 0u}});
+  }
+};
+
+class MetallicBsdfNode final : public BsdfNode {
+private:
+  [[nodiscard]] bool is_isotropic() const noexcept {
+    const auto anisotropy =
+        literal<float>(input("Anisotropy"), contract::SocketType::floating);
+    return anisotropy && std::abs(*anisotropy) <= 1.0e-4f;
+  }
+
+public:
+  MetallicBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_PHYSICAL_CONDUCTOR} {}
+
+  void simplify_settings() override {
+    // Direct copy of Cycles 5.2.1 MetallicBsdfNode::simplify_settings.
+    if (is_isotropic()) {
+      disconnect_input(input("Tangent"));
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto distribution = metallic_distribution(this);
+    const auto fresnel_type = metallic_fresnel_type(this);
+    if (!distribution || !fresnel_type) {
+      compiler.fail("Cycles Metallic BSDF enum property is not migrated exactly");
+      return;
+    }
+    compiler.add_bsdf_node(
+        SVMNodeClosureBsdf{
+            .closure_type = *fresnel_type,
+            .mix_weight_offset = compiler.closure_mix_weight_offset(),
+            ._pad = {0u, 0u, 0u}},
+        SVMNodeMetallicBsdfData{
+            .distribution = *distribution,
+            .base_ior = *fresnel_type == CLOSURE_BSDF_PHYSICAL_CONDUCTOR
+                            ? compiler.input_float3("IOR")
+                            : compiler.input_float3("BaseColor"),
+            .edge_tint_k = *fresnel_type == CLOSURE_BSDF_PHYSICAL_CONDUCTOR
+                               ? compiler.input_float3("Extinction")
+                               : compiler.input_float3("EdgeTint"),
+            .roughness = compiler.input_float("Roughness"),
+            .anisotropy = compiler.input_float("Anisotropy"),
+            .rotation = compiler.input_float("Rotation"),
+            .thin_film_thickness =
+                compiler.input_float("ThinFilmThickness"),
+            .thin_film_ior = compiler.input_float("ThinFilmIOR"),
+            .normal_offset = compiler.input_link("Normal"),
+            .tangent_offset = compiler.input_link("Tangent"),
+            ._pad = {0u, 0u}});
   }
 };
 
@@ -781,6 +858,9 @@ make_closure_graph_node(std::string_view type) {
   }
   if (type == node_type::refraction_bsdf) {
     return std::make_unique<RefractionBsdfNode>();
+  }
+  if (type == node_type::metallic_bsdf) {
+    return std::make_unique<MetallicBsdfNode>();
   }
   if (type == node_type::subsurface_scattering) {
     return std::make_unique<SubsurfaceScatteringNode>();

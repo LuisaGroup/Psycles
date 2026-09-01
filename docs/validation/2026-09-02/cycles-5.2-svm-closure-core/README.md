@@ -19,6 +19,8 @@ The implementation follows these pinned Cycles sources at
 - `kernel/closure/bsdf_microfacet.h::{bsdf_microfacet_*_glass_setup,`
   `bsdf_microfacet_ggx_setup,bsdf_microfacet_beckmann_setup,`
   `bsdf_microfacet_*_refraction_setup,`
+  `bsdf_microfacet_setup_fresnel_conductor,`
+  `bsdf_microfacet_setup_fresnel_f82_tint,`
   `bsdf_microfacet_setup_fresnel_generalized_schlick,`
   `microfacet_ggx_preserve_energy}`
 - `kernel/closure/bsdf_ashikhmin_shirley.h`
@@ -28,6 +30,8 @@ The implementation follows these pinned Cycles sources at
 The copied executable closure types are smooth Diffuse, improved Oren-Nayar,
 Translucent, Transparent, Beckmann/GGX/Multi-GGX Glass,
 Beckmann/GGX/Ashikhmin-Shirley/Multi-GGX Glossy, and Beckmann/GGX Refraction.
+The copied Metallic family includes F82-tint and physical-conductor Fresnel
+models over Beckmann, GGX, and Multi-GGX distributions.
 Other closure payloads still take Cycles' exact typed skip transition and
 report unsupported only when the unported state transition is live.
 Feature-erased BSDF nodes remain valid skips.
@@ -129,6 +133,20 @@ transmission tag and replaces eta with its reciprocal on a back face. These
 are separate typed payloads in the word image; neither is translated through
 the old Psycles surface representation.
 
+Metallic preserves Cycles' distinct 13-word payload and white
+`make_spectrum(mix_weight)` allocation. Static graph compilation prunes the
+unused parameter family: F82 carries Base Color and Edge Tint, while physical
+conductor carries IOR and Extinction. Roughness and anisotropy are saturated,
+the standalone Metallic aspect ratio is `sqrt(1 - 0.9 * anisotropy)`, and its
+tangent is rotated around the authored normal before bump-normal correction.
+F82 and conductor use their own typed Fresnel payloads and sample-albedo
+functions. Multi-GGX alone applies the table-derived energy preservation and
+then uses the ordinary GGX runtime tag. The extra Fresnel record is represented
+as one tagged SoA union: each variant reads and writes only its live fields.
+The failure transition intentionally retains the setup flags written before
+Cycles rolls the immediately preceding ordinary allocation back; the
+one-slot regression freezes this source ordering rather than normalizing it.
+
 The Oren-Nayar parameter copy uses Cycles' `M_2PI_F = 2*pi`. A review caught
 and removed an initially mistaken `2/pi` interpretation before commit. The
 regression freezes `a`, `b`, and the three multi-scatter components, so this
@@ -137,7 +155,7 @@ remain tolerated.
 
 ## External Cycles oracle
 
-Six closure families represented by twelve frozen transitions were created with
+Seven closure families represented by eighteen frozen transitions were created with
 the repository probe tool, rendered by the diagnostic Blender 5.2.1 build
 `cb168525138f`, and dumped
 after Cycles linked its final global SVM buffer. The permanent device test
@@ -158,6 +176,12 @@ relocated from the original global offsets to its compact test buffer.
 | Refraction BSDF Matrix 00 | type 20 (Beckmann Refraction); weight `(0.3822740018,0.6512780190,0.8680070043)`; sample weight `0.6338530779`; alpha `0.0187969934`; eta `1.1599999666` |
 | Refraction BSDF Matrix 01 | type 21 (GGX Refraction); otherwise the same source inputs and observed state as case 00 |
 | Refraction BSDF Matrix 07 | type 20 on a back face; weight `(0.64,0.09,0.49)`; alpha `0.2024999857`; reciprocal eta `0.6666666865` |
+| Metallic F82 GGX | type 12 (GGX); weight `1`; sample weight `0.2983346879`; alpha `(0.0324000008,0.0324000008)` |
+| Metallic F82 Beckmann | type 13 (Beckmann); weight `1`; sample weight `0.5333424211`; alpha `(0.1224999949,0.1224999949)` |
+| Metallic F82 Multi-GGX anisotropic film | output type 12; weight `(0.9768685699,0.9523739219,0.9431397319)`; sample weight `0.2315439284`; alpha `(0.2977624834,0.1503700614)`; energy scale `1.06322` |
+| Metallic conductor GGX | type 12 (GGX); weight `1`; sample weight `0.6869250536`; alpha `(0.0324000008,0.0324000008)` |
+| Metallic conductor Beckmann | type 13 (Beckmann); weight `1`; sample weight `0.6516747475`; alpha `(0.1224999949,0.1224999949)` |
+| Metallic conductor Multi-GGX anisotropic film | output type 12; weight `(0.9931033254,0.9784969091,0.9566794634)`; sample weight `0.5281172991`; alpha `(0.2977624834,0.1503700614)`; energy scale `1.06322` |
 
 The Glass test additionally freezes the source-derived typed setup state:
 alpha, IOR, energy scale, tangent, generalized-Schlick discriminator, film
@@ -192,6 +216,13 @@ python3 tools/decode_cycles_path_trace.py \
   /tmp/closure-trace.exr /tmp/closure-trace.json
 ```
 
+For Metallic word images, the first command uses
+`metallic_svm_oracle`. This oracle-only builder starts from the same finite
+product as `metallic_bsdf_matrix`, literalizes its constant Value/Combine XYZ
+links, and lets Cycles construct the default Normal/Tangent topology. It is
+intentionally excluded from the canonical end-to-end probe runner until the
+exact interpreter replaces production shade-surface.
+
 Artifact hashes:
 
 | Artifact | SHA-256 |
@@ -224,6 +255,14 @@ Artifact hashes:
 | Refraction Beckmann path trace / decoded trace | `fdaba6513cbc5ef60ee7509acd0a2f0a3d1a2f3346976b865c7d71e35d603a30` / `2dd3382831e4fccfebd81401f9896698fe0dadea7ad5706b1f47ab0911f3fdd4` |
 | Refraction GGX path trace / decoded trace | `76a5eff91cda12cbac14aba4b4aa87a7307120e752d6f24a670155b3b85e132a` / `4da0653bcacb9aee9784d0a2102b0832b474fbeb32c5f41f84f6b831c9404f89` |
 | Refraction back-face path trace / decoded trace | `dd67ccc2d0b0d34f0955981ac60b946ebc563bb2de936e3b6558b20bc83da8b5` / `c2cd1f894f0e24dc0bbd13abbee4b9cc5ac6c44652b9adb1a89b364272a22038` |
+| Metallic linked matrix `.blend` / final SVM buffer | `c88d512e08e49a75d04d1f0732bc42e2e2d18ab826db7a758ff199ac0634c0b8` / `ca569e6e0fdf31b04109689ef8b3fb70a6655d464348f595de334cc66d637cfd` |
+| Metallic literal oracle `.blend` / final SVM buffer | `e8895480b3f3aceaa94caacf512a184c1c143b8a948fa63140fdb5842dc6f675` / `b595c9b6b95702cde26185a2ff15c1572fd61923334df9a49d0e6cfe87f3eace` |
+| Metallic F82 GGX path trace / decoded trace | `c91f6d42b67c09408426d10b5820a9b9a6b24c8179a4508052ae9b0cd13adb32` / `678a07a245ca29c414e14b6711b13e97ddf93203cdea506ea6c078e024bb6897` |
+| Metallic F82 Beckmann decoded trace | `c0db0165550b2b98b1f51d9b8fa0df9ec8296f653cc34332ac3a530743584c78` |
+| Metallic F82 Multi-GGX decoded trace | `a30e50987645645bc6b60cf4f67908ef01591e7064d532bbf154891d021d151f` |
+| Metallic conductor GGX decoded trace | `89e4d69659388bf7a9bd1a9be5e4b52895236e39aeab211475a8ff0830cd2abd` |
+| Metallic conductor Beckmann decoded trace | `27b34532f6e5ef01717579d0bf918a031cdc317fddde654813e4600f92065780` |
+| Metallic conductor Multi-GGX decoded trace | `e7acdf099184f9323260819c40b36714293a87de224878d76e2da8b16cb004b5` |
 
 No `.svm52` binary is checked in.
 
@@ -251,9 +290,10 @@ ctest --test-dir build --output-on-failure -R \
 
 Result: closure 3/3, thin-film 6/6, and compiler 1/1 passed. The compiler test
 locks the standalone graph-to-word-image mapping independently of the device
-interpreter tests, including the Multi-GGX-only color payload. A complete
-32-way build and test run for this expanded checkpoint passed 464/464 tests in
-13.91 seconds. The Vulkan test environment is
+interpreter tests, including statically pruned Metallic Fresnel payloads and
+Multi-GGX-only fields. The complete 32-way build and test run for this
+expanded checkpoint passed 464/464 tests in 13.91 seconds. The Vulkan test
+environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
 
@@ -285,10 +325,11 @@ shade-surface.
 ## Remaining boundary
 
 This checkpoint establishes ordinary and extra closure allocation plus the
-simple, Glass, standalone Glossy, and standalone Refraction setup families
-inside the exact interpreter. Production still calls the old custom
+simple, Glass, standalone Glossy, standalone Refraction, and Metallic
+F82/conductor setup families inside the exact interpreter. Production still
+calls the old custom
 `SurfaceProgram` path. The next required structural steps are the remaining
-typed closure payloads (especially Metallic and Principled), exact closure
+typed closure payloads (especially Principled), exact closure
 evaluation/sampling, and only then replacement and deletion of the old
 shade-surface route. The Cycles-style global shader linker is already staged,
 but this document makes no production-render parity or performance claim.

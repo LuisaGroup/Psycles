@@ -224,6 +224,7 @@ def _main() -> None:
             "combined shader-probe registry is not an exact partition"
         )
     if oracle_probes != {
+        "metallic_svm_oracle",
         "svm_tangent_dynamic",
         "vector_to_scalar",
         "volume_scatter_svm",

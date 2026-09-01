@@ -181,3 +181,45 @@ def _metallic_bsdf_matrix(scene: Any) -> None:
         frame_bleed=0.02,
     )
     surface.visible_shadow = False
+
+
+def _metallic_svm_oracle(scene: Any) -> None:
+    """Literal-input companion used for exact SVM word-image oracles.
+
+    The rendered matrix deliberately keeps every authored input linked. This
+    companion starts from that identical finite product, then restores the
+    source values to the Metallic sockets and removes only those constant
+    Value/Combine XYZ edges. Cycles therefore exposes its own default Normal
+    and Tangent topology while the closure payload remains unchanged.
+    """
+    _metallic_bsdf_matrix(scene)
+    for material in bpy.data.materials:
+        if not material.name.startswith("Metallic BSDF Matrix "):
+            continue
+        tree = material.node_tree
+        closure = next(
+            node
+            for node in tree.nodes
+            if node.bl_idname == "ShaderNodeBsdfMetallic"
+        )
+        for socket in closure.inputs:
+            if not socket.is_linked:
+                continue
+            link = socket.links[0]
+            source = link.from_node
+            if source.bl_idname == "ShaderNodeValue":
+                socket.default_value = link.from_socket.default_value
+            elif source.bl_idname == "ShaderNodeCombineXYZ":
+                value = tuple(
+                    _input(source, component).default_value
+                    for component in ("X", "Y", "Z")
+                )
+                if len(socket.default_value) == 4:
+                    socket.default_value = (*value, 1.0)
+                else:
+                    socket.default_value = value
+            else:
+                raise AssertionError(
+                    f"unexpected Metallic oracle source {source.bl_idname!r}"
+                )
+            tree.links.remove(link)

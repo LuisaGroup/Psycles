@@ -45,6 +45,76 @@ inline constexpr float two_pi = 6.28318530717958647692f;
     return result;
 }
 
+[[nodiscard]] Float3 fresnel_f82_tint_b(
+    Expr<luisa::float3> f0, Expr<luisa::float3> tint) noexcept {
+    constexpr float f = 6.0f / 7.0f;
+    constexpr float f5 = f * f * f * f * f;
+    const auto schlick = lerp(f0, make_float3(1.0f), f5);
+    return schlick * (7.0f / (f5 * f)) * (make_float3(1.0f) - tint);
+}
+
+[[nodiscard]] Float3 fresnel_f82_fss(
+    Expr<luisa::float3> f0, Expr<luisa::float3> b) noexcept {
+    return lerp(f0, make_float3(1.0f), 1.0f / 21.0f) - b * (1.0f / 126.0f);
+}
+
+[[nodiscard]] Float fresnel_conductor_channel(
+    Expr<float> cosine_incoming, Expr<float> ior,
+    Expr<float> extinction) noexcept {
+    const auto ior_squared = square(ior);
+    const auto extinction_squared = square(extinction);
+    const auto two_ior_extinction = 2.0f * ior * extinction;
+    const auto t1 = ior_squared - extinction_squared -
+                    (1.0f - square(cosine_incoming));
+    const auto t2 = sqrt(square(t1) + square(two_ior_extinction));
+    const auto u_squared = max(0.5f * (t2 + t1), 0.0f);
+    const auto v_squared = max(0.5f * (t2 - t1), 0.0f);
+    const auto u = sqrt(u_squared);
+    const auto v = sqrt(v_squared);
+
+    const auto reflection_s_numerator =
+        square(cosine_incoming - u) + v_squared;
+    const auto reflection_s_denominator =
+        square(cosine_incoming + u) + v_squared;
+    const auto reflection_s =
+        select(0.0f, reflection_s_numerator / reflection_s_denominator,
+               reflection_s_denominator != 0.0f);
+    const auto t3 = (ior_squared - extinction_squared) * cosine_incoming;
+    const auto t4 = two_ior_extinction * cosine_incoming;
+    const auto reflection_p_numerator = square(t3 - u) + square(t4 - v);
+    const auto reflection_p_denominator = square(t3 + u) + square(t4 + v);
+    const auto reflection_p =
+        select(0.0f, reflection_p_numerator / reflection_p_denominator,
+               reflection_p_denominator != 0.0f);
+    return 0.5f * (reflection_s + reflection_p);
+}
+
+[[nodiscard]] Float3 fresnel_conductor(
+    Expr<float> cosine_incoming, Expr<luisa::float3> ior,
+    Expr<luisa::float3> extinction) noexcept {
+    return make_float3(
+        fresnel_conductor_channel(cosine_incoming, ior.x, extinction.x),
+        fresnel_conductor_channel(cosine_incoming, ior.y, extinction.y),
+        fresnel_conductor_channel(cosine_incoming, ior.z, extinction.z));
+}
+
+[[nodiscard]] Float3 fresnel_f82_b(
+    Expr<luisa::float3> f0, Expr<luisa::float3> f82) noexcept {
+    constexpr float f = 6.0f / 7.0f;
+    constexpr float f5 = f * f * f * f * f;
+    return (7.0f / (f5 * f)) *
+           (lerp(f0, make_float3(1.0f), f5) - f82);
+}
+
+[[nodiscard]] Float3 fresnel_conductor_fss(
+    Expr<luisa::float3> ior,
+    Expr<luisa::float3> extinction) noexcept {
+    const auto f0 = fresnel_conductor(1.0f, ior, extinction);
+    const auto f82 = fresnel_conductor(1.0f / 7.0f, ior, extinction);
+    return clamp(fresnel_f82_fss(f0, fresnel_f82_b(f0, f82)),
+                 make_float3(0.0f), make_float3(1.0f));
+}
+
 [[nodiscard]] Float3 rotate_around_axis(Expr<luisa::float3> point,
                                         Expr<luisa::float3> axis,
                                         Expr<float> angle) noexcept {
@@ -200,6 +270,48 @@ void preserve_multi_ggx_reflection_energy(
         UInt{cycles45_tables::ggx_eavg_offset}, 32u);
     apply_multi_ggx_energy(pool, allocation, microfacet, energy,
                            average_energy, color);
+}
+
+[[nodiscard]] Float3 f82_tint_albedo(
+    const KernelGlobals &kernel_globals, Expr<luisa::float3> incoming,
+    Expr<luisa::float3> normal, const MicrofacetParam &microfacet,
+    const FresnelF82Tint &fresnel) noexcept {
+    const auto cosine_incoming = dot(incoming, normal);
+    Float3 result;
+    $if (fresnel.thin_film.thickness >
+         table_detail::thin_film_thickness_cutoff) {
+        result = table_detail::thin_film_f82_fresnel(
+            kernel_globals, fresnel.thin_film.thickness,
+            fresnel.thin_film.ior, fresnel.f0, fresnel.b, cosine_incoming);
+    }
+    $else {
+        const auto table_roughness =
+            sqrt(sqrt(microfacet.alpha_x * microfacet.alpha_y));
+        const auto interpolation = table_detail::cycles_table_3d(
+            kernel_globals, table_roughness, cosine_incoming, 0.5f,
+            UInt{cycles45_tables::ggx_gen_schlick_s_offset}, 16u, 16u, 16u);
+        result = lerp(fresnel.f0, make_float3(1.0f), interpolation);
+    };
+    return result;
+}
+
+[[nodiscard]] Float3 conductor_albedo(
+    const KernelGlobals &kernel_globals, Expr<luisa::float3> incoming,
+    Expr<luisa::float3> normal, const FresnelConductor &fresnel) noexcept {
+    const auto cosine_incoming = dot(incoming, normal);
+    Float3 result;
+    $if (fresnel.thin_film.thickness >
+         table_detail::thin_film_thickness_cutoff) {
+        result = table_detail::thin_film_conductor_fresnel(
+            kernel_globals, fresnel.thin_film.thickness,
+            fresnel.thin_film.ior, fresnel.ior, fresnel.extinction,
+            cosine_incoming);
+    }
+    $else {
+        result = fresnel_conductor(cosine_incoming, fresnel.ior,
+                                   fresnel.extinction);
+    };
+    return result;
 }
 
 }// namespace
@@ -473,6 +585,140 @@ void refraction_setup(
                 flags |= shader_data_bsdf_has_eval;
             };
             shader_data.flag |= flags;
+        };
+    };
+}
+
+void metallic_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const PathState &path_state, Expr<std::uint32_t> input_type,
+    Expr<std::uint32_t> distribution, Expr<float> mix_weight,
+    Expr<luisa::float3> normal, Expr<luisa::float3> base_ior,
+    Expr<luisa::float3> edge_tint_k, Expr<float> roughness,
+    Expr<float> anisotropy, Expr<float> rotation,
+    Expr<float> thin_film_thickness, Expr<float> thin_film_ior,
+    Expr<luisa::float3> tangent, Expr<bool> tangent_valid) noexcept {
+    const auto diffuse_visibility =
+        (path_state.visibility & path_ray_visibility_diffuse) != 0u;
+    const Bool reflective_caustics =
+        kernel_globals.caustics_reflective() | !diffuse_visibility;
+
+    $if (reflective_caustics) {
+        auto &pool = *shader_data.closure;
+        const auto allocated =
+            bsdf_allocate(shader_data, make_float3(mix_weight));
+        $if (allocated.valid) {
+            const auto valid_normal =
+                maybe_ensure_valid_specular_reflection(shader_data, normal);
+            const auto saturated_anisotropy = clamp(anisotropy, 0.0f, 1.0f);
+            const auto alpha = square(clamp(roughness, 0.0f, 1.0f));
+            MicrofacetParam microfacet{
+                .alpha_x = alpha,
+                .alpha_y = alpha,
+                .ior = 1.0f,
+                .energy_scale = 1.0f,
+                .fresnel_type =
+                    static_cast<std::uint32_t>(MicrofacetFresnel::none),
+                .T = make_float3(0.0f)};
+            $if ((saturated_anisotropy > 0.0f) & tangent_valid) {
+                microfacet.T = tangent;
+                const auto aspect =
+                    sqrt(1.0f - saturated_anisotropy * 0.9f);
+                microfacet.alpha_x /= aspect;
+                microfacet.alpha_y *= aspect;
+                $if (rotation != 0.0f) {
+                    // Cycles rotates the standalone Metallic tangent around
+                    // the authored N, not the bump-corrected BSDF normal.
+                    microfacet.T = rotate_around_axis(
+                        microfacet.T, normal, rotation * two_pi);
+                };
+            };
+
+            microfacet.alpha_x = clamp(microfacet.alpha_x, 0.0f, 1.0f);
+            microfacet.alpha_y = clamp(microfacet.alpha_y, 0.0f, 1.0f);
+            const auto beckmann =
+                distribution == static_cast<std::uint32_t>(
+                                    CLOSURE_BSDF_MICROFACET_BECKMANN_ID);
+            const auto output_type =
+                select(UInt{static_cast<std::uint32_t>(
+                           CLOSURE_BSDF_MICROFACET_GGX_ID)},
+                       UInt{static_cast<std::uint32_t>(
+                           CLOSURE_BSDF_MICROFACET_BECKMANN_ID)},
+                       beckmann);
+            pool.set_normal(allocated.index, valid_normal);
+            pool.set_type(allocated.index, output_type);
+            pool.set_microfacet_param(allocated.index, microfacet);
+
+            // In Cycles the distribution setup precedes closure_alloc_extra.
+            // Consequently these flags survive an extra-allocation rollback.
+            UInt flags = shader_data_bsdf;
+            $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
+                flags |= shader_data_bsdf_has_eval;
+            };
+            shader_data.flag |= flags;
+
+            const auto extra_allocated = pool.allocate_extra(allocated, 1u);
+            $if (extra_allocated) {
+                const FresnelThinFilm thin_film{
+                    .thickness = max(thin_film_thickness, 1.0e-5f),
+                    .ior = max(thin_film_ior, 1.0e-5f)};
+                const auto preserve_energy =
+                    distribution == static_cast<std::uint32_t>(
+                                        CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID);
+                const auto common = pool.common(allocated.index);
+                $if (input_type == static_cast<std::uint32_t>(
+                                       CLOSURE_BSDF_PHYSICAL_CONDUCTOR)) {
+                    const FresnelConductor fresnel{
+                        .thin_film = thin_film,
+                        .ior = max(base_ior, make_float3(0.0f)),
+                        .extinction =
+                            max(edge_tint_k, make_float3(0.0f))};
+                    microfacet.fresnel_type = static_cast<std::uint32_t>(
+                        MicrofacetFresnel::conductor);
+                    pool.set_fresnel_conductor(allocated.index, fresnel);
+                    const auto albedo = conductor_albedo(
+                        kernel_globals, shader_data.wi, valid_normal, fresnel);
+                    pool.set_sample_weight(
+                        allocated.index,
+                        common.sample_weight * average(albedo));
+                    $if (preserve_energy) {
+                        preserve_multi_ggx_reflection_energy(
+                            kernel_globals, pool, allocated, shader_data.wi,
+                            valid_normal, microfacet,
+                            fresnel_conductor_fss(fresnel.ior,
+                                                  fresnel.extinction));
+                    };
+                }
+                $else {
+                    const auto f0 = clamp(base_ior, make_float3(0.0f),
+                                          make_float3(1.0f));
+                    const auto tint = clamp(edge_tint_k, make_float3(0.0f),
+                                            make_float3(1.0f));
+                    Float3 b;
+                    $if (all(tint == make_float3(1.0f))) {
+                        b = make_float3(0.0f);
+                    }
+                    $else { b = fresnel_f82_tint_b(f0, tint); };
+                    const FresnelF82Tint fresnel{
+                        .thin_film = thin_film, .f0 = f0, .b = b};
+                    microfacet.fresnel_type = static_cast<std::uint32_t>(
+                        MicrofacetFresnel::f82_tint);
+                    pool.set_fresnel_f82_tint(allocated.index, fresnel);
+                    const auto albedo = f82_tint_albedo(
+                        kernel_globals, shader_data.wi, valid_normal,
+                        microfacet, fresnel);
+                    pool.set_sample_weight(
+                        allocated.index,
+                        common.sample_weight * average(albedo));
+                    $if (preserve_energy) {
+                        preserve_multi_ggx_reflection_energy(
+                            kernel_globals, pool, allocated, shader_data.wi,
+                            valid_normal, microfacet,
+                            fresnel_f82_fss(fresnel.f0, fresnel.b));
+                    };
+                };
+                pool.set_microfacet_param(allocated.index, microfacet);
+            };
         };
     };
 }

@@ -156,13 +156,11 @@ ClosurePool::ClosurePool(std::size_t capacity) noexcept
       _microfacet_alpha_ior_energy{std::max(_capacity, std::size_t{1u})},
       _microfacet_tangent{std::max(_capacity, std::size_t{1u})},
       _microfacet_fresnel_type{std::max(_capacity, std::size_t{1u})},
-      _generalized_schlick_thin_film{std::max(_capacity, std::size_t{1u})},
-      _generalized_schlick_reflection_tint{
-          std::max(_capacity, std::size_t{1u})},
-      _generalized_schlick_transmission_tint{
-          std::max(_capacity, std::size_t{1u})},
-      _generalized_schlick_f0{std::max(_capacity, std::size_t{1u})},
-      _generalized_schlick_f90{std::max(_capacity, std::size_t{1u})},
+      _fresnel_thin_film{std::max(_capacity, std::size_t{1u})},
+      _fresnel_payload0{std::max(_capacity, std::size_t{1u})},
+      _fresnel_payload1{std::max(_capacity, std::size_t{1u})},
+      _fresnel_f0{std::max(_capacity, std::size_t{1u})},
+      _fresnel_f90{std::max(_capacity, std::size_t{1u})},
       _count{0u}, _left{static_cast<std::uint32_t>(_capacity)} {}
 
 std::size_t ClosurePool::capacity() const noexcept { return _capacity; }
@@ -261,15 +259,31 @@ void ClosurePool::set_microfacet_param(
 void ClosurePool::set_generalized_schlick(
     Expr<std::uint32_t> index,
     const FresnelGeneralizedSchlick &fresnel) noexcept {
-  _generalized_schlick_thin_film.write(
+  _fresnel_thin_film.write(
       index, make_float4(fresnel.thin_film.thickness,
                          fresnel.thin_film.ior, fresnel.exponent, 0.0f));
-  _generalized_schlick_reflection_tint.write(
-      index, make_float4(fresnel.reflection_tint, 0.0f));
-  _generalized_schlick_transmission_tint.write(
-      index, make_float4(fresnel.transmission_tint, 0.0f));
-  _generalized_schlick_f0.write(index, make_float4(fresnel.f0, 0.0f));
-  _generalized_schlick_f90.write(index, make_float4(fresnel.f90, 0.0f));
+  _fresnel_payload0.write(index, make_float4(fresnel.reflection_tint, 0.0f));
+  _fresnel_payload1.write(index, make_float4(fresnel.transmission_tint, 0.0f));
+  _fresnel_f0.write(index, make_float4(fresnel.f0, 0.0f));
+  _fresnel_f90.write(index, make_float4(fresnel.f90, 0.0f));
+}
+
+void ClosurePool::set_fresnel_conductor(
+    Expr<std::uint32_t> index, const FresnelConductor &fresnel) noexcept {
+  _fresnel_thin_film.write(
+      index, make_float4(fresnel.thin_film.thickness,
+                         fresnel.thin_film.ior, 0.0f, 0.0f));
+  _fresnel_payload0.write(index, make_float4(fresnel.ior, 0.0f));
+  _fresnel_payload1.write(index, make_float4(fresnel.extinction, 0.0f));
+}
+
+void ClosurePool::set_fresnel_f82_tint(
+    Expr<std::uint32_t> index, const FresnelF82Tint &fresnel) noexcept {
+  _fresnel_thin_film.write(
+      index, make_float4(fresnel.thin_film.thickness,
+                         fresnel.thin_film.ior, 0.0f, 0.0f));
+  _fresnel_payload0.write(index, make_float4(fresnel.f0, 0.0f));
+  _fresnel_payload1.write(index, make_float4(fresnel.b, 0.0f));
 }
 
 void ClosurePool::set_left(Expr<std::uint32_t> left) noexcept { _left = left; }
@@ -296,19 +310,38 @@ ClosurePool::oren_nayar(Expr<std::uint32_t> index) const noexcept {
 
 MicrofacetClosure
 ClosurePool::microfacet(Expr<std::uint32_t> index) const noexcept {
-  const auto film = _generalized_schlick_thin_film.read(index);
+  const auto film = _fresnel_thin_film.read(index);
   return {
       .common = common(index),
       .param = microfacet_param(index),
       .generalized_schlick = {
           .thin_film = {.thickness = film.x, .ior = film.y},
-          .reflection_tint =
-              _generalized_schlick_reflection_tint.read(index).xyz(),
-          .transmission_tint =
-              _generalized_schlick_transmission_tint.read(index).xyz(),
-          .f0 = _generalized_schlick_f0.read(index).xyz(),
-          .f90 = _generalized_schlick_f90.read(index).xyz(),
+          .reflection_tint = _fresnel_payload0.read(index).xyz(),
+          .transmission_tint = _fresnel_payload1.read(index).xyz(),
+          .f0 = _fresnel_f0.read(index).xyz(),
+          .f90 = _fresnel_f90.read(index).xyz(),
           .exponent = film.z}};
+}
+
+MicrofacetConductorClosure ClosurePool::microfacet_conductor(
+    Expr<std::uint32_t> index) const noexcept {
+  const auto film = _fresnel_thin_film.read(index);
+  return {.common = common(index),
+          .param = microfacet_param(index),
+          .conductor = {
+              .thin_film = {.thickness = film.x, .ior = film.y},
+              .ior = _fresnel_payload0.read(index).xyz(),
+              .extinction = _fresnel_payload1.read(index).xyz()}};
+}
+
+MicrofacetF82TintClosure ClosurePool::microfacet_f82_tint(
+    Expr<std::uint32_t> index) const noexcept {
+  const auto film = _fresnel_thin_film.read(index);
+  return {.common = common(index),
+          .param = microfacet_param(index),
+          .f82_tint = {.thin_film = {.thickness = film.x, .ior = film.y},
+                       .f0 = _fresnel_payload0.read(index).xyz(),
+                       .b = _fresnel_payload1.read(index).xyz()}};
 }
 
 MicrofacetParam
@@ -467,6 +500,11 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                                  CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID)) |
             (closure_type == static_cast<std::uint32_t>(
                                  CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID));
+        const Bool is_metallic =
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSDF_PHYSICAL_CONDUCTOR)) |
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSDF_F82_CONDUCTOR));
         $if(is_glass) {
           const auto color_x = cursor.word();
           const auto color_y = cursor.word();
@@ -530,6 +568,43 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
               closure_weight, normal,
               stack_load_input_float(stack, roughness_input),
               stack_load_input_float(stack, ior_input));
+        }
+        $elif(is_metallic) {
+          const auto distribution = cursor.word();
+          const auto base_ior_x = cursor.word();
+          const auto base_ior_y = cursor.word();
+          const auto base_ior_z = cursor.word();
+          const auto edge_tint_k_x = cursor.word();
+          const auto edge_tint_k_y = cursor.word();
+          const auto edge_tint_k_z = cursor.word();
+          const auto roughness_input = cursor.word();
+          const auto anisotropy_input = cursor.word();
+          const auto rotation_input = cursor.word();
+          const auto thin_film_thickness_input = cursor.word();
+          const auto thin_film_ior_input = cursor.word();
+          const auto normal_tangent_packed = cursor.word();
+          const auto normal_offset = cursor.byte(normal_tangent_packed, 0u);
+          const auto tangent_offset = cursor.byte(normal_tangent_packed, 1u);
+          auto normal =
+              stack_load_float3_default(stack, normal_offset, shader_data.N);
+          normal = native_vector_math::safe_normalize_nonzero_or(
+              normal, shader_data.N);
+          detail::metallic_setup(
+              kernel_globals, shader_data, path_state, closure_type,
+              distribution, mix_weight, normal,
+              stack_load_input_float3(stack, base_ior_x, base_ior_y,
+                                      base_ior_z),
+              stack_load_input_float3(stack, edge_tint_k_x, edge_tint_k_y,
+                                      edge_tint_k_z),
+              stack_load_input_float(stack, roughness_input),
+              stack_load_input_float(stack, anisotropy_input),
+              stack_load_input_float(stack, rotation_input),
+              stack_load_input_float(stack, thin_film_thickness_input),
+              stack_load_input_float(stack, thin_film_ior_input),
+              stack_load_float3_default(stack, tangent_offset,
+                                        make_float3(0.0f)),
+              tangent_offset !=
+                  static_cast<std::uint32_t>(SVM_STACK_INVALID));
         }
         $else {
           $switch(closure_type) {

@@ -46,4 +46,20 @@ void refraction_setup(
     luisa::compute::Expr<float> roughness,
     luisa::compute::Expr<float> ior) noexcept;
 
+void metallic_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const PathState &path_state, luisa::compute::Expr<std::uint32_t> input_type,
+    luisa::compute::Expr<std::uint32_t> distribution,
+    luisa::compute::Expr<float> mix_weight,
+    luisa::compute::Expr<luisa::float3> normal,
+    luisa::compute::Expr<luisa::float3> base_ior,
+    luisa::compute::Expr<luisa::float3> edge_tint_k,
+    luisa::compute::Expr<float> roughness,
+    luisa::compute::Expr<float> anisotropy,
+    luisa::compute::Expr<float> rotation,
+    luisa::compute::Expr<float> thin_film_thickness,
+    luisa::compute::Expr<float> thin_film_ior,
+    luisa::compute::Expr<luisa::float3> tangent,
+    luisa::compute::Expr<bool> tangent_valid) noexcept;
+
 }// namespace psycles::luisa_backend::cycles_svm::detail

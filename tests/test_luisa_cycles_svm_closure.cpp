@@ -146,6 +146,70 @@ constexpr std::array<std::uint32_t, 20u>
         0x3ee66666u, 0x3fc00000u, 0x00000000u,
         0x00000000u, 0x00000000u, 0x00000000u};
 
+constexpr std::array<std::uint32_t, 26u> metallic_f82_ggx_words{
+    0x00000001u, 0x00000004u, 0x00000018u, 0x00000019u,
+    0x0000000bu, 0x00000001u, 0x00000000u,
+    0x00000002u, 0x0000000bu, 0x000000ffu,
+    0x0000000cu, 0x3f3851ecu, 0x3e0f5c29u, 0x3d0f5c29u,
+    0x3f6b851fu, 0x3ed70a3du, 0x3df5c28fu,
+    0x3e3851ecu, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x3faa3d71u, 0x0000ff00u,
+    0x00000000u, 0x00000000u, 0x00000000u};
+
+constexpr std::array<std::uint32_t, 26u> metallic_f82_beckmann_words{
+    0x00000001u, 0x00000004u, 0x00000018u, 0x00000019u,
+    0x0000000bu, 0x00000001u, 0x00000000u,
+    0x00000002u, 0x0000000bu, 0x000000ffu,
+    0x0000000du, 0x3e23d70au, 0x3f1eb852u, 0x3f51eb85u,
+    0x3f3d70a4u, 0x3f5c28f6u, 0x3f7ae148u,
+    0x3eb33333u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x3faa3d71u, 0x0000ff00u,
+    0x00000000u, 0x00000000u, 0x00000000u};
+
+constexpr std::array<std::uint32_t, 29u>
+    metallic_f82_multi_anisotropic_words{
+        0x00000001u, 0x00000004u, 0x0000001bu, 0x0000001cu,
+        0x0000000bu, 0x00000001u, 0x00000000u,
+        0x0000000bu, 0x03000002u, 0x00000000u,
+        0x00000002u, 0x0000000bu, 0x000000ffu,
+        0x0000000eu, 0x3f1eb852u, 0x3e6147aeu, 0x3d75c28fu,
+        0x3f75c28fu, 0x3ef5c28fu, 0x3e3851ecu,
+        0x3eeb851fu, 0x3f0ccccdu, 0x3e3851ecu,
+        0x43d20000u, 0x3fc28f5cu, 0x00000300u,
+        0x00000000u, 0x00000000u, 0x00000000u};
+
+constexpr std::array<std::uint32_t, 26u> metallic_conductor_ggx_words{
+    0x00000001u, 0x00000004u, 0x00000018u, 0x00000019u,
+    0x0000000bu, 0x00000001u, 0x00000000u,
+    0x00000002u, 0x0000000au, 0x000000ffu,
+    0x0000000cu, 0x3e8a3d71u, 0x3f2e147bu, 0x3fa8f5c3u,
+    0x40670a3du, 0x4027ae14u, 0x3ff47ae1u,
+    0x3e3851ecu, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x3faa3d71u, 0x0000ff00u,
+    0x00000000u, 0x00000000u, 0x00000000u};
+
+constexpr std::array<std::uint32_t, 26u> metallic_conductor_beckmann_words{
+    0x00000001u, 0x00000004u, 0x00000018u, 0x00000019u,
+    0x0000000bu, 0x00000001u, 0x00000000u,
+    0x00000002u, 0x0000000au, 0x000000ffu,
+    0x0000000du, 0x3fb9999au, 0x3f570a3du, 0x3ec28f5cu,
+    0x3ff5c28fu, 0x40251eb8u, 0x405ae148u,
+    0x3eb33333u, 0x00000000u, 0x00000000u, 0x00000000u,
+    0x3faa3d71u, 0x0000ff00u,
+    0x00000000u, 0x00000000u, 0x00000000u};
+
+constexpr std::array<std::uint32_t, 29u>
+    metallic_conductor_multi_anisotropic_words{
+        0x00000001u, 0x00000004u, 0x0000001bu, 0x0000001cu,
+        0x0000000bu, 0x00000001u, 0x00000000u,
+        0x0000000bu, 0x03000002u, 0x00000000u,
+        0x00000002u, 0x0000000au, 0x000000ffu,
+        0x0000000eu, 0x3ed70a3du, 0x3f6147aeu, 0x3fd1eb85u,
+        0x406e147bu, 0x40228f5cu, 0x3fae147bu,
+        0x3eeb851fu, 0x3f0ccccdu, 0x3e3851ecu,
+        0x44188000u, 0x3fd9999au, 0x00000300u,
+        0x00000000u, 0x00000000u, 0x00000000u};
+
 constexpr auto sphere_normal = luisa::float3{
     0.02134036459028721f, 0.021340366452932358f, 0.9995445013046265f};
 constexpr auto sphere_geometric_normal = luisa::float3{
@@ -168,6 +232,7 @@ struct ExpectedClosure {
   std::uint32_t left{7u};
   bool microfacet{false};
   bool generalized_schlick{false};
+  bool fresnel_payload{false};
   luisa::float4 alpha_ior_energy{};
   luisa::float3 tangent{};
   std::uint32_t fresnel_type{};
@@ -429,6 +494,193 @@ constexpr ExpectedClosure refraction_beckmann_backface_expected{
     .alpha_ior_energy = {0.20249998569488525f, 0.20249998569488525f,
                          0.6666666865348816f, 1.0f}};
 
+constexpr ExpectedClosure metallic_f82_ggx_expected{
+    .name = "Metallic BSDF Matrix 00 F82 GGX",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {1.0f, 1.0f, 1.0f},
+    .sample_weight = 0.29833468794822693f,
+    .type = 12u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 24u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .count = 1u,
+    .left = 6u,
+    .microfacet = true,
+    .fresnel_payload = true,
+    .alpha_ior_energy = {0.03240000084042549f, 0.03240000084042549f,
+                         1.0f, 1.0f},
+    .fresnel_type = 5u,
+    .thin_film_exponent = {0.000009999999747378752f, 1.3300000429153442f,
+                           0.0f, 0.0f},
+    .reflection_tint = {0.7200000286102295f, 0.14000000059604645f,
+                        0.03500000014901161f},
+    .transmission_tint = {1.1996527910232544f, 5.506825923919678f,
+                          7.478795051574707f}};
+
+constexpr ExpectedClosure metallic_f82_beckmann_expected{
+    .name = "Metallic BSDF Matrix 01 F82 Beckmann",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {1.0f, 1.0f, 1.0f},
+    .sample_weight = 0.5333424210548401f,
+    .type = 13u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 24u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .count = 1u,
+    .left = 6u,
+    .microfacet = true,
+    .fresnel_payload = true,
+    .alpha_ior_energy = {0.1224999949336052f, 0.1224999949336052f,
+                         1.0f, 1.0f},
+    .fresnel_type = 5u,
+    .thin_film_exponent = {0.000009999999747378752f, 1.3300000429153442f,
+                           0.0f, 0.0f},
+    .reflection_tint = {0.1599999964237213f, 0.6200000047683716f,
+                        0.8199999928474426f},
+    .transmission_tint = {2.517897367477417f, 1.9666064977645874f,
+                          0.31888237595558167f}};
+
+constexpr ExpectedClosure metallic_f82_multi_anisotropic_expected{
+    .name = "Metallic BSDF Matrix 07 F82 Multi-GGX",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.9768685698509216f, 0.9523739218711853f,
+               0.9431397318840027f},
+    .sample_weight = 0.23154392838478088f,
+    .type = 12u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 27u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .count = 1u,
+    .left = 6u,
+    .microfacet = true,
+    .fresnel_payload = true,
+    .alpha_ior_energy = {0.2977624833583832f, 0.1503700613975525f,
+                         1.0f, 1.06322f},
+    .tangent = {0.42577922344207764f, 0.9048271179199219f, 0.0f},
+    .fresnel_type = 5u,
+    .thin_film_exponent = {420.0f, 1.5199999809265137f, 0.0f, 0.0f},
+    .reflection_tint = {0.6200000047683716f, 0.2199999988079071f,
+                        0.05999999865889549f},
+    .transmission_tint = {0.5618879199028015f, 5.3317179679870605f,
+                          7.163314342498779f}};
+
+constexpr ExpectedClosure metallic_conductor_ggx_expected{
+    .name = "Metallic BSDF Matrix 08 physical GGX",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {1.0f, 1.0f, 1.0f},
+    .sample_weight = 0.6869250535964966f,
+    .type = 12u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 24u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .count = 1u,
+    .left = 6u,
+    .microfacet = true,
+    .fresnel_payload = true,
+    .alpha_ior_energy = {0.03240000084042549f, 0.03240000084042549f,
+                         1.0f, 1.0f},
+    .fresnel_type = 3u,
+    .thin_film_exponent = {0.000009999999747378752f, 1.3300000429153442f,
+                           0.0f, 0.0f},
+    .reflection_tint = {0.27000001072883606f, 0.6800000071525574f,
+                        1.3200000524520874f},
+    .transmission_tint = {3.609999895095825f, 2.619999885559082f,
+                          1.909999966621399f}};
+
+constexpr ExpectedClosure metallic_conductor_beckmann_expected{
+    .name = "Metallic BSDF Matrix 09 physical Beckmann",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {1.0f, 1.0f, 1.0f},
+    .sample_weight = 0.651674747467041f,
+    .type = 13u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 24u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .count = 1u,
+    .left = 6u,
+    .microfacet = true,
+    .fresnel_payload = true,
+    .alpha_ior_energy = {0.1224999949336052f, 0.1224999949336052f,
+                         1.0f, 1.0f},
+    .fresnel_type = 3u,
+    .thin_film_exponent = {0.000009999999747378752f, 1.3300000429153442f,
+                           0.0f, 0.0f},
+    .reflection_tint = {1.4500000476837158f, 0.8399999737739563f,
+                        0.3799999952316284f},
+    .transmission_tint = {1.9199999570846558f, 2.5799999237060547f,
+                          3.4200000762939453f}};
+
+constexpr ExpectedClosure metallic_conductor_multi_anisotropic_expected{
+    .name = "Metallic BSDF Matrix 15 physical Multi-GGX",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.9931033253669739f, 0.9784969091415405f,
+               0.9566794633865356f},
+    .sample_weight = 0.528117299079895f,
+    .type = 12u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 27u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .count = 1u,
+    .left = 6u,
+    .microfacet = true,
+    .fresnel_payload = true,
+    .alpha_ior_energy = {0.2977624833583832f, 0.1503700613975525f,
+                         1.0f, 1.06322f},
+    .tangent = {0.42577922344207764f, 0.9048271179199219f, 0.0f},
+    .fresnel_type = 3u,
+    .thin_film_exponent = {610.0f, 1.7000000476837158f, 0.0f, 0.0f},
+    .reflection_tint = {0.41999998688697815f, 0.8799999952316284f,
+                        1.6399999856948853f},
+    .transmission_tint = {3.7200000286102295f, 2.5399999618530273f,
+                          1.3600000143051147f}};
+
+constexpr ExpectedClosure metallic_extra_rollback_expected{
+    .name = "Metallic extra allocation rollback",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.0f, 0.0f, 0.0f},
+    .sample_weight = 0.0f,
+    .type = 0u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 24u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .count = 0u,
+    .left = 1u};
+
 /* closure_alloc_extra must remove the immediately preceding ordinary
  * closure when its one-slot Fresnel payload does not fit. This source-derived
  * state transition is observable independently of any rendered color. */
@@ -633,6 +885,24 @@ make_shader_data(Expr<luisa::float3> normal,
             f0 = microfacet.generalized_schlick.f0;
             f90 = microfacet.generalized_schlick.f90;
           };
+          $if(fresnel_type == static_cast<std::uint32_t>(
+                                  device_svm::MicrofacetFresnel::conductor)) {
+            const auto microfacet = closures.microfacet_conductor(0u);
+            thin_film_exponent = make_float4(
+                microfacet.conductor.thin_film.thickness,
+                microfacet.conductor.thin_film.ior, 0.0f, 0.0f);
+            reflection_tint = microfacet.conductor.ior;
+            transmission_tint = microfacet.conductor.extinction;
+          }
+          $elif(fresnel_type == static_cast<std::uint32_t>(
+                                     device_svm::MicrofacetFresnel::f82_tint)) {
+            const auto microfacet = closures.microfacet_f82_tint(0u);
+            thin_film_exponent = make_float4(
+                microfacet.f82_tint.thin_film.thickness,
+                microfacet.f82_tint.thin_film.ior, 0.0f, 0.0f);
+            reflection_tint = microfacet.f82_tint.f0;
+            transmission_tint = microfacet.f82_tint.b;
+          };
         };
 
         output.write(0u, make_float4(weight, sample_weight));
@@ -721,6 +991,11 @@ template <std::size_t word_count>
              near(actual[10].xyz(), expected.f0) &&
              near(actual[11].xyz(), expected.f90);
   }
+  if (expected.fresnel_payload) {
+    valid &= near(actual[7], expected.thin_film_exponent) &&
+             near(actual[8].xyz(), expected.reflection_tint) &&
+             near(actual[9].xyz(), expected.transmission_tint);
+  }
 
   if (!valid) {
     std::cerr << "Cycles closure oracle mismatch for " << expected.name
@@ -732,6 +1007,16 @@ template <std::size_t word_count>
               << actual_meta[2] << ", " << actual_meta[3] << ", "
               << actual_meta[4] << ", " << actual_meta[5] << ", "
               << actual_meta[6] << ")\n";
+    if (expected.microfacet) {
+      std::cerr << "microfacet=(" << actual[5].x << ", " << actual[5].y
+                << ", " << actual[5].z << ", " << actual[5].w
+                << "), tangent=(" << actual[6].x << ", " << actual[6].y
+                << ", " << actual[6].z << "), film=(" << actual[7].x
+                << ", " << actual[7].y << ", " << actual[7].z
+                << "), payload0=(" << actual[8].x << ", " << actual[8].y
+                << ", " << actual[8].z << "), payload1=(" << actual[9].x
+                << ", " << actual[9].y << ", " << actual[9].z << ")\n";
+    }
   }
   return valid;
 }
@@ -792,6 +1077,29 @@ int main(int argc, char **argv) {
                  run_oracle(device, stream, backend, table,
                             refraction_beckmann_backface_words,
                             refraction_beckmann_backface_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            metallic_f82_ggx_words,
+                            metallic_f82_ggx_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            metallic_f82_beckmann_words,
+                            metallic_f82_beckmann_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            metallic_f82_multi_anisotropic_words,
+                            metallic_f82_multi_anisotropic_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            metallic_conductor_ggx_words,
+                            metallic_conductor_ggx_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            metallic_conductor_beckmann_words,
+                            metallic_conductor_beckmann_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            metallic_conductor_multi_anisotropic_words,
+                            metallic_conductor_multi_anisotropic_expected,
+                            shader) &&
+                 run_oracle(device, stream, backend, table,
+                            metallic_f82_ggx_words,
+                            metallic_extra_rollback_expected,
+                            rollback_shader) &&
                  run_oracle(device, stream, backend, table,
                             glass_beckmann_words,
                             glass_extra_rollback_expected, rollback_shader)
