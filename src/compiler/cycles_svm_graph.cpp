@@ -84,7 +84,8 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
          type == node_type::subsurface_scattering ||
          type == node_type::glossy_bsdf ||
          type == node_type::metallic_bsdf ||
-         type == node_type::sheen_bsdf || type == node_type::hair_bsdf ||
+         type == node_type::sheen_bsdf || type == node_type::toon_bsdf ||
+         type == node_type::hair_bsdf ||
          type == node_type::glass_bsdf ||
          type == node_type::refraction_bsdf || type == node_type::emission ||
          type == node_type::background ||

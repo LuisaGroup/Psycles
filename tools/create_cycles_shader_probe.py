@@ -52,6 +52,7 @@ from cycles_shader_probe import (  # noqa: E402
     svm_vector,
     texture_inputs,
     thin_film_closures,
+    toon_closures,
     values,
     volume_closures,
     voronoi_inputs,
@@ -318,6 +319,12 @@ _CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
     ),
     "standalone_sheen_microfiber_svm_oracle": (
         sheen_closures._standalone_sheen_microfiber_svm_oracle
+    ),
+    "standalone_toon_diffuse_svm_oracle": (
+        toon_closures._standalone_toon_diffuse_svm_oracle
+    ),
+    "standalone_toon_glossy_svm_oracle": (
+        toon_closures._standalone_toon_glossy_svm_oracle
     ),
     "svm_tangent_dynamic": normal_maps._svm_tangent_dynamic,
     "subsurface_burley_svm_oracle": (

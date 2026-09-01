@@ -1401,6 +1401,22 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::toon_bsdf,
+                 .inputs = {input("Color", SocketType::color,
+                                  SocketValue::color({0.8f, 0.8f, 0.8f})),
+                            input("Size", SocketType::floating,
+                                  SocketValue::floating(0.5f)),
+                            input("Smooth", SocketType::floating,
+                                  SocketValue::floating(0.0f)),
+                            input("Normal", SocketType::normal,
+                                  SocketValue::normal({0.0f, 0.0f, 0.0f}))},
+                 .outputs = {output("Closure", SocketType::closure)},
+                 .properties = {property(
+                     "Component", SocketType::string,
+                     SocketValue::string("DIFFUSE"))},
+                 .required_features = feature_bit(ShaderFeature::surface)}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::hair_bsdf,
                  .inputs = {input("Color", SocketType::color,
                                   SocketValue::color({0.8f, 0.8f, 0.8f})),

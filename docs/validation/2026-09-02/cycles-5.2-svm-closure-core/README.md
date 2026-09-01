@@ -17,6 +17,7 @@ The implementation follows these pinned Cycles sources at
 - `kernel/closure/bsdf_transparent.h`
 - `kernel/closure/bsdf_sheen.h`
 - `kernel/closure/bsdf_ashikhmin_velvet.h`
+- `kernel/closure/bsdf_toon.h`
 - `kernel/closure/bsdf_util.h::maybe_ensure_valid_specular_reflection`
 - `kernel/closure/bsdf_microfacet.h::{bsdf_microfacet_*_glass_setup,`
   `bsdf_microfacet_ggx_setup,bsdf_microfacet_beckmann_setup,`
@@ -38,6 +39,8 @@ The copied Metallic family includes F82-tint and physical-conductor Fresnel
 models over Beckmann, GGX, and Multi-GGX distributions.
 The standalone Sheen family includes Microfiber LTC Sheen and Ashikhmin
 Velvet with the exact typed `SVMNodeSimpleBsdfData` payload. The standalone
+Toon family includes Diffuse and Glossy Toon with the exact typed
+`SVMNodeToonBsdfData` payload and reflective-caustics gate. The standalone
 Subsurface Scattering family includes Christensen-Burley,
 Random Walk, Random Walk Legacy, and Random Walk Skin with the exact typed
 `SVMNodeBssrdfData` payload.
@@ -223,6 +226,8 @@ relocated from the original global offsets to its compact test buffer.
 | Principled Burley | Transparent type 30, Christensen-Burley BSSRDF type 31, then Diffuse type 2; BSSRDF weight `(0.1057920,0.2997440,0.1719120)` and sample weight `0.5774480`; residual Diffuse `(0.0766080,0.2170560,0.1244880)` |
 | Standalone Microfiber Sheen | type 7; post-LTC weight `(0.0028833640,0.0058426056,0.0012140479)`; sample weight `0.0033133393`; normal `(0,0,1)` |
 | Standalone Ashikhmin Velvet | type 16; weight `(0.82,0.19,0.57)`; sample weight `0.5266666412`; normal `(0,0,1)` |
+| Standalone Diffuse Toon | type 8; weight `(0.31,0.73,0.19)`; sample weight `0.4100000262`; normal `(0,0,1)` |
+| Standalone Glossy Toon | type 18; weight `(0.84,0.22,0.56)`; sample weight `0.5399999619`; normal `(0,0,1)` |
 | Standalone Random Walk | type 32; weight/albedo `(0.37,0.62,0.14)`; sample weight `1.1299999952`; normal `(0,0,1)` |
 | Standalone Burley | type 31; weight/albedo `(0.21,0.74,0.48)`; sample weight `1.4299999475`; normal `(0,0,1)` |
 
@@ -361,6 +366,16 @@ Artifact hashes:
 | Standalone Ashikhmin Velvet diagnostic path trace | `bb5f21ec48f666f61d83e9fd171476c2d9f5d28c71e0fa97dcfadcf466b0642d` |
 | Standalone Ashikhmin Velvet decoded diagnostic trace | `df318c40fc9432170ff6b7e6cbe375ad658253fbb1a626c84160acc16525ccba` |
 | Standalone Ashikhmin Velvet render metadata | `256959ff1929c98c9daa1236810e96b6308d72d43d6259c5c7a8dddfefb748b6` |
+| Standalone Diffuse Toon oracle `.blend` | `991ae02942f735a51643498930d17992a980490e53a1e397678734840aeb2629` |
+| Standalone Diffuse Toon final SVM buffer | `17b251397887d3ca8972453aac65cffb4470cef9a273b05d878dc7737085820b` |
+| Standalone Diffuse Toon diagnostic path trace | `1bdb2ef66feb552ab0cbf8b962d8eb98ba48c184a81d1d5cf58ab71e929a9125` |
+| Standalone Diffuse Toon decoded diagnostic trace | `49e078d2eebbdbfb6846cb61c48ed45175a0cec3293576ddd620f64eaabbd854` |
+| Standalone Diffuse Toon render metadata | `0476e304af997dead8661b2a919e2397e44e3324b9e393bd1cd48f1ac304675b` |
+| Standalone Glossy Toon oracle `.blend` | `9a5f9e7fbc0dbc7ab8bbe4b8dc69679a3644ecfd3a74d4e6950b1ae3f108cd49` |
+| Standalone Glossy Toon final SVM buffer | `64d42154d482ebe54a6ab541b77f83942b4fc4cc05da9ed517bd37c93d325612` |
+| Standalone Glossy Toon diagnostic path trace | `5847772f912bf9a3e90ae0d0f16054c4c453f33fb0594d9f499fce37bab829e4` |
+| Standalone Glossy Toon decoded diagnostic trace | `706a4c8fe7e12523126591cb362de409874726b28c507a311de9b2cff9583e0a` |
+| Standalone Glossy Toon render metadata | `e898f5a75c2e95fbc9cefe8ad8b0f38a7e3c9b5155daab7675df4c808afcc8cb` |
 
 No `.svm52` binary is checked in.
 
@@ -416,6 +431,56 @@ stream, and zero-capacity allocation. It passes on fallback, HIP, and strict
 native Vulkan XIR-to-SPIR-V. The compiler regression also corrected and locks
 Cycles 5.2.1's standalone Sheen roughness default of `1.0`; the previous
 Psycles schema incorrectly used `0.5`.
+
+### Standalone Toon runtime checkpoint
+
+Diffuse and Glossy Toon share Cycles' three-word `SVMNodeToonBsdfData`
+record:
+
+```text
+size, smooth, normal_offset
+```
+
+The handler consumes all three words before testing the optional caustics
+gate. Let `G` mean Glossy Toon, `R` be the integrator's
+`caustics_reflective`, and `D` mean that the current ray visibility contains
+`PATH_RAY_VISIBILITY_DIFFUSE`. Cycles reaches normal loading and allocation
+exactly when
+
+```text
+active = not G or R or not D
+```
+
+Thus only a Glossy Toon reached through a diffuse-visible ray with reflective
+caustics disabled is skipped. The skip transition advances the program
+counter over the entire typed record while leaving the closure pool and
+shader flags unchanged. Diffuse Toon is not subject to this gate.
+
+For an active transition, the optional normal is loaded and safe-normalized,
+then `bsdf_alloc` receives `closure_weight * mix_weight`. Parameter loads and
+setup occur only after successful prefix allocation. The two tags share the
+following exact canonicalization:
+
+```text
+size'   = clamp(size, 1e-5, 1) * pi/2
+smooth' = saturate(smooth) * pi/2
+flags  |= SD_BSDF | SD_BSDF_HAS_EVAL
+```
+
+The state relation is therefore a disjoint product of component tag, caustics
+gate, and allocation result; no case-specific recovery path exists. The
+permanent regression covers both external word images and observed closure
+states, both clamp endpoints, non-unit mix weight, an authored non-unit
+normal, all three caustics partitions, zero capacity, and final cursor
+positions. The compiler oracle separately freezes the exact compact 20-word
+images and the default Diffuse component. Blender-side export checks prove
+that the raw `ShaderNodeBsdfToon`, its Component property, and all four inputs
+are preserved without pre-baking. The transition passes on fallback, HIP, and
+strict native Vulkan XIR-to-SPIR-V.
+
+This checkpoint copies setup state only. Exact Toon evaluation and sampling
+remain part of the later closure-evaluation stage; no production-render
+parity or performance claim is made here.
 
 ### Standalone BSSRDF runtime checkpoint
 
@@ -588,6 +653,7 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_principled_subsurface_tests \
            psycles_luisa_cycles_svm_standalone_bssrdf_tests \
            psycles_luisa_cycles_svm_standalone_sheen_tests \
+           psycles_luisa_cycles_svm_standalone_toon_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_luisa_thin_film_fresnel_tests \
            psycles_luisa_thin_film_surface_tests
@@ -623,6 +689,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_standalone_sheen_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_standalone_toon_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -632,13 +701,13 @@ ctest --test-dir build --output-on-failure -R \
 Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
 3/3, Principled Metallic 3/3, Principled thick Transmission 3/3, Principled
 Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, standalone
-Sheen/Velvet 3/3, thin-film
+Sheen/Velvet 3/3, standalone Toon 3/3, thin-film
 6/6, and compiler 1/1 passed. The
 compiler test
 locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 491/491 tests in 138.78 seconds. The Vulkan test
+expanded checkpoint passed 494/494 tests in 145.18 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
@@ -675,7 +744,7 @@ simple, Glass, standalone Glossy, standalone Refraction, and Metallic
 F82/conductor setup families inside the exact interpreter. Production still
 calls the old custom
 `SurfaceProgram` path. The next required structural steps are the remaining
-standalone typed closure payloads (Ray Portal, Toon, and Hair),
+standalone typed closure payloads (Ray Portal and Hair),
 exact closure evaluation/sampling, and only then replacement and deletion of
 the old shade-surface route. The Cycles-style global shader linker is already
 staged, but this document makes no production-render parity or performance

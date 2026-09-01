@@ -236,6 +236,8 @@ def _main() -> None:
         "svm_tangent_dynamic",
         "standalone_sheen_ashikhmin_svm_oracle",
         "standalone_sheen_microfiber_svm_oracle",
+        "standalone_toon_diffuse_svm_oracle",
+        "standalone_toon_glossy_svm_oracle",
         "subsurface_burley_svm_oracle",
         "subsurface_random_walk_svm_oracle",
         "vector_to_scalar",
@@ -326,6 +328,68 @@ def _main() -> None:
             "film-filter sample-correspondence probe did not pin the "
             "Cycles sampler/filter contract"
         )
+
+    toon_oracles = (
+        (
+            "standalone_toon_diffuse_svm_oracle",
+            "Standalone Diffuse Toon SVM Oracle",
+            "DIFFUSE",
+            (0.31, 0.73, 0.19, 1.0),
+            0.37,
+            0.21,
+        ),
+        (
+            "standalone_toon_glossy_svm_oracle",
+            "Standalone Glossy Toon SVM Oracle",
+            "GLOSSY",
+            (0.84, 0.22, 0.56, 1.0),
+            0.63,
+            0.14,
+        ),
+    )
+    for probe, _name, _component, _color, _size, _smooth in toon_oracles:
+        probes["_PROBES"][probe](scene)
+    with tempfile.TemporaryDirectory(
+        prefix="psycles-blender-toon-oracle-"
+    ) as temporary:
+        payload = _export(exporter, pathlib.Path(temporary))
+    materials = {
+        material["name"]: material
+        for material in payload["materials"]
+    }
+    for _probe, name, component, color, size, smooth in toon_oracles:
+        material = materials.get(name)
+        if material is None:
+            raise AssertionError(f"Toon oracle material is absent: {name}")
+        nodes = [
+            node
+            for node in material["node_tree"]["nodes"]
+            if node["type"] == "BSDF_TOON"
+        ]
+        if len(nodes) != 1:
+            raise AssertionError(
+                f"Toon oracle did not export one raw BSDF_TOON: {name}"
+            )
+        node = nodes[0]
+        inputs = {entry["identifier"]: entry for entry in node["inputs"]}
+        if (
+            node["properties"].get("component") != component
+            or any(
+                abs(float(actual) - expected) > 1.0e-6
+                for actual, expected in zip(
+                    inputs["Color"]["default"], color, strict=True
+                )
+            )
+            or abs(float(inputs["Size"]["default"]) - size) > 1.0e-6
+            or abs(float(inputs["Smooth"]["default"]) - smooth) > 1.0e-6
+            or inputs["Normal"]["linked"]
+            or tuple(float(value) for value in inputs["Normal"]["default"])
+            != (0.0, 0.0, 0.0)
+            or node["outputs"][0]["identifier"] != "BSDF"
+        ):
+            raise AssertionError(
+                f"Toon oracle was altered or pre-baked during export: {node}"
+            )
 
     print("Psycles Blender render-settings regression passed")
 
