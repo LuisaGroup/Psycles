@@ -15,6 +15,7 @@ The implementation follows these pinned Cycles sources at
 - `kernel/closure/bsdf_diffuse.h`
 - `kernel/closure/bsdf_oren_nayar.h`
 - `kernel/closure/bsdf_transparent.h`
+- `kernel/closure/bsdf_sheen.h`
 - `kernel/closure/bsdf_util.h::maybe_ensure_valid_specular_reflection`
 - `kernel/closure/bsdf_microfacet.h::{bsdf_microfacet_*_glass_setup,`
   `bsdf_microfacet_ggx_setup,bsdf_microfacet_beckmann_setup,`
@@ -99,6 +100,13 @@ The terminate exception starts from Cycles' required surface-evaluation state
 `count = 0, left = 0`; it temporarily makes one physical slot available and
 therefore preserves the prefix invariant.
 
+The SoA payload is one tagged union, matching Cycles' `ShaderClosure` storage.
+Oren-Nayar, Sheen, and Microfacet reuse the same seven `float4` payload rows;
+the Microfacet plus discriminated Fresnel payload is currently the largest
+member. Adding Sheen therefore adds no per-closure payload rows. This prevents
+storage from growing as the sum of all closure-family structs while retaining
+typed accessors at the Luisa DSL boundary.
+
 Glass deliberately allocates with `make_spectrum(mix_weight)`, not
 `closure_weight * mix_weight`; this is Cycles' actual SVM semantics. It then
 copies the normalized normal, bump-map correction, saturated-squared
@@ -171,8 +179,8 @@ Cycles inserts the default tangent conversion.
 
 ## External Cycles oracle
 
-Seven closure families represented by eighteen frozen transitions were created with
-the repository probe tool, rendered by the diagnostic Blender 5.2.1 build
+Focused closure families and their frozen transitions were created with the
+repository probe tool, rendered by the diagnostic Blender 5.2.1 build
 `cb168525138f`, and dumped
 after Cycles linked its final global SVM buffer. The permanent device test
 freezes the exact surface tails. Only each four-word shader-jump entry is
@@ -198,6 +206,7 @@ relocated from the original global offsets to its compact test buffer.
 | Metallic conductor GGX | type 12 (GGX); weight `1`; sample weight `0.6869250536`; alpha `(0.0324000008,0.0324000008)` |
 | Metallic conductor Beckmann | type 13 (Beckmann); weight `1`; sample weight `0.6516747475`; alpha `(0.1224999949,0.1224999949)` |
 | Metallic conductor Multi-GGX anisotropic film | output type 12; weight `(0.9931033254,0.9784969091,0.9566794634)`; sample weight `0.5281172991`; alpha `(0.2977624834,0.1503700614)`; energy scale `1.06322` |
+| Principled Sheen | Transparent type 30, Sheen type 7, then Diffuse type 2; Sheen weight `(0.0003624241,0.0010147875,0.0006523633)` and sample weight `0.0006765249`; attenuated emission `(0.2077361,0.1038681,0.6232085)` |
 
 The Glass test additionally freezes the source-derived typed setup state:
 alpha, IOR, energy scale, tangent, generalized-Schlick discriminator, film
@@ -283,6 +292,10 @@ Artifact hashes:
 | Principled final SVM buffer | `7a74aff57508b422f0a7c19e6eb9ab20fb9209a8ba217cf29571b91bb65cc4d1` |
 | Principled diagnostic path trace | `752a6e150adca4cb128a76d59093d955125decfd5d46c24c0b6caeca7bcb9bd3` |
 | Principled decoded diagnostic trace | `ca5ffcbce0488aa37b6ee9a96ea978161a29b921bcabf763f7a01ec8d4ed0bc5` |
+| Principled Sheen oracle `.blend` | `05676f9210494dba18680025f26ac2e874bb762e0554f73a1ed7073885aca074` |
+| Principled Sheen final SVM buffer | `1fa274d1c7b8a7610d9d8c5e5d5edbe0d1bd89ffcf6c9237534e3abc3297d777` |
+| Principled Sheen diagnostic path trace | `7dfbbe58edf8c51f060df3fe6e3d0adeefad88e11b8f00cd23d2e28b42a262b9` |
+| Principled Sheen decoded diagnostic trace | `2eaec51b67a38f6a9a09dc368f610b7ea32a7dde655525b0860cea9bdc7b9a33` |
 
 No `.svm52` binary is checked in.
 
@@ -293,13 +306,22 @@ The production SVM interpreter now consumes the complete typed 176-byte
 the PC by the exact Cycles struct size. Field reads remain lazy: the payload
 view does not turn the typed record into 44 unconditional device loads.
 
-The first proved runtime subset preserves Cycles' layer order and implements
-alpha, emission, anisotropic dielectric specular, Multi-GGX energy
-preservation, dielectric layer attenuation, and diffuse/Oren-Nayar. Sheen,
-coat, metallic, transmission, and subsurface take an explicit unsupported
-transition when their source-clamped weights are live; they are not silently
-approximated by the legacy surface program. Their nonzero transitions will be
-enabled only as the corresponding Cycles closure families are copied.
+The proved runtime subset preserves Cycles' layer order and implements alpha,
+Sheen LTC, emission, anisotropic dielectric specular, Multi-GGX energy
+preservation, dielectric layer attenuation, and diffuse/Oren-Nayar. Coat,
+metallic, transmission, and subsurface take an explicit unsupported transition
+when their source-clamped weights are live; they are not silently approximated
+by the legacy surface program. Their nonzero transitions will be enabled only
+as the corresponding Cycles closure families are copied.
+
+The Sheen transition copies `bsdf_alloc_maybe_emission` rather than treating
+the layer as a color multiplier. On ordinary surface evaluation it appends a
+typed `SheenBsdf`, stores Cycles' incoming-aligned LTC basis and table
+coefficients, scales both closure and sample weights by LTC albedo, and then
+attenuates lower layers. With `PATH_RAY_EMISSION` it computes the same setup in
+temporary state and consumes no closure slot. An invalid LTC preserves the
+already consumed `CLOSURE_NONE` slot, clears only sample weight, and leaves
+lower-layer weight unchanged.
 
 For the untouched Blender 5.2.1 Principled default, the external diagnostic
 trace records the following closure sequence at normal incidence. The new
@@ -325,6 +347,7 @@ XIR-to-SPIR-V:
 cmake --build build --parallel 32 \
   --target psycles_luisa_cycles_svm_closure_tests \
            psycles_luisa_cycles_svm_principled_tests \
+           psycles_luisa_cycles_svm_principled_sheen_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_luisa_thin_film_fresnel_tests \
            psycles_luisa_thin_film_surface_tests
@@ -336,17 +359,21 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_principled_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_principled_sheen_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
   '^psycles\.cycles_svm_compiler$'
 ```
 
-Result: closure 3/3, Principled 3/3, thin-film 6/6, and compiler 1/1 passed. The compiler test
+Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, thin-film 6/6, and
+compiler 1/1 passed. The compiler test
 locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 467/467 tests in 14.17 seconds. The Vulkan test
+expanded checkpoint passed 470/470 tests in 13.40 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.

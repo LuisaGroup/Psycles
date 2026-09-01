@@ -225,6 +225,7 @@ def _main() -> None:
         )
     if oracle_probes != {
         "metallic_svm_oracle",
+        "principled_sheen_svm_oracle",
         "principled_svm_oracle",
         "svm_tangent_dynamic",
         "vector_to_scalar",

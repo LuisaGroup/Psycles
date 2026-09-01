@@ -25,17 +25,15 @@ ClosurePool::ClosurePool(std::size_t capacity) noexcept
       _weight_and_sample{std::max(_capacity, std::size_t{1u})},
       _normal{std::max(_capacity, std::size_t{1u})},
       _type{std::max(_capacity, std::size_t{1u})},
-      _oren_nayar_scalars{std::max(_capacity, std::size_t{1u})},
-      _oren_nayar_multiscatter{std::max(_capacity, std::size_t{1u})},
-      _microfacet_alpha_ior_energy{std::max(_capacity, std::size_t{1u})},
-      _microfacet_tangent{std::max(_capacity, std::size_t{1u})},
-      _microfacet_fresnel_type{std::max(_capacity, std::size_t{1u})},
-      _fresnel_thin_film{std::max(_capacity, std::size_t{1u})},
-      _fresnel_payload0{std::max(_capacity, std::size_t{1u})},
-      _fresnel_payload1{std::max(_capacity, std::size_t{1u})},
-      _fresnel_f0{std::max(_capacity, std::size_t{1u})},
-      _fresnel_f90{std::max(_capacity, std::size_t{1u})},
-      _count{0u}, _left{static_cast<std::uint32_t>(_capacity)} {}
+      _payload0{std::max(_capacity, std::size_t{1u})},
+      _payload1{std::max(_capacity, std::size_t{1u})},
+      _payload2{std::max(_capacity, std::size_t{1u})},
+      _payload3{std::max(_capacity, std::size_t{1u})},
+      _payload4{std::max(_capacity, std::size_t{1u})},
+      _payload5{std::max(_capacity, std::size_t{1u})},
+      _payload6{std::max(_capacity, std::size_t{1u})},
+      _payload_tag{std::max(_capacity, std::size_t{1u})}, _count{0u},
+      _left{static_cast<std::uint32_t>(_capacity)} {}
 
 std::size_t ClosurePool::capacity() const noexcept { return _capacity; }
 
@@ -115,49 +113,52 @@ void ClosurePool::set_normal(Expr<std::uint32_t> index,
 
 void ClosurePool::set_oren_nayar_param(Expr<std::uint32_t> index,
                                        const OrenNayarParam &param) noexcept {
-  _oren_nayar_scalars.write(
-      index, make_float4(param.roughness, param.a, param.b, 0.0f));
-  _oren_nayar_multiscatter.write(index,
-                                 make_float4(param.multiscatter_term, 0.0f));
+  _payload0.write(index, make_float4(param.roughness, param.a, param.b, 0.0f));
+  _payload1.write(index, make_float4(param.multiscatter_term, 0.0f));
 }
 
-void ClosurePool::set_microfacet_param(
-    Expr<std::uint32_t> index, const MicrofacetParam &param) noexcept {
-  _microfacet_alpha_ior_energy.write(
-      index, make_float4(param.alpha_x, param.alpha_y, param.ior,
-                         param.energy_scale));
-  _microfacet_tangent.write(index, make_float4(param.T, 0.0f));
-  _microfacet_fresnel_type.write(index, param.fresnel_type);
+void ClosurePool::set_sheen_param(Expr<std::uint32_t> index,
+                                  const SheenParam &param) noexcept {
+  _payload0.write(index, make_float4(param.roughness, param.transform_a,
+                                     param.transform_b, 0.0f));
+  _payload1.write(index, make_float4(param.T, 0.0f));
+  _payload2.write(index, make_float4(param.B, 0.0f));
+}
+
+void ClosurePool::set_microfacet_param(Expr<std::uint32_t> index,
+                                       const MicrofacetParam &param) noexcept {
+  _payload0.write(index, make_float4(param.alpha_x, param.alpha_y, param.ior,
+                                     param.energy_scale));
+  _payload1.write(index, make_float4(param.T, 0.0f));
+  _payload_tag.write(index, param.fresnel_type);
 }
 
 void ClosurePool::set_generalized_schlick(
     Expr<std::uint32_t> index,
     const FresnelGeneralizedSchlick &fresnel) noexcept {
-  _fresnel_thin_film.write(
-      index, make_float4(fresnel.thin_film.thickness,
-                         fresnel.thin_film.ior, fresnel.exponent, 0.0f));
-  _fresnel_payload0.write(index, make_float4(fresnel.reflection_tint, 0.0f));
-  _fresnel_payload1.write(index, make_float4(fresnel.transmission_tint, 0.0f));
-  _fresnel_f0.write(index, make_float4(fresnel.f0, 0.0f));
-  _fresnel_f90.write(index, make_float4(fresnel.f90, 0.0f));
+  _payload2.write(index,
+                  make_float4(fresnel.thin_film.thickness,
+                              fresnel.thin_film.ior, fresnel.exponent, 0.0f));
+  _payload3.write(index, make_float4(fresnel.reflection_tint, 0.0f));
+  _payload4.write(index, make_float4(fresnel.transmission_tint, 0.0f));
+  _payload5.write(index, make_float4(fresnel.f0, 0.0f));
+  _payload6.write(index, make_float4(fresnel.f90, 0.0f));
 }
 
 void ClosurePool::set_fresnel_conductor(
     Expr<std::uint32_t> index, const FresnelConductor &fresnel) noexcept {
-  _fresnel_thin_film.write(
-      index, make_float4(fresnel.thin_film.thickness,
-                         fresnel.thin_film.ior, 0.0f, 0.0f));
-  _fresnel_payload0.write(index, make_float4(fresnel.ior, 0.0f));
-  _fresnel_payload1.write(index, make_float4(fresnel.extinction, 0.0f));
+  _payload2.write(index, make_float4(fresnel.thin_film.thickness,
+                                     fresnel.thin_film.ior, 0.0f, 0.0f));
+  _payload3.write(index, make_float4(fresnel.ior, 0.0f));
+  _payload4.write(index, make_float4(fresnel.extinction, 0.0f));
 }
 
-void ClosurePool::set_fresnel_f82_tint(
-    Expr<std::uint32_t> index, const FresnelF82Tint &fresnel) noexcept {
-  _fresnel_thin_film.write(
-      index, make_float4(fresnel.thin_film.thickness,
-                         fresnel.thin_film.ior, 0.0f, 0.0f));
-  _fresnel_payload0.write(index, make_float4(fresnel.f0, 0.0f));
-  _fresnel_payload1.write(index, make_float4(fresnel.b, 0.0f));
+void ClosurePool::set_fresnel_f82_tint(Expr<std::uint32_t> index,
+                                       const FresnelF82Tint &fresnel) noexcept {
+  _payload2.write(index, make_float4(fresnel.thin_film.thickness,
+                                     fresnel.thin_film.ior, 0.0f, 0.0f));
+  _payload3.write(index, make_float4(fresnel.f0, 0.0f));
+  _payload4.write(index, make_float4(fresnel.b, 0.0f));
 }
 
 void ClosurePool::set_left(Expr<std::uint32_t> left) noexcept { _left = left; }
@@ -173,60 +174,67 @@ ClosurePool::common(Expr<std::uint32_t> index) const noexcept {
 
 OrenNayarClosure
 ClosurePool::oren_nayar(Expr<std::uint32_t> index) const noexcept {
-  const auto scalars = _oren_nayar_scalars.read(index);
+  const auto scalars = _payload0.read(index);
   return {.common = common(index),
           .param = {.roughness = scalars.x,
                     .a = scalars.y,
                     .b = scalars.z,
-                    .multiscatter_term =
-                        _oren_nayar_multiscatter.read(index).xyz()}};
+                    .multiscatter_term = _payload1.read(index).xyz()}};
+}
+
+SheenClosure ClosurePool::sheen(Expr<std::uint32_t> index) const noexcept {
+  const auto scalars = _payload0.read(index);
+  return {.common = common(index),
+          .param = {.roughness = scalars.x,
+                    .transform_a = scalars.y,
+                    .transform_b = scalars.z,
+                    .T = _payload1.read(index).xyz(),
+                    .B = _payload2.read(index).xyz()}};
 }
 
 MicrofacetClosure
 ClosurePool::microfacet(Expr<std::uint32_t> index) const noexcept {
-  const auto film = _fresnel_thin_film.read(index);
+  const auto film = _payload2.read(index);
   return {
       .common = common(index),
       .param = microfacet_param(index),
-      .generalized_schlick = {
-          .thin_film = {.thickness = film.x, .ior = film.y},
-          .reflection_tint = _fresnel_payload0.read(index).xyz(),
-          .transmission_tint = _fresnel_payload1.read(index).xyz(),
-          .f0 = _fresnel_f0.read(index).xyz(),
-          .f90 = _fresnel_f90.read(index).xyz(),
-          .exponent = film.z}};
+      .generalized_schlick = {.thin_film = {.thickness = film.x, .ior = film.y},
+                              .reflection_tint = _payload3.read(index).xyz(),
+                              .transmission_tint = _payload4.read(index).xyz(),
+                              .f0 = _payload5.read(index).xyz(),
+                              .f90 = _payload6.read(index).xyz(),
+                              .exponent = film.z}};
 }
 
-MicrofacetConductorClosure ClosurePool::microfacet_conductor(
-    Expr<std::uint32_t> index) const noexcept {
-  const auto film = _fresnel_thin_film.read(index);
+MicrofacetConductorClosure
+ClosurePool::microfacet_conductor(Expr<std::uint32_t> index) const noexcept {
+  const auto film = _payload2.read(index);
   return {.common = common(index),
           .param = microfacet_param(index),
-          .conductor = {
-              .thin_film = {.thickness = film.x, .ior = film.y},
-              .ior = _fresnel_payload0.read(index).xyz(),
-              .extinction = _fresnel_payload1.read(index).xyz()}};
+          .conductor = {.thin_film = {.thickness = film.x, .ior = film.y},
+                        .ior = _payload3.read(index).xyz(),
+                        .extinction = _payload4.read(index).xyz()}};
 }
 
-MicrofacetF82TintClosure ClosurePool::microfacet_f82_tint(
-    Expr<std::uint32_t> index) const noexcept {
-  const auto film = _fresnel_thin_film.read(index);
+MicrofacetF82TintClosure
+ClosurePool::microfacet_f82_tint(Expr<std::uint32_t> index) const noexcept {
+  const auto film = _payload2.read(index);
   return {.common = common(index),
           .param = microfacet_param(index),
           .f82_tint = {.thin_film = {.thickness = film.x, .ior = film.y},
-                       .f0 = _fresnel_payload0.read(index).xyz(),
-                       .b = _fresnel_payload1.read(index).xyz()}};
+                       .f0 = _payload3.read(index).xyz(),
+                       .b = _payload4.read(index).xyz()}};
 }
 
 MicrofacetParam
 ClosurePool::microfacet_param(Expr<std::uint32_t> index) const noexcept {
-  const auto microfacet = _microfacet_alpha_ior_energy.read(index);
+  const auto microfacet = _payload0.read(index);
   return {.alpha_x = microfacet.x,
           .alpha_y = microfacet.y,
           .ior = microfacet.z,
           .energy_scale = microfacet.w,
-          .fresnel_type = _microfacet_fresnel_type.read(index),
-          .T = _microfacet_tangent.read(index).xyz()};
+          .fresnel_type = _payload_tag.read(index),
+          .T = _payload1.read(index).xyz()};
 }
 
 namespace detail {
