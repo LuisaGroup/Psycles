@@ -26,6 +26,8 @@ The implementation follows these pinned Cycles sources at
   `microfacet_ggx_preserve_energy}`
 - `kernel/closure/bsdf_ashikhmin_shirley.h`
 - `kernel/closure/bsdf_util.h::{F0_from_ior,fresnel_dielectric_Fss}`
+- `kernel/closure/bssrdf.h::{bssrdf_alloc,bssrdf_setup,`
+  `bssrdf_setup_radius}`
 - `kernel/util/lookup_table.h`
 
 The copied executable closure types are smooth Diffuse, improved Oren-Nayar,
@@ -33,6 +35,9 @@ Translucent, Transparent, Beckmann/GGX/Multi-GGX Glass,
 Beckmann/GGX/Ashikhmin-Shirley/Multi-GGX Glossy, and Beckmann/GGX Refraction.
 The copied Metallic family includes F82-tint and physical-conductor Fresnel
 models over Beckmann, GGX, and Multi-GGX distributions.
+The standalone Subsurface Scattering family includes Christensen-Burley,
+Random Walk, Random Walk Legacy, and Random Walk Skin with the exact typed
+`SVMNodeBssrdfData` payload.
 Other closure payloads still take Cycles' exact typed skip transition and
 report unsupported only when the unported state transition is live.
 Feature-erased BSDF nodes remain valid skips.
@@ -213,6 +218,8 @@ relocated from the original global offsets to its compact test buffer.
 | Principled Thin Wall | Transparent type 30, GGX reflection type 12, Thin Glass Transmission type 22, dielectric GGX type 12, then Diffuse type 2; reflection weight `(0.02744345,0.01416836,0.05171960)` and sample weight `0.03107580`; transmission weight `(0.1949813,0.3594840,0.4788061)` and sample weight `0.3444238` |
 | Principled Random Walk Skin | Transparent type 30, Random Walk Skin BSSRDF type 34, then Diffuse type 2; BSSRDF weight `(0.2291900,0.1119300,0.4050800)` and sample weight `0.7462000`; residual Diffuse `(0.1234100,0.0602700,0.2181200)` |
 | Principled Burley | Transparent type 30, Christensen-Burley BSSRDF type 31, then Diffuse type 2; BSSRDF weight `(0.1057920,0.2997440,0.1719120)` and sample weight `0.5774480`; residual Diffuse `(0.0766080,0.2170560,0.1244880)` |
+| Standalone Random Walk | type 32; weight/albedo `(0.37,0.62,0.14)`; sample weight `1.1299999952`; normal `(0,0,1)` |
+| Standalone Burley | type 31; weight/albedo `(0.21,0.74,0.48)`; sample weight `1.4299999475`; normal `(0,0,1)` |
 
 The Glass test additionally freezes the source-derived typed setup state:
 alpha, IOR, energy scale, tangent, generalized-Schlick discriminator, film
@@ -329,8 +336,64 @@ Artifact hashes:
 | Principled Burley diagnostic path trace | `394c8cd6972adc86f10ec7bc4cddf7e43cc38e462ba9e9d991f7185d6f3e1d0b` |
 | Principled Burley decoded diagnostic trace | `7183e845f038fd23f481cc6d748276e4c9ab5cd3561874d2c8ebbad17c5cfc91` |
 | Principled Burley render metadata | `40711f5aa1eb623685a7f6066761142db7404c13ca31830531953dd533206595` |
+| Standalone Random Walk oracle `.blend` | `d01985cc46bc878c0b9e001a44cba4a3dab6e75b30de007d6ab84093437cfb91` |
+| Standalone Random Walk final SVM buffer | `8b10065bebdce6182d72e4c7d797e6759f368d195ea5a6e60554f2619bee6a42` |
+| Standalone Random Walk diagnostic path trace | `239b55acc9af1fb7759d5db727a7f98afc34d8f7c1c5f78387b4ad11ad7a0d3b` |
+| Standalone Random Walk decoded diagnostic trace | `be3ffc1697fb0822584b134c39e4c3f9b74792c04e2aa595dae5a4349801f173` |
+| Standalone Random Walk render metadata | `8a3fa778837e1d87b2db760c3deab59fe648121dbf3266546076020896dd2704` |
+| Standalone Burley oracle `.blend` | `eb45a220276b6f019ad049a178670b90af46ad0679d7a7269af200e3c19cc997` |
+| Standalone Burley final SVM buffer | `9a45ff56b808a715160b3ed6a6e870b3f7b06c553addb63f65112731fe6b6373` |
+| Standalone Burley diagnostic path trace | `e5be5ef7958f24d287c957ced005d515c9329982b6c6a2c73e722ba40c591b48` |
+| Standalone Burley decoded diagnostic trace | `f1358235826ce5555c09fa7872a1a3d7c9ba4b3f8eca6430374ce82ab937cdc7` |
+| Standalone Burley render metadata | `22cfa882eb042b5f396d4181cd9441a2e11bfc39f8acf559dae7374a80548e3a` |
 
 No `.svm52` binary is checked in.
+
+### Standalone BSSRDF runtime checkpoint
+
+`NODE_CLOSURE_BSDF` now consumes the exact eight-word
+`SVMNodeBssrdfData` record:
+
+```text
+radius[3], scale, ior, anisotropy, roughness, normal_offset
+```
+
+The handler always advances all eight words. It safe-normalizes the optional
+SVM normal, computes `max(radius * scale, 0)`, and passes two intentionally
+different spectra into the shared setup transition: the common closure weight
+is `closure_weight * mix_weight`, while BSSRDF albedo remains the original
+`closure_weight`. This distinction is present in Cycles and is not folded into
+a generic material parameter.
+
+After the cutoff and prefix-allocation transition, let `C` be the set of
+channels whose radius is at least `BSSRDF_MIN_RADIUS`. The copied state machine
+has the following exhaustive partition:
+
+```text
+allocation failure: no closure, flag, or payload write
+Burley with diffuse ancestor: C = empty; preserve NONE slot; append Diffuse
+otherwise: move exactly channels outside C to Diffuse
+C non-empty: set typed BSSRDF, sample_weight = abs(avg(weight_C)) * |C|
+C empty: retain NONE slot with sample_weight = 0
+```
+
+Only the last two branches can change `SD_BSSRDF`, and only the non-empty one
+sets it. Method-specific setup is also kept inside this typed transition:
+Burley and Random Walk Legacy apply the compatibility radius scale, Random
+Walk Skin applies Cycles' 12-step dipole inversion and forces roughness one,
+ordinary Random Walk alone permits anisotropy through `0.99`, and all methods
+clamp entry IOR to `[1.01, 3.8]`.
+
+The permanent regression starts from the two external 110-word global Cycles
+buffers and relocates only their shader jump to compact 25-word streams. It
+then covers the two externally observed methods, source-derived Skin and
+Legacy types, Burley's diffuse-ancestor branch, a negative-scale all-diffuse
+branch, an authored non-unit normal, zero-capacity allocation, and a legal
+non-unit mix input whose stack slot is disjoint from the external Geometry
+node. The external cases end at PC 23 independently of allocation success;
+the prepended mix stream ends at PC 26. The test uses numerical tolerance for
+irrelevant backend ULP differences while freezing the word ABI, closure
+types/order, typed payloads, flags, and pool accounting.
 
 ### Principled runtime checkpoint
 
@@ -455,6 +518,7 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_principled_transmission_tests \
            psycles_luisa_cycles_svm_principled_thin_wall_tests \
            psycles_luisa_cycles_svm_principled_subsurface_tests \
+           psycles_luisa_cycles_svm_standalone_bssrdf_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_luisa_thin_film_fresnel_tests \
            psycles_luisa_thin_film_surface_tests
@@ -484,6 +548,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_principled_subsurface_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_standalone_bssrdf_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -492,13 +559,13 @@ ctest --test-dir build --output-on-failure -R \
 
 Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
 3/3, Principled Metallic 3/3, Principled thick Transmission 3/3, Principled
-Thin Wall 3/3, Principled Subsurface 3/3, thin-film
+Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, thin-film
 6/6, and compiler 1/1 passed. The
 compiler test
 locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 485/485 tests in 15.29 seconds. The Vulkan test
+expanded checkpoint passed 488/488 tests in 14.79 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
@@ -535,7 +602,8 @@ simple, Glass, standalone Glossy, standalone Refraction, and Metallic
 F82/conductor setup families inside the exact interpreter. Production still
 calls the old custom
 `SurfaceProgram` path. The next required structural steps are the remaining
-typed closure payloads (especially Principled), exact closure
-evaluation/sampling, and only then replacement and deletion of the old
-shade-surface route. The Cycles-style global shader linker is already staged,
-but this document makes no production-render parity or performance claim.
+standalone typed closure payloads (Ray Portal, Velvet/Sheen, Toon, and Hair),
+exact closure evaluation/sampling, and only then replacement and deletion of
+the old shade-surface route. The Cycles-style global shader linker is already
+staged, but this document makes no production-render parity or performance
+claim.

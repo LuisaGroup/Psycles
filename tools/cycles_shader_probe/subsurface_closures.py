@@ -6,7 +6,7 @@ from typing import Any
 
 import bpy
 
-from .support import _input, _material, _output, _world
+from .support import _input, _material, _material_matrix, _output, _world
 
 
 def _subsurface_material(
@@ -26,15 +26,74 @@ def _subsurface_material(
     _input(bssrdf, "Color").default_value = (*color, 1.0)
     _input(bssrdf, "Radius").default_value = radius
     _input(bssrdf, "Scale").default_value = scale
-    if method != "RANDOM_WALK_SKIN":
+    # Blender exposes the roughness socket only for the Random Walk variants;
+    # Burley still carries the compiler-side default in SVMNodeBssrdfData.
+    if method in {"RANDOM_WALK", "RANDOM_WALK_LEGACY"}:
         _input(bssrdf, "Roughness").default_value = roughness
-    _input(bssrdf, "IOR").default_value = ior
-    _input(bssrdf, "Anisotropy").default_value = anisotropy
+    if method != "BURLEY":
+        _input(bssrdf, "IOR").default_value = ior
+        _input(bssrdf, "Anisotropy").default_value = anisotropy
     tree.links.new(
         _output(bssrdf, "BSSRDF"),
         _input(output, "Surface"),
     )
     return material
+
+
+def _standalone_bssrdf_svm_oracle(
+    scene: Any,
+    *,
+    name: str,
+    method: str,
+    color: tuple[float, float, float],
+    radius: tuple[float, float, float],
+    scale: float,
+    roughness: float,
+    ior: float,
+    anisotropy: float,
+) -> None:
+    """Build one literal standalone Cycles BSSRDF word-image oracle."""
+    material = _subsurface_material(
+        name,
+        method,
+        color,
+        radius,
+        scale,
+        roughness,
+        ior,
+        anisotropy,
+    )
+    _material_matrix(scene, [material], columns=1, rows=1, name=name)
+
+
+def _subsurface_random_walk_svm_oracle(scene: Any) -> None:
+    """Isolate Cycles 5.2's standalone Random Walk BSSRDF transition."""
+    _standalone_bssrdf_svm_oracle(
+        scene,
+        name="Subsurface Random Walk SVM Oracle",
+        method="RANDOM_WALK",
+        color=(0.37, 0.62, 0.14),
+        radius=(1.10, 0.45, 0.09),
+        scale=0.031,
+        roughness=0.28,
+        ior=1.55,
+        anisotropy=1.20,
+    )
+
+
+def _subsurface_burley_svm_oracle(scene: Any) -> None:
+    """Isolate Cycles 5.2's standalone Christensen-Burley transition."""
+    _standalone_bssrdf_svm_oracle(
+        scene,
+        name="Subsurface Burley SVM Oracle",
+        method="BURLEY",
+        color=(0.21, 0.74, 0.48),
+        radius=(0.80, 0.32, 0.05),
+        scale=0.023,
+        roughness=0.43,
+        ior=4.20,
+        anisotropy=-1.40,
+    )
 
 
 def _random_walk_transport(scene: Any) -> None:

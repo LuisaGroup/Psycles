@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0 */
 
 #include "cycles_svm_internal.h"
+#include "cycles_svm_bssrdf.h"
 #include "cycles_svm_microfacet.h"
 #include "cycles_svm_principled.h"
 #include "cycles_svm_simple_closure.h"
@@ -385,6 +386,15 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                                shader_data, path_state, supported);
         }
         $else {
+        const Bool is_bssrdf =
+            (closure_type ==
+             static_cast<std::uint32_t>(CLOSURE_BSSRDF_BURLEY_ID)) |
+            (closure_type ==
+             static_cast<std::uint32_t>(CLOSURE_BSSRDF_RANDOM_WALK_ID)) |
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSSRDF_RANDOM_WALK_LEGACY_ID)) |
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID));
         const Bool is_glass =
             (closure_type == static_cast<std::uint32_t>(
                                  CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
@@ -411,7 +421,11 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                                  CLOSURE_BSDF_PHYSICAL_CONDUCTOR)) |
             (closure_type == static_cast<std::uint32_t>(
                                  CLOSURE_BSDF_F82_CONDUCTOR));
-        $if(is_glass) {
+        $if(is_bssrdf) {
+          node_bssrdf(cursor, stack, closure_type, closure_weight, mix_weight,
+                      shader_data, path_state);
+        }
+        $elif(is_glass) {
           const auto color_x = cursor.word();
           const auto color_y = cursor.word();
           const auto color_z = cursor.word();
