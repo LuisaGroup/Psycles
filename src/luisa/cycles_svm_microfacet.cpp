@@ -167,24 +167,65 @@ ensure_valid_specular_reflection(Expr<luisa::float3> geometric_normal,
            (make_float3(1.0f) - reflectance) * fresnel.transmission_tint;
 }
 
+struct MultiGgxEnergyAdjustment {
+    Float energy_scale;
+    Float3 darkening;
+    Bool applies_darkening;
+};
+
+[[nodiscard]] MultiGgxEnergyAdjustment multi_ggx_energy_adjustment(
+    Expr<float> energy, Expr<float> average_energy,
+    Expr<luisa::float3> average_fresnel) noexcept {
+    const auto missing_factor = (1.0f - energy) / energy;
+    MultiGgxEnergyAdjustment result{
+        .energy_scale = 1.0f + missing_factor,
+        .darkening = make_float3(1.0f),
+        .applies_darkening = !all(average_fresnel == make_float3(1.0f))};
+    $if (result.applies_darkening) {
+        const auto multiple_scatter_fresnel =
+            average_fresnel * average_energy /
+            (make_float3(1.0f) -
+             average_fresnel * (1.0f - average_energy));
+        result.darkening =
+            (make_float3(1.0f) +
+             multiple_scatter_fresnel * missing_factor) /
+            result.energy_scale;
+    };
+    return result;
+}
+
+[[nodiscard]] MultiGgxEnergyAdjustment multi_ggx_reflection_energy(
+    const KernelGlobals &kernel_globals, Expr<luisa::float3> incoming,
+    Expr<luisa::float3> normal, const MicrofacetParam &microfacet,
+    Expr<luisa::float3> average_fresnel) noexcept {
+    const auto mu = dot(incoming, normal);
+    const auto table_roughness =
+        sqrt(sqrt(microfacet.alpha_x * microfacet.alpha_y));
+    const auto energy = table_detail::cycles_table_2d(
+        kernel_globals, table_roughness, mu,
+        UInt{cycles45_tables::ggx_e_offset}, 32u, 32u);
+    const auto average_energy = table_detail::cycles_table_1d(
+        kernel_globals, table_roughness,
+        UInt{cycles45_tables::ggx_eavg_offset}, 32u);
+    return multi_ggx_energy_adjustment(energy, average_energy,
+                                      average_fresnel);
+}
+
 void apply_multi_ggx_energy(ClosurePool &pool,
                             const ClosurePool::Allocation &allocation,
                             MicrofacetParam &microfacet, Expr<float> energy,
                             Expr<float> average_energy,
                             Expr<luisa::float3> average_fresnel) noexcept {
-    const auto missing_factor = (1.0f - energy) / energy;
-    microfacet.energy_scale = 1.0f + missing_factor;
-    $if (!all(average_fresnel == make_float3(1.0f))) {
-        const auto multiple_scatter_fresnel =
-            average_fresnel * average_energy /
-            (make_float3(1.0f) - average_fresnel * (1.0f - average_energy));
-        const auto darkening =
-            (make_float3(1.0f) + multiple_scatter_fresnel * missing_factor) /
-            microfacet.energy_scale;
+    const auto adjustment = multi_ggx_energy_adjustment(
+        energy, average_energy, average_fresnel);
+    microfacet.energy_scale = adjustment.energy_scale;
+    $if (adjustment.applies_darkening) {
         const auto common = pool.common(allocation.index);
-        pool.set_weight(allocation.index, common.weight * darkening);
+        pool.set_weight(allocation.index,
+                        common.weight * adjustment.darkening);
         pool.set_sample_weight(allocation.index,
-                               common.sample_weight * average(darkening));
+                               common.sample_weight *
+                                   average(adjustment.darkening));
     };
 }
 
@@ -237,17 +278,39 @@ void preserve_multi_ggx_reflection_energy(
     const ClosurePool::Allocation &allocation, Expr<luisa::float3> incoming,
     Expr<luisa::float3> normal, MicrofacetParam &microfacet,
     Expr<luisa::float3> color) noexcept {
-    const auto mu = dot(incoming, normal);
-    const auto table_roughness =
-        sqrt(sqrt(microfacet.alpha_x * microfacet.alpha_y));
-    const auto energy = table_detail::cycles_table_2d(
-        kernel_globals, table_roughness, mu,
-        UInt{cycles45_tables::ggx_e_offset}, 32u, 32u);
-    const auto average_energy = table_detail::cycles_table_1d(
-        kernel_globals, table_roughness,
-        UInt{cycles45_tables::ggx_eavg_offset}, 32u);
-    apply_multi_ggx_energy(pool, allocation, microfacet, energy,
-                           average_energy, color);
+    const auto adjustment = multi_ggx_reflection_energy(
+        kernel_globals, incoming, normal, microfacet, color);
+    microfacet.energy_scale = adjustment.energy_scale;
+    $if (adjustment.applies_darkening) {
+        const auto common = pool.common(allocation.index);
+        pool.set_weight(allocation.index,
+                        common.weight * adjustment.darkening);
+        pool.set_sample_weight(allocation.index,
+                               common.sample_weight *
+                                   average(adjustment.darkening));
+    };
+}
+
+[[nodiscard]] Float dielectric_reflection_albedo(
+    const KernelGlobals &kernel_globals, Expr<luisa::float3> incoming,
+    Expr<luisa::float3> normal, const MicrofacetParam &microfacet) noexcept {
+    Float result = 0.0f;
+    /* Principled clamps Coat IOR to at least one. At exactly one, Cycles'
+     * fallback microfacet_fresnel branch is identically zero; above one it
+     * uses the same generalized-Schlick-IOR table as the source. */
+    $if (microfacet.ior > 1.0f) {
+        const auto table_roughness =
+            sqrt(sqrt(microfacet.alpha_x * microfacet.alpha_y));
+        const auto cosine_incoming = dot(incoming, normal);
+        const auto z =
+            sqrt(abs((microfacet.ior - 1.0f) / (microfacet.ior + 1.0f)));
+        const auto interpolation = table_detail::cycles_table_3d(
+            kernel_globals, table_roughness, cosine_incoming, z,
+            UInt{cycles45_tables::ggx_gen_schlick_ior_s_offset}, 16u, 16u,
+            16u);
+        result = lerp(f0_from_ior(microfacet.ior), 1.0f, interpolation);
+    };
+    return result;
 }
 
 [[nodiscard]] Float3 f82_tint_albedo(
@@ -399,6 +462,76 @@ Float3 principled_specular_setup(
         };
         shader_data.flag |= flags;
         layer_albedo = pool.common(allocated.index).weight * albedo;
+    };
+    return layer_albedo;
+}
+
+Float3 principled_coat_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const PathState &path_state, Expr<luisa::float3> input_weight,
+    Expr<luisa::float3> normal, Expr<float> roughness,
+    Expr<float> ior) noexcept {
+    auto &pool = *shader_data.closure;
+    const Float3 weight = max(input_weight, make_float3(0.0f));
+    const Float sample_weight = abs(average(weight));
+    const Bool survives_cutoff =
+        ((sample_weight >= CLOSURE_WEIGHT_CUTOFF) |
+         ((shader_data.flag & shader_data_is_volume_shader_eval) != 0u)) &
+        (sample_weight > 0.0f);
+    const Bool emission_path = (path_state.flag & path_ray_emission) != 0u;
+
+    ClosurePool::Allocation allocated{.index = 0u, .valid = false};
+    Bool setup_active = false;
+    $if (emission_path) { setup_active = survives_cutoff; }
+    $else {
+        allocated = bsdf_allocate(shader_data, weight);
+        setup_active = allocated.valid;
+    };
+
+    Float3 layer_albedo = make_float3(0.0f);
+    $if (setup_active) {
+        MicrofacetParam microfacet{
+            .alpha_x = clamp(square(roughness), 0.0f, 1.0f),
+            .alpha_y = clamp(square(roughness), 0.0f, 1.0f),
+            .ior = ior,
+            .energy_scale = 1.0f,
+            .fresnel_type =
+                static_cast<std::uint32_t>(MicrofacetFresnel::dielectric),
+            .T = make_float3(0.0f)};
+        const auto albedo = dielectric_reflection_albedo(
+            kernel_globals, shader_data.wi, normal, microfacet);
+        Float3 adjusted_weight = weight;
+        Float adjusted_sample_weight = sample_weight * albedo;
+
+        /* bsdf_microfacet_setup_fresnel_dielectric unconditionally preserves
+         * GGX energy, including the single-scatter darkening term. */
+        const auto energy = multi_ggx_reflection_energy(
+            kernel_globals, shader_data.wi, normal, microfacet,
+            make_float3(fresnel_dielectric_fss(microfacet.ior)));
+        microfacet.energy_scale = energy.energy_scale;
+        $if (energy.applies_darkening) {
+            adjusted_weight *= energy.darkening;
+            adjusted_sample_weight *= average(energy.darkening);
+        };
+
+        $if (!emission_path) {
+            pool.set_normal(allocated.index, normal);
+            pool.set_type(
+                allocated.index,
+                static_cast<std::uint32_t>(
+                    CLOSURE_BSDF_MICROFACET_GGX_ID));
+            pool.set_weight(allocated.index, adjusted_weight);
+            pool.set_sample_weight(allocated.index,
+                                   adjusted_sample_weight);
+            pool.set_microfacet_param(allocated.index, microfacet);
+        };
+
+        UInt flags = shader_data_bsdf;
+        $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
+            flags |= shader_data_bsdf_has_eval;
+        };
+        shader_data.flag |= flags;
+        layer_albedo = adjusted_weight * albedo;
     };
     return layer_albedo;
 }

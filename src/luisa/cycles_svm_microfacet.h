@@ -34,6 +34,17 @@ bsdf_allocate(ShaderData &shader_data,
     luisa::compute::Expr<float> thin_film_ior,
     luisa::compute::Expr<bool> preserve_energy) noexcept;
 
+/* Exact Cycles Principled Coat dielectric-GGX transition. This includes
+ * bsdf_alloc_maybe_emission, dielectric albedo estimation, and Cycles'
+ * unconditional GGX multiple-scattering energy preservation. */
+[[nodiscard]] luisa::compute::Float3 principled_coat_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const PathState &path_state,
+    luisa::compute::Expr<luisa::float3> input_weight,
+    luisa::compute::Expr<luisa::float3> normal,
+    luisa::compute::Expr<float> roughness,
+    luisa::compute::Expr<float> ior) noexcept;
+
 void glass_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
                  const PathState &path_state,
                  luisa::compute::Expr<std::uint32_t> input_type,

@@ -212,3 +212,37 @@ def _principled_sheen_svm_oracle(scene: Any) -> None:
         rows=1,
         name="Principled Sheen SVM Oracle",
     )
+
+
+def _principled_coat_svm_oracle(scene: Any) -> None:
+    """Isolate Cycles' ordered Principled coat transition.
+
+    IOR 1 removes the lower dielectric closure and every other optional layer
+    is zero. Transparency, colored coat attenuation, emission, and diffuse
+    remain live so the trace observes both the dielectric GGX closure and the
+    Beer-law transmission applied to every lower layer.
+    """
+    material, tree, output = _material("Principled Coat SVM Oracle")
+    principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+    principled.name = "Principled Coat SVM Oracle"
+    _set_color(_input(principled, "Base Color"), (0.31, 0.57, 0.83))
+    _input(principled, "IOR").default_value = 1.0
+    _input(principled, "Roughness").default_value = 0.42
+    _input(principled, "Alpha").default_value = 0.8
+    _input(principled, "Coat Weight").default_value = 0.65
+    _input(principled, "Coat Roughness").default_value = 0.28
+    _input(principled, "Coat IOR").default_value = 1.45
+    _set_color(_input(principled, "Coat Tint"), (0.70, 0.85, 0.55))
+    _set_color(_input(principled, "Emission Color"), (0.20, 0.10, 0.60))
+    _input(principled, "Emission Strength").default_value = 1.3
+    tree.links.new(
+        _output(principled, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _material_matrix(
+        scene,
+        [material],
+        columns=1,
+        rows=1,
+        name="Principled Coat SVM Oracle",
+    )
