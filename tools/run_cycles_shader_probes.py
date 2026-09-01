@@ -76,6 +76,7 @@ _ALL_PROBES = (
     "invert_color_matrix",
     "legacy_separate_combine_matrix",
     "layer_weight_matrix",
+    "light_path_matrix",
     "map_range_matrix",
     "math_edge_cases",
     "math_operations",
@@ -304,6 +305,13 @@ _PROBE_RATIO_GATES = {
         "Env": (0.99999, 1.00001),
     },
     "fresnel_matrix": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
+    "light_path_matrix": {
+        # This is a deterministic primary-ray state matrix. Energy and image
+        # shape should agree; only isolated reconstruction-boundary pixels
+        # receive a small backend-independent float envelope.
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
     },
@@ -543,6 +551,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
     "fresnel_matrix": {
         "Combined": 0.00001,
         "Emit": 0.00001,
+    },
+    "light_path_matrix": {
+        "Combined": 0.00005,
+        "Emit": 0.00005,
     },
     "glass_transport": {
         "Combined": 0.0002,

@@ -194,6 +194,11 @@ void node_light_path(Cursor &cursor, Stack &stack,
         info += 1.0f;
       };
     };
+    PSYCLES_SVM_CASE(NODE_LP_ray_transparent) {
+      if ((node_feature_mask & kernel_feature_node_light_path) != 0u) {
+        info = path_state.transparent_bounce.cast<float>();
+      }
+    };
     PSYCLES_SVM_CASE(NODE_LP_ray_diffuse) {
       if ((node_feature_mask & kernel_feature_node_light_path) != 0u) {
         info = path_state.diffuse_bounce.cast<float>();
@@ -202,11 +207,6 @@ void node_light_path(Cursor &cursor, Stack &stack,
     PSYCLES_SVM_CASE(NODE_LP_ray_glossy) {
       if ((node_feature_mask & kernel_feature_node_light_path) != 0u) {
         info = path_state.glossy_bounce.cast<float>();
-      }
-    };
-    PSYCLES_SVM_CASE(NODE_LP_ray_transparent) {
-      if ((node_feature_mask & kernel_feature_node_light_path) != 0u) {
-        info = path_state.transparent_bounce.cast<float>();
       }
     };
     PSYCLES_SVM_CASE(NODE_LP_ray_transmission) {
