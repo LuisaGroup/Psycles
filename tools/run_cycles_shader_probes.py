@@ -77,6 +77,7 @@ _ALL_PROBES = (
     "invert_color_matrix",
     "legacy_separate_combine_matrix",
     "layer_weight_matrix",
+    "light_falloff_matrix",
     "light_path_matrix",
     "map_range_matrix",
     "math_edge_cases",
@@ -306,6 +307,12 @@ _PROBE_RATIO_GATES = {
         "Env": (0.99999, 1.00001),
     },
     "fresnel_matrix": {
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+    },
+    "light_falloff_matrix": {
+        # Six equal-area cells make any selector, smoothing, or linked-input
+        # error structural rather than statistically sparse.
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
     },
@@ -553,6 +560,10 @@ _PROBE_RELATIVE_RMSE_GATES = {
         "Combined": 0.00001,
         "Emit": 0.00001,
     },
+    "light_falloff_matrix": {
+        "Combined": 0.0001,
+        "Emit": 0.0001,
+    },
     "light_path_matrix": {
         "Combined": 0.00005,
         "Emit": 0.00005,
@@ -648,12 +659,17 @@ _PROBE_RELATIVE_RMSE_GATES = {
 
 # A 99th-percentile error gate is appropriate for equal-area material
 # matrices whose purpose is closure evaluation rather than camera sampling.
-# Every authored case occupies 1/16 of the image, so a structural error in any
-# case necessarily reaches the 99th percentile. In contrast, isolated
-# ray/triangle boundary choices occupy less than 1% and must not dominate the
-# otherwise deterministic direct-light comparison. Normalize by Cycles RMS so
-# the gate remains independent of exposure and Sun energy.
+# Every authored case in these matrices occupies at least 1/16 of the image,
+# so a structural error in any case necessarily reaches the 99th percentile.
+# In contrast, isolated ray/triangle boundary choices occupy less than 1% and
+# must not dominate the otherwise deterministic direct-light comparison.
+# Normalize by Cycles RMS so the gate remains independent of exposure and Sun
+# energy.
 _PROBE_NORMALIZED_P99_RMSE_GATES = {
+    "light_falloff_matrix": {
+        "Combined": 0.000001,
+        "Emit": 0.000001,
+    },
     "normal_node_matrix": {
         "Combined": 0.000001,
         "Emit": 0.000001,
@@ -698,6 +714,10 @@ _PROBE_NORMALIZED_P99_RMSE_GATES = {
 # never excuse a Psycles NaN/Inf. This is intentionally per probe: older
 # reports predate the source-attributed counters and remain readable.
 _PROBE_ACTUAL_INVALID_PIXEL_GATES = {
+    "light_falloff_matrix": {
+        "Combined": 0,
+        "Emit": 0,
+    },
     "hair_bsdf_matrix": {
         "Combined": 0,
         "GlossCol": 0,

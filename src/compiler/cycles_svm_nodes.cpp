@@ -12,6 +12,7 @@
 #include "cycles_svm_image_nodes.h"
 #include "cycles_svm_info_nodes.h"
 #include "cycles_svm_light_path_nodes.h"
+#include "cycles_svm_light_falloff_nodes.h"
 #include "cycles_svm_mapping_nodes.h"
 #include "cycles_svm_noise_nodes.h"
 #include "cycles_svm_normal_nodes.h"
@@ -1878,6 +1879,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
     return node;
   }
   if (auto node = make_light_path_graph_node(type)) {
+    return node;
+  }
+  if (auto node = make_light_falloff_graph_node(type)) {
     return node;
   }
   if (auto node = make_texture_coordinate_graph_node(type)) {

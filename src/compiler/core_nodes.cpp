@@ -220,8 +220,6 @@ NodeRegistry make_core_node_registry() {
           {input("Strength", SocketType::floating,
                  SocketValue::floating(100.0f)),
            input("Smooth", SocketType::floating,
-                 SocketValue::floating(0.0f)),
-           input("RayLength", SocketType::floating,
                  SocketValue::floating(0.0f))},
       .outputs = {output("Quadratic", SocketType::floating),
                   output("Linear", SocketType::floating),

@@ -170,6 +170,86 @@ def _light_path_matrix(scene: Any) -> None:
     )
 
 
+def _light_falloff_matrix(scene: Any) -> None:
+    """Keep every Cycles Light Falloff output and input encoding live."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+
+    cases = (
+        ("Quadratic", 8.0, 0.0, False, False),
+        ("Linear", 3.5, 2.0, False, False),
+        ("Constant", 0.25, 4.0, False, False),
+        ("ALL", 6.0, 1.5, False, False),
+        ("ALL", 0.0, 0.0, True, True),
+        ("Constant", 2.0, -1.0, False, False),
+    )
+    materials = []
+    for index, (
+        mode,
+        strength,
+        smooth,
+        linked_strength,
+        linked_smooth,
+    ) in enumerate(cases):
+        material, tree, output = _material(
+            f"Light Falloff {index:02d} {mode}"
+        )
+        falloff = tree.nodes.new("ShaderNodeLightFalloff")
+        falloff.name = f"Light Falloff {index:02d}"
+        _input(falloff, "Strength").default_value = strength
+        _input(falloff, "Smooth").default_value = smooth
+
+        if linked_strength or linked_smooth:
+            light_path = tree.nodes.new("ShaderNodeLightPath")
+            light_path.name = f"Light Path {index:02d}"
+            if linked_strength:
+                tree.links.new(
+                    _output(light_path, "Ray Length"),
+                    _input(falloff, "Strength"),
+                )
+            if linked_smooth:
+                tree.links.new(
+                    _output(light_path, "Ray Depth"),
+                    _input(falloff, "Smooth"),
+                )
+
+        output_names = (
+            ("Quadratic", "Linear", "Constant")
+            if mode == "ALL"
+            else (mode,)
+        )
+        closures = []
+        for output_index, output_name in enumerate(output_names):
+            emission = tree.nodes.new("ShaderNodeEmission")
+            emission.name = (
+                f"Light Falloff Emission {index:02d} {output_index:02d}"
+            )
+            tree.links.new(
+                _output(falloff, output_name),
+                _input(emission, "Color"),
+            )
+            closures.append(_output(emission, "Emission"))
+        while len(closures) > 1:
+            left = closures.pop(0)
+            right = closures.pop(0)
+            add = tree.nodes.new("ShaderNodeAddShader")
+            add.name = f"Keep Light Falloff Outputs {index:02d}"
+            tree.links.new(left, _input_identifier(add, "Shader"))
+            tree.links.new(right, _input_identifier(add, "Shader_001"))
+            closures.append(_output(add, "Shader"))
+        tree.links.new(closures[0], _input(output, "Surface"))
+        materials.append(material)
+
+    _material_matrix(
+        scene,
+        materials,
+        columns=3,
+        rows=2,
+        name="Light Falloff Matrix",
+        frame_bleed=0.01,
+    )
+
+
 def _all_info_outputs_material(
     family: str,
     bl_idname: str,

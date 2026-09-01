@@ -191,8 +191,6 @@ inline constexpr std::array<std::uint16_t, 3u> falloff_domain{
 
 [[nodiscard]] ShaderGraph distant_light_shader() {
     ShaderGraph graph;
-    const auto light_path = graph.add_node(
-        node_type::light_path, "Cycles light path");
     const auto falloff = graph.add_node(
         node_type::light_falloff, "Cycles Light Falloff");
     const auto emission = graph.add_node(
@@ -202,10 +200,6 @@ inline constexpr std::array<std::uint16_t, 3u> falloff_domain{
             falloff, "Strength", SocketValue::floating(2.0f)) &&
         graph.set_input(
             falloff, "Smooth", SocketValue::floating(0.0f)) &&
-        graph.connect(
-            {.node = light_path, .socket = "RayLength"},
-            falloff,
-            "RayLength") &&
         graph.set_input(
             emission,
             "Color",
