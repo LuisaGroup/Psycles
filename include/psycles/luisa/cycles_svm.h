@@ -435,6 +435,18 @@ struct FresnelGeneralizedSchlick {
   luisa::compute::Float exponent;
 };
 
+struct FresnelConductor {
+  FresnelThinFilm thin_film;
+  luisa::compute::Float3 ior;
+  luisa::compute::Float3 extinction;
+};
+
+struct FresnelF82Tint {
+  FresnelThinFilm thin_film;
+  luisa::compute::Float3 f0;
+  luisa::compute::Float3 b;
+};
+
 struct MicrofacetParam {
   luisa::compute::Float alpha_x;
   luisa::compute::Float alpha_y;
@@ -448,6 +460,18 @@ struct MicrofacetClosure {
   ShaderClosureCommon common;
   MicrofacetParam param;
   FresnelGeneralizedSchlick generalized_schlick;
+};
+
+struct MicrofacetConductorClosure {
+  ShaderClosureCommon common;
+  MicrofacetParam param;
+  FresnelConductor conductor;
+};
+
+struct MicrofacetF82TintClosure {
+  ShaderClosureCommon common;
+  MicrofacetParam param;
+  FresnelF82Tint f82_tint;
 };
 
 /* Device-local realization of ShaderData::closure[], num_closure and
@@ -472,11 +496,15 @@ private:
   luisa::compute::Local<luisa::float4> _microfacet_alpha_ior_energy;
   luisa::compute::Local<luisa::float4> _microfacet_tangent;
   luisa::compute::Local<luisa::uint> _microfacet_fresnel_type;
-  luisa::compute::Local<luisa::float4> _generalized_schlick_thin_film;
-  luisa::compute::Local<luisa::float4> _generalized_schlick_reflection_tint;
-  luisa::compute::Local<luisa::float4> _generalized_schlick_transmission_tint;
-  luisa::compute::Local<luisa::float4> _generalized_schlick_f0;
-  luisa::compute::Local<luisa::float4> _generalized_schlick_f90;
+  /* Cycles' MicrofacetBsdf points at a discriminated Fresnel union. These
+   * five SoA fields are that same union storage: payload0/payload1 mean
+   * reflection/transmission tint, conductor n/k, or F82 f0/b according to
+   * _microfacet_fresnel_type. */
+  luisa::compute::Local<luisa::float4> _fresnel_thin_film;
+  luisa::compute::Local<luisa::float4> _fresnel_payload0;
+  luisa::compute::Local<luisa::float4> _fresnel_payload1;
+  luisa::compute::Local<luisa::float4> _fresnel_f0;
+  luisa::compute::Local<luisa::float4> _fresnel_f90;
   luisa::compute::UInt _count;
   luisa::compute::UInt _left;
 
@@ -519,6 +547,12 @@ public:
   void set_generalized_schlick(
       luisa::compute::Expr<std::uint32_t> index,
       const FresnelGeneralizedSchlick &fresnel) noexcept;
+  void set_fresnel_conductor(
+      luisa::compute::Expr<std::uint32_t> index,
+      const FresnelConductor &fresnel) noexcept;
+  void set_fresnel_f82_tint(
+      luisa::compute::Expr<std::uint32_t> index,
+      const FresnelF82Tint &fresnel) noexcept;
   void set_left(luisa::compute::Expr<std::uint32_t> left) noexcept;
 
   [[nodiscard]] ShaderClosureCommon
@@ -529,6 +563,12 @@ public:
   microfacet_param(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetClosure
   microfacet(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] MicrofacetConductorClosure
+  microfacet_conductor(
+      luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] MicrofacetF82TintClosure
+  microfacet_f82_tint(
+      luisa::compute::Expr<std::uint32_t> index) const noexcept;
 };
 
 /* The fields below are the exact ShaderData projection consumed by the first

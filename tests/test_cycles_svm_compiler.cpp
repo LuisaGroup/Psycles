@@ -317,6 +317,161 @@ void test_refraction_surfaces_match_cycles_5_2_1() {
   }
 }
 
+void test_metallic_surfaces_match_cycles_5_2_1() {
+  // Exact compact images from the external Cycles 5.2.1
+  // `metallic_svm_oracle` dump. It literalizes the render matrix's constant
+  // input links, so Cycles' automatic default Normal/Tangent topology remains
+  // observable while all typed Metallic payload values are preserved verbatim.
+  static constexpr std::uint32_t f82_ggx_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000018u, 0x00000019u,
+      0x0000000bu, 0x00000001u, 0x00000000u, 0x00000002u,
+      0x0000000bu, 0x000000ffu, 0x0000000cu, 0x3f3851ecu,
+      0x3e0f5c29u, 0x3d0f5c29u, 0x3f6b851fu, 0x3ed70a3du,
+      0x3df5c28fu, 0x3e3851ecu, 0x00000000u, 0x00000000u,
+      0x00000000u, 0x3faa3d71u, 0x0000ff00u, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
+  static constexpr std::uint32_t f82_beckmann_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000018u, 0x00000019u,
+      0x0000000bu, 0x00000001u, 0x00000000u, 0x00000002u,
+      0x0000000bu, 0x000000ffu, 0x0000000du, 0x3e23d70au,
+      0x3f1eb852u, 0x3f51eb85u, 0x3f3d70a4u, 0x3f5c28f6u,
+      0x3f7ae148u, 0x3eb33333u, 0x00000000u, 0x00000000u,
+      0x00000000u, 0x3faa3d71u, 0x0000ff00u, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
+  static constexpr std::uint32_t f82_multi_anisotropic_expected[] = {
+      0x00000001u, 0x00000004u, 0x0000001bu, 0x0000001cu,
+      0x0000000bu, 0x00000001u, 0x00000000u, 0x0000000bu,
+      0x03000002u, 0x00000000u, 0x00000002u, 0x0000000bu,
+      0x000000ffu, 0x0000000eu, 0x3f1eb852u, 0x3e6147aeu,
+      0x3d75c28fu, 0x3f75c28fu, 0x3ef5c28fu, 0x3e3851ecu,
+      0x3eeb851fu, 0x3f0ccccdu, 0x3e3851ecu, 0x43d20000u,
+      0x3fc28f5cu, 0x00000300u, 0x00000000u, 0x00000000u,
+      0x00000000u,
+  };
+  static constexpr std::uint32_t conductor_ggx_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000018u, 0x00000019u,
+      0x0000000bu, 0x00000001u, 0x00000000u, 0x00000002u,
+      0x0000000au, 0x000000ffu, 0x0000000cu, 0x3e8a3d71u,
+      0x3f2e147bu, 0x3fa8f5c3u, 0x40670a3du, 0x4027ae14u,
+      0x3ff47ae1u, 0x3e3851ecu, 0x00000000u, 0x00000000u,
+      0x00000000u, 0x3faa3d71u, 0x0000ff00u, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
+  static constexpr std::uint32_t conductor_beckmann_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000018u, 0x00000019u,
+      0x0000000bu, 0x00000001u, 0x00000000u, 0x00000002u,
+      0x0000000au, 0x000000ffu, 0x0000000du, 0x3fb9999au,
+      0x3f570a3du, 0x3ec28f5cu, 0x3ff5c28fu, 0x40251eb8u,
+      0x405ae148u, 0x3eb33333u, 0x00000000u, 0x00000000u,
+      0x00000000u, 0x3faa3d71u, 0x0000ff00u, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
+  static constexpr std::uint32_t conductor_multi_anisotropic_expected[] = {
+      0x00000001u, 0x00000004u, 0x0000001bu, 0x0000001cu,
+      0x0000000bu, 0x00000001u, 0x00000000u, 0x0000000bu,
+      0x03000002u, 0x00000000u, 0x00000002u, 0x0000000au,
+      0x000000ffu, 0x0000000eu, 0x3ed70a3du, 0x3f6147aeu,
+      0x3fd1eb85u, 0x406e147bu, 0x40228f5cu, 0x3fae147bu,
+      0x3eeb851fu, 0x3f0ccccdu, 0x3e3851ecu, 0x44188000u,
+      0x3fd9999au, 0x00000300u, 0x00000000u, 0x00000000u,
+      0x00000000u,
+  };
+
+  struct Case {
+    const char *name;
+    const char *fresnel_type;
+    const char *distribution;
+    std::array<float, 3u> first;
+    std::array<float, 3u> second;
+    float roughness;
+    float anisotropy;
+    float rotation;
+    float film_thickness;
+    float film_ior;
+    std::span<const std::uint32_t> expected;
+    std::uint32_t peak_stack_usage;
+  };
+  const std::array cases{
+      Case{"Metallic BSDF Matrix 00", "F82", "GGX",
+           {0.72f, 0.14f, 0.035f}, {0.92f, 0.42f, 0.12f}, 0.18f, 0.0f,
+           0.0f, 0.0f, 1.33f, f82_ggx_expected, 3u},
+      Case{"Metallic BSDF Matrix 01", "F82", "BECKMANN",
+           {0.16f, 0.62f, 0.82f}, {0.74f, 0.86f, 0.98f}, 0.35f, 0.0f,
+           0.0f, 0.0f, 1.33f, f82_beckmann_expected, 3u},
+      Case{"Metallic BSDF Matrix 07", "F82", "MULTI_GGX",
+           {0.62f, 0.22f, 0.06f}, {0.96f, 0.48f, 0.18f}, 0.46f, 0.55f,
+           0.18f, 420.0f, 1.52f, f82_multi_anisotropic_expected, 6u},
+      Case{"Metallic BSDF Matrix 08", "PHYSICAL_CONDUCTOR", "GGX",
+           {0.27f, 0.68f, 1.32f}, {3.61f, 2.62f, 1.91f}, 0.18f, 0.0f,
+           0.0f, 0.0f, 1.33f, conductor_ggx_expected, 3u},
+      Case{"Metallic BSDF Matrix 09", "PHYSICAL_CONDUCTOR", "BECKMANN",
+           {1.45f, 0.84f, 0.38f}, {1.92f, 2.58f, 3.42f}, 0.35f, 0.0f,
+           0.0f, 0.0f, 1.33f, conductor_beckmann_expected, 3u},
+      Case{"Metallic BSDF Matrix 15", "PHYSICAL_CONDUCTOR", "MULTI_GGX",
+           {0.42f, 0.88f, 1.64f}, {3.72f, 2.54f, 1.36f}, 0.46f, 0.55f,
+           0.18f, 610.0f, 1.70f, conductor_multi_anisotropic_expected, 6u},
+  };
+
+  for (const auto &item : cases) {
+    ShaderGraph graph;
+    const auto metallic = graph.add_node(node_type::metallic_bsdf, item.name);
+    require(graph.set_property(metallic, "FresnelType",
+                               SocketValue::string(item.fresnel_type)) &&
+                graph.set_property(metallic, "Distribution",
+                                   SocketValue::string(item.distribution)) &&
+                graph.set_input(metallic, "Roughness",
+                                SocketValue::floating(item.roughness)) &&
+                graph.set_input(metallic, "Anisotropy",
+                                SocketValue::floating(item.anisotropy)) &&
+                graph.set_input(metallic, "Rotation",
+                                SocketValue::floating(item.rotation)) &&
+                graph.set_input(metallic, "ThinFilmThickness",
+                                SocketValue::floating(item.film_thickness)) &&
+                graph.set_input(metallic, "ThinFilmIOR",
+                                SocketValue::floating(item.film_ior)),
+            "failed to configure Metallic compiler oracle");
+    if (std::string_view{item.fresnel_type} == "F82") {
+      require(graph.set_input(metallic, "BaseColor",
+                              SocketValue::color({item.first[0], item.first[1],
+                                                  item.first[2]})) &&
+                  graph.set_input(metallic, "EdgeTint",
+                                  SocketValue::color({item.second[0],
+                                                      item.second[1],
+                                                      item.second[2]})),
+              "failed to configure F82 Metallic payload");
+    } else {
+      require(graph.set_input(metallic, "IOR",
+                              SocketValue::vector({item.first[0], item.first[1],
+                                                   item.first[2]})) &&
+                  graph.set_input(metallic, "Extinction",
+                                  SocketValue::vector({item.second[0],
+                                                       item.second[1],
+                                                       item.second[2]})),
+              "failed to configure conductor Metallic payload");
+    }
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = metallic, .socket = "Closure"});
+
+    const ShaderCompiler frontend{make_core_node_registry()};
+    const auto shader = frontend.compile(graph);
+    if (!shader.ok()) {
+      for (const auto &diagnostic : shader.diagnostics) {
+        std::cerr << diagnostic.message << '\n';
+      }
+    }
+    require(shader.ok(), "raw Metallic graph did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+    require_words(image.words, item.expected,
+                  "Psycles Metallic SVM differs from the Cycles word oracle");
+    require(image.peak_stack_usage == item.peak_stack_usage &&
+                image.node_types_used[NODE_CLOSURE_BSDF],
+            "Metallic SVM stack or opcode mask differs from Cycles");
+  }
+}
+
 void test_constant_mix_closure_matches_cycles_5_2_1() {
   ShaderGraph graph;
   const auto transparent =
@@ -1459,6 +1614,7 @@ int main() {
   test_glass_surface_matches_cycles_5_2_1();
   test_glossy_surfaces_match_cycles_5_2_1();
   test_refraction_surfaces_match_cycles_5_2_1();
+  test_metallic_surfaces_match_cycles_5_2_1();
   test_constant_mix_closure_matches_cycles_5_2_1();
   test_linked_mix_closure_jumps_match_cycles_5_2_1();
   test_dynamic_math_and_dedup_match_cycles_5_2_1();
