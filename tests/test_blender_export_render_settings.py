@@ -223,7 +223,11 @@ def _main() -> None:
         raise AssertionError(
             "combined shader-probe registry is not an exact partition"
         )
-    if oracle_probes != {"svm_tangent_dynamic"}:
+    if oracle_probes != {
+        "svm_tangent_dynamic",
+        "vector_to_scalar",
+        "volume_scatter_svm",
+    }:
         raise AssertionError(
             "unexpected Cycles SVM oracle-only probe set: "
             f"{sorted(oracle_probes)}"

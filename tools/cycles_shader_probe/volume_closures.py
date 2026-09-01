@@ -9,6 +9,50 @@ import bpy
 from .support import _input, _material, _output
 
 
+def _volume_scatter_svm(scene: Any) -> None:
+    """Emit every Cycles 5.2 Scatter Volume phase payload."""
+    phases = (
+        "HENYEY_GREENSTEIN",
+        "FOURNIER_FORAND",
+        "DRAINE",
+        "RAYLEIGH",
+        "MIE",
+    )
+    for index, phase in enumerate(phases):
+        material, tree, output = _material(f"Volume Scatter {phase}")
+        scatter = tree.nodes.new("ShaderNodeVolumeScatter")
+        scatter.name = f"Scatter {phase}"
+        scatter.phase = phase
+        _input(scatter, "Color").default_value = (
+            0.17 + 0.05 * index,
+            0.43,
+            0.79 - 0.04 * index,
+            1.0,
+        )
+        _input(scatter, "Density").default_value = 0.7 + 0.1 * index
+        if phase == "HENYEY_GREENSTEIN":
+            _input(scatter, "Anisotropy").default_value = -0.25
+        elif phase == "FOURNIER_FORAND":
+            _input(scatter, "IOR").default_value = 1.37
+            _input(scatter, "Backscatter").default_value = 0.16
+        elif phase == "DRAINE":
+            _input(scatter, "Anisotropy").default_value = -0.05
+            _input(scatter, "Alpha").default_value = 0.46
+        elif phase == "MIE":
+            _input(scatter, "Diameter").default_value = 16.0
+        tree.links.new(
+            _output(scatter, "Volume"),
+            _input(output, "Volume"),
+        )
+        bpy.ops.mesh.primitive_cube_add(
+            size=0.5,
+            enter_editmode=False,
+            align="WORLD",
+            location=(-1.2 + 0.6 * index, 0.0, 0.0),
+        )
+        bpy.context.object.data.materials.append(material)
+
+
 def _volume_emission_transport(scene: Any) -> None:
     """Exercise an Emission closure through the material Volume domain."""
     scene.cycles.pixel_filter_type = "BOX"

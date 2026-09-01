@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -26,6 +27,21 @@ static_assert(jump_node_word_count == 4u);
   const auto offset = std::bit_cast<std::int32_t>(word);
   return offset >= static_cast<std::int32_t>(jump_node_word_count) &&
          static_cast<std::size_t>(offset) < word_count;
+}
+
+[[nodiscard]] ShaderImage inert_shader() {
+  ShaderImage image;
+  image.valid = true;
+  image.words = {NODE_SHADER_JUMP, 4u, 5u, 6u, NODE_END, NODE_END, NODE_END};
+  image.node_types_used[NODE_SHADER_JUMP] = true;
+  image.node_types_used[NODE_END] = true;
+  return image;
+}
+
+[[nodiscard]] bool same_local_shader(const ShaderImage &lhs,
+                                     const ShaderImage &rhs) noexcept {
+  return lhs.words == rhs.words && lhs.node_types_used == rhs.node_types_used &&
+         lhs.peak_stack_usage == rhs.peak_stack_usage;
 }
 
 } // namespace
@@ -107,6 +123,70 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
     const auto tail = std::span{shader.words}.subspan(jump_node_word_count);
     std::copy(tail.begin(), tail.end(), result.words.data() + tail_base);
     tail_base += tail.size();
+  }
+  return result;
+}
+
+CompiledShaderTable
+compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
+  CompiledShaderTable result;
+  if (shaders.empty()) {
+    result.table = link_shader_table({});
+    return result;
+  }
+
+  auto maximum_index = std::uint32_t{};
+  for (const auto &unit : shaders) {
+    maximum_index = std::max(maximum_index, unit.shader_index);
+    if (unit.shader == nullptr) {
+      result.table =
+          reject("Cycles SVM shader " + std::to_string(unit.shader_index) +
+                 ": source ShaderProgram is absent");
+      return result;
+    }
+  }
+  constexpr auto maximum_size = std::numeric_limits<std::size_t>::max();
+  if (static_cast<std::uint64_t>(maximum_index) + 1u > maximum_size) {
+    result.table = reject("Cycles SVM shader index overflows host size_t");
+    return result;
+  }
+
+  AttributeIDMap attribute_ids;
+  ImageIDMap image_ids;
+  IESIDMap ies_ids;
+  std::vector<std::optional<ShaderImage>> occupied(
+      static_cast<std::size_t>(maximum_index) + 1u);
+  for (const auto &unit : shaders) {
+    auto image = compile_shader(*unit.shader, attribute_ids, image_ids, ies_ids,
+                                unit.context);
+    if (!image.valid) {
+      result.table =
+          reject("Cycles SVM shader " + std::to_string(unit.shader_index) +
+                 ": " + image.diagnostic);
+      return result;
+    }
+    auto &slot = occupied[unit.shader_index];
+    if (slot && !same_local_shader(*slot, image)) {
+      result.table = reject("Cycles SVM shader index " +
+                            std::to_string(unit.shader_index) +
+                            " names distinct local images");
+      return result;
+    }
+    if (!slot) {
+      slot.emplace(std::move(image));
+    }
+  }
+
+  std::vector<ShaderImage> local;
+  local.reserve(occupied.size());
+  for (auto &slot : occupied) {
+    local.emplace_back(slot ? std::move(*slot) : inert_shader());
+  }
+  result.table = link_shader_table(local);
+  if (result.table.valid) {
+    result.named_attributes = attribute_ids.bindings();
+    result.images = image_ids.bindings();
+    result.ies = ies_ids.packed_data();
   }
   return result;
 }

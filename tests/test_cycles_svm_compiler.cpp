@@ -98,6 +98,49 @@ void test_diffuse_surface_matches_cycles_5_2_1() {
           "Diffuse SVM node usage mask differs from Cycles");
 }
 
+void test_glass_surface_matches_cycles_5_2_1() {
+  ShaderGraph graph;
+  const auto glass = graph.add_node(node_type::glass_bsdf, "Glass BSDF 00");
+  require(graph.set_property(glass, "Distribution",
+                             SocketValue::string("BECKMANN")) &&
+              graph.set_input(glass, "Color",
+                              SocketValue::color({1.0f, 1.0f, 1.0f})) &&
+              graph.set_input(glass, "Roughness",
+                              SocketValue::floating(0.0f)) &&
+              graph.set_input(glass, "IOR",
+                              SocketValue::floating(1.45f)),
+          "failed to set Glass inputs");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = glass, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(), "raw Glass graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen from shader `Glass Transport 00` in the Cycles 5.2.1 diagnostic
+  // dump d84f339e9d25276cd8086105c47353e85f8187dea0535aac0bb4cbea7da33c5e.
+  // Global domain entries (123,142,143) are normalized to (4,23,24).
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x00000017u, 0x00000018u,
+      0x0000000bu, 0x00000001u, 0x00000000u,
+      0x00000005u, 0x3f800000u, 0x3f800000u, 0x3f800000u,
+      0x00000002u, 0x00000018u, 0x000000ffu,
+      0x3f800000u, 0x3f800000u, 0x3f800000u,
+      0x00000000u, 0x3fb9999au, 0x00000000u,
+      0x3faa3d71u, 0x00000000u,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles Glass SVM differs from the Cycles word oracle");
+  require(image.peak_stack_usage == 3u &&
+              image.node_types_used[NODE_GEOMETRY] &&
+              image.node_types_used[NODE_CLOSURE_SET_WEIGHT] &&
+              image.node_types_used[NODE_CLOSURE_BSDF],
+          "Glass SVM stack or opcode mask differs from Cycles");
+}
+
 void test_constant_mix_closure_matches_cycles_5_2_1() {
   ShaderGraph graph;
   const auto transparent =
@@ -256,6 +299,242 @@ void test_dynamic_math_and_dedup_match_cycles_5_2_1() {
                 "Psycles dynamic Math/dedup SVM differs from Cycles");
   require(image.peak_stack_usage == 2u,
           "dynamic Math/dedup peak stack usage differs from Cycles");
+}
+
+void test_vector_to_scalar_matches_cycles_5_2_1() {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Geometry Position");
+  const auto point_to_vector =
+      graph.add_node(node_type::point_to_vector, "Position to Vector");
+  const auto convert =
+      graph.add_node(node_type::vector_to_scalar, "Vector to Scalar");
+  const auto add =
+      graph.add_node(node_type::add_float, "Converted Position Plus Bias");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.connect({geometry, "Position"}, point_to_vector, "Point") &&
+              graph.connect({point_to_vector, "Vector"}, convert, "Vector") &&
+              graph.connect({convert, "Value"}, add, "A") &&
+              graph.set_input(add, "B", SocketValue::floating(0.25f)) &&
+              graph.set_input(
+                  emission, "Color",
+                  SocketValue::color({0.31f, 0.57f, 0.83f})) &&
+              graph.connect({add, "Value"}, emission, "Strength"),
+          "failed to create Vector-to-Scalar graph");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(), "raw Vector-to-Scalar graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen from the `vector_to_scalar` Cycles 5.2.1 probe, dump SHA-256
+  // b6ef1cfe605d43746ddfdedf01ba2f1b0d12b9364244c0d07d68afa77d0357c2.
+  // It forces NODE_CONVERT_VF to consume Geometry Position dynamically.
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x00000018u, 0x00000019u,
+      0x0000000bu, 0x00000000u, 0x00000000u,
+      0x0000000du, 0x00000004u, 0x00000300u,
+      0x0000002cu, 0x00000000u, 0x7fc00003u, 0x3e800000u,
+      0x00000000u, 0x00000000u,
+      0x00000007u, 0x3e9eb852u, 0x3f11eb85u, 0x3f547ae1u,
+      0x7fc00000u, 0x00000003u, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles Vector-to-Scalar SVM differs from Cycles");
+  require(image.peak_stack_usage == 4u &&
+              image.node_types_used[NODE_CONVERT] &&
+              image.node_types_used[NODE_MATH],
+          "Vector-to-Scalar SVM stack or opcode mask differs from Cycles");
+}
+
+void test_scatter_volume_phases_match_cycles_5_2_1() {
+  struct PhaseOracle {
+    const char *phase;
+    Vec3f color;
+    float density;
+    float anisotropy;
+    float ior;
+    float backscatter;
+    float alpha;
+    float diameter;
+    std::uint32_t closure;
+    std::uint32_t color_x;
+    std::uint32_t color_z;
+    std::uint32_t density_bits;
+    std::uint32_t param1;
+    std::uint32_t param2;
+  };
+  static constexpr PhaseOracle cases[] = {
+      {"HENYEY_GREENSTEIN", {0.17f, 0.43f, 0.79f}, 0.7f, -0.25f,
+       1.33f, 0.1f, 0.5f, 20.0f, 0x00000026u, 0x3e2e147bu,
+       0x3f4a3d71u, 0x3f333333u, 0xbe800000u, 0x00000000u},
+      {"FOURNIER_FORAND", {0.22f, 0.43f, 0.75f}, 0.8f, 0.0f, 1.37f,
+       0.16f, 0.5f, 20.0f, 0x00000028u, 0x3e6147aeu, 0x3f400000u,
+       0x3f4ccccdu, 0x3faf5c29u, 0x3e23d70au},
+      {"DRAINE", {0.27f, 0.43f, 0.71f}, 0.9f, -0.05f, 1.33f, 0.1f,
+       0.46f, 20.0f, 0x0000002au, 0x3e8a3d71u, 0x3f35c28fu,
+       0x3f666666u, 0xbd4ccccdu, 0x3eeb851fu},
+      {"RAYLEIGH", {0.32f, 0.43f, 0.67f}, 1.0f, 0.0f, 1.33f, 0.1f,
+       0.5f, 20.0f, 0x00000029u, 0x3ea3d70au, 0x3f2b851fu,
+       0x3f800000u, 0x00000000u, 0x00000000u},
+      {"MIE", {0.37f, 0.43f, 0.63f}, 1.1f, 0.0f, 1.33f, 0.1f, 0.5f,
+       16.0f, 0x00000027u, 0x3ebd70a4u, 0x3f2147aeu,
+       0x3f8ccccdu, 0x41800000u, 0x00000000u},
+  };
+
+  for (const auto &item : cases) {
+    ShaderGraph graph;
+    const auto scatter =
+        graph.add_node(node_type::volume_scatter, item.phase);
+    require(graph.set_property(scatter, "Phase",
+                               SocketValue::string(item.phase)) &&
+                graph.set_input(scatter, "Color",
+                                SocketValue::color(item.color)) &&
+                graph.set_input(scatter, "Density",
+                                SocketValue::floating(item.density)) &&
+                graph.set_input(scatter, "Anisotropy",
+                                SocketValue::floating(item.anisotropy)) &&
+                graph.set_input(scatter, "IOR",
+                                SocketValue::floating(item.ior)) &&
+                graph.set_input(scatter, "Backscatter",
+                                SocketValue::floating(item.backscatter)) &&
+                graph.set_input(scatter, "Alpha",
+                                SocketValue::floating(item.alpha)) &&
+                graph.set_input(scatter, "Diameter",
+                                SocketValue::floating(item.diameter)),
+            "failed to configure Scatter Volume phase");
+    graph.set_root(ShaderDomain::volume,
+                   OutputRef{.node = scatter, .socket = "Volume"});
+
+    const ShaderCompiler frontend{make_core_node_registry()};
+    const auto shader = frontend.compile(graph);
+    require(shader.ok(), "raw Scatter Volume graph did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+
+    // Frozen from all five shaders in the Cycles 5.2.1 `volume_scatter_svm`
+    // dump de1f3d1a21412283a882d4305a9d86da213c35ff0d8dde8d42cd247eeafc7f98.
+    std::array<std::uint32_t, 17u> expected{
+        0x00000001u, 0x00000004u, 0x00000005u, 0x00000010u,
+        0x00000000u,
+        0x00000005u, item.color_x, 0x3edc28f6u, item.color_z,
+        0x00000029u, item.closure, item.density_bits, item.param1,
+        item.param2, 0x000000ffu, 0x00000000u,
+        0x00000000u,
+    };
+    require_words(image.words, expected,
+                  "Psycles Scatter Volume phase differs from Cycles");
+    require(image.peak_stack_usage == 0u &&
+                image.node_types_used[NODE_CLOSURE_SET_WEIGHT] &&
+                image.node_types_used[NODE_CLOSURE_VOLUME],
+            "Scatter Volume stack or opcode mask differs from Cycles");
+  }
+}
+
+void test_subsurface_methods_match_cycles_5_2_1() {
+  struct BssrdfOracle {
+    const char *method;
+    Vec3f color;
+    Vec3f radius;
+    float scale;
+    float roughness;
+    float ior;
+    float anisotropy;
+    std::array<std::uint32_t, 12u> payload;
+  };
+  static constexpr BssrdfOracle cases[] = {
+      {"RANDOM_WALK",
+       {0.72f, 0.24f, 0.08f},
+       {1.0f, 0.45f, 0.2f},
+       0.16f,
+       0.35f,
+       1.4f,
+       0.45f,
+       {0x3f3851ecu, 0x3e75c28fu, 0x3da3d70au, 0x00000020u,
+        0x3f800000u, 0x3ee66666u, 0x3e4ccccdu, 0x3e23d70au,
+        0x3fb33333u, 0x3ee66666u, 0x3eb33333u, 0x00000000u}},
+      {"RANDOM_WALK",
+       {0.12f, 0.52f, 0.72f},
+       {0.35f, 0.8f, 1.0f},
+       0.18f,
+       0.62f,
+       1.33f,
+       -0.55f,
+       {0x3df5c28fu, 0x3f051eb8u, 0x3f3851ecu, 0x00000020u,
+        0x3eb33333u, 0x3f4ccccdu, 0x3f800000u, 0x3e3851ecu,
+        0x3faa3d71u, 0xbf0ccccdu, 0x3f1eb852u, 0x00000000u}},
+      {"RANDOM_WALK_LEGACY",
+       {0.18f, 0.7f, 0.2f},
+       {0.6f, 1.0f, 0.32f},
+       1.4f,
+       0.48f,
+       1.5f,
+       0.55f,
+       {0x3e3851ecu, 0x3f333333u, 0x3e4ccccdu, 0x00000021u,
+        0x3f19999au, 0x3f800000u, 0x3ea3d70au, 0x3fb33333u,
+        0x3fc00000u, 0x3f0ccccdu, 0x3ef5c28fu, 0x00000000u}},
+      {"RANDOM_WALK_SKIN",
+       {0.68f, 0.22f, 0.1f},
+       {1.0f, 0.5f, 0.25f},
+       0.18f,
+       1.0f,
+       1.4f,
+       0.2f,
+       {0x3f2e147bu, 0x3e6147aeu, 0x3dcccccdu, 0x00000022u,
+        0x3f800000u, 0x3f000000u, 0x3e800000u, 0x3e3851ecu,
+        0x3fb33333u, 0x3e4ccccdu, 0x3f800000u, 0x00000000u}},
+  };
+
+  for (const auto &item : cases) {
+    ShaderGraph graph;
+    const auto bssrdf =
+        graph.add_node(node_type::subsurface_scattering, item.method);
+    require(graph.set_property(bssrdf, "Method",
+                               SocketValue::string(item.method)) &&
+                graph.set_input(bssrdf, "Color",
+                                SocketValue::color(item.color)) &&
+                graph.set_input(bssrdf, "Radius",
+                                SocketValue::vector(item.radius)) &&
+                graph.set_input(bssrdf, "Scale",
+                                SocketValue::floating(item.scale)) &&
+                graph.set_input(bssrdf, "Roughness",
+                                SocketValue::floating(item.roughness)) &&
+                graph.set_input(bssrdf, "IOR",
+                                SocketValue::floating(item.ior)) &&
+                graph.set_input(bssrdf, "Anisotropy",
+                                SocketValue::floating(item.anisotropy)),
+            "failed to configure BSSRDF method");
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = bssrdf, .socket = "Closure"});
+
+    const ShaderCompiler frontend{make_core_node_registry()};
+    const auto shader = frontend.compile(graph);
+    require(shader.ok(), "raw BSSRDF graph did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+
+    // Frozen from the Cycles 5.2.1 `random_walk_transport` dump
+    // 1779888406dcb52efe14af75239ff52bde01f30ffad9c7ff2d298953ba8fef2f.
+    std::array<std::uint32_t, 25u> expected{
+        0x00000001u, 0x00000004u, 0x00000017u, 0x00000018u,
+        0x0000000bu, 0x00000001u, 0x00000000u,
+        0x00000005u, item.payload[0u], item.payload[1u], item.payload[2u],
+        0x00000002u, item.payload[3u], 0x000000ffu,
+        item.payload[4u], item.payload[5u], item.payload[6u],
+        item.payload[7u], item.payload[8u], item.payload[9u],
+        item.payload[10u], item.payload[11u],
+        0x00000000u, 0x00000000u, 0x00000000u,
+    };
+    require_words(image.words, expected,
+                  "Psycles BSSRDF method differs from Cycles");
+    require(image.peak_stack_usage == 3u &&
+                image.node_types_used[NODE_CLOSURE_SET_WEIGHT] &&
+                image.node_types_used[NODE_CLOSURE_BSDF],
+            "BSSRDF stack or opcode mask differs from Cycles");
+  }
 }
 
 void test_constant_math_fold_matches_cycles_5_2_1() {
@@ -930,19 +1209,70 @@ void test_legacy_mix_constant_fold_matches_cycles_5_2_1() {
           "constant legacy Mix retained NODE_MIX");
 }
 
-void test_unsupported_node_rejects_without_old_fallback() {
+void test_principled_surface_matches_cycles_5_2_1() {
   ShaderGraph graph;
   const auto principled =
-      graph.add_node(node_type::principled_bsdf, "Not migrated yet");
+      graph.add_node(node_type::principled_bsdf, "Principled BSDF");
+  require(graph.set_property(principled, "Distribution",
+                             SocketValue::string("GGX")),
+          "failed to set Principled Distribution");
+  require(graph.set_input(principled, "BaseColor",
+                          SocketValue::color({0.32f, 0.12f, 0.06f})) &&
+              graph.set_input(principled, "Metallic",
+                              SocketValue::floating(0.35f)) &&
+              graph.set_input(principled, "Roughness",
+                              SocketValue::floating(0.28f)) &&
+              graph.set_input(principled, "DiffuseRoughness",
+                              SocketValue::floating(0.0f)) &&
+              graph.set_input(principled, "IOR",
+                              SocketValue::floating(1.45f)) &&
+              graph.set_input(principled, "SpecularIORLevel",
+                              SocketValue::floating(0.5f)) &&
+              graph.set_input(principled, "SpecularTint",
+                              SocketValue::color({0.7f, 0.9f, 1.0f})),
+          "failed to set Principled inputs");
   graph.set_root(ShaderDomain::surface,
                  OutputRef{.node = principled, .socket = "Closure"});
   const ShaderCompiler frontend{make_core_node_registry()};
   const auto shader = frontend.compile(graph);
   require(shader.ok(), "raw Principled graph did not validate");
   const auto image = compile_shader(*shader.program);
-  require(!image.valid &&
-              image.diagnostic.find("not migrated") != std::string::npos,
-          "unsupported Cycles SVM node silently selected another path");
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen word-for-word from the Blender/Cycles 5.2.1 `Principled Probe`
+  // scene generated by tools/create_cycles_shader_probe.py. The source dump
+  // SHA-256 is 6e22050134bd344c2ada4fb3282755152f1697978178ccafc7451bc9797451f8;
+  // global jumps (95,146,147) are normalized to the local stream below.
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x00000037u, 0x00000038u,
+      0x0000000bu, 0x00000001u, 0x00000000u,
+      0x00000002u, 0x0000002bu, 0x000000ffu,
+      0x00000019u, 0x3fb9999au, 0x3e8f5c29u,
+      0x00000000u, 0x00000000u, 0x3eb33333u,
+      0x00000000u, 0x00000000u,
+      0x3ea3d70au, 0x3df5c28fu, 0x3d75c28fu,
+      0x3f800000u, 0x00000000u, 0x0000ff00u,
+      0x3f333333u, 0x3f666666u, 0x3f800000u,
+      0x3f000000u, 0x00000000u, 0x00000000u,
+      0x3f800000u, 0x3f800000u, 0x3f800000u, 0x00000000u,
+      0x3f800000u, 0x3f800000u, 0x3f800000u, 0x3f000000u,
+      0x3f800000u, 0x3f800000u, 0x3f800000u,
+      0x3cf5c28fu, 0x3fc00000u, 0x00000020u,
+      0x3f800000u, 0x3e4ccccdu, 0x3dcccccdu,
+      0x3ba3d70au, 0x3fb33333u, 0x00000000u,
+      0x00000000u, 0x3faa3d71u,
+      0x00000000u, 0x000000ffu, 0x00000000u,
+      0x00000000u, 0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles Principled SVM differs from the Cycles word oracle");
+  require(image.peak_stack_usage == 3u,
+          "Principled SVM peak stack usage differs from Cycles");
+  require(image.node_types_used[NODE_SHADER_JUMP] &&
+              image.node_types_used[NODE_GEOMETRY] &&
+              image.node_types_used[NODE_CLOSURE_BSDF] &&
+              image.node_types_used[NODE_END],
+          "Principled SVM node usage mask differs from Cycles");
 }
 
 } // namespace
@@ -950,9 +1280,13 @@ void test_unsupported_node_rejects_without_old_fallback() {
 int main() {
   test_math_third_input_default_matches_cycles_5_2_1();
   test_diffuse_surface_matches_cycles_5_2_1();
+  test_glass_surface_matches_cycles_5_2_1();
   test_constant_mix_closure_matches_cycles_5_2_1();
   test_linked_mix_closure_jumps_match_cycles_5_2_1();
   test_dynamic_math_and_dedup_match_cycles_5_2_1();
+  test_vector_to_scalar_matches_cycles_5_2_1();
+  test_scatter_volume_phases_match_cycles_5_2_1();
+  test_subsurface_methods_match_cycles_5_2_1();
   test_constant_math_fold_matches_cycles_5_2_1();
   test_zero_mix_closure_fold_matches_cycles_5_2_1();
   test_dynamic_color_pipeline_matches_cycles_5_2_1();
@@ -962,6 +1296,6 @@ int main() {
   test_dynamic_legacy_mix_matches_cycles_5_2_1();
   test_legacy_mix_constant_modes_match_cycles_5_2_1();
   test_legacy_mix_constant_fold_matches_cycles_5_2_1();
-  test_unsupported_node_rejects_without_old_fallback();
+  test_principled_surface_matches_cycles_5_2_1();
   return 0;
 }

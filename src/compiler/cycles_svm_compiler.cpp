@@ -420,6 +420,34 @@ private:
     return cycles_svm::input_float(*value);
   }
 
+  [[nodiscard]] SVMInputInt input_int(std::string_view name) override {
+    auto *input = _current_node->input(name);
+    if (input == nullptr) {
+      static_cast<void>(reject("Cycles SVM integer input is absent: " +
+                               std::string{name}));
+      return {};
+    }
+    std::optional<std::int32_t> value;
+    if (input->value) {
+      if (const auto *v = std::get_if<std::int64_t>(&input->value->value)) {
+        value = static_cast<std::int32_t>(*v);
+      } else if (const auto *v =
+                     std::get_if<std::uint64_t>(&input->value->value)) {
+        value = static_cast<std::int32_t>(*v);
+      } else if (const auto *v = std::get_if<bool>(&input->value->value)) {
+        value = *v ? 1 : 0;
+      }
+    }
+    if (!value) {
+      static_cast<void>(reject("Cycles SVM integer input is ill typed: " +
+                               std::string{name}));
+      return {};
+    }
+    return input->link != nullptr
+               ? cycles_svm::input_int(stack_assign(input), *value)
+               : cycles_svm::input_int(*value);
+  }
+
   [[nodiscard]] SVMInputFloat3 input_float3(std::string_view name) override {
     auto *input = _current_node->input(name);
     if (input == nullptr) {
@@ -1095,6 +1123,18 @@ std::uint64_t AttributeIDMap::get_attribute_id(std::string_view name) {
                   _unique_attribute_id.size();
   _unique_attribute_id.emplace(std::string{name}, id);
   return id;
+}
+
+std::vector<std::pair<std::string, std::uint64_t>>
+AttributeIDMap::bindings() const {
+  const std::scoped_lock lock{_attribute_lock};
+  std::vector<std::pair<std::string, std::uint64_t>> result;
+  result.reserve(_unique_attribute_id.size());
+  for (const auto &[name, id] : _unique_attribute_id) {
+    result.emplace_back(name, id);
+  }
+  std::ranges::sort(result, {}, &decltype(result)::value_type::second);
+  return result;
 }
 
 std::int32_t ImageIDMap::get_image_id(ImageBinding binding) {

@@ -108,6 +108,36 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
   return type == node_type::null_closure || type == node_type::null_volume;
 }
 
+[[nodiscard]] std::string_view
+projected_node_type(std::string_view type) noexcept {
+  // Psycles' canonical Multiply Color helper is exactly Cycles Mix Color in
+  // MULTIPLY mode with clamped factor and unclamped result. Normalize it at
+  // the graph boundary so the SVM graph, constant folding, and emitted node
+  // stream remain Cycles' model rather than introducing another node family.
+  if (type == node_type::multiply_color) {
+    return node_type::mix_color;
+  }
+  if (type == node_type::add_float || type == node_type::subtract_float ||
+      type == node_type::multiply_float || type == node_type::divide_float ||
+      type == node_type::minimum_float || type == node_type::maximum_float ||
+      type == node_type::power_float) {
+    return node_type::math;
+  }
+  return type;
+}
+
+[[nodiscard]] std::string_view
+projected_binary_math_operation(std::string_view type) noexcept {
+  return type == node_type::add_float        ? "ADD"
+         : type == node_type::subtract_float ? "SUBTRACT"
+         : type == node_type::multiply_float ? "MULTIPLY"
+         : type == node_type::divide_float   ? "DIVIDE"
+         : type == node_type::minimum_float  ? "MINIMUM"
+         : type == node_type::maximum_float  ? "MAXIMUM"
+         : type == node_type::power_float    ? "POWER"
+                                             : std::string_view{};
+}
+
 [[nodiscard]] std::string_view projected_input_name(
     std::string_view node, std::string_view input) noexcept {
   if (node == node_type::math) {
@@ -757,6 +787,7 @@ CyclesGraph CyclesGraph::project(
       graph.reject("Cycles SVM graph has no schema for node: " + source.type);
       return graph;
     }
+    const auto target_type = projected_node_type(source.type);
 
     std::vector<GraphInput> inputs;
     inputs.reserve(schema->inputs.size() + 2u);
@@ -771,14 +802,21 @@ CyclesGraph CyclesGraph::project(
       }
       const auto binding = source.inputs.find(socket.name);
       const auto projected_type =
-          projected_input_type(source.type, socket.name, *type);
+          projected_input_type(target_type, socket.name, *type);
       auto value = binding == source.inputs.end() ? std::nullopt
                                                   : binding->second.value;
       inputs.emplace_back(GraphInput{
-          .name = std::string{projected_input_name(source.type, socket.name)},
+          .name = std::string{projected_input_name(target_type, socket.name)},
           .type = projected_type,
-          .flags = socket_flags(source.type, socket.name),
+          .flags = socket_flags(target_type, socket.name),
           .value = projected_input_value(std::move(value), projected_type),
+      });
+    }
+    if (!projected_binary_math_operation(source.type).empty()) {
+      inputs.emplace_back(GraphInput{
+          .name = "Value3",
+          .type = GraphSocketType::floating,
+          .value = contract::SocketValue::floating(0.0f),
       });
     }
     if (source.type == node_type::bump) {
@@ -814,14 +852,14 @@ CyclesGraph CyclesGraph::project(
         return graph;
       }
     }
-    if (is_surface_closure(source.type)) {
+    if (is_surface_closure(target_type)) {
       inputs.emplace_back(GraphInput{
           .name = "SurfaceMixWeight",
           .type = GraphSocketType::floating,
           .value = contract::SocketValue::floating(0.0f),
       });
     }
-    if (is_volume_closure(source.type) || source.type == node_type::emission) {
+    if (is_volume_closure(target_type) || target_type == node_type::emission) {
       inputs.emplace_back(GraphInput{
           .name = "VolumeMixWeight",
           .type = GraphSocketType::floating,
@@ -841,17 +879,31 @@ CyclesGraph CyclesGraph::project(
       outputs.emplace_back(
           GraphOutput{.name =
                           std::string{
-                              projected_output_name(source.type, socket.name)},
+                              projected_output_name(target_type, socket.name)},
                       .type = *type,
                       .links = {}});
     }
 
     auto properties = source.properties;
+    if (source.type == node_type::multiply_color) {
+      properties = {
+          {"BlendMode", contract::SocketValue::string("MULTIPLY")},
+          {"ClampFactor", contract::SocketValue::boolean(true)},
+          {"ClampResult", contract::SocketValue::boolean(false)},
+      };
+    }
+    if (const auto operation = projected_binary_math_operation(source.type);
+        !operation.empty()) {
+      properties = {
+          {"Operation", contract::SocketValue::string(std::string{operation})},
+      };
+    }
     // NormalLinked belongs to the legacy surface-program representation.
     // Cycles encodes this fact solely as the ShaderInput edge itself.
     properties.erase("NormalLinked");
-    auto *node = graph.add_node(source.type, source.label, std::move(inputs),
-                                std::move(outputs), special_type(source.type),
+    auto *node = graph.add_node(std::string{target_type}, source.label,
+                                std::move(inputs), std::move(outputs),
+                                special_type(target_type),
                                 std::move(properties));
     nodes.emplace(source.id.value, node);
   }
@@ -868,7 +920,7 @@ CyclesGraph CyclesGraph::project(
         continue;
       }
       auto *input = destination->input(
-          projected_input_name(source.type, name));
+          projected_input_name(destination->type, name));
       auto *output = producer_iter->second->output(projected_output_name(
           producer_iter->second->type, binding.source->socket));
       if (!graph.connect_with_autoconvert(output, input)) {

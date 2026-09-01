@@ -24,11 +24,34 @@ struct ShaderTableImage {
   std::uint32_t shader_count{};
 };
 
+struct ShaderTableCompileUnit {
+  std::uint32_t shader_index{};
+  const ShaderProgram *shader{};
+  ShaderCompileContext context{};
+};
+
+// One transaction containing every scene-global identity allocated while
+// compiling the shader table. Named attributes preserve Cycles' assigned SVM
+// ids; image and IES arrays are indexed directly by bytecode payloads.
+struct CompiledShaderTable {
+  ShaderTableImage table;
+  std::vector<std::pair<std::string, std::uint64_t>> named_attributes;
+  std::vector<ImageBinding> images;
+  std::vector<float> ies;
+};
+
 // Link per-shader local images emitted by compile_shader into the exact global
 // Cycles SVM layout. For local shader i with tail base G_i and local entry L,
 // the global entry is G_i + (L - jump_node_word_count). All tail words are
 // copied verbatim, so relative closure-control jumps retain their semantics.
 [[nodiscard]] ShaderTableImage
 link_shader_table(std::span<const ShaderImage> shaders);
+
+// Compile shader units through one scene-wide resource interning domain and
+// link them by their original Cycles shader indices. Missing indices become
+// unreachable END-only entries; duplicate indices are accepted only when
+// their complete local word images and specialization metadata agree.
+[[nodiscard]] CompiledShaderTable
+compile_shader_table(std::span<const ShaderTableCompileUnit> shaders);
 
 } // namespace psycles::compiler::cycles_svm
