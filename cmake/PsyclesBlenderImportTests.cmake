@@ -171,6 +171,19 @@ add_test(
     COMMAND psycles_blender_fresnel_import_tests)
 
 add_executable(
+    psycles_blender_light_path_import_tests
+    tests/test_blender_light_path_import.cpp)
+target_link_libraries(
+    psycles_blender_light_path_import_tests
+    PRIVATE Psycles::luisa_runtime)
+target_compile_features(
+    psycles_blender_light_path_import_tests
+    PRIVATE cxx_std_20)
+add_test(
+    NAME psycles.blender_light_path_import
+    COMMAND psycles_blender_light_path_import_tests)
+
+add_executable(
     psycles_blender_hair_import_tests
     tests/test_blender_hair_import.cpp)
 target_link_libraries(

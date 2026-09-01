@@ -145,6 +145,7 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     "invert_color_matrix": texture_inputs._invert_color_matrix,
     "legacy_separate_combine_matrix": values._legacy_separate_combine_matrix,
     "layer_weight_matrix": texture_inputs._layer_weight_matrix,
+    "light_path_matrix": camera_inputs._light_path_matrix,
     "map_range_matrix": texture_inputs._map_range_matrix,
     "math_edge_cases": values._math_edge_cases,
     "math_operations": values._math_operations,

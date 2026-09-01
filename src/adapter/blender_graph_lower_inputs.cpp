@@ -226,10 +226,23 @@ public:
       if (mapped == outputs.end()) {
         return std::nullopt;
       }
-      const auto id =
-          context.graph().add_node(compiler::node_type::light_path, node_name);
-      return finish({.ref = {.node = id, .socket = std::string{mapped->second}},
-                     .type = SocketType::floating});
+      const auto semantic = "light_path." + std::string{mapped->second};
+      auto output = context.shared_output(node_name, semantic);
+      if (!output) {
+        const auto id = context.graph().add_node(
+            compiler::node_type::light_path, node_name);
+        for (const auto &[raw_name, projected_name] : outputs) {
+          static_cast<void>(raw_name);
+          context.remember_shared_output(
+              node_name, "light_path." + std::string{projected_name},
+              TypedOutput{
+                  .ref = {.node = id,
+                          .socket = std::string{projected_name}},
+                  .type = SocketType::floating});
+        }
+        output = context.shared_output(node_name, semantic);
+      }
+      return finish(*output);
     }
     if (type == "LAYER_WEIGHT") {
       const auto output_name = socket == "Facing" ? std::string_view{"Facing"}

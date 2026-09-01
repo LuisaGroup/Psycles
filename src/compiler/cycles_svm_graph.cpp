@@ -9,6 +9,7 @@
 #include <psycles/compiler/core_nodes.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <limits>
 #include <queue>
@@ -176,6 +177,45 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
                ? "True Normal"
            : output == "RandomPerIsland" ? "Random Per Island"
                                           : output;
+  }
+  if (node == node_type::light_path) {
+    static constexpr auto outputs = std::array{
+        std::pair{std::string_view{"IsCameraRay"},
+                  std::string_view{"Is Camera Ray"}},
+        std::pair{std::string_view{"IsShadowRay"},
+                  std::string_view{"Is Shadow Ray"}},
+        std::pair{std::string_view{"IsDiffuseRay"},
+                  std::string_view{"Is Diffuse Ray"}},
+        std::pair{std::string_view{"IsGlossyRay"},
+                  std::string_view{"Is Glossy Ray"}},
+        std::pair{std::string_view{"IsSingularRay"},
+                  std::string_view{"Is Singular Ray"}},
+        std::pair{std::string_view{"IsReflectionRay"},
+                  std::string_view{"Is Reflection Ray"}},
+        std::pair{std::string_view{"IsTransmissionRay"},
+                  std::string_view{"Is Transmission Ray"}},
+        std::pair{std::string_view{"IsVolumeScatterRay"},
+                  std::string_view{"Is Volume Scatter Ray"}},
+        std::pair{std::string_view{"RayLength"},
+                  std::string_view{"Ray Length"}},
+        std::pair{std::string_view{"RayDepth"},
+                  std::string_view{"Ray Depth"}},
+        std::pair{std::string_view{"DiffuseDepth"},
+                  std::string_view{"Diffuse Depth"}},
+        std::pair{std::string_view{"GlossyDepth"},
+                  std::string_view{"Glossy Depth"}},
+        std::pair{std::string_view{"TransparentDepth"},
+                  std::string_view{"Transparent Depth"}},
+        std::pair{std::string_view{"TransmissionDepth"},
+                  std::string_view{"Transmission Depth"}},
+        std::pair{std::string_view{"PortalDepth"},
+                  std::string_view{"Portal Depth"}}};
+    if (const auto mapped = std::find_if(
+            outputs.begin(), outputs.end(),
+            [&](const auto &entry) noexcept { return entry.first == output; });
+        mapped != outputs.end()) {
+      return mapped->second;
+    }
   }
   if (node == node_type::separate_color) {
     return output == "R"   ? "Red"
