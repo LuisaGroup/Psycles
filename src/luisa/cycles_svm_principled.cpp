@@ -264,8 +264,7 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
          static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
         (distribution == static_cast<std::uint32_t>(
                              CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
-    subset_supported &= (metallic <= CLOSURE_WEIGHT_CUTOFF) &
-                        (transmission_weight <= CLOSURE_WEIGHT_CUTOFF) &
+    subset_supported &= (transmission_weight <= CLOSURE_WEIGHT_CUTOFF) &
                         (subsurface_weight <= CLOSURE_WEIGHT_CUTOFF) &
                         valid_distribution;
   }
@@ -375,8 +374,22 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
         };
       };
 
-      /* Metallic and transmission are zero throughout this exact subset, so
-       * Cycles leaves weight unchanged before its dielectric layer. */
+      /* Metallic component. Cycles' closure allocation is conditional on
+       * reflective caustics, but attenuation of all lower BSDF components is
+       * unconditional. */
+      $if(metallic > CLOSURE_WEIGHT_CUTOFF) {
+        $if(reflective_caustics) {
+          principled_metallic_setup(
+              kernel_globals, shader_data, metallic * weight,
+              valid_reflection_normal, tangent, alpha_x, alpha_y, base_color,
+              specular_tint, thin_film_thickness, thin_film_ior,
+              distribution == static_cast<std::uint32_t>(
+                                  CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
+        };
+        weight *= 1.0f - metallic;
+      };
+
+      /* Transmission remains zero throughout the current proved subset. */
       const auto specular_ior_level = max(data.specular_ior_level(stack), 0.0f);
       Float eta = ior;
       Float f0 = f0_from_ior(eta);
