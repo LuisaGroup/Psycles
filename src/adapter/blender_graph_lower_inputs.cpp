@@ -229,26 +229,25 @@ public:
       return output ? std::optional{finish(*output)} : std::nullopt;
     }
     if (type == "LIGHT_FALLOFF") {
-      // Cycles gives Light Falloff a semantic distant-light branch: an exact
-      // FLT_MAX ShaderData::ray_length returns Strength without evaluating
-      // any distance algebra. Preserve that operation in the graph;
-      // decomposing it into multiply/divide nodes turns the distant branch
-      // into inf/inf under IEEE-754.
-      const auto light_path = context.graph().add_node(
-          compiler::node_type::light_path, node_name + " / Light Path");
-      const auto falloff = context.graph().add_node(
-          compiler::node_type::light_falloff, node_name);
-      static_cast<void>(context.bind(falloff, "Strength", node, "Strength",
-                                     SocketType::floating));
-      static_cast<void>(context.bind(falloff, "Smooth", node, "Smooth",
-                                     SocketType::floating));
-      static_cast<void>(context.graph().connect(
-          {.node = light_path, .socket = "RayLength"}, falloff, "RayLength"));
-      const auto output = socket == "Linear"   ? std::string{"Linear"}
-                          : socket == "Constant" ? std::string{"Constant"}
-                                                 : std::string{"Quadratic"};
-      return finish({.ref = {.node = falloff, .socket = output},
-                     .type = SocketType::floating});
+      const auto semantic = "light_falloff." + socket;
+      auto output = context.shared_output(node_name, semantic);
+      if (!output) {
+        const auto falloff = context.graph().add_node(
+            compiler::node_type::light_falloff, node_name);
+        static_cast<void>(context.bind(falloff, "Strength", node, "Strength",
+                                       SocketType::floating));
+        static_cast<void>(context.bind(falloff, "Smooth", node, "Smooth",
+                                       SocketType::floating));
+        for (const auto name : {"Quadratic", "Linear", "Constant"}) {
+          context.remember_shared_output(
+              node_name,
+              "light_falloff." + std::string{name},
+              TypedOutput{.ref = {.node = falloff, .socket = name},
+                          .type = SocketType::floating});
+        }
+        output = context.shared_output(node_name, semantic);
+      }
+      return output ? std::optional{finish(*output)} : std::nullopt;
     }
     if (type == "LIGHT_PATH") {
       static constexpr auto outputs = std::array{

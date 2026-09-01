@@ -81,6 +81,7 @@ DEVICE_IMPLEMENTED_UNVERIFIED: set[str] = set()
 # implementation as "no supported lowering".
 DEVICE_VERIFIED_UNVERSIONED = {
     "AMBIENT_OCCLUSION",
+    "LIGHT_FALLOFF",
     "NORMAL",
 }
 

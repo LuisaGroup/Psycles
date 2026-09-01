@@ -673,8 +673,15 @@ namespace operand = value_operand;
     if (node.type == node_type::light_falloff) {
         auto strength = lower_value_input(node, "Strength");
         auto smooth = lower_value_input(node, "Smooth");
-        auto ray_length = lower_value_input(node, "RayLength");
-        if (strength && smooth && ray_length) {
+        if (strength && smooth) {
+            // The public graph follows Cycles: ray length is ShaderData, not
+            // an authored Light Falloff socket. The legacy expanded surface
+            // IR still represents that implicit dependency as an SSA value
+            // until the production evaluator switches to the copied SVM.
+            const auto ray_length = append(ValueInstruction{
+                .operation = ValueOperation::path_ray_length,
+                .source_node = node.id,
+                .result_type = SocketType::floating});
             for (const auto [name, type] :
                  {std::pair{"Quadratic", LightFalloffType::quadratic},
                   std::pair{"Linear", LightFalloffType::linear},
@@ -691,7 +698,7 @@ namespace operand = value_operand;
                                 {operand::light_falloff::strength, *strength},
                                 {operand::light_falloff::smooth, *smooth},
                                 {operand::light_falloff::ray_length,
-                                 *ray_length}}),
+                                 ray_length}}),
                         .static_u0 = static_cast<std::uint64_t>(type)}));
             }
         }

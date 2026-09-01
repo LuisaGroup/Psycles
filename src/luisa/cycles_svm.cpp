@@ -567,6 +567,11 @@ void eval_nodes(
           detail::node_normal(cursor, stack);
         };
       }
+      if (node_types_used[NODE_LIGHT_FALLOFF]) {
+        PSYCLES_SVM_CASE(NODE_LIGHT_FALLOFF) {
+          detail::node_light_falloff(cursor, stack, shader_data);
+        };
+      }
       if (node_types_used[NODE_WIREFRAME]) {
         PSYCLES_SVM_CASE(NODE_WIREFRAME) {
           detail::node_wireframe(
