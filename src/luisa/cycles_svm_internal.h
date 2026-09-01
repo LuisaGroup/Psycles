@@ -180,6 +180,10 @@ void node_vector_math_mapping_normalize(Cursor &cursor, Stack &stack,
 void node_tex_noise(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_white_noise(Cursor &cursor, Stack &stack) noexcept;
 void node_tex_gradient(Cursor &cursor, Stack &stack) noexcept;
+void node_tex_wave(Cursor &cursor, Stack &stack) noexcept;
+void node_tex_magic(Cursor &cursor, Stack &stack) noexcept;
+void node_tex_checker(Cursor &cursor, Stack &stack) noexcept;
+void node_tex_brick(Cursor &cursor, Stack &stack) noexcept;
 void node_rgb_ramp(Cursor &cursor, Stack &stack) noexcept;
 void node_curves(Cursor &cursor, Stack &stack) noexcept;
 void node_float_curve(Cursor &cursor, Stack &stack) noexcept;
