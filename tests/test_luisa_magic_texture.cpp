@@ -84,11 +84,6 @@ int main(int argc, char **argv) {
     auto input = device.create_buffer<float>(5u);
     auto depth = device.create_buffer<std::uint32_t>(1u);
     auto output = device.create_buffer<luisa::float4>(1u);
-    auto shader = device.compile(
-        evaluate,
-        ShaderOption{
-            .enable_cache = false,
-            .enable_fast_math = false});
     constexpr std::array authored{
         1.0e20f,
         -0.375f,
@@ -96,29 +91,39 @@ int main(int argc, char **argv) {
         0.001f,
         1.0f};
     constexpr std::array authored_depth{2u};
-    std::array<luisa::float4, 1u> actual{};
     stream << input.copy_from(luisa::span{authored})
-           << depth.copy_from(luisa::span{authored_depth})
-           << shader(input, depth, output).dispatch(1u)
-           << output.copy_to(luisa::span{actual})
-           << synchronize();
+           << depth.copy_from(luisa::span{authored_depth});
 
     constexpr auto tolerance = 3.0e-6f;
-    const auto mismatch =
-        std::abs(actual[0].x - cycles_large_coordinate_oracle.x) >
-            tolerance ||
-        std::abs(actual[0].y - cycles_large_coordinate_oracle.y) >
-            tolerance ||
-        std::abs(actual[0].z - cycles_large_coordinate_oracle.z) >
-            tolerance;
-    if (mismatch) {
-        std::cerr << "Cycles Magic Texture oracle failed on " << backend
-                  << ": got {" << actual[0].x << ", " << actual[0].y
-                  << ", " << actual[0].z << "}, expected {"
-                  << cycles_large_coordinate_oracle.x << ", "
-                  << cycles_large_coordinate_oracle.y << ", "
-                  << cycles_large_coordinate_oracle.z << "}\n";
-        return EXIT_FAILURE;
+    for (auto fast_math : {false, true}) {
+        auto shader = device.compile(
+            evaluate,
+            ShaderOption{
+                .enable_cache = false,
+                .enable_fast_math = fast_math});
+        std::array<luisa::float4, 1u> actual{};
+        stream << shader(input, depth, output).dispatch(1u)
+               << output.copy_to(luisa::span{actual})
+               << synchronize();
+        const auto mismatch =
+            std::abs(actual[0].x - cycles_large_coordinate_oracle.x) >
+                tolerance ||
+            std::abs(actual[0].y - cycles_large_coordinate_oracle.y) >
+                tolerance ||
+            std::abs(actual[0].z - cycles_large_coordinate_oracle.z) >
+                tolerance;
+        if (mismatch) {
+            std::cerr << "Cycles Magic Texture oracle failed on "
+                      << backend << " in "
+                      << (fast_math ? "fast" : "precise")
+                      << " mode: got {" << actual[0].x << ", "
+                      << actual[0].y << ", " << actual[0].z
+                      << "}, expected {"
+                      << cycles_large_coordinate_oracle.x << ", "
+                      << cycles_large_coordinate_oracle.y << ", "
+                      << cycles_large_coordinate_oracle.z << "}\n";
+            return EXIT_FAILURE;
+        }
     }
     return EXIT_SUCCESS;
 }
