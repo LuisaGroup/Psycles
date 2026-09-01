@@ -531,6 +531,17 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::ies_light,
+                 .inputs = {input("Strength", SocketType::floating,
+                                  SocketValue::floating(1.0f)),
+                            input("Vector", SocketType::vector,
+                                  SocketValue::vector({0.0f, 0.0f, 0.0f}))},
+                 .outputs = {output("Factor", SocketType::floating)},
+                 .properties = {property("IES", SocketType::string,
+                                         SocketValue::string(""))},
+                 .required_features = feature_bit(ShaderFeature::surface)}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::hosek_wilkie_sky,
                  .inputs = {input("Vector", SocketType::vector,
                                   SocketValue::vector({0.0f, 0.0f, 0.0f}))},

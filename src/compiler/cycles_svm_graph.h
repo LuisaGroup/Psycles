@@ -28,6 +28,8 @@ inline constexpr auto cycles_synthetic_texture_coordinate =
 inline constexpr auto cycles_synthetic_mix_closure_weight =
     "cycles.synthetic.mix_closure_weight";
 inline constexpr auto cycles_synthetic_math = "cycles.synthetic.math";
+inline constexpr auto cycles_synthetic_float3_autoconvert =
+    "cycles.synthetic.float3_autoconvert";
 
 // This is the host graph consumed by the Cycles 5.2 SVM compiler. Its
 // topology and mutable compiler fields correspond to ShaderInput,
@@ -47,6 +49,7 @@ enum class GraphSocketType : std::uint8_t {
 
 enum class GraphNodeSpecialType : std::uint8_t {
   none,
+  autoconvert,
   geometry,
   bump,
   closure,
@@ -204,6 +207,9 @@ public:
   void refine_bump_nodes();
 
 private:
+  [[nodiscard]] bool connect_with_autoconvert(GraphOutput *output,
+                                              GraphInput *input);
+  void compose_float3_autoconverts();
   void inline_blender_functions();
   void constant_fold();
   void simplify_settings();

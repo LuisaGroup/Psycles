@@ -253,6 +253,7 @@ private:
   CyclesGraph _graph;
   AttributeIDMap &_attribute_ids;
   ImageIDMap &_image_ids;
+  IESIDMap &_ies_ids;
   BytecodeBuilder _stream;
   Stack _stack;
   GraphNode *_current_node{};
@@ -504,6 +505,10 @@ private:
         {.resource_id = resource_id,
          .interpolation = interpolation,
          .extension = extension});
+  }
+
+  [[nodiscard]] std::uint32_t ies(std::string_view content) override {
+    return _ies_ids.get_ies_slot(content);
   }
 
   void stack_link(GraphInput *input, GraphOutput *output_socket) override {
@@ -1023,10 +1028,12 @@ private:
 
 public:
   Compiler(const ShaderProgram &shader, AttributeIDMap &attribute_ids,
-           ImageIDMap &image_ids, ShaderCompileContext context)
+           ImageIDMap &image_ids, IESIDMap &ies_ids,
+           ShaderCompileContext context)
       : _graph{CyclesGraph::project(shader)},
         _attribute_ids{attribute_ids},
         _image_ids{image_ids},
+        _ies_ids{ies_ids},
         _background{context.background} {}
 
   [[nodiscard]] ShaderImage compile() {
@@ -1113,15 +1120,25 @@ std::vector<ImageBinding> ImageIDMap::bindings() const {
 ShaderImage compile_shader(const ShaderProgram &shader,
                            AttributeIDMap &attribute_ids,
                            ImageIDMap &image_ids,
+                           IESIDMap &ies_ids,
                            ShaderCompileContext context) {
-  return Compiler{shader, attribute_ids, image_ids, context}.compile();
+  return Compiler{shader, attribute_ids, image_ids, ies_ids, context}.compile();
+}
+
+ShaderImage compile_shader(const ShaderProgram &shader,
+                           AttributeIDMap &attribute_ids,
+                           ImageIDMap &image_ids,
+                           ShaderCompileContext context) {
+  IESIDMap ies_ids;
+  return compile_shader(shader, attribute_ids, image_ids, ies_ids, context);
 }
 
 ShaderImage compile_shader(const ShaderProgram &shader,
                            AttributeIDMap &attribute_ids,
                            ShaderCompileContext context) {
   ImageIDMap image_ids;
-  return compile_shader(shader, attribute_ids, image_ids, context);
+  IESIDMap ies_ids;
+  return compile_shader(shader, attribute_ids, image_ids, ies_ids, context);
 }
 
 } // namespace psycles::compiler::cycles_svm

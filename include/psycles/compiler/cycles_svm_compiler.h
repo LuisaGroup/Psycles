@@ -86,10 +86,34 @@ public:
   [[nodiscard]] std::vector<ImageBinding> bindings() const;
 };
 
+// Scene-wide equivalent of Cycles 5.2.1 LightManager's IES slot table. Slot
+// identity is the complete raw IES byte string; parsing never changes shader
+// topology and the packed table is material data consumed by NODE_IES.
+class IESIDMap final {
+private:
+  mutable std::mutex _ies_lock;
+  std::map<std::string, std::uint32_t, std::less<>> _ies_slots;
+  std::vector<std::vector<float>> _packed_profiles;
+
+public:
+  [[nodiscard]] std::uint32_t get_ies_slot(std::string_view content);
+  [[nodiscard]] std::vector<float> packed_data() const;
+  [[nodiscard]] std::size_t slot_count() const;
+};
+
 // Compile all Cycles routines for one material into its local word stream:
 // four-word ShaderJump, optional bump routine, surface, volume, displacement.
 // Unsupported Cycles node families reject the image; they never select the
 // previous Psycles execution plan.
+[[nodiscard]] ShaderImage compile_shader(const ShaderProgram &shader,
+                                         AttributeIDMap &attribute_ids,
+                                         ImageIDMap &image_ids,
+                                         IESIDMap &ies_ids,
+                                         ShaderCompileContext context);
+
+// Compatibility boundary for node families that do not need to inspect the
+// scene-wide IES table. Production scene compilation must retain one IESIDMap
+// across every material, just as it retains ImageIDMap.
 [[nodiscard]] ShaderImage compile_shader(const ShaderProgram &shader,
                                          AttributeIDMap &attribute_ids,
                                          ImageIDMap &image_ids,

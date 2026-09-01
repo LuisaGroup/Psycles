@@ -265,6 +265,14 @@ class KernelGlobals {
 public:
   virtual ~KernelGlobals() noexcept = default;
 
+  // Packed scene-owned IES table from Cycles LightManager. The default is
+  // intentionally inert so node families that do not use NODE_IES do not
+  // acquire a device binding while their AST is recorded.
+  [[nodiscard]] virtual luisa::compute::Float
+  ies(luisa::compute::Expr<std::uint32_t>) const noexcept {
+    return luisa::compute::Expr<std::int32_t>{-1}.bitcast<float>();
+  }
+
   [[nodiscard]] virtual const InfoServices *
   info_services() const noexcept {
     return nullptr;

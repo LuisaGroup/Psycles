@@ -73,6 +73,7 @@ public:
       std::uint64_t resource_id,
       ImageInterpolation interpolation,
       ImageExtension extension) = 0;
+  [[nodiscard]] virtual std::uint32_t ies(std::string_view content) = 0;
 
   virtual void add_value_node(GraphNode *node, float value,
                               SVMStackOffset stack_offset) = 0;

@@ -44,6 +44,7 @@ endif()
 add_library(psycles_core
     src/adapter/cycles_shader_graph.cpp
     src/compiler/core_nodes.cpp
+    src/compiler/cycles_ies.cpp
     src/compiler/cycles_svm_attribute_nodes.cpp
     src/compiler/cycles_svm_bytecode.cpp
     src/compiler/cycles_svm_camera_nodes.cpp
@@ -55,6 +56,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_graph.cpp
     src/compiler/cycles_svm_image_nodes.cpp
     src/compiler/cycles_svm_info_nodes.cpp
+    src/compiler/cycles_svm_ies_nodes.cpp
     src/compiler/cycles_svm_light_path_nodes.cpp
     src/compiler/cycles_svm_light_falloff_nodes.cpp
     src/compiler/cycles_svm_mapping_nodes.cpp

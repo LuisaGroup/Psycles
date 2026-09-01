@@ -18,7 +18,7 @@ void connect_source(
     BlenderNodeLoweringContext &context,
     contract::NodeId destination,
     yyjson_val *raw_node,
-    TypedOutput implicit_coordinates) {
+    std::optional<TypedOutput> implicit_coordinates) {
     if (context.input_source(raw_node, "Vector")) {
         static_cast<void>(context.bind(
             destination,
@@ -26,9 +26,9 @@ void connect_source(
             raw_node,
             "Vector",
             contract::SocketType::vector));
-    } else {
+    } else if (implicit_coordinates) {
         static_cast<void>(context.graph().connect(
-            implicit_coordinates.ref,
+            implicit_coordinates->ref,
             destination,
             "Vector"));
     }
@@ -40,7 +40,7 @@ void bind_blender_texture_vector(
     BlenderNodeLoweringContext &context,
     contract::NodeId destination,
     yyjson_val *raw_node,
-    TypedOutput implicit_coordinates) {
+    std::optional<TypedOutput> implicit_coordinates) {
     auto *mapping = member(
         member(raw_node, "special"), "texture_mapping");
     if (mapping == nullptr) {

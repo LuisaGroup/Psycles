@@ -23,6 +23,28 @@ struct InfoSocket {
   contract::SocketType type;
 };
 
+[[nodiscard]] std::string ies_content(yyjson_val *node,
+                                      bool &well_formed) {
+  auto *bytes = member(member(member(node, "special"), "ies"),
+                       "content_bytes");
+  if (bytes == nullptr || !yyjson_is_arr(bytes)) {
+    well_formed = false;
+    return {};
+  }
+  std::string content;
+  content.reserve(yyjson_arr_size(bytes));
+  yyjson_arr_iter iterator = yyjson_arr_iter_with(bytes);
+  while (auto *value = yyjson_arr_iter_next(&iterator)) {
+    if (!yyjson_is_uint(value) || yyjson_get_uint(value) > 0xffu) {
+      well_formed = false;
+      return {};
+    }
+    content.push_back(static_cast<char>(yyjson_get_uint(value)));
+  }
+  well_formed = true;
+  return content;
+}
+
 [[nodiscard]] BlenderImageBinding
 resolve_image_binding(BlenderNodeLoweringContext &context, yyjson_val *node,
                       bool alpha_output_controls_unassociation) {
@@ -501,6 +523,28 @@ public:
           {.ref = {.node = id, .socket = socket == "Alpha" ? "Alpha" : "Color"},
            .type =
                socket == "Alpha" ? SocketType::floating : SocketType::color});
+    }
+    if (type == "TEX_IES") {
+      const auto id =
+          context.graph().add_node(compiler::node_type::ies_light, node_name);
+      // Preserve the unlinked socket. Cycles ShaderGraph::default_inputs adds
+      // Geometry.Incoming followed by the shared WORLD-to-OBJECT normal
+      // transform after TextureMapping expansion; materializing Geometry here
+      // would bypass that required transform.
+      bind_blender_texture_vector(context, id, node, std::nullopt);
+      static_cast<void>(
+          context.bind(id, "Strength", node, "Strength", SocketType::floating));
+      auto valid_bytes = false;
+      auto content = ies_content(node, valid_bytes);
+      if (!valid_bytes) {
+        context.warn_once("ies:" + node_name,
+                          "IES source bytes are absent or malformed; using "
+                          "Cycles' invalid-profile behavior");
+      }
+      static_cast<void>(context.graph().set_property(
+          id, "IES", SocketValue::string(std::move(content))));
+      return finish({.ref = {.node = id, .socket = "Factor"},
+                     .type = SocketType::floating});
     }
     if (type == "TEX_ENVIRONMENT") {
       const auto id = context.graph().add_node(
