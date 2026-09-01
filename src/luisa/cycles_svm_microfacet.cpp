@@ -595,6 +595,70 @@ void principled_metallic_setup(
     };
 }
 
+void principled_transmission_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    Expr<luisa::float3> weight, Expr<luisa::float3> normal,
+    Expr<float> roughness, Expr<float> ior,
+    Expr<bool> reflective_caustics, Expr<bool> refractive_caustics,
+    Expr<luisa::float3> specular_tint,
+    Expr<luisa::float3> transmission_tint,
+    Expr<float> thin_film_thickness, Expr<float> thin_film_ior,
+    Expr<bool> preserve_energy) noexcept {
+    auto &pool = *shader_data.closure;
+    const auto allocated = bsdf_allocate(shader_data, weight);
+    const auto extra_allocated = pool.allocate_extra(allocated, 1u);
+    $if (extra_allocated) {
+        const auto backfacing =
+            (shader_data.flag & shader_data_backfacing) != 0u;
+        const auto adjusted_ior = select(ior, 1.0f / ior, backfacing);
+        const auto adjusted_film_ior =
+            select(thin_film_ior, thin_film_ior * adjusted_ior, backfacing);
+        MicrofacetParam microfacet{
+            .alpha_x = clamp(square(roughness), 0.0f, 1.0f),
+            .alpha_y = clamp(square(roughness), 0.0f, 1.0f),
+            .ior = adjusted_ior,
+            .energy_scale = 1.0f,
+            .fresnel_type = static_cast<std::uint32_t>(
+                MicrofacetFresnel::generalized_schlick),
+            .T = make_float3(0.0f)};
+        const FresnelGeneralizedSchlick fresnel{
+            .thin_film = {.thickness = thin_film_thickness,
+                          .ior = adjusted_film_ior},
+            .reflection_tint =
+                select(make_float3(0.0f), make_float3(1.0f),
+                       reflective_caustics),
+            .transmission_tint =
+                select(make_float3(0.0f), transmission_tint,
+                       refractive_caustics),
+            .f0 = make_float3(f0_from_ior(ior)) * specular_tint,
+            .f90 = make_float3(1.0f),
+            .exponent = -ior};
+
+        pool.set_normal(allocated.index, normal);
+        pool.set_type(allocated.index,
+                      static_cast<std::uint32_t>(
+                          CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID));
+        pool.set_generalized_schlick(allocated.index, fresnel);
+        const auto albedo = generalized_schlick_albedo(
+            kernel_globals, shader_data.wi, normal, microfacet, fresnel);
+        const auto common = pool.common(allocated.index);
+        pool.set_sample_weight(allocated.index,
+                               common.sample_weight * average(albedo));
+        $if (preserve_energy) {
+            preserve_multi_ggx_glass_energy(
+                kernel_globals, pool, allocated, shader_data.wi, normal,
+                microfacet, fresnel);
+        };
+        pool.set_microfacet_param(allocated.index, microfacet);
+
+        UInt flags = shader_data_bsdf | shader_data_bsdf_has_transmission;
+        $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
+            flags |= shader_data_bsdf_has_eval;
+        };
+        shader_data.flag |= flags;
+    };
+}
+
 Float3
 maybe_ensure_valid_specular_reflection(const ShaderData &shader_data,
                                        Expr<luisa::float3> normal) noexcept {

@@ -285,3 +285,38 @@ def _principled_metallic_svm_oracle(scene: Any) -> None:
         rows=1,
         name="Principled Metallic SVM Oracle",
     )
+
+
+def _principled_transmission_svm_oracle(scene: Any) -> None:
+    """Isolate Cycles' thick-walled Principled transmission transition.
+
+    Metallic, sheen, coat, subsurface, and Thin Wall are zero. Multi-GGX and
+    thin film keep the generalized-Schlick glass setup live; transparency,
+    emission, dielectric, and diffuse expose the exact surrounding ordering.
+    """
+    material, tree, output = _material("Principled Transmission SVM Oracle")
+    principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+    principled.name = "Principled Transmission SVM Oracle"
+    principled.distribution = "MULTI_GGX"
+    _set_color(_input(principled, "Base Color"), (0.36, 0.64, 0.91))
+    _input(principled, "Transmission Weight").default_value = 0.72
+    _input(principled, "Roughness").default_value = 0.31
+    _input(principled, "IOR").default_value = 1.48
+    _input(principled, "Alpha").default_value = 0.81
+    _input(principled, "Thin Wall").default_value = False
+    _set_color(_input(principled, "Specular Tint"), (0.76, 0.41, 0.93))
+    _set_color(_input(principled, "Emission Color"), (0.17, 0.09, 0.51))
+    _input(principled, "Emission Strength").default_value = 1.4
+    _input(principled, "Thin Film Thickness").default_value = 330.0
+    _input(principled, "Thin Film IOR").default_value = 1.56
+    tree.links.new(
+        _output(principled, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _material_matrix(
+        scene,
+        [material],
+        columns=1,
+        rows=1,
+        name="Principled Transmission SVM Oracle",
+    )
