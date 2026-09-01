@@ -69,6 +69,83 @@ constexpr std::array<std::uint32_t, 25u> glass_beckmann_words{
     0x3faa3d71u, 0x00000000u,
     0x00000000u, 0x00000000u, 0x00000000u};
 
+constexpr std::array<std::uint32_t, 24u> glossy_ggx_words{
+    0x00000001u, 0x00000004u, 0x00000016u, 0x00000017u,
+    0x0000000bu, 0x00000001u, 0x00000000u,
+    0x00000005u, 0x3f2e147bu, 0x3e75c28fu, 0x3db851ecu,
+    0x00000002u, 0x0000000cu, 0x000000ffu,
+    0x00000000u, 0x00000000u, 0x00000000u,
+    0x3ecccccdu, 0x00000000u, 0x00000000u, 0x0000ff00u,
+    0x00000000u, 0x00000000u, 0x00000000u};
+
+constexpr std::array<std::uint32_t, 24u> glossy_ashikhmin_shirley_words{
+    0x00000001u, 0x00000004u, 0x00000016u, 0x00000017u,
+    0x0000000bu, 0x00000001u, 0x00000000u,
+    0x00000005u, 0x3f2e147bu, 0x3e75c28fu, 0x3db851ecu,
+    0x00000002u, 0x0000000fu, 0x000000ffu,
+    0x00000000u, 0x00000000u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000000u, 0x0000ff00u,
+    0x00000000u, 0x00000000u, 0x00000000u};
+
+/* Exact surface tail from the external Cycles 5.2.1 anisotropic-default-
+ * Tangent oracle. Geometry.Tangent is written to stack offset 3; the Glossy
+ * payload consumes it with Anisotropy=0.5 and Rotation=0.25. */
+constexpr std::array<std::uint32_t, 27u>
+    glossy_anisotropic_default_tangent_words{
+        0x00000001u, 0x00000004u, 0x00000019u, 0x0000001au,
+        0x0000000bu, 0x00000001u, 0x00000000u,
+        0x0000000bu, 0x03000002u, 0x00000000u,
+        0x00000005u, 0x3f2e147bu, 0x3e75c28fu, 0x3db851ecu,
+        0x00000002u, 0x0000000cu, 0x000000ffu,
+        0x00000000u, 0x00000000u, 0x00000000u,
+        0x3ecccccdu, 0x3f000000u, 0x3e800000u, 0x00000300u,
+        0x00000000u, 0x00000000u, 0x00000000u};
+
+constexpr std::array<std::uint32_t, 27u> glossy_beckmann_words{
+    0x00000001u, 0x00000004u, 0x00000019u, 0x0000001au,
+    0x0000000bu, 0x00000001u, 0x00000000u,
+    0x00000008u, 0x3f4f5c29u, 0x0003ffffu,
+    0x00000005u, 0x3f333333u, 0x3e99999au, 0x3dcccccdu,
+    0x00000002u, 0x0000000du, 0x00000003u,
+    0x00000000u, 0x00000000u, 0x00000000u,
+    0x3e4ccccdu, 0x00000000u, 0x00000000u, 0x0000ff00u,
+    0x00000000u, 0x00000000u, 0x00000000u};
+
+constexpr std::array<std::uint32_t, 27u> glossy_multi_ggx_words{
+    0x00000001u, 0x00000004u, 0x00000019u, 0x0000001au,
+    0x0000000bu, 0x00000001u, 0x00000000u,
+    0x00000008u, 0x3f4f5c29u, 0x0003ffffu,
+    0x00000005u, 0x3f333333u, 0x3e99999au, 0x3dcccccdu,
+    0x00000002u, 0x0000000eu, 0x00000003u,
+    0x3f333333u, 0x3e99999au, 0x3dcccccdu,
+    0x3f333333u, 0x00000000u, 0x00000000u, 0x0000ff00u,
+    0x00000000u, 0x00000000u, 0x00000000u};
+
+constexpr std::array<std::uint32_t, 20u> refraction_beckmann_words{
+    0x00000001u, 0x00000004u, 0x00000012u, 0x00000013u,
+    0x0000000bu, 0x00000001u, 0x00000000u,
+    0x00000005u, 0x3ec3b96bu, 0x3f26ba28u, 0x3f5e35b5u,
+    0x00000002u, 0x00000014u, 0x000000ffu,
+    0x3e0c6480u, 0x3f947ae1u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000000u};
+
+constexpr std::array<std::uint32_t, 20u> refraction_ggx_words{
+    0x00000001u, 0x00000004u, 0x00000012u, 0x00000013u,
+    0x0000000bu, 0x00000001u, 0x00000000u,
+    0x00000005u, 0x3ec3b96bu, 0x3f26ba28u, 0x3f5e35b5u,
+    0x00000002u, 0x00000015u, 0x000000ffu,
+    0x3e0c6480u, 0x3f947ae1u, 0x00000000u,
+    0x00000000u, 0x00000000u, 0x00000000u};
+
+constexpr std::array<std::uint32_t, 20u>
+    refraction_beckmann_backface_words{
+        0x00000001u, 0x00000004u, 0x00000012u, 0x00000013u,
+        0x0000000bu, 0x00000001u, 0x00000000u,
+        0x00000005u, 0x3f23d70au, 0x3db851ecu, 0x3efae148u,
+        0x00000002u, 0x00000014u, 0x000000ffu,
+        0x3ee66666u, 0x3fc00000u, 0x00000000u,
+        0x00000000u, 0x00000000u, 0x00000000u};
+
 constexpr auto sphere_normal = luisa::float3{
     0.02134036459028721f, 0.021340366452932358f, 0.9995445013046265f};
 constexpr auto sphere_geometric_normal = luisa::float3{
@@ -86,9 +163,11 @@ struct ExpectedClosure {
   luisa::float3 transparent_extinction;
   luisa::float3 emission;
   bool oren_nayar;
+  std::uint32_t initial_flag{device_svm::shader_data_use_bump_map_correction};
   std::uint32_t count{1u};
   std::uint32_t left{7u};
   bool microfacet{false};
+  bool generalized_schlick{false};
   luisa::float4 alpha_ior_energy{};
   luisa::float3 tangent{};
   std::uint32_t fresnel_type{};
@@ -179,6 +258,7 @@ constexpr ExpectedClosure glass_beckmann_expected{
     .count = 1u,
     .left = 6u,
     .microfacet = true,
+    .generalized_schlick = true,
     .alpha_ior_energy = {0.03f, 0.03f, 1.5f, 1.0f},
     .tangent = {0.0f, 0.0f, 0.0f},
     .fresnel_type = 4u,
@@ -187,6 +267,167 @@ constexpr ExpectedClosure glass_beckmann_expected{
     .transmission_tint = {1.0f, 1.0f, 1.0f},
     .f0 = {0.04f, 0.04f, 0.04f},
     .f90 = {1.0f, 1.0f, 1.0f}};
+
+constexpr ExpectedClosure glossy_ggx_expected{
+    .name = "Glossy BSDF Matrix 00",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.6800000071525574f, 0.23999999463558197f,
+               0.09000000357627869f},
+    .sample_weight = 0.33666667342185974f,
+    .type = 12u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 22u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .microfacet = true,
+    .alpha_ior_energy = {0.1600000113248825f, 0.1600000113248825f,
+                         1.0f, 1.0f}};
+
+constexpr ExpectedClosure glossy_ashikhmin_shirley_expected{
+    .name = "Glossy Ashikhmin-Shirley zero roughness",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.6800000071525574f, 0.23999999463558197f,
+               0.09000000357627869f},
+    .sample_weight = 0.33666667342185974f,
+    .type = 15u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 22u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .microfacet = true,
+    .alpha_ior_energy = {0.00009999999747378752f,
+                         0.00009999999747378752f, 1.0f, 1.0f}};
+
+constexpr ExpectedClosure glossy_anisotropic_default_tangent_expected{
+    .name = "Glossy anisotropic default Tangent",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.6800000071525574f, 0.23999999463558197f,
+               0.09000000357627869f},
+    .sample_weight = 0.33666667342185974f,
+    .type = 12u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 25u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .microfacet = true,
+    .alpha_ior_energy = {0.08000000566244125f, 0.320000022649765f,
+                         1.0f, 1.0f},
+    .tangent = {0.0f, 1.0f, 0.0f}};
+
+constexpr ExpectedClosure glossy_beckmann_expected{
+    .name = "Glossy BSDF Matrix 08",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.5669999718666077f, 0.24300001561641693f,
+               0.08100000023841858f},
+    .sample_weight = 0.2970000207424164f,
+    .type = 13u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 25u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .microfacet = true,
+    .alpha_ior_energy = {0.04000000283122063f, 0.04000000283122063f,
+                         1.0f, 1.0f}};
+
+constexpr ExpectedClosure glossy_multi_ggx_expected{
+    .name = "Glossy BSDF Matrix 09",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.5023012757301331f, 0.18660412728786469f,
+               0.05828767269849777f},
+    .sample_weight = 0.23496782779693604f,
+    .type = 12u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 25u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .microfacet = true,
+    .alpha_ior_energy = {0.4899999797344208f, 0.4899999797344208f,
+                         1.0f, 1.4335616827011108f}};
+
+constexpr ExpectedClosure refraction_beckmann_expected{
+    .name = "Refraction BSDF Matrix 00",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.38227400183677673f, 0.651278018951416f,
+               0.8680070042610168f},
+    .sample_weight = 0.6338530778884888f,
+    .type = 20u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval |
+            device_svm::shader_data_bsdf_has_transmission,
+    .final_offset = 18u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .microfacet = true,
+    .alpha_ior_energy = {0.018796993419528008f,
+                         0.018796993419528008f,
+                         1.159999966621399f, 1.0f}};
+
+constexpr ExpectedClosure refraction_ggx_expected{
+    .name = "Refraction BSDF Matrix 01",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.38227400183677673f, 0.651278018951416f,
+               0.8680070042610168f},
+    .sample_weight = 0.6338530778884888f,
+    .type = 21u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval |
+            device_svm::shader_data_bsdf_has_transmission,
+    .final_offset = 18u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .microfacet = true,
+    .alpha_ior_energy = {0.018796993419528008f,
+                         0.018796993419528008f,
+                         1.159999966621399f, 1.0f}};
+
+constexpr ExpectedClosure refraction_beckmann_backface_expected{
+    .name = "Refraction BSDF Matrix 07 backface",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.6399999856948853f, 0.09000000357627869f,
+               0.49000000953674316f},
+    .sample_weight = 0.40666669607162476f,
+    .type = 20u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_backfacing |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval |
+            device_svm::shader_data_bsdf_has_transmission,
+    .final_offset = 18u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .initial_flag = device_svm::shader_data_use_bump_map_correction |
+                    device_svm::shader_data_backfacing,
+    .microfacet = true,
+    .alpha_ior_energy = {0.20249998569488525f, 0.20249998569488525f,
+                         0.6666666865348816f, 1.0f}};
 
 /* closure_alloc_extra must remove the immediately preceding ordinary
  * closure when its one-slot Fresnel payload does not fit. This source-derived
@@ -255,6 +496,7 @@ public:
 [[nodiscard]] device_svm::ShaderData
 make_shader_data(Expr<luisa::float3> normal,
                  Expr<luisa::float3> geometric_normal,
+                 Expr<std::uint32_t> initial_flag,
                  device_svm::ClosurePool *closure) noexcept {
   const auto identity = make_float4x4(1.0f);
   return {make_float3(0.0f),
@@ -263,7 +505,7 @@ make_shader_data(Expr<luisa::float3> normal,
           make_float3(0.0f, 0.0f, 1.0f),
           device_svm::primitive_triangle,
           0u,
-          device_svm::shader_data_use_bump_map_correction,
+          initial_flag,
           0u,
           0u,
           0.25f,
@@ -310,8 +552,9 @@ make_shader_data(Expr<luisa::float3> normal,
         device_svm::ClosurePool closures{closure_capacity};
         const auto normal = state.read(0u).xyz();
         const auto geometric_normal = state.read(1u).xyz();
-        auto shader_data =
-            make_shader_data(normal, geometric_normal, &closures);
+        const auto initial_flag = cast<luisa::uint>(state.read(0u).w);
+        auto shader_data = make_shader_data(
+            normal, geometric_normal, initial_flag, &closures);
         const device_svm::PathState path_state{
             device_svm::path_ray_visibility_camera, 0u};
         device_svm::EvaluationResult result;
@@ -351,18 +594,34 @@ make_shader_data(Expr<luisa::float3> normal,
             oren_b = oren.param.b;
             multiscatter = oren.param.multiscatter_term;
           };
+          const Bool is_microfacet =
+              (common.type == static_cast<std::uint32_t>(
+                                  CLOSURE_BSDF_MICROFACET_GGX_ID)) |
+              (common.type == static_cast<std::uint32_t>(
+                                  CLOSURE_BSDF_MICROFACET_BECKMANN_ID)) |
+              (common.type == static_cast<std::uint32_t>(
+                                  CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID)) |
+              (common.type == static_cast<std::uint32_t>(
+                                  CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID)) |
+              (common.type == static_cast<std::uint32_t>(
+                                  CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID)) |
+              (common.type == static_cast<std::uint32_t>(
+                                  CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID)) |
+              (common.type == static_cast<std::uint32_t>(
+                                  CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID));
+          $if(is_microfacet) {
+            const auto microfacet = closures.microfacet_param(0u);
+            alpha_ior_energy =
+                make_float4(microfacet.alpha_x, microfacet.alpha_y,
+                            microfacet.ior, microfacet.energy_scale);
+            tangent = microfacet.T;
+            fresnel_type = microfacet.fresnel_type;
+          };
           $if((common.type == static_cast<std::uint32_t>(
                                   CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID)) |
               (common.type == static_cast<std::uint32_t>(
                                   CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID))) {
             const auto microfacet = closures.microfacet(0u);
-            alpha_ior_energy =
-                make_float4(microfacet.param.alpha_x,
-                            microfacet.param.alpha_y,
-                            microfacet.param.ior,
-                            microfacet.param.energy_scale);
-            tangent = microfacet.param.T;
-            fresnel_type = microfacet.param.fresnel_type;
             thin_film_exponent = make_float4(
                 microfacet.generalized_schlick.thin_film.thickness,
                 microfacet.generalized_schlick.thin_film.ior,
@@ -417,7 +676,7 @@ template <std::size_t word_count>
   auto meta = device.create_buffer<std::uint32_t>(7u);
   const std::array state_data{
       luisa::float4{expected.normal.x, expected.normal.y, expected.normal.z,
-                    0.0f},
+                    static_cast<float>(expected.initial_flag)},
       luisa::float4{expected.geometric_normal.x, expected.geometric_normal.y,
                     expected.geometric_normal.z, 0.0f}};
   std::array<luisa::float4, 12u> actual{};
@@ -453,8 +712,10 @@ template <std::size_t word_count>
   if (expected.microfacet) {
     valid &= near(actual[5], expected.alpha_ior_energy) &&
              near(actual[6].xyz(), expected.tangent) &&
-             actual_meta[6] == expected.fresnel_type &&
-             near(actual[7], expected.thin_film_exponent) &&
+             actual_meta[6] == expected.fresnel_type;
+  }
+  if (expected.generalized_schlick) {
+    valid &= near(actual[7], expected.thin_film_exponent) &&
              near(actual[8].xyz(), expected.reflection_tint) &&
              near(actual[9].xyz(), expected.transmission_tint) &&
              near(actual[10].xyz(), expected.f0) &&
@@ -507,6 +768,30 @@ int main(int argc, char **argv) {
                  run_oracle(device, stream, backend, table,
                             glass_beckmann_words, glass_beckmann_expected,
                             shader) &&
+                 run_oracle(device, stream, backend, table, glossy_ggx_words,
+                            glossy_ggx_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            glossy_ashikhmin_shirley_words,
+                            glossy_ashikhmin_shirley_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            glossy_anisotropic_default_tangent_words,
+                            glossy_anisotropic_default_tangent_expected,
+                            shader) &&
+                 run_oracle(device, stream, backend, table,
+                            glossy_beckmann_words,
+                            glossy_beckmann_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            glossy_multi_ggx_words,
+                            glossy_multi_ggx_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            refraction_beckmann_words,
+                            refraction_beckmann_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            refraction_ggx_words,
+                            refraction_ggx_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            refraction_beckmann_backface_words,
+                            refraction_beckmann_backface_expected, shader) &&
                  run_oracle(device, stream, backend, table,
                             glass_beckmann_words,
                             glass_extra_rollback_expected, rollback_shader)

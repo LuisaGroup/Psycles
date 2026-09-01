@@ -1228,7 +1228,28 @@ void CyclesGraph::default_inputs() {
             : (input.flags & graph_socket_link_position) != 0u ? "Position"
             : (input.flags & graph_socket_link_tangent) != 0u  ? "Tangent"
                                                                : "Incoming";
-        static_cast<void>(connect(geometry->output(output_name), &input));
+        // ShaderGraph::connect inserts a ConvertNode for LINK_TANGENT: its
+        // Geometry.Tangent source is NORMAL while Glossy/Metallic consume a
+        // VECTOR. Other float3 contract sockets have not all restored their
+        // precise Cycles input type yet, so keep their existing strict edge
+        // rule instead of conflating contract canonicalization with a Cycles
+        // source-level conversion.
+        const auto connected =
+            (input.flags & graph_socket_link_tangent) != 0u
+                ? connect_with_autoconvert(geometry->output(output_name),
+                                           &input)
+                : connect(geometry->output(output_name), &input);
+        if (!connected) {
+          // A canonical float3 mismatch outside LINK_TANGENT deliberately
+          // leaves the authored contract value in place.
+          if ((input.flags & graph_socket_link_tangent) == 0u &&
+              is_float3_socket(geometry->output(output_name)->type) &&
+              is_float3_socket(input.type)) {
+            continue;
+          }
+          reject("Cycles default geometry input could not be connected");
+          return;
+        }
       }
     }
   }

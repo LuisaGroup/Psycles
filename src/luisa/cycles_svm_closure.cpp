@@ -296,16 +296,10 @@ ClosurePool::oren_nayar(Expr<std::uint32_t> index) const noexcept {
 
 MicrofacetClosure
 ClosurePool::microfacet(Expr<std::uint32_t> index) const noexcept {
-  const auto microfacet = _microfacet_alpha_ior_energy.read(index);
   const auto film = _generalized_schlick_thin_film.read(index);
   return {
       .common = common(index),
-      .param = {.alpha_x = microfacet.x,
-                .alpha_y = microfacet.y,
-                .ior = microfacet.z,
-                .energy_scale = microfacet.w,
-                .fresnel_type = _microfacet_fresnel_type.read(index),
-                .T = _microfacet_tangent.read(index).xyz()},
+      .param = microfacet_param(index),
       .generalized_schlick = {
           .thin_film = {.thickness = film.x, .ior = film.y},
           .reflection_tint =
@@ -315,6 +309,17 @@ ClosurePool::microfacet(Expr<std::uint32_t> index) const noexcept {
           .f0 = _generalized_schlick_f0.read(index).xyz(),
           .f90 = _generalized_schlick_f90.read(index).xyz(),
           .exponent = film.z}};
+}
+
+MicrofacetParam
+ClosurePool::microfacet_param(Expr<std::uint32_t> index) const noexcept {
+  const auto microfacet = _microfacet_alpha_ior_energy.read(index);
+  return {.alpha_x = microfacet.x,
+          .alpha_y = microfacet.y,
+          .ior = microfacet.z,
+          .energy_scale = microfacet.w,
+          .fresnel_type = _microfacet_fresnel_type.read(index),
+          .T = _microfacet_tangent.read(index).xyz()};
 }
 
 namespace detail {
@@ -448,6 +453,20 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                                  CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID)) |
             (closure_type == static_cast<std::uint32_t>(
                                  CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
+        const Bool is_glossy =
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSDF_MICROFACET_GGX_ID)) |
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSDF_MICROFACET_BECKMANN_ID)) |
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID)) |
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID));
+        const Bool is_refraction =
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID)) |
+            (closure_type == static_cast<std::uint32_t>(
+                                 CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID));
         $if(is_glass) {
           const auto color_x = cursor.word();
           const auto color_y = cursor.word();
@@ -470,6 +489,47 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
               stack_load_input_float(stack, ior_input),
               stack_load_input_float(stack, thin_film_thickness_input),
               stack_load_input_float(stack, thin_film_ior_input));
+        }
+        $elif(is_glossy) {
+          const auto color_x = cursor.word();
+          const auto color_y = cursor.word();
+          const auto color_z = cursor.word();
+          const auto roughness_input = cursor.word();
+          const auto anisotropy_input = cursor.word();
+          const auto rotation_input = cursor.word();
+          const auto normal_tangent_packed = cursor.word();
+          const auto normal_offset = cursor.byte(normal_tangent_packed, 0u);
+          const auto tangent_offset = cursor.byte(normal_tangent_packed, 1u);
+          auto normal =
+              stack_load_float3_default(stack, normal_offset, shader_data.N);
+          normal = native_vector_math::safe_normalize_nonzero_or(
+              normal, shader_data.N);
+          detail::glossy_setup(
+              kernel_globals, shader_data, path_state, closure_type, mix_weight,
+              closure_weight, normal,
+              stack_load_input_float3(stack, color_x, color_y, color_z),
+              stack_load_input_float(stack, roughness_input),
+              stack_load_input_float(stack, anisotropy_input),
+              stack_load_input_float(stack, rotation_input),
+              stack_load_float3_default(stack, tangent_offset,
+                                        make_float3(0.0f)),
+              tangent_offset !=
+                  static_cast<std::uint32_t>(SVM_STACK_INVALID));
+        }
+        $elif(is_refraction) {
+          const auto roughness_input = cursor.word();
+          const auto ior_input = cursor.word();
+          const auto normal_packed = cursor.word();
+          const auto normal_offset = cursor.byte(normal_packed, 0u);
+          auto normal =
+              stack_load_float3_default(stack, normal_offset, shader_data.N);
+          normal = native_vector_math::safe_normalize_nonzero_or(
+              normal, shader_data.N);
+          detail::refraction_setup(
+              kernel_globals, shader_data, path_state, closure_type, mix_weight,
+              closure_weight, normal,
+              stack_load_input_float(stack, roughness_input),
+              stack_load_input_float(stack, ior_input));
         }
         $else {
           $switch(closure_type) {

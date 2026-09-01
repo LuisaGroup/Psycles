@@ -17,13 +17,17 @@ The implementation follows these pinned Cycles sources at
 - `kernel/closure/bsdf_transparent.h`
 - `kernel/closure/bsdf_util.h::maybe_ensure_valid_specular_reflection`
 - `kernel/closure/bsdf_microfacet.h::{bsdf_microfacet_*_glass_setup,`
+  `bsdf_microfacet_ggx_setup,bsdf_microfacet_beckmann_setup,`
+  `bsdf_microfacet_*_refraction_setup,`
   `bsdf_microfacet_setup_fresnel_generalized_schlick,`
   `microfacet_ggx_preserve_energy}`
+- `kernel/closure/bsdf_ashikhmin_shirley.h`
 - `kernel/closure/bsdf_util.h::{F0_from_ior,fresnel_dielectric_Fss}`
 - `kernel/util/lookup_table.h`
 
 The copied executable closure types are smooth Diffuse, improved Oren-Nayar,
-Translucent, Transparent, Beckmann Glass, GGX Glass, and Multi-GGX Glass.
+Translucent, Transparent, Beckmann/GGX/Multi-GGX Glass,
+Beckmann/GGX/Ashikhmin-Shirley/Multi-GGX Glossy, and Beckmann/GGX Refraction.
 Other closure payloads still take Cycles' exact typed skip transition and
 report unsupported only when the unported state transition is live.
 Feature-erased BSDF nodes remain valid skips.
@@ -100,6 +104,31 @@ energy preservation, and the exact shader flags. Cycles' BSDF tables have one
 shared Luisa reader/interpolator used by both the native SVM and the legacy
 surface services; the native SVM does not introduce a second table format.
 
+Standalone Glossy and Refraction deliberately retain their distinct Cycles
+allocation rules. Glossy allocates `closure_weight * mix_weight`, squares the
+saturated roughness, clamps anisotropy to `[-0.99, 0.99]`, and applies Cycles'
+signed anisotropic alpha mapping and tangent rotation only outside the
+`1e-4` isotropy threshold. Beckmann, GGX, and Ashikhmin-Shirley preserve their
+own closure tags and setup flags. Multi-GGX is normalized to the ordinary GGX
+runtime tag only after applying Cycles' constant-Fresnel table compensation;
+its color payload is therefore emitted only for that distribution.
+
+The graph stage also copies the prerequisite Cycles topology rule: an
+unconnected non-isotropic Glossy Tangent is default-connected from
+`Geometry.Tangent` through Cycles' NORMAL-to-VECTOR automatic conversion.
+Only a literal, unlinked `abs(Anisotropy) <= 1e-4` permits
+`GlossyBsdfNode::simplify_settings` to remove that edge. The old strict-type
+default connector silently lost the non-isotropic edge; a dedicated external
+word oracle now freezes both `NODE_GEOMETRY` records, tangent stack offset 3,
+and peak stack use 6.
+
+Refraction also allocates `closure_weight * mix_weight`, but squares the raw
+roughness before the setup function saturates it, exactly preserving Cycles'
+ordering for negative and out-of-range inputs. It selects the Beckmann or GGX
+transmission tag and replaces eta with its reciprocal on a back face. These
+are separate typed payloads in the word image; neither is translated through
+the old Psycles surface representation.
+
 The Oren-Nayar parameter copy uses Cycles' `M_2PI_F = 2*pi`. A review caught
 and removed an initially mistaken `2/pi` interpretation before commit. The
 regression freezes `a`, `b`, and the three multi-scatter components, so this
@@ -108,8 +137,9 @@ remain tolerated.
 
 ## External Cycles oracle
 
-Four canonical raw-closure scenes were created with the repository probe
-tool, rendered by the diagnostic Blender 5.2.1 build `cb168525138f`, and dumped
+Six closure families represented by twelve frozen transitions were created with
+the repository probe tool, rendered by the diagnostic Blender 5.2.1 build
+`cb168525138f`, and dumped
 after Cycles linked its final global SVM buffer. The permanent device test
 freezes the exact surface tails. Only each four-word shader-jump entry is
 relocated from the original global offsets to its compact test buffer.
@@ -120,6 +150,14 @@ relocated from the original global offsets to its compact test buffer.
 | Translucent Probe | type 9; weight `(0.73, 0.28, 0.11)`; sample weight `0.3733333349`; sphere shading normal |
 | Transparent Probe | type 30; weight/extinction `(0.285, 0.342, 0.228)`; sample weight `0.2849999964`; plane normal; emission `(0.6324, 0.05952, 0.02232)` |
 | Glass Transport 02 | type 24 (Beckmann Glass); weight/sample weight `1`; normal `(0,0,1)`; sampled roughness `(0.03,0.03)` and eta `1.5` |
+| Glossy BSDF Matrix 00 | type 12 (GGX); weight `(0.68,0.24,0.09)`; sample weight `0.3366666734`; alpha `(0.1600000113,0.1600000113)` |
+| Glossy BSDF Matrix 08 | type 13 (Beckmann); weight `(0.5669999719,0.2430000156,0.0810000002)` after mix weight; sample weight `0.2970000207`; alpha `(0.0400000028,0.0400000028)` |
+| Glossy BSDF Matrix 09 | input type 14 (Multi-GGX), output type 12; compensated weight `(0.5023012757,0.1866041273,0.0582876727)`; sample weight `0.2349678278`; energy scale `1.4335616827` |
+| Glossy Ashikhmin-Shirley | type 15; roughness zero clamps to alpha `(0.0001,0.0001)` and still sets `SD_BSDF_HAS_EVAL` |
+| Glossy anisotropic default Tangent | type 12 (GGX); unlinked source tangent becomes rotated `(0,1,0)`; alpha `(0.0800000057,0.3200000226)` for anisotropy `0.5`, rotation `0.25` |
+| Refraction BSDF Matrix 00 | type 20 (Beckmann Refraction); weight `(0.3822740018,0.6512780190,0.8680070043)`; sample weight `0.6338530779`; alpha `0.0187969934`; eta `1.1599999666` |
+| Refraction BSDF Matrix 01 | type 21 (GGX Refraction); otherwise the same source inputs and observed state as case 00 |
+| Refraction BSDF Matrix 07 | type 20 on a back face; weight `(0.64,0.09,0.49)`; alpha `0.2024999857`; reciprocal eta `0.6666666865` |
 
 The Glass test additionally freezes the source-derived typed setup state:
 alpha, IOR, energy scale, tangent, generalized-Schlick discriminator, film
@@ -172,6 +210,20 @@ Artifact hashes:
 | Glass path trace | `c7a5f70cb0bf26b48435dda9e2da7a3b989404b778113c5fed260417067ef0fc` |
 | Glass decoded trace | `01975118833f375b388160e2d3da6dc86f0b5de43a558eb0e7eee36d6fc0006c` |
 | Glass render metadata | `f329bead2d022e493911fe70c95a519a3f2fa5b8f011eaf534522a049de71f0d` |
+| Glossy matrix `.blend` | `0cc6653d692a5f2df7c91956e064d245eb46dbc57083aea180fca0b5de628eec` |
+| Glossy matrix final SVM buffer | `4c7f07490b6daa2ba9cb46d60b534176aa8f3465e564a6fe00a1a9d808efd6e0` |
+| Glossy GGX path trace / decoded trace | `7cd5edbf861488200cacc1db4dcc59024272264bab8cb56bae3533b02872947f` / `c81e19700b547961cfa642bc0acbc076b59006484095acbf352e268f1b024105` |
+| Glossy Beckmann path trace / decoded trace | `5c301aab4961aa78118739910057b431df034f29fb1ec3ae10d505cec0c6c93b` / `85f7d9c41b51945d71687d08554cee4a7d2b02cb304a3a6c0e00f2e39143ecc8` |
+| Glossy Multi-GGX path trace / decoded trace | `8b09eec96fdb9a0707ea4d77925691f4312e37c1e8b5e104a5703ea329ca8b83` / `4e94e4a8eaca97b6a9e573928fe8e72bf83c11595bdfc0b838699c8a76da9da5` |
+| Glossy Ashikhmin `.blend` / final SVM buffer | `5f1baff0351d595f72ef3ff2953fc412130f5930fd8f851261b20e2c9f6e96f2` / `e1a17a3b144229b677cb7fbaa758a8bc894906825157f5e1bd1f2d1012bec284` |
+| Glossy Ashikhmin path trace / decoded trace | `2140808e3aff333ab03669e35e8b7aed8a6e929475c62bbc4569a9387638c700` / `b545626a5e535c8c21d1b1ea349a0d01aab91d184323c1ad78db056fa30e8780` |
+| Glossy anisotropic `.blend` / final SVM buffer | `f9ea3e1f6699aa674655f85bc8c6f27cc554fd5187afac2b7c5b5f49fc64daa4` / `c9a6464c525e33efafee83ee5ef3cb8cdc3975c38c20219b38feb91c375e48f3` |
+| Glossy anisotropic path trace / decoded trace | `a8f768cd84ea5bb910b2302f48aef2c0fe685f7cfc73bba6bf9096e53f4bd4b2` / `e95b16a529517ee99376073bc81e6ac3cf76c7a8f37a01c0be5d1618460631b8` |
+| Refraction matrix `.blend` | `06478956fd3fcc24e318ffac76f818e23958bc9694451dc0970590f046c3a558` |
+| Refraction matrix final SVM buffer | `57c302933acacc1b878993f2921542b12f31e40e42e413401047168e4509a63f` |
+| Refraction Beckmann path trace / decoded trace | `fdaba6513cbc5ef60ee7509acd0a2f0a3d1a2f3346976b865c7d71e35d603a30` / `2dd3382831e4fccfebd81401f9896698fe0dadea7ad5706b1f47ab0911f3fdd4` |
+| Refraction GGX path trace / decoded trace | `76a5eff91cda12cbac14aba4b4aa87a7307120e752d6f24a670155b3b85e132a` / `4da0653bcacb9aee9784d0a2102b0832b474fbeb32c5f41f84f6b831c9404f89` |
+| Refraction back-face path trace / decoded trace | `dd67ccc2d0b0d34f0955981ac60b946ebc563bb2de936e3b6558b20bc83da8b5` / `c2cd1f894f0e24dc0bbd13abbee4b9cc5ac6c44652b9adb1a89b364272a22038` |
 
 No `.svm52` binary is checked in.
 
@@ -183,6 +235,7 @@ XIR-to-SPIR-V:
 ```sh
 cmake --build build --parallel 32 \
   --target psycles_luisa_cycles_svm_closure_tests \
+           psycles_cycles_svm_compiler_tests \
            psycles_luisa_thin_film_fresnel_tests \
            psycles_luisa_thin_film_surface_tests
 
@@ -191,11 +244,16 @@ ctest --test-dir build --output-on-failure -R \
 
 ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
+  '^psycles\.cycles_svm_compiler$'
 ```
 
-Result: closure 3/3 and thin-film 6/6 passed. A complete 32-way run after the
-public KernelGlobals/table change passed 464/464 tests in 37.17 seconds. The
-Vulkan test environment is
+Result: closure 3/3, thin-film 6/6, and compiler 1/1 passed. The compiler test
+locks the standalone graph-to-word-image mapping independently of the device
+interpreter tests, including the Multi-GGX-only color payload. A complete
+32-way build and test run for this expanded checkpoint passed 464/464 tests in
+13.91 seconds. The Vulkan test environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
 
@@ -227,9 +285,10 @@ shade-surface.
 ## Remaining boundary
 
 This checkpoint establishes ordinary and extra closure allocation plus the
-simple and Glass setup families inside the exact interpreter. Production still
-calls the old custom `SurfaceProgram` path. The next required structural steps
-are the remaining typed closure payloads (especially Principled), exact closure
+simple, Glass, standalone Glossy, and standalone Refraction setup families
+inside the exact interpreter. Production still calls the old custom
+`SurfaceProgram` path. The next required structural steps are the remaining
+typed closure payloads (especially Metallic and Principled), exact closure
 evaluation/sampling, and only then replacement and deletion of the old
 shade-surface route. The Cycles-style global shader linker is already staged,
 but this document makes no production-render parity or performance claim.

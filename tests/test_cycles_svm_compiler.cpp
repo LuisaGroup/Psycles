@@ -141,6 +141,182 @@ void test_glass_surface_matches_cycles_5_2_1() {
           "Glass SVM stack or opcode mask differs from Cycles");
 }
 
+void test_glossy_surfaces_match_cycles_5_2_1() {
+  static constexpr std::uint32_t ggx_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000016u, 0x00000017u,
+      0x0000000bu, 0x00000001u, 0x00000000u,
+      0x00000005u, 0x3f2e147bu, 0x3e75c28fu, 0x3db851ecu,
+      0x00000002u, 0x0000000cu, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u,
+      0x3ecccccdu, 0x00000000u, 0x00000000u, 0x0000ff00u,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  static constexpr std::uint32_t beckmann_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000016u, 0x00000017u,
+      0x0000000bu, 0x00000001u, 0x00000000u,
+      0x00000005u, 0x3f333333u, 0x3e99999au, 0x3dcccccdu,
+      0x00000002u, 0x0000000du, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u,
+      0x3e4ccccdu, 0x00000000u, 0x00000000u, 0x0000ff00u,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  static constexpr std::uint32_t multi_ggx_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000016u, 0x00000017u,
+      0x0000000bu, 0x00000001u, 0x00000000u,
+      0x00000005u, 0x3f333333u, 0x3e99999au, 0x3dcccccdu,
+      0x00000002u, 0x0000000eu, 0x000000ffu,
+      0x3f333333u, 0x3e99999au, 0x3dcccccdu,
+      0x3f333333u, 0x00000000u, 0x00000000u, 0x0000ff00u,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  static constexpr std::uint32_t ashikhmin_shirley_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000016u, 0x00000017u,
+      0x0000000bu, 0x00000001u, 0x00000000u,
+      0x00000005u, 0x3f2e147bu, 0x3e75c28fu, 0x3db851ecu,
+      0x00000002u, 0x0000000fu, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u,
+      0x00000000u, 0x00000000u, 0x00000000u, 0x0000ff00u,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  // Exact compact image from the external `Glossy BSDF Matrix 00` oracle
+  // after setting unlinked Anisotropy=0.5 and Rotation=0.25. Cycles inserts
+  // Geometry.Tangent plus its NORMAL-to-VECTOR ConvertNode during
+  // ShaderGraph::default_inputs; the identity conversion is stack-aliased by
+  // SVMCompiler, leaving the second NODE_GEOMETRY and tangent offset 3 below.
+  static constexpr std::uint32_t anisotropic_default_tangent_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000019u, 0x0000001au,
+      0x0000000bu, 0x00000001u, 0x00000000u,
+      0x0000000bu, 0x03000002u, 0x00000000u,
+      0x00000005u, 0x3f2e147bu, 0x3e75c28fu, 0x3db851ecu,
+      0x00000002u, 0x0000000cu, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u,
+      0x3ecccccdu, 0x3f000000u, 0x3e800000u, 0x00000300u,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  struct Case {
+    const char *name;
+    const char *distribution;
+    std::array<float, 3u> color;
+    float roughness;
+    float anisotropy;
+    float rotation;
+    std::span<const std::uint32_t> expected;
+    std::uint32_t peak_stack_usage;
+  };
+  const std::array cases{
+      Case{"Glossy BSDF Matrix 00", "GGX", {0.68f, 0.24f, 0.09f}, 0.4f,
+           0.0f, 0.0f, ggx_expected, 3u},
+      Case{"Glossy BSDF Matrix 08", "BECKMANN", {0.7f, 0.3f, 0.1f}, 0.2f,
+           0.0f, 0.0f, beckmann_expected, 3u},
+      Case{"Glossy BSDF Matrix 09", "MULTI_GGX", {0.7f, 0.3f, 0.1f}, 0.7f,
+           0.0f, 0.0f, multi_ggx_expected, 3u},
+      Case{"Glossy Ashikhmin-Shirley zero roughness", "ASHIKHMIN_SHIRLEY",
+           {0.68f, 0.24f, 0.09f}, 0.0f, 0.0f, 0.0f,
+           ashikhmin_shirley_expected, 3u},
+      Case{"Glossy anisotropic default Tangent", "GGX",
+           {0.68f, 0.24f, 0.09f}, 0.4f, 0.5f, 0.25f,
+           anisotropic_default_tangent_expected, 6u},
+  };
+
+  for (const auto &item : cases) {
+    ShaderGraph graph;
+    const auto glossy = graph.add_node(node_type::glossy_bsdf, item.name);
+    require(graph.set_property(glossy, "Distribution",
+                               SocketValue::string(item.distribution)) &&
+                graph.set_input(
+                    glossy, "Color",
+                    SocketValue::color(
+                        {item.color[0], item.color[1], item.color[2]})) &&
+                graph.set_input(glossy, "Roughness",
+                                SocketValue::floating(item.roughness)) &&
+                graph.set_input(glossy, "Anisotropy",
+                                SocketValue::floating(item.anisotropy)) &&
+                graph.set_input(glossy, "Rotation",
+                                SocketValue::floating(item.rotation)),
+            "failed to configure Glossy compiler oracle");
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = glossy, .socket = "Closure"});
+
+    const ShaderCompiler frontend{make_core_node_registry()};
+    const auto shader = frontend.compile(graph);
+    if (!shader.ok()) {
+      for (const auto &diagnostic : shader.diagnostics) {
+        std::cerr << diagnostic.message << '\n';
+      }
+    }
+    require(shader.ok(), "raw Glossy graph did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+    require_words(image.words, item.expected,
+                  "Psycles Glossy SVM differs from the Cycles word oracle");
+    require(image.peak_stack_usage == item.peak_stack_usage &&
+                image.node_types_used[NODE_CLOSURE_BSDF],
+            "Glossy SVM stack or opcode mask differs from Cycles");
+  }
+}
+
+void test_refraction_surfaces_match_cycles_5_2_1() {
+  static constexpr std::uint32_t beckmann_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000012u, 0x00000013u,
+      0x0000000bu, 0x00000001u, 0x00000000u,
+      0x00000005u, 0x3ec3b96bu, 0x3f26ba28u, 0x3f5e35b5u,
+      0x00000002u, 0x00000014u, 0x000000ffu,
+      0x3e0c6480u, 0x3f947ae1u, 0x00000000u,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  static constexpr std::uint32_t ggx_expected[] = {
+      0x00000001u, 0x00000004u, 0x00000012u, 0x00000013u,
+      0x0000000bu, 0x00000001u, 0x00000000u,
+      0x00000005u, 0x3ec3b96bu, 0x3f26ba28u, 0x3f5e35b5u,
+      0x00000002u, 0x00000015u, 0x000000ffu,
+      0x3e0c6480u, 0x3f947ae1u, 0x00000000u,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  struct Case {
+    const char *distribution;
+    std::span<const std::uint32_t> expected;
+  };
+  const std::array cases{
+      Case{"BECKMANN", beckmann_expected},
+      Case{"GGX", ggx_expected},
+  };
+
+  for (const auto &item : cases) {
+    ShaderGraph graph;
+    const auto refraction =
+        graph.add_node(node_type::refraction_bsdf, "Refraction BSDF Matrix");
+    require(graph.set_property(refraction, "Distribution",
+                               SocketValue::string(item.distribution)) &&
+                graph.set_input(
+                    refraction, "Color",
+                    SocketValue::color({0.382274f, 0.651278f, 0.868007f})) &&
+                graph.set_input(refraction, "Roughness",
+                                SocketValue::floating(0.137102127f)) &&
+                graph.set_input(refraction, "IOR",
+                                SocketValue::floating(1.159999967f)),
+            "failed to configure Refraction compiler oracle");
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = refraction, .socket = "Closure"});
+
+    const ShaderCompiler frontend{make_core_node_registry()};
+    const auto shader = frontend.compile(graph);
+    if (!shader.ok()) {
+      for (const auto &diagnostic : shader.diagnostics) {
+        std::cerr << diagnostic.message << '\n';
+      }
+    }
+    require(shader.ok(), "raw Refraction graph did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+    require_words(
+        image.words, item.expected,
+        "Psycles Refraction SVM differs from the Cycles word oracle");
+    require(image.peak_stack_usage == 3u &&
+                image.node_types_used[NODE_CLOSURE_BSDF],
+            "Refraction SVM stack or opcode mask differs from Cycles");
+  }
+}
+
 void test_constant_mix_closure_matches_cycles_5_2_1() {
   ShaderGraph graph;
   const auto transparent =
@@ -1281,6 +1457,8 @@ int main() {
   test_math_third_input_default_matches_cycles_5_2_1();
   test_diffuse_surface_matches_cycles_5_2_1();
   test_glass_surface_matches_cycles_5_2_1();
+  test_glossy_surfaces_match_cycles_5_2_1();
+  test_refraction_surfaces_match_cycles_5_2_1();
   test_constant_mix_closure_matches_cycles_5_2_1();
   test_linked_mix_closure_jumps_match_cycles_5_2_1();
   test_dynamic_math_and_dedup_match_cycles_5_2_1();

@@ -10,6 +10,7 @@
 #include <psycles/compiler/core_nodes.h>
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
 #include <variant>
@@ -66,6 +67,36 @@ glass_distribution(const GraphNode *node) noexcept {
   }
   if (distribution == "MULTI_GGX") {
     return CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<ClosureType>
+glossy_distribution(const GraphNode *node) noexcept {
+  const auto distribution = string_property(node, "Distribution");
+  if (distribution == "BECKMANN") {
+    return CLOSURE_BSDF_MICROFACET_BECKMANN_ID;
+  }
+  if (distribution == "GGX") {
+    return CLOSURE_BSDF_MICROFACET_GGX_ID;
+  }
+  if (distribution == "ASHIKHMIN_SHIRLEY") {
+    return CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID;
+  }
+  if (distribution == "MULTI_GGX") {
+    return CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<ClosureType>
+refraction_distribution(const GraphNode *node) noexcept {
+  const auto distribution = string_property(node, "Distribution");
+  if (distribution == "BECKMANN") {
+    return CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID;
+  }
+  if (distribution == "GGX") {
+    return CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID;
   }
   return std::nullopt;
 }
@@ -240,6 +271,69 @@ public:
             .thin_film_thickness =
                 compiler.input_float("ThinFilmThickness"),
             .thin_film_ior = compiler.input_float("ThinFilmIOR"),
+            .normal_offset = compiler.input_link("Normal"),
+            ._pad = {0u, 0u, 0u}});
+  }
+};
+
+class GlossyBsdfNode final : public BsdfNode {
+private:
+  [[nodiscard]] bool is_isotropic() const noexcept {
+    const auto anisotropy =
+        literal<float>(input("Anisotropy"), contract::SocketType::floating);
+    return anisotropy && std::abs(*anisotropy) <= 1.0e-4f;
+  }
+
+public:
+  GlossyBsdfNode() noexcept
+      : BsdfNode{CLOSURE_BSDF_MICROFACET_GGX_ID} {}
+
+  void simplify_settings() override {
+    // Direct copy of Cycles 5.2.1 GlossyBsdfNode::simplify_settings. The
+    // literal helper also proves that Anisotropy has no authored link.
+    if (is_isotropic()) {
+      disconnect_input(input("Tangent"));
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto distribution = glossy_distribution(this);
+    if (!distribution) {
+      compiler.fail("Cycles Glossy BSDF distribution is not migrated exactly");
+      return;
+    }
+    compile_bsdf(
+        compiler, *distribution,
+        SVMNodeGlossyBsdfData{
+            .color = *distribution == CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID
+                         ? compiler.input_float3("Color")
+                         : SVMInputFloat3{},
+            .roughness = compiler.input_float("Roughness"),
+            .anisotropy = compiler.input_float("Anisotropy"),
+            .rotation = compiler.input_float("Rotation"),
+            .normal_offset = compiler.input_link("Normal"),
+            .tangent_offset = compiler.input_link("Tangent"),
+            ._pad = {0u, 0u}});
+  }
+};
+
+class RefractionBsdfNode final : public BsdfNode {
+public:
+  RefractionBsdfNode() noexcept
+      : BsdfNode{CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID} {}
+
+  void compile(SVMCompiler &compiler) override {
+    const auto distribution = refraction_distribution(this);
+    if (!distribution) {
+      compiler.fail(
+          "Cycles Refraction BSDF distribution is not migrated exactly");
+      return;
+    }
+    compile_bsdf(
+        compiler, *distribution,
+        SVMNodeRefractionBsdfData{
+            .roughness = compiler.input_float("Roughness"),
+            .ior = compiler.input_float("IOR"),
             .normal_offset = compiler.input_link("Normal"),
             ._pad = {0u, 0u, 0u}});
   }
@@ -681,6 +775,12 @@ make_closure_graph_node(std::string_view type) {
   }
   if (type == node_type::glass_bsdf) {
     return std::make_unique<GlassBsdfNode>();
+  }
+  if (type == node_type::glossy_bsdf) {
+    return std::make_unique<GlossyBsdfNode>();
+  }
+  if (type == node_type::refraction_bsdf) {
+    return std::make_unique<RefractionBsdfNode>();
   }
   if (type == node_type::subsurface_scattering) {
     return std::make_unique<SubsurfaceScatteringNode>();

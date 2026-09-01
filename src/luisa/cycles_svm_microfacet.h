@@ -23,4 +23,27 @@ void glass_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
                  luisa::compute::Expr<float> thin_film_thickness,
                  luisa::compute::Expr<float> thin_film_ior) noexcept;
 
+void glossy_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
+                  const PathState &path_state,
+                  luisa::compute::Expr<std::uint32_t> input_type,
+                  luisa::compute::Expr<float> mix_weight,
+                  luisa::compute::Expr<luisa::float3> closure_weight,
+                  luisa::compute::Expr<luisa::float3> normal,
+                  luisa::compute::Expr<luisa::float3> color,
+                  luisa::compute::Expr<float> roughness,
+                  luisa::compute::Expr<float> anisotropy,
+                  luisa::compute::Expr<float> rotation,
+                  luisa::compute::Expr<luisa::float3> tangent,
+                  luisa::compute::Expr<bool> tangent_valid) noexcept;
+
+void refraction_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    const PathState &path_state,
+    luisa::compute::Expr<std::uint32_t> input_type,
+    luisa::compute::Expr<float> mix_weight,
+    luisa::compute::Expr<luisa::float3> closure_weight,
+    luisa::compute::Expr<luisa::float3> normal,
+    luisa::compute::Expr<float> roughness,
+    luisa::compute::Expr<float> ior) noexcept;
+
 }// namespace psycles::luisa_backend::cycles_svm::detail
