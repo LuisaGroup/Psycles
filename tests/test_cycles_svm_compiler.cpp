@@ -1139,6 +1139,81 @@ void test_standalone_sheen_matches_cycles_5_2_1() {
   }
 }
 
+void test_standalone_toon_matches_cycles_5_2_1() {
+  struct ToonOracle {
+    const char *component;
+    Vec3f color;
+    float size;
+    float smooth;
+    std::array<std::uint32_t, 20u> words;
+  };
+  static constexpr ToonOracle cases[]{
+      {"DIFFUSE",
+       {0.31f, 0.73f, 0.19f},
+       0.37f,
+       0.21f,
+       {0x00000001u, 0x00000004u, 0x00000012u, 0x00000013u,
+        0x0000000bu, 0x00000001u, 0x00000000u, 0x00000005u,
+        0x3e9eb852u, 0x3f3ae148u, 0x3e428f5cu, 0x00000002u,
+        0x00000008u, 0x000000ffu, 0x3ebd70a4u, 0x3e570a3du,
+        0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}},
+      {"GLOSSY",
+       {0.84f, 0.22f, 0.56f},
+       0.63f,
+       0.14f,
+       {0x00000001u, 0x00000004u, 0x00000012u, 0x00000013u,
+        0x0000000bu, 0x00000001u, 0x00000000u, 0x00000005u,
+        0x3f570a3du, 0x3e6147aeu, 0x3f0f5c29u, 0x00000002u,
+        0x00000012u, 0x000000ffu, 0x3f2147aeu, 0x3e0f5c29u,
+        0x00000000u, 0x00000000u, 0x00000000u, 0x00000000u}},
+  };
+
+  const auto registry = make_core_node_registry();
+  const auto *schema = registry.find(node_type::toon_bsdf);
+  require(schema != nullptr, "Cycles Toon schema is absent");
+  const auto component_default = std::find_if(
+      schema->properties.begin(), schema->properties.end(),
+      [](const auto &property) { return property.name == "Component"; });
+  require(component_default != schema->properties.end() &&
+              component_default->default_value &&
+              std::get_if<std::string>(
+                  &component_default->default_value->value) != nullptr &&
+              *std::get_if<std::string>(
+                  &component_default->default_value->value) ==
+                  "DIFFUSE",
+          "Cycles Toon component default must be DIFFUSE");
+
+  for (const auto &item : cases) {
+    ShaderGraph graph;
+    const auto toon =
+        graph.add_node(node_type::toon_bsdf, "Standalone Toon SVM Oracle");
+    require(graph.set_property(toon, "Component",
+                               SocketValue::string(item.component)) &&
+                graph.set_input(toon, "Color",
+                                SocketValue::color(item.color)) &&
+                graph.set_input(toon, "Size",
+                                SocketValue::floating(item.size)) &&
+                graph.set_input(toon, "Smooth",
+                                SocketValue::floating(item.smooth)),
+            "failed to configure standalone Toon");
+    graph.set_root(ShaderDomain::surface,
+                   OutputRef{.node = toon, .socket = "Closure"});
+
+    const ShaderCompiler frontend{registry};
+    const auto shader = frontend.compile(graph);
+    require(shader.ok(), "raw standalone Toon graph did not validate");
+    const auto image = compile_shader(*shader.program);
+    require(image.valid, image.diagnostic.c_str());
+    require_words(image.words, item.words,
+                  "Psycles standalone Toon differs from Cycles");
+    require(image.peak_stack_usage == 3u &&
+                image.node_types_used[NODE_GEOMETRY] &&
+                image.node_types_used[NODE_CLOSURE_SET_WEIGHT] &&
+                image.node_types_used[NODE_CLOSURE_BSDF],
+            "standalone Toon stack or opcode mask differs from Cycles");
+  }
+}
+
 void test_constant_math_fold_matches_cycles_5_2_1() {
   ShaderGraph graph;
   const auto math = graph.add_node(node_type::math, "Constant Add");
@@ -1894,6 +1969,7 @@ int main() {
   test_scatter_volume_phases_match_cycles_5_2_1();
   test_subsurface_methods_match_cycles_5_2_1();
   test_standalone_sheen_matches_cycles_5_2_1();
+  test_standalone_toon_matches_cycles_5_2_1();
   test_constant_math_fold_matches_cycles_5_2_1();
   test_zero_mix_closure_fold_matches_cycles_5_2_1();
   test_dynamic_color_pipeline_matches_cycles_5_2_1();

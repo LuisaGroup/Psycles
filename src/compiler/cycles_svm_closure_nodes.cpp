@@ -141,6 +141,18 @@ sheen_distribution(const GraphNode *node) noexcept {
 }
 
 [[nodiscard]] std::optional<ClosureType>
+toon_component(const GraphNode *node) noexcept {
+  const auto component = string_property(node, "Component");
+  if (component == "DIFFUSE") {
+    return CLOSURE_BSDF_DIFFUSE_TOON_ID;
+  }
+  if (component == "GLOSSY") {
+    return CLOSURE_BSDF_GLOSSY_TOON_ID;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<ClosureType>
 volume_phase(const GraphNode *node) noexcept {
   const auto phase = string_property(node, "Phase");
   if (phase == "HENYEY_GREENSTEIN") {
@@ -305,6 +317,25 @@ public:
         SVMNodeSimpleBsdfData{.param1 = compiler.input_float("Roughness"),
                               .normal_offset = compiler.input_link("Normal"),
                               ._pad = {0u, 0u, 0u}});
+  }
+};
+
+class ToonBsdfNode final : public BsdfNode {
+public:
+  ToonBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_DIFFUSE_TOON_ID} {}
+
+  void compile(SVMCompiler &compiler) override {
+    const auto component = toon_component(this);
+    if (!component) {
+      compiler.fail("Cycles Toon BSDF component is not migrated exactly");
+      return;
+    }
+    compile_bsdf(
+        compiler, *component,
+        SVMNodeToonBsdfData{.size = compiler.input_float("Size"),
+                            .smooth = compiler.input_float("Smooth"),
+                            .normal_offset = compiler.input_link("Normal"),
+                            ._pad = {0u, 0u, 0u}});
   }
 };
 
@@ -876,6 +907,9 @@ make_closure_graph_node(std::string_view type) {
   }
   if (type == node_type::sheen_bsdf) {
     return std::make_unique<SheenBsdfNode>();
+  }
+  if (type == node_type::toon_bsdf) {
+    return std::make_unique<ToonBsdfNode>();
   }
   if (type == node_type::emission) {
     return std::make_unique<EmissionNode>();

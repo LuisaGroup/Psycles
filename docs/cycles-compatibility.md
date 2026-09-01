@@ -18,6 +18,15 @@ coverage and post-population tagged-sum consumption gaps. It records the exact
 comparison, rejected family-decoder experiments, and the normalized 2.676x HIP
 `shade_surface` gap.
 
+The [Cycles 5.2 SVM closure-core checkpoint](validation/2026-09-02/cycles-5.2-svm-closure-core/README.md)
+copies the closure allocator and typed setup transitions into the replacement
+Luisa stack/PC interpreter. Its current standalone families include BSSRDF,
+Sheen/Velvet, and Diffuse/Glossy Toon; Toon preserves the three-word payload,
+component tag, normal, allocation ordering, and reflective-caustics predicate.
+Exact compiler words and runtime state pass on fallback, HIP, and strict native
+XIR-to-SPIR-V Vulkan. This is a staged interpreter checkpoint, not yet a claim
+that production shade-surface or Toon evaluation/sampling has switched over.
+
 The [packed typed surface-operand checkpoint](validation/2026-08-27/surface-value-packed-operands/README.md)
 encodes two complete typed graph edges per 32-bit word and embeds operands for
 zero-, one-, and two-input nodes. It formally preserves the topological typed

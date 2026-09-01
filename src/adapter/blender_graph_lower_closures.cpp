@@ -433,6 +433,36 @@ public:
                 .ref = {.node = id, .socket = "Closure"},
                 .type = SocketType::closure});
         }
+        if (type == "BSDF_TOON") {
+            const auto id = context.graph().add_node(
+                compiler::node_type::toon_bsdf,
+                node_name);
+            static_cast<void>(context.graph().set_property(
+                id,
+                "Component",
+                SocketValue::string(context.node_property_text(
+                    node, "component", "DIFFUSE"))));
+            static_cast<void>(context.bind(
+                id, "Color", node, "Color", SocketType::color));
+            static_cast<void>(context.bind(
+                id, "Size", node, "Size", SocketType::floating));
+            static_cast<void>(context.bind(
+                id, "Smooth", node, "Smooth", SocketType::floating));
+            if (context.raw_input(node, "Normal") != nullptr) {
+                static_cast<void>(context.bind(
+                    id, "Normal", node, "Normal", SocketType::normal));
+            } else {
+                static_cast<void>(context.graph().connect(
+                    context.geometry_output(
+                        "Normal", SocketType::normal)
+                        .ref,
+                    id,
+                    "Normal"));
+            }
+            return finish({
+                .ref = {.node = id, .socket = "Closure"},
+                .type = SocketType::closure});
+        }
         if (type == "BSDF_HAIR") {
             const auto id = context.graph().add_node(
                 compiler::node_type::hair_bsdf,
