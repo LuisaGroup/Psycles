@@ -289,7 +289,11 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
 [[nodiscard]] GraphSocketType projected_input_type(
     std::string_view node, std::string_view input,
     GraphSocketType contract_type) noexcept {
-  if (node == node_type::ies_light && input == "Vector") {
+  if (input == "Vector" &&
+      (node == node_type::ies_light || node == node_type::wave_texture ||
+       node == node_type::magic_texture ||
+       node == node_type::checker_texture ||
+       node == node_type::brick_texture)) {
     return GraphSocketType::point;
   }
   return contract_type;

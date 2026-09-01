@@ -332,6 +332,26 @@ void eval_nodes(
           detail::node_tex_gradient(cursor, stack);
         };
       }
+      if (node_types_used[NODE_TEX_WAVE]) {
+        PSYCLES_SVM_CASE(NODE_TEX_WAVE) {
+          detail::node_tex_wave(cursor, stack);
+        };
+      }
+      if (node_types_used[NODE_TEX_MAGIC]) {
+        PSYCLES_SVM_CASE(NODE_TEX_MAGIC) {
+          detail::node_tex_magic(cursor, stack);
+        };
+      }
+      if (node_types_used[NODE_TEX_CHECKER]) {
+        PSYCLES_SVM_CASE(NODE_TEX_CHECKER) {
+          detail::node_tex_checker(cursor, stack);
+        };
+      }
+      if (node_types_used[NODE_TEX_BRICK]) {
+        PSYCLES_SVM_CASE(NODE_TEX_BRICK) {
+          detail::node_tex_brick(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_RGB_RAMP]) {
         PSYCLES_SVM_CASE(NODE_RGB_RAMP) {
           detail::node_rgb_ramp(cursor, stack);
