@@ -11,6 +11,7 @@
 #include "cycles_svm_geometry_nodes.h"
 #include "cycles_svm_image_nodes.h"
 #include "cycles_svm_info_nodes.h"
+#include "cycles_svm_ies_nodes.h"
 #include "cycles_svm_light_path_nodes.h"
 #include "cycles_svm_light_falloff_nodes.h"
 #include "cycles_svm_mapping_nodes.h"
@@ -742,16 +743,22 @@ public:
 
 class Float3ConvertNode final : public GraphNode {
 private:
-  [[nodiscard]] static bool inverse(std::string_view lhs,
-                                    std::string_view rhs) noexcept {
-    return (lhs == node_type::vector_to_color &&
-            rhs == node_type::color_to_vector) ||
-           (lhs == node_type::color_to_vector &&
-            rhs == node_type::vector_to_color) ||
-           (lhs == node_type::vector_to_normal &&
-            rhs == node_type::normal_to_vector) ||
-           (lhs == node_type::normal_to_vector &&
-            rhs == node_type::vector_to_normal);
+  [[nodiscard]] static bool is_float3(GraphSocketType type) noexcept {
+    return type == GraphSocketType::color ||
+           type == GraphSocketType::vector ||
+           type == GraphSocketType::normal || type == GraphSocketType::point;
+  }
+
+  [[nodiscard]] bool inverse(const GraphNode *previous) const noexcept {
+    if (previous == nullptr || previous->shader_node_type() != NODE_CONVERT ||
+        inputs.size() != 1u || outputs.size() != 1u ||
+        previous->inputs.size() != 1u || previous->outputs.size() != 1u) {
+      return false;
+    }
+    return is_float3(inputs.front().type) &&
+           is_float3(outputs.front().type) &&
+           previous->inputs.front().type == outputs.front().type &&
+           previous->outputs.front().type == inputs.front().type;
   }
 
 public:
@@ -791,8 +798,7 @@ public:
       if (value != nullptr) {
         folder.make_constant(*value);
       }
-    } else if (in->link != nullptr &&
-               inverse(type, in->link->parent->type)) {
+    } else if (in->link != nullptr && inverse(in->link->parent)) {
       auto *previous = in->link->parent;
       auto *previous_input = previous->inputs.empty()
                                  ? nullptr
@@ -801,6 +807,10 @@ public:
         folder.bypass(previous_input->link);
       }
     }
+  }
+
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_CONVERT;
   }
 };
 
@@ -1804,7 +1814,8 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   if (type == cycles_synthetic_mix_closure_weight) {
     return std::make_unique<MixClosureWeightNode>();
   }
-  if (type == node_type::vector_to_color ||
+  if (type == cycles_synthetic_float3_autoconvert ||
+      type == node_type::vector_to_color ||
       type == node_type::color_to_vector ||
       type == node_type::point_to_vector ||
       type == node_type::float3_to_vector ||
@@ -1882,6 +1893,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
     return node;
   }
   if (auto node = make_light_falloff_graph_node(type)) {
+    return node;
+  }
+  if (auto node = make_ies_graph_node(type)) {
     return node;
   }
   if (auto node = make_texture_coordinate_graph_node(type)) {

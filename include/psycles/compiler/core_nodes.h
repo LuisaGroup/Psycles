@@ -25,6 +25,7 @@ inline constexpr auto magic_texture = "psycles.texture.magic";
 inline constexpr auto wave_texture = "psycles.texture.wave";
 inline constexpr auto voronoi_texture = "psycles.texture.voronoi";
 inline constexpr auto gradient_texture = "psycles.texture.gradient";
+inline constexpr auto ies_light = "psycles.texture.ies";
 inline constexpr auto nishita_sky = "psycles.texture.nishita_sky";
 inline constexpr auto hosek_wilkie_sky =
     "psycles.texture.hosek_wilkie_sky";

@@ -207,6 +207,8 @@ void node_light_path(Cursor &cursor, Stack &stack,
                      std::uint32_t node_feature_mask) noexcept;
 void node_light_falloff(Cursor &cursor, Stack &stack,
                         const ShaderData &shader_data) noexcept;
+void node_ies(Cursor &cursor, Stack &stack,
+              const KernelGlobals &kernel_globals) noexcept;
 void node_math(Cursor &cursor, Stack &stack) noexcept;
 void node_hsv(Cursor &cursor, Stack &stack) noexcept;
 void node_gamma(Cursor &cursor, Stack &stack) noexcept;

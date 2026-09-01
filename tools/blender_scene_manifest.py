@@ -106,6 +106,42 @@ def _node_properties(node: Any) -> dict[str, Any]:
 
 def _node_special_data(node: Any) -> dict[str, Any]:
     result: dict[str, Any] = {}
+    if node.bl_idname == "ShaderNodeTexIES":
+        mode = getattr(node, "mode", "INTERNAL")
+        source = ""
+        available = True
+        content = b""
+        if mode == "INTERNAL":
+            text_block = getattr(node, "ies", None)
+            if text_block is not None:
+                source = text_block.name
+                # Cycles get_text_datablock_content() appends one LF for every
+                # TextLine, including Blender's final empty line. as_string()
+                # omits that extra LF and would change LightManager slot
+                # identity, so reconstruct the exact Cycles input instead.
+                content = "".join(
+                    line.body + "\n" for line in text_block.lines
+                ).encode("utf-8")
+            else:
+                available = False
+        else:
+            raw_path = getattr(node, "filepath", "")
+            library = getattr(getattr(node, "id_data", None), "library", None)
+            source = bpy.path.abspath(raw_path, library=library)
+            try:
+                content = pathlib.Path(source).read_bytes() if source else b""
+                available = bool(source)
+            except OSError:
+                available = False
+        # Preserve the exact Cycles input bytes: raw file bytes for EXTERNAL,
+        # and get_text_datablock_content semantics for INTERNAL. The exporter
+        # does not parse, sample, or bake the photometric profile.
+        result["ies"] = {
+            "mode": mode,
+            "source": source,
+            "available": available,
+            "content_bytes": list(content),
+        }
     if node.bl_idname == "ShaderNodeTexCoord":
         coordinate_object = getattr(node, "object", None)
         if coordinate_object is not None:

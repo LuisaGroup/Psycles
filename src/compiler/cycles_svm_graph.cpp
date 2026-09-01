@@ -240,6 +240,73 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
   return output;
 }
 
+[[nodiscard]] bool is_float3_socket(GraphSocketType type) noexcept {
+  return type == GraphSocketType::color || type == GraphSocketType::vector ||
+         type == GraphSocketType::normal || type == GraphSocketType::point;
+}
+
+[[nodiscard]] std::string_view float3_socket_name(
+    GraphSocketType type) noexcept {
+  switch (type) {
+    case GraphSocketType::color:
+      return "color";
+    case GraphSocketType::vector:
+      return "vector";
+    case GraphSocketType::normal:
+      return "normal";
+    case GraphSocketType::point:
+      return "point";
+    case GraphSocketType::floating:
+    case GraphSocketType::integer:
+    case GraphSocketType::closure:
+      return {};
+  }
+  return {};
+}
+
+[[nodiscard]] contract::SocketValue zero_float3_value(
+    GraphSocketType type) {
+  switch (type) {
+    case GraphSocketType::color:
+      return contract::SocketValue::color({0.0f, 0.0f, 0.0f});
+    case GraphSocketType::vector:
+      return contract::SocketValue::vector({0.0f, 0.0f, 0.0f});
+    case GraphSocketType::normal:
+      return contract::SocketValue::normal({0.0f, 0.0f, 0.0f});
+    case GraphSocketType::point:
+      return contract::SocketValue::point({0.0f, 0.0f, 0.0f});
+    case GraphSocketType::floating:
+    case GraphSocketType::integer:
+    case GraphSocketType::closure:
+      break;
+  }
+  std::abort();
+}
+
+// The contract graph uses a canonical VECTOR for Blender's generic Vector
+// sockets. Restore the precise Cycles ShaderInput declaration here, before
+// ShaderGraph::connect applies Cycles' automatic conversion rules.
+[[nodiscard]] GraphSocketType projected_input_type(
+    std::string_view node, std::string_view input,
+    GraphSocketType contract_type) noexcept {
+  if (node == node_type::ies_light && input == "Vector") {
+    return GraphSocketType::point;
+  }
+  return contract_type;
+}
+
+[[nodiscard]] std::optional<contract::SocketValue> projected_input_value(
+    std::optional<contract::SocketValue> value, GraphSocketType type) {
+  if (!value || value->type == contract::SocketType::point ||
+      type != GraphSocketType::point) {
+    return value;
+  }
+  if (const auto *vector = std::get_if<Vec3f>(&value->value)) {
+    return contract::SocketValue::point(*vector);
+  }
+  return value;
+}
+
 [[nodiscard]] std::uint16_t socket_flags(std::string_view node,
                                          std::string_view input) noexcept {
   // Direct projection of the SocketType::LINK_* flags declared by the
@@ -267,6 +334,9 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
     return graph_socket_link_tangent;
   }
   if (input == "Vector") {
+    if (node == node_type::ies_light) {
+      return graph_socket_link_texture_incoming;
+    }
     if (node == node_type::image_texture) {
       return graph_socket_link_texture_uv;
     }
@@ -328,6 +398,26 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
        .type = GraphSocketType::floating,
        .links = {}},
   };
+}
+
+[[nodiscard]] std::vector<GraphInput> incoming_transform_inputs() {
+  return {{.name = "Vector",
+           .type = GraphSocketType::vector,
+           .value = contract::SocketValue::vector({0.0f, 0.0f, 0.0f})}};
+}
+
+[[nodiscard]] std::vector<GraphOutput> incoming_transform_outputs() {
+  return {{.name = "Vector",
+           .type = GraphSocketType::vector,
+           .links = {}}};
+}
+
+[[nodiscard]] auto incoming_transform_properties() {
+  std::map<std::string, contract::SocketValue, std::less<>> properties;
+  properties.emplace("Type", contract::SocketValue::string("NORMAL"));
+  properties.emplace("Convert From", contract::SocketValue::string("WORLD"));
+  properties.emplace("Convert To", contract::SocketValue::string("OBJECT"));
+  return properties;
 }
 
 [[nodiscard]] std::vector<GraphInput> texture_coordinate_inputs() {
@@ -522,6 +612,92 @@ bool CyclesGraph::connect(GraphOutput *output, GraphInput *input) noexcept {
   return true;
 }
 
+bool CyclesGraph::connect_with_autoconvert(GraphOutput *output,
+                                           GraphInput *input) {
+  if (output == nullptr || input == nullptr || input->link != nullptr) {
+    return false;
+  }
+  if (output->type == input->type) {
+    return connect(output, input);
+  }
+  // ShaderGraph::connect inserts a ConvertNode for every non-closure type
+  // mismatch. Only use that source-level operation where projection has
+  // restored exact Cycles socket types; canonical contract sockets elsewhere
+  // must first be migrated explicitly instead of changing them by accident.
+  // The currently reachable mismatch is the float3 family, whose Cycles SVM
+  // conversion is a pure stack alias and emits no NODE_CONVERT.
+  if (!is_float3_socket(output->type) || !is_float3_socket(input->type)) {
+    return false;
+  }
+  const auto from_name = float3_socket_name(output->type);
+  const auto to_name = float3_socket_name(input->type);
+  auto *convert = add_node(
+      cycles_synthetic_float3_autoconvert,
+      "Convert " + std::string{from_name} + " to " + std::string{to_name},
+      {{.name = "value_" + std::string{from_name},
+        .type = output->type,
+        .value = zero_float3_value(output->type)}},
+      {{.name = "value_" + std::string{to_name},
+        .type = input->type,
+        .links = {}}},
+      GraphNodeSpecialType::autoconvert);
+  return connect(output, &convert->inputs.front()) &&
+         connect(&convert->outputs.front(), input);
+}
+
+void CyclesGraph::compose_float3_autoconverts() {
+  // The contract boundary canonicalizes Blender float3-family links through
+  // VECTOR. Once a precise Cycles target type is restored, a path
+  //
+  //   A -> VECTOR -> B
+  //
+  // consists only of identity maps on the three stored components. Its normal
+  // form is A -> B (or no Convert when A == B). Restrict composition to the
+  // AUTOCONVERT introduced by precise projection, so authored contract nodes
+  // keep their own source-level identity.
+  for (const auto &node_owner : _nodes) {
+    auto *node = node_owner.get();
+    if (node->special_type != GraphNodeSpecialType::autoconvert ||
+        node->inputs.size() != 1u || node->outputs.size() != 1u) {
+      continue;
+    }
+    auto *input = &node->inputs.front();
+    auto *output = &node->outputs.front();
+    while (input->link != nullptr) {
+      auto *previous = input->link->parent;
+      if (previous == nullptr ||
+          previous->shader_node_type() != NODE_CONVERT ||
+          previous->inputs.size() != 1u || previous->outputs.size() != 1u ||
+          previous->inputs.front().link == nullptr ||
+          !is_float3_socket(previous->inputs.front().type) ||
+          !is_float3_socket(previous->outputs.front().type) ||
+          previous->outputs.front().type != input->type) {
+        break;
+      }
+
+      auto *source = previous->inputs.front().link;
+      const auto source_type = previous->inputs.front().type;
+      disconnect(input);
+      if (source_type == output->type) {
+        relink(node, output, source);
+        break;
+      }
+
+      const auto source_name = float3_socket_name(source_type);
+      const auto target_name = float3_socket_name(output->type);
+      input->name = "value_" + std::string{source_name};
+      input->type = source_type;
+      input->value = zero_float3_value(source_type);
+      node->label = "Convert " + std::string{source_name} + " to " +
+                    std::string{target_name};
+      if (!connect(source, input)) {
+        reject("Cycles float3 autoconvert composition failed");
+        return;
+      }
+    }
+  }
+}
+
 void CyclesGraph::disconnect(GraphInput *input) noexcept {
   if (input == nullptr || input->link == nullptr) {
     return;
@@ -580,12 +756,15 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
         return graph;
       }
       const auto binding = source.inputs.find(socket.name);
+      const auto projected_type =
+          projected_input_type(source.type, socket.name, *type);
+      auto value = binding == source.inputs.end() ? std::nullopt
+                                                  : binding->second.value;
       inputs.emplace_back(GraphInput{
           .name = std::string{projected_input_name(source.type, socket.name)},
-          .type = *type,
+          .type = projected_type,
           .flags = socket_flags(source.type, socket.name),
-          .value = binding == source.inputs.end() ? std::nullopt
-                                                  : binding->second.value,
+          .value = projected_input_value(std::move(value), projected_type),
       });
     }
     if (source.type == node_type::bump) {
@@ -678,7 +857,7 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
           projected_input_name(source.type, name));
       auto *output = producer_iter->second->output(projected_output_name(
           producer_iter->second->type, binding.source->socket));
-      if (!graph.connect(output, input)) {
+      if (!graph.connect_with_autoconvert(output, input)) {
         graph.reject("Cycles SVM could not project graph link into " +
                      destination->type + "." + name);
         return graph;
@@ -722,6 +901,7 @@ CyclesGraph CyclesGraph::project(const ShaderProgram &shader) {
   }
   graph.expand();
   graph.default_inputs();
+  graph.compose_float3_autoconverts();
   graph.clean();
   graph.refine_bump_nodes();
   if (!graph.valid()) {
@@ -903,6 +1083,7 @@ void CyclesGraph::refine_bump_nodes() {
 void CyclesGraph::default_inputs() {
   GraphNode *geometry = nullptr;
   GraphNode *texture_coordinate = nullptr;
+  GraphNode *incoming_transform = nullptr;
 
   // The loop intentionally observes appended nodes, matching Cycles'
   // index-based ShaderGraph::default_inputs traversal.
@@ -931,8 +1112,29 @@ void CyclesGraph::default_inputs() {
             : (input.flags & graph_socket_link_texture_normal) != 0u ? "Normal"
                                                                      : "UV");
         static_cast<void>(connect(output, &input));
-      } else if ((input.flags & (graph_socket_link_texture_incoming |
-                                 graph_socket_link_incoming |
+      } else if ((input.flags & graph_socket_link_texture_incoming) != 0u) {
+        if (geometry == nullptr) {
+          geometry = add_node(node_type::geometry, "Geometry",
+                              geometry_inputs(), geometry_outputs(),
+                              GraphNodeSpecialType::geometry);
+        }
+        if (incoming_transform == nullptr) {
+          incoming_transform = add_node(
+              node_type::vector_transform, "Vector Transform",
+              incoming_transform_inputs(), incoming_transform_outputs(),
+              GraphNodeSpecialType::none, incoming_transform_properties());
+          if (!connect(geometry->output("Incoming"),
+                       incoming_transform->input("Vector"))) {
+            reject("Cycles texture Incoming transform could not be connected");
+            return;
+          }
+        }
+        if (!connect_with_autoconvert(
+                incoming_transform->output("Vector"), &input)) {
+          reject("Cycles transformed texture Incoming could not be connected");
+          return;
+        }
+      } else if ((input.flags & (graph_socket_link_incoming |
                                  graph_socket_link_normal |
                                  graph_socket_link_position |
                                  graph_socket_link_tangent)) != 0u) {

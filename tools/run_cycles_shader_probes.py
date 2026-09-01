@@ -70,6 +70,8 @@ _ALL_PROBES = (
     "image_texture_node_mapping",
     "image_texture_sampling_modes",
     "image_texture_projection_modes",
+    "ies_light_matrix",
+    "ies_light_values",
     "indirect_diffuse",
     "indirect_principled",
     "info_nodes_matrix",

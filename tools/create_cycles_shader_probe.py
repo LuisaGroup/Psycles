@@ -33,6 +33,7 @@ from cycles_shader_probe import (  # noqa: E402
     environment_inputs,
     geometry_inputs,
     hair_closures,
+    ies_inputs,
     lights_camera,
     magic_inputs,
     metallic_closures,
@@ -139,6 +140,8 @@ _PROBES: dict[str, Callable[[Any], None]] = {
     ),
     "image_texture_sampling_modes": texture_inputs._image_texture_sampling_modes,
     "image_texture_projection_modes": texture_inputs._image_texture_projection_modes,
+    "ies_light_matrix": ies_inputs._ies_light_matrix,
+    "ies_light_values": ies_inputs._ies_light_values,
     "indirect_diffuse": closures._indirect_diffuse,
     "indirect_principled": closures._indirect_principled,
     "integrator_clamp_direct": lights_camera._integrator_clamp_direct,
@@ -319,6 +322,10 @@ def _main() -> None:
     scene.cycles.transparent_max_bounces = 8
     scene.cycles.use_light_tree = False
     scene["psycles_probe"] = probe_name
+    # Resource-backed probes use this only while constructing the scene. Keep
+    # the probe callback signature uniform and make relative Blender paths
+    # resolve against the eventual .blend rather than the current directory.
+    scene["psycles_probe_output"] = str(output)
     support._camera(scene)
     if not probe_name.startswith("background_world"):
         support._world(scene, (0.0, 0.0, 0.0, 1.0), 0.0)

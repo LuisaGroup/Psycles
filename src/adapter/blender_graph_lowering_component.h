@@ -173,7 +173,7 @@ void bind_blender_texture_vector(
     BlenderNodeLoweringContext &context,
     contract::NodeId destination,
     yyjson_val *raw_node,
-    TypedOutput implicit_coordinates);
+    std::optional<TypedOutput> implicit_coordinates);
 
 [[nodiscard]] std::unique_ptr<BlenderNodeLoweringComponent>
 make_blender_input_lowering_component();
