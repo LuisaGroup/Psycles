@@ -35,6 +35,36 @@ def _linked_float(tree: Any, name: str, value: float) -> Any:
     return _output(node, "Value")
 
 
+def _standalone_hair_reflection_svm_oracle(scene: Any) -> None:
+    """Keep Blender 5.2's legacy Hair Reflection socket defaults intact."""
+    name = "Standalone Hair Reflection SVM Oracle"
+    material, tree, output = _material(name)
+    closure = tree.nodes.new("ShaderNodeBsdfHair")
+    closure.name = name
+    closure.component = "Reflection"
+    tree.links.new(_output(closure, "BSDF"), _input(output, "Surface"))
+    _material_matrix(scene, [material], columns=1, rows=1, name=name)
+
+
+def _standalone_hair_transmission_svm_oracle(scene: Any) -> None:
+    """Exercise both roughness clamps, signed offset, and linked Tangent."""
+    name = "Standalone Hair Transmission SVM Oracle"
+    material, tree, output = _material(name)
+    closure = tree.nodes.new("ShaderNodeBsdfHair")
+    closure.name = name
+    closure.component = "Transmission"
+    _input(closure, "Color").default_value = (0.83, 0.17, 0.52, 1.0)
+    _input(closure, "Offset").default_value = 0.27
+    _input(closure, "RoughnessU").default_value = 0.0002
+    _input(closure, "RoughnessV").default_value = 1.4
+    tree.links.new(
+        _linked_vector(tree, "Authored Hair Tangent", (0.3, 0.4, 0.0)),
+        _input(closure, "Tangent"),
+    )
+    tree.links.new(_output(closure, "BSDF"), _input(output, "Surface"))
+    _material_matrix(scene, [material], columns=1, rows=1, name=name)
+
+
 def _hair_bsdf_matrix(scene: Any) -> None:
     """Exercise both unmodified Cycles 5.2 legacy Hair closures.
 

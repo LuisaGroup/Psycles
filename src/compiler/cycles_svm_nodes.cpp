@@ -1810,9 +1810,6 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   if (auto node = make_closure_graph_node(type)) {
     return node;
   }
-  if (type == node_type::hair_bsdf) {
-    return std::make_unique<UnsupportedBsdfNode>();
-  }
   if (type == node_type::null_closure || type == node_type::null_volume) {
     return std::make_unique<NullNode>();
   }

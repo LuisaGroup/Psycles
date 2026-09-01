@@ -238,6 +238,8 @@ def _main() -> None:
         "standalone_sheen_microfiber_svm_oracle",
         "standalone_ray_portal_authored_svm_oracle",
         "standalone_ray_portal_default_svm_oracle",
+        "standalone_hair_reflection_svm_oracle",
+        "standalone_hair_transmission_svm_oracle",
         "standalone_toon_diffuse_svm_oracle",
         "standalone_toon_glossy_svm_oracle",
         "subsurface_burley_svm_oracle",
@@ -473,6 +475,81 @@ def _main() -> None:
             raise AssertionError(
                 "Ray Portal oracle was altered or pre-baked during export: "
                 f"{node}"
+            )
+
+    hair_oracles = (
+        (
+            "standalone_hair_reflection_svm_oracle",
+            "Standalone Hair Reflection SVM Oracle",
+            "Reflection",
+            (0.8, 0.8, 0.8, 1.0),
+            0.0,
+            0.1,
+            1.0,
+            False,
+        ),
+        (
+            "standalone_hair_transmission_svm_oracle",
+            "Standalone Hair Transmission SVM Oracle",
+            "Transmission",
+            (0.83, 0.17, 0.52, 1.0),
+            0.27,
+            0.0002,
+            1.4,
+            True,
+        ),
+    )
+    for probe, *_unused in hair_oracles:
+        probes["_PROBES"][probe](scene)
+    with tempfile.TemporaryDirectory(
+        prefix="psycles-blender-hair-oracle-"
+    ) as temporary:
+        payload = _export(exporter, pathlib.Path(temporary))
+    materials = {
+        material["name"]: material for material in payload["materials"]
+    }
+    for (
+        _probe,
+        name,
+        component,
+        color,
+        offset,
+        roughness_u,
+        roughness_v,
+        tangent_linked,
+    ) in hair_oracles:
+        material = materials.get(name)
+        if material is None:
+            raise AssertionError(f"Hair oracle material is absent: {name}")
+        nodes = [
+            node
+            for node in material["node_tree"]["nodes"]
+            if node["type"] == "BSDF_HAIR"
+        ]
+        if len(nodes) != 1:
+            raise AssertionError(
+                f"Hair oracle did not export one raw BSDF_HAIR: {name}"
+            )
+        node = nodes[0]
+        inputs = {entry["identifier"]: entry for entry in node["inputs"]}
+        if (
+            node["properties"].get("component") != component
+            or any(
+                abs(float(actual) - expected) > 1.0e-6
+                for actual, expected in zip(
+                    inputs["Color"]["default"], color, strict=True
+                )
+            )
+            or abs(float(inputs["Offset"]["default"]) - offset) > 1.0e-6
+            or abs(float(inputs["RoughnessU"]["default"]) - roughness_u)
+            > 1.0e-6
+            or abs(float(inputs["RoughnessV"]["default"]) - roughness_v)
+            > 1.0e-6
+            or bool(inputs["Tangent"]["linked"]) != tangent_linked
+            or node["outputs"][0]["identifier"] != "BSDF"
+        ):
+            raise AssertionError(
+                f"Hair oracle was altered or pre-baked during export: {node}"
             )
 
     print("Psycles Blender render-settings regression passed")
