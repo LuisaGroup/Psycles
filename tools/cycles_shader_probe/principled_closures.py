@@ -246,3 +246,42 @@ def _principled_coat_svm_oracle(scene: Any) -> None:
         rows=1,
         name="Principled Coat SVM Oracle",
     )
+
+
+def _principled_metallic_svm_oracle(scene: Any) -> None:
+    """Isolate Cycles' ordered Principled metallic transition.
+
+    Sheen, coat, transmission, and subsurface are zero. The remaining
+    transparency, emission, dielectric, and diffuse transitions make the
+    trace expose that Metallic allocates an F82 GGX closure and attenuates
+    only the lower BSDF components, independent of closure allocation.
+    Multi-GGX, anisotropy, rotation, and thin film keep every Metallic setup
+    branch live without introducing a second material representation.
+    """
+    material, tree, output = _material("Principled Metallic SVM Oracle")
+    principled = tree.nodes.new("ShaderNodeBsdfPrincipled")
+    principled.name = "Principled Metallic SVM Oracle"
+    principled.distribution = "MULTI_GGX"
+    _set_color(_input(principled, "Base Color"), (0.18, 0.55, 0.82))
+    _input(principled, "Metallic").default_value = 0.64
+    _input(principled, "Roughness").default_value = 0.47
+    _input(principled, "IOR").default_value = 1.37
+    _input(principled, "Alpha").default_value = 0.78
+    _set_color(_input(principled, "Specular Tint"), (0.72, 0.35, 0.91))
+    _input(principled, "Anisotropic").default_value = 0.38
+    _input(principled, "Anisotropic Rotation").default_value = 0.21
+    _set_color(_input(principled, "Emission Color"), (0.22, 0.07, 0.48))
+    _input(principled, "Emission Strength").default_value = 1.25
+    _input(principled, "Thin Film Thickness").default_value = 360.0
+    _input(principled, "Thin Film IOR").default_value = 1.52
+    tree.links.new(
+        _output(principled, "BSDF"),
+        _input(output, "Surface"),
+    )
+    _material_matrix(
+        scene,
+        [material],
+        columns=1,
+        rows=1,
+        name="Principled Metallic SVM Oracle",
+    )

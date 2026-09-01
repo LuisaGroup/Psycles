@@ -294,6 +294,9 @@ _CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
     "principled_coat_svm_oracle": (
         principled_closures._principled_coat_svm_oracle
     ),
+    "principled_metallic_svm_oracle": (
+        principled_closures._principled_metallic_svm_oracle
+    ),
     "principled_sheen_svm_oracle": (
         principled_closures._principled_sheen_svm_oracle
     ),

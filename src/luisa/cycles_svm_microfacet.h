@@ -45,6 +45,22 @@ bsdf_allocate(ShaderData &shader_data,
     luisa::compute::Expr<float> roughness,
     luisa::compute::Expr<float> ior) noexcept;
 
+/* Exact Cycles Principled Metallic F82-GGX transition. Distribution controls
+ * only the Multi-GGX energy-preservation branch; Cycles stores the resulting
+ * closure with the ordinary GGX runtime tag. */
+void principled_metallic_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    luisa::compute::Expr<luisa::float3> weight,
+    luisa::compute::Expr<luisa::float3> normal,
+    luisa::compute::Expr<luisa::float3> tangent,
+    luisa::compute::Expr<float> alpha_x,
+    luisa::compute::Expr<float> alpha_y,
+    luisa::compute::Expr<luisa::float3> base_color,
+    luisa::compute::Expr<luisa::float3> f82_tint,
+    luisa::compute::Expr<float> thin_film_thickness,
+    luisa::compute::Expr<float> thin_film_ior,
+    luisa::compute::Expr<bool> preserve_energy) noexcept;
+
 void glass_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
                  const PathState &path_state,
                  luisa::compute::Expr<std::uint32_t> input_type,

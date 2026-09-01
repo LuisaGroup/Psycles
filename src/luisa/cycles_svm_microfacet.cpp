@@ -536,6 +536,65 @@ Float3 principled_coat_setup(
     return layer_albedo;
 }
 
+void principled_metallic_setup(
+    const KernelGlobals &kernel_globals, ShaderData &shader_data,
+    Expr<luisa::float3> weight, Expr<luisa::float3> normal,
+    Expr<luisa::float3> tangent, Expr<float> alpha_x, Expr<float> alpha_y,
+    Expr<luisa::float3> base_color, Expr<luisa::float3> f82_tint,
+    Expr<float> thin_film_thickness, Expr<float> thin_film_ior,
+    Expr<bool> preserve_energy) noexcept {
+    auto &pool = *shader_data.closure;
+    const auto allocated = bsdf_allocate(shader_data, weight);
+    const auto extra_allocated = pool.allocate_extra(allocated, 1u);
+    $if (extra_allocated) {
+        MicrofacetParam microfacet{
+            .alpha_x = clamp(alpha_x, 0.0f, 1.0f),
+            .alpha_y = clamp(alpha_y, 0.0f, 1.0f),
+            .ior = 1.0f,
+            .energy_scale = 1.0f,
+            .fresnel_type =
+                static_cast<std::uint32_t>(MicrofacetFresnel::f82_tint),
+            .T = tangent};
+        const auto f0 = clamp(base_color, make_float3(0.0f),
+                              make_float3(1.0f));
+        const auto tint = clamp(f82_tint, make_float3(0.0f),
+                                make_float3(1.0f));
+        Float3 b;
+        $if (all(tint == make_float3(1.0f))) {
+            b = make_float3(0.0f);
+        }
+        $else { b = fresnel_f82_tint_b(f0, tint); };
+        const FresnelF82Tint fresnel{
+            .thin_film = {.thickness = thin_film_thickness,
+                          .ior = thin_film_ior},
+            .f0 = f0,
+            .b = b};
+
+        pool.set_normal(allocated.index, normal);
+        pool.set_type(allocated.index,
+                      static_cast<std::uint32_t>(
+                          CLOSURE_BSDF_MICROFACET_GGX_ID));
+        pool.set_fresnel_f82_tint(allocated.index, fresnel);
+        const auto albedo = f82_tint_albedo(
+            kernel_globals, shader_data.wi, normal, microfacet, fresnel);
+        const auto common = pool.common(allocated.index);
+        pool.set_sample_weight(allocated.index,
+                               common.sample_weight * average(albedo));
+        $if (preserve_energy) {
+            preserve_multi_ggx_reflection_energy(
+                kernel_globals, pool, allocated, shader_data.wi, normal,
+                microfacet, fresnel_f82_fss(fresnel.f0, fresnel.b));
+        };
+        pool.set_microfacet_param(allocated.index, microfacet);
+
+        UInt flags = shader_data_bsdf;
+        $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
+            flags |= shader_data_bsdf_has_eval;
+        };
+        shader_data.flag |= flags;
+    };
+}
+
 Float3
 maybe_ensure_valid_specular_reflection(const ShaderData &shader_data,
                                        Expr<luisa::float3> normal) noexcept {
