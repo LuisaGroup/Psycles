@@ -525,6 +525,8 @@ public:
   common(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] OrenNayarClosure
   oren_nayar(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] MicrofacetParam
+  microfacet_param(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetClosure
   microfacet(luisa::compute::Expr<std::uint32_t> index) const noexcept;
 };
