@@ -209,6 +209,7 @@ relocated from the original global offsets to its compact test buffer.
 | Principled Sheen | Transparent type 30, Sheen type 7, then Diffuse type 2; Sheen weight `(0.0003624241,0.0010147875,0.0006523633)` and sample weight `0.0006765249`; attenuated emission `(0.2077361,0.1038681,0.6232085)` |
 | Principled Coat | Transparent type 30, dielectric GGX type 12, then Diffuse type 2; Coat weight `(0.5166048,0.5166048,0.5166048)` and sample weight `0.01746508`; tinted Diffuse `(0.1952816,0.4025556,0.4595241)`; attenuated emission `(0.1637846,0.09181092,0.4318419)` |
 | Principled Metallic | Transparent type 30, F82 Metallic GGX type 12, dielectric GGX type 12, then Diffuse type 2; compensated Metallic weight `(0.4725275,0.4821480,0.4927247)` and sample weight `0.2328374`; lower Diffuse `(0.04782301,0.1461259,0.2178604)`; emission `(0.2145,0.06825,0.468)` precedes Metallic attenuation |
+| Principled thick Transmission | Transparent type 30, generalized-Schlick GGX Glass type 25, dielectric GGX type 12, then Diffuse type 2; compensated Glass weight `(0.5829386,0.5830691,0.5831698)` and sample weight `0.4619407`; lower Diffuse `(0.07780470,0.1383195,0.1966730)`; emission `(0.19278,0.10206,0.57834)` precedes Transmission attenuation |
 
 The Glass test additionally freezes the source-derived typed setup state:
 alpha, IOR, energy scale, tangent, generalized-Schlick discriminator, film
@@ -306,6 +307,10 @@ Artifact hashes:
 | Principled Metallic final SVM buffer | `d4b02bc187d9e54099022f2b3fa8335224ede707a46cdf079d2eccd29d6dceaa` |
 | Principled Metallic diagnostic path trace | `f68535b1f6d03500caf536f8dfbb92ee679a4b7c328cd05e0f8f17434a8aa204` |
 | Principled Metallic decoded diagnostic trace | `e32b254552aa84462f7a1344ccc6025604e7a85d764302ad75d21cdbc0bfe0f4` |
+| Principled thick Transmission oracle `.blend` | `b77342ce7398c25c171be6d1fd17d7665bc212dc3b6662dd6aa2b7d5f0bf2587` |
+| Principled thick Transmission final SVM buffer | `3f5712896bde0a228a8782ac81993f86b119a2f85c2160e3c729e0b413d8d38f` |
+| Principled thick Transmission diagnostic path trace | `792dac665596d76ce967441b568bf07a110c4902114a9c08ae77dfe0640807fa` |
+| Principled thick Transmission decoded diagnostic trace | `4787279961ebab12324d2926f63db3bce2679f6a3c904403732417387fbf7ea8` |
 
 No `.svm52` binary is checked in.
 
@@ -318,12 +323,13 @@ view does not turn the typed record into 44 unconditional device loads.
 
 The proved runtime subset preserves Cycles' layer order and implements alpha,
 Sheen LTC, Coat dielectric GGX and tint absorption, emission, anisotropic F82
-Metallic, anisotropic dielectric specular, Multi-GGX energy preservation,
-dielectric layer attenuation, and diffuse/Oren-Nayar. Transmission and
-subsurface take an explicit unsupported transition when their source-clamped
-weights are live; they are not silently approximated by the legacy surface
-program. Their nonzero transitions will be enabled only as the corresponding
-Cycles closure families are copied.
+Metallic, thick-walled generalized-Schlick GGX Transmission, anisotropic
+dielectric specular, Multi-GGX energy preservation, dielectric layer
+attenuation, and diffuse/Oren-Nayar. Thin Wall Transmission and subsurface
+take an explicit unsupported transition when their source-clamped weights are
+live; they are not silently approximated by the legacy surface program. Their
+nonzero transitions will be enabled only as the corresponding Cycles closure
+families are copied.
 
 The Sheen transition copies `bsdf_alloc_maybe_emission` rather than treating
 the layer as a color multiplier. On ordinary surface evaluation it appends a
@@ -352,6 +358,17 @@ disables reflective caustics and proves that no Metallic or dielectric record
 is allocated while Diffuse is still multiplied by `1 - metallic`; emission is
 unchanged because Cycles evaluates it before Metallic.
 
+The thick Transmission transition allocates one GGX Glass closure followed by
+its generalized-Schlick extra record. It copies Cycles' independent reflective
+and refractive caustics masks, reciprocal back-face bulk IOR and corresponding
+thin-film IOR adjustment, square-root transmission tint, and Multi-GGX energy
+preservation. The four-way caustics regression proves that either live lobe
+keeps the shared Glass closure, that each mask zeros only its own tint, and
+that disabling both lobes skips Glass allocation while still attenuating all
+lower layers by `1 - transmission_weight`. Thin Wall remains a distinct,
+explicitly unsupported transition rather than being approximated as thick
+glass.
+
 For the untouched Blender 5.2.1 Principled default, the external diagnostic
 trace records the following closure sequence at normal incidence. The new
 device regression checks these values with numerical tolerance rather than
@@ -379,6 +396,7 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_principled_sheen_tests \
            psycles_luisa_cycles_svm_principled_coat_tests \
            psycles_luisa_cycles_svm_principled_metallic_tests \
+           psycles_luisa_cycles_svm_principled_transmission_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_luisa_thin_film_fresnel_tests \
            psycles_luisa_thin_film_surface_tests
@@ -399,6 +417,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_principled_metallic_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_principled_transmission_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -406,12 +427,13 @@ ctest --test-dir build --output-on-failure -R \
 ```
 
 Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
-3/3, Principled Metallic 3/3, thin-film 6/6, and compiler 1/1 passed. The
+3/3, Principled Metallic 3/3, Principled thick Transmission 3/3, thin-film
+6/6, and compiler 1/1 passed. The
 compiler test
 locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 476/476 tests in 13.58 seconds. The Vulkan test
+expanded checkpoint passed 479/479 tests in 14.37 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.

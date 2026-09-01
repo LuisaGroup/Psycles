@@ -253,18 +253,22 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
   Float metallic = 0.0f;
   Float transmission_weight = 0.0f;
   Float subsurface_weight = 0.0f;
+  Int thin_wall = 0;
   UInt distribution = 0u;
   if (evaluate_bsdf) {
     metallic = clamp(data.metallic(stack), 0.0f, 1.0f);
     transmission_weight = clamp(data.transmission_weight(stack), 0.0f, 1.0f);
     subsurface_weight = clamp(data.subsurface_weight(stack), 0.0f, 1.0f);
+    thin_wall = data.thin_wall(stack);
     distribution = data.distribution();
     const Bool valid_distribution =
         (distribution ==
          static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
         (distribution == static_cast<std::uint32_t>(
                              CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
-    subset_supported &= (transmission_weight <= CLOSURE_WEIGHT_CUTOFF) &
+    const Bool supported_transmission =
+        (transmission_weight <= CLOSURE_WEIGHT_CUTOFF) | (thin_wall == 0);
+    subset_supported &= supported_transmission &
                         (subsurface_weight <= CLOSURE_WEIGHT_CUTOFF) &
                         valid_distribution;
   }
@@ -273,6 +277,8 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
       (path_state.visibility & path_ray_visibility_diffuse) != 0u;
   const Bool reflective_caustics =
       kernel_globals.caustics_reflective() | !diffuse_visibility;
+  const Bool refractive_caustics =
+      kernel_globals.caustics_refractive() | !diffuse_visibility;
 
   $if(subset_supported) {
     const auto normal_offsets = data.normal_offsets();
@@ -346,6 +352,8 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
 
     if (evaluate_bsdf) {
       const auto base_color = max(data.base_color(stack), make_float3(0.0f));
+      const auto clamped_base_color =
+          min(base_color, make_float3(1.0f));
       const auto ior = max(data.ior(stack), 1.0e-5f);
       const auto roughness = clamp(data.roughness(stack), 0.0f, 1.0f);
       const auto valid_reflection_normal =
@@ -389,7 +397,21 @@ void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
         weight *= 1.0f - metallic;
       };
 
-      /* Transmission remains zero throughout the current proved subset. */
+      /* Thick-walled Transmission component. Thin Wall remains an explicit
+       * unsupported transition until its two-lobe setup is copied. */
+      $if (transmission_weight > CLOSURE_WEIGHT_CUTOFF) {
+        $if (reflective_caustics | refractive_caustics) {
+          principled_transmission_setup(
+              kernel_globals, shader_data, transmission_weight * weight,
+              valid_reflection_normal, roughness, ior, reflective_caustics,
+              refractive_caustics, specular_tint,
+              sqrt(clamped_base_color), thin_film_thickness, thin_film_ior,
+              distribution == static_cast<std::uint32_t>(
+                                  CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
+        };
+        weight *= 1.0f - transmission_weight;
+      };
+
       const auto specular_ior_level = max(data.specular_ior_level(stack), 0.0f);
       Float eta = ior;
       Float f0 = f0_from_ior(eta);
