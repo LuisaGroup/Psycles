@@ -1643,9 +1643,12 @@ shade-surface.
 
 This checkpoint establishes ordinary and extra closure allocation, the copied
 closure population/setup families, their direct scattering functions, and the
-unified Cycles `bsdf.h` consumer dispatch inside the exact interpreter.
-Production still calls the old custom `SurfaceProgram` path. The next required
-structural step is to route shade-surface through this retained Cycles SVM
-state and then delete the obsolete route after whole-program equivalence is
-proved. The Cycles-style global shader linker is already staged, but this
-document makes no production-render parity or full-scene performance claim.
+unified Cycles `bsdf.h` consumer dispatch inside the exact interpreter. The
+subsequent `cycles-5.2-svm-surface-shader` checkpoint copies the collection
+selection and one-sample-model fold above this dispatch. Production still
+calls the old custom `SurfaceProgram` path. The next required structural step
+is the scene-backed `KernelGlobals` adapter and explicit shade-surface route
+switch, followed by deletion of the obsolete route after whole-program
+equivalence is proved. The Cycles-style global shader linker is already
+staged, but this document makes no production-render parity or full-scene
+performance claim.
