@@ -27,6 +27,11 @@ struct CosineHemisphereSample {
     luisa::compute::Float pdf;
 };
 
+struct UniformHemisphereSample {
+    luisa::compute::Float3 direction;
+    luisa::compute::Float pdf;
+};
+
 struct UniformConeSample {
     luisa::compute::Float3 direction;
     luisa::compute::Float cosine;
@@ -143,6 +148,23 @@ one_minus_cosine_from_angle(luisa::compute::Float angle) noexcept {
     return {.direction = disk.x * basis.tangent +
                          disk.y * basis.bitangent + cosine * normal,
         .pdf = cosine * inverse_pi};
+}
+
+// Cycles' uniform-hemisphere map is not the usual polar parameterization.
+// It lifts the same concentric disk sample with z = 1 - r^2 and rescales the
+// disk by sqrt(z + 1). This exact square-to-direction mapping is observable
+// through the renderer's correlated RNG dimensions.
+[[nodiscard]] inline UniformHemisphereSample sample_uniform_hemisphere(
+    luisa::compute::Float3 normal,
+    luisa::compute::Float2 random) noexcept {
+    using namespace luisa::compute;
+    auto disk = sample_uniform_disk(random);
+    const auto z = 1.0f - dot(disk, disk);
+    disk *= sqrt(max(z + 1.0f, 0.0f));
+    const auto basis = make_orthonormals(normal);
+    return {.direction = disk.x * basis.tangent +
+                         disk.y * basis.bitangent + z * normal,
+        .pdf = inverse_two_pi};
 }
 
 // Isotropic GGX visible-normal sampling is also a deterministic sample
