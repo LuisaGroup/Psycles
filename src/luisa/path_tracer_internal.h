@@ -14,6 +14,7 @@
 #include <psycles/luisa/volume_majorant_hierarchy.h>
 
 #include "path_kernel_executor.h"
+#include "cycles_svm_scene_image.h"
 #include "path_tracer_types.h"
 #include "path_tracer_volume_metadata.h"
 #include "surface_math_constants.h"
@@ -466,8 +467,11 @@ struct CyclesSvmRuntime {
     compiler::cycles_svm::CompiledShaderTable compilation;
     std::map<contract::MaterialId, std::uint32_t>
         material_shader_indices;
+    luisa::vector<CyclesSvmImageBindingGpu> image_bindings;
     std::optional<Buffer<luisa::uint>> word_buffer;
     std::optional<Buffer<float>> ies_buffer;
+    std::optional<Buffer<CyclesSvmImageBindingGpu>>
+        image_binding_buffer;
 };
 
 struct LuisaSceneData {

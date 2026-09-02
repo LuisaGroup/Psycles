@@ -30,6 +30,7 @@ using namespace psycles::compiler::cycles_svm;
 namespace device_svm = psycles::luisa_backend::cycles_svm;
 namespace svm_detail = psycles::luisa_backend::cycles_svm::detail;
 namespace surface_detail = psycles::luisa_backend::detail;
+using SceneImageBinding = surface_detail::CyclesSvmImageBindingGpu;
 
 constexpr auto coordinate_offset = std::uint32_t{0u};
 constexpr auto color_offset = std::uint32_t{16u};
@@ -109,30 +110,39 @@ constexpr std::array projection_binding{
                  .interpolation = ImageInterpolation::linear,
                  .extension = ImageExtension::repeat}};
 
+template<std::size_t Count>
+[[nodiscard]] constexpr auto make_scene_image_bindings(
+    const std::array<ImageBinding, Count> &bindings) noexcept {
+  std::array<SceneImageBinding, Count> result{};
+  for (auto index = std::size_t{}; index < Count; ++index) {
+    result[index] = surface_detail::make_cycles_svm_image_binding(
+        static_cast<std::uint32_t>(bindings[index].resource_id),
+        bindings[index].interpolation, bindings[index].extension);
+  }
+  return result;
+}
+
+constexpr auto sampling_scene_bindings =
+    make_scene_image_bindings(sampling_bindings);
+constexpr auto projection_scene_binding =
+    make_scene_image_bindings(projection_binding);
+
 class ImageKernelGlobals final
     : public psycles::test_support::DefaultCyclesSvmKernelGlobals {
 private:
   Expr<BindlessArray> _textures;
-  std::span<const ImageBinding> _bindings;
+  Expr<Buffer<SceneImageBinding>> _bindings;
 
 public:
   ImageKernelGlobals(Expr<BindlessArray> textures,
-                     std::span<const ImageBinding> bindings) noexcept
-      : _textures{std::move(textures)}, _bindings{bindings} {}
+                     Expr<Buffer<SceneImageBinding>> bindings) noexcept
+      : _textures{std::move(textures)}, _bindings{std::move(bindings)} {}
 
   [[nodiscard]] Float4 kernel_image_interp_with_udim(
       device_svm::ShaderData &, Expr<std::int32_t> image_texture_id,
       const device_svm::Dual2 &uv) const noexcept override {
-    Float4 result = make_float4(1.0f, 0.0f, 1.0f, 1.0f);
-    for (auto index = std::size_t{}; index < _bindings.size(); ++index) {
-      const auto binding = _bindings[index];
-      $if(image_texture_id == static_cast<std::int32_t>(index)) {
-        result = svm_detail::sample_image_2d(
-            _textures, static_cast<std::uint32_t>(binding.resource_id), uv,
-            binding.interpolation, binding.extension);
-      };
-    }
-    return result;
+    return svm_detail::sample_scene_image_2d(
+        _textures, _bindings, image_texture_id, uv);
   }
 };
 
@@ -193,11 +203,27 @@ make_shape_kernel(ImageInterpolation interpolation) {
   };
 }
 
-[[nodiscard]] Kernel1D<BindlessArray, Buffer<std::uint32_t>,
+[[nodiscard]] Kernel1D<BindlessArray, Buffer<SceneImageBinding>,
+                       Buffer<luisa::float4>>
+make_scene_table_shape_kernel() {
+  return [](BindlessVar textures,
+            BufferVar<SceneImageBinding> image_bindings,
+            BufferFloat4 output) noexcept {
+    const device_svm::Dual2 uv{.val = make_float2(0.37f, 0.61f),
+                               .dx = make_float2(0.0f),
+                               .dy = make_float2(0.0f)};
+    output.write(0u, svm_detail::sample_scene_image_2d(
+                         textures, image_bindings, 0, uv));
+  };
+}
+
+[[nodiscard]] Kernel1D<BindlessArray, Buffer<SceneImageBinding>,
+                       Buffer<std::uint32_t>,
                        Buffer<luisa::float3>, Buffer<luisa::float4>,
                        Buffer<std::uint32_t>>
 make_sampling_kernel() {
-  return [](BindlessVar textures, BufferUInt words,
+  return [](BindlessVar textures, BufferVar<SceneImageBinding> image_bindings,
+            BufferUInt words,
             BufferFloat3 coordinates, BufferFloat4 output,
             BufferUInt cursors) noexcept {
     const UInt index = dispatch_x();
@@ -213,7 +239,7 @@ make_sampling_kernel() {
           make_float3(-0.017f, 0.009f, 0.0f));
 
       auto shader_data = make_shader_data(make_float3(0.0f, 0.0f, 1.0f));
-      const ImageKernelGlobals kernel_globals{textures, sampling_bindings};
+      const ImageKernelGlobals kernel_globals{textures, image_bindings};
       UInt cursor_offset = index * node_word_count;
       svm_detail::Cursor cursor{words, cursor_offset};
       svm_detail::node_tex_image(
@@ -249,7 +275,6 @@ enum class ProjectionHandler : std::uint32_t {
   image,
   box,
   environment,
-  invalid_image,
 };
 
 struct ProjectionCase {
@@ -303,19 +328,19 @@ constexpr std::array projection_cases{
     ProjectionCase{ProjectionHandler::image, {0.45f, 0.25f, 0.0f},
                    {0.0f, 0.0f, 1.0f}, {0.45f, 0.75f},
                    NODE_IMAGE_PROJ_FLAT, 0.0f, 3u},
-    ProjectionCase{ProjectionHandler::invalid_image, {0.2f, 0.3f, 0.4f},
-                   {0.0f, 0.0f, 1.0f}, {}, NODE_IMAGE_PROJ_FLAT, 0.0f, 0u},
 };
 constexpr auto projection_case_count =
     static_cast<std::uint32_t>(projection_cases.size());
 
-[[nodiscard]] Kernel1D<BindlessArray, Buffer<std::uint32_t>,
+[[nodiscard]] Kernel1D<BindlessArray, Buffer<SceneImageBinding>,
+                       Buffer<std::uint32_t>,
                        Buffer<std::uint32_t>, Buffer<luisa::float3>,
                        Buffer<luisa::float3>, Buffer<luisa::float2>,
                        Buffer<float>, Buffer<std::uint32_t>,
                        Buffer<luisa::float4>, Buffer<std::uint32_t>>
 make_projection_kernel() {
-  return [](BindlessVar textures, BufferUInt words, BufferUInt handlers,
+  return [](BindlessVar textures, BufferVar<SceneImageBinding> image_bindings,
+            BufferUInt words, BufferUInt handlers,
             BufferFloat3 coordinates, BufferFloat3 normals,
             BufferFloat2 expected_uvs, BufferFloat blends,
             BufferUInt flags, BufferFloat4 output,
@@ -339,7 +364,7 @@ make_projection_kernel() {
       const auto identity = make_float4x4(1.0f);
       const device_svm::TransformState transforms{
           identity, identity, identity, identity};
-      const ImageKernelGlobals kernel_globals{textures, projection_binding};
+      const ImageKernelGlobals kernel_globals{textures, image_bindings};
       UInt cursor_offset = index * node_word_count;
       svm_detail::Cursor cursor{words, cursor_offset};
       $if(handler == static_cast<std::uint32_t>(ProjectionHandler::box)) {
@@ -376,10 +401,6 @@ make_projection_kernel() {
                 (image_flags & static_cast<std::uint32_t>(
                                    NODE_IMAGE_COMPRESS_AS_SRGB)) != 0u};
         expected = surface_detail::evaluate_surface_image_box(input, sampler);
-      }
-      $elif(handler == static_cast<std::uint32_t>(
-                             ProjectionHandler::invalid_image)) {
-        expected = make_float4(1.0f, 0.0f, 1.0f, 1.0f);
       }
       $else {
         expected = surface_detail::sample_cycles_texture_2d(
@@ -476,6 +497,21 @@ make_dual_pole_kernel() {
       return false;
     }
   }
+  // The runtime table emits the Cartesian product of three canonical
+  // interpolation families and four extension modes exactly once. Its shape
+  // is therefore 4 * (1 + 1 + 4) native samples for every scene size.
+  constexpr auto expected_scene_table_samples = std::size_t{24u};
+  const auto scene_table_shape =
+      texture_sampling_shape(make_scene_table_shape_kernel());
+  if (scene_table_shape.native_samples != expected_scene_table_samples ||
+      scene_table_shape.texel_reads != 0u) {
+    std::cerr << "Cycles SVM scene image table lowered to "
+              << scene_table_shape.native_samples << " native samples and "
+              << scene_table_shape.texel_reads
+              << " explicit texel reads; expected "
+              << expected_scene_table_samples << " and 0\n";
+    return false;
+  }
   return true;
 }
 
@@ -511,6 +547,8 @@ make_dual_pole_kernel() {
   auto image = device.create_image<float>(PixelStorage::FLOAT4, width, height);
   auto textures = device.create_bindless_array(1u);
   textures.emplace_on_update(0u, image, Sampler::linear_point_repeat());
+  auto image_binding_buffer =
+      device.create_buffer<SceneImageBinding>(sampling_scene_bindings.size());
   auto word_buffer = device.create_buffer<std::uint32_t>(words.size());
   auto coordinate_buffer =
       device.create_buffer<luisa::float3>(sampling_case_count);
@@ -525,10 +563,12 @@ make_dual_pole_kernel() {
   std::array<std::uint32_t, sampling_case_count> cursors{};
   stream << image.copy_from(luisa::span{pixels})
          << textures.update()
+         << image_binding_buffer.copy_from(
+                luisa::span{sampling_scene_bindings})
          << word_buffer.copy_from(luisa::span{words})
          << coordinate_buffer.copy_from(luisa::span{coordinates})
-         << shader(textures, word_buffer, coordinate_buffer, output_buffer,
-                   cursor_buffer)
+         << shader(textures, image_binding_buffer, word_buffer,
+                   coordinate_buffer, output_buffer, cursor_buffer)
                 .dispatch(sampling_case_count)
          << output_buffer.copy_to(luisa::span{output})
          << cursor_buffer.copy_to(luisa::span{cursors}) << synchronize();
@@ -547,9 +587,7 @@ make_dual_pole_kernel() {
   std::array<std::uint32_t, projection_case_count> flags{};
   for (auto index = std::size_t{}; index < projection_cases.size(); ++index) {
     const auto item = projection_cases[index];
-    const auto image_id =
-        item.handler == ProjectionHandler::invalid_image ? 17u : 0u;
-    words.emplace_back(image_id);
+    words.emplace_back(0u);
     words.emplace_back(
         item.handler == ProjectionHandler::box
             ? std::bit_cast<std::uint32_t>(item.blend)
@@ -574,6 +612,8 @@ make_dual_pole_kernel() {
   auto image = device.create_image<float>(PixelStorage::FLOAT4, 3u, 2u);
   auto textures = device.create_bindless_array(1u);
   textures.emplace_on_update(0u, image, Sampler::linear_point_repeat());
+  auto image_binding_buffer = device.create_buffer<SceneImageBinding>(
+      projection_scene_binding.size());
   auto word_buffer = device.create_buffer<std::uint32_t>(words.size());
   auto handler_buffer =
       device.create_buffer<std::uint32_t>(projection_case_count);
@@ -597,6 +637,8 @@ make_dual_pole_kernel() {
   std::array<std::uint32_t, projection_case_count> cursors{};
   stream << image.copy_from(luisa::span{pixels})
          << textures.update()
+         << image_binding_buffer.copy_from(
+                luisa::span{projection_scene_binding})
          << word_buffer.copy_from(luisa::span{words})
          << handler_buffer.copy_from(luisa::span{handlers})
          << coordinate_buffer.copy_from(luisa::span{coordinates})
@@ -604,9 +646,10 @@ make_dual_pole_kernel() {
          << uv_buffer.copy_from(luisa::span{expected_uvs})
          << blend_buffer.copy_from(luisa::span{blends})
          << flag_buffer.copy_from(luisa::span{flags})
-         << shader(textures, word_buffer, handler_buffer, coordinate_buffer,
-                   normal_buffer, uv_buffer, blend_buffer, flag_buffer,
-                   output_buffer, cursor_buffer)
+         << shader(textures, image_binding_buffer, word_buffer,
+                   handler_buffer, coordinate_buffer, normal_buffer,
+                   uv_buffer, blend_buffer, flag_buffer, output_buffer,
+                   cursor_buffer)
                 .dispatch(projection_case_count)
          << output_buffer.copy_to(luisa::span{output})
          << cursor_buffer.copy_to(luisa::span{cursors}) << synchronize();

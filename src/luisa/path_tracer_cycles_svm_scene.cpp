@@ -1,5 +1,7 @@
 #include "path_tracer_cycles_svm_scene.h"
 
+#include "cycles_svm_scene_image.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -79,6 +81,29 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
     runtime->ies_buffer.emplace(
         scene->device.create_buffer<float>(runtime->compilation.ies.size()));
   }
+  runtime->image_bindings.reserve(runtime->compilation.images.size());
+  for (const auto &binding : runtime->compilation.images) {
+    if (binding.resource_id > std::numeric_limits<std::uint32_t>::max()) {
+      diagnostic = "Cycles SVM image resource identity exceeds the 32-bit "
+                   "Luisa bindless address space";
+      return nullptr;
+    }
+    const contract::ImageId image_id{binding.resource_id};
+    if (!snapshot.images.contains(image_id)) {
+      diagnostic = "Cycles SVM image handle references unavailable scene "
+                   "resource " +
+                   std::to_string(binding.resource_id);
+      return nullptr;
+    }
+    runtime->image_bindings.emplace_back(make_cycles_svm_image_binding(
+        static_cast<std::uint32_t>(binding.resource_id),
+        binding.interpolation, binding.extension));
+  }
+  if (!runtime->image_bindings.empty()) {
+    runtime->image_binding_buffer.emplace(
+        scene->device.create_buffer<CyclesSvmImageBindingGpu>(
+            runtime->image_bindings.size()));
+  }
   return runtime;
 }
 
@@ -91,6 +116,10 @@ void upload_cycles_svm_runtime(Stream &stream,
   if (runtime.ies_buffer) {
     stream << runtime.ies_buffer->copy_from(
         luisa::span{runtime.compilation.ies});
+  }
+  if (runtime.image_binding_buffer) {
+    stream << runtime.image_binding_buffer->copy_from(
+        luisa::span{runtime.image_bindings});
   }
 }
 
