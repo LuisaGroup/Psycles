@@ -7,6 +7,7 @@
 #include "cycles_svm_microfacet.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_sample_mapping.h>
 #include <psycles/luisa/native_vector_math.h>
 
@@ -23,6 +24,8 @@ namespace {
 [[nodiscard]] Float average(Expr<luisa::float3> value) noexcept {
   return (value.x + value.y + value.z) * (1.0f / 3.0f);
 }
+
+[[nodiscard]] Float square(Expr<float> value) noexcept { return value * value; }
 
 struct SheenSetupResult {
   SheenParam param;
@@ -167,6 +170,137 @@ Float3 principled_sheen_setup(const KernelGlobals &kernel_globals,
     };
   };
   return layer_albedo;
+}
+
+BsdfEvaluation bsdf_sheen_eval(const SheenClosure &closure,
+                               Expr<luisa::float3>,
+                               Expr<luisa::float3> wo) noexcept {
+  const auto local_outgoing = make_float3(dot(wo, closure.param.T),
+                                          dot(wo, closure.param.B),
+                                          dot(wo, closure.common.N));
+  const auto a = closure.param.transform_a;
+  const auto b = closure.param.transform_b;
+  const auto length_squared = square(a * local_outgoing.x +
+                                     b * local_outgoing.z) +
+                              square(a * local_outgoing.y) +
+                              square(local_outgoing.z);
+  const auto value = cycles_sample_mapping::inverse_pi *
+                     max(local_outgoing.z, 0.0f) *
+                     square(a / length_squared);
+  return {.value = make_float3(value), .pdf = value};
+}
+
+BsdfSample bsdf_sheen_sample(const SheenClosure &closure,
+                             Expr<luisa::float3> Ng, Expr<luisa::float3>,
+                             Expr<luisa::float2> random) noexcept {
+  const auto disk = cycles_sample_mapping::sample_uniform_disk(random);
+  const auto disk_z = sqrt(max(1.0f - dot(disk, disk), 0.0f));
+  const auto a = closure.param.transform_a;
+  const auto b = closure.param.transform_b;
+  const auto local_outgoing = native_vector_math::normalize_unchecked(
+      make_float3(disk.x - disk_z * b, disk.y, disk_z * a));
+  const auto wo = local_outgoing.x * closure.param.T +
+                  local_outgoing.y * closure.param.B +
+                  local_outgoing.z * closure.common.N;
+
+  Float3 value = make_float3(0.0f);
+  Float pdf = 0.0f;
+  /* Keep the negated Cycles rejection predicate. A NaN geometric-normal
+   * dot product does not satisfy `<= 0` and therefore falls through to the
+   * arithmetic path in Cycles. */
+  $if(!(dot(Ng, wo) <= 0.0f)) {
+    const auto length_squared = square(a * local_outgoing.x +
+                                       b * local_outgoing.z) +
+                                square(a * local_outgoing.y) +
+                                square(local_outgoing.z);
+    pdf = cycles_sample_mapping::inverse_pi * local_outgoing.z *
+          square(a / length_squared);
+    value = make_float3(pdf);
+  };
+  return {.value = value,
+          .wo = wo,
+          .pdf = pdf,
+          .sampled_roughness = make_float2(1.0f),
+          .eta = 1.0f,
+          /* Cycles returns REFLECT|DIFFUSE even when Ng rejects the sample. */
+          .label = cycles_closure::label_reflect |
+                   cycles_closure::label_diffuse};
+}
+
+BsdfEvaluation bsdf_ashikhmin_velvet_eval(const VelvetClosure &closure,
+                                          Expr<luisa::float3> wi,
+                                          Expr<luisa::float3> wo) noexcept {
+  BsdfEvaluation result{.value = make_float3(0.0f), .pdf = 0.0f};
+  const auto cos_ni = dot(closure.common.N, wi);
+  const auto cos_no = dot(closure.common.N, wo);
+  $if((cos_ni > 0.0f) & (cos_no > 0.0f)) {
+    const auto half_vector =
+        native_vector_math::normalize_unchecked(wi + wo);
+    const auto cos_nh = dot(closure.common.N, half_vector);
+    const auto cos_hi = abs(dot(wi, half_vector));
+    $if((abs(cos_nh) < 1.0f - 1.0e-5f) & (cos_hi > 1.0e-5f)) {
+      const auto cos_nh_over_hi = max(cos_nh / cos_hi, 1.0e-5f);
+      const auto fac1 = 2.0f * abs(cos_nh_over_hi * cos_ni);
+      const auto fac2 = 2.0f * abs(cos_nh_over_hi * cos_no);
+      const auto sin_nh_squared = 1.0f - cos_nh * cos_nh;
+      const auto sin_nh_fourth = sin_nh_squared * sin_nh_squared;
+      const auto cotangent_squared =
+          (cos_nh * cos_nh) / sin_nh_squared;
+      const auto distribution =
+          exp(-cotangent_squared * closure.param.invsigma2) *
+          closure.param.invsigma2 * cycles_sample_mapping::inverse_pi /
+          sin_nh_fourth;
+      const auto masking = luisa::compute::min(
+          1.0f, luisa::compute::min(fac1, fac2));
+      const auto response = 0.25f * (distribution * masking) / cos_ni;
+      result.value = make_float3(response);
+      result.pdf = cycles_sample_mapping::inverse_two_pi;
+    };
+  };
+  return result;
+}
+
+BsdfSample bsdf_ashikhmin_velvet_sample(
+    const VelvetClosure &closure, Expr<luisa::float3> Ng,
+    Expr<luisa::float3> wi, Expr<luisa::float2> random) noexcept {
+  const auto hemisphere = cycles_sample_mapping::sample_uniform_hemisphere(
+      closure.common.N, random);
+  BsdfSample result{.value = make_float3(0.0f),
+                    .wo = hemisphere.direction,
+                    .pdf = 0.0f,
+                    .sampled_roughness = make_float2(1.0f),
+                    .eta = 1.0f,
+                    .label = cycles_closure::label_none};
+  $if(dot(Ng, result.wo) > 0.0f) {
+    const auto half_vector =
+        native_vector_math::normalize_unchecked(wi + result.wo);
+    const auto cos_ni = dot(closure.common.N, wi);
+    const auto cos_no = dot(closure.common.N, result.wo);
+    const auto cos_hi = abs(dot(wi, half_vector));
+    const auto cos_nh = dot(closure.common.N, half_vector);
+    $if((cos_ni > 1.0e-5f) &
+        (abs(cos_nh) < 1.0f - 1.0e-5f) & (cos_hi > 1.0e-5f)) {
+      const auto cos_nh_over_hi = max(cos_nh / cos_hi, 1.0e-5f);
+      const auto fac1 = 2.0f * abs(cos_nh_over_hi * cos_ni);
+      const auto fac2 = 2.0f * abs(cos_nh_over_hi * cos_no);
+      const auto sin_nh_squared = 1.0f - cos_nh * cos_nh;
+      const auto sin_nh_fourth = sin_nh_squared * sin_nh_squared;
+      const auto cotangent_squared =
+          (cos_nh * cos_nh) / sin_nh_squared;
+      const auto distribution =
+          exp(-cotangent_squared * closure.param.invsigma2) *
+          closure.param.invsigma2 * cycles_sample_mapping::inverse_pi /
+          sin_nh_fourth;
+      const auto masking = luisa::compute::min(
+          1.0f, luisa::compute::min(fac1, fac2));
+      const auto response = 0.25f * (distribution * masking) / cos_ni;
+      result.value = make_float3(response);
+      result.pdf = hemisphere.pdf;
+      result.label = cycles_closure::label_reflect |
+                     cycles_closure::label_diffuse;
+    };
+  };
+  return result;
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

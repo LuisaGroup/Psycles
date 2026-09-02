@@ -792,6 +792,78 @@ XIR-to-SPIR-V. Ray Portal remains a disjoint integrator transition exactly as
 in Cycles: generic BSDF evaluation is zero and generic BSDF sampling is
 unreachable, so this checkpoint does not invent a portal sample function.
 
+### Microfiber Sheen and Ashikhmin Velvet scattering checkpoint
+
+The standalone Sheen setup had already copied Cycles' LTC-table lookup,
+incoming-aligned tangent basis, invalid-table transition, and albedo fold. This
+checkpoint adds the four scattering functions directly over the retained
+`SheenClosure` and `VelvetClosure`; it does not route either closure through
+the older graph-surface approximation.
+
+For Sheen, let `o = (dot(wo,T), dot(wo,B), dot(wo,N))`, `a = transformA`, and
+`b = transformB`. Evaluation now uses exactly
+
+```text
+L = (a*o.x + b*o.z)^2 + (a*o.y)^2 + o.z^2
+value = pdf = (1/pi) * max(o.z, 0) * (a/L)^2
+```
+
+Sampling first applies Cycles' concentric square-to-disk map, then forms
+`normalize(disk.x - diskZ*b, disk.y, diskZ*a)` and transforms it by the stored
+`(T,B,N)` basis. The geometric-normal rejection is intentionally asymmetric:
+
+```text
+dot(Ng,wo) <= 0: value=pdf=0, label=REFLECT|DIFFUSE
+otherwise:       value=pdf=LTC density, label=REFLECT|DIFFUSE
+```
+
+In particular, the implementation retains the negated `<= 0` predicate rather
+than replacing it with `> 0`; this preserves Cycles' non-finite boundary
+semantics. The label difference from Diffuse Toon is also permanent regression
+coverage, not a normalization into a common Psycles event model.
+
+Velvet evaluation preserves Cycles' two-stage domain proof. No division,
+exponential, or fourth-power denominator is evaluated until the corresponding
+strict predicate has succeeded:
+
+```text
+cosNI > 0 and cosNO > 0
+abs(cosNH) < 1 - 1e-5 and cosHI > 1e-5
+```
+
+Inside that domain it copies the Ashikhmin distribution and masking terms
+literally, with PDF `1/(2*pi)`. Sampling uses Cycles' uniform-hemisphere map,
+which is not a polar `(z,phi)` map: it lifts the concentric disk using
+`z=1-r^2` and rescales `xy` by `sqrt(z+1)`. A rejected geometric normal or a
+failed Velvet half-vector domain returns label 0, while a valid sample returns
+label 6. Both wrappers retain Cycles' sampled roughness `(1,1)` and eta 1.
+
+The isolated oracle directly included the pinned Cycles 5.2.1
+`bsdf_sheen.h` and `bsdf_ashikhmin_velvet.h` headers and called their
+eval/sample functions inside one HIP kernel. It used Cycles commit
+`9e2066aef7ef7e20c142ad7bd3303138a4304c93`, ROCm 7.2.53211, `gfx1201`,
+`-O3 -ffast-math`; the source SHA-256 was
+`475564afae2652a370c55cc997fd09e29dcbfc8642c8a227fe9bbc6ef1778f9a`
+and executable SHA-256 was
+`2310b7192a311a287fb408daf6e8b09d325ca6b1d4c4f89423fac77473269bd1`.
+Representative outputs are:
+
+```text
+Sheen sample:  wo=(0.552439630,0.507043540,0.661602020), pdf=0.287902415, label=6
+Sheen direct:  value=pdf=0.209007919
+Sheen bad Ng:  value=pdf=0, label=6
+Velvet sample: wo=(0.893368244,-0.254301727,0.370437086), pdf=0.159154937,
+               value=0.163679332, label=6
+Velvet direct: value=0.153165922, pdf=0.159154937
+Velvet bad Ng: value=pdf=0, label=0
+```
+
+`test_luisa_cycles_svm_sheen_scattering.cpp` freezes the complete 18-vector,
+5-label trace, both geometric-normal rejection contracts, Sheen backface and
+tangent evaluation, Velvet wrong-side and singular-half-vector domains, the
+uniform-hemisphere direction, and wrapper roughness/eta. It passes on fallback,
+HIP, and strict native Vulkan XIR-to-SPIR-V.
+
 ### Standalone BSSRDF runtime checkpoint
 
 `NODE_CLOSURE_BSDF` now consumes the exact eight-word
@@ -1026,6 +1098,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_toon_scattering_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_sheen_scattering_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -1040,14 +1115,14 @@ Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
 Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, standalone
 Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
 6/6, standalone Hair setup 3/3, Hair scattering 3/3, simple scattering 3/3,
-Toon scattering 3/3,
+Toon scattering 3/3, Sheen/Velvet scattering 3/3,
 compiler 3/3, and Ray Portal/Hair bundle imports 2/2 passed. The scattering
 kernels were built with the production `enable_fast_math=true` setting. The
 compiler test locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
-Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 513/513 tests in 376.31 seconds. The Vulkan test
-environment is
+Multi-GGX-only fields. After this checkpoint, `cmake --build build --parallel
+32` completed successfully and the full 32-way CTest run passed 516/516 tests
+in 43.24 seconds on the warm build tree. The Vulkan test environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
 

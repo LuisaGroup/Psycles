@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "cycles_svm_bsdf.h"
 #include "cycles_svm_internal.h"
 
 namespace psycles::luisa_backend::cycles_svm::detail {
@@ -24,5 +25,27 @@ principled_sheen_setup(const KernelGlobals &kernel_globals,
                        luisa::compute::Expr<luisa::float3> input_weight,
                        luisa::compute::Expr<luisa::float3> normal,
                        luisa::compute::Expr<float> roughness) noexcept;
+
+[[nodiscard]] BsdfEvaluation
+bsdf_sheen_eval(const SheenClosure &closure,
+                luisa::compute::Expr<luisa::float3> wi,
+                luisa::compute::Expr<luisa::float3> wo) noexcept;
+
+[[nodiscard]] BsdfSample
+bsdf_sheen_sample(const SheenClosure &closure,
+                  luisa::compute::Expr<luisa::float3> Ng,
+                  luisa::compute::Expr<luisa::float3> wi,
+                  luisa::compute::Expr<luisa::float2> random) noexcept;
+
+[[nodiscard]] BsdfEvaluation
+bsdf_ashikhmin_velvet_eval(const VelvetClosure &closure,
+                           luisa::compute::Expr<luisa::float3> wi,
+                           luisa::compute::Expr<luisa::float3> wo) noexcept;
+
+[[nodiscard]] BsdfSample
+bsdf_ashikhmin_velvet_sample(
+    const VelvetClosure &closure, luisa::compute::Expr<luisa::float3> Ng,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<luisa::float2> random) noexcept;
 
 } // namespace psycles::luisa_backend::cycles_svm::detail
