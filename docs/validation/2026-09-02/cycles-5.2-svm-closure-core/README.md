@@ -53,9 +53,9 @@ Principled Hair Chiang and Huang population/setup paths consume the exact
 typed `SVMNodePrincipledHairBsdfData` payload and retain typed closures. Huang
 also preserves the two-slot extra allocation, raw curve-key radius lookup,
 elliptical local frame, and transparent fallback. Huang eval, sample, albedo,
-and blur now execute the copied Cycles 5.2.1 scattering equations; Chiang
-scattering remains separate follow-up work and is not claimed by this
-checkpoint. The standalone
+and blur now execute the copied Cycles 5.2.1 scattering equations. Chiang
+eval, sample, albedo, and blur likewise execute its copied Cycles 5.2.1
+scattering equations. The standalone
 Subsurface Scattering family includes Christensen-Burley,
 Random Walk, Random Walk Legacy, and Random Walk Skin with the exact typed
 `SVMNodeBssrdfData` payload.
@@ -1134,6 +1134,46 @@ feature erase, zero capacity, one-slot extra rollback, transparent fallback,
 and terminate-path accounting. It passes on fallback, HIP, and strict native
 Vulkan XIR-to-SPIR-V.
 
+### Principled Hair Chiang scattering checkpoint
+
+The type-27 closure now copies Cycles 5.2.1
+`bsdf_hair_chiang_sample()`, `bsdf_hair_chiang_eval()`,
+`bsdf_hair_chiang_albedo()`, and `bsdf_hair_chiang_blur()`. The projection
+retains the trimmed logistic azimuthal distribution, finite Bessel
+approximation, low/high-variance longitudinal branches, R/TT/TRT/TRRT+
+attenuation and luminance-normalized sampling weights, cuticle tilt, Beer
+attenuation, Fresnel term, local/global frame mapping, sampled label, and
+filter-glossy state transition. The fixed three-lobe evaluation is a device
+loop rather than three host-expanded copies.
+
+The common Bessel and longitudinal implementation is shared with Huang in
+`cycles_svm_principled_hair_math.{h,cpp}`. Its `argument > 12` branch does not
+also record or execute the finite Bessel series, matching Cycles' control flow
+and avoiding dead transcendental work. Sampling and evaluation deliberately
+retain two different R variances: Cycles samples the R direction with `v`,
+but evaluates its R density with `m0_roughness`. The first transcription
+incorrectly shared the evaluation selector with sampling; the pure-R external
+oracle scenario exposed the structural error immediately. The two selectors
+are now separate functions, while TT, TRT, and residual scenarios lock their
+own branches.
+
+The isolated HIP oracle directly includes pinned Cycles 5.2.1
+`bsdf_principled_hair_chiang.h` at commit
+`9e2066aef7ef7e20c142ad7bd3303138a4304c93`. It was compiled with ROCm
+7.2.53211, `gfx1201`, and `-O3 -ffast-math`. The oracle source SHA-256 is
+`8e0e89617ec5803845ed069b3ffb3cf6c2674cd4dae222af74534623378abe16` and
+the executable SHA-256 is
+`98c6e7b39e9dabef7ce788b853bb16618d3e19a08c88c2497dd5837a5fcd5ee3`.
+Its normalized lobe weights are
+`(0.0549212247, 0.928331614, 0.0164331775, 0.000313937053)`; the four random-z
+cases therefore enter R, TT, TRT, and TRRT+ respectively. The regression
+freezes 20 float4 records and four labels across sample, eval, albedo, blur,
+sampled roughness, and eta.
+
+`test_luisa_cycles_svm_principled_hair_chiang_scattering.cpp` passes on
+fallback, HIP, and strict native Vulkan XIR-to-SPIR-V. HIP generated the
+combined regression kernel in 39.47 ms and linked an 8,768-byte code object.
+
 ### Principled Hair Huang scattering checkpoint
 
 The type-28 closure now copies Cycles 5.2.1
@@ -1358,6 +1398,7 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_microfacet_scattering_tests \
            psycles_luisa_cycles_svm_ashikhmin_shirley_scattering_tests \
            psycles_luisa_cycles_svm_principled_hair_chiang_tests \
+           psycles_luisa_cycles_svm_principled_hair_chiang_scattering_tests \
            psycles_luisa_cycles_svm_principled_hair_huang_tests \
            psycles_luisa_cycles_svm_principled_hair_huang_scattering_tests \
            psycles_cycles_svm_compiler_tests \
@@ -1429,6 +1470,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_principled_hair_chiang_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_principled_hair_chiang_scattering_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_principled_hair_huang_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -1452,6 +1496,7 @@ Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
 Toon scattering 3/3, Sheen/Velvet scattering 3/3,
 Microfacet scattering 3/3, Ashikhmin-Shirley scattering 3/3,
 Principled Hair Chiang population/setup 3/3,
+Principled Hair Chiang scattering 3/3,
 Principled Hair Huang population/setup 3/3,
 Principled Hair Huang scattering 3/3,
 compiler 3/3, and Ray Portal/Hair bundle imports 2/2 passed. The scattering
@@ -1462,6 +1507,8 @@ Multi-GGX-only fields. After this checkpoint, `cmake --build build --parallel
 32` completed successfully and the full 32-way CTest run passed 528/528 tests
 in 18.96 seconds on the warm build tree. After the Huang scattering
 checkpoint, the corresponding full run passed 531/531 tests in 16.15 seconds.
+After the Chiang scattering checkpoint and shared hair-math extraction, the
+full run passed 534/534 tests in 16.92 seconds.
 The Vulkan test environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.

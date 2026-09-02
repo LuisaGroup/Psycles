@@ -13,7 +13,9 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_microfacet_scattering.cpp
     src/luisa/cycles_svm_principled.cpp
     src/luisa/cycles_svm_principled_hair.cpp
+    src/luisa/cycles_svm_principled_hair_chiang.cpp
     src/luisa/cycles_svm_principled_hair_huang.cpp
+    src/luisa/cycles_svm_principled_hair_math.cpp
     src/luisa/cycles_svm_ray_portal.cpp
     src/luisa/cycles_svm_sheen.cpp
     src/luisa/cycles_svm_toon.cpp
