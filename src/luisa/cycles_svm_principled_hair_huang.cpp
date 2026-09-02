@@ -5,6 +5,7 @@
 #include "cycles_svm_principled_hair_huang.h"
 
 #include "cycles_svm_microfacet_fresnel.h"
+#include "cycles_svm_principled_hair_math.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_closure.h>
@@ -18,6 +19,7 @@ namespace psycles::luisa_backend::cycles_svm::detail {
 using namespace luisa::compute;
 namespace closure_type = ::psycles::luisa_backend::cycles_closure;
 namespace fast_math = ::psycles::luisa_backend::cycles_fast_math;
+namespace hair_math = principled_hair_math;
 namespace sample_mapping = ::psycles::luisa_backend::cycles_sample_mapping;
 namespace table_detail = ::psycles::luisa_backend::detail;
 
@@ -271,58 +273,6 @@ microfacet_visible(Expr<luisa::float3> wi, Expr<luisa::float3> wo,
 
 [[nodiscard]] Bool is_finite(Expr<luisa::float3> value) noexcept {
   return !any(dsl::isnan(value)) & !any(dsl::isinf(value));
-}
-
-[[nodiscard]] Float bessel_I0(Expr<float> argument) noexcept {
-  const auto squared_argument = square(argument);
-  Float value = 1.0f + 0.25f * squared_argument;
-  Float power = square(squared_argument);
-  ULong factorial_squared = 1ull;
-  UInt power_of_four = 16u;
-  UInt index = 2u;
-  Bool active = true;
-  $while((index < 10u) & active) {
-    const auto index64 = index.cast<luisa::ulong>();
-    factorial_squared *= index64 * index64;
-    const auto next = value + power / (power_of_four.cast<float>() *
-                                       factorial_squared.cast<float>());
-    active = value != next;
-    value = next;
-    power *= squared_argument;
-    power_of_four *= 4u;
-    index += 1u;
-  };
-  return value;
-}
-
-[[nodiscard]] Float log_bessel_I0(Expr<float> argument) noexcept {
-  Float result = log(bessel_I0(argument));
-  $if(argument > 12.0f) {
-    result = argument + 0.5f * (1.0f / (8.0f * argument) -
-                                1.83787706640934548356f - log(argument));
-  };
-  return result;
-}
-
-[[nodiscard]] Float longitudinal_scattering(Expr<float> sine_incoming,
-                                            Expr<float> cosine_incoming,
-                                            Expr<float> sine_outgoing,
-                                            Expr<float> cosine_outgoing,
-                                            Expr<float> variance) noexcept {
-  const auto inverse_variance = 1.0f / variance;
-  const auto cosine_argument =
-      cosine_incoming * cosine_outgoing * inverse_variance;
-  const auto sine_argument = sine_incoming * sine_outgoing * inverse_variance;
-  Float result;
-  $if(variance <= 0.1f) {
-    result = exp(log_bessel_I0(cosine_argument) - sine_argument -
-                 inverse_variance + 0.6931f + log(0.5f * inverse_variance));
-  }
-  $else {
-    result = exp(-sine_argument) * bessel_I0(cosine_argument) /
-             (sinh(inverse_variance) * 2.0f * variance);
-  };
-  return result;
 }
 
 [[nodiscard]] Float3 safe_divide(Expr<luisa::float3> numerator,
@@ -607,9 +557,9 @@ struct FloatInterval {
       index += 1u;
     };
 
-    const auto longitudinal =
-        longitudinal_scattering(sin_theta(wi), cos_theta(wi), sin_theta(wo),
-                                cos_theta(wo), 4.0f * roughness);
+    const auto longitudinal = hair_math::longitudinal_scattering(
+        sin_theta(wi), cos_theta(wi), sin_theta(wo), cos_theta(wo),
+        4.0f * roughness);
     const auto simpson_coefficient = (2.0f / 3.0f) * resolution;
     result = ((S_tt + S_trt) * square(inverse_eta) +
               S_trrt * longitudinal * (0.5f / fast_math::pi) *
