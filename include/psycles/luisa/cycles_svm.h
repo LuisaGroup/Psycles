@@ -349,6 +349,10 @@ public:
       luisa::compute::Expr<luisa::float3> position) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Var<compiler::cycles_svm::KernelCurve>
   curve(luisa::compute::Expr<std::uint32_t> prim) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Int object_position_offset(
+      luisa::compute::Expr<std::uint32_t> object) const noexcept = 0;
+  [[nodiscard]] virtual luisa::compute::Float4
+  curve_key(luisa::compute::Expr<std::int32_t> key) const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Bool
   film_is_rec709() const noexcept = 0;
   [[nodiscard]] virtual luisa::compute::Float3
@@ -489,6 +493,37 @@ struct ChiangHairClosure {
   ChiangHairParam param;
 };
 
+/* Typed projections of Cycles 5.2.1
+ * kernel/closure/bsdf_principled_hair_huang.h. HuangHairExtra consumes one
+ * closure-sized tail slot; the SoA pool associates that slot with its owning
+ * ordinary closure while preserving the same two-slot allocator transition. */
+struct HuangHairParam {
+  luisa::compute::Float3 sigma;
+  luisa::compute::Float roughness;
+  luisa::compute::Float tilt;
+  luisa::compute::Float eta;
+  luisa::compute::Float aspect_ratio;
+  luisa::compute::Float h;
+};
+
+struct HuangHairExtra {
+  luisa::compute::Float R;
+  luisa::compute::Float TT;
+  luisa::compute::Float TRT;
+  luisa::compute::Float3 Y;
+  luisa::compute::Float3 Z;
+  luisa::compute::Float3 wi;
+  luisa::compute::Float radius;
+  luisa::compute::Float e2;
+  luisa::compute::Float pixel_coverage;
+};
+
+struct HuangHairClosure {
+  ShaderClosureCommon common;
+  HuangHairParam param;
+  HuangHairExtra extra;
+};
+
 /* Typed projection of Cycles 5.2.1 kernel/closure/bssrdf.h::Bssrdf. */
 struct BssrdfParam {
   luisa::compute::Float3 radius;
@@ -619,6 +654,11 @@ public:
   [[nodiscard]] luisa::compute::Bool
   allocate_extra(const Allocation &owner,
                  luisa::compute::Expr<std::uint32_t> slot_count) noexcept;
+  /* Exact inverse of a successful ordinary+extra allocation. This is used by
+   * Huang setup when an ellipse hit lies outside its projected radius. */
+  void rollback_with_extra(
+      const Allocation &owner,
+      luisa::compute::Expr<std::uint32_t> extra_slot_count) noexcept;
   void set_type(luisa::compute::Expr<std::uint32_t> index,
                 luisa::compute::Expr<std::uint32_t> type) noexcept;
   void set_weight(luisa::compute::Expr<std::uint32_t> index,
@@ -645,6 +685,9 @@ public:
                       const HairParam &param) noexcept;
   void set_chiang_hair_param(luisa::compute::Expr<std::uint32_t> index,
                              const ChiangHairParam &param) noexcept;
+  void set_huang_hair(luisa::compute::Expr<std::uint32_t> index,
+                      const HuangHairParam &param,
+                      const HuangHairExtra &extra) noexcept;
   void set_bssrdf_param(luisa::compute::Expr<std::uint32_t> index,
                         const BssrdfParam &param) noexcept;
   void set_microfacet_param(luisa::compute::Expr<std::uint32_t> index,
@@ -674,6 +717,8 @@ public:
   hair(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] ChiangHairClosure
   chiang_hair(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] HuangHairClosure
+  huang_hair(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] BssrdfClosure
   bssrdf(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetParam

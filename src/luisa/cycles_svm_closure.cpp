@@ -82,6 +82,15 @@ Bool ClosurePool::allocate_extra(const Allocation &owner,
   return allocated;
 }
 
+void ClosurePool::rollback_with_extra(
+    const Allocation &owner,
+    Expr<std::uint32_t> extra_slot_count) noexcept {
+  $if(owner.valid & (_count != 0u) & (owner.index + 1u == _count)) {
+    _count -= 1u;
+    _left += 1u + extra_slot_count;
+  };
+}
+
 void ClosurePool::set_type(Expr<std::uint32_t> index,
                            Expr<std::uint32_t> closure_type) noexcept {
   _type.write(index, closure_type);
@@ -162,6 +171,20 @@ void ClosurePool::set_chiang_hair_param(Expr<std::uint32_t> index,
   _payload1.write(
       index, make_float4(param.s, param.alpha, param.eta, param.m0_roughness));
   _payload2.write(index, make_float4(param.h, 0.0f, 0.0f, 0.0f));
+}
+
+void ClosurePool::set_huang_hair(Expr<std::uint32_t> index,
+                                 const HuangHairParam &param,
+                                 const HuangHairExtra &extra) noexcept {
+  _payload0.write(index, make_float4(param.sigma, param.roughness));
+  _payload1.write(
+      index,
+      make_float4(param.tilt, param.eta, param.aspect_ratio, param.h));
+  _payload2.write(
+      index, make_float4(extra.R, extra.TT, extra.TRT, extra.pixel_coverage));
+  _payload3.write(index, make_float4(extra.Y, extra.radius));
+  _payload4.write(index, make_float4(extra.Z, extra.e2));
+  _payload5.write(index, make_float4(extra.wi, 0.0f));
 }
 
 void ClosurePool::set_bssrdf_param(Expr<std::uint32_t> index,
@@ -279,6 +302,32 @@ ClosurePool::chiang_hair(Expr<std::uint32_t> index) const noexcept {
                     .eta = scalars.z,
                     .m0_roughness = scalars.w,
                     .h = _payload2.read(index).x}};
+}
+
+HuangHairClosure
+ClosurePool::huang_hair(Expr<std::uint32_t> index) const noexcept {
+  const auto sigma_roughness = _payload0.read(index);
+  const auto scalars = _payload1.read(index);
+  const auto lobes_coverage = _payload2.read(index);
+  const auto Y_radius = _payload3.read(index);
+  const auto Z_e2 = _payload4.read(index);
+  return {
+      .common = common(index),
+      .param = {.sigma = sigma_roughness.xyz(),
+                .roughness = sigma_roughness.w,
+                .tilt = scalars.x,
+                .eta = scalars.y,
+                .aspect_ratio = scalars.z,
+                .h = scalars.w},
+      .extra = {.R = lobes_coverage.x,
+                .TT = lobes_coverage.y,
+                .TRT = lobes_coverage.z,
+                .Y = Y_radius.xyz(),
+                .Z = Z_e2.xyz(),
+                .wi = _payload5.read(index).xyz(),
+                .radius = Y_radius.w,
+                .e2 = Z_e2.w,
+                .pixel_coverage = lobes_coverage.w}};
 }
 
 BssrdfClosure ClosurePool::bssrdf(Expr<std::uint32_t> index) const noexcept {
@@ -493,9 +542,11 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_REFLECTION_ID)) |
               (closure_type ==
                static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_TRANSMISSION_ID));
-          const Bool is_principled_hair_chiang =
-              closure_type ==
-              static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_CHIANG_ID);
+          const Bool is_principled_hair =
+              (closure_type ==
+               static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_CHIANG_ID)) |
+              (closure_type ==
+               static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_HUANG_ID));
           const Bool is_glass =
               (closure_type == static_cast<std::uint32_t>(
                                    CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
@@ -543,10 +594,10 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
             node_hair(cursor, stack, closure_type, closure_weight, mix_weight,
                       shader_data);
           }
-          $elif(is_principled_hair_chiang) {
-            node_principled_hair_chiang(kernel_globals, cursor, stack,
-                                        closure_weight, mix_weight,
-                                        shader_data);
+          $elif(is_principled_hair) {
+            node_principled_hair(kernel_globals, cursor, stack, closure_type,
+                                 closure_weight, mix_weight, shader_data,
+                                 path_state);
           }
           $elif(is_glass) {
             const auto color_x = cursor.word();
