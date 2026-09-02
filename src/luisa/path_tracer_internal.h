@@ -496,6 +496,8 @@ struct CyclesSvmRuntime {
     luisa::vector<CyclesSvmImageBindingGpu> image_bindings;
     luisa::vector<CyclesSvmParticleGpu> particle_records;
     std::optional<Buffer<luisa::uint>> word_buffer;
+    std::optional<Buffer<compiler::cycles_svm::KernelShader>>
+        kernel_shader_buffer;
     std::optional<Buffer<float>> ies_buffer;
     std::optional<Buffer<CyclesSvmImageBindingGpu>>
         image_binding_buffer;

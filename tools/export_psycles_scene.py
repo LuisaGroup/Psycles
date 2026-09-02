@@ -1650,6 +1650,9 @@ def _export_scene(
                         "MULTIPLE_IMPORTANCE",
                     )
                 ),
+                "volume_interpolation": str(
+                    getattr(cycles, "volume_interpolation", "LINEAR")
+                ),
                 "surface_render_method": getattr(
                     material, "surface_render_method", None
                 ),
@@ -1778,6 +1781,20 @@ def _export_scene(
                         getattr(scene.world, "cycles", None),
                         "sampling_method",
                         "AUTOMATIC",
+                    )
+                ),
+                "volume_sampling": str(
+                    getattr(
+                        getattr(scene.world, "cycles", None),
+                        "volume_sampling",
+                        "MULTIPLE_IMPORTANCE",
+                    )
+                ),
+                "volume_interpolation": str(
+                    getattr(
+                        getattr(scene.world, "cycles", None),
+                        "volume_interpolation",
+                        "LINEAR",
                     )
                 ),
                 "sample_map_resolution": int(

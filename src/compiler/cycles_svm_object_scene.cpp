@@ -1,9 +1,9 @@
 #include <psycles/compiler/cycles_svm_object_scene.h>
 
+#include <psycles/compiler/cycles_hash.h>
 #include <psycles/compiler/cycles_transform.h>
 
 #include <algorithm>
-#include <bit>
 #include <cstdint>
 #include <limits>
 #include <map>
@@ -67,62 +67,6 @@ reject_final_object(std::string diagnostic) {
   const auto c1 = Vec3f{e[4u], e[5u], e[6u]};
   const auto c2 = Vec3f{e[8u], e[9u], e[10u]};
   return dot(cross(c0, c1), c2) < 0.0f;
-}
-
-[[nodiscard]] std::uint32_t murmur_hash3(std::string_view value) noexcept {
-  constexpr auto c1 = std::uint32_t{0xcc9e2d51u};
-  constexpr auto c2 = std::uint32_t{0x1b873593u};
-  auto h1 = std::uint32_t{};
-  const auto *bytes = reinterpret_cast<const std::uint8_t *>(value.data());
-  const auto blocks = value.size() / 4u;
-  for (auto i = std::size_t{}; i < blocks; ++i) {
-    const auto base = i * 4u;
-    auto k1 = static_cast<std::uint32_t>(bytes[base]) |
-              (static_cast<std::uint32_t>(bytes[base + 1u]) << 8u) |
-              (static_cast<std::uint32_t>(bytes[base + 2u]) << 16u) |
-              (static_cast<std::uint32_t>(bytes[base + 3u]) << 24u);
-    k1 *= c1;
-    k1 = std::rotl(k1, 15);
-    k1 *= c2;
-    h1 ^= k1;
-    h1 = std::rotl(h1, 13);
-    h1 = h1 * 5u + 0xe6546b64u;
-  }
-  const auto *tail = bytes + blocks * 4u;
-  auto k1 = std::uint32_t{};
-  switch (value.size() & 3u) {
-  case 3u:
-    k1 ^= static_cast<std::uint32_t>(tail[2u]) << 16u;
-    [[fallthrough]];
-  case 2u:
-    k1 ^= static_cast<std::uint32_t>(tail[1u]) << 8u;
-    [[fallthrough]];
-  case 1u:
-    k1 ^= static_cast<std::uint32_t>(tail[0u]);
-    k1 *= c1;
-    k1 = std::rotl(k1, 15);
-    k1 *= c2;
-    h1 ^= k1;
-    break;
-  default:
-    break;
-  }
-  h1 ^= static_cast<std::uint32_t>(value.size());
-  h1 ^= h1 >> 16u;
-  h1 *= 0x85ebca6bu;
-  h1 ^= h1 >> 13u;
-  h1 *= 0xc2b2ae35u;
-  h1 ^= h1 >> 16u;
-  return h1;
-}
-
-[[nodiscard]] float cryptomatte_hash(std::string_view value) noexcept {
-  const auto hash = murmur_hash3(value);
-  const auto mantissa = hash & ((1u << 23u) - 1u);
-  auto exponent = (hash >> 23u) & ((1u << 8u) - 1u);
-  exponent = std::clamp(exponent, 1u, 254u) << 23u;
-  const auto sign = (hash >> 31u) << 31u;
-  return std::bit_cast<float>(sign | exponent | mantissa);
 }
 
 [[nodiscard]] std::string instance_label(contract::InstanceId id) {
@@ -392,8 +336,8 @@ PendingKernelObject prepare_kernel_object(KernelObjectSource source) {
   result.itfm = pack_transform(
       ::psycles::compiler::cycles_inverse_affine_transform(
           result.source.transform));
-  result.cryptomatte_object = cryptomatte_hash(result.source.name);
-  result.cryptomatte_asset = cryptomatte_hash(result.source.asset_name);
+  result.cryptomatte_object = cycles_cryptomatte_hash(result.source.name);
+  result.cryptomatte_asset = cycles_cryptomatte_hash(result.source.asset_name);
   result.object_flag = flags;
   return result;
 }

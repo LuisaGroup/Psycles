@@ -44,6 +44,7 @@ endif()
 add_library(psycles_core
     src/adapter/cycles_shader_graph.cpp
     src/compiler/core_nodes.cpp
+    src/compiler/cycles_hash.cpp
     src/compiler/cycles_ies.cpp
     src/compiler/cycles_svm_attribute_nodes.cpp
     src/compiler/cycles_svm_attribute_request.cpp

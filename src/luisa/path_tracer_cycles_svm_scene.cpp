@@ -270,7 +270,16 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
         .shader = &material->shader(),
         .context = {.background = snapshot.world_shader == material_id,
                     .displacement_method = source.displacement_method,
-                    .color_space = snapshot.shader_color_space}});
+                    .color_space = snapshot.shader_color_space},
+        .kernel = {.name = source.name,
+                   .use_transparent_shadow =
+                       source.use_transparent_shadow,
+                   .use_bump_map_correction =
+                       source.use_bump_map_correction,
+                   .emission_sampling = source.emission_sampling,
+                   .volume_sampling = source.volume_sampling,
+                   .volume_interpolation = source.volume_interpolation,
+                   .pass_id = source.cycles_pass_id}});
   }
 
   runtime->compilation = compiler::cycles_svm::compile_shader_table(units);
@@ -284,6 +293,11 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
   if (!runtime->compilation.table.words.empty()) {
     runtime->word_buffer.emplace(scene->device.create_buffer<luisa::uint>(
         runtime->compilation.table.words.size()));
+  }
+  if (!runtime->compilation.kernel_shaders.empty()) {
+    runtime->kernel_shader_buffer.emplace(
+        scene->device.create_buffer<compiler::cycles_svm::KernelShader>(
+            runtime->compilation.kernel_shaders.size()));
   }
   if (!runtime->compilation.ies.empty()) {
     runtime->ies_buffer.emplace(
@@ -325,6 +339,10 @@ void upload_cycles_svm_runtime(Stream &stream,
   if (runtime.word_buffer) {
     stream << runtime.word_buffer->copy_from(
         luisa::span{runtime.compilation.table.words});
+  }
+  if (runtime.kernel_shader_buffer) {
+    stream << runtime.kernel_shader_buffer->copy_from(
+        luisa::span{runtime.compilation.kernel_shaders});
   }
   if (runtime.ies_buffer) {
     stream << runtime.ies_buffer->copy_from(

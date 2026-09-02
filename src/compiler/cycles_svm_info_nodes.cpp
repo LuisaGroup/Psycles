@@ -67,6 +67,10 @@ public:
 
 class ParticleInfoNode final : public GraphNode {
 public:
+  [[nodiscard]] bool has_attribute_dependency() const noexcept override {
+    return true;
+  }
+
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_PARTICLE_INFO;
   }
@@ -96,6 +100,14 @@ public:
 
 class HairInfoNode final : public GraphNode {
 public:
+  [[nodiscard]] bool has_attribute_dependency() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] bool has_spatial_varying() const noexcept override {
+    return true;
+  }
+
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_HAIR_INFO;
   }
@@ -179,6 +191,14 @@ public:
 
 class PointInfoNode final : public GraphNode {
 public:
+  [[nodiscard]] bool has_attribute_dependency() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] bool has_spatial_varying() const noexcept override {
+    return true;
+  }
+
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_POINT_INFO;
   }

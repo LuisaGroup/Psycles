@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace psycles::compiler::cycles_svm {
@@ -24,10 +25,24 @@ struct ShaderTableImage {
   std::uint32_t shader_count{};
 };
 
+struct ShaderKernelSettings {
+  std::string_view name;
+  bool use_transparent_shadow{true};
+  bool use_bump_map_correction{true};
+  contract::EmissionSampling emission_sampling{
+      contract::EmissionSampling::automatic};
+  contract::VolumeSampling volume_sampling{
+      contract::VolumeSampling::multiple_importance};
+  contract::VolumeInterpolation volume_interpolation{
+      contract::VolumeInterpolation::linear};
+  std::int32_t pass_id{};
+};
+
 struct ShaderTableCompileUnit {
   std::uint32_t shader_index{};
   const ShaderProgram *shader{};
   ShaderCompileContext context{};
+  ShaderKernelSettings kernel;
 };
 
 // One transaction containing every scene-global identity allocated while
@@ -35,6 +50,9 @@ struct ShaderTableCompileUnit {
 // ids; image and IES arrays are indexed directly by bytecode payloads.
 struct CompiledShaderTable {
   ShaderTableImage table;
+  // Parallel native DeviceScene::shaders image in the identical dense shader
+  // index domain. Unrepresented source holes are byte-zero and unreachable.
+  std::vector<KernelShader> kernel_shaders;
   // Per source shader, including inert holes. Cycles derives geometry
   // attribute demand from each shader rather than from the scene-wide opcode
   // union; object/particle packing must make the same distinction.

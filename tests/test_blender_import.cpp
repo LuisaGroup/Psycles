@@ -82,6 +82,7 @@ void test_integrator_settings_round_trip() {
       "use_bump_map_correction": false,
       "emission_sampling": "BACK",
       "volume_sampling": "EQUIANGULAR",
+      "volume_interpolation": "CUBIC",
       "cycles_sync": {
         "shader_index": 6,
         "pass_id": 27
@@ -453,6 +454,8 @@ void test_integrator_settings_round_trip() {
   "world": {
     "name": "Nishita World",
     "color": [0.05, 0.05, 0.05],
+    "volume_sampling": "DISTANCE",
+    "volume_interpolation": "CUBIC",
     "sampling_method": "MANUAL",
     "sample_map_resolution": 2048,
     "max_bounces": 23,
@@ -751,6 +754,8 @@ void test_integrator_settings_round_trip() {
                  EmissionSampling::back &&
              imported_material->second.volume_sampling ==
                  psycles::contract::VolumeSampling::equiangular &&
+             imported_material->second.volume_interpolation ==
+                 psycles::contract::VolumeInterpolation::cubic &&
              imported_material->second.cycles_shader_index ==
                  std::optional<std::uint32_t>{6u} &&
              imported_material->second.cycles_pass_id == 27,
@@ -863,6 +868,10 @@ void test_integrator_settings_round_trip() {
   expect(imported_world != imported.scene->materials.end() &&
              imported_world->second.cycles_shader_index ==
                  std::optional<std::uint32_t>{3u} &&
+             imported_world->second.volume_sampling ==
+                 psycles::contract::VolumeSampling::distance &&
+             imported_world->second.volume_interpolation ==
+                 psycles::contract::VolumeInterpolation::cubic &&
              imported.scene->cycles_background_object_index ==
                  std::optional<std::uint32_t>{12u} &&
              imported.scene->cycles_object_count ==

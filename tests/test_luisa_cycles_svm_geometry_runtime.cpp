@@ -6,6 +6,7 @@
 #include <psycles/luisa/cycles_svm.h>
 
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -59,9 +60,13 @@ void require(bool condition, std::string_view message) {
   scene.revision = 1u;
   scene.materials.emplace(
       material_id,
-      MaterialDesc{.name = "typed geometry runtime",
+      MaterialDesc{.name = "Cube",
                    .shader = named_attribute_shader("later-by-shader-index"),
-                   .cycles_shader_index = 7u});
+                   .use_bump_map_correction = false,
+                   .emission_sampling = EmissionSampling::front,
+                   .volume_sampling = VolumeSampling::distance,
+                   .cycles_shader_index = 7u,
+                   .cycles_pass_id = 23});
   scene.materials.emplace(
       unused_material_id,
       MaterialDesc{.name = "unused Cycles geometry slot",
@@ -181,6 +186,65 @@ void verify_kernel_object_shader_view(Device &device, Stream &stream,
           "device KernelObject 64-bit field view changed");
 }
 
+void verify_kernel_shader_device_view(
+    Device &device, Stream &stream, Buffer<KernelShader> &shader_buffer,
+    const KernelShader &expected, std::uint32_t shader_index) {
+  // Exercise every KernelShader field through typed dynamic indexing. This
+  // guards both host upload and backend-native reflection/layout lowering.
+  Kernel1D inspect = [](BufferVar<KernelShader> shaders, UInt index,
+                        BufferFloat4 float_fields,
+                        BufferUInt4 integer_fields) noexcept {
+    const auto shader = shaders.read(index);
+    float_fields.write(
+        0u, make_float4(shader.constant_emission.x,
+                        shader.constant_emission.y,
+                        shader.constant_emission.z, shader.cryptomatte_id));
+    integer_fields.write(
+        0u, make_uint4(cast<uint>(shader.flags), cast<uint>(shader.pass_id),
+                       cast<uint>(shader.pad2), cast<uint>(shader.pad3)));
+
+    const auto hole = shaders.read(0u);
+    float_fields.write(
+        1u, make_float4(hole.constant_emission.x, hole.constant_emission.y,
+                        hole.constant_emission.z, hole.cryptomatte_id));
+    integer_fields.write(
+        1u, make_uint4(cast<uint>(hole.flags), cast<uint>(hole.pass_id),
+                       cast<uint>(hole.pad2), cast<uint>(hole.pad3)));
+  };
+
+  auto float_buffer = device.create_buffer<luisa::float4>(2u);
+  auto integer_buffer = device.create_buffer<luisa::uint4>(2u);
+  auto shader = device.compile(inspect);
+  std::array<luisa::float4, 2u> float_fields{};
+  std::array<luisa::uint4, 2u> integer_fields{};
+  stream << shader(shader_buffer, shader_index, float_buffer, integer_buffer)
+                .dispatch(1u)
+         << float_buffer.copy_to(luisa::span{float_fields})
+         << integer_buffer.copy_to(luisa::span{integer_fields})
+         << synchronize();
+
+  require(float_fields[0u].x == expected.constant_emission.x &&
+              float_fields[0u].y == expected.constant_emission.y &&
+              float_fields[0u].z == expected.constant_emission.z &&
+              std::bit_cast<std::uint32_t>(float_fields[0u].w) ==
+                  std::bit_cast<std::uint32_t>(expected.cryptomatte_id),
+          "device KernelShader floating-point view changed");
+  require(integer_fields[0u].x ==
+                  std::bit_cast<std::uint32_t>(expected.flags) &&
+              integer_fields[0u].y ==
+                  std::bit_cast<std::uint32_t>(expected.pass_id) &&
+              integer_fields[0u].z ==
+                  std::bit_cast<std::uint32_t>(expected.pad2) &&
+              integer_fields[0u].w ==
+                  std::bit_cast<std::uint32_t>(expected.pad3),
+          "device KernelShader integer view changed");
+  require(float_fields[1u].x == 0.0f && float_fields[1u].y == 0.0f &&
+              float_fields[1u].z == 0.0f && float_fields[1u].w == 0.0f &&
+              integer_fields[1u].x == 0u && integer_fields[1u].y == 0u &&
+              integer_fields[1u].z == 0u && integer_fields[1u].w == 0u,
+          "device KernelShader hole is not byte-zero");
+}
+
 void test_runtime(Device &device) {
   constexpr GeometryId geometry_id{2u};
   auto scene = std::make_shared<LuisaSceneData>();
@@ -206,6 +270,21 @@ void test_runtime(Device &device) {
               named_attributes[1u].first == "later-by-shader-index" &&
               named_attributes[1u].second == ATTR_STD_NUM + 1u,
           "Cycles shader-table resource identity ignored source shader order");
+  require(scene->cycles_svm->kernel_shader_buffer.has_value() &&
+              scene->cycles_svm->compilation.kernel_shaders.size() == 8u,
+          "runtime did not allocate the dense typed KernelShader image");
+  const auto &kernel_shader =
+      scene->cycles_svm->compilation.kernel_shaders[7u];
+  require(kernel_shader.constant_emission.x == 1.0f &&
+              kernel_shader.constant_emission.y == 1.0f &&
+              kernel_shader.constant_emission.z == 1.0f &&
+              std::bit_cast<std::uint32_t>(kernel_shader.cryptomatte_id) ==
+                  0xa8fce865u &&
+              std::bit_cast<std::uint32_t>(kernel_shader.flags) ==
+                  static_cast<std::uint32_t>(SD_MIS_FRONT |
+                                             SD_HAS_EMISSION) &&
+              kernel_shader.pass_id == 23,
+          "runtime KernelShader host image differs from Cycles metadata");
 
   const std::array uploads{make_finalized_upload()};
   const std::map<GeometryId, std::uint32_t> resources{{geometry_id, 0u}};
@@ -239,7 +318,19 @@ void test_runtime(Device &device) {
           "duplicate finalization replaced the installed transaction");
 
   auto stream = device.create_stream();
+  upload_cycles_svm_runtime(stream, *scene->cycles_svm);
   upload_cycles_svm_scene_runtime(stream, *scene->cycles_svm);
+  auto &kernel_shader_buffer = *scene->cycles_svm->kernel_shader_buffer;
+  const auto kernel_shader_records = download(stream, kernel_shader_buffer);
+  require(kernel_shader_records.size() ==
+                  scene->cycles_svm->compilation.kernel_shaders.size() &&
+              std::memcmp(
+                  kernel_shader_records.data(),
+                  scene->cycles_svm->compilation.kernel_shaders.data(),
+                  kernel_shader_records.size() * sizeof(KernelShader)) == 0,
+          "typed KernelShader upload changed the host image");
+  verify_kernel_shader_device_view(device, stream, kernel_shader_buffer,
+                                   kernel_shader, 7u);
   auto &geometry = *scene->cycles_svm->geometry;
   const auto attribute_map = download(stream, geometry.attribute_map_buffer);
   const auto attribute_float =

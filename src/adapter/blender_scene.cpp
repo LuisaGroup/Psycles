@@ -47,6 +47,7 @@ using contract::ShaderDomain;
 using contract::ShaderGraph;
 using contract::SocketValue;
 using contract::TriangleMeshDesc;
+using contract::VolumeInterpolation;
 using contract::VolumeSampling;
 using contract::WorldSampling;
 
@@ -191,6 +192,19 @@ template<typename T>
     }
     throw std::runtime_error(
         "unsupported Cycles volume sampling method: " +
+        std::string{name});
+}
+
+[[nodiscard]] VolumeInterpolation volume_interpolation(
+    std::string_view name) {
+    if (name == "LINEAR") {
+        return VolumeInterpolation::linear;
+    }
+    if (name == "CUBIC") {
+        return VolumeInterpolation::cubic;
+    }
+    throw std::runtime_error(
+        "unsupported Cycles volume interpolation method: " +
         std::string{name});
 }
 
@@ -447,6 +461,12 @@ BlenderSceneImport load_blender_scene_bundle(
                                 material,
                                 "volume_sampling"),
                             "MULTIPLE_IMPORTANCE")),
+                    .volume_interpolation =
+                        volume_interpolation(text(
+                            member(
+                                material,
+                                "volume_interpolation"),
+                            "LINEAR")),
                     .displacement_method =
                         authored_displacement_method,
                     .cycles_shader_index =
@@ -1753,6 +1773,14 @@ BlenderSceneImport load_blender_scene_bundle(
                     .name =
                         "__world__" + text(member(world, "name")),
                     .shader = std::move(world_graph),
+                    .volume_sampling =
+                        volume_sampling(text(
+                            member(world, "volume_sampling"),
+                            "MULTIPLE_IMPORTANCE")),
+                    .volume_interpolation =
+                        volume_interpolation(text(
+                            member(world, "volume_interpolation"),
+                            "LINEAR")),
                     .cycles_shader_index =
                         optional_unsigned_number(member(
                             world_cycles_sync,

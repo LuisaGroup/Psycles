@@ -4,6 +4,8 @@
 
 #include "cycles_svm_compiler_internal.h"
 
+#include <psycles/compiler/core_nodes.h>
+
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -117,6 +119,118 @@ template<typename T>
   return std::nullopt;
 }
 
+[[nodiscard]] Vec3f add(Vec3f lhs, Vec3f rhs) noexcept {
+  return {lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z};
+}
+
+[[nodiscard]] Vec3f multiply(Vec3f value, float scale) noexcept {
+  return {value.x * scale, value.y * scale, value.z * scale};
+}
+
+[[nodiscard]] Vec3f multiply(Vec3f lhs, Vec3f rhs) noexcept {
+  return {lhs.x * rhs.x, lhs.y * rhs.y, lhs.z * rhs.z};
+}
+
+// Isomorphic host projection of Cycles 5.2.1 output_estimate_emission. The
+// recursion intentionally follows closure edges independently, including
+// shared subgraphs: this is an importance estimate, not common-subexpression
+// evaluation or rendered radiance.
+[[nodiscard]] Vec3f output_estimate_emission(GraphOutput *output,
+                                             bool &is_constant) noexcept {
+  auto *node = output != nullptr ? output->parent : nullptr;
+  if (node == nullptr) {
+    return {};
+  }
+
+  if (node->type == node_type::emission ||
+      node->type == node_type::background ||
+      node->type == node_type::principled_bsdf) {
+    const auto principled = node->type == node_type::principled_bsdf;
+    auto *color = node->input(principled ? "EmissionColor" : "Color");
+    auto *strength =
+        node->input(principled ? "EmissionStrength" : "Strength");
+    if (principled) {
+      is_constant = false;
+    }
+    auto estimate = Vec3f{1.0f, 1.0f, 1.0f};
+    if (color != nullptr && color->link != nullptr) {
+      is_constant = false;
+    } else if (const auto value =
+                   literal<Vec3f>(color, contract::SocketType::color)) {
+      estimate = multiply(estimate, *value);
+    }
+    if (strength != nullptr && strength->link != nullptr) {
+      is_constant = false;
+      estimate = multiply(
+          estimate, output_estimate_emission(strength->link, is_constant));
+    } else if (const auto value =
+                   literal<float>(strength,
+                                  contract::SocketType::floating)) {
+      estimate = multiply(estimate, *value);
+    }
+    return estimate;
+  }
+
+  if (node->type == node_type::light_falloff ||
+      node->type == node_type::ies_light) {
+    auto *strength = node->input("Strength");
+    is_constant = false;
+    if (strength != nullptr && strength->link != nullptr) {
+      return output_estimate_emission(strength->link, is_constant);
+    }
+    const auto value =
+        literal<float>(strength, contract::SocketType::floating)
+            .value_or(0.0f);
+    return {value, value, value};
+  }
+
+  if (node->type == node_type::add_closure) {
+    const auto *closure1 = node->input("Closure1");
+    const auto *closure2 = node->input("Closure2");
+    return add(output_estimate_emission(
+                   closure1 != nullptr ? closure1->link : nullptr,
+                   is_constant),
+               output_estimate_emission(
+                   closure2 != nullptr ? closure2->link : nullptr,
+                   is_constant));
+  }
+
+  if (node->type == node_type::mix_closure) {
+    const auto *factor = node->input("Fac");
+    const auto *closure1 = node->input("Closure1");
+    const auto *closure2 = node->input("Closure2");
+    const auto estimate1 = output_estimate_emission(
+        closure1 != nullptr ? closure1->link : nullptr, is_constant);
+    const auto estimate2 = output_estimate_emission(
+        closure2 != nullptr ? closure2->link : nullptr, is_constant);
+    if (factor != nullptr && factor->link != nullptr) {
+      is_constant = false;
+      return add(estimate1, estimate2);
+    }
+    const auto value =
+        literal<float>(factor, contract::SocketType::floating).value_or(0.0f);
+    return add(multiply(estimate1, 1.0f - value),
+               multiply(estimate2, value));
+  }
+
+  auto estimate = Vec3f{};
+  if (output->type == GraphSocketType::closure) {
+    if (node->has_surface_emission()) {
+      estimate = {1.0f, 1.0f, 1.0f};
+      is_constant = false;
+    }
+    for (const auto &input : node->inputs) {
+      if (input.type == GraphSocketType::closure && input.link != nullptr) {
+        estimate = add(
+            estimate, output_estimate_emission(input.link, is_constant));
+      }
+    }
+    return estimate;
+  }
+  is_constant = false;
+  return {1.0f, 1.0f, 1.0f};
+}
+
 [[nodiscard]] std::uint32_t stack_base_size(GraphSocketType type) noexcept {
   switch (type) {
     case GraphSocketType::floating:
@@ -167,6 +281,7 @@ private:
   BytecodeBuilder _stream;
   Stack _stack;
   AttributeRequestSet _attribute_requests;
+  ShaderCompileMetadata _metadata;
   GraphNode *_current_node{};
   ShaderType _current_type{SHADER_TYPE_SURFACE};
   bool _background{};
@@ -557,6 +672,15 @@ private:
     if (!_diagnostic.empty()) {
       return false;
     }
+    if (_current_type == SHADER_TYPE_SURFACE) {
+      _metadata.has_surface_spatial_varying |= node->has_spatial_varying();
+      _metadata.has_surface_raytrace |=
+          (node->get_feature() & kernel_feature_node_raytrace) != 0u;
+    } else if (_current_type == SHADER_TYPE_VOLUME) {
+      _metadata.has_volume_spatial_varying |= node->has_spatial_varying();
+      _metadata.has_volume_attribute_dependency |=
+          node->has_attribute_dependency();
+    }
     stack_clear_users(node, done);
     stack_clear_temporary(node);
     return true;
@@ -749,6 +873,14 @@ private:
     }
     if (!generate_node(node, state->nodes_done)) {
       return false;
+    }
+    if (_current_type == SHADER_TYPE_SURFACE) {
+      _metadata.has_surface_transparent |= node->has_surface_transparent();
+      const auto has_surface_bssrdf = node->has_surface_bssrdf();
+      _metadata.has_surface_bssrdf |= has_surface_bssrdf;
+      _metadata.has_bump_from_surface |= node->has_bump();
+      _metadata.has_bssrdf_bump |=
+          has_surface_bssrdf && node->has_bssrdf_bump();
     }
     _mix_weight_offset = SVM_STACK_INVALID;
     return true;
@@ -963,6 +1095,7 @@ private:
     result.attribute_requests.assign(_attribute_requests.requests().begin(),
                                      _attribute_requests.requests().end());
     result.peak_stack_usage = _stack.peak();
+    result.metadata = _metadata;
     return result;
   }
 
@@ -975,6 +1108,25 @@ public:
         _image_ids{image_ids},
         _ies_ids{ies_ids},
         _background{context.background} {
+    _metadata.has_surface = _graph.root(GraphDomain::surface) != nullptr;
+    _metadata.has_volume = _graph.root(GraphDomain::volume) != nullptr;
+    _metadata.has_volume_connected =
+        shader.graph().root(contract::ShaderDomain::volume).has_value();
+    _metadata.has_bump_from_displacement =
+        context.displacement_method != contract::DisplacementMethod::displacement &&
+        _graph.root(GraphDomain::surface) != nullptr &&
+        _graph.root(GraphDomain::bump) != nullptr;
+    _metadata.has_bssrdf_bump = _metadata.has_bump_from_displacement;
+    for (const auto &node : _graph.nodes()) {
+      _metadata.has_light_path_node |=
+          node->special_type == GraphNodeSpecialType::light_path;
+      if (node->special_type == GraphNodeSpecialType::output_aov) {
+        _metadata.emission_is_constant = false;
+      }
+    }
+    _metadata.emission_estimate = output_estimate_emission(
+        _graph.root(GraphDomain::surface),
+        _metadata.emission_is_constant);
     for (const auto &request : _graph.attribute_requests()) {
       if (request.standard != ATTR_STD_NONE) {
         _attribute_requests.add(request.standard);
