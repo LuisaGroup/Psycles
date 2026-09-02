@@ -53,6 +53,14 @@ float_socket_value(const GraphInput *input) noexcept {
 
 class GeometryNode final : public GraphNode {
 public:
+  [[nodiscard]] bool has_attribute_dependency() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] bool has_spatial_varying() const noexcept override {
+    return true;
+  }
+
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_GEOMETRY;
   }
@@ -208,6 +216,10 @@ public:
 
 class BumpNode final : public GraphNode {
 public:
+  [[nodiscard]] bool has_spatial_varying() const noexcept override {
+    return true;
+  }
+
   [[nodiscard]] std::uint32_t get_feature() const noexcept override {
     return kernel_feature_node_bump;
   }
@@ -252,6 +264,10 @@ public:
 
 class WireframeNode final : public GraphNode {
 public:
+  [[nodiscard]] bool has_spatial_varying() const noexcept override {
+    return true;
+  }
+
   void compile(SVMCompiler &compiler) override {
     const auto use_pixel_size = boolean_property(this, "Use Pixel Size");
     if (!use_pixel_size) {

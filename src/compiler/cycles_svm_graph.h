@@ -58,6 +58,7 @@ enum class GraphNodeSpecialType : std::uint8_t {
   combine_closure,
   output,
   output_aov,
+  light_path,
 };
 
 enum ShaderBump : std::uint8_t {
@@ -154,6 +155,13 @@ struct GraphNode {
   [[nodiscard]] virtual std::uint32_t get_feature() const noexcept;
   [[nodiscard]] virtual ShaderNodeType shader_node_type() const noexcept;
   [[nodiscard]] virtual bool equals(const GraphNode &other) const noexcept;
+  [[nodiscard]] virtual bool has_surface_emission() const noexcept;
+  [[nodiscard]] virtual bool has_surface_transparent() const noexcept;
+  [[nodiscard]] virtual bool has_surface_bssrdf() const noexcept;
+  [[nodiscard]] virtual bool has_bump() const noexcept;
+  [[nodiscard]] virtual bool has_bssrdf_bump() const noexcept;
+  [[nodiscard]] virtual bool has_spatial_varying() const noexcept;
+  [[nodiscard]] virtual bool has_attribute_dependency() const noexcept;
   [[nodiscard]] virtual bool has_volume_support() const noexcept;
   [[nodiscard]] virtual bool is_linear_operation() const noexcept;
 

@@ -44,6 +44,29 @@ struct ImageBinding {
   auto operator<=>(const ImageBinding &) const = default;
 };
 
+// Shader facts populated by the same Cycles-graph traversal that emits the
+// local SVM image. These are not inferred from the resulting opcode stream:
+// node virtuals and output topology carry source semantics which bytecode
+// alone does not preserve.
+struct ShaderCompileMetadata {
+  bool has_surface{};
+  bool has_surface_transparent{};
+  bool has_surface_raytrace{};
+  bool has_surface_bssrdf{};
+  bool has_surface_spatial_varying{};
+  bool has_volume{};
+  bool has_volume_connected{};
+  bool has_volume_spatial_varying{};
+  bool has_volume_attribute_dependency{};
+  bool has_bump_from_surface{};
+  bool has_bump_from_displacement{};
+  bool has_bssrdf_bump{};
+  bool has_light_path_node{};
+  bool emission_is_constant{true};
+  bool emission_from_auto_conversion{};
+  Vec3f emission_estimate{};
+};
+
 struct ShaderImage {
   bool valid{};
   std::string diagnostic;
@@ -54,6 +77,7 @@ struct ShaderImage {
   // cannot perturb the named IDs allocated by SVM bytecode compilation.
   std::vector<AttributeRequest> attribute_requests;
   std::uint32_t peak_stack_usage{};
+  ShaderCompileMetadata metadata;
 };
 
 // Exact scene-owned SVMCompiler mode which Cycles sets from Shader::is_background.

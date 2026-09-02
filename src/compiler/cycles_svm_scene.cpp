@@ -1,5 +1,8 @@
 #include <psycles/compiler/cycles_svm_scene.h>
 
+#include <psycles/compiler/cycles_emission_sampling.h>
+#include <psycles/compiler/cycles_hash.h>
+
 #include <algorithm>
 #include <bit>
 #include <cstddef>
@@ -40,9 +43,112 @@ static_assert(jump_node_word_count == 4u);
 
 [[nodiscard]] bool same_local_shader(const ShaderImage &lhs,
                                      const ShaderImage &rhs) noexcept {
+  const auto &a = lhs.metadata;
+  const auto &b = rhs.metadata;
+  const auto same_metadata =
+      a.has_surface == b.has_surface &&
+      a.has_surface_transparent == b.has_surface_transparent &&
+      a.has_surface_raytrace == b.has_surface_raytrace &&
+      a.has_surface_bssrdf == b.has_surface_bssrdf &&
+      a.has_surface_spatial_varying == b.has_surface_spatial_varying &&
+      a.has_volume == b.has_volume &&
+      a.has_volume_connected == b.has_volume_connected &&
+      a.has_volume_spatial_varying == b.has_volume_spatial_varying &&
+      a.has_volume_attribute_dependency ==
+          b.has_volume_attribute_dependency &&
+      a.has_bump_from_surface == b.has_bump_from_surface &&
+      a.has_bump_from_displacement == b.has_bump_from_displacement &&
+      a.has_bssrdf_bump == b.has_bssrdf_bump &&
+      a.has_light_path_node == b.has_light_path_node &&
+      a.emission_is_constant == b.emission_is_constant &&
+      a.emission_from_auto_conversion == b.emission_from_auto_conversion &&
+      std::bit_cast<std::uint32_t>(a.emission_estimate.x) ==
+          std::bit_cast<std::uint32_t>(b.emission_estimate.x) &&
+      std::bit_cast<std::uint32_t>(a.emission_estimate.y) ==
+          std::bit_cast<std::uint32_t>(b.emission_estimate.y) &&
+      std::bit_cast<std::uint32_t>(a.emission_estimate.z) ==
+          std::bit_cast<std::uint32_t>(b.emission_estimate.z);
   return lhs.words == rhs.words && lhs.node_types_used == rhs.node_types_used &&
          lhs.attribute_requests == rhs.attribute_requests &&
-         lhs.peak_stack_usage == rhs.peak_stack_usage;
+         lhs.peak_stack_usage == rhs.peak_stack_usage && same_metadata;
+}
+
+[[nodiscard]] KernelShader
+make_kernel_shader(const ShaderImage &image,
+                   const ShaderTableCompileUnit &unit) noexcept {
+  const auto &metadata = image.metadata;
+  const auto effective_emission_sampling = resolve_cycles_emission_sampling(
+      unit.kernel.emission_sampling, metadata.emission_estimate,
+      metadata.emission_from_auto_conversion);
+  auto flags = std::uint32_t{};
+  flags |= effective_emission_sampling == contract::EmissionSampling::front ||
+                   effective_emission_sampling ==
+                       contract::EmissionSampling::front_back
+               ? SD_MIS_FRONT
+               : 0u;
+  flags |= effective_emission_sampling == contract::EmissionSampling::back ||
+                   effective_emission_sampling ==
+                       contract::EmissionSampling::front_back
+               ? SD_MIS_BACK
+               : 0u;
+  flags |= metadata.emission_estimate != Vec3f{} ? SD_HAS_EMISSION : 0u;
+  flags |= (metadata.has_surface_transparent &&
+            unit.kernel.use_transparent_shadow) ||
+                   metadata.has_volume
+               ? SD_HAS_TRANSPARENT_SHADOW
+               : 0u;
+  flags |= metadata.has_surface_raytrace ? SD_HAS_RAYTRACE : 0u;
+  flags |= metadata.has_volume ? SD_HAS_VOLUME : 0u;
+  flags |= metadata.has_volume_connected && !metadata.has_surface
+               ? SD_HAS_ONLY_VOLUME
+               : 0u;
+  flags |= metadata.has_volume && metadata.has_volume_spatial_varying
+               ? SD_HETEROGENEOUS_VOLUME
+               : 0u;
+  flags |= metadata.has_volume_attribute_dependency
+               ? SD_NEED_VOLUME_ATTRIBUTES
+               : 0u;
+  flags |= metadata.has_bssrdf_bump ? SD_HAS_BSSRDF_BUMP : 0u;
+  flags |= unit.kernel.volume_sampling ==
+                   contract::VolumeSampling::equiangular
+               ? SD_VOLUME_EQUIANGULAR
+               : 0u;
+  flags |= unit.kernel.volume_sampling ==
+                   contract::VolumeSampling::multiple_importance
+               ? SD_VOLUME_MIS
+               : 0u;
+  flags |= unit.kernel.volume_interpolation ==
+                   contract::VolumeInterpolation::cubic
+               ? SD_VOLUME_CUBIC
+               : 0u;
+  flags |= metadata.has_bump_from_displacement
+               ? SD_HAS_BUMP_FROM_DISPLACEMENT
+               : 0u;
+  flags |= metadata.has_bump_from_surface ? SD_HAS_BUMP_FROM_SURFACE : 0u;
+  flags |= unit.context.displacement_method !=
+                   contract::DisplacementMethod::bump
+               ? SD_HAS_DISPLACEMENT
+               : 0u;
+  flags |= unit.kernel.use_bump_map_correction
+               ? SD_USE_BUMP_MAP_CORRECTION
+               : 0u;
+  flags |= metadata.emission_is_constant ? SD_HAS_CONSTANT_EMISSION : 0u;
+  flags |= metadata.has_light_path_node ? SD_HAS_LIGHT_PATH_NODE : 0u;
+  return KernelShader{
+      .constant_emission =
+          {metadata.emission_estimate.x, metadata.emission_estimate.y,
+           metadata.emission_estimate.z},
+      .cryptomatte_id = cycles_cryptomatte_hash(unit.kernel.name),
+      .flags = std::bit_cast<std::int32_t>(flags),
+      .pass_id = unit.kernel.pass_id,
+      .pad2 = 0,
+      .pad3 = 0};
+}
+
+[[nodiscard]] bool same_kernel_shader(const KernelShader &lhs,
+                                      const KernelShader &rhs) noexcept {
+  return std::bit_cast<std::array<std::uint32_t, 8u>>(lhs) ==
+         std::bit_cast<std::array<std::uint32_t, 8u>>(rhs);
 }
 
 [[nodiscard]] std::uint64_t
@@ -165,6 +271,8 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
   IESIDMap ies_ids;
   std::vector<std::optional<ShaderImage>> occupied(
       static_cast<std::size_t>(maximum_index) + 1u);
+  std::vector<std::optional<KernelShader>> occupied_kernel(
+      occupied.size());
   for (const auto &unit : shaders) {
     auto image = compile_shader(*unit.shader, attribute_ids, image_ids, ies_ids,
                                 unit.context);
@@ -174,22 +282,35 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
                  ": " + image.diagnostic);
       return result;
     }
+    const auto kernel_shader = make_kernel_shader(image, unit);
     auto &slot = occupied[unit.shader_index];
+    auto &kernel_slot = occupied_kernel[unit.shader_index];
     if (slot && !same_local_shader(*slot, image)) {
       result.table = reject("Cycles SVM shader index " +
                             std::to_string(unit.shader_index) +
                             " names distinct local images");
       return result;
     }
+    if (kernel_slot && !same_kernel_shader(*kernel_slot, kernel_shader)) {
+      result.table = reject("Cycles SVM shader index " +
+                            std::to_string(unit.shader_index) +
+                            " names distinct KernelShader records");
+      return result;
+    }
     if (!slot) {
       slot.emplace(std::move(image));
+      kernel_slot.emplace(kernel_shader);
     }
   }
 
   std::vector<ShaderImage> local;
   local.reserve(occupied.size());
-  for (auto &slot : occupied) {
+  result.kernel_shaders.reserve(occupied.size());
+  for (auto index = std::size_t{}; index < occupied.size(); ++index) {
+    auto &slot = occupied[index];
     local.emplace_back(slot ? std::move(*slot) : inert_shader());
+    result.kernel_shaders.emplace_back(
+        occupied_kernel[index].value_or(KernelShader{}));
   }
   result.shader_node_types_used.reserve(local.size());
   result.shader_attribute_ids_in_request_order.reserve(local.size());
@@ -212,6 +333,8 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
     result.named_attributes = attribute_ids.bindings();
     result.images = image_ids.bindings();
     result.ies = ies_ids.packed_data();
+  } else {
+    result.kernel_shaders.clear();
   }
   return result;
 }

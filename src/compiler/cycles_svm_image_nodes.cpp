@@ -156,6 +156,10 @@ image_flags(const GraphNode *node, bool include_alpha) noexcept {
 
 class ImageTextureNode final : public TextureNode {
 public:
+  [[nodiscard]] bool has_attribute_dependency() const noexcept override {
+    return true;
+  }
+
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     const auto projection = string_property(this, "Projection");
     return projection && image_projection(*projection) == NODE_IMAGE_PROJ_BOX
@@ -220,6 +224,10 @@ public:
 
 class EnvironmentTextureNode final : public TextureNode {
 public:
+  [[nodiscard]] bool has_attribute_dependency() const noexcept override {
+    return true;
+  }
+
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_TEX_ENVIRONMENT;
   }

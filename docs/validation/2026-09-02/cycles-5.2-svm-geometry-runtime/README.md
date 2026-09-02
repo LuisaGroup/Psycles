@@ -39,7 +39,8 @@ with these invariants:
    allocation requirement is represented only on the device by one unreachable,
    zero-initialized sentinel for an empty semantic array.
 
-The uploaded arrays retain the native Cycles types: `AttributeMap`, scalar
+The uploaded arrays retain the native Cycles types: `KernelShader`,
+`AttributeMap`, scalar
 float, packed float2/3/4, byte RGBA, octahedral packed normal, triangle vertex,
 curve key, point, packed triangle index, 32-bit `tri_shader`, `KernelCurve`, the
 256-byte `KernelObject`, and its separate 32-bit flag word. The 32-byte,
@@ -190,6 +191,8 @@ strict native-XIR Vulkan that:
   geometry shader domain without entering the legacy material library;
 - deliberately reversed `MaterialId` and source shader order assigns named
   attribute IDs in Cycles shader order;
+- the dense native `KernelShader` table survives upload, including byte-zero
+  holes, and a DSL kernel dynamically indexes every float and integer field;
 - typed attribute maps, finalized vertices, packed normals, global triangle
   indices, decorated `tri_shader` values, full `KernelObject` records, and
   object flags survive device upload;
@@ -271,6 +274,12 @@ the affected host tests and fallback/HIP/strict-native-XIR Vulkan typed-upload
 tests passed. A fresh 32-thread build followed by the full suite under
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1` passed 547/547 tests in 22.38 seconds.
+
+The following KernelShader transaction added exact graph-derived scheduling
+metadata, native typed upload, and material/world volume-interpolation
+round-trip coverage. Focused host, Blender exporter/importer, fallback, HIP,
+and strict native-XIR Vulkan tests all passed. A 32-thread full build followed
+by the strict native-XIR full suite passed 547/547 tests in 24.91 seconds.
 
 ## Next boundary
 

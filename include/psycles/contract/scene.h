@@ -84,6 +84,11 @@ enum class VolumeSampling : std::uint8_t {
         (1u << 0u) | (1u << 1u)
 };
 
+enum class VolumeInterpolation : std::uint8_t {
+    linear,
+    cubic
+};
+
 // Blender/Cycles material displacement policy. This is deliberately an enum
 // rather than a pair of booleans: the three authored states have distinct
 // shader-evaluation and geometry-rebuild semantics.
@@ -127,6 +132,10 @@ struct MaterialDesc {
     // stack.
     VolumeSampling volume_sampling{
         VolumeSampling::multiple_importance};
+    // Cycles Shader::volume_interpolation_method controls volume-grid
+    // attribute filtering and contributes directly to KernelShader flags.
+    VolumeInterpolation volume_interpolation{
+        VolumeInterpolation::linear};
     // Cycles keeps geometry with true displacement in object space even when
     // it has a single user. The raw graph is retained above; this enum owns
     // the exact authored BUMP/DISPLACEMENT/BOTH policy.

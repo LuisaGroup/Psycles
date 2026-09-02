@@ -1734,6 +1734,20 @@ bool GraphNode::equals(const GraphNode &other) const noexcept {
 
 bool GraphNode::has_volume_support() const noexcept { return false; }
 
+bool GraphNode::has_surface_emission() const noexcept { return false; }
+
+bool GraphNode::has_surface_transparent() const noexcept { return false; }
+
+bool GraphNode::has_surface_bssrdf() const noexcept { return false; }
+
+bool GraphNode::has_bump() const noexcept { return false; }
+
+bool GraphNode::has_bssrdf_bump() const noexcept { return false; }
+
+bool GraphNode::has_spatial_varying() const noexcept { return false; }
+
+bool GraphNode::has_attribute_dependency() const noexcept { return false; }
+
 bool GraphNode::is_linear_operation() const noexcept { return false; }
 
 std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {

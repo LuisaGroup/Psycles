@@ -73,12 +73,15 @@ def _main() -> None:
     scene.world.cycles_visibility.scatter = False
     scene.world.cycles.use_shadows = False
     scene.world.cycles.max_bounces = 17
+    scene.world.cycles.volume_sampling = "DISTANCE"
+    scene.world.cycles.volume_interpolation = "CUBIC"
 
     material = bpy.data.materials.new("Middle Material")
     material.use_nodes = True
     material.pass_index = 23
     material.displacement_method = "BUMP"
     material.cycles.volume_sampling = "EQUIANGULAR"
+    material.cycles.volume_interpolation = "CUBIC"
     material.cycles.use_bump_map_correction = False
     # This datablock exists in the .blend but is outside the dependency-graph
     # surface image. It must not perturb the exported SVM input domain.
@@ -201,6 +204,11 @@ def _main() -> None:
     if materials["Middle Material"]["volume_sampling"] != "EQUIANGULAR":
         raise AssertionError(
             "material volume-sampling policy did not round-trip through "
+            "the Blender exporter"
+        )
+    if materials["Middle Material"]["volume_interpolation"] != "CUBIC":
+        raise AssertionError(
+            "material volume-interpolation policy did not round-trip through "
             "the Blender exporter"
         )
     if materials["Middle Material"]["displacement_method"] != "BUMP":
@@ -372,6 +380,11 @@ def _main() -> None:
             raise AssertionError("world shadow policy changed")
         if payload["world"]["max_bounces"] != 17:
             raise AssertionError("world max-bounces policy changed")
+        if (
+            payload["world"]["volume_sampling"] != "DISTANCE"
+            or payload["world"]["volume_interpolation"] != "CUBIC"
+        ):
+            raise AssertionError("world volume policy changed")
         visibility = payload["world"]["visibility"]
         if (
             visibility["camera"]

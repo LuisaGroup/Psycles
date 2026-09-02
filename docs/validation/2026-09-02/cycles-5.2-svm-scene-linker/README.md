@@ -14,9 +14,10 @@ The implementation is in:
 - `src/compiler/cycles_svm_scene.cpp`
 - `tests/test_cycles_svm_scene.cpp`
 
-This is a host-scene construction milestone. The global image is not yet the
-production `shade_surface` evaluator; device upload and production wiring are
-the next migration boundary.
+The same transaction now also constructs and uploads the dense native
+`KernelShader` image. It is not yet the production `shade_surface` evaluator;
+exposing the tables through `KernelGlobals` and constructing exact
+`ShaderData` remain the next migration boundary.
 
 ## Source correspondence
 
@@ -57,6 +58,36 @@ false:
 These checks are representation invariants. They do not inspect or rewrite
 individual shader node cases.
 
+## KernelShader metadata image
+
+For every represented source shader index `i`, scene compilation now emits the
+exact 32-byte, 16-byte-aligned Cycles `KernelShader` record `K[i]`. The record
+is derived from the same finalized graph traversal that emits SVM bytecode:
+
+```text
+K[i].constant_emission = output_estimate_emission(surface_root)
+K[i].cryptomatte_id    = hash_to_float(murmur3(shader_name))
+K[i].flags             = Cycles Shader metadata and authored policies
+K[i].pass_id           = Blender Material.pass_index
+```
+
+The metadata transfer follows `ShaderManager::device_update_common` in
+`intern/cycles/scene/shader.cpp`: emission front/back sampling, transparent
+shadow gating, ray-trace use, volume/only-volume/heterogeneous/attribute state,
+BSSRDF and displacement bump state, volume sampling/interpolation, true
+displacement, bump correction, constant emission, and Light Path presence.
+Spatial and attribute facts are recorded only while the corresponding node is
+actually generated in the surface or volume compiler state, matching
+`SVMCompiler::generate_node`; closure-only facts are recorded in the matching
+surface closure state. This avoids both a whole-graph false positive and an
+opcode-based reconstruction that has already lost source semantics.
+
+The table is total over the linked shader index domain. An unrepresented hole
+has inert END-only SVM routines and an all-zero `KernelShader`; duplicate
+indices are accepted only if both the complete local compiler image and the
+complete `KernelShader` record agree. Thus no per-material policy can be lost
+merely because two graphs emit equal bytecode.
+
 ## External oracle
 
 The regression freezes the complete 113-word final global `svm_nodes` image
@@ -84,7 +115,11 @@ implied local images, invokes the Psycles linker, and requires exact equality
 of every one of the 113 output words. This checks realistic default shader
 tails as well as the custom diffuse surface/volume/displacement entries.
 Malformed-prefix, missing-tail, negative-entry, escaping-entry,
-incomplete-node-domain, and stack-overflow regressions are included.
+incomplete-node-domain, and stack-overflow regressions are included. Additional
+tests freeze constant-emission/hash/pass fields, transparent-shadow policy,
+heterogeneous volume and cubic/equiangular flags, Light Path emission state,
+surface BSSRDF bump, automatic/true displacement, zero holes, and rejection of
+equal bytecode carrying unequal shader metadata.
 
 No `.svm52` binary is checked in.
 
@@ -106,3 +141,11 @@ Result:
 ```text
 4/4 passed
 ```
+
+The typed runtime canary also reads every `KernelShader` field through a Luisa
+kernel using dynamic shader indexing. It passed on fallback and HIP, and on
+Vulkan with `LUISA_VULKAN_USE_XIR=1`,
+`LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
+`LUISA_VULKAN_DISABLE_DXC=1`. Blender 5.2 exporter/importer regressions passed
+with CUBIC material and world volume interpolation, so the device flag is
+sourced from the original scene policy rather than a renderer default.

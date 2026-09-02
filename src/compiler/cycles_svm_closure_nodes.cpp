@@ -231,6 +231,13 @@ void disconnect_input(GraphInput *input) noexcept {
   input->link = nullptr;
 }
 
+[[nodiscard]] bool has_non_default_normal(
+    const GraphNode *node) noexcept {
+  const auto *normal = node->input("Normal");
+  return normal != nullptr && normal->link != nullptr &&
+         normal->link->parent->special_type != GraphNodeSpecialType::geometry;
+}
+
 class BsdfNode : public GraphNode {
 private:
   ClosureType _closure;
@@ -286,6 +293,12 @@ public:
   [[nodiscard]] bool is_linear_operation() const noexcept override {
     return true;
   }
+  [[nodiscard]] bool has_spatial_varying() const noexcept override {
+    return true;
+  }
+  [[nodiscard]] bool has_bump() const noexcept override {
+    return has_non_default_normal(this);
+  }
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_CLOSURE_BSDF;
   }
@@ -326,6 +339,10 @@ class TransparentBsdfNode final : public BsdfNode {
 public:
   TransparentBsdfNode() noexcept
       : BsdfNode{CLOSURE_BSDF_TRANSPARENT_ID} {}
+
+  [[nodiscard]] bool has_surface_transparent() const noexcept override {
+    return true;
+  }
 
   void compile(SVMCompiler &compiler) override {
     compile_bsdf(compiler, SVMNodeSimpleBsdfData{});
@@ -375,6 +392,10 @@ public:
 
   [[nodiscard]] std::uint32_t get_feature() const noexcept override {
     return BsdfNode::get_feature() | kernel_feature_node_portal;
+  }
+
+  [[nodiscard]] bool has_surface_transparent() const noexcept override {
+    return true;
   }
 
   void compile(SVMCompiler &compiler) override {
@@ -444,6 +465,10 @@ private:
 public:
   GlossyBsdfNode() noexcept
       : BsdfNode{CLOSURE_BSDF_MICROFACET_GGX_ID} {}
+
+  [[nodiscard]] bool has_attribute_dependency() const noexcept override {
+    return true;
+  }
 
   void attributes(const GraphAttributeContext &context,
                   AttributeRequestSet &requests) const override {
@@ -517,6 +542,10 @@ private:
 public:
   MetallicBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_PHYSICAL_CONDUCTOR} {}
 
+  [[nodiscard]] bool has_attribute_dependency() const noexcept override {
+    return true;
+  }
+
   void attributes(const GraphAttributeContext &context,
                   AttributeRequestSet &requests) const override {
     const auto *tangent = input("Tangent");
@@ -570,6 +599,14 @@ class SubsurfaceScatteringNode final : public BsdfNode {
 public:
   SubsurfaceScatteringNode() noexcept
       : BsdfNode{CLOSURE_BSSRDF_RANDOM_WALK_ID} {}
+
+  [[nodiscard]] bool has_surface_bssrdf() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] bool has_bssrdf_bump() const noexcept override {
+    return has_non_default_normal(this);
+  }
 
   void compile(SVMCompiler &compiler) override {
     const auto method = subsurface_method(this, "Method");
@@ -721,7 +758,7 @@ private:
     return false;
   }
 
-  [[nodiscard]] bool has_surface_emission() const noexcept {
+  [[nodiscard]] bool has_surface_emission() const noexcept override {
     const auto *color = input("EmissionColor");
     const auto *strength = input("EmissionStrength");
     const auto color_value =
@@ -740,7 +777,7 @@ private:
     return color_nonzero && strength_nonzero;
   }
 
-  [[nodiscard]] bool has_surface_bssrdf() const noexcept {
+  [[nodiscard]] bool has_surface_bssrdf() const noexcept override {
     if (thin_wall() || !has_nonzero_weight("SubsurfaceWeight")) {
       return false;
     }
@@ -753,6 +790,62 @@ private:
 public:
   [[nodiscard]] std::uint32_t get_feature() const noexcept override {
     return GraphNode::get_feature() | kernel_feature_node_bsdf;
+  }
+
+  [[nodiscard]] bool has_spatial_varying() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] bool has_attribute_dependency() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] bool has_bump() const noexcept override {
+    return has_non_default_normal(this);
+  }
+
+  [[nodiscard]] bool has_bssrdf_bump() const noexcept override {
+    return has_surface_bssrdf() && has_bump();
+  }
+
+  [[nodiscard]] bool has_surface_transparent() const noexcept override {
+    const auto *alpha = input("Alpha");
+    const auto alpha_value =
+        literal<float>(alpha, contract::SocketType::floating);
+    if (alpha != nullptr &&
+        (alpha->link != nullptr ||
+         (alpha_value && *alpha_value < 1.0f - CLOSURE_WEIGHT_CUTOFF))) {
+      return true;
+    }
+
+    const auto *thin = input("ThinWall");
+    const auto thin_possible =
+        thin != nullptr && (thin->link != nullptr || thin_wall());
+    if (!thin_possible || !has_nonzero_weight("TransmissionWeight")) {
+      return false;
+    }
+    const auto *roughness = input("Roughness");
+    const auto *ior = input("IOR");
+    if (roughness == nullptr || ior == nullptr ||
+        roughness->link != nullptr || ior->link != nullptr) {
+      return true;
+    }
+    const auto roughness_value =
+        literal<float>(roughness, contract::SocketType::floating);
+    const auto ior_value = literal<float>(ior, contract::SocketType::floating);
+    if (!roughness_value || !ior_value) {
+      return true;
+    }
+    const auto alpha_roughness = *roughness_value * *roughness_value;
+    const auto eta = *ior_value;
+    const auto eta_minus_half = eta - 0.5f;
+    const auto eta_squared = eta * eta;
+    const auto radicand =
+        3.4f * (eta - 1.0f) * eta_minus_half * eta_minus_half /
+        (eta_squared * eta);
+    const auto transmission_roughness = std::clamp(
+        alpha_roughness * std::sqrt(radicand), 0.0f, 1.0f);
+    return transmission_roughness * transmission_roughness <= 2.0e-10f;
   }
 
   [[nodiscard]] bool equals(const GraphNode &) const noexcept override {
@@ -877,6 +970,10 @@ public:
   }
 
   [[nodiscard]] bool has_volume_support() const noexcept override {
+    return true;
+  }
+
+  [[nodiscard]] bool has_surface_emission() const noexcept override {
     return true;
   }
 

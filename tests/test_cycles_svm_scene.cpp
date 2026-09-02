@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -182,6 +183,280 @@ std::shared_ptr<const ShaderProgram> compile_particle_index() {
   return std::move(compiled.program);
 }
 
+std::shared_ptr<const ShaderProgram>
+compile_graph(ShaderGraph graph, std::string_view diagnostic) {
+  const ShaderCompiler compiler{make_core_node_registry()};
+  auto compiled = compiler.compile(graph);
+  require(compiled.ok(), diagnostic);
+  return std::move(compiled.program);
+}
+
+[[nodiscard]] std::uint32_t shader_flags(const KernelShader &shader) {
+  return std::bit_cast<std::uint32_t>(shader.flags);
+}
+
+void require_shader_flags(const KernelShader &shader, std::uint32_t expected,
+                          std::string_view message) {
+  const auto actual = shader_flags(shader);
+  if (actual != expected) {
+    std::cerr << message << ": actual=0x" << std::hex << actual
+              << ", expected=0x" << expected << std::dec << '\n';
+    std::exit(1);
+  }
+}
+
+void test_kernel_shader_image_matches_cycles_metadata() {
+  ShaderGraph graph;
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.set_input(emission, "Color",
+                          SocketValue::color({0.25f, 0.5f, 1.0f})) &&
+              graph.set_input(emission, "Strength",
+                              SocketValue::floating(4.0f)),
+          "failed to configure KernelShader emission probe");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+  const auto shader =
+      compile_graph(std::move(graph), "KernelShader emission graph failed");
+  const std::array units{ShaderTableCompileUnit{
+      .shader_index = 2u,
+      .shader = shader.get(),
+      .kernel = {.name = "Cube",
+                 .use_transparent_shadow = false,
+                 .use_bump_map_correction = false,
+                 .emission_sampling = EmissionSampling::front,
+                 .volume_sampling = VolumeSampling::distance,
+                 .volume_interpolation = VolumeInterpolation::linear,
+                 .pass_id = 17}}};
+  const auto compiled = compile_shader_table(units);
+  require(compiled.table.valid, compiled.table.diagnostic);
+  require(compiled.kernel_shaders.size() == 3u,
+          "KernelShader image does not share the dense shader domain");
+
+  constexpr std::array<std::uint32_t, 8u> zero_words{};
+  require(std::bit_cast<std::array<std::uint32_t, 8u>>(
+              compiled.kernel_shaders[0u]) == zero_words &&
+              std::bit_cast<std::array<std::uint32_t, 8u>>(
+                  compiled.kernel_shaders[1u]) == zero_words,
+          "unrepresented KernelShader holes are not byte-zero");
+
+  const auto &kernel = compiled.kernel_shaders[2u];
+  require(kernel.constant_emission.x == 1.0f &&
+              kernel.constant_emission.y == 2.0f &&
+              kernel.constant_emission.z == 4.0f,
+          "constant emission estimate differs from Cycles");
+  require(std::bit_cast<std::uint32_t>(kernel.cryptomatte_id) ==
+              0xa8fce865u,
+          "KernelShader name hash differs from the Cycles Cube oracle");
+  constexpr auto expected_flags =
+      static_cast<std::uint32_t>(SD_MIS_FRONT | SD_HAS_CONSTANT_EMISSION |
+                                 SD_HAS_EMISSION);
+  require_shader_flags(kernel, expected_flags,
+                       "constant-emission KernelShader flags differ from Cycles");
+  require(kernel.pass_id == 17 && kernel.pad2 == 0 && kernel.pad3 == 0,
+          "constant-emission KernelShader scalar fields differ from Cycles");
+}
+
+void test_kernel_shader_transparency_and_duplicate_contract() {
+  ShaderGraph graph;
+  const auto transparent =
+      graph.add_node(node_type::transparent_bsdf, "Transparent");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = transparent, .socket = "Closure"});
+  const auto shader =
+      compile_graph(std::move(graph), "transparent metadata graph failed");
+
+  const std::array enabled{ShaderTableCompileUnit{
+      .shader_index = 0u,
+      .shader = shader.get(),
+      .kernel = {.name = "Transparent",
+                 .use_transparent_shadow = true,
+                 .use_bump_map_correction = false,
+                 .volume_sampling = VolumeSampling::distance}}};
+  const auto compiled = compile_shader_table(enabled);
+  require(compiled.table.valid, compiled.table.diagnostic);
+  require_shader_flags(
+      compiled.kernel_shaders[0u],
+      static_cast<std::uint32_t>(SD_HAS_TRANSPARENT_SHADOW |
+                                 SD_HAS_CONSTANT_EMISSION),
+      "transparent-shadow policy was not projected into KernelShader");
+
+  const std::array disabled{ShaderTableCompileUnit{
+      .shader_index = 0u,
+      .shader = shader.get(),
+      .kernel = {.name = "Transparent",
+                 .use_transparent_shadow = false,
+                 .use_bump_map_correction = false,
+                 .volume_sampling = VolumeSampling::distance}}};
+  const auto no_shadow = compile_shader_table(disabled);
+  require(no_shadow.table.valid &&
+              shader_flags(no_shadow.kernel_shaders[0u]) ==
+                  static_cast<std::uint32_t>(SD_HAS_CONSTANT_EMISSION),
+          "disabled transparent shadows retained the scheduling flag");
+
+  const std::array ambiguous{
+      ShaderTableCompileUnit{.shader_index = 0u,
+                             .shader = shader.get(),
+                             .kernel = {.name = "Transparent",
+                                        .use_transparent_shadow = true}},
+      ShaderTableCompileUnit{.shader_index = 0u,
+                             .shader = shader.get(),
+                             .kernel = {.name = "Transparent",
+                                        .use_transparent_shadow = false}}};
+  require(!compile_shader_table(ambiguous).table.valid,
+          "duplicate bytecode with distinct KernelShader metadata was merged");
+}
+
+void test_kernel_shader_volume_and_light_path_flags() {
+  ShaderGraph volume_graph;
+  const auto attribute =
+      volume_graph.add_node(node_type::attribute, "Density");
+  const auto volume =
+      volume_graph.add_node(node_type::volume_absorption, "Volume");
+  require(volume_graph.set_property(attribute, "Attribute",
+                                    SocketValue::string("density")) &&
+              volume_graph.set_property(
+                  attribute, "AttributeId",
+                  SocketValue::unsigned_integer(attribute_id("density"))) &&
+              volume_graph.connect({attribute, "Fac"}, volume, "Density"),
+          "failed to configure KernelShader volume probe");
+  volume_graph.set_root(ShaderDomain::volume,
+                        OutputRef{.node = volume, .socket = "Volume"});
+  const auto volume_shader = compile_graph(
+      std::move(volume_graph), "volume metadata graph failed");
+  const std::array volume_units{ShaderTableCompileUnit{
+      .shader_index = 0u,
+      .shader = volume_shader.get(),
+      .kernel = {.name = "Volume",
+                 .use_bump_map_correction = false,
+                 .volume_sampling = VolumeSampling::equiangular,
+                 .volume_interpolation = VolumeInterpolation::cubic}}};
+  const auto volume_compiled = compile_shader_table(volume_units);
+  require(volume_compiled.table.valid, volume_compiled.table.diagnostic);
+  constexpr auto expected_volume_flags = static_cast<std::uint32_t>(
+      SD_HAS_TRANSPARENT_SHADOW | SD_HAS_VOLUME | SD_HAS_ONLY_VOLUME |
+      SD_HETEROGENEOUS_VOLUME | SD_NEED_VOLUME_ATTRIBUTES |
+      SD_VOLUME_EQUIANGULAR | SD_VOLUME_CUBIC | SD_HAS_CONSTANT_EMISSION);
+  require_shader_flags(volume_compiled.kernel_shaders[0u],
+                       expected_volume_flags,
+                       "volume scheduling flags differ from Cycles");
+
+  ShaderGraph path_graph;
+  const auto path = path_graph.add_node(node_type::light_path, "Light Path");
+  const auto path_emission =
+      path_graph.add_node(node_type::emission, "Emission");
+  require(path_graph.connect({path, "RayDepth"}, path_emission, "Strength"),
+          "failed to configure KernelShader Light Path probe");
+  path_graph.set_root(
+      ShaderDomain::surface,
+      OutputRef{.node = path_emission, .socket = "Closure"});
+  const auto path_shader =
+      compile_graph(std::move(path_graph), "Light Path metadata graph failed");
+  const std::array path_units{ShaderTableCompileUnit{
+      .shader_index = 0u,
+      .shader = path_shader.get(),
+      .kernel = {.name = "Light Path",
+                 .use_bump_map_correction = false,
+                 .volume_sampling = VolumeSampling::distance}}};
+  const auto path_compiled = compile_shader_table(path_units);
+  require(path_compiled.table.valid, path_compiled.table.diagnostic);
+  constexpr auto expected_path_flags = static_cast<std::uint32_t>(
+      SD_MIS_FRONT | SD_MIS_BACK | SD_HAS_LIGHT_PATH_NODE | SD_HAS_EMISSION);
+  require_shader_flags(path_compiled.kernel_shaders[0u], expected_path_flags,
+                       "Light Path/emission scheduling flags differ from Cycles");
+}
+
+void test_kernel_shader_bump_flag_implications() {
+  ShaderGraph surface_graph;
+  const auto wireframe =
+      surface_graph.add_node(node_type::wireframe, "Bump Height");
+  const auto bump = surface_graph.add_node(node_type::bump, "Bump");
+  const auto bssrdf = surface_graph.add_node(
+      node_type::subsurface_scattering, "Bumped BSSRDF");
+  require(surface_graph.set_property(wireframe, "Use Pixel Size",
+                                     SocketValue::boolean(false)) &&
+              surface_graph.set_property(bump, "Invert",
+                                         SocketValue::boolean(false)) &&
+              surface_graph.set_property(bump, "UseObjectSpace",
+                                         SocketValue::boolean(false)) &&
+              surface_graph.connect({wireframe, "Fac"}, bump, "Height") &&
+              surface_graph.connect({bump, "Normal"}, bssrdf, "Normal"),
+          "failed to configure surface-bump metadata probe");
+  surface_graph.set_root(
+      ShaderDomain::surface,
+      OutputRef{.node = bssrdf, .socket = "Closure"});
+  const auto surface_shader = compile_graph(
+      std::move(surface_graph), "surface-bump metadata graph failed");
+  const std::array surface_units{ShaderTableCompileUnit{
+      .shader_index = 0u,
+      .shader = surface_shader.get(),
+      .kernel = {.name = "Surface Bump",
+                 .use_bump_map_correction = false,
+                 .volume_sampling = VolumeSampling::distance}}};
+  const auto surface_compiled = compile_shader_table(surface_units);
+  require(surface_compiled.table.valid, surface_compiled.table.diagnostic);
+  require_shader_flags(
+      surface_compiled.kernel_shaders[0u],
+      static_cast<std::uint32_t>(SD_HAS_BUMP_FROM_SURFACE |
+                                 SD_HAS_BSSRDF_BUMP |
+                                 SD_HAS_CONSTANT_EMISSION),
+      "surface BSSRDF bump flags differ from Cycles");
+
+  ShaderGraph displacement_graph;
+  const auto surface =
+      displacement_graph.add_node(node_type::diffuse_bsdf, "Surface");
+  const auto displacement_height =
+      displacement_graph.add_node(node_type::wireframe, "Displacement Height");
+  const auto displacement_bump =
+      displacement_graph.add_node(node_type::bump, "Displacement Bump");
+  const auto geometry =
+      displacement_graph.add_node(node_type::geometry, "Geometry");
+  const auto displacement = displacement_graph.add_node(
+      node_type::normal_to_vector, "True Displacement");
+  require(displacement_graph.set_property(
+              displacement_height, "Use Pixel Size",
+              SocketValue::boolean(false)) &&
+              displacement_graph.set_property(
+                  displacement_bump, "Invert", SocketValue::boolean(false)) &&
+              displacement_graph.set_property(
+                  displacement_bump, "UseObjectSpace",
+                  SocketValue::boolean(true)) &&
+              displacement_graph.connect({displacement_height, "Fac"},
+                                         displacement_bump, "Height") &&
+              displacement_graph.connect({geometry, "Normal"}, displacement,
+                                         "Normal"),
+          "failed to configure displacement-bump metadata probe");
+  displacement_graph.set_root(
+      ShaderDomain::surface,
+      OutputRef{.node = surface, .socket = "Closure"});
+  displacement_graph.set_root(
+      ShaderDomain::surface_normal,
+      OutputRef{.node = displacement_bump, .socket = "Normal"});
+  displacement_graph.set_root(
+      ShaderDomain::displacement,
+      OutputRef{.node = displacement, .socket = "Vector"});
+  const auto displacement_shader = compile_graph(
+      std::move(displacement_graph),
+      "displacement-bump metadata graph failed");
+  const std::array displacement_units{ShaderTableCompileUnit{
+      .shader_index = 0u,
+      .shader = displacement_shader.get(),
+      .context = {.displacement_method = DisplacementMethod::both},
+      .kernel = {.name = "Displacement Bump",
+                 .use_bump_map_correction = false,
+                 .volume_sampling = VolumeSampling::distance}}};
+  const auto displacement_compiled =
+      compile_shader_table(displacement_units);
+  require(displacement_compiled.table.valid,
+          displacement_compiled.table.diagnostic);
+  require_shader_flags(
+      displacement_compiled.kernel_shaders[0u],
+      static_cast<std::uint32_t>(SD_HAS_BUMP_FROM_DISPLACEMENT |
+                                 SD_HAS_BSSRDF_BUMP |
+                                 SD_HAS_DISPLACEMENT |
+                                 SD_HAS_CONSTANT_EMISSION),
+      "automatic/true displacement flags differ from Cycles");
+}
+
 void test_scene_compile_transaction_preserves_shader_identity() {
   const auto diffuse = compile_diffuse(0.0f);
   const auto particle = compile_particle_index();
@@ -243,6 +518,10 @@ void test_scene_compile_transaction_preserves_shader_identity() {
 int main() {
   test_global_link_matches_cycles_5_2_1();
   test_malformed_local_images_are_rejected();
+  test_kernel_shader_image_matches_cycles_metadata();
+  test_kernel_shader_transparency_and_duplicate_contract();
+  test_kernel_shader_volume_and_light_path_flags();
+  test_kernel_shader_bump_flag_implications();
   test_scene_compile_transaction_preserves_shader_identity();
   std::cout << "Cycles SVM scene linker tests passed\n";
   return 0;

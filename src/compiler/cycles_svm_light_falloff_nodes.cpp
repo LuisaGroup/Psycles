@@ -28,6 +28,10 @@ constexpr auto light_falloff_outputs = std::array{
 
 class LightFalloffNode final : public GraphNode {
 public:
+  [[nodiscard]] bool has_spatial_varying() const noexcept override {
+    return true;
+  }
+
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_LIGHT_FALLOFF;
   }

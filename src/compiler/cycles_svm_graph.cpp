@@ -416,6 +416,9 @@ projected_binary_math_operation(std::string_view type) noexcept {
   if (is_surface_closure(type) || is_volume_closure(type)) {
     return GraphNodeSpecialType::closure;
   }
+  if (type == node_type::light_path) {
+    return GraphNodeSpecialType::light_path;
+  }
   return GraphNodeSpecialType::none;
 }
 
