@@ -49,10 +49,12 @@ payload, direct signed-weight allocation, transparent extinction, and portal
 position/direction state. The standalone legacy Hair family includes
 Reflection and Transmission with the exact typed `SVMNodeHairBsdfData`
 payload, primitive-dependent tangent construction, and signed offset. The standalone
-Principled Hair Chiang population/setup path consumes the exact typed
-`SVMNodePrincipledHairBsdfData` payload and retains a typed Chiang closure.
-Its eval/sample scattering functions and the Huang model remain separate
-follow-up work and are not claimed by this checkpoint. The standalone
+Principled Hair Chiang and Huang population/setup paths consume the exact
+typed `SVMNodePrincipledHairBsdfData` payload and retain typed closures. Huang
+also preserves the two-slot extra allocation, raw curve-key radius lookup,
+elliptical local frame, and transparent fallback. Their eval/sample scattering
+functions remain separate follow-up work and are not claimed by this
+checkpoint. The standalone
 Subsurface Scattering family includes Christensen-Burley,
 Random Walk, Random Walk Legacy, and Random Walk Skin with the exact typed
 `SVMNodeBssrdfData` payload.
@@ -1059,6 +1061,78 @@ thick and ribbon frames, roughness/coat clamps, allocation cutoff, an empty
 pool, zero mix, feature-erased skip, runtime flags, pool accounting, and final
 PC. It passes on fallback, HIP, and strict native Vulkan XIR-to-SPIR-V.
 
+### Principled Hair Huang population/setup checkpoint
+
+The same source-shaped handler now copies the type-28 branch of Cycles 5.2.1
+`svm_node_closure_bsdf()` and `bsdf_hair_huang_setup()`. Chiang and Huang share
+the complete 26-word read, curve-random selection, randomized longitudinal
+roughness, and absorption parametrizations. The runtime type selects only the
+model-specific radial roughness and setup after that shared prefix; no second
+node decoder or alternative material representation exists.
+
+Huang allocation is modeled as the following state transition, where `C` is
+the ordinary closure count and `L` is `num_closure_left`:
+
+```text
+R <= 0 && TT <= 0 && TRT <= 0: (C, L) unchanged
+ordinary allocation failure:   (C, L) unchanged
+extra allocation failure:      (C + 1, L - 1) -> (C, L)
+successful Huang allocation:   (C, L) -> (C + 1, L - 2)
+outside projected radius:      (C + 1, L - 2) -> (C, L)
+                                then Cycles transparent setup
+```
+
+The extra slot is associated with the ordinary closure through typed SoA rows;
+rollback changes only prefix counters and never moves closure memory. The
+stored state preserves non-negative R/TT/TRT modulation, pixel coverage,
+`Y/Z/N` frame, local incoming direction, projected radius, eccentricity,
+roughness, signed tilt, IOR, aspect ratio, absorption, and `h`.
+
+For camera curves, pixel coverage uses the exact Cycles table expression
+
+```text
+k0 = curves[prim].first_key + PRIMITIVE_UNPACK_SEGMENT(type)
+radius = mix(curve_keys[objects[object].position_offset + k0].w,
+             curve_keys[objects[object].position_offset + k0 + 1].w, u)
+pixel_coverage = 0.5 * dP / radius
+```
+
+`KernelGlobals` therefore exposes the raw `object.position_offset` and
+`curve_keys[]` services. It deliberately does not substitute the existing
+world-space `curve_thickness` Info service, which has different units and
+semantics. Elliptical setup preserves the curve-normal attribute, major/minor
+axis swap, exact `h=-v` ribbon partition, orthonormal fallback, local incident
+direction, and projected-radius test. An outside hit restores both allocated
+slots and calls the existing Cycles transparent transition, including
+terminate-path capacity handling and transparent extinction.
+
+The isolated HIP oracle directly included pinned Cycles 5.2.1
+`bsdf_principled_hair_huang.h` and `closure/alloc.h` at commit
+`9e2066aef7ef7e20c142ad7bd3303138a4304c93`. It used ROCm 7.2.53211,
+`gfx1201`, and `-O3 -ffast-math`; source SHA-256 was
+`202a708b9ca95f2ef7a51fcef2ff1ed4d045afebb9c3806d200995e9b416da04`
+and executable SHA-256 was
+`cb99e2b29a6f607a38f107e8db14712f727509a2820c1ab71664042629ae2584`.
+Representative post-setup records are:
+
+```text
+circular N/h:       (0.794034362, -0.463883251, -0.392838061, 0.0675399899)
+circular lobes/r:   (0, 0.699999988, 1.10000002, 1)
+major-axis N/h:     (0.268715411, -0.329966754, 0.904938698, 0.0675399899)
+major-axis a/e2:    (0.5, 0.75)
+ribbon N/h:         (-0.70403403, 0.368139923, 0.607296586, -0.270000011)
+ribbon radius:      0.976373792
+transparent type/count/flags: (30, 1, 516)
+successful Huang flags: 1036
+```
+
+`test_luisa_cycles_svm_principled_hair_huang.cpp` freezes circular, elliptical
+major-axis, elliptical minor-axis/ribbon, camera and non-camera coverage,
+source-shaped curve/object/key indexing, lobe-disable, cutoff, zero-mix,
+feature erase, zero capacity, one-slot extra rollback, transparent fallback,
+and terminate-path accounting. It passes on fallback, HIP, and strict native
+Vulkan XIR-to-SPIR-V.
+
 ### Standalone BSSRDF runtime checkpoint
 
 `NODE_CLOSURE_BSDF` now consumes the exact eight-word
@@ -1309,6 +1383,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_principled_hair_chiang_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_principled_hair_huang_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -1326,13 +1403,14 @@ Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
 Toon scattering 3/3, Sheen/Velvet scattering 3/3,
 Microfacet scattering 3/3, Ashikhmin-Shirley scattering 3/3,
 Principled Hair Chiang population/setup 3/3,
+Principled Hair Huang population/setup 3/3,
 compiler 3/3, and Ray Portal/Hair bundle imports 2/2 passed. The scattering
 kernels were built with the production `enable_fast_math=true` setting. The
 compiler test locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. After this checkpoint, `cmake --build build --parallel
-32` completed successfully and the full 32-way CTest run passed 525/525 tests
-in 17.73 seconds on the warm build tree. The Vulkan test environment is
+32` completed successfully and the full 32-way CTest run passed 528/528 tests
+in 18.96 seconds on the warm build tree. The Vulkan test environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
 

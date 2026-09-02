@@ -173,6 +173,16 @@ public:
     return value;
   }
 
+  [[nodiscard]] Int
+  object_position_offset(Expr<std::uint32_t>) const noexcept override {
+    return 0;
+  }
+
+  [[nodiscard]] Float4
+  curve_key(Expr<std::int32_t>) const noexcept override {
+    return make_float4(0.0f);
+  }
+
   [[nodiscard]] Bool film_is_rec709() const noexcept override {
     return true;
   }
