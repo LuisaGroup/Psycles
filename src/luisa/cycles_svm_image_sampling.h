@@ -1,10 +1,12 @@
 #pragma once
 
 #include "cycles_texture_sampling.h"
+#include "cycles_svm_scene_image.h"
 
 #include <psycles/compiler/cycles_svm_compiler.h>
 #include <psycles/luisa/cycles_svm.h>
 
+#include <array>
 #include <cstdint>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
@@ -15,33 +17,14 @@ namespace psycles::luisa_backend::cycles_svm::detail {
 // This is the single boundary permutation between those two contracts.
 [[nodiscard]] constexpr std::uint32_t image_sampling_family(
     compiler::cycles_svm::ImageInterpolation interpolation) noexcept {
-  using enum compiler::cycles_svm::ImageInterpolation;
-  switch (interpolation) {
-    case linear:
-      return 1u;
-    case closest:
-      return 0u;
-    case cubic:
-    case smart:
-      return 2u;
-  }
-  return 2u;
+  return ::psycles::luisa_backend::detail::
+      cycles_svm_image_sampling_family(interpolation);
 }
 
 [[nodiscard]] constexpr std::uint32_t image_sampling_extension(
     compiler::cycles_svm::ImageExtension extension) noexcept {
-  using enum compiler::cycles_svm::ImageExtension;
-  switch (extension) {
-    case repeat:
-      return 0u;
-    case extend:
-      return 2u;
-    case clip:
-      return 1u;
-    case mirror:
-      return 3u;
-  }
-  return 0u;
+  return ::psycles::luisa_backend::detail::
+      cycles_svm_image_sampling_extension(extension);
 }
 
 [[nodiscard]] constexpr bool image_sampling_adapter_contract_holds() noexcept {
@@ -75,6 +58,53 @@ template<typename TextureHeap>
       textures, resource_handle, sample_uv,
       image_sampling_family(interpolation),
       image_sampling_extension(extension));
+}
+
+// Resolve a runtime Cycles ImageManager handle without generating one shader
+// branch per scene image. The device table selects texture storage and the
+// two finite sampler coordinates; the host loop below emits exactly the fixed
+// 3 x 4 Cycles sampler product for every scene size.
+template<typename TextureHeap, typename ImageBindingBuffer>
+[[nodiscard]] luisa::compute::Float4 sample_scene_image_2d(
+    const TextureHeap &textures,
+    const ImageBindingBuffer &bindings,
+    luisa::compute::Expr<std::int32_t> image_id,
+    const Dual2 &uv) noexcept {
+  using compiler::cycles_svm::ImageExtension;
+  using compiler::cycles_svm::ImageInterpolation;
+  namespace scene_detail = ::psycles::luisa_backend::detail;
+
+  const auto binding = bindings->read(image_id.cast<std::uint32_t>());
+  const luisa::compute::UInt interpolation =
+      binding.sampler & scene_detail::cycles_svm_image_interpolation_mask;
+  const luisa::compute::UInt extension =
+      (binding.sampler & scene_detail::cycles_svm_image_extension_mask) >>
+      scene_detail::cycles_svm_image_extension_shift;
+  luisa::compute::Float4 result = luisa::compute::make_float4(0.0f);
+  constexpr std::array interpolation_domain{
+      ImageInterpolation::closest,
+      ImageInterpolation::linear,
+      ImageInterpolation::cubic};
+  constexpr std::array extension_domain{
+      ImageExtension::repeat,
+      ImageExtension::clip,
+      ImageExtension::extend,
+      ImageExtension::mirror};
+  for (const auto static_interpolation : interpolation_domain) {
+    for (const auto static_extension : extension_domain) {
+      const auto interpolation_code =
+          image_sampling_family(static_interpolation);
+      const auto extension_code =
+          image_sampling_extension(static_extension);
+      $if((interpolation == interpolation_code) &
+          (extension == extension_code)) {
+        result = sample_image_2d(
+            textures, binding.texture_slot, uv,
+            static_interpolation, static_extension);
+      };
+    }
+  }
+  return result;
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail
