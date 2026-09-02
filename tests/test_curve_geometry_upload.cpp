@@ -3,7 +3,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
-#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -97,7 +96,7 @@ void test_typed_segments_and_cycles_identity() {
   expect(upload.random[1u] == 0.0f, "missing Random was not zero");
 }
 
-void test_bounds_include_internal_catmull_rom_extrema() {
+void test_bounds_match_cycles_segment_radius_rule() {
   const CurveGeometryDesc geometry{.name = "Analytic Extremum",
                                    .shape = CurveShape::ribbon,
                                    .keys = {{-8.0f, 0.0f, 0.0f, 0.0f},
@@ -107,29 +106,26 @@ void test_bounds_include_internal_catmull_rom_extrema() {
                                    .curve_first_key = {0u}};
   const auto upload = build_curve_geometry_upload(geometry, 0u, 0u);
 
-  // The middle span is x(u) = 4u(1-u), whose center reaches 1 at u=1/2.
-  // Its radius is r(u) = 0.2 + 0.1u(1-u), reaching 0.225 at the same
-  // parameter. Endpoint-only bounds would miss this exact interior maximum.
+  // The middle span is the degenerate quadratic x(u) = 4u(1-u). Cycles'
+  // curvebounds only solves derivative roots when the cubic coefficient is
+  // non-zero, so this exact source case retains the endpoint interval [0, 0]
+  // even though the mathematical center reaches one. Hair::Curve::bounds_grow
+  // then expands it by max(radius[key_begin], radius[key_end]) == 0.2; it also
+  // deliberately does not spline the radius controls, whose cubic would peak
+  // at 0.225 here.
   const auto &bounds = upload.bounds[1u];
-  const auto exact_extent = 1.125 * static_cast<double>(0.2f);
-  const auto expected_min =
-      std::nextafter(static_cast<float>(-exact_extent),
-                     -std::numeric_limits<float>::infinity());
-  const auto expected_max =
-      std::nextafter(static_cast<float>(1.0 + exact_extent),
-                     std::numeric_limits<float>::infinity());
-  expect(bounds.packed_min[0u] == expected_min, "wrong analytic AABB minimum");
-  expect(bounds.packed_max[0u] == expected_max, "interior maximum was clipped");
-  expect(bounds.packed_min[1u] == expected_min &&
-             bounds.packed_min[2u] == expected_min,
-         "radius was not applied to lower transverse bounds");
-  expect(bounds.packed_max[1u] ==
-                 std::nextafter(static_cast<float>(exact_extent),
-                                std::numeric_limits<float>::infinity()) &&
-             bounds.packed_max[2u] ==
-                 std::nextafter(static_cast<float>(exact_extent),
-                                std::numeric_limits<float>::infinity()),
-         "radius was not applied to upper transverse bounds");
+  const auto near = [](float lhs, float rhs) noexcept {
+    return std::abs(lhs - rhs) <= 1.0e-6f;
+  };
+  expect(near(bounds.packed_min[0u], -0.2f),
+         "wrong Cycles segment AABB minimum");
+  expect(near(bounds.packed_max[0u], 0.2f),
+         "Cycles degenerate-quadratic bound changed");
+  expect(near(bounds.packed_min[1u], -0.2f) &&
+             near(bounds.packed_min[2u], -0.2f) &&
+             near(bounds.packed_max[1u], 0.2f) &&
+             near(bounds.packed_max[2u], 0.2f),
+         "Cycles active-endpoint radius expansion changed");
 }
 
 } // namespace
@@ -137,7 +133,7 @@ void test_bounds_include_internal_catmull_rom_extrema() {
 int main() {
   try {
     test_typed_segments_and_cycles_identity();
-    test_bounds_include_internal_catmull_rom_extrema();
+    test_bounds_match_cycles_segment_radius_rule();
     return EXIT_SUCCESS;
   } catch (const std::exception &error) {
     std::cerr << "curve geometry upload test failed: " << error.what() << '\n';

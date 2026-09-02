@@ -1,7 +1,11 @@
 #include "cycles_shader_identity.h"
+#include "path_tracer_curve_scene.h"
 #include "path_tracer_cycles_svm_geometry.h"
+#include "path_tracer_cycles_svm_object.h"
 #include "path_tracer_internal.h"
 #include "path_tracer_scene_geometry.h"
+
+#include <psycles/compiler/core_nodes.h>
 
 #include <algorithm>
 #include <array>
@@ -122,6 +126,26 @@ struct Fixture {
                                      {curve_material, 1u},
                                      {light_material, 2u},
                                      {world_material, 3u}};
+
+  fixture.snapshot.materials.emplace(
+      mesh_material, MaterialDesc{.name = "mesh", .cycles_shader_index = 0u});
+  ShaderGraph curve_shader;
+  const auto volume =
+      curve_shader.add_node(compiler::node_type::volume_absorption,
+                            "Volume Absorption");
+  curve_shader.set_root(ShaderDomain::volume,
+                        OutputRef{.node = volume, .socket = "Volume"});
+  fixture.snapshot.materials.emplace(
+      curve_material,
+      MaterialDesc{.name = "curve volume",
+                   .shader = std::move(curve_shader),
+                   .cycles_shader_index = 1u});
+  fixture.snapshot.materials.emplace(
+      light_material,
+      MaterialDesc{.name = "light", .cycles_shader_index = 2u});
+  fixture.snapshot.materials.emplace(
+      world_material,
+      MaterialDesc{.name = "world", .cycles_shader_index = 3u});
 
   TriangleMeshDesc mesh;
   mesh.name = "post-displacement mesh";
@@ -322,6 +346,155 @@ void test_static_transform_applies_to_cycles_typed_geometry() {
           "object-space Cycles tangent was transformed with mesh geometry");
 }
 
+void test_dense_object_image_uses_exact_post_geometry_state() {
+  auto fixture = make_fixture();
+  auto &mesh_instance =
+      fixture.snapshot.instances.at(mesh_instance_id);
+  mesh_instance.cycles_asset_name = "Geometry collection";
+  mesh_instance.cycles_random_id = 0x12345678u;
+  mesh_instance.object_color = {0.125f, 0.25f, 0.5f};
+  mesh_instance.object_alpha = 0.75f;
+  mesh_instance.object_pass_id = 19;
+  mesh_instance.visibility_mask =
+      visibility_bit(RayVisibility::camera) |
+      visibility_bit(RayVisibility::transmission) |
+      visibility_bit(RayVisibility::shadow);
+  mesh_instance.is_shadow_catcher = true;
+  mesh_instance.cycles_particle_source =
+      CyclesParticleSource{.system = 11u, .source_index = 37u};
+  fixture.snapshot.cycles_background_asset_name = "World asset";
+  fixture.snapshot.cycles_background_light_group = 6;
+
+  // Catmull--Rom's first two segments overshoot below the minimum authored
+  // key x=0. The post-displacement mesh occupies only that overshoot region,
+  // so SD_OBJECT_INTERSECTS_VOLUME proves that object classification used the
+  // exact procedural AABBs rather than a key-center approximation.
+  auto &curve = fixture.snapshot.curve_geometries.at(curve_id);
+  curve.keys = {{0.0f, 0.0f, 0.0f, 0.001f},
+                {0.0f, 0.0f, 0.0f, 0.001f},
+                {1.0f, 0.0f, 0.0f, 0.001f},
+                {10.0f, 0.0f, 0.0f, 0.001f}};
+  curve.intercept = {0.0f, 0.25f, 0.5f, 1.0f};
+  auto &upload = fixture.uploads.front();
+  upload.positions = {{-0.060f, -0.0005f, 0.0f},
+                      {-0.040f, -0.0005f, 0.0f},
+                      {-0.050f, 0.0005f, 0.0f}};
+  upload.cycles_intersection_positions = upload.positions;
+
+  const auto curve_interval = build_curve_geometry_bounds(curve);
+  require(curve_interval.valid && curve_interval.minimum.x < -0.060f,
+          "Catmull--Rom overshoot disappeared from production curve bounds");
+
+  const auto geometry_image = fixture.build();
+  require(geometry_image.valid, geometry_image.diagnostic);
+  const auto identities = plan_object_identities(fixture.snapshot);
+  require(identities.valid, identities.diagnostic);
+  const std::array particle_inputs{
+      ParticleTableObject{.object_index = 1u},
+      ParticleTableObject{.object_index = 2u},
+      ParticleTableObject{
+          .object_index = 4u,
+          .needs_particle = true,
+          .source = mesh_instance.cycles_particle_source},
+      ParticleTableObject{.object_index = 7u}};
+  const auto particles = pack_particle_table(particle_inputs);
+  require(particles.valid, particles.diagnostic);
+  const auto plans = fixture.intersection_plans();
+  const auto image = build_cycles_svm_object_scene_image(
+      fixture.snapshot, identities, particles, geometry_image, plans,
+      fixture.uploads, fixture.resource_geometry_indices);
+  require(image.valid, image.diagnostic);
+  require(image.objects.size() == 8u && image.object_flags.size() == 8u,
+          "declared Cycles object extent was compacted");
+  for (const auto hole : {0u, 3u, 5u, 6u}) {
+    require(image.object_flags[hole] == 0u &&
+                image.objects[hole].tfm.x.x == 0.0f &&
+                image.objects[hole].primitive_type == 0,
+            "unsupported source object did not remain a zero hole");
+  }
+
+  const auto &curve_object = image.objects[1u];
+  const auto curve_geometry =
+      geometry_image.attribute_geometry_indices.at(curve_id);
+  require(curve_object.numverts == 4 && curve_object.numprims == 0 &&
+              curve_object.primitive_type == PRIMITIVE_CURVE_THICK &&
+              curve_object.attribute_map_offset ==
+                  geometry_image.attributes.geometries[curve_geometry]
+                      .attribute_map_offset &&
+              (image.object_flags[1u] & SD_OBJECT_HAS_VOLUME) != 0u,
+          "curve KernelObject did not use finalized geometry/volume state");
+
+  const auto &mesh_object = image.objects[4u];
+  const auto mesh_geometry =
+      geometry_image.attribute_geometry_indices.at(mesh_id);
+  const auto expected_visibility =
+      PATH_RAY_VISIBILITY_CAMERA | PATH_RAY_VISIBILITY_TRANSMIT |
+      PATH_RAY_VISIBILITY_SHADOW;
+  require(mesh_object.numverts == 3 && mesh_object.numprims == 1 &&
+              mesh_object.primitive_type == PRIMITIVE_TRIANGLE &&
+              mesh_object.attribute_map_offset ==
+                  geometry_image.attributes.geometries[mesh_geometry]
+                      .attribute_map_offset &&
+              mesh_object.particle_index == 1 &&
+              mesh_object.visibility ==
+                  (expected_visibility | (expected_visibility << 16u)) &&
+              mesh_object.color.x == 0.125f &&
+              mesh_object.alpha == 0.75f && mesh_object.pass_id == 19.0f,
+          "mesh KernelObject lost exact source or finalized geometry state");
+  require((image.object_flags[4u] & SD_OBJECT_TRANSFORM_APPLIED) != 0u &&
+              (image.object_flags[4u] & SD_OBJECT_SHADOW_CATCHER) != 0u &&
+              (image.object_flags[4u] & SD_OBJECT_INTERSECTS_VOLUME) != 0u,
+          "post-geometry object flags changed");
+
+  require(image.objects[2u].primitive_type == PRIMITIVE_LAMP &&
+              image.objects[7u].primitive_type == PRIMITIVE_LAMP &&
+              image.objects[7u].lightgroup == 6 &&
+              (image.object_flags[7u] & SD_OBJECT_SHADOW_CATCHER) != 0u,
+          "analytic/background object projection changed");
+}
+
+void test_object_image_rejects_unpreserved_relations() {
+  auto fixture = make_fixture();
+  const auto geometry_image = fixture.build();
+  require(geometry_image.valid, geometry_image.diagnostic);
+  const auto identities = plan_object_identities(fixture.snapshot);
+  require(identities.valid, identities.diagnostic);
+  const std::array particle_inputs{
+      ParticleTableObject{.object_index = 1u},
+      ParticleTableObject{.object_index = 2u},
+      ParticleTableObject{.object_index = 4u},
+      ParticleTableObject{.object_index = 7u}};
+  const auto particles = pack_particle_table(particle_inputs);
+  require(particles.valid, particles.diagnostic);
+
+  fixture.snapshot.cycles_uses_light_linking = true;
+  auto plans = fixture.intersection_plans();
+  require(!build_cycles_svm_object_scene_image(
+               fixture.snapshot, identities, particles, geometry_image, plans,
+               fixture.uploads, fixture.resource_geometry_indices)
+               .valid,
+          "unpreserved Cycles light-link sets were silently defaulted");
+
+  fixture.snapshot.cycles_uses_light_linking = false;
+  fixture.snapshot.instances.at(mesh_instance_id).motion.emplace_back(
+      MotionTransform{});
+  plans = fixture.intersection_plans();
+  require(!build_cycles_svm_object_scene_image(
+               fixture.snapshot, identities, particles, geometry_image, plans,
+               fixture.uploads, fixture.resource_geometry_indices)
+               .valid,
+          "unfinalized Cycles object motion was silently erased");
+
+  fixture.snapshot.instances.at(mesh_instance_id).motion.clear();
+  plans = fixture.intersection_plans();
+  std::swap(plans[0u], plans[1u]);
+  require(!build_cycles_svm_object_scene_image(
+               fixture.snapshot, identities, particles, geometry_image, plans,
+               fixture.uploads, fixture.resource_geometry_indices)
+               .valid,
+          "permuted object intersection plan was accepted");
+}
+
 void test_invalid_relations_reject_the_whole_transaction() {
   {
     auto fixture = make_fixture();
@@ -409,6 +582,8 @@ void test_invalid_relations_reject_the_whole_transaction() {
 int main() {
   test_exact_post_displacement_scene_image();
   test_static_transform_applies_to_cycles_typed_geometry();
+  test_dense_object_image_uses_exact_post_geometry_state();
+  test_object_image_rejects_unpreserved_relations();
   test_invalid_relations_reject_the_whole_transaction();
   std::cout << "Luisa Cycles SVM geometry scene tests passed\n";
   return 0;

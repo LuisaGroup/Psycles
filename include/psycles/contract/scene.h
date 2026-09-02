@@ -565,11 +565,20 @@ struct SceneSnapshot {
     // shader index retained by MaterialDesc.
     std::optional<std::uint32_t>
         cycles_background_object_index;
+    // Exact Blender World ID name used by Cycles' synthetic background
+    // object's Cryptomatte asset field. This is source object state and must
+    // not be reconstructed from MaterialDesc::name.
+    std::string cycles_background_asset_name;
     // Size of Cycles' dense scene->objects device domain. It includes source
     // objects that Psycles cannot render and therefore has no InstanceDesc
     // for. Explicit source object indices must be interpreted in this domain,
     // never compacted around the omitted entries.
     std::optional<std::uint32_t> cycles_object_count;
+    // The current bundle schema does not yet preserve Cycles' four light and
+    // shadow linking fields per object. A true value therefore makes native
+    // KernelObject construction fail closed instead of silently substituting
+    // the unlinked default masks.
+    bool cycles_uses_light_linking{};
     std::optional<EnvironmentDesc> environment;
     ShaderColorSpace shader_color_space;
     // Preserve Cycles' world-light policy independently from the raw world

@@ -107,6 +107,11 @@ def _main() -> None:
     bpy.context.view_layer.layer_collection.children[
         "Holdout Collection"
     ].holdout = True
+    receiver_collection = bpy.data.collections.new(
+        "Light-link receivers"
+    )
+    scene.collection.children.link(receiver_collection)
+    surface.light_linking.receiver_collection = receiver_collection
     bpy.context.view_layer.update()
 
     # Legacy Curve data is the important negative case: Object.to_mesh()
@@ -344,13 +349,18 @@ def _main() -> None:
                 f"{light['name']} KernelObject fields changed"
             )
 
-    if payload.get("cycles_sync") != {"object_count": 4}:
+    if payload.get("cycles_sync") != {
+        "object_count": 4,
+        "uses_light_linking": True,
+    }:
         raise AssertionError(
-            "dense Cycles object-table extent changed: "
+            "dense object extent or light-linking capability changed: "
             f"{payload.get('cycles_sync')}"
         )
 
     if payload["world"] is not None:
+        if payload["world"]["name"] != scene.world.name:
+            raise AssertionError("world asset identity changed")
         if payload["world"]["cycles_sync"] != {
             "shader_index": 3,
             "pass_id": 0,

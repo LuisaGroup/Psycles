@@ -329,8 +329,11 @@ BlenderSceneImport load_blender_scene_bundle(
     try {
         SceneSnapshot scene;
         scene.revision = 1u;
+        auto *scene_cycles_sync = member(root, "cycles_sync");
         scene.cycles_object_count = optional_unsigned_number(
-            member(member(root, "cycles_sync"), "object_count"));
+            member(scene_cycles_sync, "object_count"));
+        scene.cycles_uses_light_linking = boolean(
+            member(scene_cycles_sync, "uses_light_linking"), false);
 
         std::map<std::string, ImageId, std::less<>>
             image_ids;
@@ -1758,6 +1761,8 @@ BlenderSceneImport load_blender_scene_bundle(
                         signed_number(
                             member(world_cycles_sync, "pass_id"), 0))});
             scene.world_shader = world_id;
+            scene.cycles_background_asset_name =
+                text(member(world, "name"));
             scene.cycles_background_object_index =
                 optional_unsigned_number(member(
                     world_cycles_sync,

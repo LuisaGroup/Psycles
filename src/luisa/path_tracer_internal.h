@@ -480,6 +480,12 @@ struct CyclesSvmGeometryRuntime {
     Buffer<compiler::cycles_svm::KernelCurve> curve_buffer;
 };
 
+struct CyclesSvmObjectRuntime {
+    CyclesSvmObjectSceneImage image;
+    Buffer<compiler::cycles_svm::KernelObject> object_buffer;
+    Buffer<luisa::uint> object_flag_buffer;
+};
+
 struct CyclesSvmRuntime {
     compiler::cycles_svm::CompiledShaderTable compilation;
     compiler::cycles_svm::ObjectIdentityPlan object_identities;
@@ -496,6 +502,7 @@ struct CyclesSvmRuntime {
     // Null is the only pre-finalization state. The complete typed image is
     // installed atomically after displacement has fixed the final geometry.
     std::unique_ptr<CyclesSvmGeometryRuntime> geometry;
+    std::unique_ptr<CyclesSvmObjectRuntime> objects;
 };
 
 struct LuisaSceneData {

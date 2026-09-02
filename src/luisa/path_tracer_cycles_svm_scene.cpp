@@ -2,6 +2,7 @@
 
 #include "cycles_svm_scene_image.h"
 #include "path_tracer_cycles_svm_geometry.h"
+#include "path_tracer_cycles_svm_object.h"
 #include "path_tracer_scene_geometry.h"
 
 #include <psycles/compiler/core_nodes.h>
@@ -339,7 +340,7 @@ void upload_cycles_svm_runtime(Stream &stream,
   }
 }
 
-bool finalize_cycles_svm_geometry_runtime(
+bool finalize_cycles_svm_scene_runtime(
     const std::shared_ptr<LuisaSceneData> &scene,
     const contract::SceneSnapshot &snapshot,
     std::span<const CyclesInstanceIntersectionPlan> intersection_plans,
@@ -357,22 +358,29 @@ bool finalize_cycles_svm_geometry_runtime(
     return false;
   }
   auto &runtime = *scene->cycles_svm;
-  if (runtime.geometry) {
-    diagnostic = "Cycles geometry runtime was finalized more than once";
+  if (runtime.geometry || runtime.objects) {
+    diagnostic = "Cycles geometry/object runtime was finalized more than once";
     return false;
   }
 
-  auto image = build_cycles_svm_geometry_scene_image(
+  auto geometry_image = build_cycles_svm_geometry_scene_image(
       snapshot, runtime.compilation, runtime.material_shader_indices,
       runtime.object_identities, intersection_plans, mesh_uploads,
       resource_geometry_indices, triangle_primitive_offsets,
       curve_primitive_offsets);
-  if (!image.valid) {
-    diagnostic = std::move(image.diagnostic);
+  if (!geometry_image.valid) {
+    diagnostic = std::move(geometry_image.diagnostic);
+    return false;
+  }
+  auto object_image = build_cycles_svm_object_scene_image(
+      snapshot, runtime.object_identities, runtime.particles, geometry_image,
+      intersection_plans, mesh_uploads, resource_geometry_indices);
+  if (!object_image.valid) {
+    diagnostic = std::move(object_image.diagnostic);
     return false;
   }
 
-  const auto &attributes = image.attributes;
+  const auto &attributes = geometry_image.attributes;
   auto attribute_map_buffer =
       scene->device.create_buffer<compiler::cycles_svm::AttributeMap>(
           device_scene_extent(attributes.attribute_map.size()));
@@ -404,14 +412,19 @@ bool finalize_cycles_svm_geometry_runtime(
           device_scene_extent(attributes.points.size()));
   auto triangle_index_buffer =
       scene->device.create_buffer<compiler::cycles_svm::packed_uint3>(
-          device_scene_extent(image.triangle_vertex_indices.size()));
+          device_scene_extent(geometry_image.triangle_vertex_indices.size()));
   auto curve_buffer =
       scene->device.create_buffer<compiler::cycles_svm::KernelCurve>(
-          device_scene_extent(image.curves.size()));
+          device_scene_extent(geometry_image.curves.size()));
+  auto object_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::KernelObject>(
+          device_scene_extent(object_image.objects.size()));
+  auto object_flag_buffer = scene->device.create_buffer<luisa::uint>(
+      device_scene_extent(object_image.object_flags.size()));
 
-  runtime.geometry = std::make_unique<CyclesSvmGeometryRuntime>(
+  auto geometry_runtime = std::make_unique<CyclesSvmGeometryRuntime>(
       CyclesSvmGeometryRuntime{
-          .image = std::move(image),
+          .image = std::move(geometry_image),
           .attribute_map_buffer = std::move(attribute_map_buffer),
           .attribute_float_buffer = std::move(attribute_float_buffer),
           .attribute_float2_buffer = std::move(attribute_float2_buffer),
@@ -424,12 +437,19 @@ bool finalize_cycles_svm_geometry_runtime(
           .point_buffer = std::move(point_buffer),
           .triangle_index_buffer = std::move(triangle_index_buffer),
           .curve_buffer = std::move(curve_buffer)});
+  auto object_runtime = std::make_unique<CyclesSvmObjectRuntime>(
+      CyclesSvmObjectRuntime{.image = std::move(object_image),
+                             .object_buffer = std::move(object_buffer),
+                             .object_flag_buffer =
+                                 std::move(object_flag_buffer)});
+  runtime.geometry = std::move(geometry_runtime);
+  runtime.objects = std::move(object_runtime);
   return true;
 }
 
-void upload_cycles_svm_geometry_runtime(Stream &stream,
-                                        CyclesSvmRuntime &runtime) noexcept {
-  if (!runtime.geometry) {
+void upload_cycles_svm_scene_runtime(Stream &stream,
+                                     CyclesSvmRuntime &runtime) noexcept {
+  if (!runtime.geometry || !runtime.objects) {
     return;
   }
   auto &geometry = *runtime.geometry;
@@ -457,6 +477,11 @@ void upload_cycles_svm_geometry_runtime(Stream &stream,
                             geometry.image.triangle_vertex_indices);
   upload_device_scene_array(stream, geometry.curve_buffer,
                             geometry.image.curves);
+  auto &objects = *runtime.objects;
+  upload_device_scene_array(stream, objects.object_buffer,
+                            objects.image.objects);
+  upload_device_scene_array(stream, objects.object_flag_buffer,
+                            objects.image.object_flags);
 }
 
 } // namespace psycles::luisa_backend::detail

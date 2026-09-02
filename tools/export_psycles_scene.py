@@ -35,9 +35,13 @@ import blender_scene_manifest as manifest  # noqa: E402
 import blender_build_identity  # noqa: E402
 from blender_cycles_object import (  # noqa: E402
     ParticleSourceRegistry as _ParticleSourceRegistry,
+    light_group as _cycles_light_group,
+    object_ao_distance as _cycles_object_ao_distance,
     object_properties as _cycles_object_properties,
     object_random_id as _cycles_object_random_id,
     particle_parent_index as _cycles_particle_index,
+    shadow_catcher as _cycles_shadow_catcher,
+    uses_light_linking as _cycles_object_uses_light_linking,
 )
 from blender_particle_hair import (  # noqa: E402
     cycles_particle_hair_color as _cycles_particle_hair_color,
@@ -1126,47 +1130,6 @@ def _cycles_object_is_geometry(object_instance: Any) -> bool:
     )
 
 
-def _cycles_light_group(
-    object_instance: Any,
-    light_groups: dict[str, int],
-) -> int:
-    obj = object_instance.object
-    name = str(getattr(obj, "lightgroup", ""))
-    if not name and object_instance.is_instance:
-        parent = object_instance.parent
-        if parent is not None and parent != obj:
-            name = str(getattr(parent, "lightgroup", ""))
-    return light_groups.get(name, -1)
-
-
-def _cycles_shadow_catcher(object_instance: Any) -> bool:
-    obj = object_instance.object
-    result = bool(getattr(obj, "is_shadow_catcher", False))
-    if object_instance.is_instance:
-        parent = object_instance.parent
-        if parent is not None and parent != obj:
-            result = result or bool(
-                getattr(parent, "is_shadow_catcher", False)
-            )
-    return result
-
-
-def _cycles_object_ao_distance(object_instance: Any) -> float:
-    """Match BlenderSync's child-then-instancer AO-distance lookup."""
-
-    obj = object_instance.object
-    cycles = getattr(obj, "cycles", None)
-    result = float(getattr(cycles, "ao_distance", 0.0))
-    if result == 0.0 and object_instance.is_instance:
-        parent = object_instance.parent
-        if parent is not None and parent != obj:
-            parent_cycles = getattr(parent, "cycles", None)
-            result = float(
-                getattr(parent_cycles, "ao_distance", 0.0)
-            )
-    return max(result, 0.0)
-
-
 def _light(
     obj: Any,
     *,
@@ -1402,6 +1365,7 @@ def _export_scene(
     curve_shape = str(scene.cycles_curves.shape)
     curve_subdivisions = int(scene.cycles_curves.subdivisions)
     particle_sources = _ParticleSourceRegistry(scene)
+    cycles_uses_light_linking = False
     with (output / "geometry.bin").open("wb") as stream:
         stream.write(b"PSYGEO2\0")
         stream.write(struct.pack("<II", 2, 0))
@@ -1412,6 +1376,10 @@ def _export_scene(
             if _cycles_object_is_geometry(object_instance):
                 source_object_index = cycles_object_index
                 cycles_object_index += 1
+                cycles_uses_light_linking = (
+                    cycles_uses_light_linking
+                    or _cycles_object_uses_light_linking(object_instance)
+                )
             hair_object_index: int | None = None
             if (
                 bool(object_instance.show_particles)
@@ -1419,6 +1387,10 @@ def _export_scene(
             ):
                 hair_object_index = cycles_object_index
                 cycles_object_index += 1
+                cycles_uses_light_linking = (
+                    cycles_uses_light_linking
+                    or _cycles_object_uses_light_linking(object_instance)
+                )
 
             if original.hide_render:
                 continue
@@ -1758,6 +1730,7 @@ def _export_scene(
             "object_count": cycles_object_index + (
                 1 if scene.world is not None else 0
             ),
+            "uses_light_linking": cycles_uses_light_linking,
         },
         "source": bpy.data.filepath,
         "blender": bpy.app.version_string,

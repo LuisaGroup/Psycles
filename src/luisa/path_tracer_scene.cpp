@@ -1467,7 +1467,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         return result;
     }
     std::string cycles_svm_geometry_diagnostic;
-    if (!finalize_cycles_svm_geometry_runtime(
+    if (!finalize_cycles_svm_scene_runtime(
             data,
             snapshot,
             cycles_instance_intersection_plan,
@@ -1481,7 +1481,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             std::move(cycles_svm_geometry_diagnostic));
         return result;
     }
-    upload_cycles_svm_geometry_runtime(
+    upload_cycles_svm_scene_runtime(
         stream, *data->cycles_svm);
     const auto material_may_emit =
         collect_emission_sampling_materials(*data);
