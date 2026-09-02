@@ -864,6 +864,47 @@ tangent evaluation, Velvet wrong-side and singular-half-vector domains, the
 uniform-hemisphere direction, and wrapper roughness/eta. It passes on fallback,
 HIP, and strict native Vulkan XIR-to-SPIR-V.
 
+### Microfacet VNDF branch-structure checkpoint
+
+The GGX and Beckmann visible-normal samplers now preserve the control-flow
+partition in Cycles 5.2.1 instead of constructing both sides and selecting the
+result afterwards. This matters structurally: the normal-incidence Beckmann
+case must not build or execute the general Newton/root-solve path, and its
+temporary values must not extend the shader AST or live ranges of that case.
+The exact partitions are:
+
+```text
+GGX projected_length_squared > 1e-7: construct the projected basis
+otherwise:                              basis_x=(1,0,0), basis_y=(0,1,0)
+
+Beckmann stretched_incoming.z >= 0.99999: sample the analytic fast branch
+otherwise:                                 run the bounded root solve
+```
+
+Both distributions expose a local-space helper so the Microfacet scattering
+core can reuse its already-computed local incoming vector rather than repeat
+world-to-local dot products. The existing world-space entry points remain thin
+adapters and transform the sampled normal back exactly once.
+
+An isolated HIP oracle directly included the pinned Cycles 5.2.1 sampling
+code at commit `9e2066aef7ef7e20c142ad7bd3303138a4304c93`. It used ROCm
+7.2.53211, `gfx1201`, and `-O3 -ffast-math`; the source SHA-256 was
+`3bc336ab0246cfe869eed9c87c956287091b9cfd83d5c4ec7cdffdf6a297241d`
+and executable SHA-256 was
+`f0386584bf49f6277941b80d5d32d7d864ff614d48da1d27ff69e9a3edea6034`.
+The branch-sensitive local-space samples were:
+
+```text
+GGX near-normal:        (-0.0842477456, 0.310166359, 0.946942031)
+Beckmann normal branch: ( 0.0674229935, 0.533709824, 0.842975616)
+```
+
+`test_luisa_cycles_sample_mapping.cpp` permanently covers both fast branches
+as well as the prior GGX and oblique Beckmann samples. The test passes on
+fallback, HIP, and strict native Vulkan XIR-to-SPIR-V. This checkpoint makes no
+runtime speedup claim before a production-kernel benchmark; it removes a
+proved source of unnecessary AST construction and register pressure.
+
 ### Standalone BSSRDF runtime checkpoint
 
 `NODE_CLOSURE_BSDF` now consumes the exact eight-word
