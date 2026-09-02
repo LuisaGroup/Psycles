@@ -960,7 +960,8 @@ private:
     result.diagnostic = std::move(_diagnostic);
     result.words.assign(_stream.words().begin(), _stream.words().end());
     result.node_types_used = _stream.node_types_used();
-    result.attribute_requests = _attribute_requests.canonical_requests();
+    result.attribute_requests.assign(_attribute_requests.requests().begin(),
+                                     _attribute_requests.requests().end());
     result.peak_stack_usage = _stack.peak();
     return result;
   }

@@ -21,8 +21,9 @@ struct AttributeRequest {
 };
 
 // Set semantics and add/add_standard transitions match Cycles'
-// AttributeRequestSet. Insertion order is retained while the graph is being
-// inspected; canonical_requests() provides an order-independent shader image.
+// AttributeRequestSet. First-insertion order is part of the scene image:
+// Geometry::needed_attributes and GeometryManager append/pack requests in
+// exactly this order.
 class AttributeRequestSet final {
 private:
   std::vector<AttributeRequest> _requests;
@@ -35,7 +36,6 @@ public:
   [[nodiscard]] std::span<const AttributeRequest> requests() const noexcept {
     return _requests;
   }
-  [[nodiscard]] std::vector<AttributeRequest> canonical_requests() const;
 };
 
 [[nodiscard]] std::string_view

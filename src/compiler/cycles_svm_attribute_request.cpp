@@ -125,10 +125,4 @@ void AttributeRequestSet::add_standard(std::string_view name) {
   }
 }
 
-std::vector<AttributeRequest> AttributeRequestSet::canonical_requests() const {
-  auto result = _requests;
-  std::ranges::sort(result);
-  return result;
-}
-
 } // namespace psycles::compiler::cycles_svm

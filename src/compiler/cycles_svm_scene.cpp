@@ -192,14 +192,18 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
     local.emplace_back(slot ? std::move(*slot) : inert_shader());
   }
   result.shader_node_types_used.reserve(local.size());
+  result.shader_attribute_ids_in_request_order.reserve(local.size());
   result.shader_attribute_ids_used.reserve(local.size());
   for (const auto &shader : local) {
     result.shader_node_types_used.emplace_back(shader.node_types_used);
-    auto &ids = result.shader_attribute_ids_used.emplace_back();
-    ids.reserve(shader.attribute_requests.size());
+    auto &ordered_ids =
+        result.shader_attribute_ids_in_request_order.emplace_back();
+    ordered_ids.reserve(shader.attribute_requests.size());
     for (const auto &request : shader.attribute_requests) {
-      ids.emplace_back(resolve_attribute_request(request, attribute_ids));
+      ordered_ids.emplace_back(
+          resolve_attribute_request(request, attribute_ids));
     }
+    auto &ids = result.shader_attribute_ids_used.emplace_back(ordered_ids);
     std::ranges::sort(ids);
     ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
   }
