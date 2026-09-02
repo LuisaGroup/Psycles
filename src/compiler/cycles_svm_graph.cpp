@@ -1184,7 +1184,16 @@ void CyclesGraph::default_inputs() {
     for (auto &input : node->inputs) {
       // This graph is the SVM graph (do_osl=false). Match Cycles' exact
       // `!OSL_INTERNAL || do_osl` predicate before considering LINK_* flags.
-      if (input.link != nullptr ||
+      // `constant_folded_in` is the collapsed representation of an authored
+      // Blender link whose producer was evaluated by inline_shader_node_tree.
+      // It therefore defines the input just as strongly as a remaining graph
+      // edge. Cycles sees a materialized primitive-input node for hidden-value
+      // sockets at this boundary, so ShaderGraph::default_inputs never
+      // replaces that value with Geometry.Normal/Tangent. Preserve the same
+      // provenance invariant without inventing an otherwise unnecessary node:
+      // a default edge is legal iff neither a live edge nor a folded authored
+      // edge defines the input.
+      if (input.link != nullptr || input.constant_folded_in ||
           (input.flags & graph_socket_osl_internal) != 0u) {
         continue;
       }

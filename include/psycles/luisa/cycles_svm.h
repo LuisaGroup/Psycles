@@ -917,7 +917,7 @@ struct EvaluationResult {
  */
 void eval_nodes(
     const KernelGlobals &kernel_globals,
-    const luisa::compute::BufferUInt &words,
+    luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> words,
     compiler::cycles_svm::ShaderType shader_type, std::uint32_t kernel_features,
     std::uint32_t node_feature_mask,
     const std::array<bool, compiler::cycles_svm::NODE_NUM> &node_types_used,

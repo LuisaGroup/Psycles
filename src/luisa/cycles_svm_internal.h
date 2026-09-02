@@ -21,11 +21,11 @@ differential_from_compact(luisa::compute::Expr<luisa::float3> direction,
 
 class Cursor final {
 private:
-  const luisa::compute::BufferUInt &_words;
+  luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> _words;
   luisa::compute::UInt &_offset;
 
 public:
-  Cursor(const luisa::compute::BufferUInt &words,
+  Cursor(luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> words,
          luisa::compute::UInt &offset) noexcept;
 
   [[nodiscard]] luisa::compute::UInt word() noexcept;

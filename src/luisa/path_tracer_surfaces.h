@@ -6,6 +6,34 @@ namespace psycles::luisa_backend::detail {
 
 struct PathSurfaceAmbientOcclusionContext;
 
+// Complete host/JIT input to one production surface population. The
+// references and Expr handles name existing AST values; constructing this
+// aggregate emits no device storage. Cycles-native population needs the
+// geometric/ray identities below to construct ShaderData exactly, while the
+// established population strategy intentionally consumes only its original
+// subset.
+struct SurfacePopulationContext {
+    Expr<std::uint32_t> surface_tag;
+    const SurfacePoint &point;
+    const SurfacePopulationQuery &query;
+    Expr<std::uint32_t> cycles_surface_shader;
+    Expr<std::uint32_t> cycles_object_index;
+    Expr<std::uint32_t> cycles_primitive_index;
+    Expr<std::uint32_t> primitive_type;
+    Expr<luisa::float3> ray_origin;
+    Expr<float> ray_position_differential;
+    Expr<float> ray_direction_differential;
+    Expr<luisa::float4x4> object_to_world;
+    Expr<luisa::float4x4> world_to_object;
+    Expr<std::uint32_t> path_flags;
+    Expr<std::uint32_t> sample_index;
+    Expr<std::uint32_t> rng_hash;
+    Expr<std::uint32_t> rng_offset;
+    const Var<RenderKernelParameters> &parameters;
+    CameraProjection camera_projection;
+    const PathSurfaceAmbientOcclusionContext *ambient_occlusion;
+};
+
 using SurfacePreparationCallable = Callable<SurfacePreparationCall(
     Buffer<float>,
     Buffer<luisa::float3>,
@@ -156,11 +184,7 @@ class SurfacePopulationComponent {
     virtual ~SurfacePopulationComponent() noexcept = default;
 
     [[nodiscard]] virtual std::shared_ptr<PopulatedSurfaceShader> populate(
-        Expr<std::uint32_t> surface_tag,
-        const SurfacePoint &point,
-        const SurfacePopulationQuery &query,
-        const PathSurfaceAmbientOcclusionContext
-            *ambient_occlusion) const noexcept = 0;
+        const SurfacePopulationContext &context) const noexcept = 0;
 };
 
 struct SurfaceCallables {

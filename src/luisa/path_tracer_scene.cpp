@@ -89,7 +89,10 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->device =
         luisa::compute::Device{_device.impl_shared()};
     data->revision = snapshot.revision;
+    data->native_cycles_svm_surface =
+        native_cycles_svm_surface_requested();
     data->populate_surface_once =
+        data->native_cycles_svm_surface ||
         populate_surface_once_requested();
     data->camera = camera_iter->second;
     data->volume_metadata = volume_metadata;

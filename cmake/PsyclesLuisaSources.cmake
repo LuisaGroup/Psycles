@@ -237,9 +237,11 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_mesh_light_scene.cpp
     src/luisa/path_tracer_lighting.cpp
     src/luisa/path_tracer_attribute_residency.cpp
+    src/luisa/path_tracer_cycles_svm_kernel_globals.cpp
     src/luisa/path_tracer_cycles_svm_scene.cpp
     src/luisa/path_tracer_cycles_svm_geometry.cpp
     src/luisa/path_tracer_cycles_svm_object.cpp
+    src/luisa/path_tracer_cycles_svm_surface.cpp
     src/luisa/path_tracer_scene.cpp
     src/luisa/path_tracer_scene_upload.cpp
     src/luisa/path_tracer_displacement_plan.cpp

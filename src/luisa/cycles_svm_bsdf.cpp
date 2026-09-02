@@ -251,6 +251,20 @@ Float bsdf_get_specular_roughness_squared(
   return result;
 }
 
+Float bsdf_get_roughness_pass_squared(
+    const ClosurePool &pool, Expr<std::uint32_t> closure_index) noexcept {
+  const auto common = pool.common(closure_index);
+  Float result = bsdf_get_specular_roughness_squared(pool, closure_index);
+  $if((common.type == closure_type::type_oren_nayar) |
+      (common.type == closure_type::type_rough_translucent)) {
+    const auto roughness = pool.oren_nayar(closure_index).param.roughness;
+    const auto squared = roughness * roughness;
+    result = squared * squared;
+  }
+  $elif(closure_type::is_bsdf_diffuse(common.type)) { result = -1.0f; };
+  return result;
+}
+
 BsdfSample bsdf_sample(const KernelGlobals &kernel_globals,
                        ShaderData &shader_data,
                        Expr<std::uint32_t> closure_index,

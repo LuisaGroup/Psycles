@@ -8,7 +8,8 @@
 
 namespace psycles::luisa_backend::cycles_svm::detail {
 
-Cursor::Cursor(const luisa::compute::BufferUInt &words,
+Cursor::Cursor(
+    luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> words,
                luisa::compute::UInt &offset) noexcept
     : _words{words}, _offset{offset} {}
 

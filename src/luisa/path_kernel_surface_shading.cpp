@@ -4,6 +4,7 @@
 #include "subsurface_exit_closure_component.h"
 
 #include <psycles/luisa/cycles_sampler.h>
+#include <psycles/luisa/cycles_svm.h>
 
 #include <utility>
 
@@ -151,22 +152,42 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                         .source_object = cycles_object_index,
                         .source_primitive = cycles_primitive_index});
             }
+            const SurfacePopulationQuery population_query{
+                .emission_reflective_caustics =
+                    preparation_query.emission_reflective_caustics,
+                .reflective_caustics =
+                    preparation_query.reflective_caustics,
+                .refractive_caustics =
+                    preparation_query.refractive_caustics,
+                .glossy_filter_roughness =
+                    preparation_query.glossy_filter_roughness,
+                .include_runtime_flags =
+                    preparation_query.include_runtime_flags,
+                .include_aov = preparation_query.include_aov};
             populated_surface = config.surfaces.population->populate(
-                surface_tag,
-                point,
-                {.emission_reflective_caustics =
-                     preparation_query.emission_reflective_caustics,
-                 .reflective_caustics =
-                     preparation_query.reflective_caustics,
-                 .refractive_caustics =
-                     preparation_query.refractive_caustics,
-                 .glossy_filter_roughness =
-                     preparation_query.glossy_filter_roughness,
-                 .include_runtime_flags =
-                     preparation_query.include_runtime_flags,
-                 .include_aov =
-                     preparation_query.include_aov},
-                ambient_occlusion ? &*ambient_occlusion : nullptr);
+                {.surface_tag = surface_tag,
+                 .point = point,
+                 .query = population_query,
+                 .cycles_surface_shader = cycles_surface_shader,
+                 .cycles_object_index = cycles_object_index,
+                 .cycles_primitive_index = cycles_primitive_index,
+                 // The native route currently admits only static triangle
+                 // scenes. The legacy population strategy ignores this field.
+                 .primitive_type =
+                     ::psycles::luisa_backend::cycles_svm::primitive_triangle,
+                 .ray_origin = sample.ray->origin(),
+                 .ray_position_differential = surface.differential_radius,
+                 .ray_direction_differential = sample.ray_dD,
+                 .object_to_world = surface.object_to_world,
+                 .world_to_object = surface.world_to_object,
+                 .path_flags = sample.path_flags,
+                 .sample_index = sample.sample_index,
+                 .rng_hash = sample.rng_hash,
+                 .rng_offset = sample.cycles_rng_offset,
+                 .parameters = kernel_parameters,
+                 .camera_projection = config.camera_projection,
+                 .ambient_occlusion =
+                     ambient_occlusion ? &*ambient_occlusion : nullptr});
         }
         const auto preparation = populated_surface
                                      ? populated_surface->preparation()

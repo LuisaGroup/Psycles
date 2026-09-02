@@ -162,6 +162,19 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_compiler_tests)
 
     add_executable(
+        psycles_cycles_svm_default_input_provenance_tests
+        tests/test_cycles_svm_default_input_provenance.cpp)
+    target_link_libraries(
+        psycles_cycles_svm_default_input_provenance_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_cycles_svm_default_input_provenance_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.cycles_svm_default_input_provenance
+        COMMAND psycles_cycles_svm_default_input_provenance_tests)
+
+    add_executable(
         psycles_cycles_svm_ray_portal_compiler_tests
         tests/test_cycles_svm_ray_portal_compiler.cpp)
     target_link_libraries(
