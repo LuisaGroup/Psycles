@@ -1,5 +1,6 @@
 #include "cycles_shader_identity.h"
 #include "path_tracer_cycles_svm_geometry.h"
+#include "path_tracer_internal.h"
 
 #include <array>
 #include <bit>

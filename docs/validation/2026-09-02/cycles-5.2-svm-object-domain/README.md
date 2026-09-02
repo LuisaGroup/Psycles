@@ -3,8 +3,10 @@
 This checkpoint establishes the scene-global object identity domain required
 by the production Luisa `KernelGlobals` adapter. It also establishes the exact
 host-side Cycles particle-table image and its typed Luisa device projection.
-It does not yet claim that the full `KernelObject` or attribute tables are
-uploaded.
+This historical checkpoint did not yet upload the full `KernelObject` or
+attribute tables; the later
+[`cycles-5.2-svm-geometry-runtime`](../cycles-5.2-svm-geometry-runtime/README.md)
+checkpoint completes the post-displacement typed attribute upload.
 
 The reference is Blender Cycles 5.2.1 commit
 `9e2066aef7ef7e20c142ad7bd3303138a4304c93`:
@@ -222,10 +224,10 @@ aliases, the two-lane map and terminator, every implemented offset correction,
 missing descriptors, matrix rows, byte and packed-normal storage, corner-normal
 precedence, hair position/radius motion packing, mandatory shadow
 transparency, and rejected type states. Axis normal words are frozen from the
-Cycles 5.2.1 octahedral encoder. The remaining production boundary is a late
-adapter from post-displacement `GeometryUpload` and native curve sources into
-this image, followed by typed Luisa buffer allocation and `KernelObject`
-finalization.
+Cycles 5.2.1 octahedral encoder. The production adapter now consumes final
+post-displacement `GeometryUpload` and native curve intervals and allocates the
+typed Luisa buffers transactionally. Exact `KernelObject` finalization remains
+the next boundary.
 
 ### Lossless Blender BYTE_COLOR source
 

@@ -1,32 +1,17 @@
 #pragma once
 
-#include "path_tracer_internal.h"
+#include "cycles_svm_scene_image.h"
 
 #include <psycles/compiler/cycles_svm_geometry_scene.h>
+#include <psycles/compiler/cycles_svm_object_scene.h>
+#include <psycles/compiler/cycles_svm_scene.h>
 
 #include <map>
-#include <optional>
 #include <span>
-#include <string>
-#include <vector>
 
 namespace psycles::luisa_backend::detail {
 
-// One transactional host image of the Cycles geometry-owned DeviceScene
-// tables. `attribute_geometry_indices` is the proof-carrying correspondence
-// between scene identities and GeometryAttributeTableImage::geometries;
-// object finalization must use this map rather than assume Psycles resource
-// order is Cycles geometry order.
-struct CyclesSvmGeometrySceneImage {
-  bool valid{};
-  std::string diagnostic;
-  compiler::cycles_svm::GeometryAttributeTableImage attributes;
-  std::map<contract::GeometryId, std::uint32_t> attribute_geometry_indices;
-  std::map<contract::LightId, std::uint32_t> light_attribute_geometry_indices;
-  std::optional<std::uint32_t> background_attribute_geometry_index;
-  std::vector<compiler::cycles_svm::packed_uint3> triangle_vertex_indices;
-  std::vector<compiler::cycles_svm::KernelCurve> curves;
-};
+struct GeometryUpload;
 
 // Build after displacement has finalized `mesh_uploads`. The source object
 // domain determines geometry order, shader request vectors are merged with

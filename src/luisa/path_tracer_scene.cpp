@@ -1466,6 +1466,22 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         diagnose(result.diagnostics, displacement.diagnostic);
         return result;
     }
+    std::string cycles_svm_geometry_diagnostic;
+    if (!finalize_cycles_svm_geometry_runtime(
+            data,
+            snapshot,
+            uploads,
+            geometry_indices,
+            cycles_primitive_offsets,
+            curve_upload.cycles_curve_offsets,
+            cycles_svm_geometry_diagnostic)) {
+        diagnose(
+            result.diagnostics,
+            std::move(cycles_svm_geometry_diagnostic));
+        return result;
+    }
+    upload_cycles_svm_geometry_runtime(
+        stream, *data->cycles_svm);
     const auto material_may_emit =
         collect_emission_sampling_materials(*data);
 

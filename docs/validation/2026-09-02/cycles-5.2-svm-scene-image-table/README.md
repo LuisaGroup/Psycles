@@ -4,8 +4,10 @@
 
 This checkpoint projects the scene-wide image handles emitted by the copied
 Cycles 5.2.1 SVM compiler into device data. It does not switch the production
-surface route yet: the remaining `KernelGlobals` geometry, object, attribute,
-and camera tables must be complete before that switch is valid.
+surface route yet. The later geometry-runtime checkpoint completes the typed
+post-displacement geometry and attribute arrays; exact object, camera,
+`ShaderData`, and closure-pool projection must still be complete before that
+switch is valid.
 
 Each SVM image handle is represented by the pair
 

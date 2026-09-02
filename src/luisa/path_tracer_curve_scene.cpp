@@ -295,6 +295,9 @@ CurveSceneUploadResult CurveSceneUploadComponent::upload(
 
     geometry_indices.emplace(geometry_id, geometry_index);
     result.resource_indices.emplace(geometry_id, resource_index);
+    result.cycles_curve_offsets.emplace(geometry_id, *curve_interval.offset);
+    result.cycles_segment_offsets.emplace(geometry_id,
+                                          *segment_interval.offset);
     attribute_ranges.emplace_back(
         AttributeRangeGpu{.offset = attribute_offset,
                           .count = static_cast<std::uint32_t>(

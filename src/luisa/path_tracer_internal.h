@@ -464,6 +464,22 @@ struct SurfaceValueRuntime {
 // lack Blender's source index; Blender bundles preserve their exact
 // Scene::shaders identity. Resources remain typed and separately indexed just
 // as in Cycles DeviceScene.
+struct CyclesSvmGeometryRuntime {
+    CyclesSvmGeometrySceneImage image;
+    Buffer<compiler::cycles_svm::AttributeMap> attribute_map_buffer;
+    Buffer<float> attribute_float_buffer;
+    Buffer<compiler::cycles_svm::packed_float2> attribute_float2_buffer;
+    Buffer<compiler::cycles_svm::packed_float3> attribute_float3_buffer;
+    Buffer<compiler::cycles_svm::packed_float4> attribute_float4_buffer;
+    Buffer<compiler::cycles_svm::uchar4> attribute_uchar4_buffer;
+    Buffer<compiler::cycles_svm::packed_normal> attribute_normal_buffer;
+    Buffer<compiler::cycles_svm::packed_float3> triangle_vertex_buffer;
+    Buffer<compiler::cycles_svm::packed_float4> curve_key_buffer;
+    Buffer<compiler::cycles_svm::packed_float4> point_buffer;
+    Buffer<compiler::cycles_svm::packed_uint3> triangle_index_buffer;
+    Buffer<compiler::cycles_svm::KernelCurve> curve_buffer;
+};
+
 struct CyclesSvmRuntime {
     compiler::cycles_svm::CompiledShaderTable compilation;
     compiler::cycles_svm::ObjectIdentityPlan object_identities;
@@ -477,6 +493,9 @@ struct CyclesSvmRuntime {
     std::optional<Buffer<CyclesSvmImageBindingGpu>>
         image_binding_buffer;
     std::optional<Buffer<CyclesSvmParticleGpu>> particle_buffer;
+    // Null is the only pre-finalization state. The complete typed image is
+    // installed atomically after displacement has fixed the final geometry.
+    std::unique_ptr<CyclesSvmGeometryRuntime> geometry;
 };
 
 struct LuisaSceneData {

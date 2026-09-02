@@ -278,6 +278,36 @@ collect_reachable_surface_materials(
     return build_scene_material_reachability(scene).surface_materials;
 }
 
+std::set<contract::MaterialId> collect_cycles_svm_shader_materials(
+    const contract::SceneSnapshot &scene) {
+    std::set<contract::MaterialId> result;
+    for (const auto &[geometry_id, geometry] : scene.geometries) {
+        static_cast<void>(geometry_id);
+        result.insert(
+            geometry.material_slots.begin(), geometry.material_slots.end());
+    }
+    for (const auto &[geometry_id, geometry] : scene.curve_geometries) {
+        static_cast<void>(geometry_id);
+        result.insert(
+            geometry.material_slots.begin(), geometry.material_slots.end());
+    }
+    for (const auto &[instance_id, instance] : scene.instances) {
+        static_cast<void>(instance_id);
+        result.insert(instance.material_overrides.begin(),
+                      instance.material_overrides.end());
+    }
+    for (const auto &[light_id, light] : scene.lights) {
+        static_cast<void>(light_id);
+        if (light.shader) {
+            result.emplace(*light.shader);
+        }
+    }
+    if (scene.world_shader) {
+        result.emplace(*scene.world_shader);
+    }
+    return result;
+}
+
 std::vector<std::uint32_t>
 collect_triangle_instances_with_surface_materials(
     const contract::SceneSnapshot &scene,
