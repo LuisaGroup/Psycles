@@ -52,8 +52,9 @@ payload, primitive-dependent tangent construction, and signed offset. The standa
 Principled Hair Chiang and Huang population/setup paths consume the exact
 typed `SVMNodePrincipledHairBsdfData` payload and retain typed closures. Huang
 also preserves the two-slot extra allocation, raw curve-key radius lookup,
-elliptical local frame, and transparent fallback. Their eval/sample scattering
-functions remain separate follow-up work and are not claimed by this
+elliptical local frame, and transparent fallback. Huang eval, sample, albedo,
+and blur now execute the copied Cycles 5.2.1 scattering equations; Chiang
+scattering remains separate follow-up work and is not claimed by this
 checkpoint. The standalone
 Subsurface Scattering family includes Christensen-Burley,
 Random Walk, Random Walk Legacy, and Random Walk Skin with the exact typed
@@ -1133,6 +1134,49 @@ feature erase, zero capacity, one-slot extra rollback, transparent fallback,
 and terminate-path accounting. It passes on fallback, HIP, and strict native
 Vulkan XIR-to-SPIR-V.
 
+### Principled Hair Huang scattering checkpoint
+
+The type-28 closure now copies Cycles 5.2.1
+`bsdf_hair_huang_sample()`, `bsdf_hair_huang_eval()`,
+`bsdf_hair_huang_albedo()`, and `bsdf_hair_huang_blur()`. The implementation
+retains the R, TT, TRT, and TRRT+ construction, tilted elliptical
+mesonormals, GGX VNDF samples, dielectric Fresnel terms, energy lookup-table
+correction, Beer attenuation, geometric residual series, near-field visible
+interval, and local/global frame conversion. Evaluation keeps the runtime
+Composite Simpson and Monte-Carlo/Simpson loops. The number of integration
+intervals is a device value; it is not expanded into the shader AST.
+
+The RNG transition is part of the copied algorithm. Each two-dimensional
+microfacet sample explicitly sequences its two LCG draws before constructing
+the vector. This is required because C++ does not specify function-argument
+evaluation order: the original shorthand
+`make_float2(lcg_step(), lcg_step())` produced the same final state under both
+host compilers while swapping the two sample dimensions between GCC's Luisa
+AST construction and the HIP/Clang Cycles oracle. A final-state-only test
+therefore could not detect the bug. The permanent regression isolates R, TT,
+TRT, and TRRT+, and checks both the sampled directions/energies and every
+control-dependent final RNG state.
+
+The isolated oracle directly includes pinned Cycles 5.2.1
+`bsdf_principled_hair_huang.h` at commit
+`9e2066aef7ef7e20c142ad7bd3303138a4304c93`, with the GGX energy tables fixed
+to one so the scattering algebra is independently visible. It was compiled
+with ROCm 7.2.53211, `gfx1201`, and `-O3 -ffast-math`. The oracle source
+SHA-256 is
+`2dd4b4f417dc726001bce7b1691e43f165d5aaaecd5a41d6d5ea1fc111c63162` and
+the executable SHA-256 is
+`322daa1815a8c9bf480b8f937f8cbda66b1c94b1629f1c105cebb88a9d0bfa93`.
+The eight scenarios freeze 40 float4 records and 24 integer records: mixed
+near/far-field samples, pure-lobe samples, eval, albedo, blur, labels, sample
+LCG state, and quadrature LCG state. Numerical checks use
+`2e-6 + 4e-4 * abs(expected)`, so the small residual eval records cannot pass
+by collapsing to zero.
+
+`test_luisa_cycles_svm_principled_hair_huang_scattering.cpp` passes on
+fallback, HIP, and strict native Vulkan XIR-to-SPIR-V. The HIP native LLVM
+route generated a 29,248-byte linked code object for the combined regression
+kernel.
+
 ### Standalone BSSRDF runtime checkpoint
 
 `NODE_CLOSURE_BSDF` now consumes the exact eight-word
@@ -1314,6 +1358,8 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_microfacet_scattering_tests \
            psycles_luisa_cycles_svm_ashikhmin_shirley_scattering_tests \
            psycles_luisa_cycles_svm_principled_hair_chiang_tests \
+           psycles_luisa_cycles_svm_principled_hair_huang_tests \
+           psycles_luisa_cycles_svm_principled_hair_huang_scattering_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_cycles_svm_ray_portal_compiler_tests \
            psycles_cycles_svm_hair_compiler_tests \
@@ -1386,6 +1432,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_principled_hair_huang_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_principled_hair_huang_scattering_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -1404,13 +1453,16 @@ Toon scattering 3/3, Sheen/Velvet scattering 3/3,
 Microfacet scattering 3/3, Ashikhmin-Shirley scattering 3/3,
 Principled Hair Chiang population/setup 3/3,
 Principled Hair Huang population/setup 3/3,
+Principled Hair Huang scattering 3/3,
 compiler 3/3, and Ray Portal/Hair bundle imports 2/2 passed. The scattering
 kernels were built with the production `enable_fast_math=true` setting. The
 compiler test locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. After this checkpoint, `cmake --build build --parallel
 32` completed successfully and the full 32-way CTest run passed 528/528 tests
-in 18.96 seconds on the warm build tree. The Vulkan test environment is
+in 18.96 seconds on the warm build tree. After the Huang scattering
+checkpoint, the corresponding full run passed 531/531 tests in 16.15 seconds.
+The Vulkan test environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
 
