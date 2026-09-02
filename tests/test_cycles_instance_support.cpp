@@ -18,6 +18,7 @@ using psycles::contract::SceneSnapshot;
 using psycles::contract::TriangleMeshDesc;
 using psycles::luisa_backend::detail::build_cycles_instance_intersection_plan;
 using psycles::luisa_backend::detail::build_scene_material_reachability;
+using psycles::luisa_backend::detail::collect_cycles_svm_shader_materials;
 using psycles::luisa_backend::detail::collect_reachable_surface_materials;
 using psycles::luisa_backend::detail::
     collect_triangle_instances_with_surface_materials;
@@ -113,6 +114,15 @@ void test_reachable_surface_materials() {
   require(
       reachability.shader_materials == expected_shaders,
       "light/world shader roots were not closed over surface reachability");
+  require(
+      collect_cycles_svm_shader_materials(scene) ==
+          std::set<MaterialId>{MaterialId{1u}, MaterialId{2u},
+                               MaterialId{3u}, MaterialId{4u},
+                               MaterialId{5u}, MaterialId{6u},
+                               MaterialId{7u}, MaterialId{8u},
+                               MaterialId{9u}, MaterialId{10u},
+                               MaterialId{12u}, MaterialId{13u}},
+      "Cycles used-shader roots lost an unused geometry slot or scene root");
 }
 
 void test_triangle_instances_with_surface_materials() {

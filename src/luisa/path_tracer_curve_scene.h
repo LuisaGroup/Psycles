@@ -31,6 +31,11 @@ build_curve_geometry_upload(const contract::CurveGeometryDesc &geometry,
 struct CurveSceneUploadResult {
   std::string diagnostic;
   std::map<contract::GeometryId, std::uint32_t> resource_indices;
+  // Exact intervals chosen by the single production resolver. Downstream
+  // Cycles DeviceScene packing consumes these values; it must not reconstruct
+  // a second, potentially divergent curve address space.
+  std::map<contract::GeometryId, std::uint32_t> cycles_curve_offsets;
+  std::map<contract::GeometryId, std::uint32_t> cycles_segment_offsets;
 
   [[nodiscard]] bool ok() const noexcept { return diagnostic.empty(); }
 };

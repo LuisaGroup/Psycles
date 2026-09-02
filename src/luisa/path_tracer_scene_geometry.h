@@ -78,6 +78,16 @@ build_scene_material_reachability(
 collect_reachable_surface_materials(
     const contract::SceneSnapshot &scene);
 
+// Cycles Geometry::used_shaders domain. Unlike observable primitive
+// reachability, Cycles requests attributes (and particle data) from every
+// shader slot attached to a geometry, including slots not selected by a
+// primitive. Instance overrides are the Psycles representation of additional
+// object-specific used-shader entries; analytic lights and the world share the
+// same scene-global shader table.
+[[nodiscard]] std::set<contract::MaterialId>
+collect_cycles_svm_shader_materials(
+    const contract::SceneSnapshot &scene);
+
 // Returns stable SceneSnapshot instance ordinals whose triangle support may
 // enter BSSRDF transport. Material resolution is evaluated per primitive,
 // including instance overrides and Cycles' last-slot clamp. Once any surface

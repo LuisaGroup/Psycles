@@ -1,8 +1,14 @@
 #include "path_tracer_cycles_svm_scene.h"
 
 #include "cycles_svm_scene_image.h"
+#include "path_tracer_cycles_svm_geometry.h"
+#include "path_tracer_scene_geometry.h"
+
+#include <psycles/compiler/core_nodes.h>
+#include <psycles/luisa/cycles_svm.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <map>
@@ -15,6 +21,27 @@
 
 namespace psycles::luisa_backend::detail {
 namespace {
+
+[[nodiscard]] constexpr std::size_t
+device_scene_extent(std::size_t semantic_extent) noexcept {
+  // Luisa buffers cannot represent a zero allocation. The one-element device
+  // sentinel is outside every validated Cycles address domain; the exact host
+  // image deliberately remains empty.
+  return std::max<std::size_t>(semantic_extent, 1u);
+}
+
+template<typename T>
+void upload_device_scene_array(Stream &stream, Buffer<T> &destination,
+                               const std::vector<T> &source) noexcept {
+  if (!source.empty()) {
+    stream << destination.copy_from(luisa::span{source});
+    return;
+  }
+  // Upload commands may outlive this host function. Static storage makes the
+  // unreachable sentinel's lifetime independent of stream synchronization.
+  static const std::array<T, 1u> zero{};
+  stream << destination.copy_from(luisa::span{zero});
+}
 
 [[nodiscard]] bool material_uses_particle(
     const CyclesSvmRuntime &runtime,
@@ -143,11 +170,49 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
     return nullptr;
   }
 
+  const auto shader_materials =
+      collect_cycles_svm_shader_materials(snapshot);
+  std::set<contract::MaterialId> supplemental_domain;
+  for (const auto material : shader_materials) {
+    if (!snapshot.materials.contains(material)) {
+      diagnostic = "Cycles used-shader domain references unavailable material " +
+                   std::to_string(material.value);
+      return nullptr;
+    }
+    if (scene->materials.find(material) == nullptr) {
+      supplemental_domain.emplace(material);
+    }
+  }
+  compiler::MaterialLibrary supplemental_materials;
+  if (!supplemental_domain.empty()) {
+    compiler::ShaderCompiler shader_compiler{
+        compiler::make_core_node_registry()};
+    const auto update = supplemental_materials.update(
+        snapshot, shader_compiler, supplemental_domain);
+    if (!update.committed) {
+      if (update.diagnostics.empty()) {
+        diagnostic = "Cycles used-shader material compilation failed";
+      } else {
+        const auto &failure = update.diagnostics.front();
+        diagnostic = "Cycles used-shader material " +
+                     std::to_string(failure.material.value) + ": " +
+                     failure.message;
+      }
+      return nullptr;
+    }
+  }
+  const auto compiled_material = [&](contract::MaterialId material)
+      -> const compiler::CompiledMaterial * {
+    if (const auto *compiled = scene->materials.find(material)) {
+      return compiled;
+    }
+    return supplemental_materials.find(material);
+  };
+
   std::set<std::uint32_t> occupied_indices;
   auto maximum_source_index = std::uint32_t{};
   auto has_source_index = false;
-  for (const auto &[material_id, material] : scene->materials.materials()) {
-    static_cast<void>(material);
+  for (const auto material_id : shader_materials) {
     const auto &source = snapshot.materials.at(material_id);
     if (source.cycles_shader_index) {
       occupied_indices.emplace(*source.cycles_shader_index);
@@ -160,7 +225,7 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
   auto next_authored_index =
       has_source_index ? static_cast<std::uint64_t>(maximum_source_index) + 1u
                        : std::uint64_t{};
-  for (const auto &[material_id, material] : scene->materials.materials()) {
+  for (const auto material_id : shader_materials) {
     const auto &source = snapshot.materials.at(material_id);
     auto shader_index = source.cycles_shader_index;
     if (!shader_index) {
@@ -180,13 +245,28 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
     runtime->material_shader_indices.emplace(material_id, *shader_index);
   }
 
+  std::vector<std::pair<std::uint32_t, contract::MaterialId>>
+      shader_compile_order;
+  shader_compile_order.reserve(shader_materials.size());
+  for (const auto material : shader_materials) {
+    shader_compile_order.emplace_back(
+        runtime->material_shader_indices.at(material), material);
+  }
+  std::ranges::sort(shader_compile_order);
+
   std::vector<compiler::cycles_svm::ShaderTableCompileUnit> units;
-  units.reserve(scene->materials.materials().size());
-  for (const auto &[material_id, material] : scene->materials.materials()) {
+  units.reserve(shader_compile_order.size());
+  for (const auto [shader_index, material_id] : shader_compile_order) {
     const auto &source = snapshot.materials.at(material_id);
+    const auto *material = compiled_material(material_id);
+    if (material == nullptr) {
+      diagnostic = "Cycles used-shader material compilation omitted " +
+                   std::to_string(material_id.value);
+      return nullptr;
+    }
     units.emplace_back(compiler::cycles_svm::ShaderTableCompileUnit{
-        .shader_index = runtime->material_shader_indices.at(material_id),
-        .shader = &material.shader(),
+        .shader_index = shader_index,
+        .shader = &material->shader(),
         .context = {.background = snapshot.world_shader == material_id,
                     .displacement_method = source.displacement_method,
                     .color_space = snapshot.shader_color_space}});
@@ -257,6 +337,124 @@ void upload_cycles_svm_runtime(Stream &stream,
     stream << runtime.particle_buffer->copy_from(
         luisa::span{runtime.particle_records});
   }
+}
+
+bool finalize_cycles_svm_geometry_runtime(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const contract::SceneSnapshot &snapshot,
+    std::span<const GeometryUpload> mesh_uploads,
+    const std::map<contract::GeometryId, std::uint32_t>
+        &resource_geometry_indices,
+    const std::map<contract::GeometryId, std::uint32_t>
+        &triangle_primitive_offsets,
+    const std::map<contract::GeometryId, std::uint32_t>
+        &curve_primitive_offsets,
+    std::string &diagnostic) {
+  diagnostic.clear();
+  if (!scene || !scene->cycles_svm) {
+    diagnostic = "Cycles geometry finalization requires an SVM runtime";
+    return false;
+  }
+  auto &runtime = *scene->cycles_svm;
+  if (runtime.geometry) {
+    diagnostic = "Cycles geometry runtime was finalized more than once";
+    return false;
+  }
+
+  auto image = build_cycles_svm_geometry_scene_image(
+      snapshot, runtime.compilation, runtime.material_shader_indices,
+      runtime.object_identities, mesh_uploads, resource_geometry_indices,
+      triangle_primitive_offsets, curve_primitive_offsets);
+  if (!image.valid) {
+    diagnostic = std::move(image.diagnostic);
+    return false;
+  }
+
+  const auto &attributes = image.attributes;
+  auto attribute_map_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::AttributeMap>(
+          device_scene_extent(attributes.attribute_map.size()));
+  auto attribute_float_buffer = scene->device.create_buffer<float>(
+      device_scene_extent(attributes.attributes_float.size()));
+  auto attribute_float2_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::packed_float2>(
+          device_scene_extent(attributes.attributes_float2.size()));
+  auto attribute_float3_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::packed_float3>(
+          device_scene_extent(attributes.attributes_float3.size()));
+  auto attribute_float4_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::packed_float4>(
+          device_scene_extent(attributes.attributes_float4.size()));
+  auto attribute_uchar4_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::uchar4>(
+          device_scene_extent(attributes.attributes_uchar4.size()));
+  auto attribute_normal_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::packed_normal>(
+          device_scene_extent(attributes.attributes_normal.size()));
+  auto triangle_vertex_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::packed_float3>(
+          device_scene_extent(attributes.tri_verts.size()));
+  auto curve_key_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::packed_float4>(
+          device_scene_extent(attributes.curve_keys.size()));
+  auto point_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::packed_float4>(
+          device_scene_extent(attributes.points.size()));
+  auto triangle_index_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::packed_uint3>(
+          device_scene_extent(image.triangle_vertex_indices.size()));
+  auto curve_buffer =
+      scene->device.create_buffer<compiler::cycles_svm::KernelCurve>(
+          device_scene_extent(image.curves.size()));
+
+  runtime.geometry = std::make_unique<CyclesSvmGeometryRuntime>(
+      CyclesSvmGeometryRuntime{
+          .image = std::move(image),
+          .attribute_map_buffer = std::move(attribute_map_buffer),
+          .attribute_float_buffer = std::move(attribute_float_buffer),
+          .attribute_float2_buffer = std::move(attribute_float2_buffer),
+          .attribute_float3_buffer = std::move(attribute_float3_buffer),
+          .attribute_float4_buffer = std::move(attribute_float4_buffer),
+          .attribute_uchar4_buffer = std::move(attribute_uchar4_buffer),
+          .attribute_normal_buffer = std::move(attribute_normal_buffer),
+          .triangle_vertex_buffer = std::move(triangle_vertex_buffer),
+          .curve_key_buffer = std::move(curve_key_buffer),
+          .point_buffer = std::move(point_buffer),
+          .triangle_index_buffer = std::move(triangle_index_buffer),
+          .curve_buffer = std::move(curve_buffer)});
+  return true;
+}
+
+void upload_cycles_svm_geometry_runtime(Stream &stream,
+                                        CyclesSvmRuntime &runtime) noexcept {
+  if (!runtime.geometry) {
+    return;
+  }
+  auto &geometry = *runtime.geometry;
+  const auto &attributes = geometry.image.attributes;
+  upload_device_scene_array(stream, geometry.attribute_map_buffer,
+                            attributes.attribute_map);
+  upload_device_scene_array(stream, geometry.attribute_float_buffer,
+                            attributes.attributes_float);
+  upload_device_scene_array(stream, geometry.attribute_float2_buffer,
+                            attributes.attributes_float2);
+  upload_device_scene_array(stream, geometry.attribute_float3_buffer,
+                            attributes.attributes_float3);
+  upload_device_scene_array(stream, geometry.attribute_float4_buffer,
+                            attributes.attributes_float4);
+  upload_device_scene_array(stream, geometry.attribute_uchar4_buffer,
+                            attributes.attributes_uchar4);
+  upload_device_scene_array(stream, geometry.attribute_normal_buffer,
+                            attributes.attributes_normal);
+  upload_device_scene_array(stream, geometry.triangle_vertex_buffer,
+                            attributes.tri_verts);
+  upload_device_scene_array(stream, geometry.curve_key_buffer,
+                            attributes.curve_keys);
+  upload_device_scene_array(stream, geometry.point_buffer, attributes.points);
+  upload_device_scene_array(stream, geometry.triangle_index_buffer,
+                            geometry.image.triangle_vertex_indices);
+  upload_device_scene_array(stream, geometry.curve_buffer,
+                            geometry.image.curves);
 }
 
 } // namespace psycles::luisa_backend::detail

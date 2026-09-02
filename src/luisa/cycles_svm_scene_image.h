@@ -1,15 +1,37 @@
 #pragma once
 
 #include <psycles/compiler/cycles_svm_compiler.h>
+#include <psycles/compiler/cycles_svm_geometry_scene.h>
 #include <psycles/contract/scene.h>
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include <luisa/core/basic_types.h>
 #include <luisa/dsl/struct.h>
 
 namespace psycles::luisa_backend::detail {
+
+// One transactional host image of the Cycles geometry-owned DeviceScene
+// tables. `attribute_geometry_indices` is the proof-carrying correspondence
+// between scene identities and GeometryAttributeTableImage::geometries;
+// object finalization must use this map rather than assume Psycles resource
+// order is Cycles geometry order.
+struct CyclesSvmGeometrySceneImage {
+  bool valid{};
+  std::string diagnostic;
+  compiler::cycles_svm::GeometryAttributeTableImage attributes;
+  std::map<contract::GeometryId, std::uint32_t> attribute_geometry_indices;
+  std::map<contract::LightId, std::uint32_t>
+      light_attribute_geometry_indices;
+  std::optional<std::uint32_t> background_attribute_geometry_index;
+  std::vector<compiler::cycles_svm::packed_uint3> triangle_vertex_indices;
+  std::vector<compiler::cycles_svm::KernelCurve> curves;
+};
 
 // Device projection of one Cycles ImageManager handle. The source texture
 // identity and its immutable sampler are deliberately separate: equal source
