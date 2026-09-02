@@ -35,6 +35,10 @@ struct ShaderTableCompileUnit {
 // ids; image and IES arrays are indexed directly by bytecode payloads.
 struct CompiledShaderTable {
   ShaderTableImage table;
+  // Per source shader, including inert holes. Cycles derives geometry
+  // attribute demand from each shader rather than from the scene-wide opcode
+  // union; object/particle packing must make the same distinction.
+  std::vector<std::array<bool, NODE_NUM>> shader_node_types_used;
   std::vector<std::pair<std::string, std::uint64_t>> named_attributes;
   std::vector<ImageBinding> images;
   std::vector<float> ies;

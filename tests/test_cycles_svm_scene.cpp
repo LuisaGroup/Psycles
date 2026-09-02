@@ -167,18 +167,40 @@ std::shared_ptr<const ShaderProgram> compile_diffuse(float roughness) {
   return std::move(compiled.program);
 }
 
+std::shared_ptr<const ShaderProgram> compile_particle_index() {
+  ShaderGraph graph;
+  const auto particle =
+      graph.add_node(node_type::particle_info, "Particle Info");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.connect({particle, "Index"}, emission, "Strength"),
+          "failed to keep Particle Info live");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+  const ShaderCompiler compiler{make_core_node_registry()};
+  auto compiled = compiler.compile(graph);
+  require(compiled.ok(), "scene-test Particle Info graph did not compile");
+  return std::move(compiled.program);
+}
+
 void test_scene_compile_transaction_preserves_shader_identity() {
   const auto diffuse = compile_diffuse(0.0f);
+  const auto particle = compile_particle_index();
   const std::array units{
       ShaderTableCompileUnit{.shader_index = 2u, .shader = diffuse.get()},
-      ShaderTableCompileUnit{.shader_index = 5u, .shader = diffuse.get()},
-      ShaderTableCompileUnit{.shader_index = 5u, .shader = diffuse.get()}};
+      ShaderTableCompileUnit{.shader_index = 5u, .shader = particle.get()},
+      ShaderTableCompileUnit{.shader_index = 5u, .shader = particle.get()}};
   const auto compiled = compile_shader_table(units);
   require(compiled.table.valid, compiled.table.diagnostic);
   require(compiled.table.shader_count == 6u,
           "scene compiler did not preserve the maximum Cycles shader id");
   require(compiled.table.node_types_used[NODE_CLOSURE_BSDF],
           "scene compiler lost a live shader opcode");
+  require(compiled.table.node_types_used[NODE_PARTICLE_INFO] &&
+              compiled.shader_node_types_used.size() == 6u &&
+              !compiled.shader_node_types_used[2u][NODE_PARTICLE_INFO] &&
+              compiled.shader_node_types_used[5u][NODE_PARTICLE_INFO] &&
+              !compiled.shader_node_types_used[0u][NODE_PARTICLE_INFO],
+          "per-shader Particle Info demand collapsed into the global union");
   require(compiled.named_attributes.empty() && compiled.images.empty() &&
               compiled.ies.empty(),
           "resource-free scene unexpectedly allocated SVM resources");

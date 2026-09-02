@@ -31,6 +31,7 @@ namespace device_svm = psycles::luisa_backend::cycles_svm;
 namespace svm_detail = psycles::luisa_backend::cycles_svm::detail;
 namespace surface_detail = psycles::luisa_backend::detail;
 using SceneImageBinding = surface_detail::CyclesSvmImageBindingGpu;
+using SceneParticle = surface_detail::CyclesSvmParticleGpu;
 
 constexpr auto coordinate_offset = std::uint32_t{0u};
 constexpr auto color_offset = std::uint32_t{16u};
@@ -126,6 +127,40 @@ constexpr auto sampling_scene_bindings =
     make_scene_image_bindings(sampling_bindings);
 constexpr auto projection_scene_binding =
     make_scene_image_bindings(projection_binding);
+
+[[nodiscard]] bool test_particle_projection() {
+  const psycles::contract::CyclesParticleSource source{
+      .system = 9u,
+      .source_index = 17u,
+      .age = 1.25f,
+      .lifetime = 8.5f,
+      .location = {1.0f, 2.0f, 3.0f},
+      .rotation = {4.0f, 5.0f, 6.0f, 7.0f},
+      .size = 0.75f,
+      .velocity = {8.0f, 9.0f, 10.0f},
+      .angular_velocity = {11.0f, 12.0f, 13.0f}};
+  const SceneParticle particle =
+      surface_detail::make_cycles_svm_particle(source);
+  const auto equal_float4 = [](const luisa::float4 &lhs,
+                               const luisa::float4 &rhs) noexcept {
+    return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z &&
+           lhs.w == rhs.w;
+  };
+  if (particle.index != 17u || particle.age != 1.25f ||
+      particle.lifetime != 8.5f || particle.size != 0.75f ||
+      !equal_float4(particle.rotation,
+                    luisa::float4{4.0f, 5.0f, 6.0f, 7.0f}) ||
+      !equal_float4(particle.location,
+                    luisa::float4{1.0f, 2.0f, 3.0f, 0.0f}) ||
+      !equal_float4(particle.velocity,
+                    luisa::float4{8.0f, 9.0f, 10.0f, 0.0f}) ||
+      !equal_float4(particle.angular_velocity,
+                    luisa::float4{11.0f, 12.0f, 13.0f, 0.0f})) {
+    std::cerr << "Cycles KernelParticle projection changed\n";
+    return false;
+  }
+  return true;
+}
 
 class ImageKernelGlobals final
     : public psycles::test_support::DefaultCyclesSvmKernelGlobals {
@@ -693,7 +728,7 @@ make_dual_pole_kernel() {
 
 int main(int argc, char **argv) {
   const auto backend = std::string_view{argc > 1 ? argv[1] : "hip"};
-  if (!verify_native_sampling_shape()) {
+  if (!test_particle_projection() || !verify_native_sampling_shape()) {
     return EXIT_FAILURE;
   }
   Context context{argv[0]};

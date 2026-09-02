@@ -144,6 +144,40 @@ optional_unsigned_number(yyjson_val *value) noexcept {
         number(yyjson_arr_get(value, 1u), fallback.y)};
 }
 
+[[nodiscard]] Vec4f float4(
+    yyjson_val *value,
+    Vec4f fallback) noexcept {
+    if (value == nullptr || !yyjson_is_arr(value) ||
+        yyjson_arr_size(value) < 4u) {
+        return fallback;
+    }
+    return {
+        number(yyjson_arr_get(value, 0u), fallback.x),
+        number(yyjson_arr_get(value, 1u), fallback.y),
+        number(yyjson_arr_get(value, 2u), fallback.z),
+        number(yyjson_arr_get(value, 3u), fallback.w)};
+}
+
+[[nodiscard]] std::optional<contract::CyclesParticleSource>
+cycles_particle_source(yyjson_val *value) noexcept {
+    if (value == nullptr || !yyjson_is_obj(value)) {
+        return std::nullopt;
+    }
+    return contract::CyclesParticleSource{
+        .system = static_cast<std::uint32_t>(
+            unsigned_number(member(value, "system"))),
+        .source_index = static_cast<std::uint32_t>(
+            unsigned_number(member(value, "source_index"))),
+        .age = number(member(value, "age")),
+        .lifetime = number(member(value, "lifetime")),
+        .location = float3(member(value, "location")),
+        .rotation = float4(member(value, "rotation")),
+        .size = number(member(value, "size")),
+        .velocity = float3(member(value, "velocity")),
+        .angular_velocity = float3(
+            member(value, "angular_velocity"))};
+}
+
 [[nodiscard]] Mat4f matrix(yyjson_val *value) noexcept {
     Mat4f result{};
     if (value == nullptr || !yyjson_is_arr(value) ||

@@ -467,13 +467,16 @@ struct SurfaceValueRuntime {
 struct CyclesSvmRuntime {
     compiler::cycles_svm::CompiledShaderTable compilation;
     compiler::cycles_svm::ObjectIdentityPlan object_identities;
+    compiler::cycles_svm::ParticleTableImage particles;
     std::map<contract::MaterialId, std::uint32_t>
         material_shader_indices;
     luisa::vector<CyclesSvmImageBindingGpu> image_bindings;
+    luisa::vector<CyclesSvmParticleGpu> particle_records;
     std::optional<Buffer<luisa::uint>> word_buffer;
     std::optional<Buffer<float>> ies_buffer;
     std::optional<Buffer<CyclesSvmImageBindingGpu>>
         image_binding_buffer;
+    std::optional<Buffer<CyclesSvmParticleGpu>> particle_buffer;
 };
 
 struct LuisaSceneData {

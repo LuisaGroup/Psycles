@@ -101,6 +101,7 @@ def _assert_parent_indices(instances: list[dict[str, Any]]) -> None:
     if not instances:
         raise AssertionError("parent-particle fixture exported no instances")
     nonzero = 0
+    system_ids: set[int] = set()
     for instance in instances:
         persistent_index = int(instance["persistent_id"][0])
         exported_index = int(instance["particle_index"])
@@ -114,10 +115,30 @@ def _assert_parent_indices(instances: list[dict[str, Any]]) -> None:
                 "parent particle index did not preserve the Cycles-visible "
                 f"source index: {persistent_index} -> {exported_index}"
             )
+        source = instance.get("cycles_particle_source")
+        if source is None or int(source["source_index"]) != persistent_index:
+            raise AssertionError(
+                "raw Cycles parent-particle source was not preserved"
+            )
+        system_ids.add(int(source["system"]))
+        for vector_field, width in (
+            ("location", 3),
+            ("rotation", 4),
+            ("velocity", 3),
+            ("angular_velocity", 3),
+        ):
+            if len(source[vector_field]) != width:
+                raise AssertionError(
+                    f"particle {vector_field} width changed"
+                )
         nonzero += exported_index != 0
     if nonzero == 0:
         raise AssertionError(
             "parent fixture did not cover a nonzero Particle Info index"
+        )
+    if len(system_ids) != 1:
+        raise AssertionError(
+            "one Cycles ParticleSystemKey was split into several groups"
         )
 
 
@@ -145,6 +166,10 @@ def _assert_child_sentinel(
         exported_index = int(instance["particle_index"])
         if persistent_index >= _PARENT_COUNT:
             child_count += 1
+            if instance.get("cycles_particle_source") is not None:
+                raise AssertionError(
+                    "rejected child particle retained a raw Cycles source"
+                )
             if exported_index != 0:
                 raise AssertionError(
                     "Cycles rejects child particles outside the parent "

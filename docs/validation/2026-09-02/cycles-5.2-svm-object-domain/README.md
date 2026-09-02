@@ -1,8 +1,10 @@
 # Cycles 5.2 SVM object-domain validation
 
 This checkpoint establishes the scene-global object identity domain required
-by the production Luisa `KernelGlobals` adapter. It does not yet claim that the
-full Cycles `KernelObject`, particle, or attribute tables are uploaded.
+by the production Luisa `KernelGlobals` adapter. It also establishes the exact
+host-side Cycles particle-table image and its typed Luisa device projection.
+It does not yet claim that the full `KernelObject` or attribute tables are
+uploaded.
 
 The reference is Blender Cycles 5.2.1 commit
 `9e2066aef7ef7e20c142ad7bd3303138a4304c93`:
@@ -14,7 +16,12 @@ The reference is Blender Cycles 5.2.1 commit
   writes records at `Object::index` without compacting unsupported objects;
 - `intern/cycles/kernel/geom/object.h` treats `ShaderData::object` as an index
   into that single table for geometry, light, Object Info, Texture Coordinate,
-  and particle lookup.
+  and particle lookup;
+- `intern/cycles/blender/particles.cpp::sync_dupli_particle` filters by the
+  geometry's `ATTR_STD_PARTICLE` demand, rejects child particles, groups by
+  `ParticleSystemKey`, and appends a local particle ordinal; and
+- `intern/cycles/scene/particles.cpp::device_update_particles` prepends dummy
+  entry zero and concatenates particle-system groups in scene order.
 
 ## Formal model
 
@@ -42,6 +49,26 @@ bad or very sparse source bundle does not allocate memory proportional to an
 untrusted maximum index. `UINT32_MAX` is rejected when it would require the
 unrepresentable dense extent `2^32`.
 
+### Particle prefix algebra
+
+Let qualifying object identities be visited in ascending Cycles object index.
+For an object `o`, let `g(o)` be its raw `ParticleSystemKey` equality class and
+let `l(o)` be its append ordinal among earlier qualifying objects in that
+class. Classes are ordered by the first qualifying object that names them. If
+`P(g)` is one plus the sum of the sizes of all preceding classes, the device
+index is
+
+```text
+particle_index(o) = P(g(o)) + l(o)
+```
+
+Non-qualifying objects, rejected child particles, and objects whose shaders do
+not demand `NODE_PARTICLE_INFO` map to dummy entry zero. The raw exporter ID
+for a class is used only for equality; it is never interpreted as `P(g)`.
+Demand remains per shader, including inert holes in the global shader domain,
+so an unrelated material containing Particle Info cannot retain particle data
+for every object through the scene-wide opcode union.
+
 ## Regression coverage
 
 `tests/test_cycles_svm_object_scene.cpp` covers:
@@ -53,24 +80,36 @@ unrepresentable dense extent `2^32`.
 - a missing identity in a declared source domain;
 - a non-final background object;
 - deterministic mixed explicit/implicit allocation; and
-- the `UINT32_MAX` extent boundary.
+- the `UINT32_MAX` extent boundary;
+- particle dummy/group/local-prefix packing from deliberately unsorted object
+  inputs, including disabled demand and a missing raw source; and
+- rejection of duplicate object identities in particle-table input.
+
+`tests/test_cycles_svm_scene.cpp` additionally proves that per-shader Particle
+Info demand survives global shader linking without collapsing into the global
+opcode union. Blender exporter/importer regressions preserve raw group IDs,
+parent indices, particle payload vectors, and the child-particle sentinel.
+`tests/test_luisa_cycles_svm_image.cpp` checks the 80-byte, 16-byte-aligned
+`KernelParticle` field projection and all padded `float4` lanes on real Luisa
+backends.
 
 Validation commands:
 
 ```text
 cmake --build build --parallel 32 --target psycles_cycles_svm_object_scene_tests psycles_luisa_runtime
 ctest --test-dir build --output-on-failure -R '^psycles\\.cycles_svm_(object_scene|scene)$'
+ctest --test-dir build --output-on-failure -R '^psycles\\.luisa_cycles_svm_image_(hip|fallback)$'
 ```
 
-Both registered tests passed. The planner is also invoked transactionally by
-`build_cycles_svm_runtime` before any SVM device buffer is created.
+Both registered tests passed. The identity planner and particle packer are
+invoked transactionally by `build_cycles_svm_runtime` before any SVM device
+buffer is created.
 
 ## Deliberate next boundary
 
-The existing Blender bundle's scalar `particle_index` is not sufficient for
-the exact device record: Cycles first groups qualifying duplis by
-`ParticleSystemKey`, stores a local append ordinal on each object, then adds a
-scene-global particle-system prefix (after dummy entry zero). The next object
-table increment must preserve that raw grouping and perform the same packing;
-it must not mistake Blender's persistent parent index for the final
-`KernelObject::particle_index`.
+The host image resolves the exact final `KernelObject::particle_index`; its
+typed `KernelParticle` array is layout-checked, allocated with dummy entry zero,
+and uploaded transactionally with the SVM program. The next increment is the
+exact `KernelObject` projection and upload. The legacy scalar bundle field
+remains only for the old expanded renderer route and must not be consumed by
+the production SVM adapter.
