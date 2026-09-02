@@ -24,6 +24,13 @@ struct packed_float3 {
 static_assert(sizeof(packed_float3) == 12u);
 static_assert(alignof(packed_float3) == alignof(float));
 
+struct packed_float2 {
+  float x;
+  float y;
+};
+static_assert(sizeof(packed_float2) == 8u);
+static_assert(alignof(packed_float2) == alignof(float));
+
 struct packed_float4 {
   float x;
   float y;
@@ -58,6 +65,83 @@ struct PackedTransform {
 };
 static_assert(sizeof(PackedTransform) == 48u);
 static_assert(alignof(PackedTransform) == alignof(float));
+
+/* Object flags. */
+enum ShaderDataObjectFlag : uint {
+  SD_OBJECT_HOLDOUT_MASK = (1u << 0u),
+  SD_OBJECT_MOTION = (1u << 1u),
+  SD_OBJECT_TRANSFORM_APPLIED = (1u << 2u),
+  SD_OBJECT_NEGATIVE_SCALE = (1u << 3u),
+  SD_OBJECT_HAS_VOLUME = (1u << 4u),
+  SD_OBJECT_INTERSECTS_VOLUME = (1u << 5u),
+  SD_OBJECT_HAS_VERTEX_MOTION = (1u << 6u),
+  SD_OBJECT_SHADOW_CATCHER = (1u << 7u),
+  SD_OBJECT_HAS_VOLUME_ATTRIBUTES = (1u << 8u),
+  SD_OBJECT_CAUSTICS_CASTER = (1u << 9u),
+  SD_OBJECT_CAUSTICS_RECEIVER = (1u << 10u),
+  SD_OBJECT_HAS_VOLUME_MOTION = (1u << 11u),
+  SD_OBJECT_HAS_CORNER_NORMALS = (1u << 12u),
+
+  SD_OBJECT_CAUSTICS =
+      (SD_OBJECT_CAUSTICS_CASTER | SD_OBJECT_CAUSTICS_RECEIVER),
+
+  SD_OBJECT_FLAGS =
+      (SD_OBJECT_HOLDOUT_MASK | SD_OBJECT_MOTION |
+       SD_OBJECT_TRANSFORM_APPLIED | SD_OBJECT_NEGATIVE_SCALE |
+       SD_OBJECT_HAS_VOLUME | SD_OBJECT_INTERSECTS_VOLUME |
+       SD_OBJECT_SHADOW_CATCHER | SD_OBJECT_HAS_VOLUME_ATTRIBUTES |
+       SD_OBJECT_CAUSTICS | SD_OBJECT_HAS_VOLUME_MOTION |
+       SD_OBJECT_HAS_CORNER_NORMALS)
+};
+
+/* Exact host image of Cycles' 16-byte-aligned KernelObject. Explicit padding
+ * names the bytes inserted by the C++ ABI so zero-initialized upload records
+ * have deterministic object representations without changing any observable
+ * Cycles field offset. */
+struct alignas(16) KernelObject {
+  PackedTransform tfm;
+  PackedTransform itfm;
+
+  float volume_density;
+  float pass_id;
+  float random_number;
+  packed_float3 color;
+  float alpha;
+  int particle_index;
+
+  packed_float3 dupli_generated;
+  packed_float2 dupli_uv;
+
+  uint16_t num_geom_steps;
+  uint16_t num_tfm_steps;
+  int numverts;
+  int numprims;
+
+  uint attribute_map_offset;
+  uint motion_offset;
+  int position_offset;
+  int normal_offset;
+
+  float cryptomatte_object;
+  float cryptomatte_asset;
+  float shadow_terminator_shading_offset;
+  float shadow_terminator_geometry_offset;
+  float ao_distance;
+  int lightgroup;
+  uint visibility;
+  int primitive_type;
+  float velocity_scale;
+
+  uint _pad_light_set_alignment;
+  std::uint64_t light_set_membership;
+  uint receiver_light_set;
+  uint _pad_shadow_set_alignment;
+  std::uint64_t shadow_set_membership;
+  uint blocker_shadow_set;
+  uint _pad_tail[3];
+};
+static_assert(sizeof(KernelObject) == 256u);
+static_assert(alignof(KernelObject) == 16u);
 
 /* Stack */
 
