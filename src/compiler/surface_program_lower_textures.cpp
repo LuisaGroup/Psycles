@@ -412,16 +412,30 @@ namespace operand = value_operand;
                                             : kind == "QUADRATIC_SPHERE"
                                                   ? 6u
                                                   : 0u;
-            publish(
-                node.id,
-                "Factor",
-                append(ValueInstruction{
+            const auto lower_output = [&](std::string output,
+                                          SocketType result_type) {
+                publish(
+                    node.id,
+                    std::move(output),
+                    append(ValueInstruction{
                     .operation = ValueOperation::gradient,
                     .source_node = node.id,
-                    .result_type = SocketType::floating,
+                    .result_type = result_type,
                     .operands = make_value_operands<operand::gradient>({
                         {operand::gradient::vector, *vector}}),
                     .static_u0 = mode}));
+            };
+            // Cycles defines both outputs from the same saturated scalar:
+            // Fac=f and Color=(f,f,f). SurfaceProgram is typed, single-result
+            // SSA, so each reachable output receives its own definition. The
+            // compact runtime may subsequently CSE/fuse the equivalent
+            // producer; lowering must not erase either typed def first.
+            if (output_is_used(node.id, "Factor")) {
+                lower_output("Factor", SocketType::floating);
+            }
+            if (output_is_used(node.id, "Color")) {
+                lower_output("Color", SocketType::color);
+            }
         }
         return true;
     }

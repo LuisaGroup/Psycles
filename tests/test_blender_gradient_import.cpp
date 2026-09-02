@@ -2,6 +2,7 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/cycles_svm_compiler.h>
 #include <psycles/compiler/shader_program.h>
+#include <psycles/compiler/surface_program.h>
 
 #include <algorithm>
 #include <array>
@@ -239,6 +240,9 @@ void test_gradient_color_import() {
   ShaderCompiler frontend{make_core_node_registry()};
   const auto shader = frontend.compile(material->shader);
   require(shader.ok(), "Gradient Color graph did not validate");
+  const auto surface = compile_surface_program(*shader.program);
+  require(surface.ok(),
+          "Gradient Color did not define its typed surface-program output");
   AttributeIDMap attributes;
   ImageIDMap images;
   const auto image = compile_shader(*shader.program, attributes, images,
