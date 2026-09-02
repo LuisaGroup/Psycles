@@ -964,6 +964,43 @@ refraction masking, ordinary and singular events, all SVM Fresnel payload
 families, wrong-side rejection, and Thin Glass. With production fast math it
 passes on fallback, HIP, and strict native Vulkan XIR-to-SPIR-V.
 
+### Ashikhmin-Shirley scattering checkpoint
+
+The retained type-15 closure now uses a direct Luisa DSL transcription of
+Cycles 5.2.1 `bsdf_ashikhmin_shirley_eval()` and
+`bsdf_ashikhmin_shirley_sample()`. The transcription preserves the roughness
+to exponent map, isotropic and anisotropic normalization, tangent basis, the
+four mutually exclusive azimuth quadrants, original-paper pump, half-vector
+reflection, shading/geometric-normal domains, `1e-4` singular boundary, MIS
+scale, roughness output, and label bits. It also preserves two less-obvious
+contracts: the sample rejects through `!(NdotI > 0)` so non-finite input does
+not enter the positive domain, and the enclosing Cycles `bsdf_sample()` writes
+`eta = 1` even when the closure sampler rejects the event.
+
+The isolated HIP oracle directly included pinned Cycles 5.2.1
+`bsdf_ashikhmin_shirley.h` at commit
+`9e2066aef7ef7e20c142ad7bd3303138a4304c93`. It used ROCm 7.2.53211,
+`gfx1201`, and `-O3 -ffast-math`; source SHA-256 was
+`47312e59bc61be72f143e924f1e10ffee6ef8154709c4dba2871258143ce522e`
+and executable SHA-256 was
+`c971e7d10a923893d2c4c5b5b04cb5b040b23bad2fdbea304deef0b5367c031a`.
+Representative results are:
+
+```text
+isotropic sample: pdf=0.414520204, value=0.393805861, label=10
+isotropic eval:   pdf=0.281307250, value=0.259996474
+anisotropic eval: pdf=0.0801215917, value=0.0740518868
+quadrant PDFs:    0.535278857, 0.354017824, 0.621847391, 0.462558091
+bad incoming:     pdf=value=0, label=0
+bad geometric N:  pdf=value=0, label=0
+singular alpha:   pdf=value=1e6, label=18; eval=(0,0)
+```
+
+`test_luisa_cycles_svm_ashikhmin_shirley_scattering.cpp` freezes all 27
+numeric records and eight labels, including all four anisotropic branches and
+both rejection paths. With production fast math it passes on fallback, HIP,
+and strict native Vulkan XIR-to-SPIR-V.
+
 ### Standalone BSSRDF runtime checkpoint
 
 `NODE_CLOSURE_BSDF` now consumes the exact eight-word
@@ -1141,6 +1178,9 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_hair_scattering_tests \
            psycles_luisa_cycles_svm_simple_scattering_tests \
            psycles_luisa_cycles_svm_toon_scattering_tests \
+           psycles_luisa_cycles_svm_sheen_scattering_tests \
+           psycles_luisa_cycles_svm_microfacet_scattering_tests \
+           psycles_luisa_cycles_svm_ashikhmin_shirley_scattering_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_cycles_svm_ray_portal_compiler_tests \
            psycles_cycles_svm_hair_compiler_tests \
@@ -1204,6 +1244,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_microfacet_scattering_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_ashikhmin_shirley_scattering_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -1219,14 +1262,14 @@ Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, standalone
 Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
 6/6, standalone Hair setup 3/3, Hair scattering 3/3, simple scattering 3/3,
 Toon scattering 3/3, Sheen/Velvet scattering 3/3,
-Microfacet scattering 3/3,
+Microfacet scattering 3/3, Ashikhmin-Shirley scattering 3/3,
 compiler 3/3, and Ray Portal/Hair bundle imports 2/2 passed. The scattering
 kernels were built with the production `enable_fast_math=true` setting. The
 compiler test locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. After this checkpoint, `cmake --build build --parallel
-32` completed successfully and the full 32-way CTest run passed 519/519 tests
-in 49.15 seconds on the warm build tree. The Vulkan test environment is
+32` completed successfully and the full 32-way CTest run passed 522/522 tests
+in 15.66 seconds on the warm build tree. The Vulkan test environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
 
