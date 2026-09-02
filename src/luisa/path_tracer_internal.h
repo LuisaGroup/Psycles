@@ -4,6 +4,7 @@
 
 #include <psycles/compiler/material_library.h>
 #include <psycles/compiler/cycles_svm_scene.h>
+#include <psycles/compiler/cycles_svm_object_scene.h>
 #include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/compiler/surface_svm_program.h>
 #include <psycles/luisa/cycles_path_state.h>
@@ -465,6 +466,7 @@ struct SurfaceValueRuntime {
 // as in Cycles DeviceScene.
 struct CyclesSvmRuntime {
     compiler::cycles_svm::CompiledShaderTable compilation;
+    compiler::cycles_svm::ObjectIdentityPlan object_identities;
     std::map<contract::MaterialId, std::uint32_t>
         material_shader_indices;
     luisa::vector<CyclesSvmImageBindingGpu> image_bindings;

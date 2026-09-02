@@ -20,6 +20,12 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
                          std::string &diagnostic) {
   diagnostic.clear();
   auto runtime = std::make_unique<CyclesSvmRuntime>();
+  runtime->object_identities =
+      compiler::cycles_svm::plan_object_identities(snapshot);
+  if (!runtime->object_identities.valid) {
+    diagnostic = runtime->object_identities.diagnostic;
+    return nullptr;
+  }
 
   std::set<std::uint32_t> occupied_indices;
   auto maximum_source_index = std::uint32_t{};
