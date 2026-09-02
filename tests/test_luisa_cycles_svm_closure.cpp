@@ -1,5 +1,6 @@
 #include <psycles/luisa/cycles_svm.h>
 
+#include "cycles_svm_bsdf.h"
 #include "luisa_cycles_svm_test_kernel_globals.h"
 #include "path_tracer_bsdf_tables.h"
 
@@ -178,6 +179,24 @@ constexpr std::array<std::uint32_t, 29u>
         0x43d20000u, 0x3fc28f5cu, 0x00000300u,
         0x00000000u, 0x00000000u, 0x00000000u};
 
+/* Exact global surface tail for `Metallic BSDF Matrix 06` from the
+ * unmodified Cycles 5.2.1 linked-scene dump
+ * ca569e6e0fdf31b04109689ef8b3fb70a6655d464348f595de334cc66d637cfd.
+ * The source jump (316,343,344) is relocated to (4,31,32); every surface
+ * payload word is unchanged. Unlike the literal oracle above, this retains
+ * the two linked Value Vector nodes that feed Normal and Tangent. */
+constexpr std::array<std::uint32_t, 33u>
+    metallic_f82_multi_linked_anisotropic_words{
+        0x00000001u, 0x00000004u, 0x0000001fu, 0x00000020u,
+        0x00000013u, 0x00000000u, 0x00000000u, 0x00000000u,
+        0x3f800000u, 0x00000013u, 0x00000003u, 0x3f19999au,
+        0x3f4ccccdu, 0x00000000u, 0x00000002u, 0x0000000bu,
+        0x000000ffu, 0x0000000eu, 0x3e3851ecu, 0x3f0a3d71u,
+        0x3f6147aeu, 0x3f23d70au, 0x3f666666u, 0x3f7d70a4u,
+        0x3f2147aeu, 0x3f666666u, 0x3e000000u, 0x00000000u,
+        0x3faa3d71u, 0x00000300u, 0x00000000u, 0x00000000u,
+        0x00000000u};
+
 constexpr std::array<std::uint32_t, 26u> metallic_conductor_ggx_words{
     0x00000001u, 0x00000004u, 0x00000018u, 0x00000019u,
     0x0000000bu, 0x00000001u, 0x00000000u,
@@ -241,6 +260,8 @@ struct ExpectedClosure {
   luisa::float3 transmission_tint{};
   luisa::float3 f0{};
   luisa::float3 f90{};
+  bool direct_evaluation{};
+  luisa::float3 direct_value{};
 };
 
 constexpr ExpectedClosure diffuse_expected{
@@ -579,6 +600,37 @@ constexpr ExpectedClosure metallic_f82_multi_anisotropic_expected{
     .transmission_tint = {0.5618879199028015f, 5.3317179679870605f,
                           7.163314342498779f}};
 
+constexpr ExpectedClosure metallic_f82_multi_linked_anisotropic_expected{
+    .name = "Metallic BSDF Matrix 06 linked Multi-GGX",
+    .normal = {0.0f, 0.0f, 1.0f},
+    .geometric_normal = {0.0f, 0.0f, 1.0f},
+    .weight = {0.8217415809631348f, 0.8920326232910156f,
+               0.9695853590965271f},
+    .sample_weight = 0.4770972430706024f,
+    .type = 12u,
+    .flag = device_svm::shader_data_use_bump_map_correction |
+            device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval,
+    .final_offset = 31u,
+    .transparent_extinction = {0.0f, 0.0f, 0.0f},
+    .emission = {0.0f, 0.0f, 0.0f},
+    .oren_nayar = false,
+    .count = 1u,
+    .left = 6u,
+    .microfacet = true,
+    .fresnel_payload = true,
+    .alpha_ior_energy = {0.9105510711669922f, 0.17300468683242798f,
+                         1.0f, 1.2672f},
+    .tangent = {-0.1414213627576828f, 0.9899494647979736f, 0.0f},
+    .fresnel_type = 5u,
+    .thin_film_exponent = {0.000009999999747378752f, 1.3300000429153442f,
+                           0.0f, 0.0f},
+    .reflection_tint = {0.18000000715255737f, 0.5400000214576721f,
+                        0.8799999952316284f},
+    .transmission_tint = {3.55461f, 1.32884f, 0.165132f},
+    .direct_evaluation = true,
+    .direct_value = {0.0021440336f, 0.0064319385f, 0.010481611f}};
+
 constexpr ExpectedClosure metallic_conductor_ggx_expected{
     .name = "Metallic BSDF Matrix 08 physical GGX",
     .normal = {0.0f, 0.0f, 1.0f},
@@ -784,6 +836,7 @@ make_shader_data(Expr<luisa::float3> normal,
   result[NODE_END] = true;
   result[NODE_SHADER_JUMP] = true;
   result[NODE_GEOMETRY] = true;
+  result[NODE_VALUE_V] = true;
   result[NODE_CLOSURE_SET_WEIGHT] = true;
   result[NODE_CLOSURE_WEIGHT] = true;
   result[NODE_CLOSURE_EMISSION] = true;
@@ -921,6 +974,12 @@ make_shader_data(Expr<luisa::float3> normal,
         output.write(9u, make_float4(transmission_tint, 0.0f));
         output.write(10u, make_float4(f0, 0.0f));
         output.write(11u, make_float4(f90, 0.0f));
+        const auto direct = device_svm::detail::bsdf_eval(
+            kernel_globals, shader_data, 0u,
+            make_float3(0.7956017255783081f, 0.0f,
+                        0.6058201789855957f),
+            device_svm::detail::all_closure_types);
+        output.write(12u, make_float4(direct.value, direct.pdf));
         meta.write(0u, type);
         meta.write(1u, closures.count());
         meta.write(2u, closures.left());
@@ -942,14 +1001,14 @@ template <std::size_t word_count>
                    Buffer<std::uint32_t>> &shader) {
   auto words = device.create_buffer<std::uint32_t>(word_count);
   auto state = device.create_buffer<luisa::float4>(2u);
-  auto output = device.create_buffer<luisa::float4>(12u);
+  auto output = device.create_buffer<luisa::float4>(13u);
   auto meta = device.create_buffer<std::uint32_t>(7u);
   const std::array state_data{
       luisa::float4{expected.normal.x, expected.normal.y, expected.normal.z,
                     static_cast<float>(expected.initial_flag)},
       luisa::float4{expected.geometric_normal.x, expected.geometric_normal.y,
                     expected.geometric_normal.z, 0.0f}};
-  std::array<luisa::float4, 12u> actual{};
+  std::array<luisa::float4, 13u> actual{};
   std::array<std::uint32_t, 7u> actual_meta{};
   stream << words.copy_from(word_image.data())
          << state.copy_from(state_data.data())
@@ -996,6 +1055,9 @@ template <std::size_t word_count>
              near(actual[8].xyz(), expected.reflection_tint) &&
              near(actual[9].xyz(), expected.transmission_tint);
   }
+  if (expected.direct_evaluation) {
+    valid &= near(actual[12].xyz(), expected.direct_value);
+  }
 
   if (!valid) {
     std::cerr << "Cycles closure oracle mismatch for " << expected.name
@@ -1016,6 +1078,11 @@ template <std::size_t word_count>
                 << "), payload0=(" << actual[8].x << ", " << actual[8].y
                 << ", " << actual[8].z << "), payload1=(" << actual[9].x
                 << ", " << actual[9].y << ", " << actual[9].z << ")\n";
+    }
+    if (expected.direct_evaluation) {
+      std::cerr << "direct=(" << actual[12].x << ", " << actual[12].y
+                << ", " << actual[12].z << ", pdf=" << actual[12].w
+                << ")\n";
     }
   }
   return valid;
@@ -1086,6 +1153,10 @@ int main(int argc, char **argv) {
                  run_oracle(device, stream, backend, table,
                             metallic_f82_multi_anisotropic_words,
                             metallic_f82_multi_anisotropic_expected, shader) &&
+                 run_oracle(device, stream, backend, table,
+                            metallic_f82_multi_linked_anisotropic_words,
+                            metallic_f82_multi_linked_anisotropic_expected,
+                            shader) &&
                  run_oracle(device, stream, backend, table,
                             metallic_conductor_ggx_words,
                             metallic_conductor_ggx_expected, shader) &&

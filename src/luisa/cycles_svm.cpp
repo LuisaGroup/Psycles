@@ -72,7 +72,8 @@ EvaluationResult::EvaluationResult() noexcept
       status{static_cast<std::uint32_t>(EvaluationStatus::running)},
       closure_weight{make_float3(0.0f)} {}
 
-void eval_nodes(const KernelGlobals &kernel_globals, const BufferUInt &words,
+void eval_nodes(const KernelGlobals &kernel_globals,
+                Expr<Buffer<luisa::uint>> words,
                 ShaderType shader_type, std::uint32_t kernel_features,
                 std::uint32_t node_feature_mask,
                 const std::array<bool, NODE_NUM> &node_types_used,

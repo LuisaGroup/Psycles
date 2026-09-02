@@ -517,6 +517,10 @@ struct LuisaSceneData {
     // environment opt-out is retained only as an exact expanded-graph A/B
     // oracle for diagnosing interpreter and population effects separately.
     bool populate_surface_once{};
+    // Explicit host/JIT migration gate for evaluating the uploaded native
+    // Cycles word stream at production surface hits. No device-side route
+    // predicate is generated.
+    bool native_cycles_svm_surface{};
     // Replacement native Cycles bytecode image. During the migration this is
     // built and uploaded transactionally before the legacy surface evaluator
     // is constructed; shade_surface wiring consumes only this image once all

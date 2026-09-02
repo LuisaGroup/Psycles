@@ -42,6 +42,13 @@ inline constexpr ClosureTypeMask all_closure_types = ~ClosureTypeMask{0u};
     const ClosurePool &pool,
     luisa::compute::Expr<std::uint32_t> closure_index) noexcept;
 
+// Cycles' Roughness data pass intentionally differs from transport
+// roughness: diffuse closures without an authored roughness are excluded,
+// while Oren-Nayar and Rough Translucent expose their node parameter.
+[[nodiscard]] luisa::compute::Float bsdf_get_roughness_pass_squared(
+    const ClosurePool &pool,
+    luisa::compute::Expr<std::uint32_t> closure_index) noexcept;
+
 [[nodiscard]] BsdfSample bsdf_sample(
     const KernelGlobals &kernel_globals, ShaderData &shader_data,
     luisa::compute::Expr<std::uint32_t> closure_index,

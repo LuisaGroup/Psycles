@@ -1,5 +1,6 @@
 #include "path_tracer_surfaces.h"
 
+#include "path_tracer_cycles_svm_surface.h"
 #include "path_tracer_shader_services.h"
 #include "path_tracer_ambient_occlusion.h"
 #include "path_tracer_surface_closure_evaluation.h"
@@ -242,11 +243,8 @@ class SurfacePopulationComponentImpl final
                   : nullptr} {}
 
     [[nodiscard]] std::shared_ptr<PopulatedSurfaceShader> populate(
-        Expr<std::uint32_t> surface_tag,
-        const SurfacePoint &point,
-        const SurfacePopulationQuery &query,
-        const PathSurfaceAmbientOcclusionContext
-            *ambient_occlusion) const noexcept override {
+        const SurfacePopulationContext &context) const noexcept override {
+        const auto *ambient_occlusion = context.ambient_occlusion;
         if (_scene->has_ambient_occlusion &&
             ambient_occlusion == nullptr) {
             std::abort();
@@ -257,9 +255,9 @@ class SurfacePopulationComponentImpl final
             _closure_setup,
             _texture_sampling,
             _attribute_lookup,
-            surface_tag,
-            point,
-            query,
+            context.surface_tag,
+            context.point,
+            context.query,
             _identity,
             _aov_operation,
             _ambient_occlusion_traversal,
@@ -580,7 +578,9 @@ make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
     const auto attribute_lookup = make_surface_attribute_lookup_callable(
         scene->attribute_binding_slot, scene->attribute_range_slot);
     std::shared_ptr<const SurfacePopulationComponent> population;
-    if (scene->populate_surface_once) {
+    if (scene->native_cycles_svm_surface) {
+        population = make_cycles_svm_surface_population_component(scene);
+    } else if (scene->populate_surface_once) {
         const auto closure_aov = make_surface_closure_aov_callable();
         std::shared_ptr<const SurfacePopulationProgram> program;
         if (scene->surface_values) {
