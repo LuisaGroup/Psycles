@@ -19,6 +19,9 @@
 #include <luisa/luisa-compute.h>
 
 LUISA_STRUCT(psycles::compiler::cycles_svm::packed_float3, x, y, z){};
+LUISA_STRUCT(psycles::compiler::cycles_svm::packed_float2, x, y){};
+LUISA_STRUCT(psycles::compiler::cycles_svm::packed_float4, x, y, z, w){};
+LUISA_STRUCT(psycles::compiler::cycles_svm::packed_uint3, x, y, z){};
 LUISA_STRUCT(psycles::compiler::cycles_svm::packed_normal, value){};
 LUISA_STRUCT(psycles::compiler::cycles_svm::uchar4, x, y, z, w){};
 LUISA_STRUCT(psycles::compiler::cycles_svm::AttributeMap, id, offset, element,

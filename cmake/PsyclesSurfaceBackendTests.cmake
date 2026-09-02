@@ -431,6 +431,27 @@ target_include_directories(
     psycles_luisa_cycles_svm_primitive_attribute_tests
     PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
 
+# This fixture validates the transactional host-side DeviceScene projection;
+# it deliberately owns no device so one proof covers every backend upload.
+add_executable(
+    psycles_luisa_cycles_svm_geometry_scene_tests
+    tests/test_luisa_cycles_svm_geometry_scene.cpp)
+target_link_libraries(
+    psycles_luisa_cycles_svm_geometry_scene_tests
+    PRIVATE Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_cycles_svm_geometry_scene_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+target_compile_features(
+    psycles_luisa_cycles_svm_geometry_scene_tests
+    PRIVATE cxx_std_20)
+set_target_properties(
+    psycles_luisa_cycles_svm_geometry_scene_tests
+    PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+add_test(
+    NAME psycles.luisa_cycles_svm_geometry_scene
+    COMMAND psycles_luisa_cycles_svm_geometry_scene_tests)
+
 psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_texture_coordinate_tests
     SOURCE tests/test_luisa_cycles_svm_texture_coordinate.cpp

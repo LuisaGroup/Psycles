@@ -31,6 +31,14 @@ struct packed_float2 {
 static_assert(sizeof(packed_float2) == 8u);
 static_assert(alignof(packed_float2) == alignof(float));
 
+struct packed_uint3 {
+  uint x;
+  uint y;
+  uint z;
+};
+static_assert(sizeof(packed_uint3) == 12u);
+static_assert(alignof(packed_uint3) == alignof(uint));
+
 struct packed_float4 {
   float x;
   float y;
