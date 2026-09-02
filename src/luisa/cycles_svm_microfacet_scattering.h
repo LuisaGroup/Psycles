@@ -50,8 +50,34 @@ namespace psycles::luisa_backend::cycles_svm::detail {
     luisa::compute::Expr<luisa::float3> wi,
     luisa::compute::Expr<luisa::float3> wo) noexcept;
 
+[[nodiscard]] BsdfEvaluation bsdf_microfacet_beckmann_eval(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetConductorClosure &closure,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<luisa::float3> wo) noexcept;
+
+[[nodiscard]] BsdfEvaluation bsdf_microfacet_beckmann_eval(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetF82TintClosure &closure,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<luisa::float3> wo) noexcept;
+
 [[nodiscard]] BsdfSample bsdf_microfacet_beckmann_sample(
     const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
+    luisa::compute::Expr<luisa::float3> Ng,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<luisa::float3> random) noexcept;
+
+[[nodiscard]] BsdfSample bsdf_microfacet_beckmann_sample(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetConductorClosure &closure,
+    luisa::compute::Expr<luisa::float3> Ng,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<luisa::float3> random) noexcept;
+
+[[nodiscard]] BsdfSample bsdf_microfacet_beckmann_sample(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetF82TintClosure &closure,
     luisa::compute::Expr<luisa::float3> Ng,
     luisa::compute::Expr<luisa::float3> wi,
     luisa::compute::Expr<luisa::float3> random) noexcept;

@@ -282,6 +282,22 @@ public:
     return true;
   }
 
+  /* kernel_data.background.transparent_roughness_squared_threshold. The
+   * disabled default is Cycles' negative sentinel; production scene services
+   * override this when transparent-background roughness filtering is active. */
+  [[nodiscard]] virtual luisa::compute::Float
+  transparent_roughness_squared_threshold() const noexcept {
+    return -1.0f;
+  }
+
+  /* kernel_data_fetch(objects, object).shadow_terminator_shading_offset. A
+   * value of one is Cycles' no-op domain for the frequency correction. */
+  [[nodiscard]] virtual luisa::compute::Float
+  object_shadow_terminator_shading_offset(
+      luisa::compute::Expr<std::uint32_t>) const noexcept {
+    return 1.0f;
+  }
+
   // Packed scene-owned IES table from Cycles LightManager. The default is
   // intentionally inert so node families that do not use NODE_IES do not
   // acquire a device binding while their AST is recorded.

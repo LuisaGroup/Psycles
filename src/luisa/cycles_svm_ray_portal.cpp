@@ -4,6 +4,8 @@
 
 #include "cycles_svm_ray_portal.h"
 
+#include "cycles_svm_bsdf.h"
+
 #include <psycles/luisa/native_vector_math.h>
 
 #include <luisa/dsl/sugar.h>
@@ -60,6 +62,12 @@ void node_ray_portal(Cursor &cursor, Stack &stack,
       shader_data.flag |= shader_data_bsdf | shader_data_ray_portal;
     };
   };
+}
+
+BsdfEvaluation bsdf_ray_portal_eval(const RayPortalClosure &,
+                                    Expr<luisa::float3>,
+                                    Expr<luisa::float3>) noexcept {
+  return {.value = make_float3(0.0f), .pdf = 0.0f};
 }
 
 } // namespace psycles::luisa_backend::cycles_svm::detail
