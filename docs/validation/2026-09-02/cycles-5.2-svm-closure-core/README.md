@@ -20,6 +20,7 @@ The implementation follows these pinned Cycles sources at
 - `kernel/closure/bsdf_toon.h`
 - `kernel/closure/bsdf_ray_portal.h`
 - `kernel/closure/bsdf_hair.h`
+- `kernel/closure/bsdf_principled_hair_chiang.h`
 - `kernel/closure/bsdf_util.h::maybe_ensure_valid_specular_reflection`
 - `kernel/closure/bsdf_microfacet.h::{bsdf_microfacet_*_glass_setup,`
   `bsdf_microfacet_ggx_setup,bsdf_microfacet_beckmann_setup,`
@@ -48,6 +49,10 @@ payload, direct signed-weight allocation, transparent extinction, and portal
 position/direction state. The standalone legacy Hair family includes
 Reflection and Transmission with the exact typed `SVMNodeHairBsdfData`
 payload, primitive-dependent tangent construction, and signed offset. The standalone
+Principled Hair Chiang population/setup path consumes the exact typed
+`SVMNodePrincipledHairBsdfData` payload and retains a typed Chiang closure.
+Its eval/sample scattering functions and the Huang model remain separate
+follow-up work and are not claimed by this checkpoint. The standalone
 Subsurface Scattering family includes Christensen-Burley,
 Random Walk, Random Walk Legacy, and Random Walk Skin with the exact typed
 `SVMNodeBssrdfData` payload.
@@ -1001,6 +1006,59 @@ numeric records and eight labels, including all four anisotropic branches and
 both rejection paths. With production fast math it passes on fallback, HIP,
 and strict native Vulkan XIR-to-SPIR-V.
 
+### Principled Hair Chiang population/setup checkpoint
+
+The interpreter now copies the type-27 branch of Cycles 5.2.1
+`svm_node_closure_bsdf()` and `bsdf_hair_chiang_setup()`. The transition first
+reads the complete 26-word `SVMNodePrincipledHairBsdfData` record, so cutoff,
+zero-mix, and exhausted-pool paths cannot leave the program counter inside the
+payload. Its live computation is the following source-shaped state map:
+
+```text
+random = curve-random attribute when found, otherwise payload random
+roughness_factor = 1 + 2 * (random - 0.5) * random_roughness
+roughness = input_roughness * roughness_factor
+radial_roughness = input_radial_roughness * roughness_factor
+sigma = DirectAbsorption | PigmentConcentration | Reflectance | brown fallback
+allocation = bsdf_alloc(max(closure_weight * mix_weight, 0))
+successful allocation -> Chiang setup -> SD_BSDF | HAS_EVAL | HAS_TRANSMISSION
+```
+
+Pigment concentration preserves Cycles' randomized melanin transform,
+`-log(max(1-melanin, 0.0001))`, eumelanin/pheomelanin split, optional tint,
+and concentration constants. Reflectance preserves the fifth-order albedo
+roughness scale and squared logarithmic absorption. Setup preserves the
+`[0.001,1]` clamps, the exact `pow20`/`pow22` multiplication trees, coat-to-M0
+mapping, curve-tangent frame, ribbon `h=-v` branch, signed cuticle tilt, IOR,
+and type-27 runtime tag. The shared closure pool stores this as a typed member
+of the existing SoA `ShaderClosure` union; it does not introduce a second
+material representation or additional per-closure rows.
+
+The isolated HIP oracle directly included pinned Cycles 5.2.1
+`bsdf_principled_hair_chiang.h` at commit
+`9e2066aef7ef7e20c142ad7bd3303138a4304c93`. It used ROCm 7.2.53211,
+`gfx1201`, and `-O3 -ffast-math`; source SHA-256 was
+`18fe3da05bcf69f6ad6d3e5969372548d07573e49c3cc0cf8952d779e9249a96`
+and executable SHA-256 was
+`954a001845586011518bb6955483322f4c722d73dc817154cd2cb9258e0356a9`.
+Representative post-setup records are:
+
+```text
+Reflectance sigma/v: (0.118423782, 0.0162182655, 0.00126328191, 0.224562809)
+Reflectance s/alpha/eta/M0: (0.0875470489, -0.189999998, 1.54999995, 0.0959622115)
+Pigment sigma/v: (0.129874706, 0.234955996, 0.526990354, 0.0659941882)
+Pigment ribbon N/h: (0.762866139, -0.572149634, -0.301131397, -0.270000011)
+Direct absorption sigma/v: (0.2, 0.7, 1.1, 5.28255782e-7)
+Invalid-param brown sigma/v: (0.276265055, 0.590385675, 1.54966176, 0.107588485)
+flags for every successful setup: 1036
+```
+
+`test_luisa_cycles_svm_principled_hair_chiang.cpp` freezes all four
+parametrization partitions, attribute-found and fallback random selection,
+thick and ribbon frames, roughness/coat clamps, allocation cutoff, an empty
+pool, zero mix, feature-erased skip, runtime flags, pool accounting, and final
+PC. It passes on fallback, HIP, and strict native Vulkan XIR-to-SPIR-V.
+
 ### Standalone BSSRDF runtime checkpoint
 
 `NODE_CLOSURE_BSDF` now consumes the exact eight-word
@@ -1181,6 +1239,7 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_sheen_scattering_tests \
            psycles_luisa_cycles_svm_microfacet_scattering_tests \
            psycles_luisa_cycles_svm_ashikhmin_shirley_scattering_tests \
+           psycles_luisa_cycles_svm_principled_hair_chiang_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_cycles_svm_ray_portal_compiler_tests \
            psycles_cycles_svm_hair_compiler_tests \
@@ -1247,6 +1306,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_ashikhmin_shirley_scattering_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_principled_hair_chiang_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -1263,13 +1325,14 @@ Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
 6/6, standalone Hair setup 3/3, Hair scattering 3/3, simple scattering 3/3,
 Toon scattering 3/3, Sheen/Velvet scattering 3/3,
 Microfacet scattering 3/3, Ashikhmin-Shirley scattering 3/3,
+Principled Hair Chiang population/setup 3/3,
 compiler 3/3, and Ray Portal/Hair bundle imports 2/2 passed. The scattering
 kernels were built with the production `enable_fast_math=true` setting. The
 compiler test locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. After this checkpoint, `cmake --build build --parallel
-32` completed successfully and the full 32-way CTest run passed 522/522 tests
-in 15.66 seconds on the warm build tree. The Vulkan test environment is
+32` completed successfully and the full 32-way CTest run passed 525/525 tests
+in 17.73 seconds on the warm build tree. The Vulkan test environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
 

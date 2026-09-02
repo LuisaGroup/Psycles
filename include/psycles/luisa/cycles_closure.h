@@ -1,7 +1,8 @@
 #pragma once
 
 #if !defined(PSYCLES_WITH_LUISA)
-#error "Include <psycles/luisa/cycles_closure.h> through the Psycles::luisa target."
+#error                                                                         \
+    "Include <psycles/luisa/cycles_closure.h> through the Psycles::luisa target."
 #endif
 
 #include <cstdint>
@@ -17,12 +18,12 @@ namespace psycles::luisa_backend::cycles_closure {
 // transport family; this independent discriminator identifies the Fresnel
 // payload interpreted by a reflection microfacet closure.
 enum class MicrofacetFresnel : std::uint32_t {
-    none = 0u,
-    dielectric = 1u,
-    dielectric_tint = 2u,
-    conductor = 3u,
-    generalized_schlick = 4u,
-    f82_tint = 5u,
+  none = 0u,
+  dielectric = 1u,
+  dielectric_tint = 2u,
+  conductor = 3u,
+  generalized_schlick = 4u,
+  f82_tint = 5u,
 };
 
 // Stable values from the Cycles ClosureType ABI used by ShaderClosure. These
@@ -50,6 +51,8 @@ inline constexpr std::uint32_t type_microfacet_ggx_glass = 25u;
 // Virtual SVM authoring type. Cycles' GGX setup overwrites it with
 // type_microfacet_ggx_glass before the closure becomes observable.
 inline constexpr std::uint32_t type_microfacet_multi_ggx_glass = 26u;
+inline constexpr std::uint32_t type_hair_chiang = 27u;
+inline constexpr std::uint32_t type_hair_huang = 28u;
 inline constexpr std::uint32_t type_ray_portal = 29u;
 inline constexpr std::uint32_t type_transparent = 30u;
 inline constexpr std::uint32_t type_bssrdf_burley = 31u;
@@ -95,44 +98,41 @@ inline constexpr auto microfacet_singular_alpha_product = 2.0e-10f;
 // classification from an authoring node tag.
 [[nodiscard]] inline luisa::compute::Bool
 is_diffuse_or_oren_nayar(luisa::compute::UInt type) noexcept {
-    return (type >= type_diffuse) & (type <= type_oren_nayar);
+  return (type >= type_diffuse) & (type <= type_oren_nayar);
 }
 
 [[nodiscard]] inline luisa::compute::Bool
 is_reflection_microfacet(luisa::compute::UInt type) noexcept {
-    return (type == type_microfacet_ggx) |
-           (type == type_microfacet_beckmann);
+  return (type == type_microfacet_ggx) | (type == type_microfacet_beckmann);
 }
 
 [[nodiscard]] inline luisa::compute::Bool
 is_refraction_microfacet(luisa::compute::UInt type) noexcept {
-    return (type >= type_microfacet_beckmann_refraction) &
-           (type <= type_microfacet_ggx_refraction);
+  return (type >= type_microfacet_beckmann_refraction) &
+         (type <= type_microfacet_ggx_refraction);
 }
 
 [[nodiscard]] inline luisa::compute::Bool
 is_glass_microfacet(luisa::compute::UInt type) noexcept {
-    return (type >= type_microfacet_beckmann_glass) &
-           (type <= type_microfacet_ggx_glass);
+  return (type >= type_microfacet_beckmann_glass) &
+         (type <= type_microfacet_ggx_glass);
 }
 
 [[nodiscard]] inline luisa::compute::Bool
 is_hair(luisa::compute::UInt type) noexcept {
-    return (type == type_hair_reflection) |
-           (type == type_hair_transmission);
+  return (type == type_hair_reflection) | (type == type_hair_transmission);
 }
 
 [[nodiscard]] inline luisa::compute::Bool
 is_bssrdf(luisa::compute::UInt type) noexcept {
-    return (type >= type_bssrdf_burley) &
-           (type <= type_bssrdf_random_walk_skin);
+  return (type >= type_bssrdf_burley) & (type <= type_bssrdf_random_walk_skin);
 }
 
 [[nodiscard]] inline luisa::compute::Bool
 is_beckmann_microfacet(luisa::compute::UInt type) noexcept {
-    return (type == type_microfacet_beckmann) |
-           (type == type_microfacet_beckmann_refraction) |
-           (type == type_microfacet_beckmann_glass);
+  return (type == type_microfacet_beckmann) |
+         (type == type_microfacet_beckmann_refraction) |
+         (type == type_microfacet_beckmann_glass);
 }
 
 // Fresnel payloads backed by a Cycles extra closure allocation carry the
@@ -140,14 +140,12 @@ is_beckmann_microfacet(luisa::compute::UInt type) noexcept {
 // and owns no such payload; NONE owns no Fresnel payload at all.
 [[nodiscard]] inline luisa::compute::Bool
 fresnel_uses_thin_film_payload(luisa::compute::UInt fresnel) noexcept {
-    return (fresnel == static_cast<std::uint32_t>(
-                           MicrofacetFresnel::dielectric_tint)) |
-           (fresnel == static_cast<std::uint32_t>(
-                           MicrofacetFresnel::conductor)) |
-           (fresnel == static_cast<std::uint32_t>(
-                           MicrofacetFresnel::generalized_schlick)) |
-           (fresnel == static_cast<std::uint32_t>(
-                           MicrofacetFresnel::f82_tint));
+  return (fresnel ==
+          static_cast<std::uint32_t>(MicrofacetFresnel::dielectric_tint)) |
+         (fresnel == static_cast<std::uint32_t>(MicrofacetFresnel::conductor)) |
+         (fresnel ==
+          static_cast<std::uint32_t>(MicrofacetFresnel::generalized_schlick)) |
+         (fresnel == static_cast<std::uint32_t>(MicrofacetFresnel::f82_tint));
 }
 
 // Convert the renderer-independent surface-event contract back to the exact
@@ -155,51 +153,30 @@ fresnel_uses_thin_film_payload(luisa::compute::UInt fresnel) noexcept {
 // path-state code from accidentally treating the two enums as ABI-compatible.
 [[nodiscard]] inline luisa::compute::UInt
 label_from_events(luisa::compute::UInt events) noexcept {
-    using namespace luisa::compute;
-    UInt label = label_none;
-    label |= select(
-        0u,
-        label_transmit,
-        (events &
-         static_cast<std::uint32_t>(
-             contract::event_transmission)) != 0u);
-    label |= select(
-        0u,
-        label_reflect,
-        (events &
-         static_cast<std::uint32_t>(
-             contract::event_reflection)) != 0u);
-    label |= select(
-        0u,
-        label_diffuse,
-        (events &
-         static_cast<std::uint32_t>(
-             contract::event_diffuse)) != 0u);
-    label |= select(
-        0u,
-        label_glossy,
-        (events &
-         static_cast<std::uint32_t>(
-             contract::event_glossy)) != 0u);
-    label |= select(
-        0u,
-        label_singular,
-        (events &
-         static_cast<std::uint32_t>(
-             contract::event_singular)) != 0u);
-    label |= select(
-        0u,
-        label_transparent,
-        (events &
-         static_cast<std::uint32_t>(
-             contract::event_transparent)) != 0u);
-    label |= select(
-        0u,
-        label_subsurface_scatter,
-        (events &
-         static_cast<std::uint32_t>(
-             contract::event_subsurface)) != 0u);
-    return label;
+  using namespace luisa::compute;
+  UInt label = label_none;
+  label |= select(0u, label_transmit,
+                  (events & static_cast<std::uint32_t>(
+                                contract::event_transmission)) != 0u);
+  label |= select(
+      0u, label_reflect,
+      (events & static_cast<std::uint32_t>(contract::event_reflection)) != 0u);
+  label |= select(
+      0u, label_diffuse,
+      (events & static_cast<std::uint32_t>(contract::event_diffuse)) != 0u);
+  label |= select(
+      0u, label_glossy,
+      (events & static_cast<std::uint32_t>(contract::event_glossy)) != 0u);
+  label |= select(
+      0u, label_singular,
+      (events & static_cast<std::uint32_t>(contract::event_singular)) != 0u);
+  label |= select(
+      0u, label_transparent,
+      (events & static_cast<std::uint32_t>(contract::event_transparent)) != 0u);
+  label |= select(
+      0u, label_subsurface_scatter,
+      (events & static_cast<std::uint32_t>(contract::event_subsurface)) != 0u);
+  return label;
 }
 
 } // namespace psycles::luisa_backend::cycles_closure
