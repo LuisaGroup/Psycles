@@ -36,6 +36,8 @@ LUISA_STRUCT(psycles::compiler::cycles_svm::KernelObject, tfm, itfm,
              _pad_light_set_alignment, light_set_membership,
              receiver_light_set, _pad_shadow_set_alignment,
              shadow_set_membership, blocker_shadow_set, _pad_tail){};
+LUISA_STRUCT(psycles::compiler::cycles_svm::KernelShader, constant_emission,
+             cryptomatte_id, flags, pass_id, pad2, pad3){};
 LUISA_STRUCT(psycles::compiler::cycles_svm::AttributeMap, id, offset, element,
              type, pad){};
 LUISA_STRUCT(psycles::compiler::cycles_svm::KernelCurve, shader_id, first_key,

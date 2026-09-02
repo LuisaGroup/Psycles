@@ -1,3 +1,4 @@
+#include "cycles_shader_identity.h"
 #include "path_tracer_cycles_svm_scene.h"
 #include "path_tracer_scene_geometry.h"
 
@@ -259,6 +260,8 @@ void test_runtime(Device &device) {
   const auto points = download(stream, geometry.point_buffer);
   const auto triangle_indices =
       download(stream, geometry.triangle_index_buffer);
+  const auto triangle_shaders =
+      download(stream, geometry.triangle_shader_buffer);
   const auto curves = download(stream, geometry.curve_buffer);
   auto &objects = *scene->cycles_svm->objects;
   const auto object_records = download(stream, objects.object_buffer);
@@ -278,6 +281,10 @@ void test_runtime(Device &device) {
   require(triangle_indices.size() == 4u && triangle_indices[3u].x == 0u &&
               triangle_indices[3u].y == 2u && triangle_indices[3u].z == 1u,
           "global typed triangle-index upload changed");
+  require(triangle_shaders.size() == 4u &&
+              triangle_shaders[3u] ==
+                  cycles_shader_identity::surface(7u, false),
+          "global typed tri_shader upload changed");
 
   require(
       attribute_float.size() == 1u && attribute_float[0u] == 0.0f &&

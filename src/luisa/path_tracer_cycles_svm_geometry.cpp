@@ -204,6 +204,76 @@ void append_tangent_sources(GeometryAttributeInput &input,
 }
 
 template <typename Geometry>
+[[nodiscard]] bool resolve_geometry_shader_slots(
+    const contract::SceneSnapshot &snapshot,
+    contract::GeometryId geometry_id, const Geometry &geometry,
+    std::vector<contract::MaterialId> &resolved,
+    std::string &diagnostic) {
+  const auto effective_slots = [&](const contract::InstanceDesc &instance) {
+    auto slots = geometry.material_slots;
+    if (slots.size() < instance.material_overrides.size()) {
+      slots.resize(instance.material_overrides.size());
+    }
+    for (auto i = std::size_t{}; i < instance.material_overrides.size(); ++i) {
+      slots[i] = instance.material_overrides[i];
+    }
+    return slots;
+  };
+
+  bool has_user = false;
+  for (const auto &[instance_id, instance] : snapshot.instances) {
+    static_cast<void>(instance_id);
+    if (instance.geometry != geometry_id) {
+      continue;
+    }
+    auto slots = effective_slots(instance);
+    if (!has_user) {
+      resolved = std::move(slots);
+      has_user = true;
+      continue;
+    }
+    if (slots != resolved) {
+      diagnostic = "Cycles geometry '" + geometry.name +
+                   "' has object users with distinct used-shader arrays; "
+                   "the source geometry must be split before native "
+                   "tri_shader packing";
+      return false;
+    }
+  }
+  if (!has_user) {
+    resolved = geometry.material_slots;
+  }
+  if (resolved.empty()) {
+    diagnostic = "Cycles geometry '" + geometry.name +
+                 "' has no default or object-resolved shader slot";
+    return false;
+  }
+  return true;
+}
+
+[[nodiscard]] bool resolve_shader_index(
+    contract::MaterialId material,
+    const std::map<contract::MaterialId, std::uint32_t>
+        &material_shader_indices,
+    const CompiledShaderTable &compilation, std::uint32_t &shader,
+    std::string &diagnostic) {
+  const auto iter = material_shader_indices.find(material);
+  if (iter == material_shader_indices.end() ||
+      iter->second >= compilation.table.shader_count) {
+    diagnostic = "Cycles primitive references unavailable material " +
+                 std::to_string(material.value);
+    return false;
+  }
+  if ((iter->second & ~cycles_shader_identity::shader_mask) != 0u) {
+    diagnostic = "Cycles material " + std::to_string(material.value) +
+                 " has a shader index that overlaps shader decoration bits";
+    return false;
+  }
+  shader = iter->second;
+  return true;
+}
+
+template <typename Geometry>
 [[nodiscard]] bool collect_geometry_requests(
     const contract::SceneSnapshot &snapshot, contract::GeometryId geometry_id,
     const Geometry &geometry,
@@ -907,6 +977,7 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
     }
   }
   result.triangle_vertex_indices.resize(triangle_extent);
+  result.triangle_shaders.resize(triangle_extent);
   occupied_triangles.resize(triangle_extent, false);
   for (const auto &[id, geometry] : snapshot.geometries) {
     const auto offset = triangle_primitive_offsets.find(id)->second;
@@ -921,6 +992,38 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
       return reject(
           "Cycles mesh finalized topology differs from its primitive interval");
     }
+    std::vector<contract::MaterialId> shader_slots;
+    std::string diagnostic;
+    if (!resolve_geometry_shader_slots(snapshot, id, geometry, shader_slots,
+                                       diagnostic)) {
+      return reject(std::move(diagnostic));
+    }
+    if (!upload.triangle_material_slots.empty() &&
+        upload.triangle_material_slots.size() != upload.triangles.size()) {
+      return reject(
+          "Cycles finalized triangle material image has the wrong extent");
+    }
+    if (!upload.triangle_smooth.empty() &&
+        upload.triangle_smooth.size() != upload.triangles.size()) {
+      return reject("Cycles finalized triangle smooth image has the wrong "
+                    "extent");
+    }
+    if (geometry.triangle_material_slots.size() == upload.triangles.size() &&
+        !upload.triangle_material_slots.empty() &&
+        !std::ranges::equal(geometry.triangle_material_slots,
+                            upload.triangle_material_slots)) {
+      return reject("Cycles finalized triangle material image differs from "
+                    "its source geometry");
+    }
+    if (geometry.triangle_smooth.size() == upload.triangles.size() &&
+        !upload.triangle_smooth.empty() &&
+        !std::ranges::equal(geometry.triangle_smooth,
+                            upload.triangle_smooth)) {
+      return reject("Cycles finalized triangle smooth image differs from its "
+                    "source geometry");
+    }
+    const auto has_corner_normals =
+        (upload.attribute_domains & geometry_normal_corner) != 0u;
     for (auto i = std::size_t{}; i < upload.triangles.size(); ++i) {
       const auto destination = static_cast<std::size_t>(offset) + i;
       if (occupied_triangles[destination]) {
@@ -936,6 +1039,29 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
       }
       result.triangle_vertex_indices[destination] = {triangle.i0, triangle.i1,
                                                      triangle.i2};
+      const auto source_slot = !upload.triangle_material_slots.empty()
+                                   ? upload.triangle_material_slots[i]
+                               : i < geometry.triangle_material_slots.size()
+                                   ? geometry.triangle_material_slots[i]
+                                   : 0u;
+      const auto slot = std::min<std::size_t>(source_slot,
+                                              shader_slots.size() - 1u);
+      std::uint32_t shader{};
+      if (!resolve_shader_index(shader_slots[slot], material_shader_indices,
+                                compilation, shader, diagnostic)) {
+        return reject(std::move(diagnostic));
+      }
+      // Mesh::pack_shaders ignores authored flatness when corner normals are
+      // present: the corner-normal attribute already carries that topology,
+      // and every triangle is decorated smooth so the kernel interpolates it.
+      const auto smooth =
+          has_corner_normals ||
+          (!upload.triangle_smooth.empty()
+               ? upload.triangle_smooth[i] != 0u
+               : i < geometry.triangle_smooth.size() &&
+                     geometry.triangle_smooth[i] != 0u);
+      result.triangle_shaders[destination] =
+          cycles_shader_identity::surface(shader, smooth);
     }
   }
 
@@ -961,6 +1087,12 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
         static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max())) {
       return reject("Cycles curve key table is not representable as uint32");
     }
+    std::vector<contract::MaterialId> shader_slots;
+    std::string diagnostic;
+    if (!resolve_geometry_shader_slots(snapshot, id, geometry, shader_slots,
+                                       diagnostic)) {
+      return reject(std::move(diagnostic));
+    }
     for (auto curve = std::size_t{}; curve < geometry.curve_first_key.size();
          ++curve) {
       const auto destination = static_cast<std::size_t>(offset) + curve;
@@ -983,19 +1115,16 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
       const auto slot = curve < geometry.curve_material_slots.size()
                             ? geometry.curve_material_slots[curve]
                             : 0u;
-      if (geometry.material_slots.empty()) {
-        return reject("Cycles curve geometry has no material slots");
-      }
-      const auto material = geometry.material_slots[std::min<std::size_t>(
-          slot, geometry.material_slots.size() - 1u)];
-      const auto shader = material_shader_indices.find(material);
-      if (shader == material_shader_indices.end()) {
-        return reject("Cycles curve references unavailable material " +
-                      std::to_string(material.value));
+      const auto material = shader_slots[std::min<std::size_t>(
+          slot, shader_slots.size() - 1u)];
+      std::uint32_t shader{};
+      if (!resolve_shader_index(material, material_shader_indices, compilation,
+                                shader, diagnostic)) {
+        return reject(std::move(diagnostic));
       }
       result.curves[destination] = KernelCurve{
           .shader_id = std::bit_cast<std::int32_t>(
-              cycles_shader_identity::surface(shader->second, false)),
+              cycles_shader_identity::surface(shader, false)),
           .first_key = static_cast<std::int32_t>(first),
           .num_keys = static_cast<std::int32_t>(end - first),
           .type =

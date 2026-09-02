@@ -117,6 +117,18 @@ static_assert(offsetof(KernelObject, light_set_membership) == 216u);
 static_assert(offsetof(KernelObject, receiver_light_set) == 224u);
 static_assert(offsetof(KernelObject, shadow_set_membership) == 232u);
 static_assert(offsetof(KernelObject, blocker_shadow_set) == 240u);
+
+static_assert(sizeof(KernelShader) == 32u);
+static_assert(alignof(KernelShader) == 16u);
+static_assert(std::is_standard_layout_v<KernelShader>);
+static_assert(std::is_trivially_copyable_v<KernelShader>);
+static_assert(offsetof(KernelShader, constant_emission) == 0u);
+static_assert(offsetof(KernelShader, cryptomatte_id) == 12u);
+static_assert(offsetof(KernelShader, flags) == 16u);
+static_assert(offsetof(KernelShader, pass_id) == 20u);
+static_assert(offsetof(KernelShader, pad2) == 24u);
+static_assert(offsetof(KernelShader, pad3) == 28u);
+
 static_assert(SD_OBJECT_HOLDOUT_MASK == (1u << 0u));
 static_assert(SD_OBJECT_MOTION == (1u << 1u));
 static_assert(SD_OBJECT_TRANSFORM_APPLIED == (1u << 2u));

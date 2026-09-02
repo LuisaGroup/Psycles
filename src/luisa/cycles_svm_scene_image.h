@@ -31,6 +31,10 @@ struct CyclesSvmGeometrySceneImage {
       light_attribute_geometry_indices;
   std::optional<std::uint32_t> background_attribute_geometry_index;
   std::vector<compiler::cycles_svm::packed_uint3> triangle_vertex_indices;
+  // Cycles DeviceScene::tri_shader, in the same sparse global primitive
+  // domain as triangle_vertex_indices. Every live entry contains the raw
+  // Scene::shaders index plus SHADER_CAST_SHADOW/SMOOTH_NORMAL decoration.
+  std::vector<std::uint32_t> triangle_shaders;
   std::vector<compiler::cycles_svm::KernelCurve> curves;
 };
 

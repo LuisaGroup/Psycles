@@ -285,6 +285,10 @@ void test_exact_post_displacement_scene_image() {
               image.triangle_vertex_indices[5u].y == 2u &&
               image.triangle_vertex_indices[5u].z == 1u,
           "global triangle table did not use finalized local indices");
+  require(image.triangle_shaders.size() == 6u &&
+              image.triangle_shaders[5u] ==
+                  cycles_shader_identity::surface(0u, false),
+          "global tri_shader image changed");
 
   require(image.attributes.curve_keys.size() == 2u &&
               image.attributes.curve_keys[0u].x == 2.0f &&
@@ -304,6 +308,68 @@ void test_exact_post_displacement_scene_image() {
   require(entry(image, 1u, missing_light_attribute_id).element ==
               ATTR_ELEMENT_NONE,
           "missing analytic-light attribute was fabricated");
+}
+
+void test_triangle_shader_image_matches_cycles_pack_shaders() {
+  {
+    auto fixture = make_fixture();
+    fixture.snapshot.geometries.at(mesh_id).triangle_smooth = {1u};
+    const auto image = fixture.build();
+    require(image.valid, image.diagnostic);
+    require(image.triangle_shaders[5u] ==
+                cycles_shader_identity::surface(0u, true),
+            "authored smooth triangle lost SHADER_SMOOTH_NORMAL");
+  }
+  {
+    auto fixture = make_fixture();
+    fixture.snapshot.geometries.at(mesh_id).triangle_smooth = {0u};
+    fixture.uploads.front().attribute_domains |= geometry_normal_corner;
+    const auto image = fixture.build();
+    require(image.valid, image.diagnostic);
+    require(image.triangle_shaders[5u] ==
+                cycles_shader_identity::surface(0u, true),
+            "corner normals did not override authored triangle flatness");
+  }
+  {
+    auto fixture = make_fixture();
+    auto &mesh = fixture.snapshot.geometries.at(mesh_id);
+    mesh.material_slots.emplace_back(light_material);
+    mesh.triangle_material_slots = {99u};
+    const auto image = fixture.build();
+    require(image.valid, image.diagnostic);
+    require(image.triangle_shaders[5u] ==
+                cycles_shader_identity::surface(2u, false),
+            "Cycles last-slot material clamp changed");
+  }
+  {
+    auto fixture = make_fixture();
+    fixture.snapshot.instances.at(mesh_instance_id).material_overrides = {
+        light_material};
+    const auto image = fixture.build();
+    require(image.valid, image.diagnostic);
+    require(image.triangle_shaders[5u] ==
+                cycles_shader_identity::surface(2u, false),
+            "object-resolved used-shader array was ignored");
+  }
+  {
+    auto fixture = make_fixture();
+    fixture.snapshot.instances.at(mesh_instance_id).material_overrides = {
+        light_material};
+    fixture.snapshot.instances.emplace(
+        InstanceId{42u}, InstanceDesc{.name = "incompatible mesh user",
+                                      .geometry = mesh_id,
+                                      .cycles_object_index = 3u});
+    // A shared mesh is object-space in Cycles; remove the single-user static
+    // transform image so this case reaches the independent shader-array
+    // consistency proof.
+    fixture.uploads.front().cycles_intersection_positions.clear();
+    const auto image = fixture.build();
+    require(!image.valid &&
+                image.diagnostic.find("distinct used-shader arrays") !=
+                    std::string::npos,
+            "one native tri_shader image represented incompatible users: " +
+                image.diagnostic);
+  }
 }
 
 void test_static_transform_applies_to_cycles_typed_geometry() {
@@ -581,6 +647,7 @@ void test_invalid_relations_reject_the_whole_transaction() {
 
 int main() {
   test_exact_post_displacement_scene_image();
+  test_triangle_shader_image_matches_cycles_pack_shaders();
   test_static_transform_applies_to_cycles_typed_geometry();
   test_dense_object_image_uses_exact_post_geometry_state();
   test_object_image_rejects_unpreserved_relations();

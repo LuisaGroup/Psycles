@@ -477,6 +477,7 @@ struct CyclesSvmGeometryRuntime {
     Buffer<compiler::cycles_svm::packed_float4> curve_key_buffer;
     Buffer<compiler::cycles_svm::packed_float4> point_buffer;
     Buffer<compiler::cycles_svm::packed_uint3> triangle_index_buffer;
+    Buffer<luisa::uint> triangle_shader_buffer;
     Buffer<compiler::cycles_svm::KernelCurve> curve_buffer;
 };
 
