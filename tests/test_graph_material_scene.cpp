@@ -548,12 +548,83 @@ void test_scene_delta_is_atomic() {
     expect(first.committed, "valid initial scene failed to commit");
     expect(scene.snapshot().revision == 1u, "scene revision did not advance");
 
-    SceneDelta invalid{.base_revision = 1u, .commands = {}};
+    auto byte_color_geometry =
+        scene.snapshot().geometries.at(geometry);
+    byte_color_geometry.cycles_byte_color_attributes.emplace(
+        "Byte Color",
+        MeshAttribute<std::array<std::uint8_t, 4u>>{
+            .domain = MeshAttributeDomain::corner,
+            .values = {
+                {1u, 2u, 3u, 4u},
+                {5u, 6u, 7u, 8u},
+                {9u, 10u, 11u, 12u}}});
+    byte_color_geometry.default_color_attribute = "Byte Color";
+    SceneDelta valid_byte_color{
+        .base_revision = 1u,
+        .commands = {}};
+    valid_byte_color.commands.emplace_back(UpsertGeometry{
+        .id = geometry,
+        .value = byte_color_geometry});
+    auto byte_color_result = scene.apply(valid_byte_color);
+    expect(
+        byte_color_result.committed,
+        "valid Cycles BYTE_COLOR source failed to commit");
+    expect(
+        scene.snapshot().revision == 2u,
+        "Cycles BYTE_COLOR commit did not advance the revision");
+
+    auto invalid_byte_color_geometry = byte_color_geometry;
+    invalid_byte_color_geometry.cycles_byte_color_attributes
+        .at("Byte Color")
+        .domain = MeshAttributeDomain::face;
+    invalid_byte_color_geometry.cycles_byte_color_attributes
+        .at("Byte Color")
+        .values.resize(1u);
+    SceneDelta invalid_byte_color{
+        .base_revision = 2u,
+        .commands = {}};
+    invalid_byte_color.commands.emplace_back(UpsertGeometry{
+        .id = geometry,
+        .value = invalid_byte_color_geometry});
+    auto rejected_byte_color = scene.apply(invalid_byte_color);
+    expect(
+        !rejected_byte_color.committed,
+        "non-corner Cycles BYTE_COLOR source was committed");
+
+    invalid_byte_color_geometry = byte_color_geometry;
+    invalid_byte_color_geometry.cycles_byte_color_attributes
+        .at("Byte Color")
+        .values.pop_back();
+    invalid_byte_color = SceneDelta{
+        .base_revision = 2u,
+        .commands = {}};
+    invalid_byte_color.commands.emplace_back(UpsertGeometry{
+        .id = geometry,
+        .value = invalid_byte_color_geometry});
+    rejected_byte_color = scene.apply(invalid_byte_color);
+    expect(
+        !rejected_byte_color.committed,
+        "truncated Cycles BYTE_COLOR source was committed");
+
+    auto invalid_default_geometry = byte_color_geometry;
+    invalid_default_geometry.default_color_attribute = "Missing";
+    SceneDelta invalid_default{
+        .base_revision = 2u,
+        .commands = {}};
+    invalid_default.commands.emplace_back(UpsertGeometry{
+        .id = geometry,
+        .value = invalid_default_geometry});
+    auto rejected_default = scene.apply(invalid_default);
+    expect(
+        !rejected_default.committed,
+        "missing default color attribute was committed");
+
+    SceneDelta invalid{.base_revision = 2u, .commands = {}};
     invalid.commands.emplace_back(RemoveMaterial{.id = material});
     auto rejected = scene.apply(invalid);
     expect(!rejected.committed, "dangling material removal was committed");
     expect(
-        scene.snapshot().revision == 1u,
+        scene.snapshot().revision == 2u,
         "rejected scene delta changed the revision");
     expect(
         scene.snapshot().materials.contains(material),

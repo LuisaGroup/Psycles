@@ -226,3 +226,38 @@ Cycles 5.2.1 octahedral encoder. The remaining production boundary is a late
 adapter from post-displacement `GeometryUpload` and native curve sources into
 this image, followed by typed Luisa buffer allocation and `KernelObject`
 finalization.
+
+### Lossless Blender BYTE_COLOR source
+
+The Blender scene contract now retains the one color-storage specialization
+that the pinned Cycles `blender/mesh.cpp` preserves: a corner-domain
+`ColorByte` layer is copied as `uchar4` and later decoded in
+`kernel/geom/attribute.h`. All other supported Blender color-domain/type
+combinations follow Cycles' typed converter into float4 storage.
+
+The exporter therefore writes two intentionally different projections for
+CORNER/BYTE_COLOR. `values` remains the scene-linear float4 projection needed
+by the existing expanded renderer, while `byte_values` is the original
+normalized `color_srgb` view quantized back to four bytes. The latter is the
+only source eligible for the native SVM `attributes_uchar4` array; it is never
+reconstructed from the scene-linear projection. The mesh's
+`default_color_name` is also preserved independently so
+`ATTR_STD_VERTEX_COLOR` can alias the same named source exactly as Cycles
+does.
+
+The scene database rejects raw byte attributes outside the corner domain,
+mismatched raw extents, and dangling default-color identities. The Blender
+regression uses four distinct byte colors across a triangulated quad and
+checks the exact six-corner byte sequence, the separate scene-linear values,
+the default identity, and the complete C++ importer round trip. Bundles made
+before this field existed remain loadable, but their missing raw source is not
+silently treated as exact SVM data.
+
+Validation commands for this boundary:
+
+```text
+cmake --build build --parallel 32 --target \
+  psycles_graph_material_scene_tests psycles_inspect_blender_material
+ctest --test-dir build --output-on-failure -j2 \
+  -R '^(psycles\.graph_material_scene|psycles\.blender_export_attribute_domains)$'
+```

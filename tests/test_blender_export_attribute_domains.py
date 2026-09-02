@@ -120,11 +120,26 @@ def _main() -> None:
         type="BYTE_COLOR",
         domain="CORNER",
     )
-    for item in corner_byte_color.data:
-        item.color = (0.15, 0.45, 0.90, 0.35)
+    mesh.color_attributes.default_color_name = corner_byte_color.name
+    for index, value in enumerate(
+        (
+            (0.15, 0.45, 0.90, 0.35),
+            (0.80, 0.10, 0.30, 0.55),
+            (0.05, 0.65, 0.20, 0.75),
+            (0.95, 0.25, 0.50, 1.00),
+        )
+    ):
+        corner_byte_color.data[index].color = value
     byte_rec709_linear = tuple(
-        float(component)
-        for component in corner_byte_color.data[0].color
+        tuple(float(component) for component in item.color)
+        for item in corner_byte_color.data
+    )
+    byte_storage = tuple(
+        tuple(
+            max(0, min(255, int(float(component) * 255.0 + 0.5)))
+            for component in item.color_srgb
+        )
+        for item in corner_byte_color.data
     )
 
     material = bpy.data.materials.new("Domain Material")
@@ -154,6 +169,12 @@ def _main() -> None:
     obj = bpy.data.objects.new("Domain Object", mesh)
     scene.collection.objects.link(obj)
     mesh.update()
+    mesh.calc_loop_triangles()
+    emitted_corner_indices = tuple(
+        loop_index
+        for triangle in mesh.loop_triangles
+        for loop_index in triangle.loops
+    )
     texspace_location = tuple(float(value) for value in mesh.texspace_location)
     texspace_size = tuple(float(value) for value in mesh.texspace_size)
     generated_scale = tuple(
@@ -352,18 +373,41 @@ def _main() -> None:
             or colors["Corner Byte Color"]["data_type"] != "BYTE_COLOR"
             or colors["Corner Byte Color"]["values"]["bytes"]
             != 6 * 4 * 4
+            or colors["Corner Byte Color"]["byte_values"]["bytes"]
+            != 6 * 4
         ):
             raise AssertionError("corner byte-color contract is invalid")
+        if geometry.get("default_color_attribute") != "Corner Byte Color":
+            raise AssertionError(
+                "Cycles default vertex-color identity was not preserved"
+            )
+        expected_byte_storage = bytes(
+            component
+            for corner in emitted_corner_indices
+            for component in byte_storage[corner]
+        )
+        raw_byte_values = _read_section(
+            geometry_path,
+            colors["Corner Byte Color"]["byte_values"],
+        )
+        if raw_byte_values != expected_byte_storage:
+            raise AssertionError(
+                "Cycles CORNER/BYTE_COLOR uchar4 storage changed: "
+                f"{tuple(raw_byte_values)}"
+            )
         rec709_to_rgb = scene["render"]["color_management"][
             "shader_transforms"
         ]["rec709_to_rgb"]
         expected_byte_scene_linear = tuple(
-            sum(
-                float(row[channel]) * byte_rec709_linear[channel]
-                for channel in range(3)
-            )
-            for row in rec709_to_rgb
-        ) + (byte_rec709_linear[3],)
+            tuple(
+                sum(
+                    float(row[channel]) * byte_rec709_linear[corner][channel]
+                    for channel in range(3)
+                )
+                for row in rec709_to_rgb
+            ) + (byte_rec709_linear[corner][3],)
+            for corner in emitted_corner_indices
+        )
         byte_values = struct.unpack(
             "<24f",
             _read_section(
@@ -377,12 +421,12 @@ def _main() -> None:
                 abs(component - expected) > 5.0e-7
                 for component, expected in zip(
                     actual,
-                    expected_byte_scene_linear,
+                    expected_byte_scene_linear[corner],
                 )
             ):
                 raise AssertionError(
                     "Cycles CORNER/BYTE_COLOR Rec.709 conversion was lost: "
-                    f"{actual}, expected {expected_byte_scene_linear}"
+                    f"{actual}, expected {expected_byte_scene_linear[corner]}"
                 )
         inspected = subprocess.run(
             [
@@ -390,6 +434,7 @@ def _main() -> None:
                 str(output),
                 "Domain Material",
                 "--require-generated-transform",
+                "--require-default-cycles-byte-color",
             ],
             check=False,
             text=True,

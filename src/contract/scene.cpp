@@ -105,6 +105,37 @@ template<typename Id>
             }
         }
         for (const auto &[name, attribute] :
+             mesh.cycles_byte_color_attributes) {
+            if (name.empty()) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_mesh,
+                    "mesh '" + mesh.name +
+                        "' has an unnamed Cycles BYTE_COLOR attribute");
+                continue;
+            }
+            if (attribute.domain != MeshAttributeDomain::corner) {
+                diagnose(
+                    SceneDiagnosticCode::invalid_mesh,
+                    "mesh '" + mesh.name + "' Cycles BYTE_COLOR attribute '" +
+                        name + "' is not corner-domain");
+                continue;
+            }
+            validate_attribute(
+                "Cycles BYTE_COLOR attribute '" + name + "'",
+                attribute,
+                true);
+        }
+        if (mesh.default_color_attribute &&
+            !mesh.color_attributes.contains(
+                *mesh.default_color_attribute) &&
+            !mesh.cycles_byte_color_attributes.contains(
+                *mesh.default_color_attribute)) {
+            diagnose(
+                SceneDiagnosticCode::invalid_mesh,
+                "mesh '" + mesh.name +
+                    "' references a missing default color attribute");
+        }
+        for (const auto &[name, attribute] :
              mesh.uv_layers) {
             if (name.empty()) {
                 diagnose(

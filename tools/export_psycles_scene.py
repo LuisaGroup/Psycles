@@ -156,6 +156,24 @@ def _cycles_color_attribute_value(
     ) + (value[3],)
 
 
+def _cycles_corner_byte_color_value(
+    attribute: Any,
+    index: int,
+) -> tuple[int, int, int, int]:
+    """Return the exact uchar4 payload retained by Cycles.
+
+    Blender's ``color_srgb`` accessor is the normalized view of the native
+    BYTE_COLOR storage. Quantizing it back to 8 bits is lossless and avoids
+    attempting an inverse transfer from the separate scene-linear legacy
+    projection.
+    """
+
+    return tuple(
+        max(0, min(255, int(float(component) * 255.0 + 0.5)))
+        for component in attribute.data[index].color_srgb
+    )
+
+
 def _cycles_uint_to_float(value: int) -> float:
     return float(cycles_hash.u32(value)) / float(cycles_hash.UINT32_MASK)
 
@@ -436,6 +454,12 @@ def _geometry(
             attribute.name: array.array("f")
             for attribute in color_layers
         }
+        byte_color_values = {
+            attribute.name: array.array("B")
+            for attribute in color_layers
+            if attribute.data_type == "BYTE_COLOR"
+            and attribute.domain == "CORNER"
+        }
         indices = array.array("I")
         materials = array.array("I")
         smooth = array.array("I")
@@ -575,6 +599,13 @@ def _geometry(
                             rec709_to_rgb,
                         )
                     )
+                    if attribute.name in byte_color_values:
+                        byte_color_values[attribute.name].extend(
+                            _cycles_corner_byte_color_value(
+                                attribute,
+                                loop_index,
+                            )
+                        )
                 if default_uv_name not in uv_by_layer:
                     uvs.extend((0.0, 0.0))
                 else:
@@ -654,6 +685,9 @@ def _geometry(
             # is no surface primitive whose Generated values can be
             # interpolated.
             "generated_transform": generated_transform,
+            "default_color_attribute": (
+                mesh.color_attributes.default_color_name or None
+            ),
             "color_attributes": [
                 {
                     "name": attribute.name,
@@ -661,6 +695,14 @@ def _geometry(
                     "data_type": attribute.data_type,
                     "values": _write_array(
                         stream, color_values[attribute.name]
+                    ),
+                    "byte_values": (
+                        _write_array(
+                            stream,
+                            byte_color_values[attribute.name],
+                        )
+                        if attribute.name in byte_color_values
+                        else None
                     ),
                 }
                 for attribute in color_layers
@@ -1528,6 +1570,11 @@ def _export_scene(
         sections.extend(
             attribute["values"]
             for attribute in geometry["color_attributes"]
+        )
+        sections.extend(
+            attribute["byte_values"]
+            for attribute in geometry["color_attributes"]
+            if attribute.get("byte_values") is not None
         )
         for uv_layer in geometry["uv_layers"]:
             sections.append(uv_layer["values"])

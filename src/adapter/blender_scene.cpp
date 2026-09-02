@@ -1120,6 +1120,11 @@ BlenderSceneImport load_blender_scene_bundle(
             }
             auto *color_attributes =
                 member(geometry, "color_attributes");
+            if (auto *default_color =
+                    member(geometry, "default_color_attribute");
+                default_color != nullptr && yyjson_is_str(default_color)) {
+                mesh.default_color_attribute = text(default_color);
+            }
             if (color_attributes != nullptr &&
                 yyjson_is_arr(color_attributes)) {
                 yyjson_arr_iter attribute_iterator =
@@ -1153,6 +1158,34 @@ BlenderSceneImport load_blender_scene_bundle(
                                 values[i * 4u + 1u],
                                 values[i * 4u + 2u],
                                 values[i * 4u + 3u]});
+                    }
+                    if (text(member(attribute, "data_type")) ==
+                            "BYTE_COLOR" &&
+                        domain == MeshAttributeDomain::corner) {
+                        auto *byte_section =
+                            member(attribute, "byte_values");
+                        if (byte_section != nullptr &&
+                            !yyjson_is_null(byte_section)) {
+                            auto bytes = read_values<std::uint8_t>(
+                                geometry_stream,
+                                section_offset(
+                                    attribute, "byte_values"),
+                                value_count * 4u);
+                            auto &raw =
+                                mesh.cycles_byte_color_attributes[name];
+                            raw.domain = domain;
+                            raw.values.reserve(value_count);
+                            for (std::size_t i = 0u;
+                                 i < value_count;
+                                 ++i) {
+                                raw.values.emplace_back(
+                                    std::array<std::uint8_t, 4u>{
+                                        bytes[i * 4u],
+                                        bytes[i * 4u + 1u],
+                                        bytes[i * 4u + 2u],
+                                        bytes[i * 4u + 3u]});
+                            }
+                        }
                     }
                 }
             }
