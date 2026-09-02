@@ -100,6 +100,40 @@ inline constexpr auto microfacet_singular_alpha_product = 2.0e-10f;
 // consumers must dispatch on the post-setup type, not reconstruct a second
 // classification from an authoring node tag.
 [[nodiscard]] inline luisa::compute::Bool
+is_bsdf(luisa::compute::UInt type) noexcept {
+  return (type != type_none) & (type <= type_transparent);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
+is_bsdf_diffuse(luisa::compute::UInt type) noexcept {
+  return (type >= type_diffuse) & (type <= type_translucent);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
+is_bsdf_glossy(luisa::compute::UInt type) noexcept {
+  return ((type >= type_microfacet_ggx) &
+          (type <= type_hair_reflection)) |
+         (type == type_hair_chiang) | (type == type_hair_huang);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
+is_bsdf_transmission(luisa::compute::UInt type) noexcept {
+  return (type >= type_microfacet_beckmann_refraction) &
+         (type <= type_hair_transmission);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
+is_glass(luisa::compute::UInt type) noexcept {
+  return (type >= type_microfacet_beckmann_glass) &
+         (type <= type_microfacet_multi_ggx_glass);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
+is_bsdf_or_bssrdf(luisa::compute::UInt type) noexcept {
+  return (type != type_none) & (type <= type_bssrdf_random_walk_skin);
+}
+
+[[nodiscard]] inline luisa::compute::Bool
 is_diffuse_or_oren_nayar(luisa::compute::UInt type) noexcept {
   return (type >= type_diffuse) & (type <= type_oren_nayar);
 }
