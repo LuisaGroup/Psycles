@@ -425,6 +425,17 @@ void test_integrator_settings_round_trip() {
       "dupli_uv": [0.2, 0.8],
       "shadow_terminator_shading_offset": 0.375,
       "shadow_terminator_geometry_offset": 0.625,
+      "cycles_particle_source": {
+        "system": 3,
+        "source_index": 5,
+        "age": 2.5,
+        "lifetime": 12.0,
+        "location": [1, 2, 3],
+        "rotation": [0.1, 0.2, 0.3, 0.4],
+        "size": 0.75,
+        "velocity": [4, 5, 6],
+        "angular_velocity": [7, 8, 9]
+      },
       "cycles_sync": {
         "shader_index": 5,
         "pass_id": 0,
@@ -813,6 +824,14 @@ void test_integrator_settings_round_trip() {
              std::abs(imported_light->second
                           .shadow_terminator_geometry_offset -
                       0.625f) <= 1.0e-6f &&
+             imported_light->second.cycles_particle_source &&
+             imported_light->second.cycles_particle_source->system == 3u &&
+             imported_light->second.cycles_particle_source->source_index ==
+                 5u &&
+             imported_light->second.cycles_particle_source->location ==
+                 psycles::Vec3f{1.0f, 2.0f, 3.0f} &&
+             imported_light->second.cycles_particle_source->rotation ==
+                 psycles::Vec4f{0.1f, 0.2f, 0.3f, 0.4f} &&
              imported_light->second.cycles_light_group == 2 &&
              imported_light->second.max_bounces == 13u &&
              imported_light->second.visibility_mask ==

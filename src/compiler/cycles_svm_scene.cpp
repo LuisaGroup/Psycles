@@ -182,6 +182,10 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
   for (auto &slot : occupied) {
     local.emplace_back(slot ? std::move(*slot) : inert_shader());
   }
+  result.shader_node_types_used.reserve(local.size());
+  for (const auto &shader : local) {
+    result.shader_node_types_used.emplace_back(shader.node_types_used);
+  }
   result.table = link_shader_table(local);
   if (result.table.valid) {
     result.named_attributes = attribute_ids.bindings();

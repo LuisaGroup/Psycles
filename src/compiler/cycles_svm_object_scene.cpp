@@ -5,6 +5,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 
@@ -13,6 +14,12 @@ namespace {
 
 [[nodiscard]] ObjectIdentityPlan reject(std::string diagnostic) {
   ObjectIdentityPlan result;
+  result.diagnostic = std::move(diagnostic);
+  return result;
+}
+
+[[nodiscard]] ParticleTableImage reject_particles(std::string diagnostic) {
+  ParticleTableImage result;
   result.diagnostic = std::move(diagnostic);
   return result;
 }
@@ -155,6 +162,84 @@ plan_object_identities(const contract::SceneSnapshot &scene) {
   for (const auto &[index, owner] : owners) {
     static_cast<void>(owner);
     result.occupied_indices.emplace(index);
+  }
+  result.valid = true;
+  return result;
+}
+
+ParticleTableImage
+pack_particle_table(std::span<const ParticleTableObject> objects) {
+  std::vector<ParticleTableObject> ordered{objects.begin(), objects.end()};
+  std::sort(ordered.begin(), ordered.end(), [](const auto &lhs,
+                                                const auto &rhs) noexcept {
+    return lhs.object_index < rhs.object_index;
+  });
+  for (auto index = std::size_t{1u}; index < ordered.size(); ++index) {
+    if (ordered[index - 1u].object_index == ordered[index].object_index) {
+      return reject_particles("duplicate Cycles object identity in particle "
+                              "table input");
+    }
+  }
+
+  struct PendingReference {
+    std::uint32_t object_index{};
+    std::uint32_t system{};
+    std::uint32_t local_index{};
+  };
+  struct Group {
+    std::uint32_t source_system{};
+    std::vector<contract::CyclesParticleSource> particles;
+  };
+
+  std::vector<Group> groups;
+  std::map<std::uint32_t, std::size_t> group_indices;
+  std::vector<PendingReference> pending;
+  ParticleTableImage result;
+  for (const auto &object : ordered) {
+    result.object_particle_indices.emplace(object.object_index, 0u);
+    if (!object.needs_particle || !object.source) {
+      continue;
+    }
+    const auto system = object.source->system;
+    auto [iter, inserted] = group_indices.emplace(system, groups.size());
+    if (inserted) {
+      groups.emplace_back(
+          Group{.source_system = system, .particles = {}});
+    }
+    auto &group = groups[iter->second];
+    if (group.particles.size() >=
+        std::numeric_limits<std::uint32_t>::max()) {
+      return reject_particles("Cycles particle-system local index overflows "
+                              "uint32");
+    }
+    const auto local_index =
+        static_cast<std::uint32_t>(group.particles.size());
+    group.particles.emplace_back(*object.source);
+    pending.emplace_back(PendingReference{
+        .object_index = object.object_index,
+        .system = system,
+        .local_index = local_index});
+  }
+
+  // Cycles ParticleSystemManager always creates dummy entry zero, including
+  // scenes with no qualifying particle systems.
+  result.particles.emplace_back(contract::CyclesParticleSource{});
+  std::map<std::uint32_t, std::uint32_t> group_offsets;
+  for (const auto &group : groups) {
+    const auto offset = result.particles.size();
+    if (offset > std::numeric_limits<std::uint32_t>::max() ||
+        group.particles.size() >
+            std::numeric_limits<std::uint32_t>::max() - offset) {
+      return reject_particles("Cycles global particle table overflows uint32");
+    }
+    group_offsets.emplace(group.source_system,
+                          static_cast<std::uint32_t>(offset));
+    result.particles.insert(result.particles.end(), group.particles.begin(),
+                            group.particles.end());
+  }
+  for (const auto &reference : pending) {
+    result.object_particle_indices.at(reference.object_index) =
+        group_offsets.at(reference.system) + reference.local_index;
   }
   result.valid = true;
   return result;

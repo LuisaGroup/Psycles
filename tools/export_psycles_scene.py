@@ -33,6 +33,12 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import blender_scene_manifest as manifest  # noqa: E402
 import blender_build_identity  # noqa: E402
+from blender_cycles_object import (  # noqa: E402
+    ParticleSourceRegistry as _ParticleSourceRegistry,
+    object_properties as _cycles_object_properties,
+    object_random_id as _cycles_object_random_id,
+    particle_parent_index as _cycles_particle_index,
+)
 from blender_particle_hair import (  # noqa: E402
     cycles_particle_hair_color as _cycles_particle_hair_color,
     cycles_particle_hair_color_value as _cycles_particle_hair_color_value,
@@ -152,36 +158,6 @@ def _cycles_color_attribute_value(
 
 def _cycles_uint_to_float(value: int) -> float:
     return float(cycles_hash.u32(value)) / float(cycles_hash.UINT32_MASK)
-
-
-def _cycles_object_random_id(name: str) -> int:
-    return cycles_hash.hash_uint2(cycles_hash.hash_string(name), 0)
-
-
-def _cycles_particle_index(object_instance: Any) -> int:
-    """Return the Particle Info index exposed by Cycles for a dupli.
-
-    Cycles' ``BlenderSync::sync_dupli_particle`` only creates particle data
-    for parent particles. Interpolated/simple child particles have a
-    dependency-graph persistent ID at or above ``ParticleSystem.totpart``;
-    Cycles rejects those IDs and leaves the object on particle-table entry
-    zero. The SVM Particle Info node then reads that entry's index, so child
-    particles use the same zero sentinel as non-particle objects.
-
-    ``ParticleSystem.particles`` is Blender's RNA view of the parent-particle
-    array and therefore supplies the same bound as ``totpart``. Keep this
-    boundary explicit instead of treating every dependency-graph ID as a
-    Cycles particle-table index.
-    """
-
-    particle_system = object_instance.particle_system
-    if particle_system is None:
-        return 0
-    persistent_index = int(object_instance.persistent_id[0])
-    parent_count = len(particle_system.particles)
-    if persistent_index < 0 or persistent_index >= parent_count:
-        return 0
-    return persistent_index & cycles_hash.UINT32_MASK
 
 
 def _column_major(matrix: Any) -> list[float]:
@@ -1149,56 +1125,11 @@ def _cycles_object_ao_distance(object_instance: Any) -> float:
     return max(result, 0.0)
 
 
-def _cycles_shadow_terminator_value(
-    obj: Any,
-    name: str,
-    fallback: float,
-) -> float:
-    """Read the Blender 5.2 Object property with an older-API fallback."""
-
-    if hasattr(obj, name):
-        return float(getattr(obj, name))
-    return float(getattr(getattr(obj, "cycles", None), name, fallback))
-
-
-def _cycles_object_properties(object_instance: Any) -> dict[str, Any]:
-    """Return the raw Object fields copied by BlenderSync::sync_object."""
-
-    obj = object_instance.object
-    if object_instance.is_instance:
-        orco = object_instance.orco
-        dupli_generated = [
-            0.5 * float(orco[axis]) - 0.5 for axis in range(3)
-        ]
-        uv = object_instance.uv
-        dupli_uv = [float(uv[0]), float(uv[1])]
-    else:
-        dupli_generated = [0.0, 0.0, 0.0]
-        dupli_uv = [0.0, 0.0]
-    object_color = tuple(float(component) for component in obj.color)
-    return {
-        "object_color": list(object_color[:3]),
-        "object_alpha": object_color[3],
-        "object_pass_id": int(obj.pass_index),
-        "dupli_generated": dupli_generated,
-        "dupli_uv": dupli_uv,
-        "shadow_terminator_shading_offset": (
-            _cycles_shadow_terminator_value(
-                obj, "shadow_terminator_shading_offset", 0.0
-            )
-        ),
-        "shadow_terminator_geometry_offset": (
-            _cycles_shadow_terminator_value(
-                obj, "shadow_terminator_geometry_offset", 0.1
-            )
-        ),
-    }
-
-
 def _light(
     obj: Any,
     *,
     object_instance: Any,
+    particle_source: dict[str, Any] | None = None,
     transform: Any | None = None,
     visibility: dict[str, bool] | None = None,
     is_shadow_catcher: bool = False,
@@ -1269,6 +1200,7 @@ def _light(
         )
         & cycles_hash.UINT32_MASK,
         "particle_index": _cycles_particle_index(object_instance),
+        "cycles_particle_source": particle_source,
         "cycles_sync": cycles_sync,
         "node_tree": (
             _tree(light.node_tree, light=True)
@@ -1314,6 +1246,7 @@ def _geometry_instance(
     geometry_index: int,
     cycles_object_index: int,
     light_groups: dict[str, int],
+    particle_source: dict[str, Any] | None,
 ) -> dict[str, Any]:
     return {
         "name": object_instance.object.name,
@@ -1325,6 +1258,7 @@ def _geometry_instance(
         # Match Cycles' parent-only particle table. Child particles retain
         # the zero sentinel for both surface and hair objects.
         "particle_index": _cycles_particle_index(object_instance),
+        "cycles_particle_source": particle_source,
         # Cycles uses the dependency-graph random id for duplis and hashes
         # the object name for ordinary objects. Its separate hair object
         # intentionally receives the same random id.
@@ -1425,6 +1359,7 @@ def _export_scene(
     cycles_curve_segment_offset = 0
     curve_shape = str(scene.cycles_curves.shape)
     curve_subdivisions = int(scene.cycles_curves.subdivisions)
+    particle_sources = _ParticleSourceRegistry(scene)
     with (output / "geometry.bin").open("wb") as stream:
         stream.write(b"PSYGEO2\0")
         stream.write(struct.pack("<II", 2, 0))
@@ -1464,6 +1399,9 @@ def _export_scene(
                     _light(
                         obj,
                         object_instance=object_instance,
+                        particle_source=particle_sources.capture(
+                            object_instance
+                        ),
                         transform=object_instance.matrix_world,
                         visibility=_instance_ray_visibility(
                             object_instance
@@ -1520,6 +1458,7 @@ def _export_scene(
                             geometry_index,
                             source_object_index,
                             light_groups,
+                            particle_sources.capture(object_instance),
                         )
                     )
 
@@ -1567,6 +1506,7 @@ def _export_scene(
                             curve_geometry_index,
                             hair_object_index,
                             light_groups,
+                            particle_sources.capture(object_instance),
                         )
                     )
 

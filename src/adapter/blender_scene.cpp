@@ -53,6 +53,7 @@ using contract::WorldSampling;
 using detail::Document;
 using detail::boolean;
 using detail::cycles_default_surface_graph;
+using detail::cycles_particle_source;
 using detail::emission_graph;
 using detail::find_simple_world_nishita;
 using detail::float2;
@@ -1472,7 +1473,9 @@ BlenderSceneImport load_blender_scene_bundle(
                         member(
                             instance,
                             "shadow_terminator_shading_offset"),
-                        0.0f)});
+                        0.0f),
+                    .cycles_particle_source = cycles_particle_source(
+                        member(instance, "cycles_particle_source"))});
         }
 
         auto *lights = member(root, "lights");
@@ -1640,7 +1643,9 @@ BlenderSceneImport load_blender_scene_bundle(
                         member(
                             light,
                             "shadow_terminator_geometry_offset"),
-                        0.1f)});
+                        0.1f),
+                    .cycles_particle_source = cycles_particle_source(
+                        member(light, "cycles_particle_source"))});
         }
 
         auto *world = member(root, "world");

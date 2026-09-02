@@ -58,6 +58,13 @@ optional_unsigned_number(yyjson_val *value) noexcept;
     yyjson_val *value,
     Vec2f fallback = {}) noexcept;
 
+[[nodiscard]] Vec4f float4(
+    yyjson_val *value,
+    Vec4f fallback = {}) noexcept;
+
+[[nodiscard]] std::optional<contract::CyclesParticleSource>
+cycles_particle_source(yyjson_val *value) noexcept;
+
 [[nodiscard]] Mat4f matrix(yyjson_val *value) noexcept;
 
 [[nodiscard]] yyjson_val *find_socket(

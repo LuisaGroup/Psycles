@@ -156,6 +156,11 @@ void test_native_curve_bundle_round_trip() {
     "dupli_uv":[0.125,0.875],
     "shadow_terminator_shading_offset":0.3,
     "shadow_terminator_geometry_offset":0.7,
+    "cycles_particle_source":{
+      "system":4,"source_index":7,"age":1.25,"lifetime":9.5,
+      "location":[1,2,3],"rotation":[0.1,0.2,0.3,0.4],"size":0.75,
+      "velocity":[4,5,6],"angular_velocity":[7,8,9]
+    },
     "cycles_sync":{"object_index":11,"light_group":-1}
   }],
   "lights":[],"world":null,"world_environment":null
@@ -217,6 +222,20 @@ void test_native_curve_bundle_round_trip() {
               "curve shading terminator source offset");
   expect_near(instance.shadow_terminator_geometry_offset, 0.7f,
               "curve geometry terminator source offset");
+  const auto &particle = instance.cycles_particle_source;
+  expect(particle && particle->system == 4u &&
+             particle->source_index == 7u &&
+             particle->location == psycles::Vec3f{1.0f, 2.0f, 3.0f} &&
+             particle->rotation ==
+                 psycles::Vec4f{0.1f, 0.2f, 0.3f, 0.4f} &&
+             particle->velocity ==
+                 psycles::Vec3f{4.0f, 5.0f, 6.0f} &&
+             particle->angular_velocity ==
+                 psycles::Vec3f{7.0f, 8.0f, 9.0f},
+         "curve raw Cycles particle source did not round-trip");
+  expect_near(particle->age, 1.25f, "curve particle age");
+  expect_near(particle->lifetime, 9.5f, "curve particle lifetime");
+  expect_near(particle->size, 0.75f, "curve particle size");
 }
 
 } // namespace

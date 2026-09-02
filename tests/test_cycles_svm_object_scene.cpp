@@ -1,5 +1,6 @@
 #include <psycles/compiler/cycles_svm_object_scene.h>
 
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -121,6 +122,50 @@ void test_unrepresentable_dense_extent_is_rejected() {
           "UINT32_MAX object index overflowed the dense extent");
 }
 
+[[nodiscard]] CyclesParticleSource particle(std::uint32_t system,
+                                             std::uint32_t source_index) {
+  return {.system = system, .source_index = source_index};
+}
+
+void test_particle_table_copies_cycles_group_prefix_algebra() {
+  const std::array inputs{
+      ParticleTableObject{.object_index = 5u,
+                          .needs_particle = true,
+                          .source = particle(7u, 42u)},
+      ParticleTableObject{.object_index = 1u,
+                          .needs_particle = true,
+                          .source = particle(9u, 3u)},
+      ParticleTableObject{.object_index = 2u,
+                          .needs_particle = false,
+                          .source = particle(9u, 8u)},
+      ParticleTableObject{.object_index = 3u,
+                          .needs_particle = true,
+                          .source = particle(7u, 4u)},
+      ParticleTableObject{.object_index = 4u,
+                          .needs_particle = true,
+                          .source = std::nullopt}};
+  const auto packed = pack_particle_table(inputs);
+  require(packed.valid, "valid Cycles particle groups were rejected");
+  require(packed.particles.size() == 4u &&
+              packed.particles[0u].source_index == 0u &&
+              packed.particles[1u].source_index == 3u &&
+              packed.particles[2u].source_index == 4u &&
+              packed.particles[3u].source_index == 42u,
+          "Cycles dummy/group/local particle order changed");
+  require(packed.object_particle_indices.at(1u) == 1u &&
+              packed.object_particle_indices.at(2u) == 0u &&
+              packed.object_particle_indices.at(3u) == 2u &&
+              packed.object_particle_indices.at(4u) == 0u &&
+              packed.object_particle_indices.at(5u) == 3u,
+          "KernelObject particle prefix resolution changed");
+
+  const std::array duplicates{
+      ParticleTableObject{.object_index = 1u},
+      ParticleTableObject{.object_index = 1u}};
+  require(!pack_particle_table(duplicates).valid,
+          "duplicate object input to particle packing was accepted");
+}
+
 } // namespace
 
 int main() {
@@ -128,6 +173,7 @@ int main() {
   test_declared_domain_rejects_ambiguous_or_impossible_identity();
   test_renderer_authored_domain_is_total_and_deterministic();
   test_unrepresentable_dense_extent_is_rejected();
+  test_particle_table_copies_cycles_group_prefix_algebra();
   std::cout << "Cycles SVM object identity tests passed\n";
   return 0;
 }

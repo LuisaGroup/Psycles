@@ -298,6 +298,23 @@ struct MotionTransform {
     Mat4f transform;
 };
 
+// Raw source record passed to BlenderSync::sync_dupli_particle. `system`
+// preserves equality of Cycles ParticleSystemKey groups but is deliberately
+// not a device offset. The runtime filters groups by actual SVM attribute
+// demand, appends records in object-sync order, inserts dummy entry zero, and
+// only then resolves KernelObject::particle_index.
+struct CyclesParticleSource {
+    std::uint32_t system{};
+    std::uint32_t source_index{};
+    float age{};
+    float lifetime{};
+    Vec3f location{};
+    Vec4f rotation{};
+    float size{};
+    Vec3f velocity{};
+    Vec3f angular_velocity{};
+};
+
 enum class RayVisibility : std::uint32_t {
     camera = 1u << 0u,
     diffuse = 1u << 1u,
@@ -364,6 +381,7 @@ struct InstanceDesc {
     // correction while constructing KernelObject; retaining the source value
     // keeps the scene contract lossless.
     float shadow_terminator_shading_offset{};
+    std::optional<CyclesParticleSource> cycles_particle_source;
 };
 
 enum class CameraProjection : std::uint8_t {
@@ -448,6 +466,7 @@ struct LightDesc {
     Vec2f dupli_uv{};
     float shadow_terminator_shading_offset{};
     float shadow_terminator_geometry_offset{0.1f};
+    std::optional<CyclesParticleSource> cycles_particle_source;
 };
 
 struct EnvironmentSunDesc {
