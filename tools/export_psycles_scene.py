@@ -1234,7 +1234,7 @@ def _light(
             }
         ),
         "is_shadow_catcher": is_shadow_catcher,
-        **_cycles_object_properties(object_instance),
+        **_cycles_object_properties(object_instance, bpy.context.view_layer),
         "random_id": int(
             object_instance.random_id
             if object_instance.is_instance
@@ -1310,7 +1310,7 @@ def _geometry_instance(
             else _cycles_object_random_id(object_instance.object.name)
         )
         & cycles_hash.UINT32_MASK,
-        **_cycles_object_properties(object_instance),
+        **_cycles_object_properties(object_instance, bpy.context.view_layer),
         "ambient_occlusion_distance": _cycles_object_ao_distance(
             object_instance
         ),

@@ -417,6 +417,10 @@ void test_integrator_settings_round_trip() {
         "volume_scatter": false
       },
       "is_shadow_catcher": true,
+      "asset_name": "Lighting Collection",
+      "use_holdout": true,
+      "is_caustics_caster": true,
+      "is_caustics_receiver": false,
       "object_color": [0.125, 0.25, 0.5],
       "object_alpha": 0.75,
       "object_pass_id": 19,
@@ -803,6 +807,11 @@ void test_integrator_settings_round_trip() {
              !imported_light->second.use_mis &&
              !imported_light->second.cast_shadow &&
              imported_light->second.is_shadow_catcher &&
+             imported_light->second.cycles_asset_name ==
+                 "Lighting Collection" &&
+             imported_light->second.use_holdout &&
+             imported_light->second.is_caustics_caster &&
+             !imported_light->second.is_caustics_receiver &&
              imported_light->second.cycles_shader_index ==
                  std::optional<std::uint32_t>{5u} &&
              imported_light->second.cycles_object_index ==
@@ -814,6 +823,8 @@ void test_integrator_settings_round_trip() {
              imported_light->second.object_pass_id == 19 &&
              std::abs(imported_light->second.object_random -
                       (2147483648.0f / 4294967295.0f)) <= 1.0e-6f &&
+             imported_light->second.cycles_random_id ==
+                 std::optional<std::uint32_t>{2147483648u} &&
              imported_light->second.particle_index == 7u &&
              imported_light->second.dupli_generated ==
                  psycles::Vec3f{-0.25f, 0.125f, 0.75f} &&
