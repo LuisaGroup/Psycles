@@ -472,6 +472,23 @@ struct HairClosure {
   HairParam param;
 };
 
+/* Typed projection of Cycles 5.2.1
+ * kernel/closure/bsdf_principled_hair_chiang.h::ChiangHairBSDF. */
+struct ChiangHairParam {
+  luisa::compute::Float3 sigma;
+  luisa::compute::Float v;
+  luisa::compute::Float s;
+  luisa::compute::Float alpha;
+  luisa::compute::Float eta;
+  luisa::compute::Float m0_roughness;
+  luisa::compute::Float h;
+};
+
+struct ChiangHairClosure {
+  ShaderClosureCommon common;
+  ChiangHairParam param;
+};
+
 /* Typed projection of Cycles 5.2.1 kernel/closure/bssrdf.h::Bssrdf. */
 struct BssrdfParam {
   luisa::compute::Float3 radius;
@@ -626,19 +643,19 @@ public:
                             const RayPortalParam &param) noexcept;
   void set_hair_param(luisa::compute::Expr<std::uint32_t> index,
                       const HairParam &param) noexcept;
+  void set_chiang_hair_param(luisa::compute::Expr<std::uint32_t> index,
+                             const ChiangHairParam &param) noexcept;
   void set_bssrdf_param(luisa::compute::Expr<std::uint32_t> index,
                         const BssrdfParam &param) noexcept;
   void set_microfacet_param(luisa::compute::Expr<std::uint32_t> index,
                             const MicrofacetParam &param) noexcept;
-  void set_generalized_schlick(
-      luisa::compute::Expr<std::uint32_t> index,
-      const FresnelGeneralizedSchlick &fresnel) noexcept;
-  void set_fresnel_conductor(
-      luisa::compute::Expr<std::uint32_t> index,
-      const FresnelConductor &fresnel) noexcept;
-  void set_fresnel_f82_tint(
-      luisa::compute::Expr<std::uint32_t> index,
-      const FresnelF82Tint &fresnel) noexcept;
+  void
+  set_generalized_schlick(luisa::compute::Expr<std::uint32_t> index,
+                          const FresnelGeneralizedSchlick &fresnel) noexcept;
+  void set_fresnel_conductor(luisa::compute::Expr<std::uint32_t> index,
+                             const FresnelConductor &fresnel) noexcept;
+  void set_fresnel_f82_tint(luisa::compute::Expr<std::uint32_t> index,
+                            const FresnelF82Tint &fresnel) noexcept;
   void set_left(luisa::compute::Expr<std::uint32_t> left) noexcept;
 
   [[nodiscard]] ShaderClosureCommon
@@ -655,18 +672,18 @@ public:
   ray_portal(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] HairClosure
   hair(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] ChiangHairClosure
+  chiang_hair(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] BssrdfClosure
   bssrdf(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetParam
   microfacet_param(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetClosure
   microfacet(luisa::compute::Expr<std::uint32_t> index) const noexcept;
-  [[nodiscard]] MicrofacetConductorClosure
-  microfacet_conductor(
+  [[nodiscard]] MicrofacetConductorClosure microfacet_conductor(
       luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetF82TintClosure
-  microfacet_f82_tint(
-      luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  microfacet_f82_tint(luisa::compute::Expr<std::uint32_t> index) const noexcept;
 };
 
 /* The fields below are the exact ShaderData projection consumed by the first
