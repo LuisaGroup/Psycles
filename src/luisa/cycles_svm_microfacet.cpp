@@ -4,6 +4,7 @@
 
 #include "cycles_svm_microfacet.h"
 
+#include "cycles_svm_microfacet_fresnel.h"
 #include "cycles_svm_simple_closure.h"
 #include "thin_film_fresnel.h"
 
@@ -32,11 +33,6 @@ inline constexpr float two_pi = 6.28318530717958647692f;
     return sqrt(max(value, 0.0f));
 }
 
-[[nodiscard]] Float f0_from_ior(Expr<float> ior) noexcept {
-    const auto r = (ior - 1.0f) / (ior + 1.0f);
-    return r * r;
-}
-
 [[nodiscard]] Float3 color_power(Expr<luisa::float3> value,
                                  Expr<float> exponent) noexcept {
     return make_float3(pow(value.x, exponent), pow(value.y, exponent),
@@ -54,32 +50,6 @@ inline constexpr float two_pi = 6.28318530717958647692f;
 [[nodiscard]] Float3 reflect_direction(Expr<luisa::float3> incident,
                                        Expr<luisa::float3> normal) noexcept {
     return incident - 2.0f * normal * dot(incident, normal);
-}
-
-struct DielectricFresnel {
-    Float reflectance;
-    Float cosine_transmitted;
-};
-
-[[nodiscard]] DielectricFresnel
-fresnel_dielectric(Expr<float> cosine_incoming, Expr<float> ior) noexcept {
-    const auto eta_cosine_transmitted_squared =
-        square(ior) - (1.0f - square(cosine_incoming));
-    DielectricFresnel result{.reflectance = 1.0f,
-                             .cosine_transmitted = 0.0f};
-    $if (eta_cosine_transmitted_squared > 0.0f) {
-        const auto cosine_i = abs(cosine_incoming);
-        const auto cosine_t =
-            -safe_sqrt(eta_cosine_transmitted_squared) / ior;
-        const auto reflection_s =
-            (cosine_i + ior * cosine_t) / (cosine_i - ior * cosine_t);
-        const auto reflection_p =
-            (cosine_t + ior * cosine_i) / (ior * cosine_i - cosine_t);
-        result.reflectance =
-            0.5f * (square(reflection_s) + square(reflection_p));
-        result.cosine_transmitted = cosine_t;
-    };
-    return result;
 }
 
 struct GeneralizedSchlickEvaluation {
@@ -201,46 +171,6 @@ struct ThinGlassFresnel {
 [[nodiscard]] Float3 fresnel_f82_fss(
     Expr<luisa::float3> f0, Expr<luisa::float3> b) noexcept {
     return lerp(f0, make_float3(1.0f), 1.0f / 21.0f) - b * (1.0f / 126.0f);
-}
-
-[[nodiscard]] Float fresnel_conductor_channel(
-    Expr<float> cosine_incoming, Expr<float> ior,
-    Expr<float> extinction) noexcept {
-    const auto ior_squared = square(ior);
-    const auto extinction_squared = square(extinction);
-    const auto two_ior_extinction = 2.0f * ior * extinction;
-    const auto t1 = ior_squared - extinction_squared -
-                    (1.0f - square(cosine_incoming));
-    const auto t2 = sqrt(square(t1) + square(two_ior_extinction));
-    const auto u_squared = max(0.5f * (t2 + t1), 0.0f);
-    const auto v_squared = max(0.5f * (t2 - t1), 0.0f);
-    const auto u = sqrt(u_squared);
-    const auto v = sqrt(v_squared);
-
-    const auto reflection_s_numerator =
-        square(cosine_incoming - u) + v_squared;
-    const auto reflection_s_denominator =
-        square(cosine_incoming + u) + v_squared;
-    const auto reflection_s =
-        select(0.0f, reflection_s_numerator / reflection_s_denominator,
-               reflection_s_denominator != 0.0f);
-    const auto t3 = (ior_squared - extinction_squared) * cosine_incoming;
-    const auto t4 = two_ior_extinction * cosine_incoming;
-    const auto reflection_p_numerator = square(t3 - u) + square(t4 - v);
-    const auto reflection_p_denominator = square(t3 + u) + square(t4 + v);
-    const auto reflection_p =
-        select(0.0f, reflection_p_numerator / reflection_p_denominator,
-               reflection_p_denominator != 0.0f);
-    return 0.5f * (reflection_s + reflection_p);
-}
-
-[[nodiscard]] Float3 fresnel_conductor(
-    Expr<float> cosine_incoming, Expr<luisa::float3> ior,
-    Expr<luisa::float3> extinction) noexcept {
-    return make_float3(
-        fresnel_conductor_channel(cosine_incoming, ior.x, extinction.x),
-        fresnel_conductor_channel(cosine_incoming, ior.y, extinction.y),
-        fresnel_conductor_channel(cosine_incoming, ior.z, extinction.z));
 }
 
 [[nodiscard]] Float3 fresnel_f82_b(

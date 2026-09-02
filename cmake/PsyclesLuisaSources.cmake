@@ -8,6 +8,8 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_camera.cpp
     src/luisa/cycles_svm_closure.cpp
     src/luisa/cycles_svm_microfacet.cpp
+    src/luisa/cycles_svm_microfacet_fresnel.cpp
+    src/luisa/cycles_svm_microfacet_scattering.cpp
     src/luisa/cycles_svm_principled.cpp
     src/luisa/cycles_svm_ray_portal.cpp
     src/luisa/cycles_svm_sheen.cpp

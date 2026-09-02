@@ -905,6 +905,65 @@ fallback, HIP, and strict native Vulkan XIR-to-SPIR-V. This checkpoint makes no
 runtime speedup claim before a production-kernel benchmark; it removes a
 proved source of unnecessary AST construction and register pressure.
 
+### Microfacet scattering checkpoint
+
+The exact interpreter now has the Cycles 5.2.1 Microfacet eval/sample core,
+not a projection through the old graph-surface approximation. GGX and
+Beckmann are host-specialized instances of one Luisa DSL definition, matching
+the source templates: a retained closure never pays for a runtime distribution
+switch. The runtime state machine remains Cycles' own partition:
+
+```text
+type                     lobes
+GGX/Beckmann              reflection
+GGX/Beckmann Refraction   transmission
+GGX/Beckmann Glass        reflection + transmission
+Thin Glass Transmission   mirrored GGX reflection, relabeled transmission
+```
+
+Within that partition the implementation copies the same singular threshold,
+half-vector construction, isotropic/anisotropic D and Lambda functions,
+visible-normal sampling, Fresnel-energy lobe choice, geometric/shading-normal
+rejection, transmission Jacobian, MIS scale, sampled roughness, eta, and label
+bits. GGX alone applies `energy_scale` to eval while leaving PDF unchanged.
+Thin Glass retains its separate `1e6` transparent limit and mirrored rough
+path.
+
+Fresnel is a separate typed-union projection rather than a weak float payload.
+The common SVM record handles only `NONE`, `DIELECTRIC`, and
+`GENERALIZED_SCHLICK`; conductor and F82 records use their typed overloads.
+`DIELECTRIC_TINT` is not produced by Cycles SVM and is therefore not invented
+here. A tag/payload mismatch fails closed instead of reinterpreting foreign
+payload rows as `NONE`. The dielectric TIR domain is also a real negative
+control-flow branch, so rejected lanes do not construct the regular Fresnel
+divisions.
+
+The direct oracle included the pinned Cycles 5.2.1
+`bsdf_microfacet.h` in one HIP kernel at commit
+`9e2066aef7ef7e20c142ad7bd3303138a4304c93`. It used ROCm 7.2.53211,
+`gfx1201`, and `-O3 -ffast-math`; source SHA-256 was
+`bd615054a2c547c38f96784f7bcfb9f66419c1bcaa5a7886d5f5ce48cc3f838d`
+and executable SHA-256 was
+`53fbf3253ac331f3c87a1a4519a7ee3fd764926c2c23147ac0012dac71499408`.
+Representative branch outputs are:
+
+```text
+anisotropic GGX:       pdf=0.486668080, value=0.544672608, label=10
+anisotropic Beckmann:  pdf=value=0.340102851, label=10
+GGX Glass refraction:  pdf=25.3747864, value=27.6519051, eta=1.45, label=9
+Conductor GGX:         pdf=0.322688937, value=(0.291490346,0.183629915,0.107035987)
+Generalized refraction:pdf=19.1016998, value=(14.7117825,16.4667950,17.9401398)
+Beckmann Refraction:   pdf=value=30.6961956, eta=1.33, label=9
+singular GGX:          pdf=1e6, value=1.17e6, label=18; eval=(0,0)
+singular Thin Glass:   pdf=value=1e6, label=17
+```
+
+`test_luisa_cycles_svm_microfacet_scattering.cpp` freezes all 42 numerical
+slots and 13 labels, including reflection and transmission eval, pure
+refraction masking, ordinary and singular events, all SVM Fresnel payload
+families, wrong-side rejection, and Thin Glass. With production fast math it
+passes on fallback, HIP, and strict native Vulkan XIR-to-SPIR-V.
+
 ### Standalone BSSRDF runtime checkpoint
 
 `NODE_CLOSURE_BSDF` now consumes the exact eight-word
@@ -1142,6 +1201,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_sheen_scattering_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_microfacet_scattering_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -1157,13 +1219,14 @@ Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, standalone
 Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
 6/6, standalone Hair setup 3/3, Hair scattering 3/3, simple scattering 3/3,
 Toon scattering 3/3, Sheen/Velvet scattering 3/3,
+Microfacet scattering 3/3,
 compiler 3/3, and Ray Portal/Hair bundle imports 2/2 passed. The scattering
 kernels were built with the production `enable_fast_math=true` setting. The
 compiler test locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. After this checkpoint, `cmake --build build --parallel
-32` completed successfully and the full 32-way CTest run passed 516/516 tests
-in 43.24 seconds on the warm build tree. The Vulkan test environment is
+32` completed successfully and the full 32-way CTest run passed 519/519 tests
+in 49.15 seconds on the warm build tree. The Vulkan test environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
 
