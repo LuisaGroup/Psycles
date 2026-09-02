@@ -161,3 +161,20 @@ object's geometry attribute-map, position, and normal offsets from the final
 typed attribute arrays. The legacy scalar bundle field remains only for the
 old expanded renderer route and must not be consumed by the production SVM
 adapter.
+
+The type-state boundary is now implemented. `prepare_kernel_object` consumes
+only the non-geometry ObjectManager inputs and produces `PendingKernelObject`,
+which intentionally contains no uploadable `KernelObject`. It freezes the
+Cycles affine inverse, negative-scale predicate, raw uint random identity,
+MurmurHash3 Cryptomatte identities, and source-owned flags. The sole conversion
+to `KernelObject` is `finalize_kernel_object`, whose geometry descriptor uses
+`optional` offsets to distinguish an unresolved value from the legitimate
+`ATTR_STD_NOT_FOUND` integer sentinel. Thus the invalid state "uploaded but
+not resolved" is not representable through this API.
+
+Finalization copies Cycles' shadow-catcher visibility duplication, 64-set
+light/shadow-link clamping, reciprocal shadow-terminator correction, exact
+motion/count widths, and geometry-owned flags. The object-scene regression
+pins the Cryptomatte oracle words (`Cube == 0xa8fce865`,
+`Lone Monk == 0x04c3b823`), transform/inverse rows, raw-random rounding,
+padding zeroes, every flag source, and all overflow/rejected-state boundaries.
