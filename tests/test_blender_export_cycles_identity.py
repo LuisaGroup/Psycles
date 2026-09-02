@@ -96,7 +96,18 @@ def _main() -> None:
     surface.shadow_terminator_shading_offset = 0.375
     surface.shadow_terminator_geometry_offset = 0.625
     surface.is_shadow_catcher = True
-    scene.collection.objects.link(surface)
+    surface.cycles.is_caustics_caster = True
+    surface.cycles.is_caustics_receiver = True
+    asset_root = bpy.data.objects.new("Top Asset", None)
+    holdout_collection = bpy.data.collections.new("Holdout Collection")
+    scene.collection.children.link(holdout_collection)
+    holdout_collection.objects.link(asset_root)
+    holdout_collection.objects.link(surface)
+    surface.parent = asset_root
+    bpy.context.view_layer.layer_collection.children[
+        "Holdout Collection"
+    ].holdout = True
+    bpy.context.view_layer.update()
 
     # Legacy Curve data is the important negative case: Object.to_mesh()
     # returns a mesh payload, but BlenderSync::object_is_geometry rejects the
@@ -143,6 +154,8 @@ def _main() -> None:
         obj.pass_index = max_bounces + 10
         obj.shadow_terminator_shading_offset = 0.25
         obj.shadow_terminator_geometry_offset = 0.75
+        obj.cycles.is_caustics_caster = name == "Zulu Light"
+        obj.cycles.is_caustics_receiver = name == "Alpha Light"
         scene.collection.objects.link(obj)
 
     # Deliberately insert the reverse of lexical order. Cycles consumes the
@@ -210,6 +223,17 @@ def _main() -> None:
     if not instances[0]["is_shadow_catcher"]:
         raise AssertionError(
             "mesh shadow-catcher membership was not preserved"
+        )
+    if (
+        instances[0]["asset_name"] != "Top Asset"
+        or not instances[0]["use_holdout"]
+        or not instances[0]["is_caustics_caster"]
+        or not instances[0]["is_caustics_receiver"]
+        or not isinstance(instances[0]["random_id"], int)
+    ):
+        raise AssertionError(
+            "surface raw Cycles object state changed: "
+            f"{instances[0]}"
         )
     expected_surface_object = {
         "object_color": [0.125, 0.25, 0.5],
@@ -285,6 +309,18 @@ def _main() -> None:
         ):
             raise AssertionError(
                 f"{light['name']} shader flags were not preserved"
+            )
+        if (
+            light["asset_name"] != light["name"]
+            or light["use_holdout"]
+            or light["is_caustics_caster"]
+            != (light["name"] == "Zulu Light")
+            or light["is_caustics_receiver"]
+            != (light["name"] == "Alpha Light")
+            or not isinstance(light["random_id"], int)
+        ):
+            raise AssertionError(
+                f"{light['name']} raw Cycles object state changed"
             )
         if (
             not _near_sequence(light["object_color"], [0.2, 0.3, 0.4])

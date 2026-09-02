@@ -1441,6 +1441,8 @@ BlenderSceneImport load_blender_scene_bundle(
                 InstanceId{instance_index++},
                 contract::InstanceDesc{
                     .name = text(member(instance, "name")),
+                    .cycles_asset_name = text(
+                        member(instance, "asset_name")),
                     .geometry = geometry_id,
                     .transform =
                         matrix(member(instance, "transform")),
@@ -1451,6 +1453,8 @@ BlenderSceneImport load_blender_scene_bundle(
                             4294967295.0f,
                         0.0f,
                         1.0f),
+                    .cycles_random_id = optional_unsigned_number(
+                        member(instance, "random_id")),
                     .particle_index = static_cast<std::uint32_t>(
                         unsigned_number(
                             member(instance, "particle_index"))),
@@ -1487,6 +1491,12 @@ BlenderSceneImport load_blender_scene_bundle(
                                 instance,
                                 "is_shadow_catcher"),
                             false),
+                    .use_holdout = boolean(
+                        member(instance, "use_holdout"), false),
+                    .is_caustics_caster = boolean(
+                        member(instance, "is_caustics_caster"), false),
+                    .is_caustics_receiver = boolean(
+                        member(instance, "is_caustics_receiver"), false),
                     .is_blender_instance =
                         boolean(
                             member(instance, "is_instance"),
@@ -1575,6 +1585,8 @@ BlenderSceneImport load_blender_scene_bundle(
                 LightId{light_index++},
                 LightDesc{
                     .name = text(member(light, "name")),
+                    .cycles_asset_name = text(
+                        member(light, "asset_name")),
                     .type =
                         type == "AREA"
                             ? LightType::area
@@ -1628,6 +1640,12 @@ BlenderSceneImport load_blender_scene_bundle(
                         member(
                             light,
                             "is_shadow_catcher")),
+                    .use_holdout = boolean(
+                        member(light, "use_holdout"), false),
+                    .is_caustics_caster = boolean(
+                        member(light, "is_caustics_caster"), false),
+                    .is_caustics_receiver = boolean(
+                        member(light, "is_caustics_receiver"), false),
                     .cycles_shader_index =
                         optional_unsigned_number(member(
                             cycles_sync,
@@ -1660,6 +1678,8 @@ BlenderSceneImport load_blender_scene_bundle(
                             4294967295.0f,
                         0.0f,
                         1.0f),
+                    .cycles_random_id = optional_unsigned_number(
+                        member(light, "random_id")),
                     .particle_index = static_cast<std::uint32_t>(
                         unsigned_number(
                             member(light, "particle_index"))),

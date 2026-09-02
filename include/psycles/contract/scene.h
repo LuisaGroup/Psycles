@@ -352,12 +352,18 @@ inline constexpr auto all_ray_visibility =
 
 struct InstanceDesc {
     std::string name;
+    // Topmost Blender parent name copied to Cycles Object::asset_name for
+    // Cryptomatte. Empty keeps the renderer-authored fallback to `name`.
+    std::string cycles_asset_name;
     GeometryId geometry;
     Mat4f transform;
     std::vector<MotionTransform> motion;
     std::vector<MaterialId> material_overrides;
     // Cycles Object Info.Random in [0, 1], computed from Object::random_id.
     float random{};
+    // Lossless source integer used by KernelObject. The float above remains
+    // for the legacy route; reconstructing this word from it is not exact.
+    std::optional<std::uint32_t> cycles_random_id;
     // Cycles Particle Info indexes its particle table separately from object
     // identity. Zero is the non-particle sentinel used by ordinary objects.
     std::uint32_t particle_index{};
@@ -377,6 +383,9 @@ struct InstanceDesc {
     // identity. Keep it per instance because shared geometry may be instanced
     // both as a catcher and as an ordinary object.
     bool is_shadow_catcher{};
+    bool use_holdout{};
+    bool is_caustics_caster{};
+    bool is_caustics_receiver{};
     // Preserve whether this entry came from a dependency-graph dupli. Cycles'
     // static-transform decision is based on geometry users rather than this
     // bit, but keeping the source representation prevents later adapters from
@@ -441,6 +450,7 @@ enum class LightType : std::uint8_t {
 
 struct LightDesc {
     std::string name;
+    std::string cycles_asset_name;
     LightType type{LightType::point};
     Mat4f transform;
     Vec3f color{1.0f, 1.0f, 1.0f};
@@ -462,6 +472,9 @@ struct LightDesc {
     bool cast_shadow{true};
     std::uint32_t visibility_mask{all_ray_visibility};
     bool is_shadow_catcher{};
+    bool use_holdout{};
+    bool is_caustics_caster{};
+    bool is_caustics_receiver{};
     std::optional<std::uint32_t> cycles_shader_index;
     std::optional<std::uint32_t> cycles_object_index;
     std::int32_t cycles_light_group{-1};
@@ -474,6 +487,7 @@ struct LightDesc {
     float object_alpha{};
     std::int32_t object_pass_id{};
     float object_random{};
+    std::optional<std::uint32_t> cycles_random_id;
     std::uint32_t particle_index{};
     Vec3f dupli_generated{};
     Vec2f dupli_uv{};

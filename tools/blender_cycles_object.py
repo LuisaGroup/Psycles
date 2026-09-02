@@ -28,7 +28,33 @@ def _shadow_terminator_value(
     return float(getattr(getattr(obj, "cycles", None), name, fallback))
 
 
-def object_properties(object_instance: Any) -> dict[str, Any]:
+def _asset_name(obj: Any) -> str:
+    """Copy BlenderSync's topmost object-parent Cryptomatte identity."""
+
+    parent = obj
+    while parent.parent is not None:
+        parent = parent.parent
+    return str(parent.name)
+
+
+def _use_holdout(object_instance: Any, view_layer: Any) -> bool:
+    """Copy BlenderSync's view-layer holdout from the instancer base."""
+
+    obj = object_instance.object
+    base = (
+        object_instance.parent
+        if object_instance.is_instance and object_instance.parent is not None
+        else obj
+    )
+    # DependencyGraph.object_instances exposes evaluated object copies, while
+    # BlenderSync queries BKE_view_layer_base_find() with the original object.
+    # The evaluated copy has no Base and therefore reports false even when its
+    # original belongs to a holdout LayerCollection.
+    original = base.original if base.original is not None else base
+    return bool(original.holdout_get(view_layer=view_layer))
+
+
+def object_properties(object_instance: Any, view_layer: Any) -> dict[str, Any]:
     """Return raw Object fields copied by BlenderSync::sync_object."""
 
     obj = object_instance.object
@@ -43,7 +69,9 @@ def object_properties(object_instance: Any) -> dict[str, Any]:
         dupli_generated = [0.0, 0.0, 0.0]
         dupli_uv = [0.0, 0.0]
     object_color = tuple(float(component) for component in obj.color)
+    cycles = getattr(obj, "cycles", None)
     return {
+        "asset_name": _asset_name(obj),
         "object_color": list(object_color[:3]),
         "object_alpha": object_color[3],
         "object_pass_id": int(obj.pass_index),
@@ -54,6 +82,13 @@ def object_properties(object_instance: Any) -> dict[str, Any]:
         ),
         "shadow_terminator_geometry_offset": _shadow_terminator_value(
             obj, "shadow_terminator_geometry_offset", 0.1
+        ),
+        "use_holdout": _use_holdout(object_instance, view_layer),
+        "is_caustics_caster": bool(
+            getattr(cycles, "is_caustics_caster", False)
+        ),
+        "is_caustics_receiver": bool(
+            getattr(cycles, "is_caustics_receiver", False)
         ),
     }
 
