@@ -38,6 +38,9 @@ inline constexpr std::uint32_t type_diffuse_toon = 8u;
 inline constexpr std::uint32_t type_translucent = 9u;
 inline constexpr std::uint32_t type_microfacet_ggx = 12u;
 inline constexpr std::uint32_t type_microfacet_beckmann = 13u;
+// Virtual SVM authoring type. Cycles' multi-GGX setup overwrites it with
+// type_microfacet_ggx before the closure becomes observable.
+inline constexpr std::uint32_t type_microfacet_multi_ggx = 14u;
 inline constexpr std::uint32_t type_ashikhmin_shirley = 15u;
 inline constexpr std::uint32_t type_ashikhmin_velvet = 16u;
 inline constexpr std::uint32_t type_glossy_toon = 18u;

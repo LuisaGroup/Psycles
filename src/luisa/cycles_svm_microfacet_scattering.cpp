@@ -430,10 +430,42 @@ BsdfEvaluation bsdf_microfacet_beckmann_eval(
       kernel_globals, closure, wi, wo);
 }
 
+BsdfEvaluation bsdf_microfacet_beckmann_eval(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetConductorClosure &closure,
+    Expr<luisa::float3> wi, Expr<luisa::float3> wo) noexcept {
+  return microfacet_eval<MicrofacetDistribution::beckmann>(
+      kernel_globals, closure, wi, wo);
+}
+
+BsdfEvaluation bsdf_microfacet_beckmann_eval(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetF82TintClosure &closure,
+    Expr<luisa::float3> wi, Expr<luisa::float3> wo) noexcept {
+  return microfacet_eval<MicrofacetDistribution::beckmann>(
+      kernel_globals, closure, wi, wo);
+}
+
 BsdfSample bsdf_microfacet_beckmann_sample(
     const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
     Expr<luisa::float3> Ng, Expr<luisa::float3> wi,
     Expr<luisa::float3> random) noexcept {
+  return microfacet_sample<MicrofacetDistribution::beckmann>(
+      kernel_globals, closure, Ng, wi, random);
+}
+
+BsdfSample bsdf_microfacet_beckmann_sample(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetConductorClosure &closure, Expr<luisa::float3> Ng,
+    Expr<luisa::float3> wi, Expr<luisa::float3> random) noexcept {
+  return microfacet_sample<MicrofacetDistribution::beckmann>(
+      kernel_globals, closure, Ng, wi, random);
+}
+
+BsdfSample bsdf_microfacet_beckmann_sample(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetF82TintClosure &closure, Expr<luisa::float3> Ng,
+    Expr<luisa::float3> wi, Expr<luisa::float3> random) noexcept {
   return microfacet_sample<MicrofacetDistribution::beckmann>(
       kernel_globals, closure, Ng, wi, random);
 }

@@ -1371,6 +1371,99 @@ The regression also locks the typed specular state (`alpha_x = alpha_y =
 `-1.5`), closure order/types, pool accounting, runtime flags, and final PC.
 It passes on fallback, HIP, and strict native Vulkan XIR-to-SPIR-V.
 
+## Unified Cycles BSDF consumer dispatch
+
+The retained `ClosurePool` tagged union now has the direct Luisa projection of
+Cycles 5.2.1 `kernel/closure/bsdf.h`. The copied consumer boundary is:
+
+- `bsdf_get_specular_roughness_squared`
+- `bsdf_sample`
+- `bsdf_roughness_eta`
+- `bsdf_label`
+- `bsdf_eval`
+- `bsdf_blur`
+- `bsdf_albedo`
+- `bump_shadowing_term` and the shading-normal shadow-terminator multiplier
+
+This is one ClosureType dispatch over the same records populated by the SVM;
+it does not translate closures into the legacy Psycles surface model. For a
+Microfacet record, ClosureType selects GGX versus Beckmann and the independent
+`MicrofacetFresnel` discriminator selects the exact tagged-union projection:
+
+```text
+dispatch(type, fresnel_tag):
+  type in GGX family      -> microfacet<GGX>(payload(fresnel_tag))
+  type in Beckmann family -> microfacet<Beckmann>(payload(fresnel_tag))
+  type == Thin Glass      -> thin-glass transmission
+  type == other closure   -> its exact Cycles family
+```
+
+The initial audit found a structural hole: the typed Conductor and F82-Tint
+payloads had GGX entry points but no Beckmann entry points, even though Cycles'
+`MicrofacetBsdf` union makes distribution and Fresnel model independent. The
+fix adds both Beckmann typed projections; it does not special-case a material
+or mutate the closure tag. The regression exercises both combinations through
+the generic dispatch and compares them with their already oracle-frozen direct
+family functions.
+
+The albedo copy also found a domain-selection defect. Cycles selects
+`ggx_gen_schlick_ior_s` only for negative generalized-Schlick exponents and
+selects `ggx_gen_schlick_s` for non-negative exponents. A permanent sentinel
+reader assigns distinct constants to the two table address ranges. With
+`F0=(0.1,0.2,0.3)` and `F90=(0.9,0.8,0.7)`, it requires the positive-exponent
+path to return `(0.3,0.35,0.4)` and the negative-exponent path to return
+`(0.7,0.65,0.6)`. This test observes the selected Cycles table address and
+cannot pass by comparing the dispatch with the same erroneous helper.
+
+The outer modifier sequence is copied without normalization:
+
+```text
+sample transmit:
+  add TRANSMIT_TRANSPARENT only below threshold and only when not diffuse
+sample reflect:
+  apply object shadow-terminator offset, then bump shadowing
+eval:
+  reject invalid smooth-normal hemisphere first
+  evaluate closure, multiply bump term, then apply positive-cosine offset
+label transmit:
+  add TRANSMIT_TRANSPARENT below threshold, including diffuse labels
+```
+
+The test freezes the intentionally different `sample` and `label` transparent
+rules, a nonzero raw Diffuse evaluation that bump correction rejects for
+crossing the smooth surface, and the fact that the object offset changes only
+sample value while direction, PDF, and roughness stay unchanged.
+
+`ClosureTypeMask` is a host/JIT reachability set, not a device-side enum or a
+second closure representation. If `R` is the scene-proven reachable set, the
+recorded dispatcher is formally:
+
+```text
+D_R(type) = D(type), type in R
+          = Cycles default, otherwise
+```
+
+The caller invariant is `stored_type in R`, so `D_R(stored_type) =
+D(stored_type)`. The retained ClosureType and Fresnel tag remain runtime
+values. The complete Cycles microfacet predicate includes the virtual
+Multi-GGX authoring values 14 and 26 so this pruning commutes with the source
+classification even though setup normalizes both before storage.
+
+The focused test has a second shader whose ClosureType is deliberately dynamic
+(`type_diffuse + dispatch_id.x`) while `R={Diffuse}`. This prevents whole-kernel
+constant folding and measures the effectiveness of host reachability pruning:
+
+| Backend artifact | Multi-family regression | Dynamic Diffuse-only mask |
+| --- | ---: | ---: |
+| HIP generated AMDGPU | 115,068 B | 4,976 B |
+| HIP linked code object | 113,856 B | 3,904 B |
+| native XIR SPIR-V before optimization | 175,656 words | 3,049 words |
+| native XIR SPIR-V after optimization | 159,669 words | 1,519 words |
+
+The HIP LLVM generation times in that uncached run were 188.77 ms and 30.24
+ms respectively. These are focused code-generation measurements, not a
+full-scene rendering performance claim.
+
 ## Backend validation
 
 The exact frozen streams pass on fallback, HIP, and strict native Vulkan
@@ -1397,6 +1490,7 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_sheen_scattering_tests \
            psycles_luisa_cycles_svm_microfacet_scattering_tests \
            psycles_luisa_cycles_svm_ashikhmin_shirley_scattering_tests \
+           psycles_luisa_cycles_svm_bsdf_dispatch_tests \
            psycles_luisa_cycles_svm_principled_hair_chiang_tests \
            psycles_luisa_cycles_svm_principled_hair_chiang_scattering_tests \
            psycles_luisa_cycles_svm_principled_hair_huang_tests \
@@ -1467,6 +1561,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_ashikhmin_shirley_scattering_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_bsdf_dispatch_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_principled_hair_chiang_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -1495,6 +1592,7 @@ Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
 6/6, standalone Hair setup 3/3, Hair scattering 3/3, simple scattering 3/3,
 Toon scattering 3/3, Sheen/Velvet scattering 3/3,
 Microfacet scattering 3/3, Ashikhmin-Shirley scattering 3/3,
+unified BSDF dispatch 3/3,
 Principled Hair Chiang population/setup 3/3,
 Principled Hair Chiang scattering 3/3,
 Principled Hair Huang population/setup 3/3,
@@ -1509,6 +1607,9 @@ in 18.96 seconds on the warm build tree. After the Huang scattering
 checkpoint, the corresponding full run passed 531/531 tests in 16.15 seconds.
 After the Chiang scattering checkpoint and shared hair-math extraction, the
 full run passed 534/534 tests in 16.92 seconds.
+After the unified BSDF dispatch checkpoint, the full build completed with
+`--parallel 32`; the final warm-tree run passed 537/537 tests in 23.22
+seconds after the last focused rerun.
 The Vulkan test environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
@@ -1540,13 +1641,11 @@ shade-surface.
 
 ## Remaining boundary
 
-This checkpoint establishes ordinary and extra closure allocation plus the
-simple, Glass, standalone Glossy, standalone Refraction, and Metallic
-F82/conductor, Ray Portal, and legacy Hair setup families inside the exact
-interpreter. Production still
-calls the old custom
-`SurfaceProgram` path. The next required structural steps are the remaining
-exact closure evaluation/sampling families and only then replacement and
-deletion of the old shade-surface route. The Cycles-style global shader linker
-is already staged, but this document makes no production-render parity or
-performance claim.
+This checkpoint establishes ordinary and extra closure allocation, the copied
+closure population/setup families, their direct scattering functions, and the
+unified Cycles `bsdf.h` consumer dispatch inside the exact interpreter.
+Production still calls the old custom `SurfaceProgram` path. The next required
+structural step is to route shade-surface through this retained Cycles SVM
+state and then delete the obsolete route after whole-program equivalence is
+proved. The Cycles-style global shader linker is already staged, but this
+document makes no production-render parity or full-scene performance claim.

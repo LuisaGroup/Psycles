@@ -17,6 +17,29 @@ bsdf_allocate(ShaderData &shader_data,
     luisa::compute::Expr<luisa::float3> axis,
     luisa::compute::Expr<float> angle) noexcept;
 
+/* Exact Cycles 5.2.1 bsdf_microfacet_estimate_albedo() projections for the
+ * discriminated ClosurePool payload variants. The returned factor excludes
+ * ShaderClosure::weight. */
+[[nodiscard]] luisa::compute::Float3 bsdf_microfacet_estimate_albedo(
+    const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<bool> reflection,
+    luisa::compute::Expr<bool> transmission) noexcept;
+
+[[nodiscard]] luisa::compute::Float3 bsdf_microfacet_estimate_albedo(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetConductorClosure &closure,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<bool> reflection,
+    luisa::compute::Expr<bool> transmission) noexcept;
+
+[[nodiscard]] luisa::compute::Float3 bsdf_microfacet_estimate_albedo(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetF82TintClosure &closure,
+    luisa::compute::Expr<luisa::float3> wi,
+    luisa::compute::Expr<bool> reflection,
+    luisa::compute::Expr<bool> transmission) noexcept;
+
 /* Exact Cycles Principled dielectric layer transition. The returned albedo
  * includes the post-Multi-GGX closure weight and is therefore ready for
  * closure_layering_weight(). A failed allocation returns zero, matching the

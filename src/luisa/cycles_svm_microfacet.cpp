@@ -9,6 +9,7 @@
 #include "thin_film_fresnel.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/native_vector_math.h>
 
 #include <luisa/dsl/sugar.h>
@@ -18,6 +19,7 @@ namespace psycles::luisa_backend::cycles_svm::detail {
 using namespace luisa::compute;
 using namespace compiler::cycles_svm;
 namespace table_detail = ::psycles::luisa_backend::detail;
+namespace closure_type = ::psycles::luisa_backend::cycles_closure;
 
 namespace {
 
@@ -219,7 +221,8 @@ ensure_valid_specular_reflection(Expr<luisa::float3> geometric_normal,
 [[nodiscard]] Float3 generalized_schlick_albedo(
     const KernelGlobals &kernel_globals, Expr<luisa::float3> incoming,
     Expr<luisa::float3> normal, const MicrofacetParam &microfacet,
-    const FresnelGeneralizedSchlick &fresnel) noexcept {
+    const FresnelGeneralizedSchlick &fresnel, Expr<bool> eval_reflection,
+    Expr<bool> eval_transmission) noexcept {
     const auto cosine_incoming = dot(incoming, normal);
     Float3 reflectance;
     $if (fresnel.thin_film.thickness > table_detail::thin_film_thickness_cutoff) {
@@ -232,14 +235,27 @@ ensure_valid_specular_reflection(Expr<luisa::float3> geometric_normal,
     $else {
         const auto table_roughness =
             sqrt(sqrt(microfacet.alpha_x * microfacet.alpha_y));
-        const auto z = sqrt(abs((microfacet.ior - 1.0f) / (microfacet.ior + 1.0f)));
+        Float z;
+        UInt table_offset;
+        $if (fresnel.exponent < 0.0f) {
+            z = sqrt(abs((microfacet.ior - 1.0f) /
+                         (microfacet.ior + 1.0f)));
+            table_offset = cycles45_tables::ggx_gen_schlick_ior_s_offset;
+        }
+        $else {
+            z = 1.0f / (0.2f * fresnel.exponent + 1.0f);
+            table_offset = cycles45_tables::ggx_gen_schlick_s_offset;
+        };
         const auto interpolation = table_detail::cycles_table_3d(
             kernel_globals, table_roughness, cosine_incoming, z,
-            UInt{cycles45_tables::ggx_gen_schlick_ior_s_offset}, 16u, 16u, 16u);
+            table_offset, 16u, 16u, 16u);
         reflectance = lerp(fresnel.f0, fresnel.f90, interpolation);
     };
-    return reflectance * fresnel.reflection_tint +
-           (make_float3(1.0f) - reflectance) * fresnel.transmission_tint;
+    return reflectance * fresnel.reflection_tint *
+               select(0.0f, 1.0f, eval_reflection) +
+           (make_float3(1.0f) - reflectance) *
+               fresnel.transmission_tint *
+               select(0.0f, 1.0f, eval_transmission);
 }
 
 struct MultiGgxEnergyAdjustment {
@@ -454,6 +470,66 @@ Float3 rotate_around_axis(Expr<luisa::float3> point,
     return result;
 }
 
+Float3 bsdf_microfacet_estimate_albedo(
+    const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
+    Expr<luisa::float3> wi, Expr<bool> reflection,
+    Expr<bool> transmission) noexcept {
+    const auto reflection_weight = select(0.0f, 1.0f, reflection);
+    const auto transmission_weight = select(0.0f, 1.0f, transmission);
+    Float3 result = make_float3(0.0f);
+    Bool handled = false;
+
+    $if (closure.param.fresnel_type ==
+         static_cast<std::uint32_t>(MicrofacetFresnel::generalized_schlick)) {
+        result = generalized_schlick_albedo(
+            kernel_globals, wi, closure.common.N, closure.param,
+            closure.generalized_schlick, reflection, transmission);
+        handled = true;
+    }
+    $elif ((closure.param.fresnel_type ==
+            static_cast<std::uint32_t>(MicrofacetFresnel::dielectric)) &
+           (closure.param.ior > 1.0f)) {
+        const auto fresnel = dielectric_reflection_albedo(
+            kernel_globals, wi, closure.common.N, closure.param);
+        result = make_float3(fresnel * reflection_weight);
+        $if (closure_type::is_glass_microfacet(closure.common.type)) {
+            result += make_float3((1.0f - fresnel) * transmission_weight);
+        };
+        handled = true;
+    }
+    $elif (closure.common.type == closure_type::type_thin_glass_transmission) {
+        result = make_float3(transmission_weight);
+        handled = true;
+    };
+
+    $if (!handled) {
+        const auto fresnel = microfacet_fresnel(
+            kernel_globals, closure, dot(wi, closure.common.N));
+        result = fresnel.reflectance * reflection_weight +
+                 fresnel.transmittance * transmission_weight;
+    };
+    return result;
+}
+
+Float3 bsdf_microfacet_estimate_albedo(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetConductorClosure &closure, Expr<luisa::float3> wi,
+    Expr<bool> reflection, Expr<bool> transmission) noexcept {
+    const auto fresnel = microfacet_fresnel(
+        kernel_globals, closure, dot(wi, closure.common.N));
+    return fresnel.reflectance * select(0.0f, 1.0f, reflection) +
+           fresnel.transmittance * select(0.0f, 1.0f, transmission);
+}
+
+Float3 bsdf_microfacet_estimate_albedo(
+    const KernelGlobals &kernel_globals,
+    const MicrofacetF82TintClosure &closure, Expr<luisa::float3> wi,
+    Expr<bool> reflection, Expr<bool>) noexcept {
+    return f82_tint_albedo(kernel_globals, wi, closure.common.N,
+                           closure.param, closure.f82_tint) *
+           select(0.0f, 1.0f, reflection);
+}
+
 ClosurePool::Allocation
 bsdf_allocate(ShaderData &shader_data,
               Expr<luisa::float3> input_weight) noexcept {
@@ -513,7 +589,8 @@ Float3 principled_specular_setup(
         pool.set_generalized_schlick(allocated.index, fresnel);
 
         const auto albedo = generalized_schlick_albedo(
-            kernel_globals, shader_data.wi, normal, microfacet, fresnel);
+            kernel_globals, shader_data.wi, normal, microfacet, fresnel, true,
+            true);
         const auto common = pool.common(allocated.index);
         pool.set_sample_weight(allocated.index,
                                common.sample_weight * average(albedo));
@@ -715,7 +792,8 @@ void principled_transmission_setup(
                           CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID));
         pool.set_generalized_schlick(allocated.index, fresnel);
         const auto albedo = generalized_schlick_albedo(
-            kernel_globals, shader_data.wi, normal, microfacet, fresnel);
+            kernel_globals, shader_data.wi, normal, microfacet, fresnel, true,
+            true);
         const auto common = pool.common(allocated.index);
         pool.set_sample_weight(allocated.index,
                                common.sample_weight * average(albedo));
@@ -904,7 +982,8 @@ void glass_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
             pool.set_generalized_schlick(allocated.index, fresnel);
 
             const auto albedo = generalized_schlick_albedo(
-                kernel_globals, shader_data.wi, valid_normal, microfacet, fresnel);
+                kernel_globals, shader_data.wi, valid_normal, microfacet,
+                fresnel, true, true);
             const auto common = pool.common(allocated.index);
             pool.set_sample_weight(allocated.index,
                                    common.sample_weight * average(albedo));
