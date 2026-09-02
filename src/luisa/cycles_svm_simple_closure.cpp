@@ -6,6 +6,11 @@
 
 #include "cycles_svm_microfacet.h"
 
+#include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/cycles_sample_mapping.h>
+
+#include <limits>
+
 #include <luisa/dsl/sugar.h>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
@@ -43,7 +48,30 @@ inline constexpr float two_pi = 6.28318530717958647692f;
   return result;
 }
 
-}// namespace
+[[nodiscard]] Float3 oren_nayar_intensity(const OrenNayarClosure &closure,
+                                          Expr<luisa::float3> normal,
+                                          Expr<luisa::float3> view,
+                                          Expr<luisa::float3> light) noexcept {
+  const auto nl = max(dot(normal, light), 0.0f);
+  Float3 result = make_float3(0.0f);
+  $if(closure.param.b <= 0.0f) { result = make_float3(nl * inverse_pi); }
+  $else {
+    const auto nv = max(dot(normal, view), 0.0f);
+    Float t = dot(light, view) - nl * nv;
+    $if(t > 0.0f) {
+      t /= luisa::compute::max(nl, nv) + std::numeric_limits<float>::min();
+    };
+    const auto single_scatter = closure.param.a + closure.param.b * t;
+    const auto light_energy =
+        closure.param.a * pi + closure.param.b * oren_nayar_g(nl);
+    const auto multi_scatter =
+        closure.param.multiscatter_term * (1.0f - light_energy);
+    result = nl * (make_float3(single_scatter) + multi_scatter);
+  };
+  return result;
+}
+
+} // namespace
 
 OrenNayarParam oren_nayar_param(Expr<luisa::float3> color,
                                 Expr<float> normal_view,
@@ -141,4 +169,122 @@ void transparent_setup(ShaderData &shader_data, const PathState &path_state,
   };
 }
 
-}// namespace psycles::luisa_backend::cycles_svm::detail
+BsdfEvaluation bsdf_diffuse_eval(const ShaderClosureCommon &closure,
+                                 Expr<luisa::float3>,
+                                 Expr<luisa::float3> wo) noexcept {
+  const auto cosine = max(dot(closure.N, wo), 0.0f) * inverse_pi;
+  return {.value = make_float3(cosine), .pdf = cosine};
+}
+
+BsdfSample bsdf_diffuse_sample(const ShaderClosureCommon &closure,
+                               Expr<luisa::float3> Ng, Expr<luisa::float3>,
+                               Expr<luisa::float2> random) noexcept {
+  const auto hemisphere =
+      cycles_sample_mapping::sample_cosine_hemisphere(closure.N, random);
+  Float pdf = hemisphere.pdf;
+  Float3 value = make_float3(0.0f);
+  $if(dot(Ng, hemisphere.direction) > 0.0f) { value = make_float3(pdf); }
+  $else { pdf = 0.0f; };
+  return {.value = value,
+          .wo = hemisphere.direction,
+          .pdf = pdf,
+          .sampled_roughness = make_float2(1.0f),
+          .eta = 1.0f,
+          .label =
+              cycles_closure::label_reflect | cycles_closure::label_diffuse};
+}
+
+BsdfEvaluation bsdf_translucent_eval(const ShaderClosureCommon &closure,
+                                     Expr<luisa::float3>,
+                                     Expr<luisa::float3> wo) noexcept {
+  const auto cosine = max(-dot(closure.N, wo), 0.0f) * inverse_pi;
+  return {.value = make_float3(cosine), .pdf = cosine};
+}
+
+BsdfSample bsdf_translucent_sample(const ShaderClosureCommon &closure,
+                                   Expr<luisa::float3> Ng, Expr<luisa::float3>,
+                                   Expr<luisa::float2> random) noexcept {
+  const auto hemisphere =
+      cycles_sample_mapping::sample_cosine_hemisphere(-closure.N, random);
+  Float pdf = hemisphere.pdf;
+  Float3 value = make_float3(0.0f);
+  $if(dot(Ng, hemisphere.direction) < 0.0f) { value = make_float3(pdf); }
+  $else { pdf = 0.0f; };
+  return {.value = value,
+          .wo = hemisphere.direction,
+          .pdf = pdf,
+          .sampled_roughness = make_float2(1.0f),
+          .eta = 1.0f,
+          .label =
+              cycles_closure::label_transmit | cycles_closure::label_diffuse};
+}
+
+BsdfEvaluation bsdf_oren_nayar_eval(const OrenNayarClosure &closure,
+                                    Expr<luisa::float3> wi,
+                                    Expr<luisa::float3> wo) noexcept {
+  BsdfEvaluation result{.value = make_float3(0.0f), .pdf = 0.0f};
+  const auto cosine = dot(closure.common.N, wo);
+  $if(cosine > 0.0f) {
+    result.pdf = cosine * inverse_pi;
+    result.value = oren_nayar_intensity(closure, closure.common.N, wi, wo);
+  };
+  return result;
+}
+
+BsdfSample bsdf_oren_nayar_sample(const OrenNayarClosure &closure,
+                                  Expr<luisa::float3> Ng,
+                                  Expr<luisa::float3> wi,
+                                  Expr<luisa::float2> random) noexcept {
+  const auto hemisphere =
+      cycles_sample_mapping::sample_cosine_hemisphere(closure.common.N, random);
+  Float pdf = hemisphere.pdf;
+  Float3 value = make_float3(0.0f);
+  $if(dot(Ng, hemisphere.direction) > 0.0f) {
+    value = oren_nayar_intensity(closure, closure.common.N, wi,
+                                 hemisphere.direction);
+  }
+  $else { pdf = 0.0f; };
+  return {.value = value,
+          .wo = hemisphere.direction,
+          .pdf = pdf,
+          .sampled_roughness = make_float2(1.0f),
+          .eta = 1.0f,
+          .label =
+              cycles_closure::label_reflect | cycles_closure::label_diffuse};
+}
+
+BsdfEvaluation bsdf_rough_translucent_eval(const OrenNayarClosure &closure,
+                                           Expr<luisa::float3> wi,
+                                           Expr<luisa::float3> wo) noexcept {
+  return bsdf_oren_nayar_eval(closure, reflect(wi, closure.common.N), wo);
+}
+
+BsdfSample bsdf_rough_translucent_sample(const OrenNayarClosure &closure,
+                                         Expr<luisa::float3> Ng,
+                                         Expr<luisa::float3> wi,
+                                         Expr<luisa::float2> random) noexcept {
+  auto result = bsdf_oren_nayar_sample(closure, -Ng,
+                                       reflect(wi, closure.common.N), random);
+  result.label = cycles_closure::label_transmit | cycles_closure::label_diffuse;
+  return result;
+}
+
+BsdfEvaluation bsdf_transparent_eval(const ShaderClosureCommon &,
+                                     Expr<luisa::float3>,
+                                     Expr<luisa::float3>) noexcept {
+  return {.value = make_float3(0.0f), .pdf = 0.0f};
+}
+
+BsdfSample bsdf_transparent_sample(const ShaderClosureCommon &,
+                                   Expr<luisa::float3>,
+                                   Expr<luisa::float3> wi) noexcept {
+  return {.value = make_float3(1.0e6f),
+          .wo = -wi,
+          .pdf = 1.0e6f,
+          .sampled_roughness = make_float2(0.0f),
+          .eta = 1.0f,
+          .label = cycles_closure::label_transmit |
+                   cycles_closure::label_transparent};
+}
+
+} // namespace psycles::luisa_backend::cycles_svm::detail
