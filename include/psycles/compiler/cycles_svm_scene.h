@@ -39,6 +39,12 @@ struct CompiledShaderTable {
   // attribute demand from each shader rather than from the scene-wide opcode
   // union; object/particle packing must make the same distinction.
   std::vector<std::array<bool, NODE_NUM>> shader_node_types_used;
+  // Exact first-insertion-wins Shader::attributes order. Geometry merges
+  // these vectors in used-shader order before emitting its attribute map.
+  std::vector<std::vector<std::uint64_t>>
+      shader_attribute_ids_in_request_order;
+  // Sorted unique projection retained solely for membership queries. It is
+  // not a valid source for geometry attribute-map packing.
   std::vector<std::vector<std::uint64_t>> shader_attribute_ids_used;
   std::vector<std::pair<std::string, std::uint64_t>> named_attributes;
   std::vector<ImageBinding> images;

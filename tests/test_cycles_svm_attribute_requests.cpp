@@ -286,6 +286,16 @@ void test_hidden_names_do_not_renumber_svm() {
               table.named_attributes[2u].first == "MappedUV" &&
               table.named_attributes[2u].second == ATTR_STD_NUM + 2u,
           "scene attribute resolution did not defer hidden names");
+  const auto &ordered = table.shader_attribute_ids_in_request_order[0u];
+  require(
+      ordered ==
+          std::vector<std::uint64_t>{ATTR_STD_NUM + 2u, ATTR_STD_NUM,
+                                     ATTR_STD_NUM + 1u,
+                                     ATTR_STD_NORMAL_UNDISPLACED},
+      "scene compiler did not preserve Cycles shader request order");
+  require(std::ranges::is_sorted(table.shader_attribute_ids_used[0u]) &&
+              table.shader_attribute_ids_used[0u].size() == ordered.size(),
+          "shader membership projection is not sorted and lossless");
 }
 
 void test_derived_named_attribute_request() {

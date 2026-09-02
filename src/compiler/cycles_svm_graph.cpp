@@ -1288,7 +1288,8 @@ void CyclesGraph::collect_attribute_requests() {
   for (const auto &node : _nodes) {
     node->attributes(context, requests);
   }
-  _attribute_requests = requests.canonical_requests();
+  _attribute_requests.assign(requests.requests().begin(),
+                             requests.requests().end());
 }
 
 void CyclesGraph::constant_fold() {
