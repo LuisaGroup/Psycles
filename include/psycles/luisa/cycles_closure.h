@@ -33,10 +33,12 @@ inline constexpr std::uint32_t type_diffuse = 2u;
 inline constexpr std::uint32_t type_oren_nayar = 3u;
 inline constexpr std::uint32_t type_rough_translucent = 4u;
 inline constexpr std::uint32_t type_sheen = 7u;
+inline constexpr std::uint32_t type_diffuse_toon = 8u;
 inline constexpr std::uint32_t type_translucent = 9u;
 inline constexpr std::uint32_t type_microfacet_ggx = 12u;
 inline constexpr std::uint32_t type_microfacet_beckmann = 13u;
 inline constexpr std::uint32_t type_ashikhmin_velvet = 16u;
+inline constexpr std::uint32_t type_glossy_toon = 18u;
 inline constexpr std::uint32_t type_hair_reflection = 19u;
 inline constexpr std::uint32_t type_microfacet_beckmann_refraction = 20u;
 inline constexpr std::uint32_t type_microfacet_ggx_refraction = 21u;
@@ -47,6 +49,7 @@ inline constexpr std::uint32_t type_microfacet_ggx_glass = 25u;
 // Virtual SVM authoring type. Cycles' GGX setup overwrites it with
 // type_microfacet_ggx_glass before the closure becomes observable.
 inline constexpr std::uint32_t type_microfacet_multi_ggx_glass = 26u;
+inline constexpr std::uint32_t type_ray_portal = 29u;
 inline constexpr std::uint32_t type_transparent = 30u;
 inline constexpr std::uint32_t type_bssrdf_burley = 31u;
 inline constexpr std::uint32_t type_bssrdf_random_walk = 32u;

@@ -43,6 +43,14 @@ one_minus_cosine_from_angle(float angle) noexcept {
                          : 0.5f * angle * angle;
 }
 
+[[nodiscard]] inline luisa::compute::Float
+one_minus_cosine_from_angle(luisa::compute::Float angle) noexcept {
+    using namespace luisa::compute;
+    return select(0.5f * angle * angle,
+        1.0f - cos(angle),
+        angle > 0.02f);
+}
+
 // This is the Cycles square-to-disk measure-preserving map. The branch
 // at |a| == |b| and the center case are part of the mapping definition:
 // changing either changes the deterministic pairing between a

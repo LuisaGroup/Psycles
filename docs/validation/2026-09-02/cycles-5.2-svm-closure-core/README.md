@@ -725,6 +725,73 @@ The production `enable_fast_math=true` test passes on fallback, HIP, and
 strict native Vulkan XIR-to-SPIR-V. A deliberately reversed geometric normal
 and a wrong-side Oren-Nayar direction permanently lock both rejection paths.
 
+### Toon scattering checkpoint
+
+Diffuse and Glossy Toon now project Cycles' four scattering functions over
+the retained `ToonClosure` directly. The implementation reuses the shared
+Cycles concentric-disk cone map; it does not substitute the more common
+polar `(u, phi)` cone sampler. Let
+
+```text
+maximum = size
+sample_angle = min(size + smooth, pi/2)
+measure = one_minus_cos(sample_angle)
+pdf = 1 / (2*pi*measure)
+```
+
+where `one_minus_cos(a)` is exactly Cycles' piecewise definition:
+
+```text
+a > 0.02: 1 - cos(a)
+otherwise: 0.5 * a * a
+```
+
+The second-order branch is part of the sampling measure, not a numerical
+oracle trick. Setup permits `size = 1e-5*pi/2`; evaluating `1-cos(size)` in
+single precision can become zero and create an infinite PDF. The permanent
+small-cone regression instead produces finite PDF `1.29006131e9`, value equal
+to that PDF, and label 6.
+
+The support partition is copied without complement rewrites:
+
+```text
+Diffuse eval:    dot(N,wo) >= 0 and angle < sample_angle -> density
+Diffuse sample:  dot(Ng,wo) > 0                          -> label 6
+Glossy eval:     dot(N,wi) > 0 and dot(N,wo) > 0 and
+                 angle(reflect(N,wi),wo) < sample_angle  -> density
+Glossy sample:   dot(N,wi) > 0, dot(Ng,wo) > 0, and
+                 dot(N,wo) > 0                           -> label 10
+otherwise:       value=pdf=0, label 0
+```
+
+The strict `< sample_angle` boundary makes a tangent direction evaluate to
+zero when the cone is clamped to `pi/2`. The smooth shoulder retains Cycles'
+piecewise linear intensity; the oracle case one quarter through the shoulder
+has value `0.289572865` and PDF `0.386097133`.
+
+The isolated oracle directly included pinned Cycles 5.2.1
+`kernel/closure/bsdf_toon.h` and called its setup/eval/sample functions in a
+HIP kernel. It used ROCm 7.2.53211, `gfx1201`, `-O3 -ffast-math`; the source
+SHA-256 was
+`46746ad177ec4cb234d2a90a1473d30321b3f6ab1480e0f64bd2ca2e528f2d8c`
+and the executable SHA-256 was
+`38f944cce7cd0f3a30e9cf836d78c7556cdee808f5a14b601d7908ad1a7b1b40`.
+Representative outputs are:
+
+```text
+Diffuse sample: wo=(0.682372749,-0.296361089,0.668234646), pdf=0.411154330, label=6
+Glossy sample:  wo=(0.677203298,-0.421548009,0.603069663), pdf=0.246169761, label=10
+Wrong Ng:       value=pdf=0, label=0
+Backside wi:    wo=value=pdf=0, label=0
+```
+
+`test_luisa_cycles_svm_toon_scattering.cpp` freezes the oracle values, labels,
+eta/roughness outputs, smooth shoulder, tangent boundary, both rejection
+families, and small-cone measure on fallback, HIP, and strict native Vulkan
+XIR-to-SPIR-V. Ray Portal remains a disjoint integrator transition exactly as
+in Cycles: generic BSDF evaluation is zero and generic BSDF sampling is
+unreachable, so this checkpoint does not invent a portal sample function.
+
 ### Standalone BSSRDF runtime checkpoint
 
 `NODE_CLOSURE_BSDF` now consumes the exact eight-word
@@ -901,6 +968,7 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_standalone_hair_tests \
            psycles_luisa_cycles_svm_hair_scattering_tests \
            psycles_luisa_cycles_svm_simple_scattering_tests \
+           psycles_luisa_cycles_svm_toon_scattering_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_cycles_svm_ray_portal_compiler_tests \
            psycles_cycles_svm_hair_compiler_tests \
@@ -955,6 +1023,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_simple_scattering_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_toon_scattering_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -969,12 +1040,13 @@ Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
 Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, standalone
 Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
 6/6, standalone Hair setup 3/3, Hair scattering 3/3, simple scattering 3/3,
+Toon scattering 3/3,
 compiler 3/3, and Ray Portal/Hair bundle imports 2/2 passed. The scattering
 kernels were built with the production `enable_fast_math=true` setting. The
 compiler test locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 510/510 tests in 152.99 seconds. The Vulkan test
+expanded checkpoint passed 513/513 tests in 376.31 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
