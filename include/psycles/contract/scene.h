@@ -137,6 +137,10 @@ struct MaterialDesc {
     // This source identity is optional for programmatically built scenes;
     // Blender bundles exported for differential validation always carry it.
     std::optional<std::uint32_t> cycles_shader_index;
+    // Cycles Shader::pass_id, sourced from Blender Material.pass_index. This
+    // remains independent of Scene::shaders identity: the SVM Object Info
+    // node exposes it as Material Index without inspecting the shader graph.
+    std::int32_t cycles_pass_id{};
 };
 
 enum class ImageColorSpace : std::uint8_t {
@@ -348,6 +352,18 @@ struct InstanceDesc {
     // bit, but keeping the source representation prevents later adapters from
     // having to infer it from names or persistent IDs.
     bool is_blender_instance{};
+    // Raw BlenderSync Object inputs consumed by Cycles' KernelObject table.
+    // These are deliberately not folded into material parameters: Object
+    // Info and Texture Coordinate read them per instance at shader runtime.
+    Vec3f object_color{};
+    float object_alpha{};
+    std::int32_t object_pass_id{};
+    Vec3f dupli_generated{};
+    Vec2f dupli_uv{};
+    // Authored Object value. Cycles converts it to the reciprocal frequency
+    // correction while constructing KernelObject; retaining the source value
+    // keeps the scene contract lossless.
+    float shadow_terminator_shading_offset{};
 };
 
 enum class CameraProjection : std::uint8_t {
@@ -421,6 +437,17 @@ struct LightDesc {
     // CyclesLightSettings::max_bounces. This limits NEE selection of lamp
     // emitters; it does not hide a lamp reached by forward path tracing.
     std::uint32_t max_bounces{1024u};
+    // Analytic lamps are ordinary entries in Cycles' scene->objects vector.
+    // Their light color/power above is distinct from these Object Info fields.
+    Vec3f object_color{};
+    float object_alpha{};
+    std::int32_t object_pass_id{};
+    float object_random{};
+    std::uint32_t particle_index{};
+    Vec3f dupli_generated{};
+    Vec2f dupli_uv{};
+    float shadow_terminator_shading_offset{};
+    float shadow_terminator_geometry_offset{0.1f};
 };
 
 struct EnvironmentSunDesc {
@@ -492,6 +519,11 @@ struct SceneSnapshot {
     // shader index retained by MaterialDesc.
     std::optional<std::uint32_t>
         cycles_background_object_index;
+    // Size of Cycles' dense scene->objects device domain. It includes source
+    // objects that Psycles cannot render and therefore has no InstanceDesc
+    // for. Explicit source object indices must be interpreted in this domain,
+    // never compacted around the omitted entries.
+    std::optional<std::uint32_t> cycles_object_count;
     std::optional<EnvironmentDesc> environment;
     ShaderColorSpace shader_color_space;
     // Preserve Cycles' world-light policy independently from the raw world

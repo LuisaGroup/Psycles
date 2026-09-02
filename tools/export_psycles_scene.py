@@ -1149,9 +1149,56 @@ def _cycles_object_ao_distance(object_instance: Any) -> float:
     return max(result, 0.0)
 
 
+def _cycles_shadow_terminator_value(
+    obj: Any,
+    name: str,
+    fallback: float,
+) -> float:
+    """Read the Blender 5.2 Object property with an older-API fallback."""
+
+    if hasattr(obj, name):
+        return float(getattr(obj, name))
+    return float(getattr(getattr(obj, "cycles", None), name, fallback))
+
+
+def _cycles_object_properties(object_instance: Any) -> dict[str, Any]:
+    """Return the raw Object fields copied by BlenderSync::sync_object."""
+
+    obj = object_instance.object
+    if object_instance.is_instance:
+        orco = object_instance.orco
+        dupli_generated = [
+            0.5 * float(orco[axis]) - 0.5 for axis in range(3)
+        ]
+        uv = object_instance.uv
+        dupli_uv = [float(uv[0]), float(uv[1])]
+    else:
+        dupli_generated = [0.0, 0.0, 0.0]
+        dupli_uv = [0.0, 0.0]
+    object_color = tuple(float(component) for component in obj.color)
+    return {
+        "object_color": list(object_color[:3]),
+        "object_alpha": object_color[3],
+        "object_pass_id": int(obj.pass_index),
+        "dupli_generated": dupli_generated,
+        "dupli_uv": dupli_uv,
+        "shadow_terminator_shading_offset": (
+            _cycles_shadow_terminator_value(
+                obj, "shadow_terminator_shading_offset", 0.0
+            )
+        ),
+        "shadow_terminator_geometry_offset": (
+            _cycles_shadow_terminator_value(
+                obj, "shadow_terminator_geometry_offset", 0.1
+            )
+        ),
+    }
+
+
 def _light(
     obj: Any,
     *,
+    object_instance: Any,
     transform: Any | None = None,
     visibility: dict[str, bool] | None = None,
     is_shadow_catcher: bool = False,
@@ -1214,6 +1261,14 @@ def _light(
             }
         ),
         "is_shadow_catcher": is_shadow_catcher,
+        **_cycles_object_properties(object_instance),
+        "random_id": int(
+            object_instance.random_id
+            if object_instance.is_instance
+            else _cycles_object_random_id(obj.name)
+        )
+        & cycles_hash.UINT32_MASK,
+        "particle_index": _cycles_particle_index(object_instance),
         "cycles_sync": cycles_sync,
         "node_tree": (
             _tree(light.node_tree, light=True)
@@ -1255,7 +1310,6 @@ def _instance_ray_visibility(
 
 def _geometry_instance(
     object_instance: Any,
-    original: Any,
     geometry_type: str,
     geometry_index: int,
     cycles_object_index: int,
@@ -1280,9 +1334,7 @@ def _geometry_instance(
             else _cycles_object_random_id(object_instance.object.name)
         )
         & cycles_hash.UINT32_MASK,
-        "shadow_terminator_geometry_offset": float(
-            original.cycles.shadow_terminator_geometry_offset
-        ),
+        **_cycles_object_properties(object_instance),
         "ambient_occlusion_distance": _cycles_object_ao_distance(
             object_instance
         ),
@@ -1411,6 +1463,7 @@ def _export_scene(
                 lights.append(
                     _light(
                         obj,
+                        object_instance=object_instance,
                         transform=object_instance.matrix_world,
                         visibility=_instance_ray_visibility(
                             object_instance
@@ -1424,6 +1477,10 @@ def _export_scene(
                                 object_instance, light_groups
                             ),
                             "shader_index": light_shader_index,
+                            # BlenderSync only assigns Shader::pass_id to
+                            # material shaders. Lamp shaders retain Cycles'
+                            # default zero pass ID.
+                            "pass_id": 0,
                         },
                     )
                 )
@@ -1459,7 +1516,6 @@ def _export_scene(
                     instances.append(
                         _geometry_instance(
                             object_instance,
-                            original,
                             "MESH",
                             geometry_index,
                             source_object_index,
@@ -1507,7 +1563,6 @@ def _export_scene(
                     instances.append(
                         _geometry_instance(
                             object_instance,
-                            original,
                             "CURVE",
                             curve_geometry_index,
                             hair_object_index,
@@ -1650,7 +1705,10 @@ def _export_scene(
                     )
                 ),
                 "cycles_sync": (
-                    {"shader_index": shader_index}
+                    {
+                        "shader_index": shader_index,
+                        "pass_id": int(material.pass_index),
+                    }
                     if shader_index is not None
                     else None
                 ),
@@ -1709,6 +1767,11 @@ def _export_scene(
 
     payload = {
         "schema": "psycles.blender-scene.v2",
+        "cycles_sync": {
+            "object_count": cycles_object_index + (
+                1 if scene.world is not None else 0
+            ),
+        },
         "source": bpy.data.filepath,
         "blender": bpy.app.version_string,
         "blender_build": blender_build_identity.current(bpy.app),
@@ -1816,6 +1879,7 @@ def _export_scene(
                 },
                 "cycles_sync": {
                     "shader_index": _CYCLES_BACKGROUND_SHADER_INDEX,
+                    "pass_id": 0,
                     # BlenderSync creates the background-light object after
                     # dependency-graph geometry and analytic lights.
                     "object_index": cycles_object_index,

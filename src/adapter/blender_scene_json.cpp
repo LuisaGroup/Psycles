@@ -132,6 +132,18 @@ optional_unsigned_number(yyjson_val *value) noexcept {
         number(yyjson_arr_get(value, 2u), fallback.z)};
 }
 
+[[nodiscard]] Vec2f float2(
+    yyjson_val *value,
+    Vec2f fallback) noexcept {
+    if (value == nullptr || !yyjson_is_arr(value) ||
+        yyjson_arr_size(value) < 2u) {
+        return fallback;
+    }
+    return {
+        number(yyjson_arr_get(value, 0u), fallback.x),
+        number(yyjson_arr_get(value, 1u), fallback.y)};
+}
+
 [[nodiscard]] Mat4f matrix(yyjson_val *value) noexcept {
     Mat4f result{};
     if (value == nullptr || !yyjson_is_arr(value) ||
