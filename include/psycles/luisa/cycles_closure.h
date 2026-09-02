@@ -37,6 +37,7 @@ inline constexpr std::uint32_t type_diffuse_toon = 8u;
 inline constexpr std::uint32_t type_translucent = 9u;
 inline constexpr std::uint32_t type_microfacet_ggx = 12u;
 inline constexpr std::uint32_t type_microfacet_beckmann = 13u;
+inline constexpr std::uint32_t type_ashikhmin_shirley = 15u;
 inline constexpr std::uint32_t type_ashikhmin_velvet = 16u;
 inline constexpr std::uint32_t type_glossy_toon = 18u;
 inline constexpr std::uint32_t type_hair_reflection = 19u;

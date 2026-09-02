@@ -487,4 +487,16 @@ sin_squared_to_one_minus_cosine(
     return make_float3(radius * cos(phi), radius * sin(phi), z);
 }
 
+// Exact Cycles spherical_cos_to_direction convention. The caller supplies
+// cos(theta), not theta; keeping this helper explicit prevents closure
+// samplers from silently exchanging the polar axis or recomputing acos.
+[[nodiscard]] inline luisa::compute::Float3 spherical_cos_to_direction(
+    luisa::compute::Float cosine,
+    luisa::compute::Float azimuth) noexcept {
+    using namespace luisa::compute;
+    const auto sine = sqrt(max(1.0f - cosine * cosine, 0.0f));
+    return make_float3(
+        sine * cos(azimuth), sine * sin(azimuth), cosine);
+}
+
 } // namespace psycles::luisa_backend::cycles_sample_mapping
