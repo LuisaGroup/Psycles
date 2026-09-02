@@ -94,8 +94,8 @@ int main(int argc, char **argv) {
         device.create_buffer<luisa::float4>(inputs.size());
     auto bitangent_buffer =
         device.create_buffer<luisa::float4>(inputs.size());
-    auto ggx_buffer = device.create_buffer<luisa::float4>(1u);
-    auto beckmann_buffer = device.create_buffer<luisa::float4>(2u);
+    auto ggx_buffer = device.create_buffer<luisa::float4>(2u);
+    auto beckmann_buffer = device.create_buffer<luisa::float4>(3u);
 
     Kernel1D evaluate = [](BufferFloat4 input,
                             BufferFloat2 random,
@@ -129,10 +129,20 @@ int main(int argc, char **argv) {
                         0.04747750982642174f, 0.6334579586982727f));
             ggx.write(0u, make_float4(ggx_direction, 0.0f));
 
+            const auto sample_random = make_float2(0.37f, 0.73f);
+            // Cycles' lensq <= 1e-7 branch fixes both local basis vectors.
+            // Building basis_y from cross(wi_, basis_x) instead gives a
+            // different sample for a merely near-normal incoming direction.
+            const auto near_normal =
+                normalize(make_float3(0.0002f, 0.0001f, 1.0f));
+            const auto local_ggx =
+                sample_mapping::sample_ggx_visible_normal_local(
+                    near_normal, 0.4f, 0.7f, sample_random);
+            ggx.write(1u, make_float4(local_ggx, 0.0f));
+
             const auto normal = make_float3(0.0f, 0.0f, 1.0f);
             const auto oblique_incoming =
                 normalize(make_float3(0.9539392f, 0.0f, 0.3f));
-            const auto sample_random = make_float2(0.37f, 0.73f);
             const auto oblique_half =
                 sample_mapping::sample_beckmann_visible_normal(
                     normal, oblique_incoming, 0.64f, sample_random);
@@ -147,6 +157,10 @@ int main(int argc, char **argv) {
             const auto normal_direction =
                 2.0f * dot(normal, normal_half) * normal_half - normal;
             beckmann.write(1u, make_float4(normal_direction, 0.0f));
+            const auto local_normal_half =
+                sample_mapping::sample_beckmann_visible_normal_local(
+                    normal, 0.64f, 0.64f, sample_random);
+            beckmann.write(2u, make_float4(local_normal_half, 0.0f));
         };
     };
     auto shader = device.compile(evaluate);
@@ -154,8 +168,8 @@ int main(int argc, char **argv) {
     std::array<luisa::float4, sample_cases.size()> samples{};
     std::array<luisa::float4, sample_cases.size()> tangents{};
     std::array<luisa::float4, sample_cases.size()> bitangents{};
-    std::array<luisa::float4, 1u> ggx{};
-    std::array<luisa::float4, 2u> beckmann{};
+    std::array<luisa::float4, 2u> ggx{};
+    std::array<luisa::float4, 3u> beckmann{};
     stream << input_buffer.copy_from(luisa::span{inputs})
            << random_buffer.copy_from(luisa::span{randoms})
            << shader(input_buffer,
@@ -218,16 +232,21 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
-    constexpr auto expected_ggx_direction =
+    constexpr std::array expected_ggx_directions{
         luisa::float3{-0.3878505229949951f,
             0.9008376598358154f,
-            -0.1950989067554474f};
-    if (!approximately_equal(ggx[0u].xyz(), expected_ggx_direction)) {
-        const auto actual = ggx[0u].xyz();
-        std::cerr << "Cycles GGX VNDF mapping failed on " << backend
-                  << ": direction {" << actual.x << ", " << actual.y
-                  << ", " << actual.z << "}\n";
-        return EXIT_FAILURE;
+            -0.1950989067554474f},
+        luisa::float3{-0.0842477456f, 0.310166359f, 0.946942031f}};
+    for (std::size_t index = 0u;
+         index < expected_ggx_directions.size(); ++index) {
+        if (!approximately_equal(
+                ggx[index].xyz(), expected_ggx_directions[index])) {
+            const auto actual = ggx[index].xyz();
+            std::cerr << "Cycles GGX VNDF mapping failed on " << backend
+                      << " for case " << index << ": direction {" << actual.x
+                      << ", " << actual.y << ", " << actual.z << "}\n";
+            return EXIT_FAILURE;
+        }
     }
 
     // Fixed current-Cycles VNDF samples cover both the oblique root solve and
@@ -235,7 +254,8 @@ int main(int argc, char **argv) {
     // random numbers to different rays despite having the right marginal D.
     constexpr std::array expected_beckmann_directions{
         luisa::float3{-0.368741920f, -0.324739778f, 0.870961235f},
-        luisa::float3{0.716639308f, 0.555882428f, 0.421215894f}};
+        luisa::float3{0.716639308f, 0.555882428f, 0.421215894f},
+        luisa::float3{0.0674229935f, 0.533709824f, 0.842975616f}};
     for (std::size_t index = 0u;
          index < expected_beckmann_directions.size(); ++index) {
         if (!approximately_equal(beckmann[index].xyz(),
