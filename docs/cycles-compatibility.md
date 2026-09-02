@@ -706,6 +706,11 @@ unchanged Barbershop graph. Arbitrary float/vector attributes and the OBJECT,
 INSTANCER, and VIEW_LAYER modes remain pending, so this is deliberately not
 classified as `cycles_verified`. Reports and visually inspected triptychs are
 in [`validation/2026-08-04/geometry-attribute`](validation/2026-08-04/geometry-attribute/README.md).
+The Cycles 5.2 SVM migration additionally preserves the original
+CORNER/BYTE_COLOR `uchar4` payload and Blender default-color identity in the
+scene contract. The scene-linear float4 projection remains only for the
+legacy expanded route; native SVM attribute fetch must consume the byte
+payload and perform Cycles' device-side conversion.
 
 Geometry Pointiness now follows Cycles' mesh-sync construction instead of
 using a triangle-normal curvature approximation or a material-side bake. The

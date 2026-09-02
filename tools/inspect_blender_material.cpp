@@ -752,25 +752,31 @@ int main(int argc, char **argv) {
         }
         return EXIT_SUCCESS;
     }
-    if (argc != 3 && argc != 4) {
+    if (argc < 3) {
         std::cerr
             << "usage: psycles_inspect_blender_material "
                "<export-directory> <material-name> "
                "[--require-generated-transform|"
-               "--require-pointiness-source]\n";
+               "--require-pointiness-source|"
+               "--require-default-cycles-byte-color ...]\n";
         return EXIT_FAILURE;
     }
-    const auto option =
-        argc == 4 ? std::string_view{argv[3]} : std::string_view{};
-    const auto require_generated_transform =
-        option == "--require-generated-transform";
-    const auto require_pointiness_source =
-        option == "--require-pointiness-source";
-    if (argc == 4 && !require_generated_transform &&
-        !require_pointiness_source) {
-        std::cerr
-            << "unknown option: " << argv[3] << '\n';
-        return EXIT_FAILURE;
+    auto require_generated_transform = false;
+    auto require_pointiness_source = false;
+    auto require_default_cycles_byte_color = false;
+    for (auto index = 3; index < argc; ++index) {
+        const auto option = std::string_view{argv[index]};
+        if (option == "--require-generated-transform") {
+            require_generated_transform = true;
+        } else if (option == "--require-pointiness-source") {
+            require_pointiness_source = true;
+        } else if (option == "--require-default-cycles-byte-color") {
+            require_default_cycles_byte_color = true;
+        } else {
+            std::cerr
+                << "unknown option: " << argv[index] << '\n';
+            return EXIT_FAILURE;
+        }
     }
     auto imported =
         psycles::adapter::load_blender_scene_bundle(argv[1]);
@@ -861,6 +867,47 @@ int main(int argc, char **argv) {
         }
         if (!found_source) {
             std::cerr << "scene has no Cycles Pointiness source\n";
+            return EXIT_FAILURE;
+        }
+    }
+    if (require_default_cycles_byte_color) {
+        auto found_source = false;
+        auto found_default_source = false;
+        for (const auto &[geometry_id, geometry] :
+             imported.scene->geometries) {
+            static_cast<void>(geometry_id);
+            for (const auto &[name, raw] :
+                 geometry.cycles_byte_color_attributes) {
+                found_source = true;
+                const auto legacy =
+                    geometry.color_attributes.find(name);
+                if (raw.domain !=
+                        psycles::contract::MeshAttributeDomain::corner ||
+                    raw.values.empty() ||
+                    legacy == geometry.color_attributes.end() ||
+                    legacy->second.domain != raw.domain ||
+                    legacy->second.values.size() != raw.values.size()) {
+                    std::cerr
+                        << "geometry '" << geometry.name
+                        << "' has an invalid Cycles BYTE_COLOR source '"
+                        << name << "'\n";
+                    return EXIT_FAILURE;
+                }
+            }
+            if (geometry.default_color_attribute &&
+                geometry.cycles_byte_color_attributes.contains(
+                    *geometry.default_color_attribute)) {
+                found_default_source = true;
+            }
+        }
+        if (!found_source) {
+            std::cerr
+                << "scene has no lossless Cycles BYTE_COLOR source\n";
+            return EXIT_FAILURE;
+        }
+        if (!found_default_source) {
+            std::cerr
+                << "scene has no default Cycles BYTE_COLOR source\n";
             return EXIT_FAILURE;
         }
     }

@@ -226,6 +226,19 @@ struct TriangleMeshDesc {
     // BYTE_COLOR conversion therefore matches Cycles before device upload.
     std::map<std::string, MeshAttribute<Vec4f>, std::less<>>
         color_attributes;
+    // Cycles keeps CORNER/BYTE_COLOR in its original four-byte storage and
+    // performs sRGB plus working-space conversion in the attribute fetch.
+    // The parallel scene-linear map above remains available to the legacy
+    // expanded path during the SVM migration; this map is the lossless source
+    // for the native attributes_uchar4 table.
+    std::map<
+        std::string,
+        MeshAttribute<std::array<std::uint8_t, 4u>>,
+        std::less<>>
+        cycles_byte_color_attributes;
+    // Blender's ID-level default color name, used by Cycles to bind
+    // ATTR_STD_VERTEX_COLOR independently from explicitly named requests.
+    std::optional<std::string> default_color_attribute;
     std::optional<MeshPointinessSource> pointiness_source;
     std::vector<std::array<std::uint32_t, 3u>> triangles;
     std::vector<MaterialId> material_slots;
