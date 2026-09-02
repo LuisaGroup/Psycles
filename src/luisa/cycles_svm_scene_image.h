@@ -2,6 +2,7 @@
 
 #include <psycles/compiler/cycles_svm_compiler.h>
 #include <psycles/compiler/cycles_svm_geometry_scene.h>
+#include <psycles/compiler/cycles_svm_object_scene.h>
 #include <psycles/contract/scene.h>
 
 #include <cstddef>
@@ -32,6 +33,32 @@ struct CyclesSvmGeometrySceneImage {
   std::vector<compiler::cycles_svm::packed_uint3> triangle_vertex_indices;
   std::vector<compiler::cycles_svm::KernelCurve> curves;
 };
+
+// Dense, hole-preserving projection of Cycles' scene->objects and
+// DeviceScene::object_flag arrays. Unsupported source objects remain zero
+// records at their exact source indices; represented objects are finalized
+// only against the post-displacement geometry image above.
+struct CyclesSvmObjectSceneImage {
+  bool valid{};
+  std::string diagnostic;
+  std::vector<compiler::cycles_svm::KernelObject> objects;
+  std::vector<std::uint32_t> object_flags;
+};
+
+[[nodiscard]] constexpr std::int32_t cycles_svm_curve_primitive_type(
+    contract::CurveShape shape) noexcept {
+  using enum contract::CurveShape;
+  using namespace compiler::cycles_svm;
+  switch (shape) {
+  case ribbon:
+    return PRIMITIVE_CURVE_RIBBON;
+  case thick:
+    return PRIMITIVE_CURVE_THICK;
+  case thick_linear:
+    return PRIMITIVE_CURVE_THICK_LINEAR;
+  }
+  return PRIMITIVE_NONE;
+}
 
 // Device projection of one Cycles ImageManager handle. The source texture
 // identity and its immutable sampler are deliberately separate: equal source

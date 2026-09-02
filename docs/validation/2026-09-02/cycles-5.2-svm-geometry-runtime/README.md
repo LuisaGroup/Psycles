@@ -2,11 +2,12 @@
 
 ## Scope
 
-This checkpoint installs the exact post-displacement geometry image in the
-production Luisa scene runtime and uploads each Cycles `DeviceScene` array as
-its native element type. It does not switch the production shade-surface route:
-the exact `KernelObject`, `ShaderData`, and closure-pool adapter remains the
-next boundary.
+This checkpoint installs the exact post-displacement geometry image and the
+dense, hole-preserving `KernelObject`/`object_flag` image in the production
+Luisa scene runtime. Every Cycles `DeviceScene` array is uploaded as its native
+element type. It does not switch the production shade-surface route: exposing
+these arrays through `KernelGlobals` and constructing exact `ShaderData` and
+closure-pool state remain the next boundary.
 
 The reference is Blender Cycles 5.2.1 commit
 `9e2066aef7ef7e20c142ad7bd3303138a4304c93`.
@@ -14,30 +15,82 @@ The reference is Blender Cycles 5.2.1 commit
 ## Formal construction boundary
 
 Let `S` be the scene snapshot, `D(S)` the final mesh data after displacement,
-and `I(S, D)` the native Cycles geometry image. Scene compilation now enforces
-the state transition
+`G(S, D)` the native Cycles geometry image, and `O(S, G)` the native object
+image derived from that finalized geometry. Scene compilation now enforces the
+single transaction
 
 ```text
-unfinalized -> valid(I) -> installed(I) -> uploaded(I)
+unfinalized -> valid(G, O) -> allocated(G, O) -> installed(G, O)
+            -> uploaded(G, O)
 ```
 
 with these invariants:
 
-1. `I` is built only after displacement has finalized every mesh upload.
+1. `G` is built only after displacement has finalized every mesh upload, and
+   `O` is built only from that exact `G`.
 2. Curve and triangle primitive offsets come from the single production
    interval resolvers; the adapter never reconstructs a second address space.
-3. Validation and all buffer allocations complete before the runtime pointer is
-   installed. A rejected construction therefore leaves the runtime null.
-4. A runtime can be finalized exactly once, so no consumer can retain buffers
-   from one image while observing host tables from another.
+3. Validation and every geometry/object buffer allocation complete before
+   either runtime pointer is installed. A rejected construction therefore
+   leaves both pointers null.
+4. A runtime can be finalized exactly once, so no consumer can retain object
+   records from one image while observing geometry tables from another.
 5. Host arrays preserve their exact semantic extent. Luisa's non-zero buffer
    allocation requirement is represented only on the device by one unreachable,
    zero-initialized sentinel for an empty semantic array.
 
 The uploaded arrays retain the native Cycles types: `AttributeMap`, scalar
 float, packed float2/3/4, byte RGBA, octahedral packed normal, triangle vertex,
-curve key, point, packed triangle index, and `KernelCurve`. No common float4
-payload or renderer-specific rebaking is introduced.
+curve key, point, packed triangle index, `KernelCurve`, the 256-byte
+`KernelObject`, and its separate 32-bit flag word. No common float4 payload or
+renderer-specific rebaking is introduced.
+
+## Dense object image
+
+Let `D_o = [0, N)` be the source `Scene::objects` domain, `R` the represented
+instances/lights/background, and `f : R -> D_o` the previously validated
+injective identity map. Object construction is the total dense image
+
+```text
+O[i] = 0                                                    if i is not in image(f)
+O[f(r)] = finalize(prepare(raw_object_state(r)), G[g(r)])   otherwise
+```
+
+where `g(r)` is the represented geometry for an instance and an empty geometry
+descriptor for a lamp/background object. Thus unsupported source objects remain
+byte-zero holes; they are never compacted or fabricated. Raw object state
+includes the source random word, particle-table index, asset/name identity,
+object color/alpha/pass, transforms, visibility, terminator offsets, and flags.
+Geometry-owned counts, primitive type, attribute-map/position/normal offsets,
+and static-transform state come only from the finalized geometry image.
+
+The six-bit scene visibility domain maps to Cycles' seven low bits by mapping
+`shadow` to both `SHADOW_OPAQUE` and `SHADOW_TRANSPARENT`; the shadow-catcher
+high-bit copy is applied only by Cycles object finalization. Legacy all-ones
+visibility is normalized to the complete six-bit contract before this map.
+
+For each geometry `g`, `has_volume(g)` is the union of volume roots from every
+base material slot and every override of every instance sharing `g`, matching
+`Geometry::used_shaders`. With final world-space bounds `B(o)`, the second flag
+is defined exactly by
+
+```text
+intersects_volume(o) = exists v != o:
+    has_volume(v) and intersects(B(o), B(v))
+```
+
+Mesh bounds consume the post-displacement accelerator position image. Curve
+bounds and procedural AABBs now share one segment enumerator and Cycles 5.2.1's
+exact structural rule: float Catmull--Rom positional extrema plus the maximum
+radius of the two active segment endpoints. The implementation deliberately
+retains Cycles' `cubic_coefficient != 0` derivative-root branch rather than
+inventing a separate mathematically tighter quadratic case.
+
+Two source relations are rejected rather than silently erased. A scene with
+native light/shadow linking cannot use all-set defaults, and an object-motion
+scene cannot use zero motion offsets until those native tables are present.
+Both capability gates are source-derived; renderer-authored scenes without the
+features remain valid.
 
 ## Static-transform image
 
@@ -105,8 +158,11 @@ strict native-XIR Vulkan that:
   geometry shader domain without entering the legacy material library;
 - deliberately reversed `MaterialId` and source shader order assigns named
   attribute IDs in Cycles shader order;
-- typed attribute maps, finalized vertices, packed normals, and global triangle
-  indices survive device upload; and
+- typed attribute maps, finalized vertices, packed normals, global triangle
+  indices, full `KernelObject` records, and object flags survive device upload;
+- an actual DSL kernel reads nested transform, float, 16-bit, 32-bit, and
+  64-bit object fields, preventing a raw-byte-copy-only test from masking a
+  reflection or native code-generation failure; and
 - every empty semantic array receives a deterministic unreachable zero device
   sentinel.
 
@@ -115,11 +171,19 @@ used-shader root set, including unused geometry slots, instance overrides,
 analytic lights, and the world. Existing host geometry-image tests continue to
 cover typed packing and rejected source states.
 
-The host geometry regression additionally uses a reflected, non-uniform,
+The host geometry/object regression additionally uses a reflected, non-uniform,
 non-diagonal transform. It freezes world-space triangle vertices,
 inverse-transpose packed normals, and unchanged object-space tangents, and
 rejects missing accelerator images, permuted instance plans, and static
 transforms applied to shared geometry.
+
+Its dense-object fixture freezes sparse holes, raw object state, exact
+visibility expansion, particle-prefix lookup, finalized mesh/curve offsets,
+lamp/background records, and geometry-level volume flags. A non-degenerate
+Catmull--Rom overshoot intersects a post-displacement mesh only outside the
+authored key bounds, proving that volume classification consumes the same
+curve bounds as production traversal. Separate importer/exporter tests freeze
+the world asset identity and detect source light-linking use.
 
 Validation commands:
 
@@ -137,7 +201,7 @@ Result:
 
 ```text
 psycles.luisa_cycles_svm_geometry_runtime_fallback  Passed  0.02 sec
-psycles.luisa_cycles_svm_geometry_runtime_hip       Passed  0.09 sec
+psycles.luisa_cycles_svm_geometry_runtime_hip       Passed  0.08 sec
 psycles.luisa_cycles_svm_geometry_runtime_vk        Passed  0.04 sec
 100% tests passed, 0 tests failed out of 3
 ```
@@ -157,10 +221,16 @@ After adding the static-transform image invariant, a fresh 32-thread build and
 the seven directly affected host/device tests passed. The full suite was then
 rerun with strict native-XIR Vulkan enabled: 547/547 passed in 17.44 seconds.
 
+After completing the dense object image and device field-read canary, another
+32-thread build and strict native-XIR Vulkan full run passed 547/547 tests in
+16.78 seconds. This run also includes the Blender 5.2 light-link capability
+fixture, the shared curve-bounds regression, source-size enforcement, fallback,
+HIP, and Vulkan typed-object execution.
+
 ## Next boundary
 
-The geometry buffers are deliberately not consumed by the old expanded surface
-evaluator. The next structural increment must finalize the exact `KernelObject`
-records from this installed geometry image, expose these typed buffers through
-the production `KernelGlobals` provider, construct exact `ShaderData` and
-closure-pool state, and only then switch the shade-surface route.
+The geometry and object buffers are deliberately not consumed by the old
+expanded surface evaluator. The next structural increment must expose these
+typed buffers through the production `KernelGlobals` provider, construct exact
+`ShaderData` and closure-pool state from them, and only then switch the
+shade-surface route.

@@ -2,10 +2,12 @@
 #include "path_tracer_scene_geometry.h"
 
 #include <psycles/compiler/core_nodes.h>
+#include <psycles/luisa/cycles_svm.h>
 
 #include <array>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <map>
 #include <string>
@@ -115,6 +117,69 @@ void verify_attribute_map(const std::vector<AttributeMap> &actual,
   }
 }
 
+void verify_kernel_object_shader_view(Device &device, Stream &stream,
+                                      Buffer<KernelObject> &object_buffer,
+                                      const KernelObject &expected) {
+  // A raw copy only proves the host-side buffer extent. Read one value from
+  // every scalar-width/layout class through the DSL so this test also guards
+  // KernelObject reflection and native backend field addressing.
+  Kernel1D inspect = [](BufferVar<KernelObject> objects,
+                        BufferFloat4 float_fields, BufferUInt4 integer_fields,
+                        BufferULong wide_fields) noexcept {
+    const auto object = objects.read(0u);
+    float_fields.write(0u, make_float4(object.tfm.x.x, object.tfm.y.w,
+                                       object.color.z, object.ao_distance));
+    integer_fields.write(0u, make_uint4(cast<uint>(object.num_geom_steps),
+                                        cast<uint>(object.numverts),
+                                        object.visibility,
+                                        cast<uint>(object.primitive_type)));
+    wide_fields.write(0u, cast<luisa::ulong>(object.light_set_membership));
+    wide_fields.write(1u, cast<luisa::ulong>(object.shadow_set_membership));
+  };
+
+  auto float_buffer = device.create_buffer<luisa::float4>(1u);
+  auto integer_buffer = device.create_buffer<luisa::uint4>(1u);
+  auto wide_buffer = device.create_buffer<luisa::ulong>(2u);
+  auto shader = device.compile(inspect);
+  auto probe = expected;
+  probe.tfm.x.x = 1.25f;
+  probe.tfm.y.w = -2.5f;
+  probe.color.z = 0.75f;
+  probe.ao_distance = 0.625f;
+  probe.num_geom_steps = 0x4321u;
+  probe.numverts = 0x01234567;
+  probe.visibility = 0x89abcdefu;
+  probe.primitive_type = 0x76543210;
+  probe.light_set_membership = 0x1020304050607080ull;
+  probe.shadow_set_membership = 0x8172635445362718ull;
+  const std::array probe_records{probe};
+  std::array<luisa::float4, 1u> float_fields{};
+  std::array<luisa::uint4, 1u> integer_fields{};
+  std::array<luisa::ulong, 2u> wide_fields{};
+  stream << object_buffer.copy_from(luisa::span{probe_records})
+         << shader(object_buffer, float_buffer, integer_buffer, wide_buffer)
+                .dispatch(1u)
+         << float_buffer.copy_to(luisa::span{float_fields})
+         << integer_buffer.copy_to(luisa::span{integer_fields})
+         << wide_buffer.copy_to(luisa::span{wide_fields}) << synchronize();
+
+  require(float_fields[0u].x == probe.tfm.x.x &&
+              float_fields[0u].y == probe.tfm.y.w &&
+              float_fields[0u].z == probe.color.z &&
+              float_fields[0u].w == probe.ao_distance,
+          "device KernelObject float/nested-transform view changed");
+  require(integer_fields[0u].x == probe.num_geom_steps &&
+              integer_fields[0u].y ==
+                  static_cast<std::uint32_t>(probe.numverts) &&
+              integer_fields[0u].z == probe.visibility &&
+              integer_fields[0u].w ==
+                  static_cast<std::uint32_t>(probe.primitive_type),
+          "device KernelObject 16/32-bit field view changed");
+  require(wide_fields[0u] == probe.light_set_membership &&
+              wide_fields[1u] == probe.shadow_set_membership,
+          "device KernelObject 64-bit field view changed");
+}
+
 void test_runtime(Device &device) {
   constexpr GeometryId geometry_id{2u};
   auto scene = std::make_shared<LuisaSceneData>();
@@ -150,26 +215,30 @@ void test_runtime(Device &device) {
       build_cycles_instance_intersection_plan(snapshot, {});
 
   const std::map<GeometryId, std::uint32_t> missing_offsets;
-  require(!finalize_cycles_svm_geometry_runtime(
+  require(!finalize_cycles_svm_scene_runtime(
               scene, snapshot, intersection_plans, uploads, resources,
               missing_offsets, no_curve_offsets, diagnostic) &&
-              scene->cycles_svm->geometry == nullptr,
-          "rejected geometry transaction installed a partial runtime");
-  require(finalize_cycles_svm_geometry_runtime(
+              scene->cycles_svm->geometry == nullptr &&
+              scene->cycles_svm->objects == nullptr,
+          "rejected scene transaction installed a partial runtime");
+  require(finalize_cycles_svm_scene_runtime(
               scene, snapshot, intersection_plans, uploads, resources,
               primitive_offsets, no_curve_offsets, diagnostic),
           diagnostic);
-  auto *const installed = scene->cycles_svm->geometry.get();
-  require(installed != nullptr && installed->image.valid,
-          "valid geometry transaction was not installed");
-  require(!finalize_cycles_svm_geometry_runtime(
+  auto *const installed_geometry = scene->cycles_svm->geometry.get();
+  auto *const installed_objects = scene->cycles_svm->objects.get();
+  require(installed_geometry != nullptr && installed_geometry->image.valid &&
+              installed_objects != nullptr && installed_objects->image.valid,
+          "valid geometry/object transaction was not installed");
+  require(!finalize_cycles_svm_scene_runtime(
               scene, snapshot, intersection_plans, uploads, resources,
               primitive_offsets, no_curve_offsets, diagnostic) &&
-              scene->cycles_svm->geometry.get() == installed,
+              scene->cycles_svm->geometry.get() == installed_geometry &&
+              scene->cycles_svm->objects.get() == installed_objects,
           "duplicate finalization replaced the installed transaction");
 
   auto stream = device.create_stream();
-  upload_cycles_svm_geometry_runtime(stream, *scene->cycles_svm);
+  upload_cycles_svm_scene_runtime(stream, *scene->cycles_svm);
   auto &geometry = *scene->cycles_svm->geometry;
   const auto attribute_map = download(stream, geometry.attribute_map_buffer);
   const auto attribute_float =
@@ -191,6 +260,9 @@ void test_runtime(Device &device) {
   const auto triangle_indices =
       download(stream, geometry.triangle_index_buffer);
   const auto curves = download(stream, geometry.curve_buffer);
+  auto &objects = *scene->cycles_svm->objects;
+  const auto object_records = download(stream, objects.object_buffer);
+  const auto object_flags = download(stream, objects.object_flag_buffer);
 
   const auto &image = geometry.image;
   verify_attribute_map(attribute_map, image.attributes.attribute_map);
@@ -223,6 +295,19 @@ void test_runtime(Device &device) {
           curves[0u].shader_id == 0 && curves[0u].first_key == 0 &&
           curves[0u].num_keys == 0 && curves[0u].type == 0,
       "empty semantic arrays did not upload unreachable zero sentinels");
+
+  require(object_records.size() == objects.image.objects.size() &&
+              object_flags == objects.image.object_flags &&
+              std::memcmp(object_records.data(), objects.image.objects.data(),
+                          object_records.size() * sizeof(KernelObject)) == 0,
+          "typed KernelObject/object_flag upload changed the host image");
+  require(object_records.size() == 1u && object_records[0u].numverts == 3 &&
+              object_records[0u].numprims == 1 &&
+              object_records[0u].primitive_type == PRIMITIVE_TRIANGLE &&
+              (object_flags[0u] & SD_OBJECT_TRANSFORM_APPLIED) != 0u,
+          "runtime object image did not retain finalized mesh state");
+  verify_kernel_object_shader_view(device, stream, objects.object_buffer,
+                                   objects.image.objects[0u]);
 }
 
 } // namespace

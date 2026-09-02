@@ -651,20 +651,6 @@ template <typename Geometry>
   return input;
 }
 
-[[nodiscard]] std::uint32_t
-curve_primitive_type(contract::CurveShape shape) noexcept {
-  using enum contract::CurveShape;
-  switch (shape) {
-  case ribbon:
-    return PRIMITIVE_CURVE_RIBBON;
-  case thick:
-    return PRIMITIVE_CURVE_THICK;
-  case thick_linear:
-    return PRIMITIVE_CURVE_THICK_LINEAR;
-  }
-  return PRIMITIVE_NONE;
-}
-
 [[nodiscard]] bool checked_resize(std::size_t offset, std::size_t count,
                                   std::size_t &extent) noexcept {
   if (count > std::numeric_limits<std::size_t>::max() - offset) {
@@ -1013,7 +999,7 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
           .first_key = static_cast<std::int32_t>(first),
           .num_keys = static_cast<std::int32_t>(end - first),
           .type =
-              static_cast<std::int32_t>(curve_primitive_type(geometry.shape))};
+              cycles_svm_curve_primitive_type(geometry.shape)};
     }
   }
   result.valid = true;

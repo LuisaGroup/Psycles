@@ -9,6 +9,19 @@
 
 namespace psycles::luisa_backend::detail {
 
+// Union of the exact per-segment Catmull--Rom intervals used to build the
+// procedural-primitive AABBs. Object/volume classification must consume this
+// same image: bounding only the authored keys is not conservative because a
+// cubic segment may overshoot its endpoints.
+struct CurveGeometryBounds {
+  bool valid{};
+  Vec3f minimum{};
+  Vec3f maximum{};
+};
+
+[[nodiscard]] CurveGeometryBounds
+build_curve_geometry_bounds(const contract::CurveGeometryDesc &geometry);
+
 struct CurveGeometryUpload {
   luisa::vector<luisa::float4> keys;
   luisa::vector<CurveSegmentGpu> segments;

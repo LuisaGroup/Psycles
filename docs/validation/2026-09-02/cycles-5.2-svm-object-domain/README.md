@@ -6,7 +6,8 @@ host-side Cycles particle-table image and its typed Luisa device projection.
 This historical checkpoint did not yet upload the full `KernelObject` or
 attribute tables; the later
 [`cycles-5.2-svm-geometry-runtime`](../cycles-5.2-svm-geometry-runtime/README.md)
-checkpoint completes the post-displacement typed attribute upload.
+checkpoint completes both the post-displacement typed attribute upload and the
+dense `KernelObject`/`object_flag` transaction.
 
 The reference is Blender Cycles 5.2.1 commit
 `9e2066aef7ef7e20c142ad7bd3303138a4304c93`:
@@ -226,8 +227,9 @@ precedence, hair position/radius motion packing, mandatory shadow
 transparency, and rejected type states. Axis normal words are frozen from the
 Cycles 5.2.1 octahedral encoder. The production adapter now consumes final
 post-displacement `GeometryUpload` and native curve intervals and allocates the
-typed Luisa buffers transactionally. Exact `KernelObject` finalization remains
-the next boundary.
+typed Luisa buffers transactionally. The later geometry-runtime checkpoint also
+finalizes and uploads the exact dense `KernelObject` image; exposing it through
+production `KernelGlobals` remains the next boundary.
 
 ### Lossless Blender BYTE_COLOR source
 

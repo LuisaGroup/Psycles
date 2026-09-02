@@ -11,6 +11,67 @@ def object_random_id(name: str) -> int:
     return cycles_hash.hash_uint2(cycles_hash.hash_string(name), 0)
 
 
+def uses_light_linking(object_instance: Any) -> bool:
+    """Conservatively detect source state requiring Cycles link-set fields."""
+
+    objects = [object_instance.object]
+    if object_instance.is_instance:
+        parent = object_instance.parent
+        if parent is not None and parent != object_instance.object:
+            objects.append(parent)
+    for obj in objects:
+        linking = getattr(obj, "light_linking", None)
+        if linking is None:
+            continue
+        if (
+            getattr(linking, "receiver_collection", None) is not None
+            or getattr(linking, "blocker_collection", None) is not None
+        ):
+            return True
+    return False
+
+
+def light_group(
+    object_instance: Any,
+    light_groups: dict[str, int],
+) -> int:
+    obj = object_instance.object
+    name = str(getattr(obj, "lightgroup", ""))
+    if not name and object_instance.is_instance:
+        parent = object_instance.parent
+        if parent is not None and parent != obj:
+            name = str(getattr(parent, "lightgroup", ""))
+    return light_groups.get(name, -1)
+
+
+def shadow_catcher(object_instance: Any) -> bool:
+    obj = object_instance.object
+    result = bool(getattr(obj, "is_shadow_catcher", False))
+    if object_instance.is_instance:
+        parent = object_instance.parent
+        if parent is not None and parent != obj:
+            result = result or bool(
+                getattr(parent, "is_shadow_catcher", False)
+            )
+    return result
+
+
+def object_ao_distance(object_instance: Any) -> float:
+    """Match BlenderSync's child-then-instancer AO-distance lookup."""
+
+    obj = object_instance.object
+    cycles = getattr(obj, "cycles", None)
+    result = float(getattr(cycles, "ao_distance", 0.0))
+    if result == 0.0 and object_instance.is_instance:
+        parent = object_instance.parent
+        if parent is not None and parent != obj:
+            parent_cycles = getattr(parent, "cycles", None)
+            result = float(
+                getattr(parent_cycles, "ao_distance", 0.0)
+            )
+    return max(result, 0.0)
+
+
 def particle_parent_index(object_instance: Any) -> int:
     """Return the legacy parent index, before Cycles device-table packing."""
 

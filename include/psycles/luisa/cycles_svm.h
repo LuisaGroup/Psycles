@@ -24,6 +24,18 @@ LUISA_STRUCT(psycles::compiler::cycles_svm::packed_float4, x, y, z, w){};
 LUISA_STRUCT(psycles::compiler::cycles_svm::packed_uint3, x, y, z){};
 LUISA_STRUCT(psycles::compiler::cycles_svm::packed_normal, value){};
 LUISA_STRUCT(psycles::compiler::cycles_svm::uchar4, x, y, z, w){};
+LUISA_STRUCT(psycles::compiler::cycles_svm::PackedTransform, x, y, z){};
+LUISA_STRUCT(psycles::compiler::cycles_svm::KernelObject, tfm, itfm,
+             volume_density, pass_id, random_number, color, alpha,
+             particle_index, dupli_generated, dupli_uv, num_geom_steps,
+             num_tfm_steps, numverts, numprims, attribute_map_offset,
+             motion_offset, position_offset, normal_offset, cryptomatte_object,
+             cryptomatte_asset, shadow_terminator_shading_offset,
+             shadow_terminator_geometry_offset, ao_distance, lightgroup,
+             visibility, primitive_type, velocity_scale,
+             _pad_light_set_alignment, light_set_membership,
+             receiver_light_set, _pad_shadow_set_alignment,
+             shadow_set_membership, blocker_shadow_set, _pad_tail){};
 LUISA_STRUCT(psycles::compiler::cycles_svm::AttributeMap, id, offset, element,
              type, pad){};
 LUISA_STRUCT(psycles::compiler::cycles_svm::KernelCurve, shader_id, first_key,

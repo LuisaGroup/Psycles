@@ -73,7 +73,7 @@ void test_integrator_settings_round_trip() {
     std::ofstream scene{temporary.path() / "scene.json"};
     scene << R"JSON({
   "schema": "psycles.blender-scene.v1",
-  "cycles_sync": {"object_count": 13},
+  "cycles_sync": {"object_count": 13, "uses_light_linking": true},
   "images": [],
   "node_groups": [],
   "materials": [
@@ -715,6 +715,10 @@ void test_integrator_settings_round_trip() {
   expect(!imported.scene->world_cast_shadow &&
              imported.scene->cycles_background_light_group == 4,
          "world shadow/light-group policy did not round-trip");
+  expect(imported.scene->cycles_background_asset_name == "Nishita World",
+         "world asset identity did not round-trip");
+  expect(imported.scene->cycles_uses_light_linking,
+         "light-linking capability did not round-trip");
   expect(imported.scene->world_visibility_mask ==
              (psycles::contract::visibility_bit(
                   psycles::contract::RayVisibility::camera) |
@@ -1622,6 +1626,8 @@ void test_cycles_float_to_boolean_conversion() {
 
   const auto imported = load_blender_scene_bundle(temporary.path());
   expect(imported.ok(), "linked float Thin Wall scene did not import");
+  expect(!imported.scene->cycles_uses_light_linking,
+         "absent light-linking capability did not default to false");
   const psycles::contract::MaterialDesc *material = nullptr;
   for (const auto &[id, candidate] : imported.scene->materials) {
     static_cast<void>(id);
