@@ -100,10 +100,13 @@ collect_triangle_instances_with_surface_materials(
     const contract::SceneSnapshot &scene,
     const std::set<contract::MaterialId> &materials);
 
-// One entry per SceneSnapshot instance, in stable map iteration order. This
-// contains only the representation chosen for the actual accelerator; it does
-// not manufacture traversal candidates outside the backend BVH result.
+// One entry per SceneSnapshot instance, in stable map iteration order. The
+// explicit source ID lets every downstream transaction validate that the
+// positional plan was not permuted. This contains only the representation
+// chosen for the actual accelerator; it does not manufacture traversal
+// candidates outside the backend BVH result.
 struct CyclesInstanceIntersectionPlan {
+    contract::InstanceId instance;
     bool transform_applied{};
     Mat4f world_to_object;
 };

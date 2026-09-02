@@ -12,6 +12,7 @@
 namespace psycles::luisa_backend::detail {
 
 struct GeometryUpload;
+struct CyclesInstanceIntersectionPlan;
 
 // Build after displacement has finalized `mesh_uploads`. The source object
 // domain determines geometry order, shader request vectors are merged with
@@ -23,6 +24,7 @@ struct GeometryUpload;
     const std::map<contract::MaterialId, std::uint32_t>
         &material_shader_indices,
     const compiler::cycles_svm::ObjectIdentityPlan &object_identities,
+    std::span<const CyclesInstanceIntersectionPlan> intersection_plans,
     std::span<const GeometryUpload> mesh_uploads,
     const std::map<contract::GeometryId, std::uint32_t>
         &resource_geometry_indices,

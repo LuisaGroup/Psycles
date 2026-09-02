@@ -1,12 +1,14 @@
 #include "path_tracer_cycles_svm_geometry.h"
 
 #include "path_tracer_internal.h"
+#include "path_tracer_scene_geometry.h"
 
 #include "cycles_shader_identity.h"
 #include "path_tracer_generated_coordinates.h"
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <set>
@@ -32,6 +34,11 @@ struct OrderedGeometry {
   std::uint64_t id{};
 };
 
+struct StaticMeshTransform {
+  const contract::InstanceDesc *instance{};
+  const CyclesInstanceIntersectionPlan *plan{};
+};
+
 [[nodiscard]] CyclesSvmGeometrySceneImage reject(std::string diagnostic) {
   CyclesSvmGeometrySceneImage result;
   result.diagnostic = std::move(diagnostic);
@@ -39,6 +46,10 @@ struct OrderedGeometry {
 }
 
 [[nodiscard]] packed_float3 pack(luisa::float3 value) noexcept {
+  return {value.x, value.y, value.z};
+}
+
+[[nodiscard]] packed_float3 pack(Vec3f value) noexcept {
   return {value.x, value.y, value.z};
 }
 
@@ -59,6 +70,36 @@ struct OrderedGeometry {
   return {.x = {e[0u], e[4u], e[8u], e[12u]},
           .y = {e[1u], e[5u], e[9u], e[13u]},
           .z = {e[2u], e[6u], e[10u], e[14u]}};
+}
+
+[[nodiscard]] packed_float3 transform_static_normal(
+    const Mat4f &world_to_object, luisa::float3 normal) noexcept {
+  // Cycles' Mesh::apply_transform multiplies normals by the transpose of the
+  // object inverse. Mat4f is column-major, so the columns of world_to_object
+  // become the rows of the normal transform here.
+  const auto &e = world_to_object.elements;
+  const auto transformed = Vec3f{
+      std::fma(normal.x, e[0u],
+               std::fma(normal.y, e[1u], normal.z * e[2u])),
+      std::fma(normal.x, e[4u],
+               std::fma(normal.y, e[5u], normal.z * e[6u])),
+      std::fma(normal.x, e[8u],
+               std::fma(normal.y, e[9u], normal.z * e[10u]))};
+  const auto length_squared = transformed.x * transformed.x +
+                              transformed.y * transformed.y +
+                              transformed.z * transformed.z;
+  if (!(length_squared > 0.0f) || !std::isfinite(length_squared)) {
+    return pack(transformed);
+  }
+  const auto inverse_length = 1.0f / std::sqrt(length_squared);
+  return {transformed.x * inverse_length, transformed.y * inverse_length,
+          transformed.z * inverse_length};
+}
+
+[[nodiscard]] bool same_position(luisa::float3 actual,
+                                 Vec3f expected) noexcept {
+  return actual.x == expected.x && actual.y == expected.y &&
+         actual.z == expected.z;
 }
 
 [[nodiscard]] AttributeElement
@@ -314,7 +355,8 @@ template <typename Geometry>
     const std::map<contract::MaterialId, std::uint32_t>
         &material_shader_indices,
     const CompiledShaderTable &compilation,
-    const ObjectIdentityPlan &object_identities, std::string &diagnostic) {
+    const ObjectIdentityPlan &object_identities,
+    const StaticMeshTransform *static_transform, std::string &diagnostic) {
   GeometryAttributeInput input;
   input.name = geometry.name;
   input.kind = GeometryAttributeKind::mesh;
@@ -328,13 +370,51 @@ template <typename Geometry>
     return {};
   }
 
+  if (static_transform != nullptr) {
+    if (upload.cycles_intersection_positions.size() !=
+        upload.positions.size()) {
+      diagnostic = "Cycles statically transformed mesh '" + geometry.name +
+                   "' has no complete world-space intersection image";
+      return {};
+    }
+    if (!upload.undisplaced_positions.empty() ||
+        !upload.undisplaced_normals.empty() ||
+        !upload.undisplaced_uv_tangents.empty()) {
+      diagnostic = "Cycles statically transformed mesh '" + geometry.name +
+                   "' also carries displacement-only attributes";
+      return {};
+    }
+    for (auto i = std::size_t{}; i < upload.positions.size(); ++i) {
+      const auto expected = cycles_transform_point(
+          static_transform->instance->transform,
+          Vec3f{upload.positions[i].x, upload.positions[i].y,
+                upload.positions[i].z});
+      if (!same_position(upload.cycles_intersection_positions[i], expected)) {
+        diagnostic = "Cycles statically transformed mesh '" + geometry.name +
+                     "' disagrees with its accelerator position image";
+        return {};
+      }
+    }
+  } else if (!upload.cycles_intersection_positions.empty()) {
+    diagnostic = "Cycles object-space mesh '" + geometry.name +
+                 "' unexpectedly carries a transformed intersection image";
+    return {};
+  }
+
   input.attributes.emplace_back(GeometryAttributeSource{
       .standard = ATTR_STD_POSITION,
       .named_id = std::nullopt,
       .element = ATTR_ELEMENT_VERTEX,
       .type = NODE_ATTR_FLOAT3,
       .payload = convert_values<packed_float3>(
-          upload.positions, [](luisa::float3 value) { return pack(value); })});
+          upload.positions, [static_transform](luisa::float3 value) {
+            if (static_transform == nullptr) {
+              return pack(value);
+            }
+            return pack(cycles_transform_point(
+                static_transform->instance->transform,
+                Vec3f{value.x, value.y, value.z}));
+          })});
 
   const auto corner_normals =
       (upload.attribute_domains & geometry_normal_corner) != 0u;
@@ -346,8 +426,14 @@ template <typename Geometry>
                                 : ATTR_ELEMENT_VERTEX_NORMAL,
       .type = NODE_ATTR_FLOAT3,
       .payload = convert_values<packed_normal>(
-          upload.normals, [](luisa::float3 value) {
-            return pack_geometry_normal(pack(value));
+          upload.normals, [static_transform](luisa::float3 value) {
+            const auto normal = static_transform == nullptr
+                                    ? pack(value)
+                                    : transform_static_normal(
+                                          static_transform->plan
+                                              ->world_to_object,
+                                          value);
+            return pack_geometry_normal(normal);
           })});
 
   if (upload.default_uv_available) {
@@ -596,6 +682,7 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
     const std::map<contract::MaterialId, std::uint32_t>
         &material_shader_indices,
     const ObjectIdentityPlan &object_identities,
+    std::span<const CyclesInstanceIntersectionPlan> intersection_plans,
     std::span<const GeometryUpload> mesh_uploads,
     const std::map<contract::GeometryId, std::uint32_t>
         &resource_geometry_indices,
@@ -609,6 +696,10 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
   if (!object_identities.valid) {
     return reject("Cycles geometry image received an invalid object domain");
   }
+  if (intersection_plans.size() != snapshot.instances.size()) {
+    return reject("Cycles geometry image received an intersection plan with "
+                  "the wrong instance extent");
+  }
   std::map<std::string, std::uint64_t, std::less<>> named_ids;
   for (const auto &[name, id] : compilation.named_attributes) {
     if (!named_ids.emplace(name, id).second) {
@@ -618,7 +709,20 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
   }
 
   std::map<contract::GeometryId, std::uint32_t> first_object;
+  std::map<contract::GeometryId, std::size_t> geometry_users;
+  std::map<contract::GeometryId, StaticMeshTransform> static_mesh_transforms;
+  auto plan_index = std::size_t{};
   for (const auto &[instance_id, instance] : snapshot.instances) {
+    const auto &intersection_plan = intersection_plans[plan_index++];
+    if (intersection_plan.instance != instance_id) {
+      return reject("Cycles geometry image received an intersection plan in "
+                    "the wrong instance order");
+    }
+    if (intersection_plan.world_to_object !=
+        cycles_inverse_transform(instance.transform)) {
+      return reject("Cycles geometry image received an intersection plan "
+                    "whose inverse transform is inconsistent");
+    }
     const auto geometry_kind_count =
         static_cast<std::uint32_t>(
             snapshot.geometries.contains(instance.geometry)) +
@@ -628,6 +732,21 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
       return reject("Cycles geometry image requires each instance to resolve "
                     "exactly one geometry kind");
     }
+    ++geometry_users[instance.geometry];
+    if (intersection_plan.transform_applied) {
+      if (!snapshot.geometries.contains(instance.geometry)) {
+        return reject("Cycles intersection plan applies a static transform to "
+                      "a non-mesh geometry");
+      }
+      if (!static_mesh_transforms
+               .emplace(instance.geometry,
+                        StaticMeshTransform{.instance = &instance,
+                                            .plan = &intersection_plan})
+               .second) {
+        return reject("Cycles intersection plan applies one mesh transform "
+                      "more than once");
+      }
+    }
     const auto object = object_identities.instance_indices.find(instance_id);
     if (object == object_identities.instance_indices.end()) {
       return reject("Cycles geometry image cannot resolve an instance object");
@@ -636,6 +755,13 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
         first_object.emplace(instance.geometry, object->second);
     if (!inserted) {
       iter->second = std::min(iter->second, object->second);
+    }
+  }
+  for (const auto &[geometry, transform] : static_mesh_transforms) {
+    static_cast<void>(transform);
+    if (geometry_users.at(geometry) != 1u) {
+      return reject("Cycles intersection plan applies a transform to shared "
+                    "mesh geometry");
     }
   }
 
@@ -704,10 +830,16 @@ CyclesSvmGeometrySceneImage build_cycles_svm_geometry_scene_image(
         return reject("Cycles mesh geometry " + std::to_string(id.value) +
                       " has no finalized post-displacement upload");
       }
+      const auto static_transform_iter = static_mesh_transforms.find(id);
+      const auto *const static_transform =
+          static_transform_iter == static_mesh_transforms.end()
+              ? nullptr
+              : &static_transform_iter->second;
       auto input = make_mesh_input(
           snapshot, id, snapshot.geometries.at(id),
           mesh_uploads[resource->second], primitive->second, named_ids,
-          material_shader_indices, compilation, object_identities, diagnostic);
+          material_shader_indices, compilation, object_identities,
+          static_transform, diagnostic);
       if (!diagnostic.empty()) {
         return reject(std::move(diagnostic));
       }

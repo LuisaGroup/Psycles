@@ -1,7 +1,9 @@
 #include "cycles_shader_identity.h"
 #include "path_tracer_cycles_svm_geometry.h"
 #include "path_tracer_internal.h"
+#include "path_tracer_scene_geometry.h"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -70,13 +72,24 @@ struct Fixture {
   std::map<GeometryId, std::uint32_t> triangle_primitive_offsets;
   std::map<GeometryId, std::uint32_t> curve_primitive_offsets;
 
-  [[nodiscard]] CyclesSvmGeometrySceneImage build() const {
+  [[nodiscard]] std::vector<CyclesInstanceIntersectionPlan>
+  intersection_plans() const {
+    return build_cycles_instance_intersection_plan(snapshot, {});
+  }
+
+  [[nodiscard]] CyclesSvmGeometrySceneImage build(
+      std::span<const CyclesInstanceIntersectionPlan> plans) const {
     const auto identities = plan_object_identities(snapshot);
     require(identities.valid, identities.diagnostic);
     return build_cycles_svm_geometry_scene_image(
-        snapshot, compilation, material_shader_indices, identities, uploads,
-        resource_geometry_indices, triangle_primitive_offsets,
-        curve_primitive_offsets);
+        snapshot, compilation, material_shader_indices, identities,
+        plans, uploads, resource_geometry_indices,
+        triangle_primitive_offsets, curve_primitive_offsets);
+  }
+
+  [[nodiscard]] CyclesSvmGeometrySceneImage build() const {
+    const auto plans = intersection_plans();
+    return build(plans);
   }
 };
 
@@ -165,6 +178,7 @@ struct Fixture {
   upload.default_uv_available = true;
   upload.positions = {
       {10.0f, 11.0f, 12.0f}, {13.0f, 14.0f, 15.0f}, {16.0f, 17.0f, 18.0f}};
+  upload.cycles_intersection_positions = upload.positions;
   upload.normals = {{0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
   upload.uv = {{0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f}};
   upload.uv_tangents = {{1.0f, 0.0f, 0.0f, -1.0f},
@@ -268,7 +282,85 @@ void test_exact_post_displacement_scene_image() {
           "missing analytic-light attribute was fabricated");
 }
 
+void test_static_transform_applies_to_cycles_typed_geometry() {
+  auto fixture = make_fixture();
+  Mat4f transform;
+  // (x, y, z) -> (y + 4, 2x - 5, 3z + 6). The non-uniform reflected
+  // transform distinguishes the inverse-transpose normal rule from both a
+  // point transform and a row/column-major mix-up.
+  transform.elements = {
+      0.0f, 2.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 3.0f, 0.0f, 4.0f, -5.0f, 6.0f, 1.0f};
+  fixture.snapshot.instances.at(mesh_instance_id).transform = transform;
+  auto &upload = fixture.uploads.front();
+  upload.normals.front() = {0.6f, 0.8f, 0.0f};
+  upload.cycles_intersection_positions.clear();
+  for (const auto position : upload.positions) {
+    const auto transformed = cycles_transform_point(
+        transform, Vec3f{position.x, position.y, position.z});
+    upload.cycles_intersection_positions.emplace_back(
+        luisa::make_float3(transformed.x, transformed.y, transformed.z));
+  }
+
+  const auto image = fixture.build();
+  require(image.valid, image.diagnostic);
+  const auto geometry = image.attribute_geometry_indices.at(mesh_id);
+  require(image.attributes.tri_verts[0u].x == 15.0f &&
+              image.attributes.tri_verts[0u].y == 15.0f &&
+              image.attributes.tri_verts[0u].z == 42.0f,
+          "static Cycles mesh position was not packed in world space");
+  require(image.attributes.attributes_normal[0u].value ==
+              pack_geometry_normal({0.9363292f, 0.35112345f, 0.0f}).value,
+          "static Cycles mesh normal did not use inverse transpose");
+  const auto tangent_offset = static_cast<std::size_t>(
+      entry(image, geometry, ATTR_STD_UV_TANGENT).offset +
+      static_cast<std::int32_t>(
+          3u * fixture.triangle_primitive_offsets.at(mesh_id)));
+  require(image.attributes.attributes_float3[tangent_offset].x == 1.0f &&
+              image.attributes.attributes_float3[tangent_offset].y == 0.0f &&
+              image.attributes.attributes_float3[tangent_offset].z == 0.0f,
+          "object-space Cycles tangent was transformed with mesh geometry");
+}
+
 void test_invalid_relations_reject_the_whole_transaction() {
+  {
+    auto fixture = make_fixture();
+    fixture.uploads[0u].cycles_intersection_positions.clear();
+    const auto image = fixture.build();
+    require(!image.valid &&
+                image.diagnostic.find("world-space intersection image") !=
+                    std::string::npos,
+            "static-transform plan without its position image was accepted");
+  }
+  {
+    auto fixture = make_fixture();
+    auto plans = fixture.intersection_plans();
+    std::swap(plans[0u], plans[1u]);
+    const auto image = fixture.build(plans);
+    require(!image.valid &&
+                image.diagnostic.find("wrong instance order") !=
+                    std::string::npos,
+            "permuted Cycles intersection plan was accepted");
+  }
+  {
+    auto fixture = make_fixture();
+    fixture.snapshot.instances.emplace(
+        InstanceId{42u}, InstanceDesc{.name = "second mesh user",
+                                      .geometry = mesh_id,
+                                      .cycles_object_index = 3u});
+    auto plans = fixture.intersection_plans();
+    const auto first_mesh = std::ranges::find_if(
+        plans, [](const CyclesInstanceIntersectionPlan &plan) {
+          return plan.instance == mesh_instance_id;
+        });
+    require(first_mesh != plans.end(), "mesh intersection plan is absent");
+    first_mesh->transform_applied = true;
+    const auto image = fixture.build(plans);
+    require(!image.valid &&
+                image.diagnostic.find("shared mesh geometry") !=
+                    std::string::npos,
+            "static transform of shared Cycles geometry was accepted");
+  }
   {
     auto fixture = make_fixture();
     fixture.uploads[0u].attributes.clear();
@@ -316,6 +408,7 @@ void test_invalid_relations_reject_the_whole_transaction() {
 
 int main() {
   test_exact_post_displacement_scene_image();
+  test_static_transform_applies_to_cycles_typed_geometry();
   test_invalid_relations_reject_the_whole_transaction();
   std::cout << "Luisa Cycles SVM geometry scene tests passed\n";
   return 0;
