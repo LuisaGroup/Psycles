@@ -62,10 +62,10 @@ void node_hair(Cursor &cursor, Stack &stack, Expr<std::uint32_t> type,
   };
 }
 
-HairEvaluation bsdf_hair_reflection_eval(const HairClosure &closure,
+BsdfEvaluation bsdf_hair_reflection_eval(const HairClosure &closure,
                                          Expr<luisa::float3> wi,
                                          Expr<luisa::float3> wo) noexcept {
-  HairEvaluation result{.value = make_float3(0.0f), .pdf = 0.0f};
+  BsdfEvaluation result{.value = make_float3(0.0f), .pdf = 0.0f};
   $if(dot(closure.common.N, wo) < 0.0f) {
     result.value = make_float3(0.0f);
     result.pdf = 0.0f;
@@ -117,10 +117,10 @@ HairEvaluation bsdf_hair_reflection_eval(const HairClosure &closure,
   return result;
 }
 
-HairEvaluation bsdf_hair_transmission_eval(const HairClosure &closure,
+BsdfEvaluation bsdf_hair_transmission_eval(const HairClosure &closure,
                                            Expr<luisa::float3> wi,
                                            Expr<luisa::float3> wo) noexcept {
-  HairEvaluation result{.value = make_float3(0.0f), .pdf = 0.0f};
+  BsdfEvaluation result{.value = make_float3(0.0f), .pdf = 0.0f};
   $if(dot(closure.common.N, wo) >= 0.0f) {
     result.value = make_float3(0.0f);
     result.pdf = 0.0f;
@@ -174,7 +174,7 @@ HairEvaluation bsdf_hair_transmission_eval(const HairClosure &closure,
   return result;
 }
 
-HairSample bsdf_hair_reflection_sample(const HairClosure &closure,
+BsdfSample bsdf_hair_reflection_sample(const HairClosure &closure,
                                        Expr<luisa::float3>,
                                        Expr<luisa::float3> wi,
                                        Expr<luisa::float2> random) noexcept {
@@ -220,7 +220,7 @@ HairSample bsdf_hair_reflection_sample(const HairClosure &closure,
               cycles_closure::label_reflect | cycles_closure::label_glossy};
 }
 
-HairSample bsdf_hair_transmission_sample(const HairClosure &closure,
+BsdfSample bsdf_hair_transmission_sample(const HairClosure &closure,
                                          Expr<luisa::float3>,
                                          Expr<luisa::float3> wi,
                                          Expr<luisa::float2> random) noexcept {

@@ -411,6 +411,7 @@ Artifact hashes:
 | Hair Transmission direct-eval oracle `.blend` | `45a1391c63b29f6952158c8cf7c81d8eb354f3665cdb24d432388f1284cfd737` |
 | Hair Transmission direct-eval path trace / decoded trace | `3bb87fc276ffb5e139bcb1082a08169c50f483ee1218e0ff5b8e877057d81639` / `f63cde7cdea31657f0d8d69b245a7c5cd33498cd479cf232f9638464f41836c8` |
 | Hair Transmission direct-eval render metadata | `4224bcd7c36e78c437ece942cf8e30c600cb6a382c50f1d32dd12c71895b1c32` |
+| Direct Cycles simple-BSDF HIP oracle source / executable | `37652166c999e30d4eb28fb34f6dfb4d5f16953859b4f72bc56e982d25aef22b` / `48a54c90bf8ba2769f17342d30b390e0214cd6bebe995a9fe6372b2fe848c16d` |
 
 No `.svm52` binary is checked in.
 
@@ -678,6 +679,52 @@ trigonometric maps are approximate and that false invariant differs by about
 fallback, HIP, and strict native Vulkan XIR-to-SPIR-V. Production
 shade-surface replacement remains later work.
 
+### Simple BSDF scattering checkpoint
+
+The common scattering return types now project the output arguments of
+Cycles' `bsdf_eval()` and `bsdf_sample()` directly: unweighted value, PDF,
+outgoing direction, sampled roughness, eta, and the Cycles closure label.
+Legacy Hair and the simple closure family share this one representation; no
+second material or event model is introduced.
+
+The copied simple family covers Diffuse, Translucent, Oren-Nayar, Rough
+Translucent, and Transparent. Its support partition is preserved literally:
+
+```text
+Diffuse sample:          dot(Ng, wo) > 0  -> keep; otherwise zero
+Translucent sample:      dot(Ng, wo) < 0  -> keep; otherwise zero
+Oren-Nayar eval:         dot(N, wo) > 0   -> evaluate; otherwise zero
+Oren-Nayar sample:       dot(Ng, wo) > 0  -> evaluate; otherwise zero
+Rough Translucent:       Oren-Nayar with N=-N, Ng=-Ng, wi=reflect(wi,N)
+Transparent sample:      wo=-wi, eval=pdf=1e6, roughness=0, eta=1
+Transparent eval:        zero
+```
+
+The inequalities are not rewritten as complements, so zero and non-finite
+boundaries retain Cycles' branch behavior. Oren-Nayar also keeps its
+`b <= 0` diffuse limit and the exact `FLT_MIN` denominator guard in the
+positive-correlation branch. Cosine-hemisphere sampling reuses the existing
+Cycles concentric-disk map and Cycles-defined orthonormal-basis orientation.
+
+An isolated HIP oracle included the pinned Cycles 5.2.1 headers and called
+`bsdf_diffuse_*`, `bsdf_translucent_*`, `bsdf_oren_nayar_*`,
+`bsdf_rough_translucent_*`, and `bsdf_transparent_*` directly. It did not
+translate their formulas. The oracle used Cycles commit
+`9e2066aef7ef7e20c142ad7bd3303138a4304c93`, ROCm 7.2.53211, `gfx1201`,
+`-O3 -ffast-math`, and produced the frozen 20-vector/6-label trace in
+`test_luisa_cycles_svm_simple_scattering.cpp`. Representative outputs are:
+
+```text
+Diffuse sample:           wo=(0.765341878,-0.286503345,0.576339781), pdf=0.244151756, label=6
+Oren-Nayar sample value:  (0.240954846,0.222976729,0.219377518), eta=1, label=6
+Rough-translucent value:  (0.230091318,0.212113202,0.208513990), label=5
+Transparent sample:       wo=(-0.349890679,0.149953157,-0.924711108), pdf=1e6, label=33
+```
+
+The production `enable_fast_math=true` test passes on fallback, HIP, and
+strict native Vulkan XIR-to-SPIR-V. A deliberately reversed geometric normal
+and a wrong-side Oren-Nayar direction permanently lock both rejection paths.
+
 ### Standalone BSSRDF runtime checkpoint
 
 `NODE_CLOSURE_BSDF` now consumes the exact eight-word
@@ -853,6 +900,7 @@ cmake --build build --parallel 32 \
            psycles_luisa_cycles_svm_standalone_ray_portal_tests \
            psycles_luisa_cycles_svm_standalone_hair_tests \
            psycles_luisa_cycles_svm_hair_scattering_tests \
+           psycles_luisa_cycles_svm_simple_scattering_tests \
            psycles_cycles_svm_compiler_tests \
            psycles_cycles_svm_ray_portal_compiler_tests \
            psycles_cycles_svm_hair_compiler_tests \
@@ -904,6 +952,9 @@ ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_cycles_svm_hair_scattering_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
+  'psycles\.luisa_cycles_svm_simple_scattering_(fallback|hip|vk)$'
+
+ctest --test-dir build --output-on-failure -R \
   'psycles\.luisa_thin_film_(fresnel|surface)_(fallback|hip|vk)$'
 
 ctest --test-dir build --output-on-failure -R \
@@ -917,13 +968,13 @@ Result: closure 3/3, Principled 3/3, Principled Sheen 3/3, Principled Coat
 3/3, Principled Metallic 3/3, Principled thick Transmission 3/3, Principled
 Thin Wall 3/3, Principled Subsurface 3/3, standalone BSSRDF 3/3, standalone
 Sheen/Velvet 3/3, standalone Toon 3/3, standalone Ray Portal 3/3, thin-film
-6/6, standalone Hair setup 3/3, Hair scattering 3/3, compiler 3/3, and Ray
-Portal/Hair bundle imports 2/2 passed. The Hair scattering kernels were built
-with the production `enable_fast_math=true` setting. The
+6/6, standalone Hair setup 3/3, Hair scattering 3/3, simple scattering 3/3,
+compiler 3/3, and Ray Portal/Hair bundle imports 2/2 passed. The scattering
+kernels were built with the production `enable_fast_math=true` setting. The
 compiler test locks the standalone graph-to-word-image mapping independently of the device
 interpreter tests, including statically pruned Metallic Fresnel payloads and
 Multi-GGX-only fields. The complete 32-way build and test run for this
-expanded checkpoint passed 507/507 tests in 152.07 seconds. The Vulkan test
+expanded checkpoint passed 510/510 tests in 152.99 seconds. The Vulkan test
 environment is
 `LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
 `LUISA_VULKAN_DISABLE_DXC=1`.
