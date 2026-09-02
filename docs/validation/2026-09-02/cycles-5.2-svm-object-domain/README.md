@@ -143,7 +143,21 @@ before any SVM device buffer is created.
 
 The host image resolves the exact final `KernelObject::particle_index`; its
 typed `KernelParticle` array is layout-checked, allocated with dummy entry zero,
-and uploaded transactionally with the SVM program. The next increment is the
-exact `KernelObject` projection and upload. The legacy scalar bundle field
-remains only for the old expanded renderer route and must not be consumed by
-the production SVM adapter.
+and uploaded transactionally with the SVM program.
+
+The exact `KernelObject` type is now frozen independently from the Psycles
+definition by compiling the pinned Cycles headers. The oracle reports a
+256-byte size, 16-byte alignment, and every field offset from `tfm == 0`
+through `blocker_shadow_set == 240`; `tests/test_cycles_svm_abi.cpp` encodes
+that full result. Explicitly named padding occupies only the ABI holes before
+the two 64-bit light-link masks and at the tail, allowing a zero-initialized
+host record to have deterministic upload bytes. `ShaderDataObjectFlag` is
+also copied as one complete enum domain, including Cycles' deliberate omission
+of `SD_OBJECT_HAS_VERTEX_MOTION` from `SD_OBJECT_FLAGS`.
+
+This is an ABI checkpoint, not a fabricated object image. Production upload
+remains disabled until a two-stage builder has resolved each reachable
+object's geometry attribute-map, position, and normal offsets from the final
+typed attribute arrays. The legacy scalar bundle field remains only for the
+old expanded renderer route and must not be consumed by the production SVM
+adapter.
