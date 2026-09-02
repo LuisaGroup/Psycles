@@ -705,6 +705,34 @@ public:
     compiler.fail("Cycles SVM node family is not migrated: " + type);
   }
 
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    if (type == node_type::principled_volume && context.has_volume) {
+      const auto *density = input("Density");
+      const auto density_value =
+          literal<float>(density, contract::SocketType::floating);
+      if (density != nullptr &&
+          (density->link != nullptr ||
+           (density_value && *density_value > 0.0f))) {
+        requests.add_standard("density");
+        // Cycles' default Color Attribute socket is empty. A future importer
+        // that exposes it must preserve that symbolic socket rather than
+        // silently assuming the volume grid named "color".
+      }
+
+      const auto *blackbody = input("BlackbodyIntensity");
+      const auto blackbody_value =
+          literal<float>(blackbody, contract::SocketType::floating);
+      if (blackbody != nullptr &&
+          (blackbody->link != nullptr ||
+           (blackbody_value && *blackbody_value > 0.0f))) {
+        requests.add_standard("temperature");
+      }
+      requests.add(ATTR_STD_GENERATED_TRANSFORM);
+    }
+    GraphNode::attributes(context, requests);
+  }
+
   [[nodiscard]] bool has_volume_support() const noexcept override {
     return true;
   }
@@ -1636,6 +1664,28 @@ public:
 } // namespace
 
 void GraphNode::expand(CyclesGraph &) {}
+
+void GraphNode::attributes(const GraphAttributeContext &context,
+                           AttributeRequestSet &requests) const {
+  // Direct counterpart of Cycles 5.2.1 ShaderNode::attributes. This phase
+  // intentionally runs before default-input expansion and graph cleanup.
+  for (const auto &shader_input : inputs) {
+    if (shader_input.link != nullptr) {
+      continue;
+    }
+    if ((shader_input.flags & graph_socket_link_texture_generated) != 0u) {
+      if (context.has_surface_link()) {
+        requests.add(ATTR_STD_GENERATED);
+      }
+      if (context.has_volume) {
+        requests.add(ATTR_STD_GENERATED_TRANSFORM);
+      }
+    } else if ((shader_input.flags & graph_socket_link_texture_uv) != 0u &&
+               context.has_surface_link()) {
+      requests.add(ATTR_STD_UV);
+    }
+  }
+}
 
 void GraphNode::inline_blender_constant_fold(const ConstantFolder &) {}
 

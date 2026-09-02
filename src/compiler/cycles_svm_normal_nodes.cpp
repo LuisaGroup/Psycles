@@ -97,6 +97,36 @@ public:
     return NODE_NORMAL_MAP;
   }
 
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    const auto space = normal_map_space(
+        string_property(this, "Space").value_or(std::string_view{}));
+    const auto base = string_property(this, "Base");
+    const auto attribute = string_property(this, "Attribute");
+    if (context.has_surface_link() && space &&
+        *space == NODE_NORMAL_MAP_TANGENT && base && attribute) {
+      const auto original = *base == "ORIGINAL";
+      if (attribute->empty()) {
+        requests.add(ATTR_STD_UV);
+        requests.add(original ? ATTR_STD_UV_TANGENT_UNDISPLACED
+                              : ATTR_STD_UV_TANGENT);
+        requests.add(original ? ATTR_STD_UV_TANGENT_SIGN_UNDISPLACED
+                              : ATTR_STD_UV_TANGENT_SIGN);
+      } else {
+        requests.add(*attribute);
+        requests.add(std::string{*attribute} +
+                     (original ? ".undisplaced_tangent" : ".tangent"));
+        requests.add(
+            std::string{*attribute} +
+            (original ? ".undisplaced_tangent_sign" : ".tangent_sign"));
+      }
+      if (original) {
+        requests.add(ATTR_STD_NORMAL_UNDISPLACED);
+      }
+    }
+    GraphNode::attributes(context, requests);
+  }
+
   void compile(SVMCompiler &compiler) override {
     const auto space = normal_map_space(
         string_property(this, "Space").value_or(std::string_view{}));
@@ -149,6 +179,27 @@ class TangentNode final : public GraphNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_TANGENT;
+  }
+
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    const auto direction_type = tangent_direction_type(
+        string_property(this, "Direction Type").value_or(std::string_view{}));
+    const auto attribute = string_property(this, "Attribute");
+    if (context.has_surface_link() && direction_type && attribute) {
+      if (*direction_type == NODE_TANGENT_UVMAP) {
+        if (attribute->empty()) {
+          requests.add(ATTR_STD_UV);
+          requests.add(ATTR_STD_UV_TANGENT);
+        } else {
+          requests.add(*attribute);
+          requests.add(std::string{*attribute} + ".tangent");
+        }
+      } else {
+        requests.add(ATTR_STD_GENERATED);
+      }
+    }
+    GraphNode::attributes(context, requests);
   }
 
   void compile(SVMCompiler &compiler) override {

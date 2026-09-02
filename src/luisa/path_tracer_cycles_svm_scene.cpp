@@ -7,6 +7,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -22,14 +23,16 @@ namespace {
     std::string &diagnostic) {
   const auto shader = runtime.material_shader_indices.find(material);
   if (shader == runtime.material_shader_indices.end() ||
-      shader->second >= runtime.compilation.shader_node_types_used.size()) {
+      shader->second >= runtime.compilation.shader_attribute_ids_used.size()) {
     diagnostic = "Cycles particle demand references unavailable material " +
                  std::to_string(material.value);
     return false;
   }
-  const auto &node_types =
-      runtime.compilation.shader_node_types_used[shader->second];
-  uses_particle = node_types[compiler::cycles_svm::NODE_PARTICLE_INFO];
+  const auto &attributes =
+      runtime.compilation.shader_attribute_ids_used[shader->second];
+  uses_particle = std::ranges::binary_search(
+      attributes,
+      static_cast<std::uint64_t>(compiler::cycles_svm::ATTR_STD_PARTICLE));
   return true;
 }
 
@@ -109,7 +112,9 @@ namespace {
   }
   if (runtime.object_identities.background_index) {
     objects.emplace_back(compiler::cycles_svm::ParticleTableObject{
-        .object_index = *runtime.object_identities.background_index});
+        .object_index = *runtime.object_identities.background_index,
+        .needs_particle = false,
+        .source = std::nullopt});
   }
   runtime.particles = compiler::cycles_svm::pack_particle_table(objects);
   if (!runtime.particles.valid) {
@@ -178,10 +183,12 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
   std::vector<compiler::cycles_svm::ShaderTableCompileUnit> units;
   units.reserve(scene->materials.materials().size());
   for (const auto &[material_id, material] : scene->materials.materials()) {
+    const auto &source = snapshot.materials.at(material_id);
     units.emplace_back(compiler::cycles_svm::ShaderTableCompileUnit{
         .shader_index = runtime->material_shader_indices.at(material_id),
         .shader = &material.shader(),
         .context = {.background = snapshot.world_shader == material_id,
+                    .displacement_method = source.displacement_method,
                     .color_space = snapshot.shader_color_space}});
   }
 

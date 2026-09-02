@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <psycles/compiler/cycles_svm_attribute_request.h>
 #include <psycles/compiler/cycles_svm_types.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/contract/scene.h>
@@ -90,6 +91,16 @@ enum GraphSocketFlag : std::uint16_t {
 struct GraphNode;
 struct GraphOutput;
 
+struct GraphAttributeContext {
+  bool has_surface{};
+  bool has_volume{};
+  bool has_displacement{};
+
+  [[nodiscard]] bool has_surface_link() const noexcept {
+    return has_surface || has_displacement;
+  }
+};
+
 struct GraphInput {
   GraphNode *parent{};
   std::string name;
@@ -125,6 +136,8 @@ struct GraphNode {
   bool need_derivatives{};
 
   virtual void compile(SVMCompiler &compiler) = 0;
+  virtual void attributes(const GraphAttributeContext &context,
+                          AttributeRequestSet &requests) const;
   virtual void expand(CyclesGraph &graph);
   // Blender evaluates nodes backed by a multi-function before Cycles builds
   // its ShaderGraph. Keep that fold stage distinct from Cycles' own
@@ -168,6 +181,7 @@ private:
   std::uint32_t _next_node_id{};
   std::string _diagnostic;
   contract::ShaderColorSpace _color_space;
+  std::vector<AttributeRequest> _attribute_requests;
 
 public:
   [[nodiscard]] static CyclesGraph
@@ -184,6 +198,10 @@ public:
   }
   [[nodiscard]] std::size_t node_id_capacity() const noexcept {
     return _next_node_id;
+  }
+  [[nodiscard]] std::span<const AttributeRequest>
+  attribute_requests() const noexcept {
+    return _attribute_requests;
   }
   [[nodiscard]] Vec3f
   rec709_to_scene_linear(Vec3f value) const noexcept;
@@ -217,6 +235,7 @@ private:
                                               GraphInput *input);
   void compose_float3_autoconverts();
   void inline_blender_functions();
+  void collect_attribute_requests();
   void constant_fold();
   void simplify_settings();
   void deduplicate_nodes();

@@ -489,6 +489,19 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_info_tests)
 
     add_executable(
+        psycles_cycles_svm_attribute_request_tests
+        tests/test_cycles_svm_attribute_requests.cpp)
+    target_link_libraries(
+        psycles_cycles_svm_attribute_request_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_cycles_svm_attribute_request_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.cycles_svm_attribute_requests
+        COMMAND psycles_cycles_svm_attribute_request_tests)
+
+    add_executable(
         psycles_cycles_svm_normal_tests
         tests/test_cycles_svm_normal.cpp)
     target_link_libraries(

@@ -445,6 +445,16 @@ public:
   GlossyBsdfNode() noexcept
       : BsdfNode{CLOSURE_BSDF_MICROFACET_GGX_ID} {}
 
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    const auto *tangent = input("Tangent");
+    if (context.has_surface_link() && tangent != nullptr &&
+        tangent->link == nullptr && !is_isotropic()) {
+      requests.add(ATTR_STD_GENERATED);
+    }
+    GraphNode::attributes(context, requests);
+  }
+
   void simplify_settings() override {
     // Direct copy of Cycles 5.2.1 GlossyBsdfNode::simplify_settings. The
     // literal helper also proves that Anisotropy has no authored link.
@@ -506,6 +516,16 @@ private:
 
 public:
   MetallicBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_PHYSICAL_CONDUCTOR} {}
+
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    const auto *tangent = input("Tangent");
+    if (context.has_surface_link() && tangent != nullptr &&
+        tangent->link == nullptr && !is_isotropic()) {
+      requests.add(ATTR_STD_GENERATED);
+    }
+    GraphNode::attributes(context, requests);
+  }
 
   void simplify_settings() override {
     // Direct copy of Cycles 5.2.1 MetallicBsdfNode::simplify_settings.
@@ -741,6 +761,16 @@ public:
 
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_CLOSURE_BSDF;
+  }
+
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    const auto *tangent = input("Tangent");
+    if (context.has_surface_link() && tangent != nullptr &&
+        tangent->link == nullptr) {
+      requests.add(ATTR_STD_GENERATED);
+    }
+    GraphNode::attributes(context, requests);
   }
 
   void simplify_settings() override {

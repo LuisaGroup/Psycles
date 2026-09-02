@@ -41,7 +41,16 @@ static_assert(jump_node_word_count == 4u);
 [[nodiscard]] bool same_local_shader(const ShaderImage &lhs,
                                      const ShaderImage &rhs) noexcept {
   return lhs.words == rhs.words && lhs.node_types_used == rhs.node_types_used &&
+         lhs.attribute_requests == rhs.attribute_requests &&
          lhs.peak_stack_usage == rhs.peak_stack_usage;
+}
+
+[[nodiscard]] std::uint64_t
+resolve_attribute_request(const AttributeRequest &request,
+                          AttributeIDMap &attribute_ids) {
+  return request.standard != ATTR_STD_NONE
+             ? AttributeIDMap::get_attribute_id(request.standard)
+             : attribute_ids.get_attribute_id(request.name);
 }
 
 } // namespace
@@ -183,8 +192,16 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
     local.emplace_back(slot ? std::move(*slot) : inert_shader());
   }
   result.shader_node_types_used.reserve(local.size());
+  result.shader_attribute_ids_used.reserve(local.size());
   for (const auto &shader : local) {
     result.shader_node_types_used.emplace_back(shader.node_types_used);
+    auto &ids = result.shader_attribute_ids_used.emplace_back();
+    ids.reserve(shader.attribute_requests.size());
+    for (const auto &request : shader.attribute_requests) {
+      ids.emplace_back(resolve_attribute_request(request, attribute_ids));
+    }
+    std::ranges::sort(ids);
+    ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
   }
   result.table = link_shader_table(local);
   if (result.table.valid) {
