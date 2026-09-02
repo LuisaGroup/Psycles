@@ -509,9 +509,18 @@ SurfaceProgramBuilder::source_output(const contract::ShaderNode &node,
   auto iter = _outputs.find(
       {.node = binding.source->node, .socket = binding.source->socket});
   if (iter == _outputs.end()) {
+    const auto *source_node = _shader.graph().find(binding.source->node);
     diagnose(SurfaceProgramDiagnosticCode::missing_output,
              node_prefix(node.id) + "input '" + std::string{socket} +
-                 "' references an output that was not lowered",
+                 "' references " +
+                 (source_node == nullptr
+                      ? std::string{"missing source node "}
+                      : "source node " +
+                            std::to_string(binding.source->node.value) +
+                            " ('" + source_node->label + "', type '" +
+                            source_node->type + "') ") +
+                 "output '" + binding.source->socket +
+                 "' that was not lowered",
              node.id, std::string{socket});
     return std::nullopt;
   }
