@@ -55,6 +55,7 @@ using detail::boolean;
 using detail::cycles_default_surface_graph;
 using detail::emission_graph;
 using detail::find_simple_world_nishita;
+using detail::float2;
 using detail::float3;
 using detail::matrix;
 using detail::member;
@@ -327,6 +328,8 @@ BlenderSceneImport load_blender_scene_bundle(
     try {
         SceneSnapshot scene;
         scene.revision = 1u;
+        scene.cycles_object_count = optional_unsigned_number(
+            member(member(root, "cycles_sync"), "object_count"));
 
         std::map<std::string, ImageId, std::less<>>
             image_ids;
@@ -445,7 +448,10 @@ BlenderSceneImport load_blender_scene_bundle(
                     .cycles_shader_index =
                         optional_unsigned_number(member(
                             cycles_sync,
-                            "shader_index"))});
+                            "shader_index")),
+                    .cycles_pass_id = static_cast<std::int32_t>(
+                        signed_number(
+                            member(cycles_sync, "pass_id"), 0))});
         }
 
         yyjson_arr_iter image_iterator =
@@ -1450,7 +1456,23 @@ BlenderSceneImport load_blender_scene_bundle(
                     .is_blender_instance =
                         boolean(
                             member(instance, "is_instance"),
-                            false)});
+                            false),
+                    .object_color = float3(
+                        member(instance, "object_color")),
+                    .object_alpha = number(
+                        member(instance, "object_alpha"), 0.0f),
+                    .object_pass_id = static_cast<std::int32_t>(
+                        signed_number(
+                            member(instance, "object_pass_id"), 0)),
+                    .dupli_generated = float3(
+                        member(instance, "dupli_generated")),
+                    .dupli_uv = float2(
+                        member(instance, "dupli_uv")),
+                    .shadow_terminator_shading_offset = number(
+                        member(
+                            instance,
+                            "shadow_terminator_shading_offset"),
+                        0.0f)});
         }
 
         auto *lights = member(root, "lights");
@@ -1508,7 +1530,10 @@ BlenderSceneImport load_blender_scene_bundle(
                         .cycles_shader_index =
                             optional_unsigned_number(member(
                                 cycles_sync,
-                                "shader_index"))});
+                                "shader_index")),
+                        .cycles_pass_id = static_cast<std::int32_t>(
+                            signed_number(
+                                member(cycles_sync, "pass_id"), 0))});
             }
             scene.lights.emplace(
                 LightId{light_index++},
@@ -1586,7 +1611,36 @@ BlenderSceneImport load_blender_scene_bundle(
                         static_cast<std::uint32_t>(
                             unsigned_number(
                                 member(light, "max_bounces"),
-                                1024u))});
+                                1024u)),
+                    .object_color = float3(
+                        member(light, "object_color")),
+                    .object_alpha = number(
+                        member(light, "object_alpha"), 0.0f),
+                    .object_pass_id = static_cast<std::int32_t>(
+                        signed_number(
+                            member(light, "object_pass_id"), 0)),
+                    .object_random = std::clamp(
+                        number(member(light, "random_id")) /
+                            4294967295.0f,
+                        0.0f,
+                        1.0f),
+                    .particle_index = static_cast<std::uint32_t>(
+                        unsigned_number(
+                            member(light, "particle_index"))),
+                    .dupli_generated = float3(
+                        member(light, "dupli_generated")),
+                    .dupli_uv = float2(
+                        member(light, "dupli_uv")),
+                    .shadow_terminator_shading_offset = number(
+                        member(
+                            light,
+                            "shadow_terminator_shading_offset"),
+                        0.0f),
+                    .shadow_terminator_geometry_offset = number(
+                        member(
+                            light,
+                            "shadow_terminator_geometry_offset"),
+                        0.1f)});
         }
 
         auto *world = member(root, "world");
@@ -1641,7 +1695,10 @@ BlenderSceneImport load_blender_scene_bundle(
                     .cycles_shader_index =
                         optional_unsigned_number(member(
                             world_cycles_sync,
-                            "shader_index"))});
+                            "shader_index")),
+                    .cycles_pass_id = static_cast<std::int32_t>(
+                        signed_number(
+                            member(world_cycles_sync, "pass_id"), 0))});
             scene.world_shader = world_id;
             scene.cycles_background_object_index =
                 optional_unsigned_number(member(

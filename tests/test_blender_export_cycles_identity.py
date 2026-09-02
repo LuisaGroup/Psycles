@@ -11,6 +11,17 @@ import tempfile
 import bpy
 
 
+def _near_sequence(actual: object, expected: list[float]) -> bool:
+    return (
+        isinstance(actual, list)
+        and len(actual) == len(expected)
+        and all(
+            abs(float(lhs) - rhs) <= 1.0e-6
+            for lhs, rhs in zip(actual, expected, strict=True)
+        )
+    )
+
+
 def _reset_scene() -> None:
     for obj in list(bpy.data.objects):
         bpy.data.objects.remove(obj, do_unlink=True)
@@ -65,6 +76,7 @@ def _main() -> None:
 
     material = bpy.data.materials.new("Middle Material")
     material.use_nodes = True
+    material.pass_index = 23
     material.displacement_method = "BUMP"
     material.cycles.volume_sampling = "EQUIANGULAR"
     material.cycles.use_bump_map_correction = False
@@ -79,6 +91,10 @@ def _main() -> None:
     )
     mesh.materials.append(material)
     surface = bpy.data.objects.new("Middle Surface", mesh)
+    surface.color = (0.125, 0.25, 0.5, 0.75)
+    surface.pass_index = 19
+    surface.shadow_terminator_shading_offset = 0.375
+    surface.shadow_terminator_geometry_offset = 0.625
     surface.is_shadow_catcher = True
     scene.collection.objects.link(surface)
 
@@ -123,6 +139,10 @@ def _main() -> None:
         obj.visible_camera = False
         obj.is_shadow_catcher = True
         obj.lightgroup = group
+        obj.color = (0.2, 0.3, 0.4, 0.5)
+        obj.pass_index = max_bounces + 10
+        obj.shadow_terminator_shading_offset = 0.25
+        obj.shadow_terminator_geometry_offset = 0.75
         scene.collection.objects.link(obj)
 
     # Deliberately insert the reverse of lexical order. Cycles consumes the
@@ -155,7 +175,7 @@ def _main() -> None:
             "unreferenced Blender material entered the exported graph domain"
         )
     material_sync = materials["Middle Material"]["cycles_sync"]
-    if material_sync != {"shader_index": 7}:
+    if material_sync != {"shader_index": 7, "pass_id": 23}:
         raise AssertionError(
             "material shader identity did not follow five defaults and "
             f"two dependency-graph light shaders: {material_sync}"
@@ -191,6 +211,31 @@ def _main() -> None:
         raise AssertionError(
             "mesh shadow-catcher membership was not preserved"
         )
+    expected_surface_object = {
+        "object_color": [0.125, 0.25, 0.5],
+        "dupli_generated": [0.0, 0.0, 0.0],
+        "dupli_uv": [0.0, 0.0],
+    }
+    for field, expected_value in expected_surface_object.items():
+        if not _near_sequence(instances[0][field], expected_value):
+            raise AssertionError(
+                f"surface {field} changed: {instances[0][field]}"
+            )
+    if (
+        abs(float(instances[0]["object_alpha"]) - 0.75) > 1.0e-6
+        or instances[0]["object_pass_id"] != 19
+        or abs(
+            float(instances[0]["shadow_terminator_shading_offset"])
+            - 0.375
+        )
+        > 1.0e-6
+        or abs(
+            float(instances[0]["shadow_terminator_geometry_offset"])
+            - 0.625
+        )
+        > 1.0e-6
+    ):
+        raise AssertionError("surface scalar KernelObject fields changed")
 
     lights = payload["lights"]
     names = [item["name"] for item in lights]
@@ -204,11 +249,13 @@ def _main() -> None:
             "object_index": 1,
             "light_group": 1,
             "shader_index": 5,
+            "pass_id": 0,
         },
         "Alpha Light": {
             "object_index": 2,
             "light_group": 0,
             "shader_index": 6,
+            "pass_id": 0,
         },
     }
     expected_max_bounces = {
@@ -239,10 +286,38 @@ def _main() -> None:
             raise AssertionError(
                 f"{light['name']} shader flags were not preserved"
             )
+        if (
+            not _near_sequence(light["object_color"], [0.2, 0.3, 0.4])
+            or abs(float(light["object_alpha"]) - 0.5) > 1.0e-6
+            or light["object_pass_id"]
+            != expected_max_bounces[light["name"]] + 10
+            or not _near_sequence(
+                light["dupli_generated"], [0.0, 0.0, 0.0]
+            )
+            or not _near_sequence(light["dupli_uv"], [0.0, 0.0])
+            or abs(
+                float(light["shadow_terminator_shading_offset"]) - 0.25
+            )
+            > 1.0e-6
+            or abs(
+                float(light["shadow_terminator_geometry_offset"]) - 0.75
+            )
+            > 1.0e-6
+        ):
+            raise AssertionError(
+                f"{light['name']} KernelObject fields changed"
+            )
+
+    if payload.get("cycles_sync") != {"object_count": 4}:
+        raise AssertionError(
+            "dense Cycles object-table extent changed: "
+            f"{payload.get('cycles_sync')}"
+        )
 
     if payload["world"] is not None:
         if payload["world"]["cycles_sync"] != {
             "shader_index": 3,
+            "pass_id": 0,
             "object_index": 3,
             "light_group": -1,
         }:

@@ -54,6 +54,10 @@ optional_unsigned_number(yyjson_val *value) noexcept;
     yyjson_val *value,
     Vec3f fallback = {}) noexcept;
 
+[[nodiscard]] Vec2f float2(
+    yyjson_val *value,
+    Vec2f fallback = {}) noexcept;
+
 [[nodiscard]] Mat4f matrix(yyjson_val *value) noexcept;
 
 [[nodiscard]] yyjson_val *find_socket(

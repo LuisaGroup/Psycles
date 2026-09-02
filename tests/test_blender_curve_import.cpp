@@ -150,6 +150,12 @@ void test_native_curve_bundle_round_trip() {
     "is_instance":true,
     "transform":[1,0,0,0,0,1,0,0,0,0,1,0,2,3,4,1],
     "random_id":0,"particle_index":0,
+    "object_color":[0.2,0.4,0.6],"object_alpha":0.8,
+    "object_pass_id":17,
+    "dupli_generated":[-0.25,0.5,1.25],
+    "dupli_uv":[0.125,0.875],
+    "shadow_terminator_shading_offset":0.3,
+    "shadow_terminator_geometry_offset":0.7,
     "cycles_sync":{"object_index":11,"light_group":-1}
   }],
   "lights":[],"world":null,"world_environment":null
@@ -199,6 +205,18 @@ void test_native_curve_bundle_round_trip() {
   expect(instance.cycles_object_index == 11u, "hair object identity mismatch");
   expect(instance.is_blender_instance,
          "dependency-graph instance representation was dropped");
+  expect(instance.object_color == psycles::Vec3f{0.2f, 0.4f, 0.6f} &&
+             std::abs(instance.object_alpha - 0.8f) <= 1.0e-6f &&
+             instance.object_pass_id == 17,
+         "curve KernelObject info fields did not round-trip");
+  expect(instance.dupli_generated ==
+                 psycles::Vec3f{-0.25f, 0.5f, 1.25f} &&
+             instance.dupli_uv == psycles::Vec2f{0.125f, 0.875f},
+         "curve dupli coordinates did not round-trip");
+  expect_near(instance.shadow_terminator_shading_offset, 0.3f,
+              "curve shading terminator source offset");
+  expect_near(instance.shadow_terminator_geometry_offset, 0.7f,
+              "curve geometry terminator source offset");
 }
 
 } // namespace

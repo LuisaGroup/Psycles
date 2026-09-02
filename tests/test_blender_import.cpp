@@ -72,6 +72,7 @@ void test_integrator_settings_round_trip() {
     std::ofstream scene{temporary.path() / "scene.json"};
     scene << R"JSON({
   "schema": "psycles.blender-scene.v1",
+  "cycles_sync": {"object_count": 13},
   "images": [],
   "node_groups": [],
   "materials": [
@@ -81,7 +82,8 @@ void test_integrator_settings_round_trip() {
       "emission_sampling": "BACK",
       "volume_sampling": "EQUIANGULAR",
       "cycles_sync": {
-        "shader_index": 6
+        "shader_index": 6,
+        "pass_id": 27
       },
       "node_tree": {
         "name": "Raw Volume Material",
@@ -414,8 +416,18 @@ void test_integrator_settings_round_trip() {
         "volume_scatter": false
       },
       "is_shadow_catcher": true,
+      "object_color": [0.125, 0.25, 0.5],
+      "object_alpha": 0.75,
+      "object_pass_id": 19,
+      "random_id": 2147483648,
+      "particle_index": 7,
+      "dupli_generated": [-0.25, 0.125, 0.75],
+      "dupli_uv": [0.2, 0.8],
+      "shadow_terminator_shading_offset": 0.375,
+      "shadow_terminator_geometry_offset": 0.625,
       "cycles_sync": {
         "shader_index": 5,
+        "pass_id": 0,
         "object_index": 9,
         "light_group": 2
       },
@@ -439,6 +451,7 @@ void test_integrator_settings_round_trip() {
     },
     "cycles_sync": {
       "shader_index": 3,
+      "pass_id": 0,
       "object_index": 12,
       "light_group": 4
     },
@@ -719,7 +732,8 @@ void test_integrator_settings_round_trip() {
              imported_material->second.volume_sampling ==
                  psycles::contract::VolumeSampling::equiangular &&
              imported_material->second.cycles_shader_index ==
-                 std::optional<std::uint32_t>{6u},
+                 std::optional<std::uint32_t>{6u} &&
+             imported_material->second.cycles_pass_id == 27,
          "material sampling policies did not round-trip");
   expect(imported_material->second.shader
              .root(psycles::contract::ShaderDomain::volume)
@@ -781,6 +795,24 @@ void test_integrator_settings_round_trip() {
                  std::optional<std::uint32_t>{5u} &&
              imported_light->second.cycles_object_index ==
                  std::optional<std::uint32_t>{9u} &&
+             imported_light->second.object_color ==
+                 psycles::Vec3f{0.125f, 0.25f, 0.5f} &&
+             std::abs(imported_light->second.object_alpha - 0.75f) <=
+                 1.0e-6f &&
+             imported_light->second.object_pass_id == 19 &&
+             std::abs(imported_light->second.object_random -
+                      (2147483648.0f / 4294967295.0f)) <= 1.0e-6f &&
+             imported_light->second.particle_index == 7u &&
+             imported_light->second.dupli_generated ==
+                 psycles::Vec3f{-0.25f, 0.125f, 0.75f} &&
+             imported_light->second.dupli_uv ==
+                 psycles::Vec2f{0.2f, 0.8f} &&
+             std::abs(imported_light->second
+                          .shadow_terminator_shading_offset -
+                      0.375f) <= 1.0e-6f &&
+             std::abs(imported_light->second
+                          .shadow_terminator_geometry_offset -
+                      0.625f) <= 1.0e-6f &&
              imported_light->second.cycles_light_group == 2 &&
              imported_light->second.max_bounces == 13u &&
              imported_light->second.visibility_mask ==
@@ -797,7 +829,9 @@ void test_integrator_settings_round_trip() {
              imported_world->second.cycles_shader_index ==
                  std::optional<std::uint32_t>{3u} &&
              imported.scene->cycles_background_object_index ==
-                 std::optional<std::uint32_t>{12u},
+                 std::optional<std::uint32_t>{12u} &&
+             imported.scene->cycles_object_count ==
+                 std::optional<std::uint32_t>{13u},
          "world object/shader identity did not round-trip");
   expect(imported.scene->environment->nishita.has_value(),
          "Nishita world was not kept procedural");
