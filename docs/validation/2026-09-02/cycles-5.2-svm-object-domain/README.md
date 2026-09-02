@@ -134,7 +134,7 @@ LUISA_VULKAN_USE_XIR=1 LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
   -R '^psycles\\.luisa_cycles_svm_image_vk$'
 ```
 
-The full build, all 33 Cycles SVM host tests, the fallback/HIP image tests, and
+The full build, all 34 Cycles SVM host tests, the fallback/HIP image tests, and
 the strict native XIR-to-SPIR-V Vulkan canary passed. The identity planner and
 particle packer are invoked transactionally by `build_cycles_svm_runtime`
 before any SVM device buffer is created.
@@ -178,3 +178,51 @@ motion/count widths, and geometry-owned flags. The object-scene regression
 pins the Cryptomatte oracle words (`Cube == 0xa8fce865`,
 `Lone Monk == 0x04c3b823`), transform/inverse rows, raw-random rounding,
 padding zeroes, every flag source, and all overflow/rejected-state boundaries.
+
+### Geometry attribute table type-state
+
+The next type-state is now explicit in
+`cycles_svm_geometry_scene.{h,cpp}`. A `GeometryAttributeInput` contains final
+geometry extents, the unioned per-shader request image, and typed source
+payloads. `build_geometry_attribute_table` is one transaction: any ambiguous
+identity, non-total payload, invalid primitive domain, missing hair radius, or
+unrepresentable offset returns a rejected image with no partial arrays.
+
+For geometry `g` and request order `R_g`, the map base is the prefix
+
+```text
+map_base(g) = sum(h < g) 2 * (|R_h| + 1)
+```
+
+where the factor two is exactly `ATTR_PRIM_TYPES`. Shader requests retain their
+input order and Cycles' four existing mandatory attributes (`POSITION`, vertex
+and corner normal, and hair shadow transparency) are appended under the same
+first-insertion-wins set algebra as `AttributeRequestSet`. Each request writes
+only the geometry lane; the subdivision lane and final two-lane terminator are
+zero initialized. A missing source therefore remains the native descriptor
+`(element=NONE, type=FLOAT, offset=0)` rather than disappearing from the map.
+
+Payloads are never widened to a common float4 representation. Float, float2,
+packed float3, float4/RGBA, byte RGBA, octahedral packed normal, and matrix
+values append to their corresponding Cycles arrays. Position uses the
+dedicated `tri_verts` array; hair and point position are combined with radius
+into `curve_keys`/`points`, including static-radius broadcast over position
+motion steps. Matrix values expand to three float4 rows. Face, corner, curve,
+and point domains apply the same global-primitive offset corrections as
+`GeometryManager::device_update_attributes`.
+
+Only after every map entry and typed payload exists does the builder derive
+the cached position and normal offsets by walking the completed map. Corner
+normal has the same precedence over vertex normal as Cycles
+`ObjectManager::device_update_geom_offsets`. Thus an uploadable geometry image
+cannot contain placeholder object offsets.
+
+`tests/test_cycles_svm_geometry_scene.cpp` covers independent standard/named
+aliases, the two-lane map and terminator, every implemented offset correction,
+missing descriptors, matrix rows, byte and packed-normal storage, corner-normal
+precedence, hair position/radius motion packing, mandatory shadow
+transparency, and rejected type states. Axis normal words are frozen from the
+Cycles 5.2.1 octahedral encoder. The remaining production boundary is a late
+adapter from post-displacement `GeometryUpload` and native curve sources into
+this image, followed by typed Luisa buffer allocation and `KernelObject`
+finalization.
