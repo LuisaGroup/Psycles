@@ -413,6 +413,8 @@ bool finalize_cycles_svm_scene_runtime(
   auto triangle_index_buffer =
       scene->device.create_buffer<compiler::cycles_svm::packed_uint3>(
           device_scene_extent(geometry_image.triangle_vertex_indices.size()));
+  auto triangle_shader_buffer = scene->device.create_buffer<luisa::uint>(
+      device_scene_extent(geometry_image.triangle_shaders.size()));
   auto curve_buffer =
       scene->device.create_buffer<compiler::cycles_svm::KernelCurve>(
           device_scene_extent(geometry_image.curves.size()));
@@ -436,6 +438,7 @@ bool finalize_cycles_svm_scene_runtime(
           .curve_key_buffer = std::move(curve_key_buffer),
           .point_buffer = std::move(point_buffer),
           .triangle_index_buffer = std::move(triangle_index_buffer),
+          .triangle_shader_buffer = std::move(triangle_shader_buffer),
           .curve_buffer = std::move(curve_buffer)});
   auto object_runtime = std::make_unique<CyclesSvmObjectRuntime>(
       CyclesSvmObjectRuntime{.image = std::move(object_image),
@@ -475,6 +478,8 @@ void upload_cycles_svm_scene_runtime(Stream &stream,
   upload_device_scene_array(stream, geometry.point_buffer, attributes.points);
   upload_device_scene_array(stream, geometry.triangle_index_buffer,
                             geometry.image.triangle_vertex_indices);
+  upload_device_scene_array(stream, geometry.triangle_shader_buffer,
+                            geometry.image.triangle_shaders);
   upload_device_scene_array(stream, geometry.curve_buffer,
                             geometry.image.curves);
   auto &objects = *runtime.objects;

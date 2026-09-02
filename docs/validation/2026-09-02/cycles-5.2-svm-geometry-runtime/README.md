@@ -41,9 +41,41 @@ with these invariants:
 
 The uploaded arrays retain the native Cycles types: `AttributeMap`, scalar
 float, packed float2/3/4, byte RGBA, octahedral packed normal, triangle vertex,
-curve key, point, packed triangle index, `KernelCurve`, the 256-byte
-`KernelObject`, and its separate 32-bit flag word. No common float4 payload or
+curve key, point, packed triangle index, 32-bit `tri_shader`, `KernelCurve`, the
+256-byte `KernelObject`, and its separate 32-bit flag word. The 32-byte,
+16-byte-aligned `KernelShader` ABI is frozen alongside them for the immediately
+following shader-table transaction. No common float4 payload or
 renderer-specific rebaking is introduced.
+
+## Primitive shader image
+
+For the global triangle primitive domain `P`, the geometry transaction now
+constructs Cycles' `DeviceScene::tri_shader` beside `tri_vindex`. Let `U_g` be
+the effective `Geometry::used_shaders` slot vector for geometry `g`, `m(p)` the
+post-displacement material slot of primitive `p`, and `c(g)` the existence of
+`ATTR_STD_CORNER_NORMAL`. The packed value is
+
+```text
+slot(p)   = min(m(p), |U_g| - 1)
+smooth(p) = c(g) or authored_smooth(p)
+tri_shader[p] = shader_index(U_g[slot(p)])
+                | SHADER_CAST_SHADOW
+                | (smooth(p) ? SHADER_SMOOTH_NORMAL : 0)
+```
+
+This is the `BlenderSync::sync_mesh` last-slot clamp followed by
+`Mesh::pack_shaders`; it is not a hit-time material lookup. Finalized material
+and smooth images must agree with their source images when both are present.
+Raw shader indices are also proven to lie inside the compiled dense shader
+domain and not overlap any decoration bit.
+
+Cycles keys shared Blender geometry by its effective material-slot vector. A
+programmatically authored Psycles geometry can still have per-instance
+overrides, so native packing first computes each user's complete effective
+slot vector. Equal vectors share one `tri_shader` image. Distinct vectors are
+rejected with a geometry-split diagnostic because no single global primitive
+array can represent both; silently choosing either vector would violate the
+source model.
 
 ## Dense object image
 
@@ -159,7 +191,8 @@ strict native-XIR Vulkan that:
 - deliberately reversed `MaterialId` and source shader order assigns named
   attribute IDs in Cycles shader order;
 - typed attribute maps, finalized vertices, packed normals, global triangle
-  indices, full `KernelObject` records, and object flags survive device upload;
+  indices, decorated `tri_shader` values, full `KernelObject` records, and
+  object flags survive device upload;
 - an actual DSL kernel reads nested transform, float, 16-bit, 32-bit, and
   64-bit object fields, preventing a raw-byte-copy-only test from masking a
   reflection or native code-generation failure; and
@@ -176,6 +209,12 @@ non-diagonal transform. It freezes world-space triangle vertices,
 inverse-transpose packed normals, and unchanged object-space tangents, and
 rejects missing accelerator images, permuted instance plans, and static
 transforms applied to shared geometry.
+
+The same host regression freezes all `Mesh::pack_shaders` branches: authored
+smooth shading, corner-normal smooth override, last-slot clamp, an
+object-resolved shader array, and rejection of incompatible shared users. The
+device regression reads the uploaded sparse primitive entry on fallback, HIP,
+and strict native-XIR Vulkan.
 
 Its dense-object fixture freezes sparse holes, raw object state, exact
 visibility expansion, particle-prefix lookup, finalized mesh/curve offsets,
@@ -226,6 +265,12 @@ After completing the dense object image and device field-read canary, another
 16.78 seconds. This run also includes the Blender 5.2 light-link capability
 fixture, the shared curve-bounds regression, source-size enforcement, fallback,
 HIP, and Vulkan typed-object execution.
+
+After adding the native `tri_shader` image and freezing the `KernelShader` ABI,
+the affected host tests and fallback/HIP/strict-native-XIR Vulkan typed-upload
+tests passed. A fresh 32-thread build followed by the full suite under
+`LUISA_VULKAN_USE_XIR=1`, `LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`, and
+`LUISA_VULKAN_DISABLE_DXC=1` passed 547/547 tests in 22.38 seconds.
 
 ## Next boundary
 

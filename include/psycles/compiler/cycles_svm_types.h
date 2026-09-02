@@ -151,6 +151,21 @@ struct alignas(16) KernelObject {
 static_assert(sizeof(KernelObject) == 256u);
 static_assert(alignof(KernelObject) == 16u);
 
+/* Exact host image of Cycles' 16-byte-aligned KernelShader. Cycles spells
+ * constant_emission as float[3]; packed_float3 is its standard-layout host
+ * projection and preserves the same 12-byte prefix while remaining a typed
+ * Luisa structure member. */
+struct alignas(16) KernelShader {
+  packed_float3 constant_emission;
+  float cryptomatte_id;
+  int flags;
+  int pass_id;
+  int pad2;
+  int pad3;
+};
+static_assert(sizeof(KernelShader) == 32u);
+static_assert(alignof(KernelShader) == 16u);
+
 /* Stack */
 
 /* Stack offset type. Stack offsets are in the range [0, SVM_STACK_SIZE]. */
