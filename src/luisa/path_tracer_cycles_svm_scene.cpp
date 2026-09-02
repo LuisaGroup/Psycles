@@ -342,6 +342,7 @@ void upload_cycles_svm_runtime(Stream &stream,
 bool finalize_cycles_svm_geometry_runtime(
     const std::shared_ptr<LuisaSceneData> &scene,
     const contract::SceneSnapshot &snapshot,
+    std::span<const CyclesInstanceIntersectionPlan> intersection_plans,
     std::span<const GeometryUpload> mesh_uploads,
     const std::map<contract::GeometryId, std::uint32_t>
         &resource_geometry_indices,
@@ -363,8 +364,9 @@ bool finalize_cycles_svm_geometry_runtime(
 
   auto image = build_cycles_svm_geometry_scene_image(
       snapshot, runtime.compilation, runtime.material_shader_indices,
-      runtime.object_identities, mesh_uploads, resource_geometry_indices,
-      triangle_primitive_offsets, curve_primitive_offsets);
+      runtime.object_identities, intersection_plans, mesh_uploads,
+      resource_geometry_indices, triangle_primitive_offsets,
+      curve_primitive_offsets);
   if (!image.valid) {
     diagnostic = std::move(image.diagnostic);
     return false;

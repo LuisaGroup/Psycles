@@ -7,6 +7,8 @@
 
 namespace psycles::luisa_backend::detail {
 
+struct CyclesInstanceIntersectionPlan;
+
 [[nodiscard]] std::unique_ptr<CyclesSvmRuntime>
 build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
                          const contract::SceneSnapshot &snapshot,
@@ -21,6 +23,7 @@ void upload_cycles_svm_runtime(Stream &stream,
 [[nodiscard]] bool finalize_cycles_svm_geometry_runtime(
     const std::shared_ptr<LuisaSceneData> &scene,
     const contract::SceneSnapshot &snapshot,
+    std::span<const CyclesInstanceIntersectionPlan> intersection_plans,
     std::span<const GeometryUpload> mesh_uploads,
     const std::map<contract::GeometryId, std::uint32_t>
         &resource_geometry_indices,

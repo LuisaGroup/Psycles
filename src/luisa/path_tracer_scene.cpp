@@ -1470,6 +1470,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     if (!finalize_cycles_svm_geometry_runtime(
             data,
             snapshot,
+            cycles_instance_intersection_plan,
             uploads,
             geometry_indices,
             cycles_primitive_offsets,

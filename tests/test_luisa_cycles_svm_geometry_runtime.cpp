@@ -86,6 +86,7 @@ void require(bool condition, std::string_view message) {
   GeometryUpload upload;
   upload.positions = {
       {1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}};
+  upload.cycles_intersection_positions = upload.positions;
   upload.normals = {{0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
   upload.triangles = {{0u, 2u, 1u}};
   upload.triangle_material_slots = {0u};
@@ -145,23 +146,25 @@ void test_runtime(Device &device) {
   const std::map<GeometryId, std::uint32_t> primitive_offsets{
       {geometry_id, 3u}};
   const std::map<GeometryId, std::uint32_t> no_curve_offsets;
+  const auto intersection_plans =
+      build_cycles_instance_intersection_plan(snapshot, {});
 
   const std::map<GeometryId, std::uint32_t> missing_offsets;
-  require(!finalize_cycles_svm_geometry_runtime(scene, snapshot, uploads,
-                                                resources, missing_offsets,
-                                                no_curve_offsets, diagnostic) &&
+  require(!finalize_cycles_svm_geometry_runtime(
+              scene, snapshot, intersection_plans, uploads, resources,
+              missing_offsets, no_curve_offsets, diagnostic) &&
               scene->cycles_svm->geometry == nullptr,
           "rejected geometry transaction installed a partial runtime");
-  require(finalize_cycles_svm_geometry_runtime(scene, snapshot, uploads,
-                                               resources, primitive_offsets,
-                                               no_curve_offsets, diagnostic),
+  require(finalize_cycles_svm_geometry_runtime(
+              scene, snapshot, intersection_plans, uploads, resources,
+              primitive_offsets, no_curve_offsets, diagnostic),
           diagnostic);
   auto *const installed = scene->cycles_svm->geometry.get();
   require(installed != nullptr && installed->image.valid,
           "valid geometry transaction was not installed");
-  require(!finalize_cycles_svm_geometry_runtime(scene, snapshot, uploads,
-                                                resources, primitive_offsets,
-                                                no_curve_offsets, diagnostic) &&
+  require(!finalize_cycles_svm_geometry_runtime(
+              scene, snapshot, intersection_plans, uploads, resources,
+              primitive_offsets, no_curve_offsets, diagnostic) &&
               scene->cycles_svm->geometry.get() == installed,
           "duplicate finalization replaced the installed transaction");
 

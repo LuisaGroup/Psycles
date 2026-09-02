@@ -419,21 +419,17 @@ std::vector<CyclesInstanceIntersectionPlan>
 build_cycles_instance_intersection_plan(
     const contract::SceneSnapshot &scene,
     const std::set<contract::MaterialId> &surface_bssrdf_materials) {
-    std::vector<const contract::InstanceDesc *> ordered_instances;
-    ordered_instances.reserve(scene.instances.size());
     std::map<contract::GeometryId, std::size_t> geometry_users;
     for (const auto &[id, instance] : scene.instances) {
         static_cast<void>(id);
-        ordered_instances.emplace_back(&instance);
         if (scene.geometries.contains(instance.geometry)) {
             ++geometry_users[instance.geometry];
         }
     }
 
     std::vector<CyclesInstanceIntersectionPlan> result;
-    result.reserve(ordered_instances.size());
-    for (std::size_t index = 0u; index < ordered_instances.size(); ++index) {
-        const auto &instance = *ordered_instances[index];
+    result.reserve(scene.instances.size());
+    for (const auto &[id, instance] : scene.instances) {
         auto transform_applied = false;
         if (const auto geometry_iter = scene.geometries.find(instance.geometry);
             geometry_iter != scene.geometries.end()) {
@@ -452,6 +448,7 @@ build_cycles_instance_intersection_plan(
                                 !blocked;
         }
         result.emplace_back(CyclesInstanceIntersectionPlan{
+            .instance = id,
             .transform_applied = transform_applied,
             .world_to_object = cycles_inverse_transform(instance.transform)});
     }

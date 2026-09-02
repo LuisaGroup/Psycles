@@ -39,6 +39,34 @@ float, packed float2/3/4, byte RGBA, octahedral packed normal, triangle vertex,
 curve key, point, packed triangle index, and `KernelCurve`. No common float4
 payload or renderer-specific rebaking is introduced.
 
+## Static-transform image
+
+The geometry transaction now also consumes the exact accelerator
+representation plan. For the map-ordered instance domain `O` and plan image
+`P`, construction requires `|O| = |P|` and `P[i].instance = O[i].id`; every
+stored inverse must equal the inverse of that same instance transform. This
+prevents a valid transform bit from being paired with another object's data.
+
+Let `A(g)` denote that the unique mesh user of geometry `g` has
+`transform_applied`. The transaction accepts a world-space intersection image
+if and only if `A(g)` is true. Its extent and every position must agree with
+the accelerator image. Shared geometry, curves, and meshes carrying
+true-displacement snapshots cannot enter this state, matching Cycles'
+`ObjectManager::apply_static_transforms` gate.
+
+The typed DeviceScene image is then defined by
+
+```text
+tri_verts[i] = T * P[i]                    when A(g)
+tri_verts[i] = P[i]                        otherwise
+normal[i]    = normalize(transpose(T^-1) * N[i]) when A(g)
+normal[i]    = N[i]                        otherwise
+```
+
+Only Cycles' standard position and normal storage follows this transform.
+Generated coordinates, UVs, and UV tangents stay in object space, as required
+by the object flags consumed by Cycles texture-coordinate and normal-map code.
+
 ## Used-shader domain
 
 An initial production curve regression exposed an important distinction between
@@ -87,6 +115,12 @@ used-shader root set, including unused geometry slots, instance overrides,
 analytic lights, and the world. Existing host geometry-image tests continue to
 cover typed packing and rejected source states.
 
+The host geometry regression additionally uses a reflected, non-uniform,
+non-diagonal transform. It freezes world-space triangle vertices,
+inverse-transpose packed normals, and unchanged object-space tangents, and
+rejects missing accelerator images, permuted instance plans, and static
+transforms applied to shared geometry.
+
 Validation commands:
 
 ```sh
@@ -118,6 +152,10 @@ The full 547-test suite then passed under the strict Vulkan environment in
 to its own compilation unit rather than weakening the 2000-line policy. The
 source-size and original import regressions passed after the split, and the
 second full run was 547/547.
+
+After adding the static-transform image invariant, a fresh 32-thread build and
+the seven directly affected host/device tests passed. The full suite was then
+rerun with strict native-XIR Vulkan enabled: 547/547 passed in 17.44 seconds.
 
 ## Next boundary
 
