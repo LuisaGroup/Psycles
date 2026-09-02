@@ -8,6 +8,7 @@
 
 #include <psycles/compiler/core_nodes.h>
 
+#include <algorithm>
 #include <array>
 
 namespace psycles::compiler::cycles_svm {
@@ -39,7 +40,7 @@ constexpr auto particle_outputs = std::array{
     InfoOutput{"Angular Velocity", NODE_INFO_PAR_ANGULAR_VELOCITY},
 };
 
-[[nodiscard]] bool output_is_live(GraphNode *node,
+[[nodiscard]] bool output_is_live(const GraphNode *node,
                                   std::string_view name) noexcept {
   const auto *out = node->output(name);
   return out != nullptr && !out->links.empty();
@@ -70,6 +71,16 @@ public:
     return NODE_PARTICLE_INFO;
   }
 
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    if (std::ranges::any_of(particle_outputs, [this](const auto &item) {
+          return output_is_live(this, item.name);
+        })) {
+      requests.add(ATTR_STD_PARTICLE);
+    }
+    GraphNode::attributes(context, requests);
+  }
+
   void compile(SVMCompiler &compiler) override {
     for (const auto &[name, info_type] : particle_outputs) {
       if (output_is_live(this, name)) {
@@ -87,6 +98,22 @@ class HairInfoNode final : public GraphNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_HAIR_INFO;
+  }
+
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    if (context.has_surface_link()) {
+      if (output_is_live(this, "Intercept")) {
+        requests.add(ATTR_STD_CURVE_INTERCEPT);
+      }
+      if (output_is_live(this, "Length")) {
+        requests.add(ATTR_STD_CURVE_LENGTH);
+      }
+      if (output_is_live(this, "Random")) {
+        requests.add(ATTR_STD_CURVE_RANDOM);
+      }
+    }
+    GraphNode::attributes(context, requests);
   }
 
   void compile(SVMCompiler &compiler) override {
@@ -154,6 +181,14 @@ class PointInfoNode final : public GraphNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_POINT_INFO;
+  }
+
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    if (context.has_surface_link() && output_is_live(this, "Random")) {
+      requests.add(ATTR_STD_POINT_RANDOM);
+    }
+    GraphNode::attributes(context, requests);
   }
 
   void compile(SVMCompiler &compiler) override {

@@ -57,6 +57,26 @@ public:
     return NODE_GEOMETRY;
   }
 
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    const auto live = [this](std::string_view name) noexcept {
+      const auto *out = output(name);
+      return out != nullptr && !out->links.empty();
+    };
+    if (context.has_surface_link()) {
+      if (live("Tangent")) {
+        requests.add(ATTR_STD_GENERATED);
+      }
+      if (live("Pointiness")) {
+        requests.add(ATTR_STD_POINTINESS);
+      }
+      if (live("Random Per Island")) {
+        requests.add(ATTR_STD_RANDOM_PER_ISLAND);
+      }
+    }
+    GraphNode::attributes(context, requests);
+  }
+
   void compile(SVMCompiler &compiler) override {
     const auto bump_offset = node_bump_offset(bump);
     const auto use_derivative =

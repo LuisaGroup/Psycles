@@ -1,5 +1,6 @@
 #pragma once
 
+#include <psycles/compiler/cycles_svm_attribute_request.h>
 #include <psycles/compiler/cycles_svm_bytecode.h>
 #include <psycles/compiler/shader_program.h>
 #include <psycles/contract/scene.h>
@@ -48,6 +49,10 @@ struct ShaderImage {
   std::string diagnostic;
   std::vector<std::uint32_t> words;
   std::array<bool, NODE_NUM> node_types_used{};
+  // Exact, canonical Shader::attributes image collected before Cycles graph
+  // finalization. Requests stay symbolic here so hidden geometry dependencies
+  // cannot perturb the named IDs allocated by SVM bytecode compilation.
+  std::vector<AttributeRequest> attribute_requests;
   std::uint32_t peak_stack_usage{};
 };
 
@@ -56,6 +61,8 @@ struct ShaderImage {
 // world/background semantics from the graph topology.
 struct ShaderCompileContext {
   bool background{};
+  contract::DisplacementMethod displacement_method{
+      contract::DisplacementMethod::bump};
   // Cycles' Blackbody constant folder evaluates in Rec.709 and projects the
   // result through ShaderManager's active scene-linear transform. Keeping the
   // same scene-owned value here prevents host folding from silently assuming

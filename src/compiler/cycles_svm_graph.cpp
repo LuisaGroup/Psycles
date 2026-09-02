@@ -973,6 +973,7 @@ CyclesGraph CyclesGraph::project(
   if (!graph.valid()) {
     return graph;
   }
+  graph.collect_attribute_requests();
   graph.expand();
   graph.default_inputs();
   graph.compose_float3_autoconverts();
@@ -1275,6 +1276,19 @@ void CyclesGraph::inline_blender_functions() {
   // implementations encode socket availability and field-valued defaults;
   // this topological pass supplies the same one-way primitive propagation.
   run_constant_fold_stage(*this, ConstantFoldStage::blender_inline);
+}
+
+void CyclesGraph::collect_attribute_requests() {
+  AttributeRequestSet requests;
+  const GraphAttributeContext context{
+      .has_surface = root(GraphDomain::surface) != nullptr,
+      .has_volume = root(GraphDomain::volume) != nullptr,
+      .has_displacement = root(GraphDomain::displacement) != nullptr,
+  };
+  for (const auto &node : _nodes) {
+    node->attributes(context, requests);
+  }
+  _attribute_requests = requests.canonical_requests();
 }
 
 void CyclesGraph::constant_fold() {

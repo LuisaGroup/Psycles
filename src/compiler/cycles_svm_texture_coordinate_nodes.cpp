@@ -74,10 +74,35 @@ transform_property(const GraphNode *node, std::string_view name) noexcept {
   };
 }
 
+[[nodiscard]] bool output_is_live(const GraphNode *node,
+                                  std::string_view name) noexcept {
+  const auto *out = node->output(name);
+  return out != nullptr && !out->links.empty();
+}
+
 class TextureCoordinateNode final : public GraphNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_TEX_COORD;
+  }
+
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    const auto from_dupli = boolean_property(this, "FromDupli");
+    if (from_dupli && !*from_dupli) {
+      if (context.has_surface_link()) {
+        if (output_is_live(this, "Generated")) {
+          requests.add(ATTR_STD_GENERATED);
+        }
+        if (output_is_live(this, "UV")) {
+          requests.add(ATTR_STD_UV);
+        }
+      }
+      if (context.has_volume && output_is_live(this, "Generated")) {
+        requests.add(ATTR_STD_GENERATED_TRANSFORM);
+      }
+    }
+    GraphNode::attributes(context, requests);
   }
 
   void compile(SVMCompiler &compiler) override {
@@ -207,6 +232,21 @@ class UVMapNode final : public GraphNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_TEX_COORD;
+  }
+
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    const auto from_dupli = boolean_property(this, "FromDupli");
+    const auto attribute = string_property(this, "Attribute");
+    if (context.has_surface && from_dupli && !*from_dupli && attribute &&
+        output_is_live(this, "UV")) {
+      if (attribute->empty()) {
+        requests.add(ATTR_STD_UV);
+      } else {
+        requests.add(*attribute);
+      }
+    }
+    GraphNode::attributes(context, requests);
   }
 
   void compile(SVMCompiler &compiler) override {

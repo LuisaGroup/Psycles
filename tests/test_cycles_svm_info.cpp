@@ -42,6 +42,18 @@ struct AttributePayload {
   auto operator<=>(const AttributePayload &) const = default;
 };
 
+[[nodiscard]] std::vector<AttributeRequest>
+standard_requests(std::initializer_list<AttributeStandard> standards) {
+  std::vector<AttributeRequest> requests;
+  requests.reserve(standards.size());
+  for (const auto standard : standards) {
+    requests.emplace_back(
+        AttributeRequest{.standard = standard, .name = {}});
+  }
+  std::ranges::sort(requests);
+  return requests;
+}
+
 constexpr auto object_outputs = std::array{
     InfoOutput{"Location", SocketType::vector, Encoding::direct,
                NODE_INFO_OB_LOCATION},
@@ -332,6 +344,9 @@ void test_external_cycles_all_output_payloads() {
               contains_exact_record_sequence(image,
                                              particle_record_sequence),
           "Particle Info payload words differ from Cycles 5.2.1");
+  require(image.attribute_requests ==
+              standard_requests({ATTR_STD_PARTICLE}),
+          "Particle Info lost Cycles' out-of-band particle attribute demand");
 
   static constexpr auto hair_direct_expected = std::array{
       DirectPayload{NODE_INFO_CURVE_IS_STRAND, 0u},
@@ -353,6 +368,11 @@ void test_external_cycles_all_output_payloads() {
           NODE_ATTR, ATTR_STD_CURVE_RANDOM, 0x00000107u, 0u,
       };
   image = compile_all(node_type::hair_info, hair_outputs);
+  require(image.attribute_requests ==
+              standard_requests({ATTR_STD_CURVE_INTERCEPT,
+                                 ATTR_STD_CURVE_LENGTH,
+                                 ATTR_STD_CURVE_RANDOM}),
+          "Hair Info attribute request set differs from Cycles");
   require(std::ranges::equal(
               exact_direct_payloads(image, NODE_HAIR_INFO,
                                     NODE_INFO_CURVE_RANDOM),
@@ -377,7 +397,9 @@ void test_external_cycles_all_output_payloads() {
           NODE_ATTR, ATTR_STD_POINT_RANDOM, 0x00000104u, 0u,
       };
   image = compile_all(node_type::point_info, point_outputs);
-  require(std::ranges::equal(
+  require(image.attribute_requests ==
+              standard_requests({ATTR_STD_POINT_RANDOM}) &&
+              std::ranges::equal(
               exact_direct_payloads(image, NODE_POINT_INFO,
                                     NODE_INFO_POINT_RANDOM),
               point_direct_expected) &&

@@ -201,6 +201,13 @@ void test_scene_compile_transaction_preserves_shader_identity() {
               compiled.shader_node_types_used[5u][NODE_PARTICLE_INFO] &&
               !compiled.shader_node_types_used[0u][NODE_PARTICLE_INFO],
           "per-shader Particle Info demand collapsed into the global union");
+  require(compiled.shader_attribute_ids_used.size() == 6u &&
+              compiled.shader_attribute_ids_used[2u].empty() &&
+              std::ranges::binary_search(
+                  compiled.shader_attribute_ids_used[5u],
+                  static_cast<std::uint64_t>(ATTR_STD_PARTICLE)) &&
+              compiled.shader_attribute_ids_used[0u].empty(),
+          "per-shader Cycles attribute requests were not preserved");
   require(compiled.named_attributes.empty() && compiled.images.empty() &&
               compiled.ies.empty(),
           "resource-free scene unexpectedly allocated SVM resources");

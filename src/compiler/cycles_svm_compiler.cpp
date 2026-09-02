@@ -145,96 +145,6 @@ template<typename T>
   }
 }
 
-[[nodiscard]] constexpr std::string_view
-attribute_standard_name(AttributeStandard standard) noexcept {
-  switch (standard) {
-  case ATTR_STD_POSITION:
-    return "P";
-  case ATTR_STD_RADIUS:
-    return "radius";
-  case ATTR_STD_VERTEX_NORMAL:
-  case ATTR_STD_CORNER_NORMAL:
-    return "N";
-  case ATTR_STD_UV:
-    return "uv";
-  case ATTR_STD_GENERATED:
-    return "generated";
-  case ATTR_STD_GENERATED_TRANSFORM:
-    return "generated_transform";
-  case ATTR_STD_UV_TANGENT:
-    return "tangent";
-  case ATTR_STD_UV_TANGENT_SIGN:
-    return "tangent_sign";
-  case ATTR_STD_UV_TANGENT_UNDISPLACED:
-    return "undisplaced_tangent";
-  case ATTR_STD_UV_TANGENT_SIGN_UNDISPLACED:
-    return "undisplaced_tangent_sign";
-  case ATTR_STD_VERTEX_COLOR:
-    return "vertex_color";
-  case ATTR_STD_POSITION_UNDEFORMED:
-    return "undeformed";
-  case ATTR_STD_POSITION_UNDISPLACED:
-    return "undisplaced";
-  case ATTR_STD_NORMAL_UNDISPLACED:
-    return "undisplaced_N";
-  case ATTR_STD_PARTICLE:
-    return "particle";
-  case ATTR_STD_CURVE_INTERCEPT:
-    return "curve_intercept";
-  case ATTR_STD_CURVE_LENGTH:
-    return "curve_length";
-  case ATTR_STD_CURVE_RANDOM:
-    return "curve_random";
-  case ATTR_STD_POINT_RANDOM:
-    return "point_random";
-  case ATTR_STD_PTEX_FACE_ID:
-    return "ptex_face_id";
-  case ATTR_STD_PTEX_UV:
-    return "ptex_uv";
-  case ATTR_STD_VOLUME_DENSITY:
-    return "density";
-  case ATTR_STD_VOLUME_COLOR:
-    return "color";
-  case ATTR_STD_VOLUME_FLAME:
-    return "flame";
-  case ATTR_STD_VOLUME_HEAT:
-    return "heat";
-  case ATTR_STD_VOLUME_TEMPERATURE:
-    return "temperature";
-  case ATTR_STD_VOLUME_VELOCITY:
-    return "velocity";
-  case ATTR_STD_VOLUME_VELOCITY_X:
-    return "velocity_x";
-  case ATTR_STD_VOLUME_VELOCITY_Y:
-    return "velocity_y";
-  case ATTR_STD_VOLUME_VELOCITY_Z:
-    return "velocity_z";
-  case ATTR_STD_POINTINESS:
-    return "pointiness";
-  case ATTR_STD_RANDOM_PER_ISLAND:
-    return "random_per_island";
-  case ATTR_STD_SHADOW_TRANSPARENCY:
-    return "shadow_transparency";
-  case ATTR_STD_NOT_FOUND:
-  case ATTR_STD_NONE:
-  case ATTR_STD_NUM:
-    return {};
-  }
-  return {};
-}
-
-[[nodiscard]] AttributeStandard
-attribute_standard_from_name(std::string_view name) noexcept {
-  for (auto standard = static_cast<int>(ATTR_STD_NONE);
-       standard < static_cast<int>(ATTR_STD_NUM); ++standard) {
-    const auto value = static_cast<AttributeStandard>(standard);
-    if (name == attribute_standard_name(value)) {
-      return value;
-    }
-  }
-  return ATTR_STD_NONE;
-}
-
 class Compiler final : public SVMCompiler {
 private:
   using SVMCompiler::add_node;
@@ -256,6 +166,7 @@ private:
   IESIDMap &_ies_ids;
   BytecodeBuilder _stream;
   Stack _stack;
+  AttributeRequestSet _attribute_requests;
   GraphNode *_current_node{};
   ShaderType _current_type{SHADER_TYPE_SURFACE};
   bool _background{};
@@ -512,8 +423,7 @@ private:
   }
 
   [[nodiscard]] std::uint32_t attribute(std::string_view name) override {
-    return static_cast<std::uint32_t>(
-        _attribute_ids.get_attribute_id(name));
+    return static_cast<std::uint32_t>(_attribute_ids.get_attribute_id(name));
   }
 
   [[nodiscard]] std::uint32_t
@@ -1050,6 +960,7 @@ private:
     result.diagnostic = std::move(_diagnostic);
     result.words.assign(_stream.words().begin(), _stream.words().end());
     result.node_types_used = _stream.node_types_used();
+    result.attribute_requests = _attribute_requests.canonical_requests();
     result.peak_stack_usage = _stack.peak();
     return result;
   }
@@ -1062,7 +973,20 @@ public:
         _attribute_ids{attribute_ids},
         _image_ids{image_ids},
         _ies_ids{ies_ids},
-        _background{context.background} {}
+        _background{context.background} {
+    for (const auto &request : _graph.attribute_requests()) {
+      if (request.standard != ATTR_STD_NONE) {
+        _attribute_requests.add(request.standard);
+      } else {
+        _attribute_requests.add(request.name);
+      }
+    }
+    if (context.displacement_method == contract::DisplacementMethod::both &&
+        _graph.root(GraphDomain::displacement) != nullptr) {
+      _attribute_requests.add(ATTR_STD_POSITION_UNDISPLACED);
+      _attribute_requests.add(ATTR_STD_NORMAL_UNDISPLACED);
+    }
+  }
 
   [[nodiscard]] ShaderImage compile() {
     if (!_graph.valid()) {

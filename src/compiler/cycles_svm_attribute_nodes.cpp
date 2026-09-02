@@ -8,6 +8,7 @@
 
 #include <psycles/compiler/core_nodes.h>
 
+#include <array>
 #include <bit>
 #include <optional>
 #include <string_view>
@@ -54,10 +55,54 @@ node_bump_offset(ShaderBump bump) noexcept {
   }
 }
 
+[[nodiscard]] bool output_is_live(const GraphNode *node,
+                                  std::string_view name) noexcept {
+  const auto *out = node->output(name);
+  return out != nullptr && !out->links.empty();
+}
+
+void add_named_attribute_request(AttributeRequestSet &requests,
+                                 std::string_view attribute) {
+  requests.add_standard(attribute);
+
+  const auto standard = attribute_standard_from_name(attribute);
+  if (standard == ATTR_STD_UV_TANGENT ||
+      standard == ATTR_STD_UV_TANGENT_SIGN ||
+      standard == ATTR_STD_UV_TANGENT_UNDISPLACED ||
+      standard == ATTR_STD_UV_TANGENT_SIGN_UNDISPLACED) {
+    requests.add(ATTR_STD_UV);
+    return;
+  }
+
+  static constexpr auto suffixes = std::array{
+      std::string_view{".tangent_sign"}, std::string_view{".tangent"},
+      std::string_view{".undisplaced_tangent"},
+      std::string_view{".undisplaced_tangent_sign"},
+  };
+  for (const auto suffix : suffixes) {
+    if (attribute.ends_with(suffix)) {
+      requests.add(attribute.substr(0u, attribute.size() - suffix.size()));
+    }
+  }
+}
+
 class VertexColorNode final : public GraphNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_VERTEX_COLOR;
+  }
+
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    if (output_is_live(this, "Color") || output_is_live(this, "Alpha")) {
+      const auto layer_name = string_property(this, "Layer Name");
+      if (layer_name && !layer_name->empty()) {
+        requests.add_standard(*layer_name);
+      } else if (layer_name) {
+        requests.add(ATTR_STD_VERTEX_COLOR);
+      }
+    }
+    GraphNode::attributes(context, requests);
   }
 
   void compile(SVMCompiler &compiler) override {
@@ -86,6 +131,20 @@ class AttributeNode final : public GraphNode {
 public:
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_ATTR;
+  }
+
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    const auto attribute_name = string_property(this, "Attribute");
+    if (attribute_name &&
+        (output_is_live(this, "Color") || output_is_live(this, "Vector") ||
+         output_is_live(this, "Fac") || output_is_live(this, "Alpha"))) {
+      add_named_attribute_request(requests, *attribute_name);
+    }
+    if (context.has_volume) {
+      requests.add(ATTR_STD_GENERATED_TRANSFORM);
+    }
+    GraphNode::attributes(context, requests);
   }
 
   void compile(SVMCompiler &compiler) override {

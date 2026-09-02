@@ -63,11 +63,36 @@ particle_index(o) = P(g(o)) + l(o)
 ```
 
 Non-qualifying objects, rejected child particles, and objects whose shaders do
-not demand `NODE_PARTICLE_INFO` map to dummy entry zero. The raw exporter ID
+not request `ATTR_STD_PARTICLE` map to dummy entry zero. The raw exporter ID
 for a class is used only for equality; it is never interpreted as `P(g)`.
 Demand remains per shader, including inert holes in the global shader domain,
 so an unrelated material containing Particle Info cannot retain particle data
 for every object through the scene-wide opcode union.
+
+### Symbolic shader attribute requests
+
+Cycles invokes `ShaderNode::attributes` and each node-family override over
+every node before `ShaderGraph::finalize`; disconnected nodes therefore still
+contribute residency requirements even though `clean` later removes their
+bytecode. Psycles now performs the same pre-finalize transfer over the
+projected Cycles graph. It includes the generic unlinked Generated/UV socket
+rules and the represented family-specific rules for info, attribute,
+coordinate, geometry, tangent/normal-map, anisotropic closure, and volume
+nodes. `DISPLACE_BOTH` adds undisplaced position and normal exactly at the
+shader boundary.
+
+The per-shader result remains a canonical set of symbolic `(standard, name)`
+requests while local SVM bytecode is emitted. Only after every shader has
+compiled are those requests resolved in the scene-wide `AttributeIDMap`.
+This ordering is necessary: hidden geometry dependencies such as a named
+normal map's base UV must not consume a named ID before the tangent and tangent
+sign IDs embedded in SVM bytecode. Formally, request resolution extends the
+already-allocated bytecode-ID map; it never changes its existing image.
+
+The canonical symbolic set is part of local-shader structural identity, so
+equal bytecode with different out-of-band residency requirements is not
+interchangeable. Runtime particle retention now consumes the resolved
+per-shader request set rather than inferring demand from `NODE_PARTICLE_INFO`.
 
 ## Regression coverage
 
@@ -87,8 +112,13 @@ for every object through the scene-wide opcode union.
 
 `tests/test_cycles_svm_scene.cpp` additionally proves that per-shader Particle
 Info demand survives global shader linking without collapsing into the global
-opcode union. Blender exporter/importer regressions preserve raw group IDs,
-parent indices, particle payload vectors, and the child-particle sentinel.
+opcode union. `tests/test_cycles_svm_info.cpp` checks the exact Particle Info
+and Hair Info request sets. `tests/test_cycles_svm_attribute_requests.cpp`
+checks the complete Cycles 5.2 standard-name domain, request-set transitions,
+pre-finalize disconnected-node behavior, every represented family override,
+`DISPLACE_BOTH`, and the proof-critical deferred named-ID ordering. Blender
+exporter/importer regressions preserve raw group IDs, parent indices, particle
+payload vectors, and the child-particle sentinel.
 `tests/test_luisa_cycles_svm_image.cpp` checks the 80-byte, 16-byte-aligned
 `KernelParticle` field projection and all padded `float4` lanes on real Luisa
 backends.
@@ -96,14 +126,18 @@ backends.
 Validation commands:
 
 ```text
-cmake --build build --parallel 32 --target psycles_cycles_svm_object_scene_tests psycles_luisa_runtime
-ctest --test-dir build --output-on-failure -R '^psycles\\.cycles_svm_(object_scene|scene)$'
+cmake --build build --parallel 32
+ctest --test-dir build --output-on-failure -R '^psycles\\.cycles_svm_'
 ctest --test-dir build --output-on-failure -R '^psycles\\.luisa_cycles_svm_image_(hip|fallback)$'
+LUISA_VULKAN_USE_XIR=1 LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+  LUISA_VULKAN_DISABLE_DXC=1 ctest --test-dir build --output-on-failure \
+  -R '^psycles\\.luisa_cycles_svm_image_vk$'
 ```
 
-Both registered tests passed. The identity planner and particle packer are
-invoked transactionally by `build_cycles_svm_runtime` before any SVM device
-buffer is created.
+The full build, all 33 Cycles SVM host tests, the fallback/HIP image tests, and
+the strict native XIR-to-SPIR-V Vulkan canary passed. The identity planner and
+particle packer are invoked transactionally by `build_cycles_svm_runtime`
+before any SVM device buffer is created.
 
 ## Deliberate next boundary
 
