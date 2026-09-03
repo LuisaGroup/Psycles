@@ -32,6 +32,8 @@ inline constexpr auto cycles_synthetic_mix_closure_weight =
 inline constexpr auto cycles_synthetic_math = "cycles.synthetic.math";
 inline constexpr auto cycles_synthetic_float3_autoconvert =
     "cycles.synthetic.float3_autoconvert";
+inline constexpr auto cycles_synthetic_set_normal =
+    "cycles.synthetic.set_normal";
 
 // This is the host graph consumed by the Cycles 5.2 SVM compiler. Its
 // topology and mutable compiler fields correspond to ShaderInput,

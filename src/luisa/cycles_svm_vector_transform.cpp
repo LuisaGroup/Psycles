@@ -50,6 +50,22 @@ void object_position_transform(Float3 &value,
   }
 }
 
+void object_position_transform(Dual3 &value,
+                               const TransformState &transform_state,
+                               const ShaderData &shader_data,
+                               bool object_motion_enabled) noexcept {
+  if (object_motion_enabled) {
+    $if (object_has_motion(shader_data)) {
+      value = transform_point(shader_data.ob_tfm_motion, value);
+    }
+    $else {
+      value = transform_point(transform_state.object_to_world, value);
+    };
+  } else {
+    value = transform_point(transform_state.object_to_world, value);
+  }
+}
+
 void object_inverse_position_transform(Float3 &value,
                                        const TransformState &transform_state,
                                        const ShaderData &shader_data,

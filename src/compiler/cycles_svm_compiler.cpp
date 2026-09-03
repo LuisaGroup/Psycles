@@ -285,6 +285,7 @@ private:
   GraphNode *_current_node{};
   ShaderType _current_type{SHADER_TYPE_SURFACE};
   bool _background{};
+  bool _use_bump_eval_state{};
   SVMStackOffset _mix_weight_offset{SVM_STACK_INVALID};
   SVMStackOffset _bump_state_offset{SVM_STACK_INVALID};
   std::string _diagnostic;
@@ -1079,16 +1080,38 @@ private:
         state.node_feature_mask = kernel_feature_node_mask_displacement;
         break;
     }
+    const auto need_bump_state =
+        type == SHADER_TYPE_BUMP && _use_bump_eval_state;
+    if (need_bump_state) {
+      _bump_state_offset = stack_find_offset(SVM_BUMP_EVAL_STATE_SIZE);
+      if (!_diagnostic.empty()) {
+        _bump_state_offset = SVM_STACK_INVALID;
+        return false;
+      }
+      SVMCompiler::add_node(
+          nullptr, NODE_ENTER_BUMP_EVAL,
+          SVMNodeEnterBumpEval{.state_offset = _bump_state_offset,
+                               ._pad = {0u, 0u, 0u}});
+    }
     if (root_input != nullptr && root_input->link != nullptr &&
         !generate_multi_closure(root_input->link->parent,
                                 root_input->link->parent, &state)) {
+      _bump_state_offset = SVM_STACK_INVALID;
       return false;
     }
     _current_node = output_node;
     output_node->compile(*this);
     _current_node = nullptr;
     if (!_diagnostic.empty()) {
+      _bump_state_offset = SVM_STACK_INVALID;
       return false;
+    }
+    if (need_bump_state) {
+      SVMCompiler::add_node(
+          nullptr, NODE_LEAVE_BUMP_EVAL,
+          SVMNodeLeaveBumpEval{.state_offset = _bump_state_offset,
+                               ._pad = {0u, 0u, 0u}});
+      _bump_state_offset = SVM_STACK_INVALID;
     }
     if (type != SHADER_TYPE_BUMP) {
       static_cast<void>(add_node(NODE_END));
@@ -1117,7 +1140,9 @@ public:
         _attribute_ids{attribute_ids},
         _image_ids{image_ids},
         _ies_ids{ies_ids},
-        _background{context.background} {
+        _background{context.background},
+        _use_bump_eval_state{
+            context.displacement_method == contract::DisplacementMethod::both} {
     _metadata.has_surface = _graph.root(GraphDomain::surface) != nullptr;
     _metadata.has_volume = _graph.root(GraphDomain::volume) != nullptr;
     _metadata.has_volume_connected =

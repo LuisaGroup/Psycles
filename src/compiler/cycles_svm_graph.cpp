@@ -987,12 +987,35 @@ CyclesGraph CyclesGraph::project(
       graph.reject("Cycles SVM root refers to an absent output socket");
       return graph;
     }
+    if (domain == contract::ShaderDomain::surface_normal) {
+      // Cycles ShaderGraph::bump_from_displacement terminates its generated
+      // bump graph with a real SetNormalNode. This stateful node is what
+      // writes ShaderData::N before the BUMP stream falls through to SURFACE;
+      // OutputNode itself never performs that transition.
+      auto *set_normal = graph.add_node(
+          cycles_synthetic_set_normal, "Set Normal",
+          {{.name = "Direction",
+            .type = GraphSocketType::vector,
+            .value = contract::SocketValue::vector({0.0f, 0.0f, 0.0f})}},
+          {{.name = "Normal",
+            .type = GraphSocketType::normal,
+            .links = {}}});
+      if (!graph.connect_with_autoconvert(output,
+                                          set_normal->input("Direction")) ||
+          !graph.connect(set_normal->output("Normal"),
+                         output_node->input("Normal"))) {
+        graph.reject("Cycles SVM could not project SetNormal bump root");
+        return graph;
+      }
+      continue;
+    }
     const auto output_input_name =
-        domain == contract::ShaderDomain::surface          ? "Surface"
-        : domain == contract::ShaderDomain::volume         ? "Volume"
-        : domain == contract::ShaderDomain::displacement   ? "Displacement"
-                                                           : "Normal";
-    if (!graph.connect(output, output_node->input(output_input_name))) {
+        domain == contract::ShaderDomain::surface        ? "Surface"
+        : domain == contract::ShaderDomain::volume       ? "Volume"
+        : domain == contract::ShaderDomain::displacement ? "Displacement"
+                                                         : nullptr;
+    if (output_input_name == nullptr ||
+        !graph.connect(output, output_node->input(output_input_name))) {
       graph.reject("Cycles SVM could not connect graph output root");
       return graph;
     }
@@ -1187,6 +1210,166 @@ void CyclesGraph::refine_bump_nodes() {
     if (!filter_width) {
       reject("Cycles Bump Filter Width is not a float");
       return;
+    }
+
+    // ShaderGraph::bump_from_displacement copies the displacement dependency
+    // three times, then creates the three Dot Product nodes and
+    // their shared Geometry.Normal input. The contract graph already carries
+    // the resulting Bump root, so recognize that exact edge relation here;
+    // treating the complete Dot Product as an ordinary authored Bump height
+    // would incorrectly mark/copy the shared Geometry node as a bump sample.
+    auto *graph_output = output_node();
+    auto *displacement_input =
+        graph_output != nullptr ? graph_output->input("Displacement") : nullptr;
+    auto *dot = height->link->parent;
+    auto *dot_vector1 =
+        dot != nullptr && dot->type == node_type::vector_math
+            ? dot->input("Vector1")
+            : nullptr;
+    auto *dot_vector2 =
+        dot != nullptr && dot->type == node_type::vector_math
+            ? dot->input("Vector2")
+            : nullptr;
+    auto *bump_normal = node->input("Normal");
+    auto *dot_normal_input = dot_vector2;
+    if (dot_vector2 != nullptr && dot_vector2->link != nullptr) {
+      auto *convert = dot_vector2->link->parent;
+      if (convert->shader_node_type() == NODE_CONVERT &&
+          convert->inputs.size() == 1u && convert->outputs.size() == 1u) {
+        dot_normal_input = &convert->inputs.front();
+      }
+    }
+    auto *shared_normal =
+        dot_normal_input != nullptr ? dot_normal_input->link : nullptr;
+    auto *displacement_output =
+        dot_vector1 != nullptr ? dot_vector1->link : nullptr;
+    const std::string *operation_name = nullptr;
+    if (dot != nullptr) {
+      const auto operation = dot->properties.find("Operation");
+      if (operation != dot->properties.end() &&
+          operation->second.type == contract::SocketType::string) {
+        operation_name =
+            std::get_if<std::string>(&operation->second.value);
+      }
+    }
+    const auto automatic_displacement =
+        displacement_output != nullptr &&
+        displacement_output->parent->type == node_type::displacement &&
+        (displacement_input == nullptr || displacement_input->link == nullptr ||
+         displacement_output == displacement_input->link) &&
+        shared_normal != nullptr && shared_normal->name == "Normal" &&
+        shared_normal->parent->type == node_type::geometry &&
+        bump_normal != nullptr && bump_normal->link == shared_normal &&
+        operation_name != nullptr && *operation_name == "DOT_PRODUCT";
+    if (automatic_displacement) {
+      GraphNodeSet dependencies;
+      find_dependencies(dependencies, dot_vector1);
+      std::map<GraphNode *, GraphNode *, GraphNodeIdComparator> nodes_center;
+      std::map<GraphNode *, GraphNode *, GraphNodeIdComparator> nodes_dx;
+      std::map<GraphNode *, GraphNode *, GraphNodeIdComparator> nodes_dy;
+      copy_nodes(dependencies, nodes_center);
+      copy_nodes(dependencies, nodes_dx);
+      copy_nodes(dependencies, nodes_dy);
+      if (!valid()) {
+        return;
+      }
+      for (const auto &[source, copy] : nodes_center) {
+        static_cast<void>(source);
+        copy->bump = SHADER_BUMP_CENTER;
+        copy->bump_filter_width = *filter_width;
+      }
+      for (const auto &[source, copy] : nodes_dx) {
+        static_cast<void>(source);
+        copy->bump = SHADER_BUMP_DX;
+        copy->bump_filter_width = *filter_width;
+      }
+      for (const auto &[source, copy] : nodes_dy) {
+        static_cast<void>(source);
+        copy->bump = SHADER_BUMP_DY;
+        copy->bump_filter_width = *filter_width;
+      }
+
+      const auto copy_dot = [&](const auto &node_map) -> GraphNode * {
+        std::vector<GraphInput> inputs;
+        inputs.reserve(dot->inputs.size());
+        for (const auto &input : dot->inputs) {
+          inputs.emplace_back(GraphInput{.name = input.name,
+                                         .type = input.type,
+                                         .flags = input.flags,
+                                         .value = input.value});
+        }
+        std::vector<GraphOutput> outputs;
+        outputs.reserve(dot->outputs.size());
+        for (const auto &dot_output : dot->outputs) {
+          outputs.emplace_back(GraphOutput{.name = dot_output.name,
+                                           .type = dot_output.type,
+                                           .links = {}});
+        }
+        auto *copy = add_node(dot->type, dot->label, std::move(inputs),
+                              std::move(outputs), dot->special_type,
+                              dot->properties);
+        copy->copy_runtime_state_from(*dot);
+        for (const auto &input : dot->inputs) {
+          if (input.link == nullptr) {
+            continue;
+          }
+          auto *source = input.link;
+          if (const auto mapped = node_map.find(input.link->parent);
+              mapped != node_map.end()) {
+            source = mapped->second->output(input.link->name);
+          }
+          if (!connect(source, copy->input(input.name))) {
+            reject("Cycles automatic displacement Dot Product copy failed");
+            return nullptr;
+          }
+        }
+        return copy;
+      };
+
+      auto *dot_dx = copy_dot(nodes_dx);
+      auto *dot_dy = copy_dot(nodes_dy);
+      if (!valid() || dot_dx == nullptr || dot_dy == nullptr) {
+        return;
+      }
+
+      // Before bump_from_displacement(), default_inputs() has already added
+      // the Geometry.Normal used by DisplacementNode itself. The contract
+      // graph's provisional dot/bump normal is deduplicated with that node by
+      // clean(); Cycles then creates one new, unmarked GeometryNode for the
+      // three dot products and Bump.Normal. Split that shared edge again at
+      // this same phase so the center/dx/dy displacement copies retain their
+      // marked Geometry nodes while the bump basis stays unmarked.
+      GraphNodeSet shared_normal_nodes;
+      shared_normal_nodes.insert(shared_normal->parent);
+      std::map<GraphNode *, GraphNode *, GraphNodeIdComparator>
+          shared_normal_copy;
+      copy_nodes(shared_normal_nodes, shared_normal_copy);
+      if (!valid()) {
+        return;
+      }
+      auto *bump_geometry = shared_normal_copy.at(shared_normal->parent);
+      auto *bump_geometry_normal = bump_geometry->output(shared_normal->name);
+      disconnect(dot_normal_input);
+      disconnect(bump_normal);
+      disconnect(dot_vector1);
+      auto *center_displacement =
+          nodes_center.at(displacement_output->parent)
+              ->output(displacement_output->name);
+      if (!connect(bump_geometry_normal, dot_normal_input) ||
+          !connect(bump_geometry_normal, bump_normal) ||
+          !connect(center_displacement, dot_vector1) ||
+          !connect(dot_dx->output(height->link->name),
+                   node->input("SampleX")) ||
+          !connect(dot_dy->output(height->link->name),
+                   node->input("SampleY")) ||
+          !connect(height->link, node->input("SampleCenter"))) {
+        if (valid()) {
+          reject("Cycles automatic displacement graph reconstruction failed");
+        }
+        return;
+      }
+      disconnect(height);
+      continue;
     }
 
     GraphNodeSet dependencies;
