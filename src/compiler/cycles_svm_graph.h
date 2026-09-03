@@ -213,6 +213,7 @@ public:
   }
   [[nodiscard]] Vec3f
   rec709_to_scene_linear(Vec3f value) const noexcept;
+  [[nodiscard]] float linear_rgb_to_gray(Vec3f value) const noexcept;
   [[nodiscard]] GraphOutput *root(GraphDomain domain) const noexcept;
   [[nodiscard]] GraphNode *output_node() const noexcept {
     return _nodes.empty() ? nullptr : _nodes.front().get();

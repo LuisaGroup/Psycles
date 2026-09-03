@@ -70,10 +70,12 @@ add_library(psycles_core
     src/compiler/cycles_svm_object_scene.cpp
     src/compiler/cycles_svm_procedural_texture_nodes.cpp
     src/compiler/cycles_svm_ramp_nodes.cpp
+    src/compiler/cycles_svm_sky_nodes.cpp
     src/compiler/cycles_svm_spectral_nodes.cpp
     src/compiler/cycles_svm_texture_coordinate_nodes.cpp
     src/compiler/cycles_svm_value_nodes.cpp
     src/compiler/cycles_svm_vector_nodes.cpp
+    src/compiler/cycles_nishita.cpp
     src/compiler/cycles_transform.cpp
     src/compiler/cycles_emission_sampling.cpp
     src/compiler/hosek_sky.cpp
@@ -107,7 +109,9 @@ add_library(psycles_core
     src/sampling/light_tree.cpp
     src/sampling/pixel_filter.cpp
     src/sampling/tabulated_sobol.cpp
-    third_party/sky_hosek/sky_hosek.cpp)
+    third_party/sky_hosek/sky_hosek.cpp
+    third_party/sky_nishita/sky_single_scattering.cpp
+    third_party/sky_nishita/sky_multiple_scattering.cpp)
 add_library(Psycles::core ALIAS psycles_core)
 
 target_include_directories(psycles_core
@@ -115,7 +119,8 @@ target_include_directories(psycles_core
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/sky_hosek)
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/sky_hosek
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/sky_nishita)
 target_compile_features(psycles_core PUBLIC cxx_std_20)
 
 if(PSYCLES_ENABLE_OPENIMAGEIO)

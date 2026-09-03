@@ -758,12 +758,6 @@ public:
                     "unsupported:sky:preetham",
                     "Blender PREETHAM Sky Texture is unsupported; "
                     "using Nishita as a compatibility fallback.");
-            } else if (sky_type == "MULTIPLE_SCATTERING") {
-                context.warn_once(
-                    "unsupported:sky:multiple_scattering",
-                    "Blender MULTIPLE_SCATTERING Sky Texture is not "
-                    "yet distinct from the single-scattering Nishita "
-                    "compatibility fallback.");
             }
             const auto id = context.graph().add_node(
                 compiler::node_type::nishita_sky,
@@ -803,17 +797,31 @@ public:
                 id,
                 "SunRotation",
                 SocketValue::floating(rotation)));
+            const auto sun_disc = context.node_property_bool(
+                node, "sun_disc", true);
+            const auto authored_sun_size =
+                context.node_property_number(
+                    node, "sun_size", 0.00918043f);
+            static_cast<void>(context.graph().set_property(
+                id,
+                "SkyType",
+                SocketValue::string(
+                    sky_type == "MULTIPLE_SCATTERING"
+                        ? "MULTIPLE_SCATTERING"
+                        : "SINGLE_SCATTERING")));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "SunDisc",
+                SocketValue::boolean(sun_disc)));
+            static_cast<void>(context.graph().set_property(
+                id,
+                "AuthoredSunSize",
+                SocketValue::floating(authored_sun_size)));
             static_cast<void>(context.graph().set_input(
                 id,
                 "SunSize",
                 SocketValue::floating(
-                    context.node_property_bool(
-                        node, "sun_disc", true)
-                        ? context.node_property_number(
-                              node,
-                              "sun_size",
-                              0.00918043f)
-                        : -1.0f)));
+                    sun_disc ? authored_sun_size : -1.0f)));
             for (const auto &[target, property_name, fallback] : {
                      std::tuple{
                          "SunIntensity",

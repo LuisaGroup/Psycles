@@ -557,7 +557,17 @@ private:
     return _image_ids.get_image_id(
         {.resource_id = resource_id,
          .interpolation = interpolation,
-         .extension = extension});
+         .extension = extension,
+         .nishita = std::nullopt});
+  }
+
+  [[nodiscard]] std::int32_t
+  image(NishitaImageBinding nishita) override {
+    return _image_ids.get_image_id(
+        {.resource_id = 0u,
+         .interpolation = ImageInterpolation::linear,
+         .extension = ImageExtension::extend,
+         .nishita = nishita});
   }
 
   [[nodiscard]] std::uint32_t ies(std::string_view content) override {

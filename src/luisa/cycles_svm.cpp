@@ -333,6 +333,12 @@ void eval_nodes(const KernelGlobals &kernel_globals,
                                        shader_data, true);
         };
       }
+      if (node_types_used[NODE_TEX_SKY]) {
+        PSYCLES_SVM_CASE(NODE_TEX_SKY) {
+          detail::node_tex_sky(cursor, stack, kernel_globals, shader_data,
+                               path_state);
+        };
+      }
       if (node_types_used[NODE_ATTR]) {
         PSYCLES_SVM_CASE(NODE_ATTR) {
           if ((node_feature_mask & kernel_feature_node_volume) != 0u) {

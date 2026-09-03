@@ -292,6 +292,8 @@ _CANONICAL_PROBES: dict[str, Callable[[Any], None]] = {
 # canonical end-to-end runner prevents a known-unroutable graph from being
 # reported as a rendering regression or motivating a transitional lowering.
 _CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
+    "color_to_scalar": values._color_to_scalar,
+    "math_clamp_svm_oracle": values._math_clamp_svm_oracle,
     "metallic_svm_oracle": metallic_closures._metallic_svm_oracle,
     "principled_burley_svm_oracle": (
         principled_closures._principled_burley_svm_oracle

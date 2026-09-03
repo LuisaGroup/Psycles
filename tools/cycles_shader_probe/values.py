@@ -294,6 +294,46 @@ def _vector_to_scalar(scene: Any) -> None:
     _plane(material)
 
 
+def _color_to_scalar(scene: Any) -> None:
+    """Force Cycles' COLOR-to-FLOAT conversion to remain dynamic."""
+    material, tree, output = _material("Color to Scalar")
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.name = "Geometry Position"
+    convert = tree.nodes.new("ShaderNodeRGBToBW")
+    convert.name = "Dynamic Color to Scalar"
+    tree.links.new(_output(geometry, "Position"), _input(convert, "Color"))
+    add = tree.nodes.new("ShaderNodeMath")
+    add.name = "Converted Color Plus Bias"
+    add.operation = "ADD"
+    add.inputs[1].default_value = 0.25
+    tree.links.new(_output(convert, "Val"), add.inputs[0])
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    _input(emission, "Color").default_value = (0.31, 0.57, 0.83, 1.0)
+    tree.links.new(_output(add, "Value"), _input(emission, "Strength"))
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    _plane(material)
+
+
+def _math_clamp_svm_oracle(scene: Any) -> None:
+    """Keep the ClampNode produced by Math::use_clamp in the SVM stream."""
+    material, tree, output = _material("Math Clamp SVM Oracle")
+    geometry = tree.nodes.new("ShaderNodeNewGeometry")
+    geometry.name = "Dynamic Backfacing"
+    add = tree.nodes.new("ShaderNodeMath")
+    add.name = "Clamped Add"
+    add.operation = "ADD"
+    add.use_clamp = True
+    add.inputs[1].default_value = 0.25
+    tree.links.new(_output(geometry, "Backfacing"), add.inputs[0])
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = "Emission"
+    _input(emission, "Color").default_value = (0.31, 0.57, 0.83, 1.0)
+    tree.links.new(_output(add, "Value"), _input(emission, "Strength"))
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+    _plane(material)
+
+
 def _gamma_color(scene: Any) -> None:
     material, tree, output = _material("Gamma")
     combine = tree.nodes.new("ShaderNodeCombineColor")

@@ -883,6 +883,108 @@ void test_vector_to_scalar_matches_cycles_5_2_1() {
           "Vector-to-Scalar SVM stack or opcode mask differs from Cycles");
 }
 
+void test_color_to_scalar_matches_cycles_5_2_1() {
+  ShaderGraph graph;
+  const auto geometry = graph.add_node(node_type::geometry, "Geometry Position");
+  const auto point_to_vector =
+      graph.add_node(node_type::point_to_vector, "Position to Vector");
+  const auto vector_to_color =
+      graph.add_node(node_type::vector_to_color, "Vector to Color");
+  const auto convert =
+      graph.add_node(node_type::color_to_scalar, "Color to Scalar");
+  const auto add =
+      graph.add_node(node_type::add_float, "Converted Color Plus Bias");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.connect({geometry, "Position"}, point_to_vector, "Point") &&
+              graph.connect({point_to_vector, "Vector"}, vector_to_color,
+                            "Vector") &&
+              graph.connect({vector_to_color, "Color"}, convert, "Color") &&
+              graph.connect({convert, "Value"}, add, "A") &&
+              graph.set_input(add, "B", SocketValue::floating(0.25f)) &&
+              graph.set_input(
+                  emission, "Color",
+                  SocketValue::color({0.31f, 0.57f, 0.83f})) &&
+              graph.connect({add, "Value"}, emission, "Strength"),
+          "failed to create Color-to-Scalar graph");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(), "raw Color-to-Scalar graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen from the `color_to_scalar` Cycles 5.2.1 probe, dump SHA-256
+  // b4030f2b023b3fbd7423ab516f05ebe4e511dcf59e328f2ae495dd9fbd8e8cf9.
+  // The two float3-family adapters are stack aliases; NODE_CONVERT_CF reads
+  // Geometry Position dynamically using the active Film::rgb_to_y row.
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x00000018u, 0x00000019u,
+      0x0000000bu, 0x00000000u, 0x00000000u,
+      0x0000000du, 0x00000002u, 0x00000300u,
+      0x0000002cu, 0x00000000u, 0x7fc00003u, 0x3e800000u,
+      0x00000000u, 0x00000000u,
+      0x00000007u, 0x3e9eb852u, 0x3f11eb85u, 0x3f547ae1u,
+      0x7fc00000u, 0x00000003u, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles Color-to-Scalar SVM differs from Cycles");
+  require(image.peak_stack_usage == 4u &&
+              image.node_types_used[NODE_CONVERT] &&
+              image.node_types_used[NODE_MATH],
+          "Color-to-Scalar SVM stack or opcode mask differs from Cycles");
+}
+
+void test_math_output_clamp_matches_cycles_5_2_1() {
+  ShaderGraph graph;
+  const auto geometry =
+      graph.add_node(node_type::geometry, "Dynamic Backfacing");
+  const auto add = graph.add_node(node_type::math, "Clamped Add");
+  const auto clamp =
+      graph.add_node(node_type::clamp_float, "Clamped Add Clamp");
+  const auto emission = graph.add_node(node_type::emission, "Emission");
+  require(graph.set_property(add, "Operation", SocketValue::string("ADD")) &&
+              graph.connect({geometry, "Backfacing"}, add, "A") &&
+              graph.set_input(add, "B", SocketValue::floating(0.25f)) &&
+              graph.connect({add, "Value"}, clamp, "Value") &&
+              graph.set_input(
+                  emission, "Color",
+                  SocketValue::color({0.31f, 0.57f, 0.83f})) &&
+              graph.connect({clamp, "Value"}, emission, "Strength"),
+          "failed to create clamped Math graph");
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
+
+  const ShaderCompiler frontend{make_core_node_registry()};
+  const auto shader = frontend.compile(graph);
+  require(shader.ok(), "raw clamped Math graph did not validate");
+  const auto image = compile_shader(*shader.program);
+  require(image.valid, image.diagnostic.c_str());
+
+  // Frozen from the `math_clamp_svm_oracle` Cycles 5.2.1 probe, dump SHA-256
+  // 1608a953adc90c6f44713fff78cf3d670d31f605ecd6c34061adcb147f62f6e6.
+  // This is the exact ClampNode produced by MathNode::expand(use_clamp).
+  static constexpr std::uint32_t expected[] = {
+      0x00000001u, 0x00000004u, 0x0000001bu, 0x0000001cu,
+      0x00000032u, 0x00000008u, 0x00000000u,
+      0x0000002cu, 0x00000000u, 0x7fc00000u, 0x3e800000u,
+      0x00000000u, 0x00000001u,
+      0x0000005fu, 0x00000000u, 0x00000000u, 0x3f800000u,
+      0x7fc00001u, 0x00000000u,
+      0x00000007u, 0x3e9eb852u, 0x3f11eb85u, 0x3f547ae1u,
+      0x7fc00000u, 0x00000003u, 0x000000ffu,
+      0x00000000u, 0x00000000u, 0x00000000u,
+  };
+  require_words(image.words, expected,
+                "Psycles clamped Math SVM differs from Cycles");
+  require(image.peak_stack_usage == 2u &&
+              image.node_types_used[NODE_MATH] &&
+              image.node_types_used[NODE_CLAMP],
+          "clamped Math SVM stack or opcode mask differs from Cycles");
+}
+
 void test_scatter_volume_phases_match_cycles_5_2_1() {
   struct PhaseOracle {
     const char *phase;
@@ -1966,6 +2068,8 @@ int main() {
   test_linked_mix_closure_jumps_match_cycles_5_2_1();
   test_dynamic_math_and_dedup_match_cycles_5_2_1();
   test_vector_to_scalar_matches_cycles_5_2_1();
+  test_color_to_scalar_matches_cycles_5_2_1();
+  test_math_output_clamp_matches_cycles_5_2_1();
   test_scatter_volume_phases_match_cycles_5_2_1();
   test_subsurface_methods_match_cycles_5_2_1();
   test_standalone_sheen_matches_cycles_5_2_1();
