@@ -498,6 +498,21 @@ if(TEST psycles.luisa_cycles_svm_image_vk)
 endif()
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_sky_tests
+    SOURCE tests/test_luisa_cycles_svm_sky.cpp
+    TEST_STEM luisa_cycles_svm_sky
+    LIBRARIES Psycles::luisa)
+target_include_directories(
+    psycles_luisa_cycles_svm_sky_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+if(TEST psycles.luisa_cycles_svm_sky_vk)
+    set_tests_properties(
+        psycles.luisa_cycles_svm_sky_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_mapping_tests
     SOURCE tests/test_luisa_cycles_svm_mapping.cpp
     TEST_STEM luisa_cycles_svm_mapping

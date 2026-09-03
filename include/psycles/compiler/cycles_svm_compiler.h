@@ -6,10 +6,12 @@
 #include <psycles/contract/scene.h>
 
 #include <array>
+#include <bit>
 #include <compare>
 #include <cstdint>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -36,10 +38,53 @@ enum class ImageExtension : std::uint8_t {
   mirror = 3u,
 };
 
+// Exact identity of a generated Cycles SkyLoader image. The key deliberately
+// stores IEEE words instead of ordering float values: ImageManager equality is
+// exact field equality, and NaNs must not violate std::map's strict ordering.
+// Sun rotation, size, intensity and disc visibility are absent because they do
+// not affect the generated sky image in Cycles 5.2.1.
+struct NishitaImageBinding {
+  bool multiple_scattering{};
+  std::array<std::uint32_t, 5u> parameter_bits{};
+
+  auto operator<=>(const NishitaImageBinding &) const = default;
+
+  [[nodiscard]] static constexpr NishitaImageBinding encode(
+      bool multiple, float sun_elevation, float altitude, float air_density,
+      float aerosol_density, float ozone_density) noexcept {
+    return {.multiple_scattering = multiple,
+            .parameter_bits = {
+                std::bit_cast<std::uint32_t>(sun_elevation),
+                std::bit_cast<std::uint32_t>(altitude),
+                std::bit_cast<std::uint32_t>(air_density),
+                std::bit_cast<std::uint32_t>(aerosol_density),
+                std::bit_cast<std::uint32_t>(ozone_density)}};
+  }
+
+  [[nodiscard]] constexpr float sun_elevation() const noexcept {
+    return std::bit_cast<float>(parameter_bits[0u]);
+  }
+  [[nodiscard]] constexpr float altitude() const noexcept {
+    return std::bit_cast<float>(parameter_bits[1u]);
+  }
+  [[nodiscard]] constexpr float air_density() const noexcept {
+    return std::bit_cast<float>(parameter_bits[2u]);
+  }
+  [[nodiscard]] constexpr float aerosol_density() const noexcept {
+    return std::bit_cast<float>(parameter_bits[3u]);
+  }
+  [[nodiscard]] constexpr float ozone_density() const noexcept {
+    return std::bit_cast<float>(parameter_bits[4u]);
+  }
+};
+
 struct ImageBinding {
   std::uint64_t resource_id{};
   ImageInterpolation interpolation{ImageInterpolation::linear};
   ImageExtension extension{ImageExtension::repeat};
+  // Empty selects an exported scene image identified by resource_id. A value
+  // selects the generated SkyLoader resource and leaves resource_id unused.
+  std::optional<NishitaImageBinding> nishita;
 
   auto operator<=>(const ImageBinding &) const = default;
 };

@@ -599,7 +599,18 @@ NodeRegistry make_core_node_registry() {
                             input("OzoneDensity", SocketType::floating,
                                   SocketValue::floating(1.0f))},
                  .outputs = {output("Color", SocketType::color)},
-                 .properties = {},
+                 // Cycles treats these as compile-time SkyTextureNode state,
+                 // not SVM stack inputs. AuthoredSunSize stays positive even
+                 // when SunDisc is false: it still parameterizes the two sun
+                 // samples while the bytecode uses a negative diameter solely
+                 // as the device-side visibility sentinel.
+                 .properties = {
+                     property("SkyType", SocketType::string,
+                              SocketValue::string("SINGLE_SCATTERING")),
+                     property("SunDisc", SocketType::boolean,
+                              SocketValue::boolean(true)),
+                     property("AuthoredSunSize", SocketType::floating,
+                              SocketValue::floating(0.00918043f))},
                  .required_features = feature_bit(ShaderFeature::surface) |
                                       feature_bit(ShaderFeature::ray_state)}));
 

@@ -195,6 +195,10 @@ void node_tex_environment(Cursor &cursor, Stack &stack,
                           const KernelGlobals &kernel_globals,
                           ShaderData &shader_data,
                           bool use_derivatives) noexcept;
+void node_tex_sky(Cursor &cursor, Stack &stack,
+                  const KernelGlobals &kernel_globals,
+                  ShaderData &shader_data,
+                  const PathState &path_state) noexcept;
 void node_mapping(Cursor &cursor, Stack &stack, bool use_derivatives) noexcept;
 void node_texture_mapping(Cursor &cursor, Stack &stack,
                           bool use_derivatives) noexcept;

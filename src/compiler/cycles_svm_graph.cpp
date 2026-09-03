@@ -119,6 +119,13 @@ projected_node_type(std::string_view type) noexcept {
   if (type == node_type::multiply_color) {
     return node_type::mix_color;
   }
+  // Blender Math::use_clamp is expanded by Cycles into a ClampNode after the
+  // Math output. The contract normalizer already materializes that edge as a
+  // unary clamp helper; project it back to the exact ClampNode shape instead
+  // of inventing a second SVM operation.
+  if (type == node_type::clamp_float) {
+    return node_type::clamp_range;
+  }
   if (type == node_type::add_float || type == node_type::subtract_float ||
       type == node_type::multiply_float || type == node_type::divide_float ||
       type == node_type::minimum_float || type == node_type::maximum_float ||
@@ -199,6 +206,9 @@ projected_binary_math_operation(std::string_view type) noexcept {
     return "Result";
   }
   if (node == node_type::mix_color && output == "Color") {
+    return "Result";
+  }
+  if (node == node_type::clamp_range && output == "Value") {
     return "Result";
   }
   if ((node == node_type::diffuse_bsdf ||
@@ -830,6 +840,18 @@ CyclesGraph CyclesGraph::project(
           .value = contract::SocketValue::floating(0.0f),
       });
     }
+    if (source.type == node_type::clamp_float) {
+      inputs.emplace_back(GraphInput{
+          .name = "Min",
+          .type = GraphSocketType::floating,
+          .value = contract::SocketValue::floating(0.0f),
+      });
+      inputs.emplace_back(GraphInput{
+          .name = "Max",
+          .type = GraphSocketType::floating,
+          .value = contract::SocketValue::floating(1.0f),
+      });
+    }
     if (source.type == node_type::bump) {
       auto authored_inputs = std::move(inputs);
       inputs.clear();
@@ -907,6 +929,11 @@ CyclesGraph CyclesGraph::project(
         !operation.empty()) {
       properties = {
           {"Operation", contract::SocketValue::string(std::string{operation})},
+      };
+    }
+    if (source.type == node_type::clamp_float) {
+      properties = {
+          {"Mode", contract::SocketValue::string("MINMAX")},
       };
     }
     // NormalLinked belongs to the legacy surface-program representation.
@@ -1006,6 +1033,34 @@ Vec3f CyclesGraph::rec709_to_scene_linear(Vec3f value) const noexcept {
           _color_space.rec709_to_b.y * value.y +
           _color_space.rec709_to_b.z * value.z,
   };
+}
+
+float CyclesGraph::linear_rgb_to_gray(Vec3f value) const noexcept {
+  // Cycles ShaderManager::rgb_to_y is row Y of RGB -> XYZ, i.e. row one of
+  // the inverse of the serialized XYZ -> scene-linear RGB transform. Use
+  // double intermediates as the runtime KernelGlobals path does; only the
+  // final shader-domain coefficients and dot product are float.
+  const auto a = static_cast<double>(_color_space.xyz_to_r.x);
+  const auto b = static_cast<double>(_color_space.xyz_to_r.y);
+  const auto c = static_cast<double>(_color_space.xyz_to_r.z);
+  const auto d = static_cast<double>(_color_space.xyz_to_g.x);
+  const auto e = static_cast<double>(_color_space.xyz_to_g.y);
+  const auto f = static_cast<double>(_color_space.xyz_to_g.z);
+  const auto g = static_cast<double>(_color_space.xyz_to_b.x);
+  const auto h = static_cast<double>(_color_space.xyz_to_b.y);
+  const auto i = static_cast<double>(_color_space.xyz_to_b.z);
+  const auto determinant =
+      a * (e * i - f * h) - b * (d * i - f * g) +
+      c * (d * h - e * g);
+  if (std::abs(determinant) <= 1.0e-20) {
+    return 0.0f;
+  }
+  const Vec3f rgb_to_y{
+      static_cast<float>((f * g - d * i) / determinant),
+      static_cast<float>((a * i - c * g) / determinant),
+      static_cast<float>((c * d - a * f) / determinant)};
+  return value.x * rgb_to_y.x + value.y * rgb_to_y.y +
+         value.z * rgb_to_y.z;
 }
 
 void CyclesGraph::find_dependencies(GraphNodeSet &dependencies,

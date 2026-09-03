@@ -26,6 +26,7 @@
 
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/cycles_emission_sampling.h>
+#include <psycles/compiler/cycles_nishita.h>
 #include <psycles/contract/cycles_pointiness.h>
 #include <psycles/luisa/cycles_nishita.h>
 
@@ -620,6 +621,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             texture_slot_count,
             static_cast<std::size_t>(image_id.value) + 1u);
     }
+    for (const auto &image : data->cycles_svm->nishita_images) {
+        texture_slot_count = std::max(
+            texture_slot_count,
+            static_cast<std::size_t>(image.texture_slot) + 1u);
+    }
     for (auto &binding :
          data->nishita_texture_bindings) {
         binding.texture_slot =
@@ -677,6 +683,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         data->device.create_bindless_array(texture_slot_count);
     data->images.reserve(
         snapshot.images.size() +
+        data->cycles_svm->nishita_images.size() +
         data->nishita_texture_bindings.size() +
         (snapshot.environment ? 2u : 1u));
     std::vector<luisa::vector<std::byte>> texture_uploads;
@@ -685,6 +692,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         float_texture_uploads;
     float_texture_uploads.reserve(
         snapshot.images.size() +
+        data->cycles_svm->nishita_images.size() +
         (snapshot.environment ? 1u : 0u));
 
     auto &dummy_pixels = texture_uploads.emplace_back(4u);
@@ -775,6 +783,35 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             stream << resource.copy_from(
                 luisa::span{pixels});
         }
+    }
+    for (const auto &binding : data->cycles_svm->nishita_images) {
+        const auto source =
+            compiler::cycles_svm::precompute_nishita_texture(
+                binding.parameters);
+        const auto pixel_count =
+            compiler::cycles_svm::nishita_texture_width *
+            compiler::cycles_svm::nishita_texture_height;
+        auto &pixels = float_texture_uploads.emplace_back();
+        pixels.reserve(pixel_count);
+        for (std::size_t pixel = 0u; pixel < pixel_count; ++pixel) {
+            const auto offset =
+                pixel * compiler::cycles_svm::nishita_texture_channels;
+            pixels.emplace_back(luisa::make_float4(
+                source[offset],
+                source[offset + 1u],
+                source[offset + 2u],
+                source[offset + 3u]));
+        }
+        auto &resource = data->images.emplace_back(
+            data->device.create_image<float>(
+                luisa::compute::PixelStorage::FLOAT4,
+                compiler::cycles_svm::nishita_texture_width,
+                compiler::cycles_svm::nishita_texture_height));
+        data->texture_heap.emplace_on_update(
+            binding.texture_slot,
+            resource,
+            luisa::compute::Sampler::linear_point_edge());
+        stream << resource.copy_from(luisa::span{pixels});
     }
     const auto has_nishita_environment =
         snapshot.environment &&

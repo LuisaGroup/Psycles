@@ -487,6 +487,11 @@ struct CyclesSvmObjectRuntime {
     Buffer<luisa::uint> object_flag_buffer;
 };
 
+struct CyclesSvmNishitaImageRuntime {
+    compiler::cycles_svm::NishitaImageBinding parameters;
+    std::uint32_t texture_slot{};
+};
+
 struct CyclesSvmRuntime {
     compiler::cycles_svm::CompiledShaderTable compilation;
     compiler::cycles_svm::ObjectIdentityPlan object_identities;
@@ -494,6 +499,11 @@ struct CyclesSvmRuntime {
     std::map<contract::MaterialId, std::uint32_t>
         material_shader_indices;
     luisa::vector<CyclesSvmImageBindingGpu> image_bindings;
+    // Cycles SkyLoader resources occupy the same logical image-handle table
+    // as exported images, but are generated from immutable node parameters.
+    // Their bindless slots are assigned once during scene construction and
+    // never alias a scene ImageId.
+    std::vector<CyclesSvmNishitaImageRuntime> nishita_images;
     luisa::vector<CyclesSvmParticleGpu> particle_records;
     std::optional<Buffer<luisa::uint>> word_buffer;
     std::optional<Buffer<compiler::cycles_svm::KernelShader>>

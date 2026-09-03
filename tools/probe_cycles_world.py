@@ -94,7 +94,14 @@ def _configure_raw_cycles_probe(scene: Any) -> None:
     scene.render.resolution_y = 4
     scene.render.resolution_percentage = 25
     scene.render.film_transparent = False
-    scene.render.image_settings.file_format = "OPEN_EXR"
+    # Some headless Blender builds expose only the multilayer OpenEXR writer.
+    # Both variants preserve the same linear Combined values consumed below;
+    # the assignable enum is context-dependent and can be narrower than the
+    # static RNA item list, so capability is established by assignment.
+    try:
+        scene.render.image_settings.file_format = "OPEN_EXR"
+    except TypeError:
+        scene.render.image_settings.file_format = "OPEN_EXR_MULTILAYER"
     # Match render_cycles_golden.py: probe the raw Cycles render layer, never
     # the scene's compositor or sequencer output. Lone Monk's compositor
     # deliberately mixes the denoised and noisy images with factor 0.3; when

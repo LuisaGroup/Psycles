@@ -93,6 +93,7 @@ inline constexpr std::uint32_t path_ray_visibility_shadow =
 
 inline constexpr std::uint32_t path_ray_reflect = 1u << 0u;
 inline constexpr std::uint32_t path_ray_singular = 1u << 1u;
+inline constexpr std::uint32_t path_ray_importance_bake = 1u << 3u;
 inline constexpr std::uint32_t path_ray_diffuse_ancestor = 1u << 4u;
 inline constexpr std::uint32_t path_ray_emission = 1u << 5u;
 inline constexpr std::uint32_t path_ray_terminate_on_next_surface = 1u << 10u;
@@ -305,6 +306,14 @@ public:
   [[nodiscard]] virtual luisa::compute::Float
   transparent_roughness_squared_threshold() const noexcept {
     return -1.0f;
+  }
+
+  // kernel_data.background.use_sun_guiding. This only suppresses the visible
+  // solar disc for importance-bake rays; ordinary surface/background
+  // evaluation remains unaffected.
+  [[nodiscard]] virtual luisa::compute::Bool
+  background_use_sun_guiding() const noexcept {
+    return false;
   }
 
   /* kernel_data_fetch(objects, object).shadow_terminator_shading_offset. A

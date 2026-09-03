@@ -304,7 +304,34 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
         scene->device.create_buffer<float>(runtime->compilation.ies.size()));
   }
   runtime->image_bindings.reserve(runtime->compilation.images.size());
+  auto next_generated_texture_slot = std::uint64_t{1u};
+  for (const auto &[image_id, image] : snapshot.images) {
+    static_cast<void>(image);
+    if (image_id.value > std::numeric_limits<std::uint32_t>::max()) {
+      diagnostic = "scene image identity exceeds the 32-bit Luisa bindless "
+                   "address space";
+      return nullptr;
+    }
+    next_generated_texture_slot =
+        std::max(next_generated_texture_slot, image_id.value + 1u);
+  }
   for (const auto &binding : runtime->compilation.images) {
+    if (binding.nishita) {
+      if (next_generated_texture_slot >
+          std::numeric_limits<std::uint32_t>::max()) {
+        diagnostic = "Cycles generated sky image exhausts the 32-bit Luisa "
+                     "bindless address space";
+        return nullptr;
+      }
+      const auto texture_slot =
+          static_cast<std::uint32_t>(next_generated_texture_slot++);
+      runtime->nishita_images.emplace_back(
+          CyclesSvmNishitaImageRuntime{.parameters = *binding.nishita,
+                                      .texture_slot = texture_slot});
+      runtime->image_bindings.emplace_back(make_cycles_svm_image_binding(
+          texture_slot, binding.interpolation, binding.extension));
+      continue;
+    }
     if (binding.resource_id > std::numeric_limits<std::uint32_t>::max()) {
       diagnostic = "Cycles SVM image resource identity exceeds the 32-bit "
                    "Luisa bindless address space";
