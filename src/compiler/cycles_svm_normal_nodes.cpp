@@ -91,6 +91,22 @@ public:
   }
 };
 
+class SetNormalNode final : public GraphNode {
+public:
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_CLOSURE_SET_NORMAL;
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    compiler.add_node(
+        this, NODE_CLOSURE_SET_NORMAL,
+        SVMNodeClosureSetNormal{
+            .direction_offset = compiler.input_link("Direction"),
+            .normal_offset = compiler.output("Normal"),
+            ._pad = {0u, 0u}});
+  }
+};
+
 class NormalMapNode final : public GraphNode {
 public:
   [[nodiscard]] bool has_attribute_dependency() const noexcept override {
@@ -248,6 +264,9 @@ public:
 } // namespace
 
 std::unique_ptr<GraphNode> make_normal_graph_node(std::string_view type) {
+  if (type == cycles_synthetic_set_normal) {
+    return std::make_unique<SetNormalNode>();
+  }
   if (type == node_type::normal) {
     return std::make_unique<NormalNode>();
   }

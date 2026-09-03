@@ -384,10 +384,28 @@ void eval_nodes(const KernelGlobals &kernel_globals,
         };
       }
       if (node_types_used[NODE_VALUE_F]) {
-        PSYCLES_SVM_CASE(NODE_VALUE_F) { detail::node_value_f(cursor, stack); };
+        PSYCLES_SVM_CASE(NODE_VALUE_F) {
+          detail::node_value_f(cursor, stack, false);
+        };
+      }
+      if (node_types_used[NODE_VALUE_F_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_VALUE_F_DERIVATIVE) {
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_value_f(cursor, stack, true);
+          }
+        };
       }
       if (node_types_used[NODE_VALUE_V]) {
-        PSYCLES_SVM_CASE(NODE_VALUE_V) { detail::node_value_v(cursor, stack); };
+        PSYCLES_SVM_CASE(NODE_VALUE_V) {
+          detail::node_value_v(cursor, stack, false);
+        };
+      }
+      if (node_types_used[NODE_VALUE_V_DERIVATIVE]) {
+        PSYCLES_SVM_CASE(NODE_VALUE_V_DERIVATIVE) {
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_value_v(cursor, stack, true);
+          }
+        };
       }
       if (node_types_used[NODE_MAPPING]) {
         PSYCLES_SVM_CASE(NODE_MAPPING) {
@@ -425,6 +443,44 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       if (node_types_used[NODE_SET_BUMP]) {
         PSYCLES_SVM_CASE(NODE_SET_BUMP) {
           detail::node_set_bump(
+              cursor, stack, transform_state, shader_data,
+              (node_feature_mask & kernel_feature_node_bump) != 0u,
+              (kernel_features & kernel_feature_object_motion) != 0u);
+        };
+      }
+      if (node_types_used[NODE_CLOSURE_SET_NORMAL]) {
+        PSYCLES_SVM_CASE(NODE_CLOSURE_SET_NORMAL) {
+          if ((node_feature_mask & kernel_feature_node_bump) != 0u) {
+            detail::node_set_normal(cursor, stack, shader_data);
+          }
+        };
+      }
+      if (node_types_used[NODE_ENTER_BUMP_EVAL]) {
+        PSYCLES_SVM_CASE(NODE_ENTER_BUMP_EVAL) {
+          if ((node_feature_mask & kernel_feature_node_bump_state) != 0u) {
+            detail::node_enter_bump_eval(
+                cursor, stack, kernel_globals, transform_state, shader_data,
+                (kernel_features & kernel_feature_object_motion) != 0u);
+          }
+        };
+      }
+      if (node_types_used[NODE_LEAVE_BUMP_EVAL]) {
+        PSYCLES_SVM_CASE(NODE_LEAVE_BUMP_EVAL) {
+          if ((node_feature_mask & kernel_feature_node_bump_state) != 0u) {
+            detail::node_leave_bump_eval(cursor, stack, shader_data);
+          }
+        };
+      }
+      if (node_types_used[NODE_SET_DISPLACEMENT]) {
+        PSYCLES_SVM_CASE(NODE_SET_DISPLACEMENT) {
+          detail::node_set_displacement(
+              cursor, stack, shader_data,
+              (node_feature_mask & kernel_feature_node_bump) != 0u);
+        };
+      }
+      if (node_types_used[NODE_DISPLACEMENT]) {
+        PSYCLES_SVM_CASE(NODE_DISPLACEMENT) {
+          detail::node_displacement(
               cursor, stack, transform_state, shader_data,
               (node_feature_mask & kernel_feature_node_bump) != 0u,
               (kernel_features & kernel_feature_object_motion) != 0u);

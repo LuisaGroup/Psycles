@@ -86,19 +86,37 @@ namespace {
 
 } // namespace
 
-void node_value_f(Cursor &cursor, Stack &stack) noexcept {
+void node_value_f(Cursor &cursor, Stack &stack,
+                  bool use_derivatives) noexcept {
   const auto value = cursor.floating();
   const auto packed_output = cursor.word();
-  stack_store_float(stack, cursor.byte(packed_output, 0u), value);
+  const auto output = cursor.byte(packed_output, 0u);
+  if (use_derivatives) {
+    stack_store_dual1(
+        stack, output,
+        Dual1{.val = value, .dx = 0.0f, .dy = 0.0f});
+  } else {
+    stack_store_float(stack, output, value);
+  }
 }
 
-void node_value_v(Cursor &cursor, Stack &stack) noexcept {
+void node_value_v(Cursor &cursor, Stack &stack,
+                  bool use_derivatives) noexcept {
   const auto packed_output = cursor.word();
   const auto x = cursor.floating();
   const auto y = cursor.floating();
   const auto z = cursor.floating();
   const auto value = make_float3(x, y, z);
-  stack_store_float3(stack, cursor.byte(packed_output, 0u), value);
+  const auto output = cursor.byte(packed_output, 0u);
+  if (use_derivatives) {
+    stack_store_dual3(
+        stack, output,
+        Dual3{.val = value,
+              .dx = make_float3(0.0f),
+              .dy = make_float3(0.0f)});
+  } else {
+    stack_store_float3(stack, output, value);
+  }
 }
 
 void node_geometry(Cursor &cursor, Stack &stack,

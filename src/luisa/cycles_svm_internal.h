@@ -120,6 +120,10 @@ void object_position_transform(luisa::compute::Float3 &value,
                                const TransformState &transform_state,
                                const ShaderData &shader_data,
                                bool object_motion_enabled) noexcept;
+void object_position_transform(Dual3 &value,
+                               const TransformState &transform_state,
+                               const ShaderData &shader_data,
+                               bool object_motion_enabled) noexcept;
 void object_inverse_normal_transform(luisa::compute::Float3 &value,
                                      const TransformState &transform_state,
                                      const ShaderData &shader_data,
@@ -132,6 +136,10 @@ void object_normal_transform(Dual3 &value,
                              const TransformState &transform_state,
                              const ShaderData &shader_data,
                              bool object_motion_enabled) noexcept;
+void object_dir_transform(luisa::compute::Float3 &value,
+                          const TransformState &transform_state,
+                          const ShaderData &shader_data,
+                          bool object_motion_enabled) noexcept;
 void object_inverse_dir_transform(luisa::compute::Float3 &value,
                                   const TransformState &transform_state,
                                   const ShaderData &shader_data,
@@ -142,8 +150,8 @@ svm_math(luisa::compute::Expr<std::uint32_t> type,
          luisa::compute::Expr<float> a, luisa::compute::Expr<float> b,
          luisa::compute::Expr<float> c) noexcept;
 
-void node_value_f(Cursor &cursor, Stack &stack) noexcept;
-void node_value_v(Cursor &cursor, Stack &stack) noexcept;
+void node_value_f(Cursor &cursor, Stack &stack, bool use_derivatives) noexcept;
+void node_value_v(Cursor &cursor, Stack &stack, bool use_derivatives) noexcept;
 void node_geometry(Cursor &cursor, Stack &stack,
                    const KernelGlobals &kernel_globals,
                    const ShaderData &shader_data,
@@ -274,6 +282,23 @@ void node_set_bump(Cursor &cursor, Stack &stack,
                    const TransformState &transform_state,
                    const ShaderData &shader_data, bool bump_feature_enabled,
                    bool object_motion_enabled) noexcept;
+void node_set_normal(Cursor &cursor, Stack &stack,
+                     ShaderData &shader_data) noexcept;
+void node_enter_bump_eval(Cursor &cursor, Stack &stack,
+                          const KernelGlobals &kernel_globals,
+                          const TransformState &transform_state,
+                          ShaderData &shader_data,
+                          bool object_motion_enabled) noexcept;
+void node_leave_bump_eval(Cursor &cursor, Stack &stack,
+                          ShaderData &shader_data) noexcept;
+void node_set_displacement(Cursor &cursor, Stack &stack,
+                           ShaderData &shader_data,
+                           bool bump_feature_enabled) noexcept;
+void node_displacement(Cursor &cursor, Stack &stack,
+                       const TransformState &transform_state,
+                       const ShaderData &shader_data,
+                       bool bump_feature_enabled,
+                       bool object_motion_enabled) noexcept;
 void node_clamp(Cursor &cursor, Stack &stack) noexcept;
 void node_blackbody(Cursor &cursor, Stack &stack,
                     const KernelGlobals &kernel_globals) noexcept;

@@ -632,12 +632,18 @@ public:
                 node,
                 "Value_001",
                 SocketType::floating));
-            static_cast<void>(context.bind(
-                id,
-                "C",
-                node,
-                "Value_002",
-                SocketType::floating));
+            // Cycles exposes Value3 only for the four ternary operations.
+            // Disabled Blender sockets are not synchronized into the Cycles
+            // MathNode, whose typed Value3 default is zero.
+            if (operation == "MULTIPLY_ADD" || operation == "COMPARE" ||
+                operation == "SMOOTH_MIN" || operation == "SMOOTH_MAX") {
+                static_cast<void>(context.bind(
+                    id,
+                    "C",
+                    node,
+                    "Value_002",
+                    SocketType::floating));
+            }
             static_cast<void>(context.graph().set_property(
                 id,
                 "Operation",

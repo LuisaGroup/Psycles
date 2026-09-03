@@ -307,6 +307,21 @@ if(PSYCLES_BUILD_TESTS)
         NAME psycles.cycles_svm_wireframe
         COMMAND psycles_cycles_svm_wireframe_tests)
 
+    if(TARGET psycles_luisa_runtime)
+        add_executable(
+            psycles_cycles_svm_bump_state_tests
+            tests/test_cycles_svm_bump_state.cpp)
+        target_link_libraries(
+            psycles_cycles_svm_bump_state_tests
+            PRIVATE Psycles::luisa_runtime)
+        target_compile_features(
+            psycles_cycles_svm_bump_state_tests
+            PRIVATE cxx_std_20)
+        add_test(
+            NAME psycles.cycles_svm_bump_state
+            COMMAND psycles_cycles_svm_bump_state_tests)
+    endif()
+
     add_executable(
         psycles_cycles_svm_vertex_color_tests
         tests/test_cycles_svm_vertex_color.cpp)

@@ -1019,6 +1019,52 @@ public:
   }
 };
 
+class DisplacementNode final : public GraphNode {
+public:
+  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
+    return kernel_feature_node_bump;
+  }
+
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_DISPLACEMENT;
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    if (!folder.all_inputs_constant()) {
+      return;
+    }
+    const auto height =
+        literal<float>(input("Height"), contract::SocketType::floating);
+    const auto midlevel =
+        literal<float>(input("Midlevel"), contract::SocketType::floating);
+    const auto scale =
+        literal<float>(input("Scale"), contract::SocketType::floating);
+    if (height && midlevel && scale &&
+        ((*height - *midlevel == 0.0f) || *scale == 0.0f)) {
+      folder.make_zero();
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto space = string_property(this, "Space");
+    if (!space || (*space != "OBJECT" && *space != "WORLD")) {
+      compiler.fail("Cycles Displacement space is invalid");
+      return;
+    }
+    compiler.add_node(
+        this, NODE_DISPLACEMENT,
+        SVMNodeDisplacement{
+            .space = *space == "OBJECT" ? NODE_NORMAL_MAP_OBJECT
+                                         : NODE_NORMAL_MAP_WORLD,
+            .height = compiler.input_float("Height"),
+            .midlevel = compiler.input_float("Midlevel"),
+            .scale = compiler.input_float("Scale"),
+            .normal_offset = compiler.input_link("Normal"),
+            .out_offset = compiler.output("Displacement"),
+            ._pad = {0u, 0u}});
+  }
+};
+
 class MixClosureWeightNode final : public GraphNode {
 public:
   void compile(SVMCompiler &compiler) override {
@@ -1793,6 +1839,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   }
   if (type == cycles_synthetic_mix_closure_weight) {
     return std::make_unique<MixClosureWeightNode>();
+  }
+  if (type == node_type::displacement) {
+    return std::make_unique<DisplacementNode>();
   }
   if (type == cycles_synthetic_float3_autoconvert ||
       type == node_type::vector_to_color ||
