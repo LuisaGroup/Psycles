@@ -97,7 +97,7 @@ template <typename T>
     return result;
   } else {
     static_assert(std::is_same_v<T, luisa::float4>);
-    Float4 result = kernel_globals.attribute_float4(offset);
+    Float4 result;
     $if((element & static_cast<std::uint32_t>(ATTR_ELEMENT_IS_BYTE)) != 0u) {
       const auto packed = kernel_globals.attribute_uchar4(offset);
       const Float4 encoded =
@@ -111,7 +111,8 @@ template <typename T>
           ::psycles::luisa_backend::cycles_svm::detail::rec709_to_rgb(
               kernel_globals, linear_rec709.xyz()),
           linear_rec709.w);
-    };
+    }
+    $else { result = kernel_globals.attribute_float4(offset); };
     return result;
   }
 }
