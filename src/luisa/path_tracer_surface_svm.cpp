@@ -70,6 +70,7 @@ struct SurfaceSvmInterpreter::Impl {
     SurfaceValueInstructionDispatcher values;
     std::vector<SurfaceSvmClosureHandlerGroup> closure_groups;
     std::uint32_t program_offset{};
+    compiler::CyclesNodeFeatureMask node_feature_mask{};
 };
 
 SurfaceSvmInterpreter::SurfaceSvmInterpreter(
@@ -108,11 +109,15 @@ Float3 SurfaceSvmInterpreter::execute(
         SurfaceValueLocals locals{impl.values.stack_capacity()};
         const auto locals_view = locals.view();
         auto packed_base_point = pack_surface_point(base_point);
-        Bool use_undisplaced_geometry =
-            (descriptor1.y &
-             compiler::
-                 surface_value_program_automatic_normal_uses_undisplaced_geometry) !=
-            0u;
+        const auto bump_state_enabled =
+            (impl.node_feature_mask &
+             compiler::cycles_node_feature_bump_state) != 0u;
+        Bool use_undisplaced_geometry = bump_state_enabled
+            ? (descriptor1.y &
+               compiler::
+                   surface_value_program_automatic_normal_uses_undisplaced_geometry) !=
+                  0u
+            : false;
         Float3 transaction_shading_normal = select(
             base_point.shading_normal,
             base_point.undisplaced_shading_normal,
@@ -269,11 +274,17 @@ Float3 SurfaceSvmInterpreter::execute(
                 };
             }
             $elif(opcode == compiler::surface_svm_set_normal_opcode) {
-                const auto normal = read_vector_dynamic(
-                    services, base_point, locals_view, instruction.y);
-                use_undisplaced_geometry = false;
-                transaction_shading_normal = normal;
-                consumer.set_shading_normal(normal);
+                // Cycles guards NODE_CLOSURE_SET_NORMAL with NODE_BUMP. This
+                // is a host/JIT branch over the same static feature mask, so
+                // disabled domains record no stack load or normal mutation.
+                if ((impl.node_feature_mask &
+                     compiler::cycles_node_feature_bump) != 0u) {
+                    const auto normal = read_vector_dynamic(
+                        services, base_point, locals_view, instruction.y);
+                    use_undisplaced_geometry = false;
+                    transaction_shading_normal = normal;
+                    consumer.set_shading_normal(normal);
+                }
             }
             $elif(opcode == compiler::surface_svm_end_opcode) {
                 next_instruction = instruction_end;
@@ -312,7 +323,8 @@ SurfaceSvmInterpreter make_surface_svm_interpreter(
                 .runtime = scene->surface_values.get(),
                 .values = std::move(values),
                 .closure_groups = std::move(closure_groups),
-                .program_offset = domain_view.program_offset})};
+                .program_offset = domain_view.program_offset,
+                .node_feature_mask = domain_view.node_feature_mask})};
 }
 
 } // namespace psycles::luisa_backend::detail

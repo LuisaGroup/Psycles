@@ -33,6 +33,8 @@ static_assert(surface_value_family_has_direct_evaluator(
     SurfaceSvmValueOpcode::bump_support));
 static_assert(surface_value_family_has_direct_evaluator(
     SurfaceSvmValueOpcode::displacement));
+static_assert(surface_value_family_has_direct_evaluator(
+    SurfaceSvmValueOpcode::vector_displacement));
 
 [[nodiscard]] bool is_transform_operation(ValueOperation operation) noexcept {
   return operation == ValueOperation::object_position_with_transform ||
@@ -77,6 +79,11 @@ ShaderGraph make_direct_state_bump_graph() {
       graph.add_node(node_type::vector_to_scalar, "Direct state bump height");
   const auto displacement = graph.add_node(
       node_type::displacement, "Direct state object displacement");
+  const auto vector_displacement = graph.add_node(
+      node_type::vector_displacement,
+      "Direct state tangent vector displacement");
+  const auto add_displacements = graph.add_node(
+      node_type::vector_math, "Direct state combined displacement");
   const auto displacement_height = graph.add_node(
       node_type::vector_to_scalar,
       "Direct state object displacement height");
@@ -135,6 +142,11 @@ ShaderGraph make_direct_state_bump_graph() {
       graph.connect({.node = geometry, .socket = "Normal"}, displacement,
                     "Normal") &&
       graph.connect({.node = displacement, .socket = "Displacement"},
+                    add_displacements, "A") &&
+      graph.connect(
+          {.node = vector_displacement, .socket = "Displacement"},
+          add_displacements, "B") &&
+      graph.connect({.node = add_displacements, .socket = "Vector"},
                     displacement_height, "Vector") &&
       graph.connect({.node = displacement_height, .socket = "Value"}, bump,
                     "Height") &&
@@ -151,6 +163,14 @@ ShaderGraph make_direct_state_bump_graph() {
                          SocketValue::string("OBJECT")) &&
       graph.set_property(displacement, "NormalLinked",
                          SocketValue::boolean(true)) &&
+      graph.set_input(vector_displacement, "Vector",
+                      SocketValue::color({0.62f, 0.21f, 0.73f})) &&
+      graph.set_input(vector_displacement, "Midlevel",
+                      SocketValue::floating(0.33f)) &&
+      graph.set_input(vector_displacement, "Scale",
+                      SocketValue::floating(0.41f)) &&
+      graph.set_property(vector_displacement, "Space",
+                         SocketValue::string("TANGENT")) &&
       graph.set_property(bump, "Invert", SocketValue::boolean(true)) &&
       graph.set_property(bump, "NormalLinked", SocketValue::boolean(true)) &&
       graph.set_property(bump, "UseObjectSpace", SocketValue::boolean(false)) &&
@@ -158,7 +178,8 @@ ShaderGraph make_direct_state_bump_graph() {
                       SocketValue::color({0.29f, 0.53f, 0.71f})) &&
       graph.set_input(diffuse, "Roughness", SocketValue::floating(0.37f));
   for (const auto node : {add_position_normal, add_incoming, add_uv,
-                          add_generated, add_object, add_transformed_object}) {
+                          add_generated, add_object, add_transformed_object,
+                          add_displacements}) {
     configured = configured && graph.set_property(node, "Operation",
                                                   SocketValue::string("ADD"));
   }
@@ -167,6 +188,42 @@ ShaderGraph make_direct_state_bump_graph() {
   }
   graph.set_root(ShaderDomain::surface,
                  OutputRef{.node = diffuse, .socket = "Closure"});
+  return graph;
+}
+
+ShaderGraph make_vector_displacement_attribute_oracle_graph() {
+  ShaderGraph graph;
+  const auto displacement = graph.add_node(
+      node_type::vector_displacement,
+      "Default tangent attribute Vector Displacement");
+  const auto convert = graph.add_node(
+      node_type::vector_to_color,
+      "Vector Displacement oracle color");
+  const auto emission = graph.add_node(
+      node_type::emission,
+      "Vector Displacement oracle emission");
+  const auto configured =
+      graph.set_input(displacement, "Vector",
+                      SocketValue::color({1.0f, 0.0f, 0.0f})) &&
+      graph.set_input(displacement, "Midlevel",
+                      SocketValue::floating(0.0f)) &&
+      graph.set_input(displacement, "Scale", SocketValue::floating(1.0f)) &&
+      graph.set_property(displacement, "Space",
+                         SocketValue::string("TANGENT")) &&
+      graph.set_property(displacement, "AttributeNamed",
+                         SocketValue::boolean(false)) &&
+      graph.set_property(displacement, "AttributeId",
+                         SocketValue::unsigned_integer(0u)) &&
+      graph.connect({.node = displacement, .socket = "Displacement"}, convert,
+                    "Vector") &&
+      graph.connect({.node = convert, .socket = "Color"}, emission, "Color") &&
+      graph.set_input(emission, "Strength", SocketValue::floating(1.0f));
+  if (!configured) {
+    throw std::runtime_error{
+        "failed to configure Vector Displacement attribute oracle graph"};
+  }
+  graph.set_root(ShaderDomain::surface,
+                 OutputRef{.node = emission, .socket = "Closure"});
   return graph;
 }
 
@@ -185,6 +242,7 @@ validate_direct_state_surface_runtime(const SurfaceValueRuntime &runtime) {
       ValueOperation::bump_filter_width,
       ValueOperation::bump_samples,
       ValueOperation::displacement,
+      ValueOperation::vector_displacement,
       ValueOperation::sampled_surface_position,
       ValueOperation::sampled_uv,
       ValueOperation::sampled_generated,
@@ -214,6 +272,8 @@ validate_direct_state_surface_runtime(const SurfaceValueRuntime &runtime) {
       count_variant(ValueOperation::sampled_object_position_with_transform);
   const auto displacement_variants =
       count_variant(ValueOperation::displacement);
+  const auto vector_displacement_variants =
+      count_variant(ValueOperation::vector_displacement);
   const auto displacement_immediate_exact = std::all_of(
       runtime.value_variants.begin(), runtime.value_variants.end(),
       [](const auto &variant) noexcept {
@@ -223,6 +283,16 @@ validate_direct_state_surface_runtime(const SurfaceValueRuntime &runtime) {
                     static_cast<std::uint16_t>(
                         displacement_object_space |
                         displacement_normal_linked));
+      });
+  const auto vector_displacement_immediate_exact = std::all_of(
+      runtime.value_variants.begin(), runtime.value_variants.end(),
+      [](const auto &variant) noexcept {
+        return variant.instruction.operation !=
+                   ValueOperation::vector_displacement ||
+               (variant.svm_immediates.size() == 1u &&
+                variant.svm_immediates.front() ==
+                    static_cast<std::uint16_t>(
+                        VectorDisplacementSpace::tangent));
       });
 
   const auto &scene = runtime.svm_scene;
@@ -256,7 +326,10 @@ validate_direct_state_surface_runtime(const SurfaceValueRuntime &runtime) {
       transform_metadata_seen.begin(), transform_metadata_seen.end(), true);
   exact_relation &= transform_record_count == owned_payload_count;
   if (ordinary_variants != 1u || derivative_variants != 1u ||
-      displacement_variants != 1u || !displacement_immediate_exact ||
+      displacement_variants != 1u ||
+      vector_displacement_variants != 1u ||
+      !displacement_immediate_exact ||
+      !vector_displacement_immediate_exact ||
       !exact_relation) {
     std::ostringstream message;
     message << "compact runtime violated the transform evaluator/metadata "
@@ -264,6 +337,8 @@ validate_direct_state_surface_runtime(const SurfaceValueRuntime &runtime) {
             << ordinary_variants
             << ", derivative variants=" << derivative_variants
             << ", displacement variants=" << displacement_variants
+            << ", vector displacement variants="
+            << vector_displacement_variants
             << ", records=" << transform_record_count
             << ", owned payloads=" << owned_payload_count << ')';
     return message.str();

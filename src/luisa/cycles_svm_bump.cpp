@@ -242,4 +242,61 @@ void node_displacement(Cursor &cursor, Stack &stack,
   }
 }
 
+void node_vector_displacement(Cursor &cursor, Stack &stack,
+                              const KernelGlobals &kernel_globals,
+                              const TransformState &transform_state,
+                              const ShaderData &shader_data,
+                              bool bump_feature_enabled,
+                              bool object_motion_enabled) noexcept {
+  const auto space = cursor.word();
+  const auto vector_x = cursor.word();
+  const auto vector_y = cursor.word();
+  const auto vector_z = cursor.word();
+  const auto midlevel = stack_load_input_float(stack, cursor.word());
+  const auto scale = stack_load_input_float(stack, cursor.word());
+  const auto attr = cursor.word();
+  const auto attr_sign = cursor.word();
+  const auto displacement_offset = cursor.byte(cursor.word(), 0u);
+
+  if (bump_feature_enabled) {
+    const auto vector =
+        stack_load_input_float3(stack, vector_x, vector_y, vector_z);
+    Float3 displacement = (vector - make_float3(midlevel)) * scale;
+
+    $if(space == static_cast<std::uint32_t>(NODE_NORMAL_MAP_TANGENT)) {
+      Float3 normal = shader_data.N;
+      object_inverse_normal_transform(normal, transform_state, shader_data,
+                                      object_motion_enabled);
+
+      const auto tangent_descriptor = find_attribute(
+          kernel_globals, shader_data, attr.cast<luisa::ulong>());
+      Float3 tangent;
+      $if(is_attribute_found(tangent_descriptor)) {
+        tangent = primitive_surface_attribute_float3(
+            kernel_globals, shader_data, tangent_descriptor);
+      }
+      $else { tangent = normalize_cycles(shader_data.dPdu); };
+
+      Float3 bitangent = safe_normalize_cycles(cross(normal, tangent));
+      const auto sign_descriptor = find_attribute(
+          kernel_globals, shader_data, attr_sign.cast<luisa::ulong>());
+      $if(is_attribute_found(sign_descriptor)) {
+        bitangent *= primitive_surface_attribute_float(
+            kernel_globals, shader_data, sign_descriptor);
+      };
+
+      displacement = tangent * displacement.x + normal * displacement.y +
+                     bitangent * displacement.z;
+    };
+
+    $if(space != static_cast<std::uint32_t>(NODE_NORMAL_MAP_WORLD)) {
+      object_dir_transform(displacement, transform_state, shader_data,
+                           object_motion_enabled);
+    };
+    stack_store_float3(stack, displacement_offset, displacement);
+  } else {
+    stack_store_float3(stack, displacement_offset, make_float3(0.0f));
+  }
+}
+
 } // namespace psycles::luisa_backend::cycles_svm::detail

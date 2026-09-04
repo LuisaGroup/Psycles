@@ -947,6 +947,44 @@ private:
                     .socket = "Displacement"},
                 .type = SocketType::vector};
         }
+        if (type == "VECTOR_DISPLACEMENT") {
+            const auto displacement = _graph.add_node(
+                compiler::node_type::vector_displacement,
+                node_name);
+            static_cast<void>(bind(
+                displacement, "Vector", node, "Vector",
+                SocketType::color));
+            static_cast<void>(bind(
+                displacement, "Midlevel", node, "Midlevel",
+                SocketType::floating));
+            static_cast<void>(bind(
+                displacement, "Scale", node, "Scale",
+                SocketType::floating));
+            static_cast<void>(_graph.set_property(
+                displacement,
+                "Space",
+                SocketValue::string(
+                    node_property_text(node, "space", "TANGENT"))));
+            // Cycles 5.2.1's Blender adapter does not expose a UV-map
+            // selector on this node and always sets the attribute empty.
+            static_cast<void>(_graph.set_property(
+                displacement,
+                "Attribute",
+                SocketValue::string("")));
+            static_cast<void>(_graph.set_property(
+                displacement,
+                "AttributeNamed",
+                SocketValue::boolean(false)));
+            static_cast<void>(_graph.set_property(
+                displacement,
+                "AttributeId",
+                SocketValue::unsigned_integer(0u)));
+            return {
+                .ref = {
+                    .node = displacement,
+                    .socket = "Displacement"},
+                .type = SocketType::vector};
+        }
         if (type == "BUMP") {
             const auto id = _graph.add_node(
                 compiler::node_type::bump,

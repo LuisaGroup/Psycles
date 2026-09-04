@@ -461,7 +461,11 @@ GraphSurfaceImplementation::evaluate_volume(
     if (!_program || !_program->volume_root().valid()) {
         return result;
     }
-    const auto values = trace_values(services, point);
+    const auto values = trace_values(
+        services,
+        point,
+        nullptr,
+        compiler::cycles_node_feature_mask_volume);
     for_each_volume(values,
         [&](const compiler::VolumeInstruction &volume,
             Float mix_weight) noexcept {
@@ -506,7 +510,8 @@ GraphSurfaceImplementation::evaluate_volume(
     const auto values = trace_value_stage(
         services,
         automatic_bump_point(point),
-        &_surface_normal_dependency_mask);
+        &_surface_normal_dependency_mask,
+        compiler::cycles_node_feature_mask_bump);
     return values.values[
         _program->surface_normal_root().value].vector();
 }
@@ -518,7 +523,10 @@ GraphSurfaceImplementation::evaluate_volume(
         return make_float3(0.0f);
     }
     const auto values = trace_values(
-        services, point, &_displacement_dependency_mask);
+        services,
+        point,
+        &_displacement_dependency_mask,
+        compiler::cycles_node_feature_mask_displacement);
     return values.values[
         _program->displacement_root().value].vector();
 }

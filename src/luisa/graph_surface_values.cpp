@@ -4,6 +4,27 @@
 #include <cstdlib>
 
 namespace psycles::luisa_backend::detail {
+namespace {
+
+[[nodiscard]] SurfaceValueExpression disabled_surface_value(
+    const compiler::ValueInstruction &instruction) noexcept {
+    switch (compiler::cycles_node_feature_semantics(instruction.operation)
+                .disabled_value) {
+    case compiler::CyclesNodeDisabledValue::zero:
+      return SurfaceValueExpression::zero(instruction.result_type);
+    case compiler::CyclesNodeDisabledValue::one:
+      if (surface_value_category(instruction.result_type) !=
+          SurfaceValueCategory::scalar) {
+        std::abort();
+      }
+      return SurfaceValueExpression::from_scalar(1.0f);
+    case compiler::CyclesNodeDisabledValue::evaluate:
+      std::abort();
+    }
+    std::abort();
+}
+
+} // namespace
 
 std::unique_ptr<ValueNode> make_value_node(
     const compiler::ValueInstruction &instruction) noexcept {
@@ -62,7 +83,8 @@ std::vector<bool> GraphSurfaceImplementation::value_dependency_mask(
 TracedValues GraphSurfaceImplementation::trace_value_stage(
     const ShaderServices &services,
     const SurfacePoint &point,
-    const std::vector<bool> *active_mask) const noexcept {
+    const std::vector<bool> *active_mask,
+    compiler::CyclesNodeFeatureMask node_feature_mask) const noexcept {
     TracedValues result;
     result.shading_normal = point.shading_normal;
     const auto &instructions =
@@ -81,6 +103,14 @@ TracedValues GraphSurfaceImplementation::trace_value_stage(
             result.values.emplace_back(
                 SurfaceValueExpression::zero(
                     instructions[instruction_index].result_type));
+            continue;
+        }
+        if (!compiler::cycles_node_features_enable(
+                instructions[instruction_index].operation,
+                node_feature_mask)) {
+            result.values.emplace_back(
+                disabled_surface_value(
+                    instructions[instruction_index]));
             continue;
         }
         result.values.emplace_back(
@@ -110,22 +140,28 @@ SurfacePoint GraphSurfaceImplementation::automatic_bump_point(
 TracedValues GraphSurfaceImplementation::trace_values(
     const ShaderServices &services,
     const SurfacePoint &point,
-    const std::vector<bool> *active_mask) const noexcept {
+    const std::vector<bool> *active_mask,
+    compiler::CyclesNodeFeatureMask node_feature_mask) const noexcept {
     // Explicit masks denote isolated compiler domains (displacement or a
     // Bump offset sample) and must not recursively enter SetNormal.
     if (active_mask != nullptr) {
-        return trace_value_stage(services, point, active_mask);
+        return trace_value_stage(
+            services, point, active_mask, node_feature_mask);
     }
 
-    return trace_surface_values(services, point, nullptr);
+    return trace_surface_values(
+        services, point, nullptr, node_feature_mask);
 }
 
 TracedValues GraphSurfaceImplementation::trace_surface_values(
     const ShaderServices &services,
     const SurfacePoint &point,
-    const std::vector<bool> *active_mask) const noexcept {
-    if (!_program->surface_normal_root().valid()) {
-        return trace_value_stage(services, point, active_mask);
+    const std::vector<bool> *active_mask,
+    compiler::CyclesNodeFeatureMask node_feature_mask) const noexcept {
+    if (!_program->surface_normal_root().valid() ||
+        (node_feature_mask & compiler::cycles_node_feature_bump) == 0u) {
+        return trace_value_stage(
+            services, point, active_mask, node_feature_mask);
     }
 
     // Cycles executes the automatic bump region, stores its root in sd->N,
@@ -136,12 +172,14 @@ TracedValues GraphSurfaceImplementation::trace_surface_values(
     const auto bump_values = trace_value_stage(
         services,
         automatic_bump_point(point),
-        &_surface_normal_dependency_mask);
+        &_surface_normal_dependency_mask,
+        node_feature_mask);
     auto surface_point = point;
     surface_point.shading_normal =
         bump_values.values[
             _program->surface_normal_root().value].vector();
-    return trace_value_stage(services, surface_point, active_mask);
+    return trace_value_stage(
+        services, surface_point, active_mask, node_feature_mask);
 }
 
 }// namespace psycles::luisa_backend::detail

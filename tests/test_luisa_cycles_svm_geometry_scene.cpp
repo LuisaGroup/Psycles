@@ -107,6 +107,8 @@ struct Fixture {
        static_cast<std::uint64_t>(ATTR_STD_UV),
        static_cast<std::uint64_t>(ATTR_STD_UV_TANGENT),
        static_cast<std::uint64_t>(ATTR_STD_UV_TANGENT_SIGN),
+       static_cast<std::uint64_t>(ATTR_STD_UV_TANGENT_UNDISPLACED),
+       static_cast<std::uint64_t>(ATTR_STD_UV_TANGENT_SIGN_UNDISPLACED),
        static_cast<std::uint64_t>(ATTR_STD_GENERATED),
        static_cast<std::uint64_t>(ATTR_STD_GENERATED_TRANSFORM),
        static_cast<std::uint64_t>(ATTR_STD_RANDOM_PER_ISLAND)},
@@ -249,6 +251,8 @@ void test_exact_post_displacement_scene_image() {
       static_cast<std::uint64_t>(ATTR_STD_UV),
       static_cast<std::uint64_t>(ATTR_STD_UV_TANGENT),
       static_cast<std::uint64_t>(ATTR_STD_UV_TANGENT_SIGN),
+      static_cast<std::uint64_t>(ATTR_STD_UV_TANGENT_UNDISPLACED),
+      static_cast<std::uint64_t>(ATTR_STD_UV_TANGENT_SIGN_UNDISPLACED),
       static_cast<std::uint64_t>(ATTR_STD_GENERATED),
       static_cast<std::uint64_t>(ATTR_STD_GENERATED_TRANSFORM),
       static_cast<std::uint64_t>(ATTR_STD_RANDOM_PER_ISLAND)};
@@ -280,6 +284,13 @@ void test_exact_post_displacement_scene_image() {
                   NODE_ATTR_FLOAT &&
               image.attributes.attributes_float3.front().y == 1.0f,
           "named tangent vector/sign storage changed");
+  require(
+      entry(image, mesh_geometry, ATTR_STD_UV_TANGENT_UNDISPLACED).element ==
+              ATTR_ELEMENT_CORNER &&
+          entry(image, mesh_geometry,
+                ATTR_STD_UV_TANGENT_SIGN_UNDISPLACED).element ==
+              ATTR_ELEMENT_CORNER,
+      "bump-only undisplaced tangent did not reuse the current Mikk frame");
   require(image.triangle_vertex_indices.size() == 6u &&
               image.triangle_vertex_indices[5u].x == 0u &&
               image.triangle_vertex_indices[5u].y == 2u &&

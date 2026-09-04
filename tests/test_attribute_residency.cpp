@@ -115,6 +115,55 @@ void require(bool condition, std::string_view message) {
     return graph;
 }
 
+void test_named_vector_displacement_demand() {
+    constexpr std::string_view uv_map = "VectorDisplacementUV";
+    const auto tangent_id =
+        uv_undisplaced_tangent_attribute_id(uv_map);
+    ShaderGraph graph;
+    const auto displacement = graph.add_node(
+        node_type::vector_displacement,
+        "Named vector displacement demand");
+    const auto emission = graph.add_node(
+        node_type::emission,
+        "Vector displacement surface");
+    require(
+        graph.set_input(
+            displacement,
+            "Vector",
+            SocketValue::color({0.75f, 0.25f, 0.5f})) &&
+            graph.set_property(
+                displacement,
+                "Attribute",
+                SocketValue::string(std::string{uv_map})) &&
+            graph.set_property(
+                displacement,
+                "AttributeNamed",
+                SocketValue::boolean(true)) &&
+            graph.set_property(
+                displacement,
+                "AttributeId",
+                SocketValue::unsigned_integer(tangent_id)),
+        "could not build named vector displacement graph");
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{.node = emission, .socket = "Closure"});
+    graph.set_root(
+        ShaderDomain::displacement,
+        OutputRef{.node = displacement, .socket = "Displacement"});
+
+    ShaderCompiler compiler{make_core_node_registry()};
+    const auto shader = compiler.compile(graph);
+    require(shader.ok(), "named vector displacement graph did not compile");
+    const auto surface = compile_surface_program(*shader.program);
+    require(surface.ok(), "named vector displacement graph did not lower");
+    const SurfaceParameterBlock parameters{*surface.program};
+    const auto demand = collect_surface_attribute_demand(
+        *surface.program, parameters);
+    require(
+        !demand.all && demand.contains(tangent_id),
+        "named vector displacement tangent was not retained");
+}
+
 [[nodiscard]] MeshAttribute<Vec2f> triangle_uv() {
     return {
         .domain = MeshAttributeDomain::corner,
@@ -375,5 +424,6 @@ int main() {
     test_per_geometry_union_and_tangent_dependency_closure();
     test_curve_domain_attribute_residency();
     test_unknown_query_is_conservative_top();
+    test_named_vector_displacement_demand();
     return EXIT_SUCCESS;
 }

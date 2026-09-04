@@ -165,6 +165,7 @@ _ALL_PROBES = (
     "svm_gabor_matrix",
     "svm_spectral_dynamic",
     "svm_vertex_color",
+    "svm_vector_displacement",
     "svm_voronoi_matrix",
     "svm_wireframe_matrix",
     "svm_wireframe_bump",
@@ -244,6 +245,14 @@ _PROBE_RATIO_GATES = {
     "normal_node_matrix": {
         "Combined": (0.99999, 1.00001),
         "Emit": (0.99999, 1.00001),
+    },
+    "svm_vector_displacement": {
+        # Combined/Emit freeze the displaced silhouettes and authored color;
+        # Normal is signed and therefore uses the established wider ratio
+        # envelope for tiny near-zero x/y means.
+        "Combined": (0.99999, 1.00001),
+        "Emit": (0.99999, 1.00001),
+        "Normal": (0.9995, 1.0005),
     },
     "geometry_position_color_conversion": {
         "Combined": (0.99999, 1.00001),
@@ -499,6 +508,14 @@ _PROBE_RELATIVE_RMSE_GATES = {
         "Combined": 0.0001,
         "Emit": 0.0001,
     },
+    "svm_vector_displacement": {
+        # 512px HIP retains only sub-pixel triangle-edge ties (4.7e-5
+        # relative RMSE); keep headroom for backend-native intersection
+        # rounding while rejecting any space/transform collapse.
+        "Combined": 0.0001,
+        "Emit": 0.0001,
+        "Normal": 0.0001,
+    },
     "geometry_position_color_conversion": {
         "Combined": 0.000001,
         "Emit": 0.000001,
@@ -730,6 +747,11 @@ _PROBE_ACTUAL_INVALID_PIXEL_GATES = {
     "light_falloff_matrix": {
         "Combined": 0,
         "Emit": 0,
+    },
+    "svm_vector_displacement": {
+        "Combined": 0,
+        "Emit": 0,
+        "Normal": 0,
     },
     "hair_bsdf_matrix": {
         "Combined": 0,

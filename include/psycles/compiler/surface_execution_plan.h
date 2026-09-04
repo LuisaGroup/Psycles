@@ -259,7 +259,7 @@ maximum_surface_value_operand_count() noexcept {
   auto maximum = std::size_t{};
   for (auto opcode = std::uint32_t{};
        opcode <= static_cast<std::uint32_t>(
-                     ValueOperation::displacement);
+                     ValueOperation::vector_displacement);
        ++opcode) {
     const auto count = value_operation_operand_count(
         static_cast<ValueOperation>(opcode));
@@ -957,6 +957,7 @@ surface_value_operation_uses_svm_immediate(ValueOperation operation) noexcept {
          operation == ValueOperation::normal_map ||
          operation == ValueOperation::bump ||
          operation == ValueOperation::displacement ||
+         operation == ValueOperation::vector_displacement ||
          operation == ValueOperation::light_falloff ||
          operation == ValueOperation::wave_color ||
          operation == ValueOperation::wave_factor ||
@@ -1019,6 +1020,7 @@ surface_value_svm_static_u0_mask(ValueOperation operation) noexcept {
                  operation == ValueOperation::normal_map ||
                  operation == ValueOperation::bump ||
                  operation == ValueOperation::displacement ||
+                 operation == ValueOperation::vector_displacement ||
                  operation == ValueOperation::light_falloff ||
                  operation == ValueOperation::noise_factor ||
                  operation == ValueOperation::noise_color ||
@@ -1179,6 +1181,12 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
     return (static_u0 & ~displacement_configuration_mask) == 0u &&
            static_u1 == 0u;
   }
+  if (operation == ValueOperation::vector_displacement) {
+    return (static_u0 & ~vector_displacement_configuration_mask) == 0u &&
+           decode_vector_displacement_space(static_u0) <=
+               VectorDisplacementSpace::world &&
+           static_u1 == 0u;
+  }
   if (operation == ValueOperation::light_falloff) {
     return static_u0 <=
                static_cast<std::uint64_t>(LightFalloffType::constant) &&
@@ -1318,6 +1326,7 @@ surface_value_svm_evaluator_static_u1(ValueOperation operation,
       operation == ValueOperation::normal_map ||
       operation == ValueOperation::bump ||
       operation == ValueOperation::displacement ||
+      operation == ValueOperation::vector_displacement ||
       operation == ValueOperation::light_falloff ||
       operation == ValueOperation::gradient) {
     return static_cast<std::uint32_t>(static_u0);

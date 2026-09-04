@@ -580,7 +580,8 @@ private:
     [[nodiscard]] TracedValues trace_value_stage(
         const ShaderServices &services,
         const SurfacePoint &point,
-        const std::vector<bool> *active_mask) const noexcept;
+        const std::vector<bool> *active_mask,
+        compiler::CyclesNodeFeatureMask node_feature_mask) const noexcept;
 
     // Evaluate one consumer-specific surface domain while retaining Cycles'
     // automatic bump ordering. The dependency plan is topology-closed, so
@@ -588,7 +589,9 @@ private:
     [[nodiscard]] TracedValues trace_surface_values(
         const ShaderServices &services,
         const SurfacePoint &point,
-        const std::vector<bool> *active_mask) const noexcept;
+        const std::vector<bool> *active_mask,
+        compiler::CyclesNodeFeatureMask node_feature_mask =
+            compiler::cycles_node_feature_mask_surface) const noexcept;
 
     // Cycles' BOTH program wraps only its automatic bump region in
     // NODE_ENTER/LEAVE_BUMP_EVAL. The surface region must keep the truly
@@ -634,7 +637,9 @@ public:
     [[nodiscard]] TracedValues trace_values(
         const ShaderServices &services,
         const SurfacePoint &point,
-        const std::vector<bool> *active_mask = nullptr) const noexcept;
+        const std::vector<bool> *active_mask = nullptr,
+        compiler::CyclesNodeFeatureMask node_feature_mask =
+            compiler::cycles_node_feature_mask_surface) const noexcept;
 
 private:
     void for_each_closure(const TracedValues &values,

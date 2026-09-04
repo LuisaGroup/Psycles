@@ -8,7 +8,96 @@ from typing import Any
 import bpy
 from mathutils import Euler, Matrix, Vector
 
-from .support import _input, _material, _output
+from .support import _input, _material, _material_matrix, _output
+
+
+def _vector_displacement_material(name: str, space: str) -> Any:
+    """Build one unbaked Cycles Vector Displacement material."""
+    material, tree, output = _material(name)
+    material.displacement_method = "DISPLACEMENT"
+
+    emission = tree.nodes.new("ShaderNodeEmission")
+    emission.name = f"{name} Emission"
+    _input(emission, "Color").default_value = (0.17, 0.43, 0.79, 1.0)
+    tree.links.new(_output(emission, "Emission"), _input(output, "Surface"))
+
+    displacement = tree.nodes.new("ShaderNodeVectorDisplacement")
+    displacement.name = f"{name} Vector Displacement"
+    displacement.space = space
+    _input(displacement, "Vector").default_value = (0.73, 0.29, 0.61, 1.0)
+    _input(displacement, "Midlevel").default_value = 0.37
+    _input(displacement, "Scale").default_value = 0.41
+    tree.links.new(
+        _output(displacement, "Displacement"),
+        _input(output, "Displacement"),
+    )
+    return material
+
+
+def _svm_vector_displacement(scene: Any) -> None:
+    """Freeze Cycles' Tangent/Object/World vector-displacement streams."""
+    scene.cycles.pixel_filter_type = "BOX"
+    scene.cycles.filter_width = 0.01
+    scene.cycles.max_bounces = 0
+
+    materials = [
+        _vector_displacement_material(
+            f"SVM Vector Displacement {space.title()}", space
+        )
+        for space in ("TANGENT", "OBJECT", "WORLD")
+    ]
+    surface = _material_matrix(
+        scene,
+        materials,
+        columns=3,
+        rows=1,
+        name="SVM Vector Displacement Surface",
+    )
+
+    # Cycles' tangent path requests the undisplaced MikkTSpace frame. The
+    # non-trivial object transform also makes OBJECT and WORLD observably
+    # different while the inverse-baked vertices retain pixel-aligned cells.
+    uv = surface.data.uv_layers.new(name="UVMap")
+    coordinates = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
+    for polygon in surface.data.polygons:
+        polygon.use_smooth = True
+        for loop_index, coordinate in zip(
+            polygon.loop_indices, coordinates, strict=True
+        ):
+            uv.data[loop_index].uv = coordinate
+
+    surface.rotation_euler = (0.19, -0.27, 0.41)
+    surface.scale = (1.37, 0.71, 1.19)
+    bpy.context.view_layer.update()
+    world_to_object = surface.matrix_world.inverted()
+    for vertex in surface.data.vertices:
+        vertex.co = world_to_object @ vertex.co
+
+
+def _svm_vector_displacement_nested_both_oracle(scene: Any) -> None:
+    """Freeze automatic bump copies when displacement has an intermediate node."""
+    _svm_vector_displacement(scene)
+    material = bpy.data.materials["SVM Vector Displacement Tangent"]
+    material.displacement_method = "BOTH"
+    tree = material.node_tree
+    output = tree.nodes["Material Output"]
+    displacement = tree.nodes[
+        "SVM Vector Displacement Tangent Vector Displacement"
+    ]
+    tree.links.remove(_input(output, "Displacement").links[0])
+    scale = tree.nodes.new("ShaderNodeVectorMath")
+    scale.name = "SVM Vector Displacement Tangent Post Scale"
+    scale.label = "Nested displacement root: SCALE 0.73"
+    scale.operation = "SCALE"
+    _input(scale, "Scale").default_value = 0.73
+    tree.links.new(
+        _output(displacement, "Displacement"),
+        _input(scale, "Vector"),
+    )
+    tree.links.new(
+        _output(scale, "Vector"),
+        _input(output, "Displacement"),
+    )
 
 
 def _wireframe_material(

@@ -263,6 +263,13 @@ SurfaceAttributeDemand collect_surface_attribute_demand(
                         operand::sampled_normal_map::uv_map));
                 }
                 break;
+            case compiler::ValueOperation::vector_displacement:
+                if ((instruction.static_u0 &
+                     compiler::vector_displacement_named_tangent) != 0u) {
+                    require(instruction.operand(
+                        operand::vector_displacement::attribute));
+                }
+                break;
             default:
                 break;
         }

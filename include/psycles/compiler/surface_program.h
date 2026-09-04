@@ -215,8 +215,113 @@ enum class ValueOperation : std::uint8_t {
   // Light Falloff is not ordinary graph algebra. Cycles treats the exact
   // FLT_MAX ShaderData::ray_length as a distant-light sentinel and returns
   // Strength before evaluating distance products or smooth attenuation.
-  light_falloff
+  light_falloff,
+  // Append new operations so existing typed-program ordinals remain stable.
+  // Cycles' Vector Displacement keeps tangent/object/world space and the
+  // undisplaced tangent attribute as one semantic node. It is not equivalent
+  // to component-wise graph algebra under object transforms.
+  vector_displacement
 };
+
+// Cycles 5.2.1 kernel/features.h node-feature ABI. These masks are host/JIT
+// specialization inputs: they may remove only operations that the
+// corresponding Cycles svm_eval_nodes<node_feature_mask> instantiation makes
+// unreachable. Keeping the bit positions here lets both the topology-expanded
+// evaluator and the compact compatibility SVM share one exact contract.
+using CyclesNodeFeatureMask = std::uint32_t;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_bsdf = 1u << 0u;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_emission = 1u << 1u;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_volume = 1u << 2u;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_bump = 1u << 3u;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_bump_state = 1u << 4u;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_voronoi_extra = 1u << 5u;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_raytrace = 1u << 6u;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_aov = 1u << 7u;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_light_path = 1u << 8u;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_principled_hair =
+    1u << 9u;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_portal = 1u << 10u;
+
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_mask_surface_light =
+    cycles_node_feature_emission | cycles_node_feature_voronoi_extra |
+    cycles_node_feature_light_path | cycles_node_feature_portal;
+inline constexpr CyclesNodeFeatureMask
+    cycles_node_feature_mask_surface_background =
+        cycles_node_feature_mask_surface_light | cycles_node_feature_aov;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_mask_surface_shadow =
+    cycles_node_feature_bsdf | cycles_node_feature_emission |
+    cycles_node_feature_bump | cycles_node_feature_bump_state |
+    cycles_node_feature_voronoi_extra | cycles_node_feature_light_path |
+    cycles_node_feature_principled_hair | cycles_node_feature_portal;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_mask_surface =
+    cycles_node_feature_mask_surface_shadow | cycles_node_feature_raytrace |
+    cycles_node_feature_aov | cycles_node_feature_light_path;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_mask_volume =
+    cycles_node_feature_emission | cycles_node_feature_volume |
+    cycles_node_feature_voronoi_extra | cycles_node_feature_light_path |
+    cycles_node_feature_portal;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_mask_displacement =
+    cycles_node_feature_voronoi_extra | cycles_node_feature_bump |
+    cycles_node_feature_bump_state | cycles_node_feature_portal;
+inline constexpr CyclesNodeFeatureMask cycles_node_feature_mask_bump =
+    cycles_node_feature_mask_displacement;
+
+// A specialized Cycles SVM node can have a semantic fallback in addition to
+// its required feature. Keep that value explicit: AO initializes its factor to
+// one before the RAYTRACE guard, while Bump/Displacement and guarded Light Path
+// counters initialize their outputs to zero. Synthetic lowering helpers are
+// ordinary dataflow; only bump_samples is the semantic replacement for the
+// authored Bump node.
+enum class CyclesNodeDisabledValue : std::uint8_t {
+  evaluate,
+  zero,
+  one,
+};
+
+struct CyclesNodeFeatureSemantics {
+  CyclesNodeFeatureMask required{};
+  CyclesNodeDisabledValue disabled_value{
+      CyclesNodeDisabledValue::evaluate};
+};
+
+[[nodiscard]] constexpr CyclesNodeFeatureSemantics
+cycles_node_feature_semantics(ValueOperation operation) noexcept {
+  switch (operation) {
+  case ValueOperation::bump:
+  case ValueOperation::bump_samples:
+  case ValueOperation::displacement:
+  case ValueOperation::vector_displacement:
+    return {.required = cycles_node_feature_bump,
+            .disabled_value = CyclesNodeDisabledValue::zero};
+  case ValueOperation::ambient_occlusion:
+    return {.required = cycles_node_feature_raytrace,
+            .disabled_value = CyclesNodeDisabledValue::one};
+  case ValueOperation::path_ray_depth:
+  case ValueOperation::path_diffuse_depth:
+  case ValueOperation::path_glossy_depth:
+  case ValueOperation::path_transparent_depth:
+  case ValueOperation::path_transmission_depth:
+  case ValueOperation::path_portal_depth:
+    // The only standard typed-program domains without LIGHT_PATH are Bump and
+    // Displacement. Their ShaderData has neither the shadow nor emission flag,
+    // so Cycles' post-guard +1 adjustment for Ray Depth is also exactly zero.
+    return {.required = cycles_node_feature_light_path,
+            .disabled_value = CyclesNodeDisabledValue::zero};
+  default:
+    return {};
+  }
+}
+
+[[nodiscard]] constexpr CyclesNodeFeatureMask
+cycles_node_features_required(ValueOperation operation) noexcept {
+  return cycles_node_feature_semantics(operation).required;
+}
+
+[[nodiscard]] constexpr bool cycles_node_features_enable(
+    ValueOperation operation, CyclesNodeFeatureMask available) noexcept {
+  const auto required = cycles_node_features_required(operation);
+  return (available & required) == required;
+}
 
 // Operand layouts are shared by lowering and backend AST construction. Named
 // constexpr indices make each operation's IR contract explicit without
@@ -351,6 +456,14 @@ struct displacement {
   static constexpr std::size_t midlevel = 1u;
   static constexpr std::size_t scale = 2u;
   static constexpr std::size_t normal = 3u;
+  static constexpr std::size_t count = 4u;
+};
+
+struct vector_displacement {
+  static constexpr std::size_t vector = 0u;
+  static constexpr std::size_t midlevel = 1u;
+  static constexpr std::size_t scale = 2u;
+  static constexpr std::size_t attribute = 3u;
   static constexpr std::size_t count = 4u;
 };
 
@@ -702,6 +815,8 @@ value_operation_operand_count(ValueOperation operation) noexcept {
       return value_operand::ambient_occlusion::count;
     case ValueOperation::displacement:
       return value_operand::displacement::count;
+    case ValueOperation::vector_displacement:
+      return value_operand::vector_displacement::count;
     case ValueOperation::light_falloff:
       return value_operand::light_falloff::count;
     case ValueOperation::mapping:
@@ -944,6 +1059,26 @@ inline constexpr std::uint64_t displacement_object_space = 1u << 0u;
 inline constexpr std::uint64_t displacement_normal_linked = 1u << 1u;
 inline constexpr std::uint64_t displacement_configuration_mask =
     displacement_object_space | displacement_normal_linked;
+
+// Exact NodeNormalMapSpace values serialized by Cycles'
+// SVMNodeVectorDisplacement. The named-tangent bit is front-end topology used
+// only by the transitional typed evaluator; the native SVM retains separate
+// attr/attr_sign payload words exactly as Cycles does.
+enum class VectorDisplacementSpace : std::uint8_t {
+  tangent = 0u,
+  object = 1u,
+  world = 2u
+};
+inline constexpr std::uint64_t vector_displacement_space_mask = 0x3u;
+inline constexpr std::uint64_t vector_displacement_named_tangent = 1u << 2u;
+inline constexpr std::uint64_t vector_displacement_configuration_mask =
+    vector_displacement_space_mask | vector_displacement_named_tangent;
+
+[[nodiscard]] constexpr VectorDisplacementSpace
+decode_vector_displacement_space(std::uint64_t configuration) noexcept {
+  return static_cast<VectorDisplacementSpace>(
+      configuration & vector_displacement_space_mask);
+}
 
 // Normal Map is a static shader-stage configuration. Keep its packed IR
 // contract in one place so graph lowering and Luisa AST construction cannot

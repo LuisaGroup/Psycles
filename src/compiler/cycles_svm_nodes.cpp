@@ -1065,6 +1065,101 @@ public:
   }
 };
 
+class VectorDisplacementNode final : public GraphNode {
+public:
+  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
+    return kernel_feature_node_bump;
+  }
+
+  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
+    return NODE_VECTOR_DISPLACEMENT;
+  }
+
+  [[nodiscard]] bool has_attribute_dependency() const noexcept override {
+    return true;
+  }
+
+  void attributes(const GraphAttributeContext &context,
+                  AttributeRequestSet &requests) const override {
+    const auto space = string_property(this, "Space");
+    const auto attribute = string_property(this, "Attribute");
+    if (context.has_surface_link() && space == "TANGENT" && attribute) {
+      if (attribute->empty()) {
+        requests.add(ATTR_STD_UV);
+        requests.add(ATTR_STD_UV_TANGENT_UNDISPLACED);
+        requests.add(ATTR_STD_UV_TANGENT_SIGN_UNDISPLACED);
+      } else {
+        requests.add(*attribute);
+        requests.add(std::string{*attribute} + ".undisplaced_tangent");
+        requests.add(std::string{*attribute} +
+                     ".undisplaced_tangent_sign");
+      }
+    }
+    GraphNode::attributes(context, requests);
+  }
+
+  void constant_fold(const ConstantFolder &folder) override {
+    if (!folder.all_inputs_constant()) {
+      return;
+    }
+    const auto vector =
+        literal<Vec3f>(input("Vector"), contract::SocketType::color);
+    const auto midlevel =
+        literal<float>(input("Midlevel"), contract::SocketType::floating);
+    const auto scale =
+        literal<float>(input("Scale"), contract::SocketType::floating);
+    if (vector && midlevel && scale &&
+        (((vector->x == 0.0f && vector->y == 0.0f && vector->z == 0.0f) &&
+          *midlevel == 0.0f) ||
+         *scale == 0.0f)) {
+      folder.make_zero();
+    }
+  }
+
+  void compile(SVMCompiler &compiler) override {
+    const auto space = string_property(this, "Space");
+    const auto attribute = string_property(this, "Attribute");
+    if (!space || (*space != "TANGENT" && *space != "OBJECT" &&
+                   *space != "WORLD")) {
+      compiler.fail("Cycles Vector Displacement space is invalid");
+      return;
+    }
+    if (!attribute) {
+      compiler.fail("Cycles Vector Displacement attribute is invalid");
+      return;
+    }
+
+    auto attr = std::uint32_t{};
+    auto attr_sign = std::uint32_t{};
+    if (*space == "TANGENT") {
+      if (attribute->empty()) {
+        attr = compiler.attribute(ATTR_STD_UV_TANGENT_UNDISPLACED);
+        attr_sign =
+            compiler.attribute(ATTR_STD_UV_TANGENT_SIGN_UNDISPLACED);
+      } else {
+        attr = compiler.attribute(std::string{*attribute} +
+                                  ".undisplaced_tangent");
+        attr_sign = compiler.attribute(std::string{*attribute} +
+                                       ".undisplaced_tangent_sign");
+      }
+    }
+
+    compiler.add_node(
+        this, NODE_VECTOR_DISPLACEMENT,
+        SVMNodeVectorDisplacement{
+            .space = *space == "TANGENT" ? NODE_NORMAL_MAP_TANGENT
+                     : *space == "OBJECT" ? NODE_NORMAL_MAP_OBJECT
+                                           : NODE_NORMAL_MAP_WORLD,
+            .vector = compiler.input_float3("Vector"),
+            .midlevel = compiler.input_float("Midlevel"),
+            .scale = compiler.input_float("Scale"),
+            .attr = static_cast<int>(attr),
+            .attr_sign = static_cast<int>(attr_sign),
+            .displacement_offset = compiler.output("Displacement"),
+            ._pad = {0u, 0u, 0u}});
+  }
+};
+
 class MixClosureWeightNode final : public GraphNode {
 public:
   void compile(SVMCompiler &compiler) override {
@@ -1842,6 +1937,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   }
   if (type == node_type::displacement) {
     return std::make_unique<DisplacementNode>();
+  }
+  if (type == node_type::vector_displacement) {
+    return std::make_unique<VectorDisplacementNode>();
   }
   if (type == cycles_synthetic_float3_autoconvert ||
       type == node_type::vector_to_color ||

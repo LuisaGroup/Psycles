@@ -318,6 +318,90 @@ void emit_displacement_family(
         locals, instruction, std::move(result));
 }
 
+void emit_vector_displacement_family(
+    const ShaderServices &services,
+    const SurfacePoint &point,
+    const SurfaceValueLocalsView &locals,
+    Var<luisa::uint4> instruction,
+    const compiler::SurfaceValueStaticVariant &variant,
+    SurfaceValueOperandReader &operands) noexcept {
+    if (variant.instruction.operation !=
+        compiler::ValueOperation::vector_displacement) {
+        std::abort();
+    }
+    require_immediate_subset(
+        variant,
+        static_cast<std::uint16_t>(
+            compiler::vector_displacement_configuration_mask));
+    const auto vector =
+        operands.vector(operand::vector_displacement::vector);
+    const auto midlevel =
+        operands.scalar(operand::vector_displacement::midlevel);
+    const auto scale =
+        operands.scalar(operand::vector_displacement::scale);
+
+    const auto default_tangent = vector_displacement_default_tangent(
+        point.undisplaced_object_tangent,
+        point.undisplaced_tangent_sign,
+        point.is_curve,
+        point.geometry_index);
+    auto tangent = default_tangent.object_tangent;
+    auto tangent_sign = default_tangent.tangent_sign;
+    Bool tangent_attribute_found = default_tangent.tangent_attribute_found;
+    Bool tangent_sign_found = default_tangent.tangent_sign_found;
+    auto has_named = false;
+    auto has_default = false;
+    for (const auto immediate : variant.svm_immediates) {
+        has_named |=
+            (immediate & compiler::vector_displacement_named_tangent) != 0u;
+        has_default |=
+            (immediate & compiler::vector_displacement_named_tangent) == 0u;
+    }
+    if (has_named) {
+        const auto attribute = services.attribute(
+            operands.unsigned_integer(
+                operand::vector_displacement::attribute),
+            point);
+        if (has_default) {
+            const auto named =
+                (surface_value_runtime_immediate(instruction) &
+                 static_cast<std::uint32_t>(
+                     compiler::vector_displacement_named_tangent)) != 0u;
+            $if(named) {
+                tangent = attribute.value.xyz();
+                tangent_sign = attribute.value.w;
+                tangent_attribute_found = attribute.found;
+                tangent_sign_found = attribute.found;
+            };
+        } else {
+            tangent = attribute.value.xyz();
+            tangent_sign = attribute.value.w;
+            tangent_attribute_found = attribute.found;
+            tangent_sign_found = attribute.found;
+        }
+    }
+    const auto input = SurfaceVectorDisplacementInput{
+        .vector = vector,
+        .midlevel = midlevel,
+        .scale = scale,
+        .shading_normal = point.shading_normal,
+        .object_tangent = tangent,
+        .tangent_sign = tangent_sign,
+        .tangent_attribute_found = tangent_attribute_found,
+        .tangent_sign_found = tangent_sign_found,
+        .dpdu = point.dpdu,
+        .normal_to_world_x = point.normal_to_world_x,
+        .normal_to_world_y = point.normal_to_world_y,
+        .normal_to_world_z = point.normal_to_world_z};
+    const auto space =
+        surface_value_runtime_immediate(instruction) &
+        static_cast<std::uint32_t>(
+            compiler::vector_displacement_space_mask);
+    write_surface_value_vector(
+        locals, instruction,
+        vector_displacement_inline(input, space));
+}
+
 } // namespace
 
 void emit_direct_surface_state_family(
@@ -354,6 +438,10 @@ void emit_direct_surface_state_family(
         case compiler::SurfaceSvmValueOpcode::displacement:
             emit_displacement_family(
                 point, locals, instruction, variant, operands);
+            return;
+        case compiler::SurfaceSvmValueOpcode::vector_displacement:
+            emit_vector_displacement_family(
+                services, point, locals, instruction, variant, operands);
             return;
         default:
             std::abort();

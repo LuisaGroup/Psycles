@@ -1849,6 +1849,59 @@ void test_last_value_operand_participates_in_volume_analysis() {
         "the final value operand was omitted from volume dependency analysis");
 }
 
+void test_displacement_spatial_metadata() {
+    for (const auto operation :
+         std::array{ValueOperation::displacement,
+                    ValueOperation::vector_displacement}) {
+        const auto input =
+            operation == ValueOperation::displacement
+                ? value_operand::displacement::height
+                : value_operand::vector_displacement::vector;
+        const auto make_program = [operation, input](
+                                      bool spatial_dependency) {
+            std::vector<ValueInstruction> values;
+            if (spatial_dependency) {
+                values.emplace_back(ValueInstruction{
+                    .operation = ValueOperation::surface_position,
+                    .result_type = SocketType::point});
+            }
+            std::vector<ValueExpressionId> operands(
+                value_operation_operand_count(operation));
+            operands[input] =
+                spatial_dependency ? ValueExpressionId{0u}
+                                   : ValueExpressionId{};
+            const auto displacement = ValueExpressionId{
+                static_cast<std::uint32_t>(values.size())};
+            values.emplace_back(ValueInstruction{
+                .operation = operation,
+                .result_type = SocketType::vector,
+                .operands = std::move(operands)});
+            return SurfaceProgram{
+                0u,
+                {},
+                std::move(values),
+                {},
+                {},
+                {VolumeInstruction{
+                    .operation = VolumeOperation::coefficients,
+                    .emission_coefficients = displacement}},
+                VolumeExpressionId{0u}};
+        };
+        const auto constant =
+            VolumeProgramCapabilityComponent{}.analyze(
+                make_program(false));
+        const auto spatial =
+            VolumeProgramCapabilityComponent{}.analyze(
+                make_program(true));
+        expect(
+            constant.homogeneous &&
+                !constant.has_spatial_values &&
+                !spatial.homogeneous &&
+                spatial.has_spatial_values,
+            "Displacement intrinsic spatial metadata diverged from Cycles");
+    }
+}
+
 }// namespace
 
 int main(int argc, char **argv) {
@@ -1861,6 +1914,7 @@ int main(int argc, char **argv) {
         test_scene_plan();
         test_flatten_contract();
         test_last_value_operand_participates_in_volume_analysis();
+        test_displacement_spatial_metadata();
         run_scene_build(backend, argv[0]);
         std::cout
             << "All current-Cycles volume-majorant "
