@@ -35,7 +35,7 @@ constexpr auto id_point = static_cast<std::uint64_t>(ATTR_STD_NUM) + 12u;
 constexpr auto case_count = 17u;
 constexpr auto vertex_color_case_count = 9u;
 
-class BufferKernelGlobals final : public device_svm::KernelGlobals {
+class BufferKernelGlobals : public device_svm::KernelGlobals {
 private:
   Expr<Buffer<AttributeMap>> _attribute_map;
   Expr<Buffer<float>> _attribute_float;
@@ -264,6 +264,38 @@ public:
   }
 };
 
+class TrackingBufferKernelGlobals final : public BufferKernelGlobals {
+private:
+  Expr<Buffer<std::uint32_t>> _attribute_float4_reads;
+
+public:
+  TrackingBufferKernelGlobals(
+      Expr<Buffer<AttributeMap>> attribute_map,
+      Expr<Buffer<float>> attribute_float,
+      Expr<Buffer<luisa::float2>> attribute_float2,
+      Expr<Buffer<packed_float3>> attribute_float3,
+      Expr<Buffer<luisa::float4>> attribute_float4,
+      Expr<Buffer<uchar4>> attribute_uchar4,
+      Expr<Buffer<packed_normal>> attribute_normal,
+      Expr<Buffer<luisa::uint3>> triangle_indices,
+      Expr<Buffer<KernelCurve>> curves,
+      Expr<Buffer<std::uint32_t>> object_map_offsets,
+      Expr<bool> film_is_rec709,
+      Expr<Buffer<std::uint32_t>> attribute_float4_reads) noexcept
+      : BufferKernelGlobals{attribute_map, attribute_float, attribute_float2,
+                            attribute_float3, attribute_float4,
+                            attribute_uchar4, attribute_normal,
+                            triangle_indices, curves, object_map_offsets,
+                            film_is_rec709},
+        _attribute_float4_reads{attribute_float4_reads} {}
+
+  [[nodiscard]] Float4
+  attribute_float4(Expr<std::int32_t> offset) const noexcept override {
+    _attribute_float4_reads.write(dispatch_x(), 1u);
+    return BufferKernelGlobals::attribute_float4(offset);
+  }
+};
+
 [[nodiscard]] device_svm::ShaderData
 make_shader_data(Expr<std::uint32_t> object,
                  Expr<std::uint32_t> prim,
@@ -433,12 +465,14 @@ int main(int argc, char **argv) {
       device.create_buffer<std::uint32_t>(object_offsets.size());
   auto output_buffer = device.create_buffer<luisa::float4>(case_count * 3u);
   auto descriptor_buffer = device.create_buffer<luisa::uint4>(case_count);
+  auto float4_read_buffer = device.create_buffer<std::uint32_t>(case_count);
 
   const auto kernel = Kernel1D<
       Buffer<AttributeMap>, Buffer<float>, Buffer<luisa::float2>,
       Buffer<packed_float3>, Buffer<luisa::float4>, Buffer<uchar4>,
       Buffer<packed_normal>, Buffer<luisa::uint3>, Buffer<KernelCurve>,
-      Buffer<std::uint32_t>, Buffer<luisa::float4>, Buffer<luisa::uint4>>{
+      Buffer<std::uint32_t>, Buffer<luisa::float4>, Buffer<luisa::uint4>,
+      Buffer<std::uint32_t>>{
       [](BufferVar<AttributeMap> attribute_map, BufferFloat attribute_float,
          BufferVar<luisa::float2> attribute_float2,
          BufferVar<packed_float3> attribute_float3,
@@ -447,7 +481,8 @@ int main(int argc, char **argv) {
          BufferVar<luisa::uint3> triangle_indices,
          BufferVar<KernelCurve> curves, BufferUInt object_map_offsets,
          BufferFloat4 output,
-         BufferUInt4 descriptor_output) noexcept {
+         BufferUInt4 descriptor_output,
+         BufferUInt attribute_float4_reads) noexcept {
         const UInt index = dispatch_x();
         ULong id = static_cast<luisa::ulong>(id_object);
         UInt object = 0u;
@@ -491,12 +526,11 @@ int main(int argc, char **argv) {
           prim = 1u;
         };
 
-        BufferKernelGlobals kernel_globals{attribute_map,      attribute_float,
-                                           attribute_float2,   attribute_float3,
-                                           attribute_float4,   attribute_uchar4,
-                                           attribute_normal,   triangle_indices,
-                                           curves,              object_map_offsets,
-                                           index != 13u};
+        TrackingBufferKernelGlobals kernel_globals{
+            attribute_map, attribute_float, attribute_float2, attribute_float3,
+            attribute_float4, attribute_uchar4, attribute_normal,
+            triangle_indices, curves, object_map_offsets, index != 13u,
+            attribute_float4_reads};
         auto shader_data =
             make_shader_data(object, prim, primitive_type);
         const auto descriptor =
@@ -551,6 +585,8 @@ int main(int argc, char **argv) {
 
   std::array<luisa::float4, case_count * 3u> actual{};
   std::array<luisa::uint4, case_count> descriptors{};
+  std::array<std::uint32_t, case_count> float4_reads{};
+  static constexpr std::array<std::uint32_t, case_count> no_float4_reads{};
   stream << map_buffer.copy_from(luisa::span{maps})
          << float_buffer.copy_from(luisa::span{float_values})
          << float2_buffer.copy_from(luisa::span{float2_values})
@@ -561,14 +597,25 @@ int main(int argc, char **argv) {
          << triangle_buffer.copy_from(luisa::span{triangle_indices})
          << curve_buffer.copy_from(luisa::span{curves})
          << object_offset_buffer.copy_from(luisa::span{object_offsets})
+         << float4_read_buffer.copy_from(luisa::span{no_float4_reads})
          << shader(map_buffer, float_buffer, float2_buffer, float3_buffer,
                    float4_buffer, byte_buffer, normal_buffer, triangle_buffer,
                    curve_buffer, object_offset_buffer, output_buffer,
-                   descriptor_buffer)
+                   descriptor_buffer, float4_read_buffer)
                 .dispatch(case_count)
          << output_buffer.copy_to(luisa::span{actual})
          << descriptor_buffer.copy_to(luisa::span{descriptors})
+         << float4_read_buffer.copy_to(luisa::span{float4_reads})
          << synchronize();
+
+  if (float4_reads[2u] != 0u || float4_reads[13u] != 0u ||
+      float4_reads[5u] != 1u || float4_reads[15u] != 1u) {
+    std::cerr << "Cycles byte attribute performed a float4 storage read on "
+              << backend << ": byte flags (" << float4_reads[2u] << ", "
+              << float4_reads[13u] << "), float4 flags ("
+              << float4_reads[5u] << ", " << float4_reads[15u] << ")\n";
+    return EXIT_FAILURE;
+  }
 
   static constexpr auto not_found_bits = std::bit_cast<std::uint32_t>(
       static_cast<std::int32_t>(ATTR_STD_NOT_FOUND));
