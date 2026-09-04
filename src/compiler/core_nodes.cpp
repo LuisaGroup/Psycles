@@ -1204,6 +1204,32 @@ NodeRegistry make_core_node_registry() {
       .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(NodeSchema{
+      .type = node_type::vector_displacement,
+      // Cycles 5.2.1 declares Vector as SOCKET_IN_COLOR even though Blender
+      // presents the socket as a vector-valued displacement direction.
+      .inputs =
+          {input("Vector", SocketType::color,
+                 SocketValue::color({0.0f, 0.0f, 0.0f})),
+           input("Midlevel", SocketType::floating,
+                 SocketValue::floating(0.0f)),
+           input("Scale", SocketType::floating,
+                 SocketValue::floating(1.0f))},
+      .outputs = {output("Displacement", SocketType::vector)},
+      .properties =
+          {property("Space", SocketType::string,
+                    SocketValue::string("TANGENT")),
+           // Blender's Cycles adapter currently supplies the empty UV name,
+           // while the Cycles node itself retains the named-attribute path.
+           property("Attribute", SocketType::string,
+                    SocketValue::string("")),
+           property("AttributeNamed", SocketType::boolean,
+                    SocketValue::boolean(false)),
+           runtime_property("AttributeId", SocketType::unsigned_integer,
+                            SocketValue::unsigned_integer(0u))},
+      .required_features = feature_bit(ShaderFeature::surface) |
+                           feature_bit(ShaderFeature::attributes)}));
+
+  static_cast<void>(registry.register_schema(NodeSchema{
       .type = node_type::vertex_color,
       .inputs = {},
       .outputs = {output("Color", SocketType::color),

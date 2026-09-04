@@ -191,6 +191,72 @@ constant_environment_shader() {
     return graph;
 }
 
+[[nodiscard]] ShaderGraph
+bump_feature_mask_environment_shader() {
+    ShaderGraph graph;
+    const auto displacement =
+        graph.add_node(
+            node_type::vector_displacement,
+            "World Vector Displacement feature-mask oracle");
+    const auto color =
+        graph.add_node(
+            node_type::vector_to_color,
+            "World displacement to color");
+    const auto background =
+        graph.add_node(
+            node_type::emission,
+            "World displacement emission");
+    const auto configured =
+        graph.set_input(
+            displacement,
+            "Vector",
+            SocketValue::color(
+                {1.0f, 0.0f, 0.0f})) &&
+        graph.set_input(
+            displacement,
+            "Midlevel",
+            SocketValue::floating(0.0f)) &&
+        graph.set_input(
+            displacement,
+            "Scale",
+            SocketValue::floating(1.0f)) &&
+        graph.set_property(
+            displacement,
+            "Space",
+            SocketValue::string("WORLD")) &&
+        graph.set_property(
+            displacement,
+            "AttributeNamed",
+            SocketValue::boolean(false)) &&
+        graph.set_property(
+            displacement,
+            "AttributeId",
+            SocketValue::unsigned_integer(0u)) &&
+        graph.connect(
+            {.node = displacement,
+             .socket = "Displacement"},
+            color,
+            "Vector") &&
+        graph.connect(
+            {.node = color,
+             .socket = "Color"},
+            background,
+            "Color") &&
+        graph.set_input(
+            background,
+            "Strength",
+            SocketValue::floating(1.0f));
+    if (!configured) {
+        std::abort();
+    }
+    graph.set_root(
+        ShaderDomain::surface,
+        OutputRef{
+            .node = background,
+            .socket = "Closure"});
+    return graph;
+}
+
 [[nodiscard]] TriangleMeshDesc
 volume_box(MaterialId material) {
     TriangleMeshDesc mesh;
@@ -306,6 +372,27 @@ make_scene(
         world_visibility;
     scene.cycles_background_object_index =
         1u;
+    return scene;
+}
+
+[[nodiscard]] SceneSnapshot
+bump_feature_mask_scene() {
+    constexpr MaterialId world_material{2u};
+    constexpr CameraId camera{5u};
+    auto scene = make_scene();
+    scene.materials.at(world_material).shader =
+        bump_feature_mask_environment_shader();
+
+    // Column-major camera-to-world transform. Local -Z maps to the
+    // non-axis-aligned world ray normalize((1, 2, 3)), ruling out an
+    // accidental axis-basis zero. Cycles 5.2.1 still returns exact zero:
+    // KERNEL_FEATURE_NODE_MASK_SURFACE_BACKGROUND excludes NODE_BUMP, and
+    // svm_node_vector_displacement writes a zero vector in that branch.
+    scene.cameras.at(camera).transform.elements = {
+        0.89442719f, -0.44721359f, 0.0f, 0.0f,
+        -0.35856858f, -0.71713716f, 0.59761430f, 0.0f,
+        -0.26726124f, -0.53452248f, -0.80178373f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f};
     return scene;
 }
 
@@ -787,6 +874,61 @@ int main(int argc, char **argv) {
             << "camera visibility incorrectly hid volume lighting on "
             << backend << '\n';
         passed = false;
+    }
+
+    psycles::io::MemoryOutputSink
+        bump_feature_mask_sink;
+    if (!render_scene(
+            renderer,
+            bump_feature_mask_scene(),
+            settings,
+            bump_feature_mask_sink)) {
+        std::cerr
+            << "world Vector Displacement feature-mask render failed on "
+            << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    const auto *bump_feature_mask_combined =
+        bump_feature_mask_sink.find(
+            PassKind::combined);
+    const auto *bump_feature_mask_volume =
+        bump_feature_mask_sink.find(
+            PassKind::volume_direct);
+    if (bump_feature_mask_combined == nullptr ||
+        bump_feature_mask_volume == nullptr ||
+        !all_zero(*bump_feature_mask_volume)) {
+        std::cerr
+            << "world Vector Displacement feature-mask volume pass failed on "
+            << backend << '\n';
+        passed = false;
+    } else {
+        for (auto pixel = std::size_t{0u};
+             pixel < bump_feature_mask_combined->pixels.size() /
+                         bump_feature_mask_combined->channels;
+             ++pixel) {
+            const auto base =
+                pixel * bump_feature_mask_combined->channels;
+            for (auto channel = std::size_t{0u};
+                 channel < 3u;
+                 ++channel) {
+                if (bump_feature_mask_combined->pixels[base + channel] !=
+                    0.0f) {
+                    std::cerr
+                        << "Cycles 5.2.1 world NODE_BUMP mask regression "
+                        << "failed on " << backend << " pixel " << pixel
+                        << " channel " << channel << ": got "
+                        << bump_feature_mask_combined->pixels[base + channel]
+                        << ", expected 0\n";
+                    passed = false;
+                }
+            }
+            if (bump_feature_mask_combined->pixels[base + 3u] != 1.0f) {
+                std::cerr
+                    << "world Vector Displacement feature-mask alpha failed on "
+                    << backend << " pixel " << pixel << '\n';
+                passed = false;
+            }
+        }
     }
 
 #if defined(PSYCLES_WITH_OPENIMAGEIO)

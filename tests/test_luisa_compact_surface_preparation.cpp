@@ -93,6 +93,38 @@ struct FixtureProgram {
     SurfaceParameterBlock parameters;
 };
 
+void configure_vector_displacement_attribute_oracle_point(
+    SurfacePoint &point,
+    Bool selected,
+    UInt scenario) noexcept {
+    const auto curve = scenario == 0u;
+    const auto non_geometry = scenario == 1u;
+    point.is_curve = select(point.is_curve, curve, selected);
+    point.geometry_index = select(
+        point.geometry_index,
+        select(0u, ~static_cast<std::uint32_t>(0u), non_geometry),
+        selected);
+    point.undisplaced_object_tangent = select(
+        point.undisplaced_object_tangent,
+        normalize(make_float3(1.0f, 1.0f, 0.0f)), selected);
+    point.undisplaced_tangent_sign =
+        select(point.undisplaced_tangent_sign, -1.0f, selected);
+    // Keep dPdu finite for the synthetic non-geometry scenario. Its invalid
+    // geometry marker, like an analytic light or volume point, is what makes
+    // both standard tangent descriptors absent in Cycles.
+    point.dpdu = select(point.dpdu, make_float3(-3.0f, 2.0f, 0.0f), selected);
+    point.shading_normal = select(
+        point.shading_normal, make_float3(0.0f, 0.0f, 1.0f), selected);
+    // A = (M^-1)^T for M = Rz(90 degrees) * diag(2, 3, 4).
+    point.normal_to_world_x = select(
+        point.normal_to_world_x, make_float3(0.0f, 0.5f, 0.0f), selected);
+    point.normal_to_world_y = select(
+        point.normal_to_world_y,
+        make_float3(-1.0f / 3.0f, 0.0f, 0.0f), selected);
+    point.normal_to_world_z = select(
+        point.normal_to_world_z, make_float3(0.0f, 0.0f, 0.25f), selected);
+}
+
 [[nodiscard]] ShaderGraph make_layered_principled_graph() {
     ShaderGraph graph;
     const auto geometry = graph.add_node(
@@ -901,6 +933,10 @@ int main(int argc, char **argv) {
         fixtures.emplace_back(compile_fixture(compiler, graph));
     fixtures.emplace_back(
         compile_fixture(compiler, make_direct_state_bump_graph()));
+    const auto vector_displacement_attribute_topology =
+        static_cast<std::uint32_t>(fixtures.size());
+    fixtures.emplace_back(compile_fixture(
+        compiler, make_vector_displacement_attribute_oracle_graph()));
     const auto weighted_bssrdf_topology =
         static_cast<std::uint32_t>(fixtures.size());
     fixtures.emplace_back(
@@ -1233,7 +1269,8 @@ int main(int argc, char **argv) {
         [scene,
          closure_setup,
          texture_sampling,
-         attribute_lookup](
+         attribute_lookup,
+         vector_displacement_attribute_topology](
             BufferFloat scalar_buffer,
             BufferFloat3 vector_buffer,
             BufferFloat cycles_buffer,
@@ -1252,6 +1289,10 @@ int main(int argc, char **argv) {
                 0.21f,
                 -0.13f,
                 select(0.969f, -0.969f, scenario == 7u)));
+            configure_vector_displacement_attribute_oracle_point(
+                point,
+                topology == vector_displacement_attribute_topology,
+                scenario);
             CallableSurfaceClosureSetupProvider setup_provider{
                 cycles_buffer,
                 closure_setup};
@@ -1287,7 +1328,8 @@ int main(int argc, char **argv) {
     const auto compact_preparation =
         make_compact_surface_preparation_callable(scene);
     Kernel1D compact =
-        [compact_preparation](
+        [compact_preparation,
+         vector_displacement_attribute_topology](
             BufferFloat scalar_buffer,
             BufferFloat3 vector_buffer,
             BufferFloat cycles_buffer,
@@ -1306,6 +1348,10 @@ int main(int argc, char **argv) {
                 0.21f,
                 -0.13f,
                 select(0.969f, -0.969f, scenario == 7u)));
+            configure_vector_displacement_attribute_oracle_point(
+                point,
+                topology == vector_displacement_attribute_topology,
+                scenario);
             output.write(
                 invocation,
                 compact_preparation(
@@ -1321,7 +1367,8 @@ int main(int argc, char **argv) {
         };
 
   Kernel1D expanded_emission =
-      [scene, texture_sampling, attribute_lookup](
+      [scene, texture_sampling, attribute_lookup,
+       vector_displacement_attribute_topology](
           BufferFloat scalar_buffer, BufferFloat3 vector_buffer,
           BufferFloat cycles_buffer, BindlessVar textures,
           BindlessVar geometry_heap, BufferUInt parameter_base_buffer,
@@ -1334,6 +1381,9 @@ int main(int argc, char **argv) {
         point.back_facing = (scenario & 4u) != 0u;
         point.incoming = normalize(make_float3(
             0.21f, -0.13f, select(0.969f, -0.969f, scenario == 7u)));
+        configure_vector_displacement_attribute_oracle_point(
+            point, topology == vector_displacement_attribute_topology,
+            scenario);
         CallableTexture2DSamplingProvider texture_provider{textures,
                                                            texture_sampling};
         CallableSurfaceAttributeLookupProvider attribute_provider{
@@ -1359,7 +1409,8 @@ int main(int argc, char **argv) {
   const auto compact_emission_callable =
       make_compact_surface_emission_callable(scene);
   Kernel1D compact_emission =
-      [compact_emission_callable](
+      [compact_emission_callable,
+       vector_displacement_attribute_topology](
           BufferFloat scalar_buffer, BufferFloat3 vector_buffer,
           BufferFloat cycles_buffer, BindlessVar textures,
           BindlessVar geometry_heap, BufferUInt parameter_base_buffer,
@@ -1372,6 +1423,9 @@ int main(int argc, char **argv) {
         point.back_facing = (scenario & 4u) != 0u;
         point.incoming = normalize(make_float3(
             0.21f, -0.13f, select(0.969f, -0.969f, scenario == 7u)));
+        configure_vector_displacement_attribute_oracle_point(
+            point, topology == vector_displacement_attribute_topology,
+            scenario);
         const auto query = invocation_query(scenario, point);
         output.write(invocation,
                      compact_emission_callable(
@@ -1859,6 +1913,44 @@ int main(int argc, char **argv) {
         print_compact_value(transmission_emission);
         std::cerr << ")\n";
         return EXIT_FAILURE;
+    }
+    const auto vector_displacement_attribute_invocation =
+        first_invocation(vector_displacement_attribute_topology);
+    const auto curve_vector_displacement =
+        actual[vector_displacement_attribute_invocation].emission;
+    const auto non_geometry_vector_displacement =
+        actual[vector_displacement_attribute_invocation + 1u].emission;
+    const auto mesh_vector_displacement =
+        actual[vector_displacement_attribute_invocation + 2u].emission;
+    if (!equal(curve_vector_displacement,
+               luisa::make_float3(-1.66410065f, -1.66410065f, 0.0f),
+               tolerance) ||
+        !equal(non_geometry_vector_displacement,
+               luisa::make_float3(-1.66410065f, -1.66410065f, 0.0f),
+               tolerance) ||
+        !equal(mesh_vector_displacement,
+               luisa::make_float3(-2.12132025f, 1.41421354f, 0.0f),
+               tolerance)) {
+        std::cerr << "Vector Displacement standard tangent availability "
+                     "oracle failed on "
+                  << backend << " (curve=";
+        print_compact_value(curve_vector_displacement);
+        std::cerr << ", non-geometry=";
+        print_compact_value(non_geometry_vector_displacement);
+        std::cerr << ", mesh=";
+        print_compact_value(mesh_vector_displacement);
+        std::cerr << ")\n";
+        return EXIT_FAILURE;
+    }
+    for (auto scenario = std::size_t{}; scenario < scenario_count; ++scenario) {
+        const auto emission = actual_emission[
+            vector_displacement_attribute_invocation + scenario];
+        if (!equal(emission, luisa::make_float3(0.0f), tolerance)) {
+            std::cerr << "surface-light node mask executed Vector "
+                         "Displacement on "
+                      << backend << ", scenario " << scenario << '\n';
+            return EXIT_FAILURE;
+        }
     }
     if (equal(actual_bssrdf_normals[first_invocation(weighted_bssrdf_topology)],
               actual_bssrdf_normals[first_invocation(zero_bssrdf_topology)],

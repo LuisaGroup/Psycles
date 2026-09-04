@@ -200,6 +200,7 @@ _CANONICAL_PROBES: dict[str, Callable[[Any], None]] = {
     "svm_geometry_attributes": svm_geometry._svm_geometry_attributes,
     "svm_geometry_bump_offsets": svm_geometry._svm_geometry_bump_offsets,
     "svm_vertex_color": svm_geometry._svm_vertex_color,
+    "svm_vector_displacement": svm_geometry._svm_vector_displacement,
     "svm_voronoi_matrix": voronoi_inputs._svm_voronoi_matrix,
     "svm_wireframe_matrix": svm_geometry._svm_wireframe_matrix,
     "svm_wireframe_bump": svm_geometry._svm_wireframe_bump,
@@ -340,6 +341,9 @@ _CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
     ),
     "standalone_toon_glossy_svm_oracle": (
         toon_closures._standalone_toon_glossy_svm_oracle
+    ),
+    "svm_vector_displacement_nested_both_oracle": (
+        svm_geometry._svm_vector_displacement_nested_both_oracle
     ),
     "svm_tangent_dynamic": normal_maps._svm_tangent_dynamic,
     "subsurface_burley_svm_oracle": (

@@ -486,6 +486,14 @@ void eval_nodes(const KernelGlobals &kernel_globals,
               (kernel_features & kernel_feature_object_motion) != 0u);
         };
       }
+      if (node_types_used[NODE_VECTOR_DISPLACEMENT]) {
+        PSYCLES_SVM_CASE(NODE_VECTOR_DISPLACEMENT) {
+          detail::node_vector_displacement(
+              cursor, stack, kernel_globals, transform_state, shader_data,
+              (node_feature_mask & kernel_feature_node_bump) != 0u,
+              (kernel_features & kernel_feature_object_motion) != 0u);
+        };
+      }
       if (node_types_used[NODE_HSV]) {
         PSYCLES_SVM_CASE(NODE_HSV) { detail::node_hsv(cursor, stack); };
       }

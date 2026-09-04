@@ -429,6 +429,9 @@ bool value_instruction_observes_shading_normal(
   case ValueOperation::displacement:
     return (instruction.static_u0 &
             displacement_normal_linked) == 0u;
+  case ValueOperation::vector_displacement:
+    return decode_vector_displacement_space(instruction.static_u0) ==
+           VectorDisplacementSpace::tangent;
   case ValueOperation::image_color:
   case ValueOperation::image_alpha:
     // Box projection computes axis weights from the current ShaderData normal.

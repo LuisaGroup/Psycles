@@ -320,6 +320,19 @@ if(PSYCLES_BUILD_TESTS)
         add_test(
             NAME psycles.cycles_svm_bump_state
             COMMAND psycles_cycles_svm_bump_state_tests)
+
+        add_executable(
+            psycles_cycles_svm_vector_displacement_tests
+            tests/test_cycles_svm_vector_displacement.cpp)
+        target_link_libraries(
+            psycles_cycles_svm_vector_displacement_tests
+            PRIVATE Psycles::luisa_runtime)
+        target_compile_features(
+            psycles_cycles_svm_vector_displacement_tests
+            PRIVATE cxx_std_20)
+        add_test(
+            NAME psycles.cycles_svm_vector_displacement
+            COMMAND psycles_cycles_svm_vector_displacement_tests)
     endif()
 
     add_executable(

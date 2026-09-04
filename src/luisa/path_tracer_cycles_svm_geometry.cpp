@@ -521,10 +521,18 @@ template <typename Geometry>
     append_tangent_sources(input, ATTR_STD_UV_TANGENT, ATTR_STD_UV_TANGENT_SIGN,
                            upload.uv_tangents);
   }
-  if (!upload.undisplaced_uv_tangents.empty()) {
+  // Cycles requests the ORIGINAL tangent IDs for Vector Displacement even in
+  // bump-only materials. Without true displacement the current Mikk frame is
+  // still the undisplaced frame, so expose the same immutable payload under
+  // both standard IDs. A real displacement snapshot takes precedence.
+  const auto undisplaced_uv_tangents =
+      upload.undisplaced_uv_tangents.empty()
+          ? std::span<const luisa::float4>{upload.uv_tangents}
+          : std::span<const luisa::float4>{upload.undisplaced_uv_tangents};
+  if (!undisplaced_uv_tangents.empty()) {
     append_tangent_sources(input, ATTR_STD_UV_TANGENT_UNDISPLACED,
                            ATTR_STD_UV_TANGENT_SIGN_UNDISPLACED,
-                           upload.undisplaced_uv_tangents);
+                           undisplaced_uv_tangents);
   }
 
   if (!upload.generated.empty()) {

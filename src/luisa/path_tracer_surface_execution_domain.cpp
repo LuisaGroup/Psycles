@@ -10,13 +10,19 @@ surface_value_program_domain(const SurfaceValueRuntime &runtime,
   switch (domain) {
   case SurfaceValueProgramDomain::preparation:
     return {.value_variants = runtime.preparation_value_static_variants,
-            .program_offset = SurfaceValueRuntime::preparation_program_offset};
+            .program_offset = SurfaceValueRuntime::preparation_program_offset,
+            .node_feature_mask =
+                compiler::cycles_node_feature_mask_surface};
   case SurfaceValueProgramDomain::emission:
     return {.value_variants = runtime.emission_value_static_variants,
-            .program_offset = SurfaceValueRuntime::emission_program_offset};
+            .program_offset = SurfaceValueRuntime::emission_program_offset,
+            .node_feature_mask =
+                compiler::cycles_node_feature_mask_surface_light};
   case SurfaceValueProgramDomain::bssrdf:
     return {.value_variants = runtime.bssrdf_value_static_variants,
-            .program_offset = SurfaceValueRuntime::preparation_program_offset};
+            .program_offset = SurfaceValueRuntime::preparation_program_offset,
+            .node_feature_mask =
+                compiler::cycles_node_feature_mask_surface};
   }
   std::abort();
 }

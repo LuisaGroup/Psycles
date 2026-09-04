@@ -49,8 +49,15 @@ namespace psycles::luisa_backend::detail {
     if (!_program) {
         return make_float3(0.0f);
     }
+    // This callable is shared by Cycles' surface-light and background
+    // evaluators. Their common node mask is SURFACE_LIGHT; the background's
+    // additional AOV bit cannot affect an emission value dependency. In
+    // particular, neither domain may execute NODE_BUMP operations.
     const auto values = trace_surface_values(
-        services, point, &_value_dependency_plan.emission);
+        services,
+        point,
+        &_value_dependency_plan.emission,
+        compiler::cycles_node_feature_mask_surface_light);
     return emission_traced(
         services, point, values, reflective_caustics);
 }

@@ -1254,7 +1254,6 @@ void CyclesGraph::refine_bump_nodes() {
     }
     const auto automatic_displacement =
         displacement_output != nullptr &&
-        displacement_output->parent->type == node_type::displacement &&
         (displacement_input == nullptr || displacement_input->link == nullptr ||
          displacement_output == displacement_input->link) &&
         shared_normal != nullptr && shared_normal->name == "Normal" &&

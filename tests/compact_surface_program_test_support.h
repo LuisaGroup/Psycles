@@ -55,6 +55,12 @@ make_direct_texture_trunk_graph(bool box_projection);
 // including plain and transformed Object coordinates.
 [[nodiscard]] contract::ShaderGraph make_direct_state_bump_graph();
 
+// Keeps default Tangent-space Vector Displacement observable as emission so a
+// curve/non-geometry point can lock Cycles' missing-standard-attribute fallback
+// through both the expanded evaluator and compact family dispatcher.
+[[nodiscard]] contract::ShaderGraph
+make_vector_displacement_attribute_oracle_graph();
+
 // Validates the direct-family semantic domain and the injective executable
 // record -> PackedTransform metadata ownership relation. Empty means success.
 [[nodiscard]] std::string validate_direct_state_surface_runtime(

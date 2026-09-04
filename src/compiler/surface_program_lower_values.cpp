@@ -670,6 +670,40 @@ namespace operand = value_operand;
         }
         return true;
     }
+    if (node.type == node_type::vector_displacement) {
+        auto vector = lower_value_input(node, "Vector");
+        auto midlevel = lower_value_input(node, "Midlevel");
+        auto scale = lower_value_input(node, "Scale");
+        auto attribute = lower_property_parameter(node, "AttributeId");
+        if (vector && midlevel && scale && attribute) {
+            const auto space = property_string(node, "Space", "TANGENT");
+            const auto encoded_space =
+                space == "OBJECT"
+                    ? VectorDisplacementSpace::object
+                    : space == "WORLD" ? VectorDisplacementSpace::world
+                                       : VectorDisplacementSpace::tangent;
+            publish(
+                node.id,
+                "Displacement",
+                append(ValueInstruction{
+                    .operation = ValueOperation::vector_displacement,
+                    .source_node = node.id,
+                    .result_type = SocketType::vector,
+                    .operands =
+                        make_value_operands<operand::vector_displacement>({
+                            {operand::vector_displacement::vector, *vector},
+                            {operand::vector_displacement::midlevel, *midlevel},
+                            {operand::vector_displacement::scale, *scale},
+                            {operand::vector_displacement::attribute,
+                             *attribute}}),
+                    .static_u0 =
+                        static_cast<std::uint64_t>(encoded_space) |
+                        (property_bool(node, "AttributeNamed")
+                             ? vector_displacement_named_tangent
+                             : 0u)}));
+        }
+        return true;
+    }
     if (node.type == node_type::light_falloff) {
         auto strength = lower_value_input(node, "Strength");
         auto smooth = lower_value_input(node, "Smooth");

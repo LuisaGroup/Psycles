@@ -16,6 +16,7 @@ enum class SurfaceValueProgramDomain {
 struct SurfaceValueProgramDomainView {
   std::span<const std::uint32_t> value_variants;
   std::uint32_t program_offset{};
+  compiler::CyclesNodeFeatureMask node_feature_mask{};
 };
 
 [[nodiscard]] SurfaceValueProgramDomainView

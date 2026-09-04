@@ -101,6 +101,24 @@ namespace {
 using SurfaceValueNodes =
     std::vector<std::unique_ptr<ValueNode>>;
 
+[[nodiscard]] SurfaceValueExpression disabled_surface_value(
+    const compiler::ValueInstruction &instruction) noexcept {
+    switch (compiler::cycles_node_feature_semantics(instruction.operation)
+                .disabled_value) {
+    case compiler::CyclesNodeDisabledValue::zero:
+      return SurfaceValueExpression::zero(instruction.result_type);
+    case compiler::CyclesNodeDisabledValue::one:
+      if (surface_value_category(instruction.result_type) !=
+          SurfaceValueCategory::scalar) {
+        std::abort();
+      }
+      return SurfaceValueExpression::from_scalar(1.0f);
+    case compiler::CyclesNodeDisabledValue::evaluate:
+      std::abort();
+    }
+    std::abort();
+}
+
 // One callable owns one Cycles-aligned SVM execution family. Semantic
 // operations within that family are runtime subtypes in the instruction, not
 // separate callable identities. LLVM remains free to inline profitable
@@ -559,6 +577,7 @@ void emit_surface_value_variant(
     const SurfacePoint &point,
     Var<luisa::uint4> instruction,
     Var<SurfaceValueStackBankFor<StackCapacity>> &stack,
+    compiler::CyclesNodeFeatureMask node_feature_mask,
     std::uint32_t variant_index) noexcept {
     if (variant_index >= runtime.value_variants.size() ||
         variant_index >= nodes.size()) {
@@ -566,6 +585,15 @@ void emit_surface_value_variant(
     }
     SurfaceValueLocalsView locals{stack.expression()};
     const auto &variant = runtime.value_variants[variant_index];
+    if (!compiler::cycles_node_features_enable(
+            variant.instruction.operation, node_feature_mask)) {
+        write_dynamic_value(
+            variant.instruction.result_type,
+            locals,
+            instruction.y,
+            disabled_surface_value(variant.instruction));
+        return;
+    }
     if (emit_direct_surface_value_variant(runtime, bytecode_slots, services,
                                           point, locals, instruction,
                                           variant)) {
@@ -589,7 +617,8 @@ make_surface_value_handler_callable(
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
     SurfaceValueBytecodeSlots bytecode_slots,
-    const SurfaceValueHandlerGroup &group) noexcept {
+    const SurfaceValueHandlerGroup &group,
+    compiler::CyclesNodeFeatureMask node_feature_mask) noexcept {
     if (!scene->surface_values || group.variants.empty()) {
         std::abort();
     }
@@ -603,7 +632,7 @@ make_surface_value_handler_callable(
     }
     SurfaceValueHandlerCallable<StackCapacity> handler =
         [scene, nodes, texture_sampling, attribute_lookup, bytecode_slots,
-         group, runtime](BufferFloat scalar_parameters,
+         group, runtime, node_feature_mask](BufferFloat scalar_parameters,
                   BufferFloat3 vector_parameters,
                   BufferFloat cycles_bsdf_tables,
                   BindlessVar textures,
@@ -637,7 +666,7 @@ make_surface_value_handler_callable(
             const auto emit_variant = [&](std::uint32_t variant) noexcept {
               emit_surface_value_variant<StackCapacity>(
                   *runtime, *nodes, bytecode_slots, services, point,
-                  instruction, stack, variant);
+                  instruction, stack, node_feature_mask, variant);
             };
             if (group.variants.size() == 1u) {
               emit_variant(group.variants.front());
@@ -759,7 +788,8 @@ make_surface_value_handlers(
     const SurfaceAttributeLookupCallable &attribute_lookup,
     std::span<const SurfaceValueHandlerGroup> groups,
     SurfaceValueBytecodeSlots bytecode_slots,
-    bool include_external_queries) noexcept {
+    bool include_external_queries,
+    compiler::CyclesNodeFeatureMask node_feature_mask) noexcept {
     SurfaceValueHandlers<StackCapacity> handlers(groups.size());
     for (auto group_index = std::size_t{}; group_index < groups.size();
          ++group_index) {
@@ -780,7 +810,7 @@ make_surface_value_handlers(
         handlers[group_index].emplace(
             make_surface_value_handler_callable<StackCapacity>(
                 scene, nodes, texture_sampling, attribute_lookup,
-                bytecode_slots, group));
+                bytecode_slots, group, node_feature_mask));
     }
     return handlers;
 }
@@ -840,7 +870,10 @@ make_surface_value_nodes(const SurfaceValueRuntime &runtime) noexcept {
     return std::any_of(
         view.value_variants.begin(), view.value_variants.end(),
         [&](std::uint32_t variant) noexcept {
-            return surface_value_variant_is_external_query(runtime, variant);
+            return compiler::cycles_node_features_enable(
+                       runtime.value_variants[variant].instruction.operation,
+                       view.node_feature_mask) &&
+                   surface_value_variant_is_external_query(runtime, variant);
         });
 }
 
@@ -971,11 +1004,13 @@ make_surface_value_instruction_dispatcher_with_capacity(
     const Texture2DSamplingCallables &texture_sampling,
     const SurfaceAttributeLookupCallable &attribute_lookup,
     std::span<const std::uint32_t> variants,
-    bool needs_ambient_occlusion) noexcept {
+    bool needs_ambient_occlusion,
+    compiler::CyclesNodeFeatureMask node_feature_mask) noexcept {
     auto groups = make_handler_groups(*scene->surface_values, variants);
     auto handlers = make_surface_value_handlers<StackCapacity>(
         scene, nodes, texture_sampling, attribute_lookup, groups,
-        svm_value_bytecode_slots, !needs_ambient_occlusion);
+        svm_value_bytecode_slots, !needs_ambient_occlusion,
+        node_feature_mask);
     SurfaceValueAmbientOcclusionHandlers<StackCapacity>
         ambient_occlusion_handlers;
     if (needs_ambient_occlusion) {
@@ -1056,20 +1091,23 @@ SurfaceValueInstructionDispatcher make_surface_value_instruction_dispatcher(
         case 32u:
             return make_surface_value_instruction_dispatcher_with_capacity<
                 32u>(scene, nodes, texture_sampling, attribute_lookup,
-                     variants, needs_ambient_occlusion);
+                     variants, needs_ambient_occlusion,
+                     domain_view.node_feature_mask);
         case 64u:
             return make_surface_value_instruction_dispatcher_with_capacity<
                 64u>(scene, nodes, texture_sampling, attribute_lookup,
-                     variants, needs_ambient_occlusion);
+                     variants, needs_ambient_occlusion,
+                     domain_view.node_feature_mask);
         case 128u:
             return make_surface_value_instruction_dispatcher_with_capacity<
                 128u>(scene, nodes, texture_sampling, attribute_lookup,
-                      variants, needs_ambient_occlusion);
+                      variants, needs_ambient_occlusion,
+                      domain_view.node_feature_mask);
         case SurfaceValueRuntime::stack_capacity:
             return make_surface_value_instruction_dispatcher_with_capacity<
                 SurfaceValueRuntime::stack_capacity>(
                 scene, nodes, texture_sampling, attribute_lookup, variants,
-                needs_ambient_occlusion);
+                needs_ambient_occlusion, domain_view.node_feature_mask);
         default: std::abort();
     }
 }

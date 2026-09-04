@@ -834,6 +834,18 @@ int main(int argc, char **argv) {
                 make_float4(
                     populate(masked_services).emission,
                     1.0f));
+            // Cycles' surface-light/background node mask excludes RAYTRACE.
+            // Even with a live provider, the AO factor therefore remains its
+            // initialized value of one instead of executing the query.
+            output.write(
+                2u,
+                make_float4(
+                    ambient_occlusion_surface->emission(
+                        queried_services,
+                        point,
+                        point.incoming,
+                        true),
+                    1.0f));
         };
 
     Context context{argv[0]};
@@ -848,14 +860,14 @@ int main(int argc, char **argv) {
     auto populated_buffer =
         device.create_buffer<luisa::float4>(output_record_count);
     auto ambient_occlusion_buffer =
-        device.create_buffer<luisa::float4>(2u);
+        device.create_buffer<luisa::float4>(3u);
     auto legacy_kernel = device.compile(write_legacy);
     auto populated_kernel = device.compile(write_populated);
     auto ambient_occlusion_kernel =
         device.compile(write_ambient_occlusion);
     std::array<luisa::float4, output_record_count> legacy{};
     std::array<luisa::float4, output_record_count> populated{};
-    std::array<luisa::float4, 2u> ambient_occlusion_results{};
+    std::array<luisa::float4, 3u> ambient_occlusion_results{};
     stream << parameter_buffer.copy_from(luisa::span{parameters})
            << legacy_kernel(parameter_buffer, legacy_buffer)
                   .dispatch(invocation_count)
@@ -874,6 +886,7 @@ int main(int argc, char **argv) {
     constexpr auto ambient_occlusion_encoded = 342.4f;
     const auto queried = ambient_occlusion_results[0u];
     const auto masked = ambient_occlusion_results[1u];
+    const auto surface_light_masked = ambient_occlusion_results[2u];
     if (!approximately_equal(
             queried,
             luisa::float4{
@@ -884,6 +897,10 @@ int main(int argc, char **argv) {
             1.0e-4f) ||
         !approximately_equal(
             masked,
+            luisa::float4{1.0f, 1.0f, 1.0f, 1.0f},
+            1.0e-6f) ||
+        !approximately_equal(
+            surface_light_masked,
             luisa::float4{1.0f, 1.0f, 1.0f, 1.0f},
             1.0e-6f)) {
         std::cerr
