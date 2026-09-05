@@ -151,6 +151,7 @@ bool run(const char *program, const char *backend) {
         task.light_shader = make_float3(0.0f);
         Var<RenderKernelParameters> parameters;
         parameters.camera_transform = make_float4x4(1.0f);
+        parameters.camera_inverse_transform = make_float4x4(1.0f);
         parameters.full_width = 64u;
         parameters.full_height = 64u;
         const auto active = evaluator.shade_light_nee(task, parameters);

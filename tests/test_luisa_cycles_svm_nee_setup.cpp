@@ -145,6 +145,7 @@ bool run(const char *program, const char *backend) {
         task.light_primitive = i;
         Var<RenderKernelParameters> parameters;
         parameters.camera_transform = make_float4x4(1.0f);
+        parameters.camera_inverse_transform = make_float4x4(1.0f);
         const PathCyclesSvmKernelGlobals kg{
             scene, parameters, psycles::contract::CameraProjection{}, true,
             true};

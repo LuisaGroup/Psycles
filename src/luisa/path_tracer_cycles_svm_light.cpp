@@ -203,7 +203,7 @@ CyclesSvmLightShaderData setup_cycles_svm_light_shader_data(
     const Var<RenderKernelParameters> &parameters) noexcept {
   const auto identity = make_float4x4(1.0f);
   svm::TransformState transforms{parameters.camera_transform,
-                                 inverse(parameters.camera_transform), identity,
+                                 parameters.camera_inverse_transform, identity,
                                  identity};
   svm::ShaderData sd{make_float3(0.0f),
                      make_float3(0.0f),
