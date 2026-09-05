@@ -26,6 +26,9 @@ void node_hair(Cursor &cursor, Stack &stack, Expr<std::uint32_t> type,
   const auto roughness2_input = cursor.word();
   const auto offset_input = cursor.word();
   const auto tangent_packed = cursor.word();
+  if (shader_data.closure == nullptr) {
+    return;
+  }
   const auto tangent_offset = cursor.byte(tangent_packed, 0u);
 
   const auto allocated =

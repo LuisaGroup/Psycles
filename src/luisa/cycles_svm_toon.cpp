@@ -51,6 +51,9 @@ void node_toon(const KernelGlobals &kernel_globals, Cursor &cursor,
   const auto size_input = cursor.word();
   const auto smooth_input = cursor.word();
   const auto normal_packed = cursor.word();
+  if (shader_data.closure == nullptr) {
+    return;
+  }
 
   const Bool glossy =
       type == static_cast<std::uint32_t>(CLOSURE_BSDF_GLOSSY_TOON_ID);

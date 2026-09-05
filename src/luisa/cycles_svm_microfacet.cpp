@@ -565,6 +565,9 @@ Float3 principled_specular_setup(
     Expr<float> alpha_y, Expr<float> eta, Expr<float> f0,
     Expr<luisa::float3> specular_tint, Expr<float> thin_film_thickness,
     Expr<float> thin_film_ior, Expr<bool> preserve_energy) noexcept {
+    if (shader_data.closure == nullptr) {
+        return make_float3(0.0f);
+    }
     auto &pool = *shader_data.closure;
     Float3 layer_albedo = make_float3(0.0f);
     const auto allocated = bsdf_allocate(shader_data, weight);
@@ -703,6 +706,9 @@ void principled_metallic_setup(
     Expr<luisa::float3> base_color, Expr<luisa::float3> f82_tint,
     Expr<float> thin_film_thickness, Expr<float> thin_film_ior,
     Expr<bool> preserve_energy) noexcept {
+    if (shader_data.closure == nullptr) {
+        return;
+    }
     auto &pool = *shader_data.closure;
     const auto allocated = bsdf_allocate(shader_data, weight);
     const auto extra_allocated = pool.allocate_extra(allocated, 1u);
@@ -764,6 +770,9 @@ void principled_transmission_setup(
     Expr<luisa::float3> transmission_tint,
     Expr<float> thin_film_thickness, Expr<float> thin_film_ior,
     Expr<bool> preserve_energy) noexcept {
+    if (shader_data.closure == nullptr) {
+        return;
+    }
     auto &pool = *shader_data.closure;
     const auto allocated = bsdf_allocate(shader_data, weight);
     const auto extra_allocated = pool.allocate_extra(allocated, 1u);
@@ -825,90 +834,93 @@ void principled_thin_wall_setup(
     const PathState &path_state, Expr<luisa::float3> weight,
     Expr<luisa::float3> normal, Expr<float> alpha, Expr<float> ior,
     Expr<bool> reflective_caustics, Expr<bool> refractive_caustics,
-    Expr<luisa::float3> specular_tint,
-    Expr<luisa::float3> transmission_tint,
-    Expr<float> thin_film_thickness,
-    Expr<float> thin_film_ior) noexcept {
-    auto &pool = *shader_data.closure;
+    Expr<luisa::float3> specular_tint, Expr<luisa::float3> transmission_tint,
+    Expr<float> thin_film_thickness, Expr<float> thin_film_ior) noexcept {
     const auto fresnel = principled_thin_glass_fresnel(
-        kernel_globals, dot(normal, shader_data.wi), ior,
-        reflective_caustics, refractive_caustics, specular_tint,
-        transmission_tint, thin_film_thickness, thin_film_ior);
+        kernel_globals, dot(normal, shader_data.wi), ior, reflective_caustics,
+        refractive_caustics, specular_tint, transmission_tint,
+        thin_film_thickness, thin_film_ior);
 
-    $if (any(fresnel.reflectance != make_float3(0.0f))) {
-        const auto allocated =
-            bsdf_allocate(shader_data, fresnel.reflectance * weight);
-        $if (allocated.valid) {
-            MicrofacetParam microfacet{
-                .alpha_x = clamp(alpha, 0.0f, 1.0f),
-                .alpha_y = clamp(alpha, 0.0f, 1.0f),
-                .ior = 1.0f,
-                .energy_scale = 1.0f,
-                .fresnel_type =
-                    static_cast<std::uint32_t>(MicrofacetFresnel::none),
-                .T = make_float3(0.0f)};
-            pool.set_normal(allocated.index, normal);
-            pool.set_type(
-                allocated.index,
-                static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID));
-            preserve_multi_ggx_reflection_energy(
-                kernel_globals, pool, allocated, shader_data.wi, normal,
-                microfacet, specular_tint);
-            pool.set_microfacet_param(allocated.index, microfacet);
-
-            UInt flags = shader_data_bsdf;
-            $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
-                flags |= shader_data_bsdf_has_eval;
-            };
-            shader_data.flag |= flags;
-        };
-    };
-
-    $if (any(fresnel.transmittance != make_float3(0.0f))) {
-        const auto ior_squared = square(ior);
-        const auto transmission_alpha = clamp(
-            alpha * sqrt(3.4f * (ior - 1.0f) * square(ior - 0.5f) /
-                         (ior_squared * ior)),
-            0.0f, 1.0f);
-        const auto non_camera =
-            (path_state.visibility & path_ray_visibility_camera) == 0u;
-        const auto almost_specular =
-            square(transmission_alpha) <= 2.0e-10f;
-        $if (non_camera & almost_specular) {
-            transparent_setup(shader_data, path_state,
-                              fresnel.transmittance * weight);
-        }
-        $else {
+    if (shader_data.closure != nullptr) {
+        auto &pool = *shader_data.closure;
+        $if(any(fresnel.reflectance != make_float3(0.0f))) {
             const auto allocated =
-                bsdf_allocate(shader_data, fresnel.transmittance * weight);
-            $if (allocated.valid) {
+                bsdf_allocate(shader_data, fresnel.reflectance * weight);
+            $if(allocated.valid) {
                 MicrofacetParam microfacet{
-                    .alpha_x = transmission_alpha,
-                    .alpha_y = transmission_alpha,
+                    .alpha_x = clamp(alpha, 0.0f, 1.0f),
+                    .alpha_y = clamp(alpha, 0.0f, 1.0f),
                     .ior = 1.0f,
                     .energy_scale = 1.0f,
                     .fresnel_type =
                         static_cast<std::uint32_t>(MicrofacetFresnel::none),
                     .T = make_float3(0.0f)};
-                const auto transmission_normal = -normal;
-                pool.set_normal(allocated.index, transmission_normal);
+                pool.set_normal(allocated.index, normal);
                 pool.set_type(
                     allocated.index,
-                    static_cast<std::uint32_t>(
-                        CLOSURE_BSDF_THIN_GLASS_TRANSMISSION_ID));
+                    static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID));
                 preserve_multi_ggx_reflection_energy(
-                    kernel_globals, pool, allocated,
-                    reflect_direction(shader_data.wi, normal),
-                    transmission_normal, microfacet, make_float3(1.0f));
+                    kernel_globals, pool, allocated, shader_data.wi, normal,
+                    microfacet, specular_tint);
                 pool.set_microfacet_param(allocated.index, microfacet);
 
-                UInt flags = shader_data_bsdf |
-                             shader_data_bsdf_has_transmission;
-                $if (square(transmission_alpha) > 2.0e-10f) {
+                UInt flags = shader_data_bsdf;
+                $if((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
                     flags |= shader_data_bsdf_has_eval;
                 };
                 shader_data.flag |= flags;
             };
+        };
+    }
+
+    // Cycles lowers sufficiently sharp thin-wall transmission to Transparent
+    // for non-camera rays, including shadow TinyStorage with no closures.
+    $if(any(fresnel.transmittance != make_float3(0.0f))) {
+        const auto ior_squared = square(ior);
+        const auto transmission_alpha =
+            clamp(alpha * sqrt(3.4f * (ior - 1.0f) * square(ior - 0.5f) /
+                               (ior_squared * ior)),
+                  0.0f, 1.0f);
+        const auto non_camera =
+            (path_state.visibility & path_ray_visibility_camera) == 0u;
+        const auto almost_specular = square(transmission_alpha) <= 2.0e-10f;
+        $if(non_camera & almost_specular) {
+            transparent_setup(shader_data, path_state,
+                              fresnel.transmittance * weight);
+        }
+        $else {
+            if (shader_data.closure != nullptr) {
+                auto &pool = *shader_data.closure;
+                const auto allocated =
+                    bsdf_allocate(shader_data, fresnel.transmittance * weight);
+                $if(allocated.valid) {
+                    MicrofacetParam microfacet{
+                        .alpha_x = transmission_alpha,
+                        .alpha_y = transmission_alpha,
+                        .ior = 1.0f,
+                        .energy_scale = 1.0f,
+                        .fresnel_type =
+                            static_cast<std::uint32_t>(MicrofacetFresnel::none),
+                        .T = make_float3(0.0f)};
+                    const auto transmission_normal = -normal;
+                    pool.set_normal(allocated.index, transmission_normal);
+                    pool.set_type(allocated.index,
+                                  static_cast<std::uint32_t>(
+                                      CLOSURE_BSDF_THIN_GLASS_TRANSMISSION_ID));
+                    preserve_multi_ggx_reflection_energy(
+                        kernel_globals, pool, allocated,
+                        reflect_direction(shader_data.wi, normal),
+                        transmission_normal, microfacet, make_float3(1.0f));
+                    pool.set_microfacet_param(allocated.index, microfacet);
+
+                    UInt flags =
+                        shader_data_bsdf | shader_data_bsdf_has_transmission;
+                    $if(square(transmission_alpha) > 2.0e-10f) {
+                        flags |= shader_data_bsdf_has_eval;
+                    };
+                    shader_data.flag |= flags;
+                };
+            }
         };
     };
 }
@@ -934,6 +946,9 @@ void glass_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
                  Expr<luisa::float3> color, Expr<float> roughness,
                  Expr<float> ior, Expr<float> thin_film_thickness,
                  Expr<float> thin_film_ior) noexcept {
+    if (shader_data.closure == nullptr) {
+        return;
+    }
     const auto diffuse_visibility =
         (path_state.visibility & path_ray_visibility_diffuse) != 0u;
     const Bool reflective_caustics =
@@ -1021,6 +1036,9 @@ void glossy_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
                   Expr<float> roughness, Expr<float> anisotropy,
                   Expr<float> rotation, Expr<luisa::float3> tangent,
                   Expr<bool> tangent_valid) noexcept {
+    if (shader_data.closure == nullptr) {
+        return;
+    }
     const auto diffuse_visibility =
         (path_state.visibility & path_ray_visibility_diffuse) != 0u;
     const Bool reflective_caustics =
@@ -1117,6 +1135,9 @@ void refraction_setup(
     Expr<float> mix_weight, Expr<luisa::float3> closure_weight,
     Expr<luisa::float3> normal, Expr<float> roughness,
     Expr<float> ior) noexcept {
+    if (shader_data.closure == nullptr) {
+        return;
+    }
     const auto diffuse_visibility =
         (path_state.visibility & path_ray_visibility_diffuse) != 0u;
     const Bool refractive_caustics =
@@ -1174,6 +1195,9 @@ void metallic_setup(
     Expr<float> anisotropy, Expr<float> rotation,
     Expr<float> thin_film_thickness, Expr<float> thin_film_ior,
     Expr<luisa::float3> tangent, Expr<bool> tangent_valid) noexcept {
+    if (shader_data.closure == nullptr) {
+        return;
+    }
     const auto diffuse_visibility =
         (path_state.visibility & path_ray_visibility_diffuse) != 0u;
     const Bool reflective_caustics =
