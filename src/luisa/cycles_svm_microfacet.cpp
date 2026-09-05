@@ -534,6 +534,11 @@ Float3 bsdf_microfacet_estimate_albedo(
 ClosurePool::Allocation
 bsdf_allocate(ShaderData &shader_data,
               Expr<luisa::float3> input_weight) noexcept {
+    // A missing array is the host/JIT representation of Cycles' closure-free
+    // shader storage: count == left == 0, hence closure_alloc always fails.
+    if (shader_data.closure == nullptr) {
+        return {.index = 0u, .valid = false};
+    }
     auto &pool = *shader_data.closure;
     const Float3 weight = max(input_weight, make_float3(0.0f));
     const Float sample_weight = abs(average(weight));
@@ -624,7 +629,6 @@ Float3 principled_coat_setup(
     const PathState &path_state, Expr<luisa::float3> input_weight,
     Expr<luisa::float3> normal, Expr<float> roughness,
     Expr<float> ior) noexcept {
-    auto &pool = *shader_data.closure;
     const Float3 weight = max(input_weight, make_float3(0.0f));
     const Float sample_weight = abs(average(weight));
     const Bool survives_cutoff =
@@ -667,17 +671,20 @@ Float3 principled_coat_setup(
             adjusted_sample_weight *= average(energy.darkening);
         };
 
-        $if (!emission_path) {
-            pool.set_normal(allocated.index, normal);
-            pool.set_type(
-                allocated.index,
-                static_cast<std::uint32_t>(
-                    CLOSURE_BSDF_MICROFACET_GGX_ID));
-            pool.set_weight(allocated.index, adjusted_weight);
-            pool.set_sample_weight(allocated.index,
-                                   adjusted_sample_weight);
-            pool.set_microfacet_param(allocated.index, microfacet);
-        };
+        if (shader_data.closure != nullptr) {
+            auto &pool = *shader_data.closure;
+            $if (!emission_path) {
+                pool.set_normal(allocated.index, normal);
+                pool.set_type(
+                    allocated.index,
+                    static_cast<std::uint32_t>(
+                        CLOSURE_BSDF_MICROFACET_GGX_ID));
+                pool.set_weight(allocated.index, adjusted_weight);
+                pool.set_sample_weight(allocated.index,
+                                       adjusted_sample_weight);
+                pool.set_microfacet_param(allocated.index, microfacet);
+            };
+        }
 
         UInt flags = shader_data_bsdf;
         $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
