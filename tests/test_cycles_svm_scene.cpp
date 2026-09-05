@@ -205,6 +205,17 @@ void require_shader_flags(const KernelShader &shader, std::uint32_t expected,
   }
 }
 
+void require_kernel_features(const CompiledShaderTable &table,
+                             std::uint32_t expected,
+                             std::string_view message) {
+  if (table.kernel_features != expected) {
+    std::cerr << message << ": actual=0x" << std::hex
+              << table.kernel_features << ", expected=0x" << expected
+              << std::dec << '\n';
+    std::exit(1);
+  }
+}
+
 void test_kernel_shader_image_matches_cycles_metadata() {
   ShaderGraph graph;
   const auto emission = graph.add_node(node_type::emission, "Emission");
@@ -229,6 +240,9 @@ void test_kernel_shader_image_matches_cycles_metadata() {
                  .pass_id = 17}}};
   const auto compiled = compile_shader_table(units);
   require(compiled.table.valid, compiled.table.diagnostic);
+  require_kernel_features(
+      compiled, kernel_feature_node_bsdf | kernel_feature_node_emission,
+      "emission shader kernel features differ from Cycles");
   require(compiled.kernel_shaders.size() == 3u,
           "KernelShader image does not share the dense shader domain");
 
@@ -274,11 +288,26 @@ void test_kernel_shader_transparency_and_duplicate_contract() {
                  .volume_sampling = VolumeSampling::distance}}};
   const auto compiled = compile_shader_table(enabled);
   require(compiled.table.valid, compiled.table.diagnostic);
+  constexpr auto transparent_features =
+      kernel_feature_node_bsdf | kernel_feature_node_emission |
+      kernel_feature_transparent;
+  require_kernel_features(
+      compiled, transparent_features,
+      "transparent shader kernel features differ from Cycles");
   require_shader_flags(
       compiled.kernel_shaders[0u],
       static_cast<std::uint32_t>(SD_HAS_TRANSPARENT_SHADOW |
                                  SD_HAS_CONSTANT_EMISSION),
       "transparent-shadow policy was not projected into KernelShader");
+
+  const std::array identical{
+      enabled.front(),
+      enabled.front(),
+  };
+  const auto shared = compile_shader_table(identical);
+  require(shared.table.valid && shared.table.shader_count == 1u &&
+              shared.kernel_shaders.size() == 1u,
+          "one Cycles shader index shared by identical users was rejected");
 
   const std::array disabled{ShaderTableCompileUnit{
       .shader_index = 0u,
@@ -292,6 +321,9 @@ void test_kernel_shader_transparency_and_duplicate_contract() {
               shader_flags(no_shadow.kernel_shaders[0u]) ==
                   static_cast<std::uint32_t>(SD_HAS_CONSTANT_EMISSION),
           "disabled transparent shadows retained the scheduling flag");
+  require_kernel_features(
+      no_shadow, transparent_features,
+      "transparent feature incorrectly followed shadow policy");
 
   const std::array ambiguous{
       ShaderTableCompileUnit{.shader_index = 0u,
@@ -332,6 +364,11 @@ void test_kernel_shader_volume_and_light_path_flags() {
                  .volume_interpolation = VolumeInterpolation::cubic}}};
   const auto volume_compiled = compile_shader_table(volume_units);
   require(volume_compiled.table.valid, volume_compiled.table.diagnostic);
+  require_kernel_features(
+      volume_compiled,
+      kernel_feature_node_bsdf | kernel_feature_node_emission |
+          kernel_feature_node_volume | kernel_feature_volume,
+      "volume shader kernel features differ from Cycles");
   constexpr auto expected_volume_flags = static_cast<std::uint32_t>(
       SD_HAS_TRANSPARENT_SHADOW | SD_HAS_VOLUME | SD_HAS_ONLY_VOLUME |
       SD_HETEROGENEOUS_VOLUME | SD_NEED_VOLUME_ATTRIBUTES |
@@ -359,6 +396,11 @@ void test_kernel_shader_volume_and_light_path_flags() {
                  .volume_sampling = VolumeSampling::distance}}};
   const auto path_compiled = compile_shader_table(path_units);
   require(path_compiled.table.valid, path_compiled.table.diagnostic);
+  require_kernel_features(
+      path_compiled,
+      kernel_feature_node_bsdf | kernel_feature_node_emission |
+          kernel_feature_node_light_path,
+      "Light Path shader kernel features differ from Cycles");
   constexpr auto expected_path_flags = static_cast<std::uint32_t>(
       SD_MIS_FRONT | SD_MIS_BACK | SD_HAS_LIGHT_PATH_NODE | SD_HAS_EMISSION);
   require_shader_flags(path_compiled.kernel_shaders[0u], expected_path_flags,
@@ -394,6 +436,11 @@ void test_kernel_shader_bump_flag_implications() {
                  .volume_sampling = VolumeSampling::distance}}};
   const auto surface_compiled = compile_shader_table(surface_units);
   require(surface_compiled.table.valid, surface_compiled.table.diagnostic);
+  require_kernel_features(
+      surface_compiled,
+      kernel_feature_node_bsdf | kernel_feature_node_emission |
+          kernel_feature_node_bump | kernel_feature_subsurface,
+      "surface BSSRDF bump kernel features differ from Cycles");
   require_shader_flags(
       surface_compiled.kernel_shaders[0u],
       static_cast<std::uint32_t>(SD_HAS_BUMP_FROM_SURFACE |
@@ -448,6 +495,11 @@ void test_kernel_shader_bump_flag_implications() {
       compile_shader_table(displacement_units);
   require(displacement_compiled.table.valid,
           displacement_compiled.table.diagnostic);
+  require_kernel_features(
+      displacement_compiled,
+      kernel_feature_node_bsdf | kernel_feature_node_emission |
+          kernel_feature_node_bump | kernel_feature_node_bump_state,
+      "BOTH displacement kernel features differ from Cycles");
   require_shader_flags(
       displacement_compiled.kernel_shaders[0u],
       static_cast<std::uint32_t>(SD_HAS_BUMP_FROM_DISPLACEMENT |

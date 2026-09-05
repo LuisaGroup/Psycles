@@ -1147,12 +1147,30 @@ public:
     _metadata.has_volume = _graph.root(GraphDomain::volume) != nullptr;
     _metadata.has_volume_connected =
         shader.graph().root(contract::ShaderDomain::volume).has_value();
+    _metadata.kernel_features |=
+        _metadata.has_volume_connected ? kernel_feature_volume : 0u;
+    const auto has_displacement =
+        shader.graph().root(contract::ShaderDomain::displacement).has_value();
+    if (has_displacement) {
+      _metadata.kernel_features |= kernel_feature_node_bump;
+      if (context.displacement_method ==
+          contract::DisplacementMethod::both) {
+        _metadata.kernel_features |= kernel_feature_node_bump_state;
+      }
+    }
     _metadata.has_bump_from_displacement =
         context.displacement_method != contract::DisplacementMethod::displacement &&
         _graph.root(GraphDomain::surface) != nullptr &&
         _graph.root(GraphDomain::bump) != nullptr;
     _metadata.has_bssrdf_bump = _metadata.has_bump_from_displacement;
     for (const auto &node : _graph.nodes()) {
+      _metadata.kernel_features |= node->get_feature();
+      // ShaderManager::get_graph_kernel_features queries all finalized graph
+      // nodes, unlike the surface-only flags collected during SVM emission.
+      _metadata.kernel_features |=
+          node->has_surface_transparent() ? kernel_feature_transparent : 0u;
+      _metadata.kernel_features |=
+          node->has_surface_bssrdf() ? kernel_feature_subsurface : 0u;
       _metadata.has_light_path_node |=
           node->special_type == GraphNodeSpecialType::light_path;
       if (node->special_type == GraphNodeSpecialType::output_aov) {

@@ -20,6 +20,32 @@
 
 namespace psycles::compiler::cycles_svm {
 
+// Exact numeric ABI of Cycles 5.2.1 kernel/features.h. These are host/JIT
+// specialization facts collected from the same finalized shader graph which
+// emits the SVM word stream; they never replace a device-side SVM predicate.
+inline constexpr std::uint32_t kernel_feature_node_bsdf = 1u << 0u;
+inline constexpr std::uint32_t kernel_feature_node_emission = 1u << 1u;
+inline constexpr std::uint32_t kernel_feature_node_volume = 1u << 2u;
+inline constexpr std::uint32_t kernel_feature_node_bump = 1u << 3u;
+inline constexpr std::uint32_t kernel_feature_node_bump_state = 1u << 4u;
+inline constexpr std::uint32_t kernel_feature_node_voronoi_extra = 1u << 5u;
+inline constexpr std::uint32_t kernel_feature_node_raytrace = 1u << 6u;
+inline constexpr std::uint32_t kernel_feature_node_aov = 1u << 7u;
+inline constexpr std::uint32_t kernel_feature_node_light_path = 1u << 8u;
+inline constexpr std::uint32_t kernel_feature_node_principled_hair = 1u << 9u;
+inline constexpr std::uint32_t kernel_feature_node_portal = 1u << 10u;
+inline constexpr std::uint32_t kernel_feature_path_tracing = 1u << 11u;
+inline constexpr std::uint32_t kernel_feature_pointcloud = 1u << 12u;
+inline constexpr std::uint32_t kernel_feature_hair_ribbon = 1u << 13u;
+inline constexpr std::uint32_t kernel_feature_hair_thick = 1u << 14u;
+inline constexpr std::uint32_t kernel_feature_hair =
+    kernel_feature_hair_ribbon | kernel_feature_hair_thick;
+inline constexpr std::uint32_t kernel_feature_object_motion = 1u << 15u;
+inline constexpr std::uint32_t kernel_feature_baking = 1u << 16u;
+inline constexpr std::uint32_t kernel_feature_subsurface = 1u << 17u;
+inline constexpr std::uint32_t kernel_feature_volume = 1u << 18u;
+inline constexpr std::uint32_t kernel_feature_transparent = 1u << 19u;
+
 // Normalized Cycles ImageParams identity. A Psycles resource_id already
 // selects one exported source together with its color-space, alpha and frame
 // metadata; interpolation and extension are the remaining node-varying
@@ -94,6 +120,10 @@ struct ImageBinding {
 // node virtuals and output topology carry source semantics which bytecode
 // alone does not preserve.
 struct ShaderCompileMetadata {
+  // Shader-local contribution to Scene::dscene.data.kernel_features. The
+  // scene linker supplies Cycles' unconditional BSDF/Emission base bits and
+  // unions this field across the dense used-shader domain.
+  std::uint32_t kernel_features{};
   bool has_surface{};
   bool has_surface_transparent{};
   bool has_surface_raytrace{};

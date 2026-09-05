@@ -40,6 +40,10 @@ constexpr auto light_path_outputs = std::array{
 
 class LightPathNode final : public GraphNode {
 public:
+  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
+    return GraphNode::get_feature() | kernel_feature_node_light_path;
+  }
+
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_LIGHT_PATH;
   }
