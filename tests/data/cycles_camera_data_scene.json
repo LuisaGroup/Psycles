@@ -1,0 +1,544 @@
+{
+  "schema": "psycles.blender-scene.v2",
+  "materials": [
+    {
+      "cycles_sync": {
+        "shader_index": 5
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "AUTO",
+      "name": "Camera Data",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Map View X",
+            "from_socket": "Value",
+            "to_node": "Camera Data RGB",
+            "to_socket": "X"
+          },
+          {
+            "from_node": "Scale Z Depth",
+            "from_socket": "Value",
+            "to_node": "Camera Data RGB",
+            "to_socket": "Y"
+          },
+          {
+            "from_node": "Scale View Distance",
+            "from_socket": "Value",
+            "to_node": "Camera Data RGB",
+            "to_socket": "Z"
+          },
+          {
+            "from_node": "Camera Data RGB",
+            "from_socket": "Vector",
+            "to_node": "Emission",
+            "to_socket": "Color"
+          },
+          {
+            "from_node": "Separate View Vector",
+            "from_socket": "X",
+            "to_node": "Map View X",
+            "to_socket": "Value"
+          },
+          {
+            "from_node": "Emission",
+            "from_socket": "Emission",
+            "to_node": "Material Output",
+            "to_socket": "Surface"
+          },
+          {
+            "from_node": "Camera Data",
+            "from_socket": "View Distance",
+            "to_node": "Scale View Distance",
+            "to_socket": "Value"
+          },
+          {
+            "from_node": "Camera Data",
+            "from_socket": "View Z Depth",
+            "to_node": "Scale Z Depth",
+            "to_socket": "Value"
+          },
+          {
+            "from_node": "Camera Data",
+            "from_socket": "View Vector",
+            "to_node": "Separate View Vector",
+            "to_socket": "Vector"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeCameraData",
+            "image": null,
+            "inputs": [],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Camera Data",
+            "node_tree": null,
+            "outputs": [
+              {
+                "default": [
+                  0,
+                  0,
+                  0
+                ],
+                "identifier": "View Vector",
+                "linked": true,
+                "name": "View Vector",
+                "type": "NodeSocketVector"
+              },
+              {
+                "default": 0,
+                "identifier": "View Z Depth",
+                "linked": true,
+                "name": "View Z Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0,
+                "identifier": "View Distance",
+                "linked": true,
+                "name": "View Distance",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "CAMERA"
+          },
+          {
+            "bl_idname": "ShaderNodeCombineXYZ",
+            "image": null,
+            "inputs": [
+              {
+                "default": 0,
+                "identifier": "X",
+                "linked": true,
+                "name": "X",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0,
+                "identifier": "Y",
+                "linked": true,
+                "name": "Y",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0,
+                "identifier": "Z",
+                "linked": true,
+                "name": "Z",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [
+              {
+                "from_socket": "X",
+                "to_socket": "Vector"
+              }
+            ],
+            "label": "",
+            "mute": false,
+            "name": "Camera Data RGB",
+            "node_tree": null,
+            "outputs": [
+              {
+                "default": [
+                  0,
+                  0,
+                  0
+                ],
+                "identifier": "Vector",
+                "linked": true,
+                "name": "Vector",
+                "type": "NodeSocketVector"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "COMBXYZ"
+          },
+          {
+            "bl_idname": "ShaderNodeEmission",
+            "image": null,
+            "inputs": [
+              {
+                "default": [
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                "identifier": "Color",
+                "linked": true,
+                "name": "Color",
+                "type": "NodeSocketColor"
+              },
+              {
+                "default": 1,
+                "identifier": "Strength",
+                "linked": false,
+                "name": "Strength",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Emission",
+            "node_tree": null,
+            "outputs": [
+              {
+                "identifier": "Emission",
+                "linked": true,
+                "name": "Emission",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "EMISSION"
+          },
+          {
+            "bl_idname": "ShaderNodeMath",
+            "image": null,
+            "inputs": [
+              {
+                "default": 0.5,
+                "identifier": "Value",
+                "linked": true,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.5,
+                "identifier": "Value_001",
+                "linked": false,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.5,
+                "identifier": "Value_002",
+                "linked": false,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [
+              {
+                "from_socket": "Value",
+                "to_socket": "Value"
+              }
+            ],
+            "label": "",
+            "mute": false,
+            "name": "Map View X",
+            "node_tree": null,
+            "outputs": [
+              {
+                "default": 0,
+                "identifier": "Value",
+                "linked": true,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "properties": {
+              "operation": "MULTIPLY_ADD",
+              "use_clamp": false
+            },
+            "special": {},
+            "type": "MATH"
+          },
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "identifier": "Surface",
+                "linked": true,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "identifier": "Volume",
+                "linked": false,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "default": [
+                  0,
+                  0,
+                  0
+                ],
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "default": 0,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeMath",
+            "image": null,
+            "inputs": [
+              {
+                "default": 0.5,
+                "identifier": "Value",
+                "linked": true,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.20000000298023224,
+                "identifier": "Value_001",
+                "linked": false,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.5,
+                "identifier": "Value_002",
+                "linked": false,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [
+              {
+                "from_socket": "Value",
+                "to_socket": "Value"
+              }
+            ],
+            "label": "",
+            "mute": false,
+            "name": "Scale View Distance",
+            "node_tree": null,
+            "outputs": [
+              {
+                "default": 0,
+                "identifier": "Value",
+                "linked": true,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "properties": {
+              "operation": "MULTIPLY",
+              "use_clamp": false
+            },
+            "special": {},
+            "type": "MATH"
+          },
+          {
+            "bl_idname": "ShaderNodeMath",
+            "image": null,
+            "inputs": [
+              {
+                "default": 0.5,
+                "identifier": "Value",
+                "linked": true,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": -0.20000000298023224,
+                "identifier": "Value_001",
+                "linked": false,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.5,
+                "identifier": "Value_002",
+                "linked": false,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [
+              {
+                "from_socket": "Value",
+                "to_socket": "Value"
+              }
+            ],
+            "label": "",
+            "mute": false,
+            "name": "Scale Z Depth",
+            "node_tree": null,
+            "outputs": [
+              {
+                "default": 0,
+                "identifier": "Value",
+                "linked": true,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "properties": {
+              "operation": "MULTIPLY",
+              "use_clamp": false
+            },
+            "special": {},
+            "type": "MATH"
+          },
+          {
+            "bl_idname": "ShaderNodeSeparateXYZ",
+            "image": null,
+            "inputs": [
+              {
+                "default": [
+                  0,
+                  0,
+                  0
+                ],
+                "identifier": "Vector",
+                "linked": true,
+                "name": "Vector",
+                "type": "NodeSocketVector"
+              }
+            ],
+            "internal_links": [
+              {
+                "from_socket": "Vector",
+                "to_socket": "X"
+              },
+              {
+                "from_socket": "Vector",
+                "to_socket": "Y"
+              },
+              {
+                "from_socket": "Vector",
+                "to_socket": "Z"
+              }
+            ],
+            "label": "",
+            "mute": false,
+            "name": "Separate View Vector",
+            "node_tree": null,
+            "outputs": [
+              {
+                "default": 0,
+                "identifier": "X",
+                "linked": true,
+                "name": "X",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0,
+                "identifier": "Y",
+                "linked": false,
+                "name": "Y",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0,
+                "identifier": "Z",
+                "linked": false,
+                "name": "Z",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "SEPXYZ"
+          }
+        ],
+        "surface_root": {
+          "node": "Emission",
+          "socket": "Emission"
+        },
+        "volume_root": null
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    }
+  ],
+  "images": [],
+  "node_groups": [],
+  "render": {
+    "width": 16,
+    "height": 16,
+    "percentage": 100,
+    "cycles": {}
+  },
+  "camera": {
+    "angle": 0.6911112070083618,
+    "angle_x": 0.6911112070083618,
+    "angle_y": 0.4710899591445923,
+    "clip_end": 1000,
+    "clip_start": 0.10000000149011612,
+    "dof": {
+      "blades": 0,
+      "enabled": false,
+      "focus_distance": 10,
+      "fstop": 2.799999952316284,
+      "ratio": 1,
+      "rotation": 0
+    },
+    "lens": 50,
+    "name": "Probe Camera",
+    "ortho_scale": 2.200000047683716,
+    "sensor_fit": "AUTO",
+    "shift_x": 0,
+    "shift_y": 0,
+    "transform": [
+      0.5881716012954712,
+      0.8087361454963684,
+      -1.640988784856745e-7,
+      0,
+      -0.7442924976348877,
+      0.5413035750389099,
+      0.39117658138275146,
+      0,
+      0.316358745098114,
+      -0.23007884621620178,
+      0.9203156232833862,
+      0,
+      1.100000023841858,
+      -0.800000011920929,
+      3.200000047683716,
+      1
+    ],
+    "type": "ORTHO"
+  },
+  "geometries": [],
+  "curve_geometries": [],
+  "instances": [],
+  "lights": [],
+  "world": null,
+  "world_environment": null
+}

@@ -9,6 +9,9 @@ namespace psycles::luisa_backend::detail {
 
 struct CyclesInstanceIntersectionPlan;
 
+// Compile the snapshot's Cycles used-shader domain directly from validated
+// source graphs. A retained legacy MaterialLibrary is neither a prerequisite
+// nor an authority for any shader image produced by this transaction.
 [[nodiscard]] std::unique_ptr<CyclesSvmRuntime>
 build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
                          const contract::SceneSnapshot &snapshot,

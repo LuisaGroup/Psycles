@@ -1,6 +1,21 @@
 include_guard(GLOBAL)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_scene_compilation_tests
+    SOURCE tests/test_luisa_cycles_svm_scene_compilation.cpp
+    TEST_STEM luisa_cycles_svm_scene_compilation
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(psycles_luisa_cycles_svm_scene_compilation_tests
+    PRIVATE "${PROJECT_SOURCE_DIR}/src/luisa")
+target_compile_definitions(psycles_luisa_cycles_svm_scene_compilation_tests PRIVATE
+    PSYCLES_CAMERA_SCENE="${PROJECT_SOURCE_DIR}/tests/data/cycles_camera_data_scene.json"
+    PSYCLES_CAMERA_WORDS="${PROJECT_SOURCE_DIR}/tests/data/cycles_camera_data_words.txt")
+if(TEST psycles.luisa_cycles_svm_scene_compilation_vk)
+    set_tests_properties(psycles.luisa_cycles_svm_scene_compilation_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_camera_transform_tests
     SOURCE tests/test_luisa_cycles_camera_transform.cpp
     TEST_STEM luisa_cycles_camera_transform
