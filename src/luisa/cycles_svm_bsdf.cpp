@@ -143,38 +143,14 @@ void assign(BsdfSample &destination, const BsdfSample &source) noexcept {
 microfacet_eval(const KernelGlobals &kernel_globals, const ClosurePool &pool,
                 Expr<std::uint32_t> index, Expr<luisa::float3> wi,
                 Expr<luisa::float3> wo, bool ggx) noexcept {
-  BsdfEvaluation result{.value = make_float3(0.0f), .pdf = 0.0f};
-  const auto param = pool.microfacet_param(index);
-  $if(param.fresnel_type ==
-      static_cast<std::uint32_t>(MicrofacetFresnel::conductor)) {
-    const auto closure = pool.microfacet_conductor(index);
-    if (ggx) {
-      assign(result, bsdf_microfacet_ggx_eval(kernel_globals, closure, wi, wo));
-    } else {
-      assign(result,
-             bsdf_microfacet_beckmann_eval(kernel_globals, closure, wi, wo));
-    }
+  // Cycles dispatches the Fresnel tag inside microfacet_fresnel(), after the
+  // shared half-vector calculation. Dispatching here clones the entire
+  // geometry/distribution algorithm for every extra-payload type.
+  const auto closure = pool.microfacet(index);
+  if (ggx) {
+    return bsdf_microfacet_ggx_eval(kernel_globals, closure, wi, wo);
   }
-  $elif(param.fresnel_type ==
-        static_cast<std::uint32_t>(MicrofacetFresnel::f82_tint)) {
-    const auto closure = pool.microfacet_f82_tint(index);
-    if (ggx) {
-      assign(result, bsdf_microfacet_ggx_eval(kernel_globals, closure, wi, wo));
-    } else {
-      assign(result,
-             bsdf_microfacet_beckmann_eval(kernel_globals, closure, wi, wo));
-    }
-  }
-  $else {
-    const auto closure = pool.microfacet(index);
-    if (ggx) {
-      assign(result, bsdf_microfacet_ggx_eval(kernel_globals, closure, wi, wo));
-    } else {
-      assign(result,
-             bsdf_microfacet_beckmann_eval(kernel_globals, closure, wi, wo));
-    }
-  };
-  return result;
+  return bsdf_microfacet_beckmann_eval(kernel_globals, closure, wi, wo);
 }
 
 [[nodiscard]] BsdfSample
@@ -182,49 +158,13 @@ microfacet_sample(const KernelGlobals &kernel_globals, const ClosurePool &pool,
                   Expr<std::uint32_t> index,
                   Expr<luisa::float3> geometric_normal, Expr<luisa::float3> wi,
                   Expr<luisa::float3> random, bool ggx) noexcept {
-  BsdfSample result{.value = make_float3(0.0f),
-                    .wo = make_float3(0.0f),
-                    .pdf = 0.0f,
-                    .sampled_roughness = make_float2(0.0f),
-                    .eta = 0.0f,
-                    .label = closure_type::label_none};
-  const auto param = pool.microfacet_param(index);
-  $if(param.fresnel_type ==
-      static_cast<std::uint32_t>(MicrofacetFresnel::conductor)) {
-    const auto closure = pool.microfacet_conductor(index);
-    if (ggx) {
-      assign(result, bsdf_microfacet_ggx_sample(kernel_globals, closure,
-                                                geometric_normal, wi, random));
-    } else {
-      assign(result,
-             bsdf_microfacet_beckmann_sample(kernel_globals, closure,
-                                             geometric_normal, wi, random));
-    }
+  const auto closure = pool.microfacet(index);
+  if (ggx) {
+    return bsdf_microfacet_ggx_sample(kernel_globals, closure,
+                                     geometric_normal, wi, random);
   }
-  $elif(param.fresnel_type ==
-        static_cast<std::uint32_t>(MicrofacetFresnel::f82_tint)) {
-    const auto closure = pool.microfacet_f82_tint(index);
-    if (ggx) {
-      assign(result, bsdf_microfacet_ggx_sample(kernel_globals, closure,
-                                                geometric_normal, wi, random));
-    } else {
-      assign(result,
-             bsdf_microfacet_beckmann_sample(kernel_globals, closure,
-                                             geometric_normal, wi, random));
-    }
-  }
-  $else {
-    const auto closure = pool.microfacet(index);
-    if (ggx) {
-      assign(result, bsdf_microfacet_ggx_sample(kernel_globals, closure,
-                                                geometric_normal, wi, random));
-    } else {
-      assign(result,
-             bsdf_microfacet_beckmann_sample(kernel_globals, closure,
-                                             geometric_normal, wi, random));
-    }
-  };
-  return result;
+  return bsdf_microfacet_beckmann_sample(kernel_globals, closure,
+                                        geometric_normal, wi, random);
 }
 
 void set_microfacet_roughness_eta(BsdfRoughnessEta &result,

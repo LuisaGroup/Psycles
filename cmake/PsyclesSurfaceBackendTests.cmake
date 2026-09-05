@@ -1008,6 +1008,21 @@ if(TEST psycles.luisa_cycles_svm_microfacet_scattering_vk)
 endif()
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_microfacet_union_tests
+    SOURCE tests/test_luisa_cycles_svm_microfacet_union.cpp
+    TEST_STEM luisa_cycles_svm_microfacet_union
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_cycles_svm_microfacet_union_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+if(TEST psycles.luisa_cycles_svm_microfacet_union_vk)
+    set_tests_properties(
+        psycles.luisa_cycles_svm_microfacet_union_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_ashikhmin_shirley_scattering_tests
     SOURCE tests/test_luisa_cycles_svm_ashikhmin_shirley_scattering.cpp
     TEST_STEM luisa_cycles_svm_ashikhmin_shirley_scattering

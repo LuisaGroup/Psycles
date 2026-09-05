@@ -626,10 +626,21 @@ struct MicrofacetParam {
   luisa::compute::Float3 T;
 };
 
+class ClosurePool;
+
 struct MicrofacetClosure {
   ShaderClosureCommon common;
   MicrofacetParam param;
+  /* Inline payload is used by standalone closure probes. Closures projected
+   * from ClosurePool retain a host-side storage handle instead: this is the
+   * DSL equivalent of Cycles' tagged MicrofacetBsdf::fresnel pointer and lets
+   * the extra payload be loaded only in the live Fresnel branch. */
   FresnelGeneralizedSchlick generalized_schlick;
+  const ClosurePool *storage{nullptr};
+  luisa::compute::UInt storage_index{0u};
+
+  [[nodiscard]] FresnelGeneralizedSchlick
+  load_generalized_schlick() const noexcept;
 };
 
 struct MicrofacetConductorClosure {
@@ -765,6 +776,8 @@ public:
   bssrdf(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetParam
   microfacet_param(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] FresnelGeneralizedSchlick generalized_schlick(
+      luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetClosure
   microfacet(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] MicrofacetConductorClosure microfacet_conductor(
@@ -772,6 +785,12 @@ public:
   [[nodiscard]] MicrofacetF82TintClosure
   microfacet_f82_tint(luisa::compute::Expr<std::uint32_t> index) const noexcept;
 };
+
+inline FresnelGeneralizedSchlick
+MicrofacetClosure::load_generalized_schlick() const noexcept {
+  if (storage != nullptr) { return storage->generalized_schlick(storage_index); }
+  return generalized_schlick;
+}
 
 /* The fields below are the exact ShaderData projection consumed by the first
  * copied SVM node families. More fields are added only when their Cycles

@@ -343,16 +343,31 @@ BssrdfClosure ClosurePool::bssrdf(Expr<std::uint32_t> index) const noexcept {
 
 MicrofacetClosure
 ClosurePool::microfacet(Expr<std::uint32_t> index) const noexcept {
+  /* Do not eagerly project the discriminated extra payload. Cycles stores a
+   * pointer here and dereferences it only after testing fresnel_type. The
+   * storage handle keeps that branch-local lifetime in the generated DSL. */
+  return {.common = common(index),
+          .param = microfacet_param(index),
+          .generalized_schlick = {
+              .thin_film = {.thickness = 0.0f, .ior = 0.0f},
+              .reflection_tint = make_float3(0.0f),
+              .transmission_tint = make_float3(0.0f),
+              .f0 = make_float3(0.0f),
+              .f90 = make_float3(0.0f),
+              .exponent = 0.0f},
+          .storage = this,
+          .storage_index = index};
+}
+
+FresnelGeneralizedSchlick ClosurePool::generalized_schlick(
+    Expr<std::uint32_t> index) const noexcept {
   const auto film = _payload2.read(index);
-  return {
-      .common = common(index),
-      .param = microfacet_param(index),
-      .generalized_schlick = {.thin_film = {.thickness = film.x, .ior = film.y},
-                              .reflection_tint = _payload3.read(index).xyz(),
-                              .transmission_tint = _payload4.read(index).xyz(),
-                              .f0 = _payload5.read(index).xyz(),
-                              .f90 = _payload6.read(index).xyz(),
-                              .exponent = film.z}};
+  return {.thin_film = {.thickness = film.x, .ior = film.y},
+          .reflection_tint = _payload3.read(index).xyz(),
+          .transmission_tint = _payload4.read(index).xyz(),
+          .f0 = _payload5.read(index).xyz(),
+          .f90 = _payload6.read(index).xyz(),
+          .exponent = film.z};
 }
 
 MicrofacetConductorClosure
