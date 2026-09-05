@@ -1,0 +1,166 @@
+layout ShaderClosure.sizeof 80
+layout ShaderClosure.weight 0
+layout ShaderClosure.type 12
+layout ShaderClosure.sample_weight 16
+layout ShaderClosure.N 20
+layout OrenNayarBsdf.sizeof 56
+layout OrenNayarBsdf.param 32
+layout OrenNayarParam.roughness 0
+layout OrenNayarParam.a 4
+layout OrenNayarParam.b 8
+layout OrenNayarParam.multiscatter_term 12
+layout SheenBsdf.sizeof 68
+layout SheenBsdf.roughness 32
+layout SheenBsdf.transformA 36
+layout SheenBsdf.transformB 40
+layout SheenBsdf.T 44
+layout SheenBsdf.B 56
+layout VelvetBsdf.sizeof 40
+layout VelvetBsdf.sigma 32
+layout VelvetBsdf.invsigma2 36
+layout ToonBsdf.sizeof 40
+layout ToonBsdf.size 32
+layout ToonBsdf.smooth 36
+layout RayPortalClosure.sizeof 56
+layout RayPortalClosure.P 32
+layout RayPortalClosure.D 44
+layout HairBsdf.sizeof 56
+layout HairBsdf.T 32
+layout HairBsdf.roughness1 44
+layout HairBsdf.roughness2 48
+layout HairBsdf.offset 52
+layout ChiangHairBSDF.sizeof 68
+layout ChiangHairBSDF.sigma 32
+layout ChiangHairBSDF.v 44
+layout ChiangHairBSDF.s 48
+layout ChiangHairBSDF.alpha 52
+layout ChiangHairBSDF.eta 56
+layout ChiangHairBSDF.m0_roughness 60
+layout ChiangHairBSDF.h 64
+layout HuangHairBSDF.sizeof 72
+layout HuangHairBSDF.sigma 32
+layout HuangHairBSDF.roughness 44
+layout HuangHairBSDF.tilt 48
+layout HuangHairBSDF.eta 52
+layout HuangHairBSDF.aspect_ratio 56
+layout HuangHairBSDF.h 60
+layout HuangHairBSDF.extra 64
+layout HuangHairExtra.sizeof 68
+layout HuangHairExtra.R 0
+layout HuangHairExtra.TT 4
+layout HuangHairExtra.TRT 8
+layout HuangHairExtra.Y 12
+layout HuangHairExtra.Z 24
+layout HuangHairExtra.wi 36
+layout HuangHairExtra.radius 48
+layout HuangHairExtra.e2 52
+layout HuangHairExtra.pixel_coverage 56
+layout HuangHairExtra.h 60
+layout Bssrdf.sizeof 68
+layout Bssrdf.radius 32
+layout Bssrdf.albedo 44
+layout Bssrdf.anisotropy 56
+layout Bssrdf.ior 60
+layout Bssrdf.alpha 64
+layout MicrofacetBsdf.sizeof 80
+layout MicrofacetBsdf.alpha_x 32
+layout MicrofacetBsdf.alpha_y 36
+layout MicrofacetBsdf.ior 40
+layout MicrofacetBsdf.energy_scale 44
+layout MicrofacetBsdf.fresnel_type 48
+layout MicrofacetBsdf.fresnel 56
+layout MicrofacetBsdf.T 64
+layout FresnelThinFilm.sizeof 8
+layout FresnelThinFilm.thickness 0
+layout FresnelThinFilm.ior 4
+layout FresnelGeneralizedSchlick.sizeof 60
+layout FresnelGeneralizedSchlick.thin_film 0
+layout FresnelGeneralizedSchlick.reflection_tint 8
+layout FresnelGeneralizedSchlick.transmission_tint 20
+layout FresnelGeneralizedSchlick.f0 32
+layout FresnelGeneralizedSchlick.f90 44
+layout FresnelGeneralizedSchlick.exponent 56
+layout FresnelConductor.sizeof 32
+layout FresnelConductor.thin_film 0
+layout FresnelConductor.ior 8
+layout complex<Spectrum>.re 0
+layout complex<Spectrum>.im 12
+layout FresnelF82Tint.sizeof 32
+layout FresnelF82Tint.thin_film 0
+layout FresnelF82Tint.f0 8
+layout FresnelF82Tint.b 20
+allocation 0 0 4294967295 4294967295 0 0
+allocation 0 1 4294967295 4294967295 0 0
+allocation 0 2 4294967295 4294967295 0 0
+allocation 0 3 4294967295 4294967295 0 0
+allocation 0 4 4294967295 4294967295 0 0
+allocation 0 5 4294967295 4294967295 0 0
+allocation 0 6 4294967295 4294967295 0 0
+allocation 1 0 0 1 1 0
+allocation 1 1 4294967295 4294967295 1 0
+allocation 1 2 4294967295 4294967295 1 0
+allocation 1 3 4294967295 4294967295 1 0
+allocation 1 4 4294967295 4294967295 1 0
+allocation 1 5 4294967295 4294967295 1 0
+allocation 1 6 4294967295 4294967295 1 0
+allocation 2 0 0 2 1 1
+allocation 2 1 1 4294967295 1 1
+allocation 2 2 1 4294967295 1 1
+allocation 2 3 1 2 2 0
+allocation 2 4 4294967295 4294967295 2 0
+allocation 2 5 4294967295 4294967295 2 0
+allocation 2 6 4294967295 4294967295 2 0
+allocation 3 0 0 3 1 2
+allocation 3 1 1 2 2 0
+allocation 3 2 4294967295 4294967295 2 0
+allocation 3 3 4294967295 4294967295 2 0
+allocation 3 4 4294967295 4294967295 2 0
+allocation 3 5 4294967295 4294967295 2 0
+allocation 3 6 4294967295 4294967295 2 0
+allocation 4 0 0 4 1 3
+allocation 4 1 1 3 2 1
+allocation 4 2 2 4294967295 2 1
+allocation 4 3 2 3 3 0
+allocation 4 4 4294967295 4294967295 3 0
+allocation 4 5 4294967295 4294967295 3 0
+allocation 4 6 4294967295 4294967295 3 0
+allocation 5 0 0 5 1 4
+allocation 5 1 1 4 2 2
+allocation 5 2 2 4294967295 2 2
+allocation 5 3 2 4 3 1
+allocation 5 4 3 4294967295 3 1
+allocation 5 5 3 4294967295 3 1
+allocation 5 6 3 4 4 0
+allocation 6 0 0 6 1 5
+allocation 6 1 1 5 2 3
+allocation 6 2 2 3 3 0
+allocation 6 3 4294967295 4294967295 3 0
+allocation 6 4 4294967295 4294967295 3 0
+allocation 6 5 4294967295 4294967295 3 0
+allocation 6 6 4294967295 4294967295 3 0
+allocation 7 0 0 7 1 6
+allocation 7 1 1 6 2 4
+allocation 7 2 2 4 3 1
+allocation 7 3 3 4 4 0
+allocation 7 4 4294967295 4294967295 4 0
+allocation 7 5 4294967295 4294967295 4 0
+allocation 7 6 4294967295 4294967295 4 0
+allocation 8 0 0 8 1 7
+allocation 8 1 1 7 2 5
+allocation 8 2 2 5 3 2
+allocation 8 3 3 5 4 1
+allocation 8 4 4 4294967295 4 1
+allocation 8 5 4 4294967295 4 1
+allocation 8 6 4 5 5 0
+payload 0 1073741824 1077936128 1082130432 1084227584
+payload 1 1091567616 1092616192 1093664768 0
+payload 2 1094713344 1095761920 1096810496 1097859072
+payload 3 1100480512 1101004800 1101529088 1102053376
+payload 4 1073741824 1077936128 1082130432 1084227584
+payload 5 1092616192 1092616192 1093664768 0
+payload 6 1094713344 1095761920 1096810496 1097859072
+payload 7 1100480512 1101004800 1101529088 1102053376
+payload 8 1073741824 1077936128 1082130432 1084227584
+payload 9 1093664768 1092616192 1093664768 0
+payload 10 1094713344 1095761920 1096810496 1097859072
+payload 11 1100480512 1101004800 1101529088 1102053376

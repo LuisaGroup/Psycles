@@ -364,7 +364,8 @@ void node_principled_hair(const KernelGlobals &kernel_globals, Cursor &cursor,
     $if(!((R <= 0.0f) & (TT <= 0.0f) & (TRT <= 0.0f))) {
       const auto allocation = bsdf_allocate(shader_data, weight);
       const auto extra_allocated =
-          shader_data.closure->allocate_extra(allocation, 1u);
+          shader_data.closure->allocate_extra(
+              allocation, 1u, ClosurePool::ExtraPayload::huang_hair);
       $if(extra_allocated) {
         huang_setup(
             kernel_globals, shader_data, path_state, allocation, sigma,

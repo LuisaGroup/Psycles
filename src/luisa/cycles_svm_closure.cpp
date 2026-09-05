@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0 */
 
 #include "cycles_svm_bssrdf.h"
+#include "cycles_svm_closure_layout.h"
 #include "cycles_svm_hair.h"
 #include "cycles_svm_internal.h"
 #include "cycles_svm_microfacet.h"
@@ -25,21 +26,60 @@ namespace psycles::luisa_backend::cycles_svm {
 
 using namespace luisa::compute;
 using namespace compiler::cycles_svm;
+namespace layout = detail::closure_layout;
+
+static constexpr auto closure_rows = layout::ShaderClosure_sizeof / 16u;
+static_assert(layout::ShaderClosure_sizeof % 16u == 0u);
 
 ClosurePool::ClosurePool(std::size_t capacity) noexcept
     : _capacity{std::min(capacity, maximum_closure_capacity)},
-      _weight_and_sample{std::max(_capacity, std::size_t{1u})},
-      _normal{std::max(_capacity, std::size_t{1u})},
-      _type{std::max(_capacity, std::size_t{1u})},
-      _payload0{std::max(_capacity, std::size_t{1u})},
-      _payload1{std::max(_capacity, std::size_t{1u})},
-      _payload2{std::max(_capacity, std::size_t{1u})},
-      _payload3{std::max(_capacity, std::size_t{1u})},
-      _payload4{std::max(_capacity, std::size_t{1u})},
-      _payload5{std::max(_capacity, std::size_t{1u})},
-      _payload6{std::max(_capacity, std::size_t{1u})},
-      _payload_tag{std::max(_capacity, std::size_t{1u})}, _count{0u},
+      _storage{std::max(_capacity, std::size_t{1u}) * closure_rows}, _count{0u},
       _left{static_cast<std::uint32_t>(_capacity)} {}
+
+UInt ClosurePool::load_word(Expr<std::uint32_t> slot,
+                            std::uint32_t byte_offset) const noexcept {
+  // Do address arithmetic in the pointer-width domain, as a native array
+  // GEP does. A 32-bit multiply would introduce wraparound before indexing.
+  const auto row =
+      slot.cast<luisa::ulong>() * static_cast<luisa::ulong>(closure_rows) +
+      static_cast<luisa::ulong>(byte_offset / 16u);
+  return _storage[row][(byte_offset % 16u) / 4u];
+}
+
+void ClosurePool::store_word(Expr<std::uint32_t> slot,
+                             std::uint32_t byte_offset,
+                             Expr<std::uint32_t> value) noexcept {
+  const auto row =
+      slot.cast<luisa::ulong>() * static_cast<luisa::ulong>(closure_rows) +
+      static_cast<luisa::ulong>(byte_offset / 16u);
+  _storage[row][(byte_offset % 16u) / 4u] = value;
+}
+
+Float ClosurePool::load_float(Expr<std::uint32_t> slot,
+                              std::uint32_t byte_offset) const noexcept {
+  return load_word(slot, byte_offset).as<float>();
+}
+
+void ClosurePool::store_float(Expr<std::uint32_t> slot,
+                              std::uint32_t byte_offset,
+                              Expr<float> value) noexcept {
+  store_word(slot, byte_offset, value.as<luisa::uint>());
+}
+
+Float3 ClosurePool::load_float3(Expr<std::uint32_t> slot,
+                                std::uint32_t byte_offset) const noexcept {
+  return make_float3(load_float(slot, byte_offset),
+                     load_float(slot, byte_offset + 4u),
+                     load_float(slot, byte_offset + 8u));
+}
+
+void ClosurePool::store_float3(Expr<std::uint32_t> slot,
+                               std::uint32_t byte_offset,
+                               Expr<luisa::float3> value) noexcept {
+  store_float(slot, byte_offset, value.x);
+  store_float(slot, byte_offset + 4u, value.y);
+  store_float(slot, byte_offset + 8u, value.z);
+}
 
 std::size_t ClosurePool::capacity() const noexcept { return _capacity; }
 
@@ -52,8 +92,9 @@ ClosurePool::allocate(Expr<std::uint32_t> closure_type,
                       Expr<luisa::float3> weight) noexcept {
   Allocation allocation{.index = _count, .valid = false};
   $if(_left != 0u) {
-    _type.write(allocation.index, closure_type);
-    _weight_and_sample.write(allocation.index, make_float4(weight, 0.0f));
+    store_word(allocation.index, layout::ShaderClosure_type, closure_type);
+    store_float3(allocation.index, layout::ShaderClosure_weight, weight);
+    store_float(allocation.index, layout::ShaderClosure_sample_weight, 0.0f);
     _count += 1u;
     _left -= 1u;
     allocation.valid = true;
@@ -62,11 +103,16 @@ ClosurePool::allocate(Expr<std::uint32_t> closure_type,
 }
 
 Bool ClosurePool::allocate_extra(const Allocation &owner,
-                                 Expr<std::uint32_t> slot_count) noexcept {
+                                 Expr<std::uint32_t> slot_count,
+                                 ExtraPayload payload) noexcept {
   Bool allocated = false;
   $if(owner.valid) {
     $if(slot_count <= _left) {
       _left -= slot_count;
+      const auto pointer_field = payload == ExtraPayload::huang_hair
+                                     ? layout::HuangHairBSDF_extra
+                                     : layout::MicrofacetBsdf_fresnel;
+      store_word(owner.index, pointer_field, _count + _left);
       allocated = true;
     }
     $else {
@@ -83,8 +129,7 @@ Bool ClosurePool::allocate_extra(const Allocation &owner,
 }
 
 void ClosurePool::rollback_with_extra(
-    const Allocation &owner,
-    Expr<std::uint32_t> extra_slot_count) noexcept {
+    const Allocation &owner, Expr<std::uint32_t> extra_slot_count) noexcept {
   $if(owner.valid & (_count != 0u) & (owner.index + 1u == _count)) {
     _count -= 1u;
     _left += 1u + extra_slot_count;
@@ -93,252 +138,282 @@ void ClosurePool::rollback_with_extra(
 
 void ClosurePool::set_type(Expr<std::uint32_t> index,
                            Expr<std::uint32_t> closure_type) noexcept {
-  _type.write(index, closure_type);
+  store_word(index, layout::ShaderClosure_type, closure_type);
 }
 
 void ClosurePool::set_weight(Expr<std::uint32_t> index,
                              Expr<luisa::float3> weight) noexcept {
-  const auto stored = _weight_and_sample.read(index);
-  _weight_and_sample.write(index, make_float4(weight, stored.w));
+  store_float3(index, layout::ShaderClosure_weight, weight);
 }
 
 void ClosurePool::add_weight(Expr<std::uint32_t> index,
                              Expr<luisa::float3> weight) noexcept {
-  const auto stored = _weight_and_sample.read(index);
-  _weight_and_sample.write(index, make_float4(stored.xyz() + weight, stored.w));
+  set_weight(index, load_float3(index, layout::ShaderClosure_weight) + weight);
 }
 
 void ClosurePool::set_sample_weight(Expr<std::uint32_t> index,
                                     Expr<float> sample_weight) noexcept {
-  const auto stored = _weight_and_sample.read(index);
-  _weight_and_sample.write(index, make_float4(stored.xyz(), sample_weight));
+  store_float(index, layout::ShaderClosure_sample_weight, sample_weight);
 }
 
 void ClosurePool::add_sample_weight(Expr<std::uint32_t> index,
                                     Expr<float> sample_weight) noexcept {
-  const auto stored = _weight_and_sample.read(index);
-  _weight_and_sample.write(index,
-                           make_float4(stored.xyz(), stored.w + sample_weight));
+  set_sample_weight(index,
+                    load_float(index, layout::ShaderClosure_sample_weight) +
+                        sample_weight);
 }
 
 void ClosurePool::set_normal(Expr<std::uint32_t> index,
                              Expr<luisa::float3> normal) noexcept {
-  _normal.write(index, make_float4(normal, 0.0f));
+  store_float3(index, layout::ShaderClosure_N, normal);
 }
 
 void ClosurePool::set_oren_nayar_param(Expr<std::uint32_t> index,
                                        const OrenNayarParam &param) noexcept {
-  _payload0.write(index, make_float4(param.roughness, param.a, param.b, 0.0f));
-  _payload1.write(index, make_float4(param.multiscatter_term, 0.0f));
+  constexpr auto base = layout::OrenNayarBsdf_param;
+  store_float(index, base + layout::OrenNayarParam_roughness, param.roughness);
+  store_float(index, base + layout::OrenNayarParam_a, param.a);
+  store_float(index, base + layout::OrenNayarParam_b, param.b);
+  store_float3(index, base + layout::OrenNayarParam_multiscatter_term,
+               param.multiscatter_term);
 }
 
 void ClosurePool::set_sheen_param(Expr<std::uint32_t> index,
                                   const SheenParam &param) noexcept {
-  _payload0.write(index, make_float4(param.roughness, param.transform_a,
-                                     param.transform_b, 0.0f));
-  _payload1.write(index, make_float4(param.T, 0.0f));
-  _payload2.write(index, make_float4(param.B, 0.0f));
+  store_float(index, layout::SheenBsdf_roughness, param.roughness);
+  store_float(index, layout::SheenBsdf_transformA, param.transform_a);
+  store_float(index, layout::SheenBsdf_transformB, param.transform_b);
+  store_float3(index, layout::SheenBsdf_T, param.T);
+  store_float3(index, layout::SheenBsdf_B, param.B);
 }
 
 void ClosurePool::set_velvet_param(Expr<std::uint32_t> index,
                                    const VelvetParam &param) noexcept {
-  _payload0.write(index, make_float4(param.sigma, param.invsigma2, 0.0f, 0.0f));
+  store_float(index, layout::VelvetBsdf_sigma, param.sigma);
+  store_float(index, layout::VelvetBsdf_invsigma2, param.invsigma2);
 }
 
 void ClosurePool::set_toon_param(Expr<std::uint32_t> index,
                                  const ToonParam &param) noexcept {
-  _payload0.write(index, make_float4(param.size, param.smooth, 0.0f, 0.0f));
+  store_float(index, layout::ToonBsdf_size, param.size);
+  store_float(index, layout::ToonBsdf_smooth, param.smooth);
 }
 
 void ClosurePool::set_ray_portal_param(Expr<std::uint32_t> index,
                                        const RayPortalParam &param) noexcept {
-  _payload0.write(index, make_float4(param.P, 0.0f));
-  _payload1.write(index, make_float4(param.D, 0.0f));
+  store_float3(index, layout::RayPortalClosure_P, param.P);
+  store_float3(index, layout::RayPortalClosure_D, param.D);
 }
 
 void ClosurePool::set_hair_param(Expr<std::uint32_t> index,
                                  const HairParam &param) noexcept {
-  _payload0.write(index, make_float4(param.T, param.roughness1));
-  _payload1.write(index,
-                  make_float4(param.roughness2, param.offset, 0.0f, 0.0f));
+  store_float3(index, layout::HairBsdf_T, param.T);
+  store_float(index, layout::HairBsdf_roughness1, param.roughness1);
+  store_float(index, layout::HairBsdf_roughness2, param.roughness2);
+  store_float(index, layout::HairBsdf_offset, param.offset);
 }
 
 void ClosurePool::set_chiang_hair_param(Expr<std::uint32_t> index,
                                         const ChiangHairParam &param) noexcept {
-  /* ShaderClosure is a tagged union. Keep the Cycles field order within the
-   * shared SoA rows so the typed projection is mechanically auditable. */
-  _payload0.write(index, make_float4(param.sigma, param.v));
-  _payload1.write(
-      index, make_float4(param.s, param.alpha, param.eta, param.m0_roughness));
-  _payload2.write(index, make_float4(param.h, 0.0f, 0.0f, 0.0f));
+  store_float3(index, layout::ChiangHairBSDF_sigma, param.sigma);
+  store_float(index, layout::ChiangHairBSDF_v, param.v);
+  store_float(index, layout::ChiangHairBSDF_s, param.s);
+  store_float(index, layout::ChiangHairBSDF_alpha, param.alpha);
+  store_float(index, layout::ChiangHairBSDF_eta, param.eta);
+  store_float(index, layout::ChiangHairBSDF_m0_roughness, param.m0_roughness);
+  store_float(index, layout::ChiangHairBSDF_h, param.h);
 }
 
 void ClosurePool::set_huang_hair(Expr<std::uint32_t> index,
                                  const HuangHairParam &param,
                                  const HuangHairExtra &extra) noexcept {
-  _payload0.write(index, make_float4(param.sigma, param.roughness));
-  _payload1.write(
-      index,
-      make_float4(param.tilt, param.eta, param.aspect_ratio, param.h));
-  _payload2.write(
-      index, make_float4(extra.R, extra.TT, extra.TRT, extra.pixel_coverage));
-  _payload3.write(index, make_float4(extra.Y, extra.radius));
-  _payload4.write(index, make_float4(extra.Z, extra.e2));
-  _payload5.write(index, make_float4(extra.wi, 0.0f));
+  store_float3(index, layout::HuangHairBSDF_sigma, param.sigma);
+  store_float(index, layout::HuangHairBSDF_roughness, param.roughness);
+  store_float(index, layout::HuangHairBSDF_tilt, param.tilt);
+  store_float(index, layout::HuangHairBSDF_eta, param.eta);
+  store_float(index, layout::HuangHairBSDF_aspect_ratio, param.aspect_ratio);
+  store_float(index, layout::HuangHairBSDF_h, param.h);
+  const auto tail = load_word(index, layout::HuangHairBSDF_extra);
+  store_float(tail, layout::HuangHairExtra_R, extra.R);
+  store_float(tail, layout::HuangHairExtra_TT, extra.TT);
+  store_float(tail, layout::HuangHairExtra_TRT, extra.TRT);
+  store_float3(tail, layout::HuangHairExtra_Y, extra.Y);
+  store_float3(tail, layout::HuangHairExtra_Z, extra.Z);
+  store_float3(tail, layout::HuangHairExtra_wi, extra.wi);
+  store_float(tail, layout::HuangHairExtra_radius, extra.radius);
+  store_float(tail, layout::HuangHairExtra_e2, extra.e2);
+  store_float(tail, layout::HuangHairExtra_pixel_coverage,
+              extra.pixel_coverage);
 }
 
 void ClosurePool::set_bssrdf_param(Expr<std::uint32_t> index,
                                    const BssrdfParam &param) noexcept {
-  _payload0.write(index, make_float4(param.radius, param.anisotropy));
-  _payload1.write(index, make_float4(param.albedo, param.ior));
-  _payload2.write(index, make_float4(param.alpha, 0.0f, 0.0f, 0.0f));
+  store_float3(index, layout::Bssrdf_radius, param.radius);
+  store_float3(index, layout::Bssrdf_albedo, param.albedo);
+  store_float(index, layout::Bssrdf_anisotropy, param.anisotropy);
+  store_float(index, layout::Bssrdf_ior, param.ior);
+  store_float(index, layout::Bssrdf_alpha, param.alpha);
 }
 
 void ClosurePool::set_microfacet_param(Expr<std::uint32_t> index,
                                        const MicrofacetParam &param) noexcept {
-  _payload0.write(index, make_float4(param.alpha_x, param.alpha_y, param.ior,
-                                     param.energy_scale));
-  _payload1.write(index, make_float4(param.T, 0.0f));
-  _payload_tag.write(index, param.fresnel_type);
+  store_float(index, layout::MicrofacetBsdf_alpha_x, param.alpha_x);
+  store_float(index, layout::MicrofacetBsdf_alpha_y, param.alpha_y);
+  store_float(index, layout::MicrofacetBsdf_ior, param.ior);
+  store_float(index, layout::MicrofacetBsdf_energy_scale, param.energy_scale);
+  store_word(index, layout::MicrofacetBsdf_fresnel_type, param.fresnel_type);
+  store_float3(index, layout::MicrofacetBsdf_T, param.T);
 }
 
 void ClosurePool::set_generalized_schlick(
     Expr<std::uint32_t> index,
     const FresnelGeneralizedSchlick &fresnel) noexcept {
-  _payload2.write(index,
-                  make_float4(fresnel.thin_film.thickness,
-                              fresnel.thin_film.ior, fresnel.exponent, 0.0f));
-  _payload3.write(index, make_float4(fresnel.reflection_tint, 0.0f));
-  _payload4.write(index, make_float4(fresnel.transmission_tint, 0.0f));
-  _payload5.write(index, make_float4(fresnel.f0, 0.0f));
-  _payload6.write(index, make_float4(fresnel.f90, 0.0f));
+  const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
+  constexpr auto film = layout::FresnelGeneralizedSchlick_thin_film;
+  store_float(tail, film + layout::FresnelThinFilm_thickness,
+              fresnel.thin_film.thickness);
+  store_float(tail, film + layout::FresnelThinFilm_ior, fresnel.thin_film.ior);
+  store_float3(tail, layout::FresnelGeneralizedSchlick_reflection_tint,
+               fresnel.reflection_tint);
+  store_float3(tail, layout::FresnelGeneralizedSchlick_transmission_tint,
+               fresnel.transmission_tint);
+  store_float3(tail, layout::FresnelGeneralizedSchlick_f0, fresnel.f0);
+  store_float3(tail, layout::FresnelGeneralizedSchlick_f90, fresnel.f90);
+  store_float(tail, layout::FresnelGeneralizedSchlick_exponent,
+              fresnel.exponent);
 }
 
 void ClosurePool::set_fresnel_conductor(
     Expr<std::uint32_t> index, const FresnelConductor &fresnel) noexcept {
-  _payload2.write(index, make_float4(fresnel.thin_film.thickness,
-                                     fresnel.thin_film.ior, 0.0f, 0.0f));
-  _payload3.write(index, make_float4(fresnel.ior, 0.0f));
-  _payload4.write(index, make_float4(fresnel.extinction, 0.0f));
+  const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
+  constexpr auto film = layout::FresnelConductor_thin_film;
+  store_float(tail, film + layout::FresnelThinFilm_thickness,
+              fresnel.thin_film.thickness);
+  store_float(tail, film + layout::FresnelThinFilm_ior, fresnel.thin_film.ior);
+  store_float3(tail, layout::FresnelConductor_ior + layout::complex_Spectrum_re,
+               fresnel.ior);
+  store_float3(tail, layout::FresnelConductor_ior + layout::complex_Spectrum_im,
+               fresnel.extinction);
 }
 
 void ClosurePool::set_fresnel_f82_tint(Expr<std::uint32_t> index,
                                        const FresnelF82Tint &fresnel) noexcept {
-  _payload2.write(index, make_float4(fresnel.thin_film.thickness,
-                                     fresnel.thin_film.ior, 0.0f, 0.0f));
-  _payload3.write(index, make_float4(fresnel.f0, 0.0f));
-  _payload4.write(index, make_float4(fresnel.b, 0.0f));
+  const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
+  constexpr auto film = layout::FresnelF82Tint_thin_film;
+  store_float(tail, film + layout::FresnelThinFilm_thickness,
+              fresnel.thin_film.thickness);
+  store_float(tail, film + layout::FresnelThinFilm_ior, fresnel.thin_film.ior);
+  store_float3(tail, layout::FresnelF82Tint_f0, fresnel.f0);
+  store_float3(tail, layout::FresnelF82Tint_b, fresnel.b);
 }
 
 void ClosurePool::set_left(Expr<std::uint32_t> left) noexcept { _left = left; }
 
 ShaderClosureCommon
 ClosurePool::common(Expr<std::uint32_t> index) const noexcept {
-  const auto weight_and_sample = _weight_and_sample.read(index);
-  return {.weight = weight_and_sample.xyz(),
-          .type = _type.read(index),
-          .sample_weight = weight_and_sample.w,
-          .N = _normal.read(index).xyz()};
+  return {.weight = load_float3(index, layout::ShaderClosure_weight),
+          .type = load_word(index, layout::ShaderClosure_type),
+          .sample_weight =
+              load_float(index, layout::ShaderClosure_sample_weight),
+          .N = load_float3(index, layout::ShaderClosure_N)};
 }
 
 OrenNayarClosure
 ClosurePool::oren_nayar(Expr<std::uint32_t> index) const noexcept {
-  const auto scalars = _payload0.read(index);
-  return {.common = common(index),
-          .param = {.roughness = scalars.x,
-                    .a = scalars.y,
-                    .b = scalars.z,
-                    .multiscatter_term = _payload1.read(index).xyz()}};
+  constexpr auto base = layout::OrenNayarBsdf_param;
+  return {
+      .common = common(index),
+      .param = {.roughness =
+                    load_float(index, base + layout::OrenNayarParam_roughness),
+                .a = load_float(index, base + layout::OrenNayarParam_a),
+                .b = load_float(index, base + layout::OrenNayarParam_b),
+                .multiscatter_term = load_float3(
+                    index, base + layout::OrenNayarParam_multiscatter_term)}};
 }
 
 SheenClosure ClosurePool::sheen(Expr<std::uint32_t> index) const noexcept {
-  const auto scalars = _payload0.read(index);
-  return {.common = common(index),
-          .param = {.roughness = scalars.x,
-                    .transform_a = scalars.y,
-                    .transform_b = scalars.z,
-                    .T = _payload1.read(index).xyz(),
-                    .B = _payload2.read(index).xyz()}};
+  return {
+      .common = common(index),
+      .param = {.roughness = load_float(index, layout::SheenBsdf_roughness),
+                .transform_a = load_float(index, layout::SheenBsdf_transformA),
+                .transform_b = load_float(index, layout::SheenBsdf_transformB),
+                .T = load_float3(index, layout::SheenBsdf_T),
+                .B = load_float3(index, layout::SheenBsdf_B)}};
 }
 
 VelvetClosure ClosurePool::velvet(Expr<std::uint32_t> index) const noexcept {
-  const auto scalars = _payload0.read(index);
-  return {.common = common(index),
-          .param = {.sigma = scalars.x, .invsigma2 = scalars.y}};
+  return {
+      .common = common(index),
+      .param = {.sigma = load_float(index, layout::VelvetBsdf_sigma),
+                .invsigma2 = load_float(index, layout::VelvetBsdf_invsigma2)}};
 }
 
 ToonClosure ClosurePool::toon(Expr<std::uint32_t> index) const noexcept {
-  const auto scalars = _payload0.read(index);
   return {.common = common(index),
-          .param = {.size = scalars.x, .smooth = scalars.y}};
+          .param = {.size = load_float(index, layout::ToonBsdf_size),
+                    .smooth = load_float(index, layout::ToonBsdf_smooth)}};
 }
 
 RayPortalClosure
 ClosurePool::ray_portal(Expr<std::uint32_t> index) const noexcept {
   return {.common = common(index),
-          .param = {.P = _payload0.read(index).xyz(),
-                    .D = _payload1.read(index).xyz()}};
+          .param = {.P = load_float3(index, layout::RayPortalClosure_P),
+                    .D = load_float3(index, layout::RayPortalClosure_D)}};
 }
 
 HairClosure ClosurePool::hair(Expr<std::uint32_t> index) const noexcept {
-  const auto tangent_roughness = _payload0.read(index);
-  const auto roughness_offset = _payload1.read(index);
-  return {.common = common(index),
-          .param = {.T = tangent_roughness.xyz(),
-                    .roughness1 = tangent_roughness.w,
-                    .roughness2 = roughness_offset.x,
-                    .offset = roughness_offset.y}};
+  return {
+      .common = common(index),
+      .param = {.T = load_float3(index, layout::HairBsdf_T),
+                .roughness1 = load_float(index, layout::HairBsdf_roughness1),
+                .roughness2 = load_float(index, layout::HairBsdf_roughness2),
+                .offset = load_float(index, layout::HairBsdf_offset)}};
 }
 
 ChiangHairClosure
 ClosurePool::chiang_hair(Expr<std::uint32_t> index) const noexcept {
-  const auto sigma_v = _payload0.read(index);
-  const auto scalars = _payload1.read(index);
   return {.common = common(index),
-          .param = {.sigma = sigma_v.xyz(),
-                    .v = sigma_v.w,
-                    .s = scalars.x,
-                    .alpha = scalars.y,
-                    .eta = scalars.z,
-                    .m0_roughness = scalars.w,
-                    .h = _payload2.read(index).x}};
+          .param = {.sigma = load_float3(index, layout::ChiangHairBSDF_sigma),
+                    .v = load_float(index, layout::ChiangHairBSDF_v),
+                    .s = load_float(index, layout::ChiangHairBSDF_s),
+                    .alpha = load_float(index, layout::ChiangHairBSDF_alpha),
+                    .eta = load_float(index, layout::ChiangHairBSDF_eta),
+                    .m0_roughness =
+                        load_float(index, layout::ChiangHairBSDF_m0_roughness),
+                    .h = load_float(index, layout::ChiangHairBSDF_h)}};
 }
 
 HuangHairClosure
 ClosurePool::huang_hair(Expr<std::uint32_t> index) const noexcept {
-  const auto sigma_roughness = _payload0.read(index);
-  const auto scalars = _payload1.read(index);
-  const auto lobes_coverage = _payload2.read(index);
-  const auto Y_radius = _payload3.read(index);
-  const auto Z_e2 = _payload4.read(index);
+  const auto tail = load_word(index, layout::HuangHairBSDF_extra);
   return {
       .common = common(index),
-      .param = {.sigma = sigma_roughness.xyz(),
-                .roughness = sigma_roughness.w,
-                .tilt = scalars.x,
-                .eta = scalars.y,
-                .aspect_ratio = scalars.z,
-                .h = scalars.w},
-      .extra = {.R = lobes_coverage.x,
-                .TT = lobes_coverage.y,
-                .TRT = lobes_coverage.z,
-                .Y = Y_radius.xyz(),
-                .Z = Z_e2.xyz(),
-                .wi = _payload5.read(index).xyz(),
-                .radius = Y_radius.w,
-                .e2 = Z_e2.w,
-                .pixel_coverage = lobes_coverage.w}};
+      .param = {.sigma = load_float3(index, layout::HuangHairBSDF_sigma),
+                .roughness = load_float(index, layout::HuangHairBSDF_roughness),
+                .tilt = load_float(index, layout::HuangHairBSDF_tilt),
+                .eta = load_float(index, layout::HuangHairBSDF_eta),
+                .aspect_ratio =
+                    load_float(index, layout::HuangHairBSDF_aspect_ratio),
+                .h = load_float(index, layout::HuangHairBSDF_h)},
+      .extra = {.R = load_float(tail, layout::HuangHairExtra_R),
+                .TT = load_float(tail, layout::HuangHairExtra_TT),
+                .TRT = load_float(tail, layout::HuangHairExtra_TRT),
+                .Y = load_float3(tail, layout::HuangHairExtra_Y),
+                .Z = load_float3(tail, layout::HuangHairExtra_Z),
+                .wi = load_float3(tail, layout::HuangHairExtra_wi),
+                .radius = load_float(tail, layout::HuangHairExtra_radius),
+                .e2 = load_float(tail, layout::HuangHairExtra_e2),
+                .pixel_coverage =
+                    load_float(tail, layout::HuangHairExtra_pixel_coverage)}};
 }
 
 BssrdfClosure ClosurePool::bssrdf(Expr<std::uint32_t> index) const noexcept {
-  const auto radius_anisotropy = _payload0.read(index);
-  const auto albedo_ior = _payload1.read(index);
   return {.common = common(index),
-          .param = {.radius = radius_anisotropy.xyz(),
-                    .albedo = albedo_ior.xyz(),
-                    .anisotropy = radius_anisotropy.w,
-                    .ior = albedo_ior.w,
-                    .alpha = _payload2.read(index).x}};
+          .param = {.radius = load_float3(index, layout::Bssrdf_radius),
+                    .albedo = load_float3(index, layout::Bssrdf_albedo),
+                    .anisotropy = load_float(index, layout::Bssrdf_anisotropy),
+                    .ior = load_float(index, layout::Bssrdf_ior),
+                    .alpha = load_float(index, layout::Bssrdf_alpha)}};
 }
 
 MicrofacetClosure
@@ -348,57 +423,76 @@ ClosurePool::microfacet(Expr<std::uint32_t> index) const noexcept {
    * storage handle keeps that branch-local lifetime in the generated DSL. */
   return {.common = common(index),
           .param = microfacet_param(index),
-          .generalized_schlick = {
-              .thin_film = {.thickness = 0.0f, .ior = 0.0f},
-              .reflection_tint = make_float3(0.0f),
-              .transmission_tint = make_float3(0.0f),
-              .f0 = make_float3(0.0f),
-              .f90 = make_float3(0.0f),
-              .exponent = 0.0f},
+          .generalized_schlick = {.thin_film = {.thickness = 0.0f, .ior = 0.0f},
+                                  .reflection_tint = make_float3(0.0f),
+                                  .transmission_tint = make_float3(0.0f),
+                                  .f0 = make_float3(0.0f),
+                                  .f90 = make_float3(0.0f),
+                                  .exponent = 0.0f},
           .storage = this,
           .storage_index = index};
 }
 
-FresnelGeneralizedSchlick ClosurePool::generalized_schlick(
-    Expr<std::uint32_t> index) const noexcept {
-  const auto film = _payload2.read(index);
-  return {.thin_film = {.thickness = film.x, .ior = film.y},
-          .reflection_tint = _payload3.read(index).xyz(),
-          .transmission_tint = _payload4.read(index).xyz(),
-          .f0 = _payload5.read(index).xyz(),
-          .f90 = _payload6.read(index).xyz(),
-          .exponent = film.z};
+FresnelGeneralizedSchlick
+ClosurePool::generalized_schlick(Expr<std::uint32_t> index) const noexcept {
+  const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
+  constexpr auto film = layout::FresnelGeneralizedSchlick_thin_film;
+  return {
+      .thin_film = {.thickness = load_float(
+                        tail, film + layout::FresnelThinFilm_thickness),
+                    .ior =
+                        load_float(tail, film + layout::FresnelThinFilm_ior)},
+      .reflection_tint =
+          load_float3(tail, layout::FresnelGeneralizedSchlick_reflection_tint),
+      .transmission_tint = load_float3(
+          tail, layout::FresnelGeneralizedSchlick_transmission_tint),
+      .f0 = load_float3(tail, layout::FresnelGeneralizedSchlick_f0),
+      .f90 = load_float3(tail, layout::FresnelGeneralizedSchlick_f90),
+      .exponent = load_float(tail, layout::FresnelGeneralizedSchlick_exponent)};
 }
 
 MicrofacetConductorClosure
 ClosurePool::microfacet_conductor(Expr<std::uint32_t> index) const noexcept {
-  const auto film = _payload2.read(index);
-  return {.common = common(index),
-          .param = microfacet_param(index),
-          .conductor = {.thin_film = {.thickness = film.x, .ior = film.y},
-                        .ior = _payload3.read(index).xyz(),
-                        .extinction = _payload4.read(index).xyz()}};
+  const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
+  constexpr auto film = layout::FresnelConductor_thin_film;
+  return {
+      .common = common(index),
+      .param = microfacet_param(index),
+      .conductor = {
+          .thin_film = {.thickness = load_float(
+                            tail, film + layout::FresnelThinFilm_thickness),
+                        .ior = load_float(tail,
+                                          film + layout::FresnelThinFilm_ior)},
+          .ior = load_float3(tail, layout::FresnelConductor_ior +
+                                       layout::complex_Spectrum_re),
+          .extinction = load_float3(tail, layout::FresnelConductor_ior +
+                                              layout::complex_Spectrum_im)}};
 }
 
 MicrofacetF82TintClosure
 ClosurePool::microfacet_f82_tint(Expr<std::uint32_t> index) const noexcept {
-  const auto film = _payload2.read(index);
+  const auto tail = load_word(index, layout::MicrofacetBsdf_fresnel);
+  constexpr auto film = layout::FresnelF82Tint_thin_film;
   return {.common = common(index),
           .param = microfacet_param(index),
-          .f82_tint = {.thin_film = {.thickness = film.x, .ior = film.y},
-                       .f0 = _payload3.read(index).xyz(),
-                       .b = _payload4.read(index).xyz()}};
+          .f82_tint = {
+              .thin_film = {.thickness = load_float(
+                                tail, film + layout::FresnelThinFilm_thickness),
+                            .ior = load_float(
+                                tail, film + layout::FresnelThinFilm_ior)},
+              .f0 = load_float3(tail, layout::FresnelF82Tint_f0),
+              .b = load_float3(tail, layout::FresnelF82Tint_b)}};
 }
 
 MicrofacetParam
 ClosurePool::microfacet_param(Expr<std::uint32_t> index) const noexcept {
-  const auto microfacet = _payload0.read(index);
-  return {.alpha_x = microfacet.x,
-          .alpha_y = microfacet.y,
-          .ior = microfacet.z,
-          .energy_scale = microfacet.w,
-          .fresnel_type = _payload_tag.read(index),
-          .T = _payload1.read(index).xyz()};
+  return {.alpha_x = load_float(index, layout::MicrofacetBsdf_alpha_x),
+          .alpha_y = load_float(index, layout::MicrofacetBsdf_alpha_y),
+          .ior = load_float(index, layout::MicrofacetBsdf_ior),
+          .energy_scale =
+              load_float(index, layout::MicrofacetBsdf_energy_scale),
+          .fresnel_type = load_word(index, layout::MicrofacetBsdf_fresnel_type),
+          .T = load_float3(index, layout::MicrofacetBsdf_T)};
 }
 
 namespace detail {
