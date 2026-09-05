@@ -24,7 +24,7 @@ using contract::SocketValue;
 
 struct LoweredOutputKey {
     RawOutputKey raw;
-    contract::SocketType requested{
+    contract::SocketType source_type{
         contract::SocketType::floating};
 
     auto operator<=>(const LoweredOutputKey &) const noexcept = default;
@@ -914,6 +914,41 @@ private:
             return constant_from_output(
                 node, socket, requested);
         }
+        if (type != "GROUP" && type != "GROUP_INPUT") {
+            // Blender 5.2 ShaderNodesInliner::ensure_node_inputs pushes
+            // available inputs in socket order onto a LIFO stack. Producers
+            // are therefore materialized in reverse input order, before the
+            // consumer is copied. These creation IDs subsequently break
+            // Sethi-Ullman scheduling ties in Cycles' SVMCompiler. Letting
+            // each lowering component recurse in its own bind order changes
+            // both the native node order and the allocated stack addresses.
+            // Muted/reroute/group forwarding keeps its own socket semantics.
+            if (!_building.emplace(node_name).second) {
+                warn_once(
+                    "cycle:" + node_name,
+                    "recursive node dependency detected at '" +
+                        node_name + "'");
+                return constant_from_output(
+                    node, socket, SocketType::color);
+            }
+            auto *inputs = member(node, "inputs");
+            for (auto i = yyjson_arr_size(inputs); i != 0u; --i) {
+                auto *input = yyjson_arr_get(inputs, i - 1u);
+                const auto source = input_source(
+                    node, text(member(input, "identifier")));
+                if (!source) {
+                    continue;
+                }
+                auto input_type = socket_type(input);
+                if (input_type == SocketType::closure &&
+                    requested == SocketType::volume_closure) {
+                    input_type = SocketType::volume_closure;
+                }
+                static_cast<void>(lower_output(
+                    source->node, source->socket, input_type));
+            }
+            _building.erase(node_name);
+        }
         if (type == "DISPLACEMENT") {
             const auto displacement = _graph.add_node(
                 compiler::node_type::displacement,
@@ -1180,15 +1215,26 @@ private:
         const std::string &node,
         const std::string &socket,
         contract::SocketType requested) {
+        // One Blender output has one natural producer, independently of the
+        // conversions requested by its consumers. In particular, preparing a
+        // vector input before a color consumer must not copy the same curve
+        // (or any other value node) a second time. The contract's surface and
+        // volume closure projections remain distinct domains.
+        auto source_type = socket_type(
+            raw_output(raw_node(node), socket), requested);
+        if (source_type == contract::SocketType::closure &&
+            requested == contract::SocketType::volume_closure) {
+            source_type = contract::SocketType::volume_closure;
+        }
         const auto key = LoweredOutputKey{
             .raw = {.node = node, .socket = socket},
-            .requested = requested};
+            .source_type = source_type};
         auto iter = _outputs.find(key);
         if (iter == _outputs.end()) {
             iter = _outputs.emplace(
                 key,
                 lower_natural_output(
-                    node, socket, requested))
+                    node, socket, source_type))
                        .first;
         }
         return conversion(iter->second, requested);

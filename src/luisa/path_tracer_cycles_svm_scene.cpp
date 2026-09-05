@@ -173,42 +173,32 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
 
   const auto shader_materials =
       collect_cycles_svm_shader_materials(snapshot);
-  std::set<contract::MaterialId> supplemental_domain;
+  // The native compiler consumes the current validated source graph, not a
+  // SurfaceProgram or a retained legacy material cache. Requiring legacy
+  // lowering here both narrows Cycles' node domain (for example NODE_CAMERA)
+  // and lets a same-id cached graph override a newer scene snapshot.
+  const compiler::ShaderCompiler shader_compiler{
+      compiler::make_core_node_registry()};
+  std::map<contract::MaterialId, std::shared_ptr<const compiler::ShaderProgram>>
+      shader_programs;
   for (const auto material : shader_materials) {
-    if (!snapshot.materials.contains(material)) {
+    const auto source = snapshot.materials.find(material);
+    if (source == snapshot.materials.end()) {
       diagnostic = "Cycles used-shader domain references unavailable material " +
                    std::to_string(material.value);
       return nullptr;
     }
-    if (scene->materials.find(material) == nullptr) {
-      supplemental_domain.emplace(material);
-    }
-  }
-  compiler::MaterialLibrary supplemental_materials;
-  if (!supplemental_domain.empty()) {
-    compiler::ShaderCompiler shader_compiler{
-        compiler::make_core_node_registry()};
-    const auto update = supplemental_materials.update(
-        snapshot, shader_compiler, supplemental_domain);
-    if (!update.committed) {
-      if (update.diagnostics.empty()) {
-        diagnostic = "Cycles used-shader material compilation failed";
-      } else {
-        const auto &failure = update.diagnostics.front();
-        diagnostic = "Cycles used-shader material " +
-                     std::to_string(failure.material.value) + ": " +
-                     failure.message;
-      }
+    auto shader = shader_compiler.compile(source->second.shader);
+    if (!shader.ok()) {
+      diagnostic = "Cycles used-shader material " +
+                   std::to_string(material.value) + ": " +
+                   (shader.diagnostics.empty()
+                        ? "source graph validation failed"
+                        : shader.diagnostics.front().message);
       return nullptr;
     }
+    shader_programs.emplace(material, std::move(shader.program));
   }
-  const auto compiled_material = [&](contract::MaterialId material)
-      -> const compiler::CompiledMaterial * {
-    if (const auto *compiled = scene->materials.find(material)) {
-      return compiled;
-    }
-    return supplemental_materials.find(material);
-  };
 
   std::set<std::uint32_t> occupied_indices;
   auto maximum_source_index = std::uint32_t{};
@@ -259,15 +249,9 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
   units.reserve(shader_compile_order.size());
   for (const auto [shader_index, material_id] : shader_compile_order) {
     const auto &source = snapshot.materials.at(material_id);
-    const auto *material = compiled_material(material_id);
-    if (material == nullptr) {
-      diagnostic = "Cycles used-shader material compilation omitted " +
-                   std::to_string(material_id.value);
-      return nullptr;
-    }
     units.emplace_back(compiler::cycles_svm::ShaderTableCompileUnit{
         .shader_index = shader_index,
-        .shader = &material->shader(),
+        .shader = shader_programs.at(material_id).get(),
         .context = {.background = snapshot.world_shader == material_id,
                     .displacement_method = source.displacement_method,
                     .color_space = snapshot.shader_color_space},
