@@ -859,12 +859,17 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
 
+    // Records 43/44 sample the thick BSSRDF, but 45/46 query the thin-wall
+    // rough-diffuse pair (parameter block 4). Cycles includes Oren-Nayar and
+    // Rough Translucent in its roughness pass; their value here is 0.4, not
+    // the 1.0 fallback for an actual BSSRDF-only retained prefix. See the
+    // independent test_luisa_surface_roughness.cpp external HIP oracle.
     if (!meta(43u,
             1.0f,
             cycles_closure::type_bssrdf_random_walk,
             true) ||
         !rgb_equal(actual[45u], base_color) ||
-        !approximately_equal(actual[45u].w, 1.0f) ||
+        !approximately_equal(actual[45u].w, 0.4f) ||
         !approximately_equal(
             actual[46u], {0.0f, 0.0f, -1.0f, 0.0f})) {
         std::cerr << "thick/thin subsurface dispatch and AOV regression failed on "

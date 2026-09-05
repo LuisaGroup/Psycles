@@ -4,6 +4,18 @@ include_guard(GLOBAL)
 # Keep the inventory out of the project root so adding one semantic regression
 # does not make the top-level build description grow without bound.
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_surface_roughness_tests
+    SOURCE tests/test_luisa_surface_roughness.cpp
+    TEST_STEM luisa_surface_roughness
+    LIBRARIES Psycles::luisa)
+if(TEST psycles.luisa_surface_roughness_vk)
+    set_tests_properties(
+        psycles.luisa_surface_roughness_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_closure_tests
     SOURCE tests/test_luisa_cycles_closure.cpp
     TEST_STEM luisa_cycles_closure
