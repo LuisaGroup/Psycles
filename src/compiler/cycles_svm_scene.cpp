@@ -314,10 +314,12 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
         occupied_kernel[index].value_or(KernelShader{}));
   }
   result.shader_node_types_used.reserve(local.size());
+  result.shader_metadata.reserve(local.size());
   result.shader_attribute_ids_in_request_order.reserve(local.size());
   result.shader_attribute_ids_used.reserve(local.size());
   for (const auto &shader : local) {
     result.kernel_features |= shader.metadata.kernel_features;
+    result.shader_metadata.emplace_back(shader.metadata);
     result.shader_node_types_used.emplace_back(shader.node_types_used);
     auto &ordered_ids =
         result.shader_attribute_ids_in_request_order.emplace_back();
@@ -337,6 +339,7 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
     result.ies = ies_ids.packed_data();
   } else {
     result.kernel_shaders.clear();
+    result.shader_metadata.clear();
   }
   return result;
 }

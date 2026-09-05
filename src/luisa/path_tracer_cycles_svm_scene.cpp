@@ -16,12 +16,28 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace psycles::luisa_backend::detail {
 namespace {
+
+[[nodiscard]] std::uint32_t material_shader_index(
+    const LuisaSceneData &scene, contract::MaterialId material) {
+  if (!scene.cycles_svm || !scene.cycles_svm->compilation.table.valid) {
+    throw std::invalid_argument{"native material metadata has no compiled "
+                                "Cycles shader table"};
+  }
+  const auto index = scene.cycles_svm->material_shader_indices.find(material);
+  if (index == scene.cycles_svm->material_shader_indices.end()) {
+    throw std::invalid_argument{
+        "native material metadata references unavailable material " +
+        std::to_string(material.value)};
+  }
+  return index->second;
+}
 
 [[nodiscard]] constexpr std::size_t
 device_scene_extent(std::size_t semantic_extent) noexcept {
@@ -157,6 +173,50 @@ void upload_device_scene_array(Stream &stream, Buffer<T> &destination,
 }
 
 } // namespace
+
+const compiler::cycles_svm::ShaderCompileMetadata &
+cycles_svm_material_metadata(const LuisaSceneData &scene,
+                             contract::MaterialId material) {
+  const auto index = material_shader_index(scene, material);
+  return scene.cycles_svm->compilation.shader_metadata.at(index);
+}
+
+MaterialBinding make_cycles_svm_material_binding(
+    const LuisaSceneData &scene, contract::MaterialId material,
+    std::uint32_t surface_tag, std::uint32_t parameter_block,
+    std::uint32_t material_identity) {
+  namespace svm = compiler::cycles_svm;
+  const auto index = material_shader_index(scene, material);
+  const auto &shader = scene.cycles_svm->compilation.kernel_shaders.at(index);
+  const auto flags = static_cast<std::uint32_t>(shader.flags);
+  const auto front = (flags & svm::SD_MIS_FRONT) != 0u;
+  const auto back = (flags & svm::SD_MIS_BACK) != 0u;
+  return MaterialBinding{
+      .surface_tag = surface_tag,
+      .parameter_block = parameter_block,
+      .cycles_shader_index = index,
+      .material_identity = material_identity,
+      .flags =
+          ((flags & svm::SD_HAS_VOLUME) ? material_flag_has_volume : 0u) |
+          ((flags & svm::SD_HAS_EMISSION) ? material_flag_may_emit : 0u) |
+          ((flags & svm::SD_HAS_CONSTANT_EMISSION)
+               ? material_flag_constant_emission : 0u) |
+          ((flags & svm::SD_USE_BUMP_MAP_CORRECTION)
+               ? material_flag_use_bump_map_correction : 0u) |
+          ((flags & svm::SD_HAS_BSSRDF_BUMP)
+               ? material_flag_has_bssrdf_bump : 0u) |
+          ((flags & svm::SD_HAS_TRANSPARENT_SHADOW)
+               ? material_flag_has_transparent_shadow : 0u),
+      .emission_sampling = front && back ? contract::EmissionSampling::front_back
+                           : front ? contract::EmissionSampling::front
+                           : back ? contract::EmissionSampling::back
+                                  : contract::EmissionSampling::none,
+      .volume_sampling = (flags & svm::SD_VOLUME_MIS)
+                             ? contract::VolumeSampling::multiple_importance
+                         : (flags & svm::SD_VOLUME_EQUIANGULAR)
+                             ? contract::VolumeSampling::equiangular
+                             : contract::VolumeSampling::distance};
+}
 
 std::unique_ptr<CyclesSvmRuntime>
 build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
