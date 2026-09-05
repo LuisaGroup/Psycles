@@ -214,6 +214,19 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_scene_tests)
 
     add_executable(
+        psycles_cycles_svm_kernel_features_tests
+        tests/test_cycles_svm_kernel_features.cpp)
+    target_link_libraries(
+        psycles_cycles_svm_kernel_features_tests
+        PRIVATE Psycles::core)
+    target_compile_features(
+        psycles_cycles_svm_kernel_features_tests
+        PRIVATE cxx_std_20)
+    add_test(
+        NAME psycles.cycles_svm_kernel_features
+        COMMAND psycles_cycles_svm_kernel_features_tests)
+
+    add_executable(
         psycles_cycles_svm_object_scene_tests
         tests/test_cycles_svm_object_scene.cpp)
     target_link_libraries(

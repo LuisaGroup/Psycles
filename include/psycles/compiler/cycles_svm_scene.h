@@ -50,6 +50,11 @@ struct ShaderTableCompileUnit {
 // ids; image and IES arrays are indexed directly by bytecode payloads.
 struct CompiledShaderTable {
   ShaderTableImage table;
+  // Exact shader-owned portion of Cycles Scene::kernel_features, including
+  // its unconditional BSDF/Emission base. Geometry/integrator/film features
+  // remain owned by their respective scene components.
+  std::uint32_t kernel_features{
+      kernel_feature_node_bsdf | kernel_feature_node_emission};
   // Parallel native DeviceScene::shaders image in the identical dense shader
   // index domain. Unrepresented source holes are byte-zero and unreachable.
   std::vector<KernelShader> kernel_shaders;

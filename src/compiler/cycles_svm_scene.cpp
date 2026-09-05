@@ -46,6 +46,7 @@ static_assert(jump_node_word_count == 4u);
   const auto &a = lhs.metadata;
   const auto &b = rhs.metadata;
   const auto same_metadata =
+      a.kernel_features == b.kernel_features &&
       a.has_surface == b.has_surface &&
       a.has_surface_transparent == b.has_surface_transparent &&
       a.has_surface_raytrace == b.has_surface_raytrace &&
@@ -316,6 +317,7 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
   result.shader_attribute_ids_in_request_order.reserve(local.size());
   result.shader_attribute_ids_used.reserve(local.size());
   for (const auto &shader : local) {
+    result.kernel_features |= shader.metadata.kernel_features;
     result.shader_node_types_used.emplace_back(shader.node_types_used);
     auto &ordered_ids =
         result.shader_attribute_ids_in_request_order.emplace_back();

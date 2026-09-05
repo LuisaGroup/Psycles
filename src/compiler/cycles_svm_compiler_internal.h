@@ -16,18 +16,6 @@
 
 namespace psycles::compiler::cycles_svm {
 
-inline constexpr auto kernel_feature_node_bsdf = 1u << 0u;
-inline constexpr auto kernel_feature_node_emission = 1u << 1u;
-inline constexpr auto kernel_feature_node_volume = 1u << 2u;
-inline constexpr auto kernel_feature_node_bump = 1u << 3u;
-inline constexpr auto kernel_feature_node_bump_state = 1u << 4u;
-inline constexpr auto kernel_feature_node_voronoi_extra = 1u << 5u;
-inline constexpr auto kernel_feature_node_raytrace = 1u << 6u;
-inline constexpr auto kernel_feature_node_aov = 1u << 7u;
-inline constexpr auto kernel_feature_node_light_path = 1u << 8u;
-inline constexpr auto kernel_feature_node_principled_hair = 1u << 9u;
-inline constexpr auto kernel_feature_node_portal = 1u << 10u;
-
 // Host graph compiler corresponding to Cycles 5.2.1 scene/SVMCompiler. Node
 // emission stays on GraphNode::compile(SVMCompiler &), so virtual dispatch is
 // resolved while constructing the bytecode and never reaches a device kernel.
