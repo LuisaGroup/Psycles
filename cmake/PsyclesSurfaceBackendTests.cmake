@@ -885,6 +885,24 @@ if(TEST psycles.luisa_cycles_svm_normal_map_tangent_vk)
 endif()
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_closure_pool_tests
+    SOURCE tests/test_luisa_cycles_svm_closure_pool.cpp
+    TEST_STEM luisa_cycles_svm_closure_pool
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(
+    psycles_luisa_cycles_svm_closure_pool_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+target_compile_definitions(
+    psycles_luisa_cycles_svm_closure_pool_tests PRIVATE
+    PSYCLES_CLOSURE_POOL_ORACLE_PATH="${PROJECT_SOURCE_DIR}/tests/data/cycles_svm_closure_pool.txt")
+if(TEST psycles.luisa_cycles_svm_closure_pool_vk)
+    set_tests_properties(
+        psycles.luisa_cycles_svm_closure_pool_vk
+        PROPERTIES ENVIRONMENT
+            "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_closure_tests
     SOURCE tests/test_luisa_cycles_svm_closure.cpp
     TEST_STEM luisa_cycles_svm_closure

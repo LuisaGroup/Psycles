@@ -656,12 +656,14 @@ struct MicrofacetF82TintClosure {
 };
 
 /* Device-local realization of ShaderData::closure[], num_closure and
- * num_closure_left. Storage is SoA, but its state machine is exactly Cycles'
- * prefix allocator: successful allocations append one common record, extra
- * payloads belong to the record's runtime ClosureType, and only [0, count)
- * is observable. */
+ * num_closure_left. Ordinary closures grow from the front of one pool;
+ * extra payloads occupy its tail, exactly as in Cycles. The 80-byte HIP
+ * records retain Cycles' field offsets, with pointer fields projected as
+ * pool-slot indices. Only initialized fields of live records are observable. */
 class ClosurePool final {
 public:
+  enum class ExtraPayload { microfacet, huang_hair };
+
   struct Allocation {
     luisa::compute::UInt index;
     luisa::compute::Bool valid;
@@ -669,23 +671,30 @@ public:
 
 private:
   std::size_t _capacity;
-  luisa::compute::Local<luisa::float4> _weight_and_sample;
-  luisa::compute::Local<luisa::float4> _normal;
-  luisa::compute::Local<luisa::uint> _type;
-  /* ShaderClosure is a tagged union in Cycles. These SoA rows are the same
-   * union, not one allocation per closure family. The current largest live
-   * member is MicrofacetBsdf plus its discriminated Fresnel extra payload;
-   * Oren-Nayar and Sheen reuse its prefix rows. */
-  luisa::compute::Local<luisa::float4> _payload0;
-  luisa::compute::Local<luisa::float4> _payload1;
-  luisa::compute::Local<luisa::float4> _payload2;
-  luisa::compute::Local<luisa::float4> _payload3;
-  luisa::compute::Local<luisa::float4> _payload4;
-  luisa::compute::Local<luisa::float4> _payload5;
-  luisa::compute::Local<luisa::float4> _payload6;
-  luisa::compute::Local<luisa::uint> _payload_tag;
+  // uint4 gives each record Cycles' 16-byte alignment. Scalar lvalue access
+  // avoids reading or overwriting neighboring, possibly uninitialized fields.
+  luisa::compute::Local<luisa::uint4> _storage;
   luisa::compute::UInt _count;
   luisa::compute::UInt _left;
+
+  [[nodiscard]] luisa::compute::UInt load_word(
+      luisa::compute::Expr<std::uint32_t> slot,
+      std::uint32_t byte_offset) const noexcept;
+  void store_word(luisa::compute::Expr<std::uint32_t> slot,
+                  std::uint32_t byte_offset,
+                  luisa::compute::Expr<std::uint32_t> value) noexcept;
+  [[nodiscard]] luisa::compute::Float load_float(
+      luisa::compute::Expr<std::uint32_t> slot,
+      std::uint32_t byte_offset) const noexcept;
+  void store_float(luisa::compute::Expr<std::uint32_t> slot,
+                   std::uint32_t byte_offset,
+                   luisa::compute::Expr<float> value) noexcept;
+  [[nodiscard]] luisa::compute::Float3 load_float3(
+      luisa::compute::Expr<std::uint32_t> slot,
+      std::uint32_t byte_offset) const noexcept;
+  void store_float3(luisa::compute::Expr<std::uint32_t> slot,
+                    std::uint32_t byte_offset,
+                    luisa::compute::Expr<luisa::float3> value) noexcept;
 
 public:
   explicit ClosurePool(std::size_t capacity) noexcept;
@@ -706,7 +715,8 @@ public:
    * preceding ordinary allocation identified by owner. */
   [[nodiscard]] luisa::compute::Bool
   allocate_extra(const Allocation &owner,
-                 luisa::compute::Expr<std::uint32_t> slot_count) noexcept;
+                 luisa::compute::Expr<std::uint32_t> slot_count,
+                 ExtraPayload payload = ExtraPayload::microfacet) noexcept;
   /* Exact inverse of a successful ordinary+extra allocation. This is used by
    * Huang setup when an ellipse hit lies outside its projected radius. */
   void rollback_with_extra(
