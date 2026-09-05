@@ -31,6 +31,30 @@ struct AovClosureExpression {
     Expr<float> roughness;
 };
 
+[[nodiscard]] Float roughness_pass_value(
+    UInt type, Expr<float> roughness) noexcept {
+    // Cycles bsdf_get_roughness_pass_squared(), after the pass's two square
+    // roots. The common post-setup record already stores that convention.
+    // Keep the rough-diffuse override ahead of the diffuse skip, and use
+    // CLOSURE_IS_BSDF_MICROFACET's full intervals (including multi GGX glass).
+    const auto microfacet =
+        ((type >= cycles_closure::type_microfacet_ggx) &
+         (type <= cycles_closure::type_ashikhmin_shirley)) |
+        ((type >= cycles_closure::type_microfacet_beckmann_refraction) &
+         (type <= cycles_closure::type_thin_glass_transmission)) |
+        cycles_closure::is_glass(type);
+    const auto singular =
+        (type == cycles_closure::type_transparent) |
+        (type == cycles_closure::type_ray_portal);
+    const auto oren_family =
+        (type == cycles_closure::type_oren_nayar) |
+        (type == cycles_closure::type_rough_translucent);
+    auto value = select(1.0f, 0.0f, singular);
+    value = select(value, roughness, microfacet);
+    value = select(value, -1.0f, cycles_closure::is_bsdf_diffuse(type));
+    return select(value, roughness, oren_family);
+}
+
 template<typename Closure>
 [[nodiscard]] luisa::compute::Var<SurfaceAovContributionCall>
 aov_contribution(
@@ -138,9 +162,13 @@ aov_contribution(
         glossy_weight * glossy_normal;
     result.total_weight =
         diffuse_weight + glossy_weight;
-    result.roughness_weight = glossy_weight;
-    result.roughness = glossy_weight * select(
-        closure.roughness, 1.0f, is_ashikhmin | is_hair);
+    const auto roughness_value = roughness_pass_value(type, closure.roughness);
+    const auto has_roughness =
+        cycles_closure::is_bsdf(type) & (roughness_value >= 0.0f);
+    result.roughness_weight = select(
+        0.0f, closure_pass_weight, has_roughness);
+    result.roughness = select(
+        0.0f, closure_pass_weight * roughness_value, has_roughness);
     return result;
 }
 
