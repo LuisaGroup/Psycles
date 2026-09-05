@@ -87,7 +87,7 @@ struct DirectLightShadowStep {
     Float light_terminate_sample, Float inverse_threshold) noexcept;
 
 struct DirectLightTaskEvaluator {
-  std::shared_ptr<const StoredShadowIntersectionComponent> intersect_shadow;
+  std::shared_ptr<const ShadowIntersectionComponent> intersect_shadow;
   EvaluateShadowSurfaceCallable shade_shadow_surface;
   TraceShadowCallable trace_shadow;
   LightSampleRouletteCallable light_sample_roulette;

@@ -2,11 +2,9 @@
 
 #include "path_kernel_builder.h"
 #include "path_kernel_direct_light_queue.h"
-#include "path_kernel_shadow_storage.h"
 #include "path_kernel_transitions.h"
 #include "sample_dispatch_partition.h"
 
-#include <limits>
 #include <utility>
 
 #include <luisa/core/logging.h>
@@ -35,41 +33,17 @@ template <typename... Args> struct RenderSchedulerTypes<void(Args...)> {
 
 using RenderSchedulers = RenderSchedulerTypes<RenderKernelSignature>;
 
-struct CoroutineShadowPath {
-    PathKernelConfig path;
-    std::shared_ptr<const ShadowIntersectionBatchStorage> storage;
-    std::uint32_t capacity{};
-};
-
-[[nodiscard]] CoroutineShadowPath make_coroutine_shadow_path(
-    luisa::compute::Device &device, const PathKernelConfig &path,
-    std::uint32_t capacity) {
-    LUISA_ASSERT(capacity != 0u,
-                 "Coroutine shadow storage capacity must be positive.");
-    auto storage =
-        std::make_shared<ShadowIntersectionBatchStorage>(device, capacity);
+[[nodiscard]] PathKernelConfig make_local_shadow_path(
+    const PathKernelConfig &path) {
     auto scheduled_path = path;
+    // The traversal returns a complete bounded batch. Coro lowering owns its
+    // cross-stage lifetime; no second invocation-indexed hit buffer is needed.
     auto shadow = make_shadow_trace_callables(
-        scheduled_path.scene, scheduled_path.light_transport.safe_normalize,
-        storage);
+        scheduled_path.scene, scheduled_path.light_transport.safe_normalize);
     scheduled_path.intersect_shadow = std::move(shadow.intersect);
     scheduled_path.shade_shadow_surface = std::move(shadow.shade_surface);
     scheduled_path.trace_shadow = std::move(shadow.trace);
-    return {.path = std::move(scheduled_path),
-            .storage = std::move(storage),
-            .capacity = capacity};
-}
-
-[[nodiscard]] std::uint32_t align_worker_capacity(
-    std::uint32_t count, std::uint32_t block_size) noexcept {
-    const auto aligned =
-        (static_cast<std::uint64_t>(count) + block_size - 1u) / block_size *
-        block_size;
-    LUISA_ASSERT(aligned <= std::numeric_limits<std::uint32_t>::max(),
-                 "Shadow worker capacity {} aligned to block size {} "
-                 "overflows uint32.",
-                 count, block_size);
-    return static_cast<std::uint32_t>(aligned);
+    return scheduled_path;
 }
 
 template<typename Program>
@@ -247,25 +221,12 @@ class CoroutineExecutor final : public PathKernelExecutorImpl {
 private:
     LuisaPathScheduler _scheduler_kind;
     std::unique_ptr<RenderSchedulers::Base> _scheduler;
-    std::shared_ptr<const ShadowIntersectionBatchStorage> _shadow_storage;
-    std::uint32_t _shadow_storage_capacity{};
-    std::uint32_t _shadow_storage_block_size{};
 
 public:
   CoroutineExecutor(LuisaPathScheduler scheduler_kind,
-                    std::unique_ptr<RenderSchedulers::Base> scheduler,
-                    std::shared_ptr<const ShadowIntersectionBatchStorage>
-                        shadow_storage,
-                    std::uint32_t shadow_storage_capacity,
-                    std::uint32_t shadow_storage_block_size) noexcept
+                    std::unique_ptr<RenderSchedulers::Base> scheduler) noexcept
       : _scheduler_kind{scheduler_kind},
-        _scheduler{std::move(scheduler)},
-        _shadow_storage{std::move(shadow_storage)},
-        _shadow_storage_capacity{shadow_storage_capacity},
-        _shadow_storage_block_size{shadow_storage_block_size} {
-        LUISA_ASSERT(shadow_storage_block_size != 0u,
-                     "Coroutine shadow-storage block size must be positive.");
-    }
+        _scheduler{std::move(scheduler)} {}
 
   [[nodiscard]] LuisaPathScheduler scheduler() const noexcept override {
         return _scheduler_kind;
@@ -273,18 +234,8 @@ public:
 
   void dispatch(luisa::compute::Stream &stream,
         const PathKernelDispatch &dispatch) noexcept override {
-        LUISA_ASSERT(_shadow_storage != nullptr &&
-                         _shadow_storage->capacity() ==
-                             _shadow_storage_capacity,
-                     "Coroutine shadow storage lifetime/capacity invariant "
-                     "was violated.");
-        auto scheduled_dispatch = dispatch;
-        scheduled_dispatch.parameters.shadow_storage_capacity =
-            _shadow_storage_capacity;
-        scheduled_dispatch.parameters.shadow_storage_block_size =
-            _shadow_storage_block_size;
         auto command =
-            bind_path_program(*_scheduler, scheduled_dispatch)
+            bind_path_program(*_scheduler, dispatch)
                 .dispatch(dispatch.width, dispatch.height, dispatch.samples);
         command(stream);
     }
@@ -360,10 +311,9 @@ build_path_kernel_executor(luisa::compute::Device &device,
         case LuisaPathScheduler::wavefront: {
     LUISA_ASSERT(config.wavefront_frame_capacity != 0u,
                 "Wavefront frame capacity must be positive.");
-    auto shadow_path = make_coroutine_shadow_path(
-        device, path, config.wavefront_frame_capacity);
+    auto shadow_path = make_local_shadow_path(path);
     auto coroutine =
-        build_cycles_stage_coroutine(shadow_path.path, config.scheduler);
+        build_cycles_stage_coroutine(shadow_path, config.scheduler);
     LUISA_INFO("Psycles wavefront path coroutine: subroutines={} "
                 "frame_fields={} frame_bytes={} capacity={}.",
                 coroutine.subroutine_count(),
@@ -378,16 +328,14 @@ build_path_kernel_executor(luisa::compute::Device &device,
     auto scheduler = std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);
     return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
-        config.scheduler, std::move(scheduler), std::move(shadow_path.storage),
-        shadow_path.capacity, config.wavefront_execution_block_size)};
+        config.scheduler, std::move(scheduler))};
         }
         case LuisaPathScheduler::wavefront_graph: {
             LUISA_ASSERT(config.wavefront_frame_capacity != 0u,
                          "Graph-wavefront frame capacity must be positive.");
-            auto shadow_path = make_coroutine_shadow_path(
-                device, path, config.wavefront_frame_capacity);
+            auto shadow_path = make_local_shadow_path(path);
             auto coroutine = build_cycles_stage_coroutine(
-                shadow_path.path, config.scheduler);
+                shadow_path, config.scheduler);
             luisa::compute::coro::GraphWavefrontCoroSchedulerConfig
                 scheduler_config;
             scheduler_config.thread_count = config.wavefront_frame_capacity;
@@ -414,7 +362,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
             const auto has_surface_queue_hint =
                 config.wavefront_graph_selective_scheduling &&
                 configure_surface_queue_hint(
-                    shadow_path.path, coroutine, scheduler_config);
+                    shadow_path, coroutine, scheduler_config);
             scheduler_config.shader_option = config.shader_option;
             auto scheduler =
                 std::make_unique<RenderSchedulers::GraphWavefront>(
@@ -439,16 +387,12 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 has_surface_queue_hint,
                 path.scene->surfaces.size());
             return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
-                config.scheduler, std::move(scheduler),
-                std::move(shadow_path.storage), shadow_path.capacity,
-                config.wavefront_execution_block_size)};
+                config.scheduler, std::move(scheduler))};
         }
         case LuisaPathScheduler::wavefront_staged: {
     LUISA_ASSERT(config.wavefront_frame_capacity != 0u,
                 "Staged wavefront frame capacity must be positive.");
-    auto shadow_path = make_coroutine_shadow_path(
-        device, path, config.wavefront_frame_capacity);
-    auto &staged_path = shadow_path.path;
+    auto staged_path = make_local_shadow_path(path);
     DirectLightTaskQueueBinding direct_light_queue;
     const auto stage_plan = make_path_kernel_scene_stage_plan(
         path.next_event_estimation,
@@ -494,8 +438,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
                !scheduler->config().hint_fields.empty(),
                direct_light_queue.work != nullptr);
     return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
-        config.scheduler, std::move(scheduler), std::move(shadow_path.storage),
-        shadow_path.capacity, config.wavefront_execution_block_size)};
+        config.scheduler, std::move(scheduler))};
         }
         case LuisaPathScheduler::persistent: {
     LUISA_ASSERT(config.persistent_worker_count != 0u,
@@ -504,12 +447,9 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 "Persistent block size must be positive.");
     LUISA_ASSERT(config.persistent_fetch_size != 0u,
                 "Persistent fetch size must be positive.");
-    const auto shadow_capacity = align_worker_capacity(
-        config.persistent_worker_count, config.persistent_block_size);
-    auto shadow_path =
-        make_coroutine_shadow_path(device, path, shadow_capacity);
+    auto shadow_path = make_local_shadow_path(path);
     auto coroutine =
-        build_cycles_stage_coroutine(shadow_path.path, config.scheduler);
+        build_cycles_stage_coroutine(shadow_path, config.scheduler);
     luisa::compute::coro::PersistentThreadsCoroSchedulerConfig scheduler_config;
     scheduler_config.thread_count = config.persistent_worker_count;
     scheduler_config.block_size = config.persistent_block_size;
@@ -535,8 +475,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 scheduler->config().global_memory_ext,
                 scheduler->config().global_memory_frames);
     return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
-        config.scheduler, std::move(scheduler), std::move(shadow_path.storage),
-        shadow_path.capacity, scheduler_config.block_size)};
+        config.scheduler, std::move(scheduler))};
         }
     }
   LUISA_ERROR_WITH_LOCATION("Invalid Psycles path scheduler value {}.",

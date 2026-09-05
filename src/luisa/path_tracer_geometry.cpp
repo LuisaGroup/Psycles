@@ -32,7 +32,11 @@ void sort_shadow_intersection_batch(
     compare_exchange(1u, 2u);
 }
 
-StoredShadowIntersectionComponent::StoredShadowIntersectionComponent(
+ShadowIntersectionComponent::ShadowIntersectionComponent(
+    LocalShadowIntersectionCallable intersect) noexcept
+    : _intersect{std::move(intersect)} {}
+
+ShadowIntersectionComponent::ShadowIntersectionComponent(
     std::shared_ptr<const ShadowIntersectionBatchStorage> storage,
     IntersectShadowCallable intersect) noexcept
     : _storage{std::move(storage)}, _intersect{std::move(intersect)} {
@@ -40,7 +44,7 @@ StoredShadowIntersectionComponent::StoredShadowIntersectionComponent(
                  "Stored shadow intersection component requires storage.");
 }
 
-Var<ShadowIntersectionBatchCall> StoredShadowIntersectionComponent::collect(
+Var<ShadowIntersectionBatchCall> ShadowIntersectionComponent::collect(
     Var<luisa::compute::Ray> shadow_ray,
     Expr<std::uint32_t> source_object,
     Expr<std::uint32_t> source_primitive,
@@ -49,11 +53,16 @@ Var<ShadowIntersectionBatchCall> StoredShadowIntersectionComponent::collect(
     Expr<std::uint32_t> transparent_maximum,
     Expr<std::uint32_t> storage_capacity,
     Expr<std::uint32_t> storage_block_size) const noexcept {
+    if (!_storage) {
+        return std::get<LocalShadowIntersectionCallable>(_intersect)(
+            shadow_ray, source_object, source_primitive, light_object,
+            light_primitive, transparent_maximum);
+    }
     // The outer kernel owns launch geometry. Its explicit runtime stride makes
     // this map injective over physical lanes; the callable receives the
     // already-proved storage identity and cannot inspect launch metadata.
     const auto invocation = shadow_storage_invocation(storage_block_size);
-    const auto summary = _intersect(
+    const auto summary = std::get<IntersectShadowCallable>(_intersect)(
         shadow_ray, source_object, source_primitive, light_object,
         light_primitive, transparent_maximum, invocation, storage_capacity);
     return _storage->materialize(invocation, summary, shadow_ray->t_max(),
@@ -61,16 +70,13 @@ Var<ShadowIntersectionBatchCall> StoredShadowIntersectionComponent::collect(
 }
 
 const IntersectShadowCallable &
-StoredShadowIntersectionComponent::summary_callable() const noexcept {
-    return _intersect;
+ShadowIntersectionComponent::summary_callable() const noexcept {
+    LUISA_ASSERT(_storage != nullptr,
+                 "Local shadow traversal does not have a summary callable.");
+    return std::get<IntersectShadowCallable>(_intersect);
 }
 
 namespace {
-
-using LocalShadowIntersectionCallable =
-    Callable<ShadowIntersectionBatchCall(
-        luisa::compute::Ray, luisa::uint, luisa::uint, luisa::uint,
-        luisa::uint, luisa::uint)>;
 
 [[nodiscard]] EvaluateShadowSurfaceCallable
 make_evaluate_shadow_surface_callable(
@@ -161,20 +167,7 @@ ShadowTraceCallables make_shadow_trace_callables(
             make_scene_traversal_stage_plan(
                 scene->geometries.size(),
                 scene->curve_geometries.size()));
-    const auto local_intersection = LocalShadowIntersectionCallable{
-        [scene, traversal](
-            Var<luisa::compute::Ray> shadow_ray,
-            UInt source_object, UInt source_primitive,
-            UInt light_object, UInt light_primitive,
-            UInt transparent_maximum) noexcept {
-          return traversal->collect_shadow(
-              scene, shadow_ray, shadow_visibility,
-              {.object = source_object, .primitive = source_primitive},
-              {.object = light_object, .primitive = light_primitive},
-              transparent_maximum);
-        }};
-    std::shared_ptr<const StoredShadowIntersectionComponent>
-        stored_intersection;
+    std::shared_ptr<const ShadowIntersectionComponent> intersection;
     if (storage) {
       auto captured_storage = storage;
       IntersectShadowCallable intersect_summary =
@@ -191,13 +184,27 @@ ShadowTraceCallables make_shadow_trace_callables(
                 transparent_maximum, *captured_storage, storage_invocation,
                 storage_capacity);
           };
-      stored_intersection =
-          std::make_shared<StoredShadowIntersectionComponent>(
+      intersection =
+          std::make_shared<ShadowIntersectionComponent>(
               std::move(storage), std::move(intersect_summary));
+    } else {
+      auto intersect_local = LocalShadowIntersectionCallable{
+          [scene, traversal](
+              Var<luisa::compute::Ray> shadow_ray,
+              UInt source_object, UInt source_primitive,
+              UInt light_object, UInt light_primitive,
+              UInt transparent_maximum) noexcept {
+            return traversal->collect_shadow(
+                scene, shadow_ray, shadow_visibility,
+                {.object = source_object, .primitive = source_primitive},
+                {.object = light_object, .primitive = light_primitive},
+                transparent_maximum);
+          }};
+      intersection = std::make_shared<ShadowIntersectionComponent>(
+          std::move(intersect_local));
     }
     TraceShadowCallable trace_shadow =
-        [stored_intersection, local_intersection,
-         evaluate_shadow_surface](
+        [intersection, evaluate_shadow_surface](
             Var<luisa::compute::Ray> shadow_ray,
             Float ray_dP,
             Float ray_dD,
@@ -228,16 +235,10 @@ ShadowTraceCallables make_shadow_trace_callables(
               const auto remaining =
                   transparent_maximum -
                   min(transparent_depth, transparent_maximum);
-              auto batch = stored_intersection
-                               ? stored_intersection->collect(
-                                     shadow_ray, source_object,
-                                     source_primitive, light_object,
-                                     light_primitive, remaining,
-                                     storage_capacity, storage_block_size)
-                               : local_intersection(
-                                     shadow_ray, source_object,
-                                     source_primitive, light_object,
-                                     light_primitive, remaining);
+              auto batch = intersection->collect(
+                  shadow_ray, source_object, source_primitive, light_object,
+                  light_primitive, remaining, storage_capacity,
+                  storage_block_size);
               sort_shadow_intersection_batch(batch);
               $if(batch->blocked != 0u) {
                 transmittance = make_float3(0.0f);
@@ -297,7 +298,7 @@ ShadowTraceCallables make_shadow_trace_callables(
             result->first_barycentric = first_barycentric;
             return result;
         };
-    return {.intersect = std::move(stored_intersection),
+    return {.intersect = std::move(intersection),
             .shade_surface = std::move(evaluate_shadow_surface),
             .trace = std::move(trace_shadow)};
 }

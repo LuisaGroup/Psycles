@@ -98,10 +98,10 @@ struct PathKernelConfig {
     LightTreeCallables light_tree;
     SurfaceCallables surfaces;
     EnvironmentCallables environment;
-    // Present only for coroutine kernels whose INTERSECT_SHADOW stage owns
-    // external invocation-local hit storage. Megakernels keep their bounded
-    // hit batch local inside the synchronous trace callable.
-    std::shared_ptr<const StoredShadowIntersectionComponent> intersect_shadow;
+    // Returns the bounded hit batch as a complete value. Split kernels retain
+    // that value across INTERSECT_SHADOW -> SHADE_SHADOW; synchronous consumers
+    // keep it local. Storage policy is selected while recording the DSL.
+    std::shared_ptr<const ShadowIntersectionComponent> intersect_shadow;
     EvaluateShadowSurfaceCallable shade_shadow_surface;
     TraceShadowCallable trace_shadow;
 };

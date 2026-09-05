@@ -250,6 +250,8 @@ traversal_xir_shape(const std::shared_ptr<LuisaSceneData> &scene,
 
 int main(int argc, char **argv) {
   const auto backend = std::string_view{argc > 1 ? argv[1] : "fallback"};
+  const auto local_shadow_hits =
+      argc > 2 && std::string_view{argv[2]} == "local";
   Context context{argv[0]};
   auto device = context.create_device(backend);
   auto stream = device.create_stream();
@@ -1125,22 +1127,30 @@ int main(int argc, char **argv) {
                                 dot(selected, selected) > 1.0e-20f));
       };
   const auto shadow_callables = make_shadow_trace_callables(
-      scene, safe_normalize, shadow_batch_storage);
-  const auto summary_function =
-      shadow_callables.intersect->summary_callable().function();
-  const auto summary_has_batch_local = std::any_of(
-      summary_function.local_variables().begin(),
-      summary_function.local_variables().end(),
-      [](const auto &variable) noexcept {
-        return variable.type() == Type::of<ShadowIntersectionBatchCall>();
-      });
-  if (summary_function.return_type() !=
-          Type::of<ShadowIntersectionSummaryCall>() ||
-      summary_has_batch_local) {
-    std::cerr << "stored shadow traversal leaked the four-hit batch into "
-                 "its callable ABI on "
+      scene, safe_normalize,
+      local_shadow_hits ? nullptr : shadow_batch_storage);
+  if (!shadow_callables.intersect) {
+    std::cerr << "split shadow traversal has no local intersection component on "
               << backend << '\n';
     return EXIT_FAILURE;
+  }
+  if (!local_shadow_hits) {
+    const auto summary_function =
+        shadow_callables.intersect->summary_callable().function();
+    const auto summary_has_batch_local = std::any_of(
+        summary_function.local_variables().begin(),
+        summary_function.local_variables().end(),
+        [](const auto &variable) noexcept {
+          return variable.type() == Type::of<ShadowIntersectionBatchCall>();
+        });
+    if (summary_function.return_type() !=
+            Type::of<ShadowIntersectionSummaryCall>() ||
+        summary_has_batch_local) {
+      std::cerr << "stored shadow traversal leaked the four-hit batch into "
+                   "its callable ABI on "
+                << backend << '\n';
+      return EXIT_FAILURE;
+    }
   }
   auto shadow_callable_output =
       device.create_buffer<luisa::float4>(shadow_batch_lane_count);
@@ -1176,9 +1186,13 @@ int main(int argc, char **argv) {
         $else {
           $suspend("shadow-query-odd");
         };
+        // Both queues contain empty, partial, full, and overflow batches.
+        // Distinct logical rays make a physical-lane mix-up observable after
+        // compaction. The offset avoids backend-dependent exact endpoints.
+        const auto skipped = ((dispatch_x() / 2u) % 4u) * 2u;
         const auto ray = make_ray(make_float3(10.0f, 0.0f, 0.0f),
                                   make_float3(0.0f, 0.0f, 1.0f),
-                                  0.0f, 10.0f);
+                                  cast<float>(skipped) + 0.125f, 10.0f);
         auto batch = stored_intersection->collect(
             ray, invalid_primitive, invalid_primitive,
             invalid_primitive, invalid_primitive, 8u, runtime_capacity,
@@ -1406,11 +1420,25 @@ int main(int argc, char **argv) {
   }
   for (auto lane = std::size_t{0u}; lane < shadow_batch_lane_count; ++lane) {
     const auto record_base = lane * shadow_coro_record_count;
+    const auto skipped = ((lane / 2u) % 4u) * 2u;
+    const auto total = 6u - skipped;
+    const auto count = std::min(total, shadow_intersection_batch_capacity);
+    std::array<luisa::float4, 5u> expected_coro;
+    for (auto index = std::size_t{0u}; index < 4u; ++index) {
+      const auto distance = static_cast<float>(skipped + index + 1u);
+      expected_coro[index] = index < count
+          ? make_float4(distance, 14.0f - distance, 0.0f, surface_hit)
+          : make_float4(10.0f, static_cast<float>(invalid_primitive),
+                        static_cast<float>(invalid_primitive),
+                        static_cast<float>(HitType::Miss));
+    }
+    expected_coro[4u] = make_float4(
+        static_cast<float>(count), static_cast<float>(total), 0.0f, 0.0f);
     for (auto index = std::size_t{0u}; index < 5u; ++index) {
       if (!equal_record(shadow_coro_actual[record_base + index],
-                        shadow_batch_expected[index])) {
+                        expected_coro[index])) {
         const auto value = shadow_coro_actual[record_base + index];
-        const auto wanted = shadow_batch_expected[index];
+        const auto wanted = expected_coro[index];
         std::cerr << "shadow coroutine failed on " << backend << " at lane "
                   << lane << ", record " << index << ": got {" << value.x
                   << ", " << value.y << ", " << value.z << ", " << value.w
@@ -1421,7 +1449,8 @@ int main(int argc, char **argv) {
     }
     const auto identity = shadow_coro_actual[record_base + 5u];
     const auto expected_identity =
-        make_float4(static_cast<float>(lane), 4.0f, 6.0f, 0.0f);
+        make_float4(static_cast<float>(lane), static_cast<float>(count),
+                    static_cast<float>(total), 0.0f);
     if (!equal_record(identity, expected_identity)) {
       std::cerr << "shadow coroutine identity failed on " << backend
                 << " at lane " << lane << ": got {" << identity.x << ", "
@@ -1430,10 +1459,14 @@ int main(int argc, char **argv) {
       failed = true;
     }
     const auto before_suspend = shadow_coro_actual[record_base + 6u];
-    if (!near(before_suspend.x, 4.0f) ||
-        !near(before_suspend.y, 6.0f) ||
+    const auto valid_first = count == 0u
+        ? near(before_suspend.w, 10.0f)
+        : (before_suspend.w >= static_cast<float>(skipped + 1u) &&
+           before_suspend.w <= 6.0f);
+    if (!near(before_suspend.x, static_cast<float>(count)) ||
+        !near(before_suspend.y, static_cast<float>(total)) ||
         !near(before_suspend.z, 0.0f) ||
-        !(before_suspend.w >= 1.0f && before_suspend.w <= 6.0f)) {
+        !valid_first) {
       std::cerr << "shadow coroutine pre-suspend result failed on " << backend
                 << " at lane " << lane << ": got {" << before_suspend.x
                 << ", " << before_suspend.y << ", " << before_suspend.z

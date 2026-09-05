@@ -48,7 +48,7 @@ Var<ShadowIntersectionBatchCall> DirectLightTaskEvaluator::intersect(
     const Var<DirectLightTaskCall> &task,
     const Var<RenderKernelParameters> &parameters) const noexcept {
   LUISA_ASSERT(intersect_shadow != nullptr,
-               "Split shadow traversal requires external hit storage.");
+               "Split shadow traversal requires an intersection component.");
   const auto ray = make_ray(task.ray_origin, task.ray_direction,
                             task.ray_minimum, task.ray_maximum);
   const auto remaining =

@@ -43,6 +43,16 @@ target_include_directories(
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src/luisa")
 
+# Run the same traversal and reordered coroutine-edge assertions with local
+# hit storage as well as the invocation-indexed SoA used by the default case.
+foreach(_backend IN ITEMS fallback simd metal hip vk)
+    if(TARGET luisa-compute-backend-${_backend})
+        add_test(
+            NAME psycles.luisa_scene_traversal_local_${_backend}
+            COMMAND psycles_luisa_scene_traversal_tests ${_backend} local)
+    endif()
+endforeach()
+
 psycles_add_luisa_backend_test(
     TARGET
         psycles_luisa_transform_applied_surface_tests
