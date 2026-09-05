@@ -193,8 +193,12 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 task.ray_maximum = shadow_maximum;
                 task.ray_dP = shadow_differential.position;
                 task.ray_dD = shadow_differential.direction;
+                task.ray_time = surface.point.time;
                 task.light_terminate_sample =
                     bounce.random().light_terminate_sample;
+                task.sample_index = sample.sample_index;
+                task.rng_hash = sample.rng_hash;
+                task.rng_offset = sample.cycles_rng_offset;
                 task.source_object = source_object;
                 task.source_primitive = source_primitive;
                 task.light_object = transport.light_object;

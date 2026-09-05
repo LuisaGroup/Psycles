@@ -156,7 +156,10 @@ using luisa::compute::UInt;
 using luisa::compute::UInt2;
 using luisa::compute::Var;
 
-constexpr auto ray_maximum = 1.0e30f;
+// Cycles uses FLT_MAX both as the unbounded ray interval and as the observable
+// distant/background shader distance. A smaller finite sentinel changes the
+// SHADE_LIGHT_NEE sun setup branch and Light Path's Ray Length.
+constexpr auto ray_maximum = std::numeric_limits<float>::max();
 // Slot 9 stores the Cycles intersection representation of positions. It
 // aliases slot 1 for object-space geometry and points at host-transformed
 // vertices for single-user static meshes.
@@ -494,6 +497,10 @@ struct CyclesSvmNishitaImageRuntime {
 
 struct CyclesSvmRuntime {
     compiler::cycles_svm::CompiledShaderTable compilation;
+    // Exact Cycles Scene::dscene.data.kernel_features projection consumed as
+    // a host/JIT specialization constant. Shader features are known at
+    // compilation; geometry features are added transactionally at finalization.
+    std::uint32_t kernel_features{};
     compiler::cycles_svm::ObjectIdentityPlan object_identities;
     compiler::cycles_svm::ParticleTableImage particles;
     std::map<contract::MaterialId, std::uint32_t>

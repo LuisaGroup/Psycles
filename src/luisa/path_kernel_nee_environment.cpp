@@ -104,8 +104,14 @@ class EnvironmentDirectLightProvider final : public DirectLightProvider {
                      .emitter_kind = static_cast<std::uint32_t>(
                          sampling::LightDistributionEmitterKind::environment),
                      .emitter_index = selected_light.index,
-                     .light_object = surface_ray::invalid_primitive,
-                     .light_primitive = surface_ray::invalid_primitive,
+                     .light_object = UInt{
+                         config.scene->native_cycles_svm_surface
+                             ? config.scene->cycles_background_object_index
+                             : surface_ray::invalid_primitive},
+                     .light_primitive = UInt{
+                         config.scene->native_cycles_svm_surface
+                             ? config.scene->light_count
+                             : surface_ray::invalid_primitive},
                      .shader_flags =
                          config.scene->cycles_background_shader_flags,
                      .apply_mis = true,

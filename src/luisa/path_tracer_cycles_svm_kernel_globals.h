@@ -28,6 +28,12 @@ class PathCyclesSvmKernelGlobals final
   public:
     PathCyclesSvmKernelGlobals(
         std::shared_ptr<LuisaSceneData> scene,
+        const Var<RenderKernelParameters> &parameters,
+        CameraProjection camera_projection,
+        Expr<bool> reflective_caustics,
+        Expr<bool> refractive_caustics) noexcept;
+    PathCyclesSvmKernelGlobals(
+        std::shared_ptr<LuisaSceneData> scene,
         const SurfacePopulationContext &context) noexcept;
 
     [[nodiscard]] Bool caustics_reflective() const noexcept override;

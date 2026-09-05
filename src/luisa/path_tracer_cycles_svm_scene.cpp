@@ -287,6 +287,9 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
     diagnostic = runtime->compilation.table.diagnostic;
     return nullptr;
   }
+  runtime->kernel_features =
+      runtime->compilation.kernel_features |
+      compiler::cycles_svm::kernel_feature_path_tracing;
   if (!build_particle_table(*runtime, snapshot, diagnostic)) {
     return nullptr;
   }
@@ -490,6 +493,21 @@ bool finalize_cycles_svm_scene_runtime(
                              .object_buffer = std::move(object_buffer),
                              .object_flag_buffer =
                                  std::move(object_flag_buffer)});
+  auto kernel_features = runtime.kernel_features;
+  // Cycles Scene::update_kernel_features() derives hair shape features from
+  // instanced Geometry, not merely from every datablock present in the scene.
+  for (const auto &[instance_id, instance] : snapshot.instances) {
+    static_cast<void>(instance_id);
+    const auto curve = snapshot.curve_geometries.find(instance.geometry);
+    if (curve == snapshot.curve_geometries.end()) {
+      continue;
+    }
+    kernel_features |=
+        curve->second.shape == contract::CurveShape::ribbon
+            ? compiler::cycles_svm::kernel_feature_hair_ribbon
+            : compiler::cycles_svm::kernel_feature_hair_thick;
+  }
+  runtime.kernel_features = kernel_features;
   runtime.geometry = std::move(geometry_runtime);
   runtime.objects = std::move(object_runtime);
   return true;
