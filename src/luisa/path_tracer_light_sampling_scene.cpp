@@ -2,6 +2,7 @@
 
 #include "path_tracer_light_tree_scene.h"
 #include "path_tracer_mesh_light_scene.h"
+#include "path_tracer_cycles_svm_scene.h"
 
 #include <psycles/compiler/surface_program.h>
 #include <psycles/sampling/light_distribution.h>
@@ -19,7 +20,10 @@ namespace {
 
 [[nodiscard]] Vec3f emission_estimate(
     const LuisaSceneData &scene,
-    contract::MaterialId material) noexcept {
+    contract::MaterialId material) {
+    if (scene.native_cycles_svm_surface) {
+        return cycles_svm_material_metadata(scene, material).emission_estimate;
+    }
     const auto *compiled = scene.materials.find(material);
     return compiled == nullptr
                ? Vec3f{1.0f, 1.0f, 1.0f}
@@ -29,7 +33,7 @@ namespace {
 
 [[nodiscard]] Vec3f environment_emission_estimate(
     const contract::SceneSnapshot &snapshot,
-    const LuisaSceneData &scene) noexcept {
+    const LuisaSceneData &scene) {
     auto estimate = Vec3f{1.0f, 1.0f, 1.0f};
     if (snapshot.world_shader) {
         estimate = emission_estimate(scene, *snapshot.world_shader);
@@ -97,15 +101,10 @@ std::set<contract::MaterialId>
 collect_emission_sampling_materials(
     const LuisaSceneData &scene) {
     std::set<contract::MaterialId> result;
-    for (const auto &[material_id, material] :
-         scene.materials.materials()) {
-        static_cast<void>(material);
-        const auto binding =
-            scene.material_bindings.find(material_id);
-        if (binding != scene.material_bindings.end() &&
-            binding->second.emission_sampling !=
+    for (const auto &[material_id, binding] : scene.material_bindings) {
+        if (binding.emission_sampling !=
                 contract::EmissionSampling::none &&
-            (binding->second.flags & material_flag_may_emit) != 0u) {
+            (binding.flags & material_flag_may_emit) != 0u) {
             result.emplace(material_id);
         }
     }

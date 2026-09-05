@@ -58,6 +58,10 @@ struct CompiledShaderTable {
   // Parallel native DeviceScene::shaders image in the identical dense shader
   // index domain. Unrepresented source holes are byte-zero and unreachable.
   std::vector<KernelShader> kernel_shaders;
+  // Shader-owned host facts from the same graph traversal as the word image.
+  // Keep the identical dense index domain, including inert holes: scene
+  // consumers must not recover these facts from an unrelated lowering.
+  std::vector<ShaderCompileMetadata> shader_metadata;
   // Per source shader, including inert holes. Cycles derives geometry
   // attribute demand from each shader rather than from the scene-wide opcode
   // union; object/particle packing must make the same distinction.

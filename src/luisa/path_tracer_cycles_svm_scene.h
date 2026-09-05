@@ -9,6 +9,20 @@ namespace psycles::luisa_backend::detail {
 
 struct CyclesInstanceIntersectionPlan;
 
+// Checked lookup in the compiled Cycles used-shader domain. Missing native
+// state is an invalid scene, never permission to consult the legacy cache.
+[[nodiscard]] const compiler::cycles_svm::ShaderCompileMetadata &
+cycles_svm_material_metadata(const LuisaSceneData &scene,
+                             contract::MaterialId material);
+
+// Adapt native KernelShader flags to the existing geometry binding ABI.
+// Storage addresses remain renderer-owned; all shader semantics come from
+// the same table that will be uploaded for native SVM execution.
+[[nodiscard]] MaterialBinding make_cycles_svm_material_binding(
+    const LuisaSceneData &scene, contract::MaterialId material,
+    std::uint32_t surface_tag, std::uint32_t parameter_block,
+    std::uint32_t material_identity);
+
 // Compile the snapshot's Cycles used-shader domain directly from validated
 // source graphs. A retained legacy MaterialLibrary is neither a prerequisite
 // nor an authority for any shader image produced by this transaction.

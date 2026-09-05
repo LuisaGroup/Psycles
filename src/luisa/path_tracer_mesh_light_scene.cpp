@@ -1,6 +1,7 @@
 #include "path_tracer_mesh_light_scene.h"
 
 #include "path_tracer_scene_geometry.h"
+#include "path_tracer_cycles_svm_scene.h"
 
 #include <psycles/compiler/surface_program.h>
 
@@ -133,7 +134,10 @@ namespace {
 
 [[nodiscard]] Vec3f emission_estimate(
     const LuisaSceneData &scene,
-    contract::MaterialId material) noexcept {
+    contract::MaterialId material) {
+    if (scene.native_cycles_svm_surface) {
+        return cycles_svm_material_metadata(scene, material).emission_estimate;
+    }
     const auto *compiled = scene.materials.find(material);
     return compiled == nullptr
                ? Vec3f{1.0f, 1.0f, 1.0f}

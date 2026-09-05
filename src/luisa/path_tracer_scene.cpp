@@ -149,23 +149,25 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     std::set<contract::MaterialId> surface_bssrdf_bump_materials;
     const auto &reachable_surface_materials =
         material_reachability.surface_materials;
-    for (const auto &[material_id, material] :
-         data->materials.materials()) {
-        if (!reachable_surface_materials.contains(material_id)) {
-            continue;
+    for (const auto material_id : reachable_surface_materials) {
+        auto has_bssrdf = false;
+        auto has_bssrdf_bump = false;
+        if (data->native_cycles_svm_surface) {
+            const auto &metadata = cycles_svm_material_metadata(*data, material_id);
+            has_bssrdf = metadata.has_surface_bssrdf;
+            has_bssrdf_bump = metadata.has_bssrdf_bump;
+        } else {
+            const auto &material = data->materials.materials().at(material_id);
+            has_bssrdf = compiler::cycles_surface_has_bssrdf(
+                *material.surface_program(), material.parameters());
+            has_bssrdf_bump = compiler::cycles_surface_has_bssrdf_bump(
+                *material.surface_program(), material.parameters(),
+                snapshot.materials.at(material_id).displacement_method);
         }
-        const auto &source_material =
-            snapshot.materials.at(material_id);
-        const auto has_bssrdf = compiler::cycles_surface_has_bssrdf(
-            *material.surface_program(),
-            material.parameters());
         if (has_bssrdf) {
             surface_bssrdf_materials.emplace(material_id);
         }
-        if (compiler::cycles_surface_has_bssrdf_bump(
-                *material.surface_program(),
-                material.parameters(),
-                source_material.displacement_method)) {
+        if (has_bssrdf_bump) {
             surface_bssrdf_bump_materials.emplace(material_id);
         }
     }
@@ -255,28 +257,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         const auto capabilities =
             data->surfaces.capabilities(
                 surface_iter->second);
-        const auto emission_estimate =
-            compiler::estimate_surface_emission(
-                *material.surface_program(),
-                material.parameters());
-        const auto effective_emission_sampling =
-            compiler::resolve_cycles_emission_sampling(
-                snapshot.materials.at(id).emission_sampling,
-                emission_estimate);
-        // Cycles' SD_HAS_EMISSION describes endpoint shader evaluation and is
-        // independent of whether the same closure participates in NEE. An
-        // authored NONE/AUTO-below-threshold emitter must still be visible to
-        // indirect rays.
-        const auto may_emit = emission_estimate != Vec3f{};
-        const auto transparent_shadow =
-            capabilities.may_be_transparent &&
-            snapshot.materials.at(id).use_transparent_shadow;
-        const auto has_transparent_shadow =
-            transparent_shadow || capabilities.may_have_volume;
-        const auto emission_is_constant =
-            material.surface_program()
-                ->emission_evaluation() !=
-            compiler::EmissionEvaluationMode::deferred;
         if (capabilities.may_have_volume) {
             volume_capabilities
                 .merge_surface_flags(
@@ -284,34 +264,46 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     surface_iter->second,
                     *material.surface_program());
         }
-        data->material_bindings.emplace(
-            id,
-            MaterialBinding{
-                .surface_tag = surface_iter->second,
-                .parameter_block = base,
-                .cycles_shader_index =
-                    snapshot.materials.at(id).cycles_shader_index.value_or(
+        const auto identity =
+            static_cast<std::uint32_t>(data->material_bindings.size());
+        if (data->native_cycles_svm_surface) {
+            data->material_bindings.emplace(
+                id, make_cycles_svm_material_binding(
+                        *data, id, surface_iter->second, base, identity));
+        } else {
+            const auto &source = snapshot.materials.at(id);
+            const auto emission_estimate = compiler::estimate_surface_emission(
+                *material.surface_program(), material.parameters());
+            const auto effective_emission_sampling =
+                compiler::resolve_cycles_emission_sampling(
+                    source.emission_sampling, emission_estimate);
+            // Endpoint emission remains independent of participation in NEE.
+            const auto may_emit = emission_estimate != Vec3f{};
+            const auto has_transparent_shadow =
+                (capabilities.may_be_transparent && source.use_transparent_shadow) ||
+                capabilities.may_have_volume;
+            const auto emission_is_constant =
+                material.surface_program()->emission_evaluation() !=
+                compiler::EmissionEvaluationMode::deferred;
+            data->material_bindings.emplace(
+                id, MaterialBinding{
+                    .surface_tag = surface_iter->second,
+                    .parameter_block = base,
+                    .cycles_shader_index = source.cycles_shader_index.value_or(
                         cycles_shader_identity::invalid_index),
-                .material_identity =
-                    static_cast<std::uint32_t>(data->material_bindings.size()),
-                .flags =
-                    (capabilities.may_have_volume ? material_flag_has_volume
-                                                  : 0u) |
-                    (may_emit ? material_flag_may_emit : 0u) |
-                    (emission_is_constant ? material_flag_constant_emission
-                                          : 0u) |
-                    (snapshot.materials.at(id).use_bump_map_correction
-                         ? material_flag_use_bump_map_correction
-                         : 0u) |
-                    (surface_bssrdf_bump_materials.contains(id)
-                         ? material_flag_has_bssrdf_bump
-                         : 0u) |
-                    (has_transparent_shadow
-                         ? material_flag_has_transparent_shadow
-                         : 0u),
-                .emission_sampling =
-                    effective_emission_sampling,
-                .volume_sampling = snapshot.materials.at(id).volume_sampling});
+                    .material_identity = identity,
+                    .flags =
+                        (capabilities.may_have_volume ? material_flag_has_volume : 0u) |
+                        (may_emit ? material_flag_may_emit : 0u) |
+                        (emission_is_constant ? material_flag_constant_emission : 0u) |
+                        (source.use_bump_map_correction
+                             ? material_flag_use_bump_map_correction : 0u) |
+                        (surface_bssrdf_bump_materials.contains(id)
+                             ? material_flag_has_bssrdf_bump : 0u) |
+                        (has_transparent_shadow ? material_flag_has_transparent_shadow : 0u),
+                    .emission_sampling = effective_emission_sampling,
+                    .volume_sampling = source.volume_sampling});
+        }
         const auto &program = *material.surface_program();
         const auto scalar_parameter =
             [&](compiler::ValueExpressionId expression)
@@ -1837,7 +1829,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
 
     bool world_is_spatially_varying = false;
     if (snapshot.world_shader) {
-        if (const auto *world_material =
+        if (data->native_cycles_svm_surface) {
+            world_is_spatially_varying =
+                cycles_svm_material_metadata(*data, *snapshot.world_shader)
+                    .has_surface_spatial_varying;
+        } else if (const auto *world_material =
                 data->materials.find(*snapshot.world_shader)) {
             world_is_spatially_varying =
                 volume_capabilities

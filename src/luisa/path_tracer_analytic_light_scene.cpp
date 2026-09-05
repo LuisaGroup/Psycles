@@ -1,6 +1,7 @@
 #include "path_tracer_analytic_light_scene.h"
 
 #include "cycles_shader_identity.h"
+#include "path_tracer_cycles_svm_scene.h"
 
 #include <psycles/compiler/surface_program.h>
 
@@ -25,6 +26,9 @@ namespace {
                                              const contract::LightDesc &light) {
   if (!light.shader) {
     return {1.0f, 1.0f, 1.0f};
+  }
+  if (scene.native_cycles_svm_surface) {
+    return cycles_svm_material_metadata(scene, *light.shader).emission_estimate;
   }
   const auto *compiled = scene.materials.find(*light.shader);
   // A malformed reference must not silently remove a light. Scene

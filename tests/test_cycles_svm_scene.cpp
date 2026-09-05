@@ -245,6 +245,14 @@ void test_kernel_shader_image_matches_cycles_metadata() {
       "emission shader kernel features differ from Cycles");
   require(compiled.kernel_shaders.size() == 3u,
           "KernelShader image does not share the dense shader domain");
+  require(compiled.shader_metadata.size() == 3u &&
+              !compiled.shader_metadata[0u].has_surface &&
+              !compiled.shader_metadata[1u].has_surface &&
+              compiled.shader_metadata[2u].has_surface &&
+              compiled.shader_metadata[2u].emission_is_constant &&
+              compiled.shader_metadata[2u].emission_estimate ==
+                  psycles::Vec3f{1.0f, 2.0f, 4.0f},
+          "linked host metadata does not preserve shader identity and emission");
 
   constexpr std::array<std::uint32_t, 8u> zero_words{};
   require(std::bit_cast<std::array<std::uint32_t, 8u>>(
@@ -288,6 +296,8 @@ void test_kernel_shader_transparency_and_duplicate_contract() {
                  .volume_sampling = VolumeSampling::distance}}};
   const auto compiled = compile_shader_table(enabled);
   require(compiled.table.valid, compiled.table.diagnostic);
+  require(compiled.shader_metadata[0u].has_surface_transparent,
+          "scene linker discarded surface transparency metadata");
   constexpr auto transparent_features =
       kernel_feature_node_bsdf | kernel_feature_node_emission |
       kernel_feature_transparent;
@@ -364,6 +374,12 @@ void test_kernel_shader_volume_and_light_path_flags() {
                  .volume_interpolation = VolumeInterpolation::cubic}}};
   const auto volume_compiled = compile_shader_table(volume_units);
   require(volume_compiled.table.valid, volume_compiled.table.diagnostic);
+  const auto &volume_metadata = volume_compiled.shader_metadata[0u];
+  require(volume_metadata.has_volume && volume_metadata.has_volume_connected &&
+              volume_metadata.has_volume_spatial_varying &&
+              volume_metadata.has_volume_attribute_dependency &&
+              !volume_metadata.has_surface,
+          "scene linker discarded source volume facts");
   require_kernel_features(
       volume_compiled,
       kernel_feature_node_bsdf | kernel_feature_node_emission |
@@ -436,6 +452,9 @@ void test_kernel_shader_bump_flag_implications() {
                  .volume_sampling = VolumeSampling::distance}}};
   const auto surface_compiled = compile_shader_table(surface_units);
   require(surface_compiled.table.valid, surface_compiled.table.diagnostic);
+  require(surface_compiled.shader_metadata[0u].has_surface_bssrdf &&
+              surface_compiled.shader_metadata[0u].has_bssrdf_bump,
+          "scene linker discarded BSSRDF bump facts");
   require_kernel_features(
       surface_compiled,
       kernel_feature_node_bsdf | kernel_feature_node_emission |
