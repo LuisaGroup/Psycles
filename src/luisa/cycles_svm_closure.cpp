@@ -786,13 +786,11 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
       node_closure_bsdf_skip(cursor, closure_type);
     }
     $else {
-      if (shader_data.closure == nullptr) {
-        node_closure_bsdf_skip(cursor, closure_type);
-        supported = false;
-      } else {
-        node_principled_bsdf(kernel_globals, cursor, stack, mix_weight, false,
-                             shader_data, path_state, supported);
-      }
+      // Cycles evaluates Principled emission with num_closure_left == 0.
+      // Sheen/coat still use local BSDF values for layer attenuation, but
+      // neither their evaluation nor transparency requires a closure array.
+      node_principled_bsdf(kernel_globals, cursor, stack, mix_weight, false,
+                           shader_data, path_state, supported);
     };
     return;
   }

@@ -123,7 +123,6 @@ Float3 principled_sheen_setup(const KernelGlobals &kernel_globals,
                               Expr<luisa::float3> input_weight,
                               Expr<luisa::float3> normal,
                               Expr<float> roughness) noexcept {
-  auto &pool = *shader_data.closure;
   const Float3 weight = max(input_weight, make_float3(0.0f));
   const Float sample_weight = abs(average(weight));
   const Bool survives_cutoff =
@@ -145,27 +144,35 @@ Float3 principled_sheen_setup(const KernelGlobals &kernel_globals,
     const auto setup =
         sheen_setup_result(kernel_globals, shader_data, normal, roughness);
 
-    $if(!emission_path) {
-      pool.set_normal(allocated.index, normal);
-      pool.set_sheen_param(allocated.index, setup.param);
-    };
+    if (shader_data.closure != nullptr) {
+      auto &pool = *shader_data.closure;
+      $if(!emission_path) {
+        pool.set_normal(allocated.index, normal);
+        pool.set_sheen_param(allocated.index, setup.param);
+      };
+    }
 
     $if(setup.invalid) {
-      $if(!emission_path) {
-        /* bsdf_alloc already wrote CLOSURE_NONE. Sheen setup clears only the
-         * sample weight and leaves the consumed common slot observable. */
-        pool.set_sample_weight(allocated.index, 0.0f);
-      };
+      if (shader_data.closure != nullptr) {
+        $if(!emission_path) {
+          /* bsdf_alloc already wrote CLOSURE_NONE. Sheen setup clears only the
+           * sample weight and leaves the consumed common slot observable. */
+          shader_data.closure->set_sample_weight(allocated.index, 0.0f);
+        };
+      }
     }
     $else {
       layer_albedo = weight * setup.albedo;
-      $if(!emission_path) {
-        pool.set_type(allocated.index,
-                      static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID));
-        pool.set_weight(allocated.index, layer_albedo);
-        pool.set_sample_weight(allocated.index,
-                               sample_weight * setup.albedo);
-      };
+      if (shader_data.closure != nullptr) {
+        auto &pool = *shader_data.closure;
+        $if(!emission_path) {
+          pool.set_type(allocated.index,
+                        static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID));
+          pool.set_weight(allocated.index, layer_albedo);
+          pool.set_sample_weight(allocated.index,
+                                 sample_weight * setup.albedo);
+        };
+      }
       shader_data.flag |= shader_data_bsdf | shader_data_bsdf_has_eval;
     };
   };

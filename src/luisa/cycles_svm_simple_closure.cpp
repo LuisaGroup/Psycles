@@ -136,35 +136,40 @@ void translucent_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
 
 void transparent_setup(ShaderData &shader_data, const PathState &path_state,
                        Expr<luisa::float3> weight) noexcept {
-  auto &pool = *shader_data.closure;
   const Float sample_weight = abs(average(weight));
   $if(sample_weight >= CLOSURE_WEIGHT_CUTOFF) {
     shader_data.closure_transparent_extinction += weight;
     $if((shader_data.flag & shader_data_transparent) != 0u) {
-      UInt index = 0u;
-      Bool found = false;
-      $while((index < pool.count()) & !found) {
-        const auto closure = pool.common(index);
-        $if(closure.type ==
-            static_cast<std::uint32_t>(CLOSURE_BSDF_TRANSPARENT_ID)) {
-          pool.add_weight(index, weight);
-          pool.add_sample_weight(index, sample_weight);
-          found = true;
+      if (shader_data.closure != nullptr) {
+        auto &pool = *shader_data.closure;
+        UInt index = 0u;
+        Bool found = false;
+        $while((index < pool.count()) & !found) {
+          const auto closure = pool.common(index);
+          $if(closure.type ==
+              static_cast<std::uint32_t>(CLOSURE_BSDF_TRANSPARENT_ID)) {
+            pool.add_weight(index, weight);
+            pool.add_sample_weight(index, sample_weight);
+            found = true;
+          };
+          index += 1u;
         };
-        index += 1u;
-      };
+      }
     }
     $else {
       shader_data.flag |= shader_data_bsdf | shader_data_transparent;
-      const Bool terminating = (path_state.flag & path_ray_terminate) != 0u;
-      $if(terminating) { pool.set_left(1u); };
-      const auto allocated = pool.allocate(
-          static_cast<std::uint32_t>(CLOSURE_BSDF_TRANSPARENT_ID), weight);
-      $if(allocated.valid) {
-        pool.set_sample_weight(allocated.index, sample_weight);
-        pool.set_normal(allocated.index, shader_data.N);
+      if (shader_data.closure != nullptr) {
+        auto &pool = *shader_data.closure;
+        const Bool terminating = (path_state.flag & path_ray_terminate) != 0u;
+        $if(terminating) { pool.set_left(1u); };
+        const auto allocated = pool.allocate(
+            static_cast<std::uint32_t>(CLOSURE_BSDF_TRANSPARENT_ID), weight);
+        $if(allocated.valid) {
+          pool.set_sample_weight(allocated.index, sample_weight);
+          pool.set_normal(allocated.index, shader_data.N);
+        }
+        $elif(terminating) { pool.set_left(0u); };
       }
-      $elif(terminating) { pool.set_left(0u); };
     };
   };
 }
