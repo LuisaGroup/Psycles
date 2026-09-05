@@ -62,7 +62,8 @@ public:
     }
     if (!primitive_plan.empty()) {
       surface_geometry = make_surface_geometry_stage(primitive_plan);
-      if (config.staged_surface_sorting && !config.scene->surfaces.empty()) {
+      if (config.staged_surface_sorting &&
+          surface_queue_key_range(*config.scene) != 0u) {
         surface_queue_key = make_surface_queue_key_stage(primitive_plan);
       }
       surface_shading = make_surface_shading_stage();
@@ -220,13 +221,14 @@ void PathKernelPipeline::emit(
       // Suspending here keeps those large, short-lived values out of the
       // coroutine frame while separating traversal from shading.
       if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
-        // Resolve only the topology-deduplicated material tag here,
+        // Resolve only the evaluator's shader identity here,
         // after volume transport selected the surface path. Keeping
         // this recomputation at the cut avoids carrying it through
         // shade_volume while still giving the scheduler a coherence
         // key before closure population begins.
         if (_impl->surface_queue_key) {
-          const auto surface_queue_key = _impl->surface_queue_key->emit(bounce);
+          const auto surface_queue_key = _impl->surface_queue_key->emit(
+              sample.invocation.config.scene, bounce.hit);
           $suspend(path_transition::shade_surface,
                    coro_frame_export(path_transition::scheduler_hint,
                                      surface_queue_key));

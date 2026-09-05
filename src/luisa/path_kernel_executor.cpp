@@ -2,7 +2,9 @@
 
 #include "path_kernel_builder.h"
 #include "path_kernel_direct_light_queue.h"
+#include "path_kernel_surface_queue.h"
 #include "path_kernel_transitions.h"
+#include "cycles_surface_sort.h"
 #include "sample_dispatch_partition.h"
 
 #include <utility>
@@ -80,18 +82,19 @@ template<typename SchedulerConfig>
 [[nodiscard]] bool configure_surface_queue_hint(
     const PathKernelConfig &path, const RenderCoroutine &coroutine,
     SchedulerConfig &scheduler_config) noexcept {
-    const auto surface_count = path.scene->surfaces.size();
+    const auto surface_count = surface_queue_key_range(*path.scene);
     const auto enabled = path.staged_surface_sorting &&
                          surface_count != 0u &&
                          (!path.scene->geometries.empty() ||
                           !path.scene->curve_geometries.empty());
     if (!enabled) { return false; }
     validate_surface_queue_hint_abi(coroutine);
-    LUISA_ASSERT(surface_count <= std::numeric_limits<std::uint32_t>::max(),
-                 "Surface queue key range {} exceeds the uint32 scheduler ABI.",
-                 surface_count);
-    scheduler_config.hint_range = static_cast<std::uint32_t>(surface_count);
+    scheduler_config.hint_range = surface_count;
     scheduler_config.hint_fields = {path_transition::shade_surface};
+    if (path.scene->native_cycles_svm_surface) {
+        scheduler_config.hint_partition_size = cycles_surface_sort_partition_size(
+            scheduler_config.thread_count, surface_count);
+    }
     return true;
 }
 
@@ -385,7 +388,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 config.wavefront_counter_readback_pipeline_depth,
                 config.wavefront_tail_megakernel_threshold,
                 has_surface_queue_hint,
-                path.scene->surfaces.size());
+                scheduler_config.hint_range);
             return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
                 config.scheduler, std::move(scheduler))};
         }
@@ -409,7 +412,6 @@ build_path_kernel_executor(luisa::compute::Device &device,
     }
             auto coroutine =
                 build_cycles_stage_coroutine(staged_path, config.scheduler);
-    const auto surface_count = path.scene->surfaces.size();
     LUISA_INFO("Psycles staged wavefront path coroutine: "
                 "subroutines={} frame_fields={} frame_bytes={} capacity={}.",
                 coroutine.subroutine_count(),
@@ -432,9 +434,11 @@ build_path_kernel_executor(luisa::compute::Device &device,
     if (direct_light_queue.work) {
       scheduler->register_auxiliary_work(direct_light_queue.work);
     }
-    LUISA_INFO("Psycles staged surface queue: keys={} requested={} "
+    LUISA_INFO("Psycles staged surface queue: keys={} partition_size={} requested={} "
                "hint_sort={} direct_light_queue={}",
-               surface_count, path.staged_surface_sorting,
+               scheduler->config().hint_range,
+               scheduler->config().hint_partition_size,
+               path.staged_surface_sorting,
                !scheduler->config().hint_fields.empty(),
                direct_light_queue.work != nullptr);
     return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
