@@ -5,6 +5,7 @@
 #include "sample_dispatch_partition.h"
 #include "path_tracer_internal.h"
 
+#include <psycles/compiler/cycles_transform.h>
 #include <psycles/luisa/camera_sampling.h>
 #include <psycles/luisa/pixel_filter.h>
 #include <psycles/sampling/light_distribution.h>
@@ -284,7 +285,9 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
       .camera_aperture_ratio = camera_aperture_ratio,
       .pass_alpha_threshold = pass_alpha_threshold,
         .background = background,
-        .camera_transform = camera_transform};
+        .camera_transform = camera_transform,
+        .camera_inverse_transform = to_luisa(
+            compiler::cycles_inverse_affine_transform(scene->camera.transform))};
   auto light_transport = make_light_transport_callables(direct_light_sampling);
     auto light_distribution_sample_callable =
         make_light_distribution_sample_callable(scene);

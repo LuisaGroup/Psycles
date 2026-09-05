@@ -136,7 +136,7 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
       _caustics_reflective{reflective_caustics},
       _caustics_refractive{refractive_caustics},
       _camera_to_world{parameters.camera_transform},
-      _world_to_camera{inverse(parameters.camera_transform)} {
+      _world_to_camera{parameters.camera_inverse_transform} {
   LUISA_ASSERT(_scene && _scene->cycles_svm &&
                    _scene->cycles_svm->geometry &&
                    _scene->cycles_svm->objects,

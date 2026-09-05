@@ -382,7 +382,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
 
       const svm::TransformState transform_state{
           context.parameters.camera_transform,
-          inverse(context.parameters.camera_transform),
+          context.parameters.camera_inverse_transform,
           context.object_to_world,
           context.world_to_object};
       const svm::PathState path_state{
