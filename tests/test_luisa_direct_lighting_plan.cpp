@@ -329,9 +329,9 @@ int main(int argc, char **argv) {
     // ShadowIntersectionBatchCall is a transition-local value and must not be
     // reintroduced into this aggregate: a fused auxiliary consumer never
     // reads it, and a split coroutine needs it on exactly one edge.
-    if (luisa::compute::Type::of<DirectLightTaskCall>()->size() != 208u ||
+    if (luisa::compute::Type::of<DirectLightTaskCall>()->size() != 224u ||
         luisa::compute::Type::of<DirectLightTaskCall>()->members().size() !=
-            27u) {
+            31u) {
       std::cerr << "Direct-light queue payload retained transition-local "
                    "shadow state on "
                 << backend << '\n';

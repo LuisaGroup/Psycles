@@ -260,6 +260,10 @@ void test_runtime(Device &device) {
   std::string diagnostic;
   scene->cycles_svm = build_cycles_svm_runtime(scene, snapshot, diagnostic);
   require(scene->cycles_svm != nullptr, diagnostic);
+  const auto shader_features = scene->cycles_svm->compilation.kernel_features |
+                               kernel_feature_path_tracing;
+  require(scene->cycles_svm->kernel_features == shader_features,
+          "runtime dropped shader-owned Cycles kernel features");
   require(scene->materials.find(MaterialId{5u}) == nullptr,
           "supplemental Cycles shader polluted legacy material reachability");
   const auto &named_attributes =
@@ -299,7 +303,8 @@ void test_runtime(Device &device) {
               scene, snapshot, intersection_plans, uploads, resources,
               missing_offsets, no_curve_offsets, diagnostic) &&
               scene->cycles_svm->geometry == nullptr &&
-              scene->cycles_svm->objects == nullptr,
+              scene->cycles_svm->objects == nullptr &&
+              scene->cycles_svm->kernel_features == shader_features,
           "rejected scene transaction installed a partial runtime");
   require(finalize_cycles_svm_scene_runtime(
               scene, snapshot, intersection_plans, uploads, resources,
@@ -308,7 +313,8 @@ void test_runtime(Device &device) {
   auto *const installed_geometry = scene->cycles_svm->geometry.get();
   auto *const installed_objects = scene->cycles_svm->objects.get();
   require(installed_geometry != nullptr && installed_geometry->image.valid &&
-              installed_objects != nullptr && installed_objects->image.valid,
+              installed_objects != nullptr && installed_objects->image.valid &&
+              scene->cycles_svm->kernel_features == shader_features,
           "valid geometry/object transaction was not installed");
   require(!finalize_cycles_svm_scene_runtime(
               scene, snapshot, intersection_plans, uploads, resources,
@@ -408,6 +414,66 @@ void test_runtime(Device &device) {
                                    objects.image.objects[0u]);
 }
 
+void test_geometry_feature_projection(Device &device) {
+  // Cycles scene.cpp::update_kernel_features visits Object::get_geometry(),
+  // not every Geometry datablock. An unused curve must not keep hair paths
+  // alive in a scene's JIT specialization.
+  for (const auto shape : {CurveShape::ribbon, CurveShape::thick,
+                           CurveShape::thick_linear}) {
+    for (const auto instanced : {false, true}) {
+      auto snapshot = make_scene();
+      constexpr GeometryId curve_id{6u};
+      snapshot.curve_geometries.emplace(
+          curve_id,
+          CurveGeometryDesc{.name = "feature-mask curve",
+                             .shape = shape,
+                             .keys = {{0.0f, 0.0f, 0.0f, 0.1f},
+                                      {0.0f, 0.0f, 1.0f, 0.1f}},
+                             .curve_first_key = {0u},
+                             .material_slots = {MaterialId{1u}},
+                             .curve_material_slots = {0u},
+                             .cycles_curve_offset = 0u,
+                             .cycles_segment_offset = 0u});
+      if (instanced) {
+        snapshot.instances.emplace(
+            InstanceId{7u}, InstanceDesc{.geometry = curve_id,
+                                         .cycles_object_index = 1u});
+        snapshot.cycles_object_count = 2u;
+      }
+      auto scene = std::make_shared<LuisaSceneData>();
+      scene->device = Device{device.impl_shared()};
+      ShaderCompiler compiler{make_core_node_registry()};
+      const auto reachability = build_scene_material_reachability(snapshot);
+      require(scene->materials.update(snapshot, compiler,
+                                       reachability.shader_materials).committed,
+              "feature-mask material fixture did not compile");
+      std::string diagnostic;
+      scene->cycles_svm = build_cycles_svm_runtime(scene, snapshot, diagnostic);
+      require(scene->cycles_svm != nullptr, diagnostic);
+      const auto before = scene->cycles_svm->compilation.kernel_features |
+                           kernel_feature_path_tracing;
+      require(scene->cycles_svm->kernel_features == before,
+              "geometry feature published before scene finalization");
+      const std::array uploads{make_finalized_upload()};
+      const std::map<GeometryId, std::uint32_t> resources{{GeometryId{2u}, 0u}};
+      const std::map<GeometryId, std::uint32_t> triangle_offsets{
+          {GeometryId{2u}, 3u}};
+      const std::map<GeometryId, std::uint32_t> curve_offsets{{curve_id, 0u}};
+      const auto plans = build_cycles_instance_intersection_plan(snapshot, {});
+      require(finalize_cycles_svm_scene_runtime(
+                  scene, snapshot, plans, uploads, resources,
+                  triangle_offsets, curve_offsets, diagnostic),
+              diagnostic);
+      const auto geometry_feature =
+          !instanced ? 0u
+          : shape == CurveShape::ribbon ? kernel_feature_hair_ribbon
+                                       : kernel_feature_hair_thick;
+      require(scene->cycles_svm->kernel_features == (before | geometry_feature),
+              "runtime JIT mask differs from Cycles instanced hair features");
+    }
+  }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -415,5 +481,6 @@ int main(int argc, char **argv) {
   Context context{argv[0]};
   auto device = context.create_device(backend);
   test_runtime(device);
+  test_geometry_feature_projection(device);
   return EXIT_SUCCESS;
 }

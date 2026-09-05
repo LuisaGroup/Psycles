@@ -120,13 +120,23 @@ namespace abi = ::psycles::compiler::cycles_svm;
 PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
     std::shared_ptr<LuisaSceneData> scene,
     const SurfacePopulationContext &context) noexcept
+    : PathCyclesSvmKernelGlobals(
+          std::move(scene), context.parameters, context.camera_projection,
+          context.query.reflective_caustics,
+          context.query.refractive_caustics) {}
+
+PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
+    std::shared_ptr<LuisaSceneData> scene,
+    const Var<RenderKernelParameters> &parameters,
+    CameraProjection camera_projection, Expr<bool> reflective_caustics,
+    Expr<bool> refractive_caustics) noexcept
     : _scene{std::move(scene)},
-      _parameters{context.parameters},
-      _camera_projection{context.camera_projection},
-      _caustics_reflective{context.query.reflective_caustics},
-      _caustics_refractive{context.query.refractive_caustics},
-      _camera_to_world{context.parameters.camera_transform},
-      _world_to_camera{inverse(context.parameters.camera_transform)} {
+      _parameters{parameters},
+      _camera_projection{camera_projection},
+      _caustics_reflective{reflective_caustics},
+      _caustics_refractive{refractive_caustics},
+      _camera_to_world{parameters.camera_transform},
+      _world_to_camera{inverse(parameters.camera_transform)} {
   LUISA_ASSERT(_scene && _scene->cycles_svm &&
                    _scene->cycles_svm->geometry &&
                    _scene->cycles_svm->objects,

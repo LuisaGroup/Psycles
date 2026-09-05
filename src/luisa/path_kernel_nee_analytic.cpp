@@ -218,7 +218,9 @@ class AnalyticDirectLightProvider final : public DirectLightProvider {
                          sampling::LightDistributionEmitterKind::analytic_light),
                      .emitter_index = light_index,
                      .light_object = light.cycles_object_index,
-                     .light_primitive = surface_ray::invalid_primitive,
+                     .light_primitive = select(
+                         surface_ray::invalid_primitive, light_index,
+                         Bool{config.scene->native_cycles_svm_surface}),
                      .shader_flags = light.cycles_shader_flags,
                      .apply_mis = forward_intersectable,
                      .constant_light_shader = constant_emission,

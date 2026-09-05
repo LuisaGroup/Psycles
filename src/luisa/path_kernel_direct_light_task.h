@@ -7,6 +7,7 @@
 namespace psycles::luisa_backend::detail {
 
 struct PathKernelConfig;
+class DirectLightEmissionComponent;
 
 // Minimal state crossing the surface -> shadow-work boundary. Material
 // closures and surface temporaries deliberately do not escape this record:
@@ -33,7 +34,11 @@ struct DirectLightTaskCall {
   float ray_maximum{};
   float ray_dP{};
   float ray_dD{};
+  float ray_time{};
   float light_terminate_sample{};
+  luisa::uint sample_index{};
+  luisa::uint rng_hash{};
+  luisa::uint rng_offset{};
   luisa::uint source_object{};
   luisa::uint source_primitive{};
   luisa::uint light_object{};
@@ -56,7 +61,7 @@ static_assert(std::is_trivially_copyable_v<DirectLightTaskCall>);
 // INTERSECT_SHADOW -> SHADE_SHADOW edge, while a fused shadow consumer never
 // needs it at all. Keeping the types disjoint makes that lifetime true before
 // optimization instead of relying on aggregate DCE.
-static_assert(sizeof(DirectLightTaskCall) == 208u);
+static_assert(sizeof(DirectLightTaskCall) == 224u);
 
 struct DirectLightTaskFilm {
   const BufferFloat4 &combined;
@@ -93,6 +98,7 @@ struct DirectLightTaskEvaluator {
   LightSampleRouletteCallable light_sample_roulette;
   ClampLightContributionCallable clamp_contribution;
   SplitScatteredLightCallable split_scattered_light;
+  std::shared_ptr<const DirectLightEmissionComponent> light_emission;
   bool volume_guiding{};
 
   [[nodiscard]] Var<ShadowTraceResultCall>
@@ -137,8 +143,9 @@ public:
 LUISA_STRUCT(psycles::luisa_backend::detail::DirectLightTaskCall, ray_origin,
              ray_direction, unshadowed_contribution, nee_path_throughput,
              light_shader, shadow_transmittance, diffuse_weight, glossy_weight,
-             ray_minimum, ray_maximum, ray_dP, ray_dD,
-             light_terminate_sample, source_object, source_primitive,
+             ray_minimum, ray_maximum, ray_dP, ray_dD, ray_time,
+             light_terminate_sample, sample_index, rng_hash, rng_offset,
+             source_object, source_primitive,
              light_object, light_primitive, constant_light_shader, shader_flags,
              pixel, path_depth, path_flags, path_visibility, diffuse_depth,
              glossy_depth, transparent_depth, transmission_depth){};

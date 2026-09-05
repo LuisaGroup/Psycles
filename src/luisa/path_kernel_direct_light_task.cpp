@@ -1,6 +1,7 @@
 #include "path_kernel_direct_light_task.h"
 #include "path_kernel_builder.h"
 #include "path_kernel_film.h"
+#include "path_tracer_cycles_svm_light.h"
 
 #include <psycles/luisa/surface_ray.h>
 
@@ -36,6 +37,9 @@ Var<ShadowTraceResultCall> DirectLightTaskEvaluator::trace(
 Bool DirectLightTaskEvaluator::shade_light_nee(
     Var<DirectLightTaskCall> &task,
     const Var<RenderKernelParameters> &parameters) const noexcept {
+  if (light_emission) {
+    task.light_shader = light_emission->evaluate(task, parameters);
+  }
   const auto local_unshadowed =
       task.unshadowed_contribution * task.light_shader;
   task.unshadowed_contribution = finalize_direct_light_sample(
@@ -158,6 +162,12 @@ make_direct_light_task_evaluator(const PathKernelConfig &config) noexcept {
               config.light_transport.light_sample_roulette_weight,
           .clamp_contribution = config.light_transport.clamp_light_contribution,
           .split_scattered_light = config.light_transport.split_scattered_light,
+          .light_emission = config.scene->native_cycles_svm_surface
+                                ? make_cycles_svm_light_emission_component(
+                                      config.scene, config.camera_projection,
+                                      config.reflective_caustics,
+                                      config.refractive_caustics)
+                                : nullptr,
           .volume_guiding = config.volume_state != nullptr};
 }
 

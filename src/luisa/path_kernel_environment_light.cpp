@@ -93,14 +93,12 @@ class PathEnvironmentLightComponent final
                 (random.x - portal_probability) /
                     max(sun_probability, 1.0e-20f),
                 random.y);
-            direction = background_sampling::sample_sun(
+            const auto sun = background_sampling::sample_sun(
                 make_float3(scene->background_guided_sun_axis),
                 scene->background_guided_sun_radius,
                 sun_random);
-            result_pdf = sun_probability * background_sampling::sun_pdf(
-                make_float3(scene->background_guided_sun_axis),
-                scene->background_guided_sun_radius,
-                direction);
+            direction = sun.direction;
+            result_pdf = sun_probability * sun.pdf;
             result_pdf += portal_probability * portal_sampling.pdf(
                 scene->light_buffer,
                 portal_offset,

@@ -289,8 +289,10 @@ void PathKernelPipeline::emit(
           };
           const auto receiving_nonzero =
               direct_light.valid & any(evaluation.f != 0.0f);
-          for (const auto &provider : light_providers) {
-            provider->evaluate_deferred_emission(receiving_nonzero);
+          if (!sample.invocation.config.scene->native_cycles_svm_surface) {
+            for (const auto &provider : light_providers) {
+              provider->evaluate_deferred_emission(receiving_nonzero);
+            }
           }
 
           auto transport = DirectLightTransportState::empty();

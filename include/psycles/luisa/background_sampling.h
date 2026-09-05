@@ -167,7 +167,7 @@ sample_uniform_sphere(luisa::compute::Float2 random) noexcept {
     return luisa::compute::make_float3(radius * cos(phi), radius * sin(phi), z);
 }
 
-[[nodiscard]] inline luisa::compute::Float3
+[[nodiscard]] inline BackgroundSample
 sample_sun(luisa::compute::Float3 axis,
            float angular_radius,
            luisa::compute::Float2 random) noexcept {
@@ -175,9 +175,11 @@ sample_sun(luisa::compute::Float3 axis,
         axis, luisa::compute::make_float3(0.0f, 0.0f, 1.0f));
     const auto one_minus_cosine =
         cycles_sample_mapping::one_minus_cosine_from_angle(angular_radius);
-    return cycles_sample_mapping::sample_uniform_cone(
-               axis, one_minus_cosine, random)
-        .direction;
+    const auto sample = cycles_sample_mapping::sample_uniform_cone(
+        axis, one_minus_cosine, random);
+    // Cycles keeps the selected sampler's PDF. Re-evaluating the rounded
+    // direction can reject a cone-edge sample and drop its mixture density.
+    return {.direction = sample.direction, .pdf = sample.pdf};
 }
 
 [[nodiscard]] inline luisa::compute::Float
@@ -256,18 +258,17 @@ sample(const Conditional &conditional,
         return {.direction = map.direction, .pdf = map.pdf};
     }
     if (map_weight <= 0.0f) {
-        direction = sample_sun(guided_sun_axis, guided_sun_radius, random);
-        return {.direction = direction,
-                .pdf = sun_pdf(guided_sun_axis, guided_sun_radius, direction)};
+        return sample_sun(guided_sun_axis, guided_sun_radius, random);
     }
 
     $if(random.x < sun_probability) {
         const auto sun_random =
             luisa::compute::make_float2(random.x / sun_probability, random.y);
-        direction = sample_sun(guided_sun_axis, guided_sun_radius, sun_random);
+        const auto sun =
+            sample_sun(guided_sun_axis, guided_sun_radius, sun_random);
+        direction = sun.direction;
         result_pdf =
-            sun_probability *
-                sun_pdf(guided_sun_axis, guided_sun_radius, direction) +
+            sun_probability * sun.pdf +
             map_probability *
                 map_pdf(conditional, marginal, width, height, direction);
     }
