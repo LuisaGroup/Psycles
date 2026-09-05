@@ -481,9 +481,10 @@ Float3 bsdf_microfacet_estimate_albedo(
 
     $if (closure.param.fresnel_type ==
          static_cast<std::uint32_t>(MicrofacetFresnel::generalized_schlick)) {
+        const auto fresnel = closure.load_generalized_schlick();
         result = generalized_schlick_albedo(
             kernel_globals, wi, closure.common.N, closure.param,
-            closure.generalized_schlick, reflection, transmission);
+            fresnel, reflection, transmission);
         handled = true;
     }
     $elif ((closure.param.fresnel_type ==

@@ -72,7 +72,7 @@ void apply_lobe_mask(Expr<std::uint32_t> type,
 [[nodiscard]] MicrofacetFresnelEvaluation generalized_schlick_fresnel(
     const KernelGlobals &kernel_globals, const MicrofacetClosure &closure,
     Expr<float> cosine_incoming) noexcept {
-  const auto &fresnel = closure.generalized_schlick;
+  const auto fresnel = closure.load_generalized_schlick();
   MicrofacetFresnelEvaluation result{
       .reflectance = make_float3(0.0f),
       .transmittance = make_float3(0.0f),
@@ -123,6 +123,44 @@ void apply_lobe_mask(Expr<std::uint32_t> type,
           (make_float3(1.0f) - reflected) *
           fresnel.transmission_tint;
     };
+  };
+  return result;
+}
+
+[[nodiscard]] MicrofacetFresnelEvaluation conductor_fresnel(
+    const KernelGlobals &kernel_globals, const FresnelConductor &fresnel,
+    Expr<float> cosine_incoming) noexcept {
+  MicrofacetFresnelEvaluation result{
+      .reflectance = make_float3(0.0f),
+      .transmittance = make_float3(0.0f),
+      .cosine_transmitted = 0.0f};
+  $if(fresnel.thin_film.thickness > thin_film::thin_film_thickness_cutoff) {
+    result.reflectance = thin_film::thin_film_conductor_fresnel(
+        kernel_globals, fresnel.thin_film.thickness,
+        fresnel.thin_film.ior, fresnel.ior, fresnel.extinction,
+        cosine_incoming);
+  }
+  $else {
+    result.reflectance = fresnel_conductor(
+        cosine_incoming, fresnel.ior, fresnel.extinction);
+  };
+  return result;
+}
+
+[[nodiscard]] MicrofacetFresnelEvaluation f82_tint_fresnel(
+    const KernelGlobals &kernel_globals, const FresnelF82Tint &fresnel,
+    Expr<float> cosine_incoming) noexcept {
+  MicrofacetFresnelEvaluation result{
+      .reflectance = make_float3(0.0f),
+      .transmittance = make_float3(0.0f),
+      .cosine_transmitted = 0.0f};
+  $if(fresnel.thin_film.thickness > thin_film::thin_film_thickness_cutoff) {
+    result.reflectance = thin_film::thin_film_f82_fresnel(
+        kernel_globals, fresnel.thin_film.thickness,
+        fresnel.thin_film.ior, fresnel.f0, fresnel.b, cosine_incoming);
+  }
+  $else {
+    result.reflectance = fresnel_f82(cosine_incoming, fresnel.f0, fresnel.b);
   };
   return result;
 }
@@ -195,6 +233,28 @@ MicrofacetFresnelEvaluation microfacet_fresnel(
     result.cosine_transmitted = dielectric.cosine_transmitted;
   }
   $elif(closure.param.fresnel_type ==
+        static_cast<std::uint32_t>(MicrofacetFresnel::conductor)) {
+    if (closure.storage != nullptr) {
+      // The storage handle projects Cycles' tagged fresnel pointer. Only
+      // this live branch may dereference the conductor's extra payload.
+      const auto typed = closure.storage->microfacet_conductor(closure.storage_index);
+      result = conductor_fresnel(kernel_globals, typed.conductor, cosine_incoming);
+    } else {
+      result.reflectance = make_float3(0.0f);
+      result.transmittance = make_float3(0.0f);
+    }
+  }
+  $elif(closure.param.fresnel_type ==
+        static_cast<std::uint32_t>(MicrofacetFresnel::f82_tint)) {
+    if (closure.storage != nullptr) {
+      const auto typed = closure.storage->microfacet_f82_tint(closure.storage_index);
+      result = f82_tint_fresnel(kernel_globals, typed.f82_tint, cosine_incoming);
+    } else {
+      result.reflectance = make_float3(0.0f);
+      result.transmittance = make_float3(0.0f);
+    }
+  }
+  $elif(closure.param.fresnel_type ==
         static_cast<std::uint32_t>(MicrofacetFresnel::generalized_schlick)) {
     result = generalized_schlick_fresnel(kernel_globals, closure,
                                          cosine_incoming);
@@ -212,10 +272,8 @@ MicrofacetFresnelEvaluation microfacet_fresnel(
     };
   }
   $else {
-    /* SVM retains no DIELECTRIC_TINT payload. CONDUCTOR and F82_TINT belong
-     * to different typed union projections. Fail closed if a caller violates
-     * that tag/payload invariant instead of interpreting foreign bytes as
-     * the NONE variant. */
+    /* SVM retains no DIELECTRIC_TINT payload (Cycles uses it only for OSL).
+     * Fail closed instead of interpreting an unknown tag as NONE. */
     result.reflectance = make_float3(0.0f);
     result.transmittance = make_float3(0.0f);
   };
@@ -227,22 +285,7 @@ MicrofacetFresnelEvaluation microfacet_fresnel(
     const KernelGlobals &kernel_globals,
     const MicrofacetConductorClosure &closure,
     Expr<float> cosine_incoming) noexcept {
-  MicrofacetFresnelEvaluation result{
-      .reflectance = make_float3(0.0f),
-      .transmittance = make_float3(0.0f),
-      .cosine_transmitted = 0.0f};
-  $if(closure.conductor.thin_film.thickness >
-      thin_film::thin_film_thickness_cutoff) {
-    result.reflectance = thin_film::thin_film_conductor_fresnel(
-        kernel_globals, closure.conductor.thin_film.thickness,
-        closure.conductor.thin_film.ior, closure.conductor.ior,
-        closure.conductor.extinction, cosine_incoming);
-  }
-  $else {
-    result.reflectance = fresnel_conductor(
-        cosine_incoming, closure.conductor.ior,
-        closure.conductor.extinction);
-  };
+  auto result = conductor_fresnel(kernel_globals, closure.conductor, cosine_incoming);
   apply_lobe_mask(closure.common.type, result);
   return result;
 }
@@ -251,21 +294,7 @@ MicrofacetFresnelEvaluation microfacet_fresnel(
     const KernelGlobals &kernel_globals,
     const MicrofacetF82TintClosure &closure,
     Expr<float> cosine_incoming) noexcept {
-  MicrofacetFresnelEvaluation result{
-      .reflectance = make_float3(0.0f),
-      .transmittance = make_float3(0.0f),
-      .cosine_transmitted = 0.0f};
-  $if(closure.f82_tint.thin_film.thickness >
-      thin_film::thin_film_thickness_cutoff) {
-    result.reflectance = thin_film::thin_film_f82_fresnel(
-        kernel_globals, closure.f82_tint.thin_film.thickness,
-        closure.f82_tint.thin_film.ior, closure.f82_tint.f0,
-        closure.f82_tint.b, cosine_incoming);
-  }
-  $else {
-    result.reflectance = fresnel_f82(
-        cosine_incoming, closure.f82_tint.f0, closure.f82_tint.b);
-  };
+  auto result = f82_tint_fresnel(kernel_globals, closure.f82_tint, cosine_incoming);
   apply_lobe_mask(closure.common.type, result);
   return result;
 }
