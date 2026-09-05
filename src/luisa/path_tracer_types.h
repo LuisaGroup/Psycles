@@ -615,9 +615,9 @@ struct RenderKernelParameters {
     // deliberately a kernel argument: resolution and frame-pool capacity must
     // not specialize the shader AST or its cache identity.
     luisa::uint wavefront_frame_capacity{};
-    // Runtime extent of the transient per-physical-lane shadow-hit SoA.
-    // Coroutine executors override this value for each dispatch; serial
-    // executors leave the valid one-element default unused.
+    // Runtime extent for an explicitly selected transient shadow-hit SoA.
+    // Production local-batch traversal does not read either storage argument;
+    // its cross-stage hit lifetime is owned by the coroutine frame alone.
     luisa::uint shadow_storage_capacity{};
     // Physical launch stride used to derive an injective transient-storage
     // owner from (block_id.x, thread_id.x). A callable has no block size of

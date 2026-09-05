@@ -2,6 +2,8 @@
 
 #include "path_tracer_lighting.h"
 
+#include <variant>
+
 namespace psycles::luisa_backend::detail {
 
 class ShadowIntersectionBatchStorage;
@@ -19,17 +21,26 @@ using IntersectShadowCallable = Callable<ShadowIntersectionSummaryCall(
     // Runtime SoA capacity; a value, never a shader specialization constant.
     luisa::uint)>;
 
-// Host-side composition of the compact traversal callable and its external
-// hit storage. `collect()` records a summary call followed by consumer-side
-// materialization; no virtual or resource wrapper survives in device code.
-class StoredShadowIntersectionComponent {
+using LocalShadowIntersectionCallable =
+    Callable<ShadowIntersectionBatchCall(
+        luisa::compute::Ray, luisa::uint, luisa::uint, luisa::uint,
+        luisa::uint, luisa::uint)>;
+
+// Host-side selection of the bounded traversal storage. Both paths return a
+// complete value before the caller may suspend; external invocation identity
+// never crosses a coroutine edge. No storage-policy dispatch survives in DSL.
+class ShadowIntersectionComponent {
 
 private:
     std::shared_ptr<const ShadowIntersectionBatchStorage> _storage;
-    IntersectShadowCallable _intersect;
+    std::variant<LocalShadowIntersectionCallable, IntersectShadowCallable>
+        _intersect;
 
 public:
-    StoredShadowIntersectionComponent(
+    explicit ShadowIntersectionComponent(
+        LocalShadowIntersectionCallable intersect) noexcept;
+
+    ShadowIntersectionComponent(
         std::shared_ptr<const ShadowIntersectionBatchStorage> storage,
         IntersectShadowCallable intersect) noexcept;
 
@@ -73,7 +84,7 @@ using TraceShadowCallable =
         ShaderEvaluationStateCall)>;
 
 struct ShadowTraceCallables {
-    std::shared_ptr<const StoredShadowIntersectionComponent> intersect;
+    std::shared_ptr<const ShadowIntersectionComponent> intersect;
     EvaluateShadowSurfaceCallable shade_surface;
     TraceShadowCallable trace;
 };
