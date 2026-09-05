@@ -48,19 +48,21 @@ void node_ray_portal(Cursor &cursor, Stack &stack,
    * capacity failure. Keep the source comparison form so NaN is rejected. */
   $if(sample_weight >= CLOSURE_WEIGHT_CUTOFF) {
     shader_data.closure_transparent_extinction += weight;
-    auto &pool = *shader_data.closure;
-    const auto allocated = pool.allocate(
-        static_cast<std::uint32_t>(CLOSURE_BSDF_RAY_PORTAL_ID), weight);
-    $if(allocated.valid) {
-      $if(is_zero(direction)) { direction = -shader_data.wi; };
-      pool.set_sample_weight(allocated.index, sample_weight);
-      pool.set_normal(allocated.index, shader_data.N);
-      pool.set_ray_portal_param(
-          allocated.index,
-          {.P = position,
-           .D = native_vector_math::safe_normalize_nonzero(direction)});
-      shader_data.flag |= shader_data_bsdf | shader_data_ray_portal;
-    };
+    if (shader_data.closure != nullptr) {
+      auto &pool = *shader_data.closure;
+      const auto allocated = pool.allocate(
+          static_cast<std::uint32_t>(CLOSURE_BSDF_RAY_PORTAL_ID), weight);
+      $if(allocated.valid) {
+        $if(is_zero(direction)) { direction = -shader_data.wi; };
+        pool.set_sample_weight(allocated.index, sample_weight);
+        pool.set_normal(allocated.index, shader_data.N);
+        pool.set_ray_portal_param(
+            allocated.index,
+            {.P = position,
+             .D = native_vector_math::safe_normalize_nonzero(direction)});
+        shader_data.flag |= shader_data_bsdf | shader_data_ray_portal;
+      };
+    }
   };
 }
 

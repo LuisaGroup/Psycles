@@ -113,6 +113,9 @@ void bssrdf_setup(ShaderData &shader_data, const PathState &path_state,
                   Expr<luisa::float3> normal, Expr<float> input_alpha,
                   Expr<float> input_ior,
                   Expr<float> input_anisotropy) noexcept {
+  if (shader_data.closure == nullptr) {
+    return;
+  }
   auto &pool = *shader_data.closure;
   const auto initial_sample_weight = abs(average(input_weight));
   /* Cycles deliberately spells this as an early `< cutoff` rejection. Thus a
@@ -193,6 +196,9 @@ void thin_subsurface_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
                            Expr<luisa::float3> weight, Expr<float> anisotropy,
                            Expr<float> roughness,
                            Expr<luisa::float3> color) noexcept {
+  if (shader_data.closure == nullptr) {
+    return;
+  }
   const auto reflection_weight =
       clamp(0.5f * (1.0f - anisotropy), 0.0f, 1.0f) * weight;
   const auto transmission_weight =

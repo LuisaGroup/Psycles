@@ -72,6 +72,9 @@ void node_sheen(const KernelGlobals &kernel_globals, Cursor &cursor,
                 ShaderData &shader_data) noexcept {
   const auto roughness_input = cursor.word();
   const auto normal_packed = cursor.word();
+  if (shader_data.closure == nullptr) {
+    return;
+  }
   const auto normal_offset = cursor.byte(normal_packed, 0u);
   auto normal =
       stack_load_float3_default(stack, normal_offset, shader_data.N);

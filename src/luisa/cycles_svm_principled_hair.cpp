@@ -321,6 +321,9 @@ void node_principled_hair(const KernelGlobals &kernel_globals, Cursor &cursor,
                           Expr<float> mix_weight, ShaderData &shader_data,
                           const PathState &path_state) noexcept {
   const auto node = read_principled_hair_node(cursor);
+  if (shader_data.closure == nullptr) {
+    return;
+  }
   const auto weight = closure_weight * mix_weight;
   const auto alpha = stack_load_input_float(stack, node.offset);
   const auto ior = stack_load_input_float(stack, node.ior);

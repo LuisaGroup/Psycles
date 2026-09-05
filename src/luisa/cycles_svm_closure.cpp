@@ -614,10 +614,9 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
   if ((node_feature_mask & kernel_feature_node_bsdf) != 0u) {
     $if(mix_weight == 0.0f) { node_closure_bsdf_skip(cursor, closure_type); }
     $else {
-      if (shader_data.closure == nullptr) {
-        node_closure_bsdf_skip(cursor, closure_type);
-        supported = false;
-      } else {
+      // TinyStorage has no physical pool, but failed allocation does not
+      // suppress transparent, portal, or Principled shader-state effects.
+      {
         $if(closure_type ==
             static_cast<std::uint32_t>(CLOSURE_BSDF_PRINCIPLED_ID)) {
           node_principled_bsdf(kernel_globals, cursor, stack, mix_weight, true,

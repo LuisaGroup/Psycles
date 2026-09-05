@@ -95,6 +95,9 @@ OrenNayarParam oren_nayar_param(Expr<luisa::float3> color,
 
 void diffuse_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
                    Expr<luisa::float3> weight) noexcept {
+  if (shader_data.closure == nullptr) {
+    return;
+  }
   auto &pool = *shader_data.closure;
   const auto allocated = bsdf_allocate(shader_data, weight);
   $if(allocated.valid) {
@@ -108,6 +111,9 @@ void diffuse_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
 void oren_nayar_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
                       Expr<luisa::float3> weight, Expr<float> roughness,
                       Expr<luisa::float3> color) noexcept {
+  if (shader_data.closure == nullptr) {
+    return;
+  }
   auto &pool = *shader_data.closure;
   const auto allocated = bsdf_allocate(shader_data, weight);
   $if(allocated.valid) {
@@ -123,6 +129,9 @@ void oren_nayar_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
 
 void translucent_setup(ShaderData &shader_data, Expr<luisa::float3> normal,
                        Expr<luisa::float3> weight) noexcept {
+  if (shader_data.closure == nullptr) {
+    return;
+  }
   auto &pool = *shader_data.closure;
   const auto allocated = bsdf_allocate(shader_data, weight);
   $if(allocated.valid) {
