@@ -237,10 +237,8 @@ public:
 
   void dispatch(luisa::compute::Stream &stream,
         const PathKernelDispatch &dispatch) noexcept override {
-        auto command =
-            bind_path_program(*_scheduler, dispatch)
-                .dispatch(dispatch.width, dispatch.height, dispatch.samples);
-        command(stream);
+        stream << bind_path_program(*_scheduler, dispatch)
+                      .dispatch(dispatch.width, dispatch.height, dispatch.samples);
     }
 };
 

@@ -414,9 +414,9 @@ int main(int argc, char **argv) {
         luisa::compute::coro::StateMachineCoroScheduler<
             Buffer<luisa::float4>, Buffer<std::uint32_t>,
             Buffer<luisa::float4>> coroutine_scheduler{device, coroutine};
-        coroutine_scheduler(
+        stream << coroutine_scheduler(
             coroutine_output, subdivision, boundary_control_point_buffer)
-            .dispatch(1u)(stream);
+            .dispatch(1u);
         std::array<luisa::float4, 1u> coroutine_result{};
         stream << coroutine_output.copy_to(luisa::span{coroutine_result})
                << synchronize();

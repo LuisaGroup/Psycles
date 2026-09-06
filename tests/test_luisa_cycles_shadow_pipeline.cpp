@@ -175,9 +175,9 @@ bool run(const char *program, const char *backend, bool no_cache) {
       std::vector<unsigned> visits(paths);
       stream << combined.copy_from(colors.data()) << passes.copy_from(light_passes.data())
              << main_visits.copy_from(visits.data());
-      scheduler(combined, combined, combined, passes, main_visits, combined, main_visits,
+      stream << scheduler(combined, combined, combined, passes, main_visits, combined, main_visits,
                 combined, 0u, 0u, combined, dummy, parameters)
-          .dispatch(paths)(stream);
+          .dispatch(paths);
       stream << combined.copy_to(colors.data()) << passes.copy_to(light_passes.data())
              << main_visits.copy_to(visits.data()) << synchronize();
       std::array<uint64_t, 3u> expected_counts{};
