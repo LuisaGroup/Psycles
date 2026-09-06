@@ -240,6 +240,8 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_attribute_residency.cpp
     src/luisa/path_tracer_cycles_svm_kernel_globals.cpp
     src/luisa/path_tracer_cycles_svm_light.cpp
+    src/luisa/path_tracer_cycles_svm_shader_data.cpp
+    src/luisa/path_tracer_cycles_svm_shadow.cpp
     src/luisa/path_tracer_cycles_svm_scene.cpp
     src/luisa/path_tracer_cycles_svm_geometry.cpp
     src/luisa/path_tracer_cycles_svm_object.cpp

@@ -3,6 +3,7 @@
 #include "path_kernel_scene_traversal.h"
 #include "path_kernel_shadow_storage.h"
 #include "path_kernel_surface_primitive.h"
+#include "path_tracer_cycles_svm_shadow.h"
 #include "path_tracer_shader_services.h"
 
 #include <psycles/luisa/surface_ray.h>
@@ -10,6 +11,41 @@
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
+
+Var<ShadowShaderContextCall> make_shadow_shader_context(
+    const Var<ShaderEvaluationStateCall> &path, Expr<float> time,
+    Expr<luisa::uint> sample, Expr<luisa::uint> rng_hash,
+    Expr<luisa::uint> rng_offset,
+    Expr<luisa::uint> volume_bounds_bounce) noexcept {
+    Var<ShadowShaderContextCall> result;
+    result.path = path;
+    result.ray_time = time;
+    result.sample_index = sample;
+    result.rng_hash = rng_hash;
+    result.rng_offset = rng_offset;
+    result.volume_bounds_bounce = volume_bounds_bounce;
+    return result;
+}
+
+Bool advance_shadow_surface_state(
+    Var<ShadowShaderContextCall> &context, Float3 &throughput,
+    const Var<ShadowSurfaceEvaluationCall> &surface) noexcept {
+    // These three fields are uint16_t in Cycles' shadow_state_template.h.
+    context.volume_bounds_bounce =
+        (context.volume_bounds_bounce + surface.volume_boundary) & 0xffffu;
+    const auto next = throughput * surface.transmittance;
+    const auto nonzero = any(next != 0.0f);
+    $if(nonzero) {
+        throughput = next;
+        context.path.transparent_depth =
+            (context.path.transparent_depth + 1u) & 0xffffu;
+        context.rng_offset =
+            (context.rng_offset + cycles_path_state::bounce_dimension_count) &
+            0xffffu;
+    };
+    return nonzero &
+           (context.volume_bounds_bounce <= shadow_volume_bounds_max);
+}
 
 void sort_shadow_intersection_batch(
     Var<ShadowIntersectionBatchCall> &batch) noexcept {
@@ -82,6 +118,10 @@ namespace {
 make_evaluate_shadow_surface_callable(
     const std::shared_ptr<LuisaSceneData> &scene,
     const SafeNormalizeCallable &safe_normalize) noexcept {
+    if (scene->native_cycles_svm_surface &&
+        (!scene->geometries.empty() || !scene->curve_geometries.empty())) {
+        return make_cycles_svm_shadow_surface_callable(scene);
+    }
     const auto primitive_plan =
         make_scene_primitive_stage_plan(
             scene->geometries.size(),
@@ -97,7 +137,8 @@ make_evaluate_shadow_surface_callable(
             Var<ShadowIntersectionCall> intersection,
             Float ray_dP,
             Float ray_dD,
-            Var<ShaderEvaluationStateCall> shader_state_call) noexcept {
+            Var<ShadowShaderContextCall> context,
+            Var<RenderKernelParameters>) noexcept {
             Var<ShadowSurfaceEvaluationCall> result;
             if (!geometry) {
                 result->transmittance =
@@ -117,7 +158,7 @@ make_evaluate_shadow_surface_callable(
             hit->hit_type = intersection->hit_type;
             hit->committed_ray_t = intersection->distance;
             const auto shader_state =
-                unpack_shader_evaluation_state(shader_state_call);
+                unpack_shader_evaluation_state(context.path);
             BufferShaderServices services{
                 scene->scalar_parameter_buffer,
                 scene->vector_parameter_buffer,
@@ -136,6 +177,7 @@ make_evaluate_shadow_surface_callable(
                 ray_dD,
                 safe_normalize);
             auto point = std::move(primitive.point);
+            point.time = context.ray_time;
             point.ray_visibility = shadow_visibility;
             cycles_path_state::apply_shader_state(point, shader_state);
             result->transmittance = clamp(
@@ -203,104 +245,104 @@ ShadowTraceCallables make_shadow_trace_callables(
       intersection = std::make_shared<ShadowIntersectionComponent>(
           std::move(intersect_local));
     }
-    TraceShadowCallable trace_shadow =
-        [intersection, evaluate_shadow_surface](
-            Var<luisa::compute::Ray> shadow_ray,
-            Float ray_dP,
-            Float ray_dD,
-            UInt source_object,
-            UInt source_primitive,
-            UInt light_object,
-            UInt light_primitive,
-            UInt transparent_maximum,
-            UInt storage_capacity,
-            UInt storage_block_size,
-            Var<ShaderEvaluationStateCall> shader_state_call) noexcept {
-            const auto initial_shader_state =
-                unpack_shader_evaluation_state(shader_state_call);
-            Float3 transmittance = make_float3(1.0f);
-            UInt transparent_depth = initial_shader_state.transparent_depth;
-            Bool active = true;
-            Bool first_hit = false;
-            UInt first_object = surface_ray::invalid_primitive;
-            UInt first_primitive = surface_ray::invalid_primitive;
-            UInt first_kind = surface_ray::invalid_primitive;
-            Float first_distance = 0.0f;
-            Float2 first_barycentric = make_float2(0.0f);
-
-            // Candidate callbacks have no traversal-order contract. The
-            // collector reduces one traversal to the nearest sorted batch;
-            // repeat only when that traversal observed more hits than fit.
-            $while(active) {
-              const auto remaining =
-                  transparent_maximum -
-                  min(transparent_depth, transparent_maximum);
-              auto batch = intersection->collect(
-                  shadow_ray, source_object, source_primitive, light_object,
-                  light_primitive, remaining, storage_capacity,
-                  storage_block_size);
-              sort_shadow_intersection_batch(batch);
-              $if(batch->blocked != 0u) {
-                transmittance = make_float3(0.0f);
-                active = false;
-              }
-                    $else {
-                      Bool carries_light = true;
-                      Float last_distance = shadow_ray->t_min();
-                      for (auto index = std::size_t{0u};
-                           index < shadow_intersection_batch_capacity;
-                           ++index) {
-                        const auto shade =
-                            static_cast<std::uint32_t>(index) < batch->count;
-                        $if(shade & carries_light) {
-                          const auto &intersection =
-                              batch->hits[static_cast<luisa::uint>(index)];
-                          auto shader_state = initial_shader_state;
-                          shader_state.transparent_depth = transparent_depth;
-                          const auto surface = evaluate_shadow_surface(
-                              shadow_ray, intersection, ray_dP, ray_dD,
-                              pack_shader_evaluation_state(shader_state));
-                          $if(!first_hit) {
-                            first_hit = true;
-                            first_object = surface->object;
-                            first_primitive = surface->primitive;
-                            first_kind = surface->kind;
-                            first_distance = intersection->distance;
-                            first_barycentric =
-                                intersection->barycentric;
-                        };
-                        const auto transparent = surface->transmittance;
-                        carries_light =
-                            max(transparent.x,
-                                max(transparent.y, transparent.z)) > 0.0f;
-                        $if(carries_light) {
-                            transmittance *= transparent;
-                            transparent_depth += 1u;
-                            last_distance = intersection->distance;
-                        }
-                        $else { transmittance = make_float3(0.0f); };
-                        };
-                      }
-                      active = carries_light & (batch->total > batch->count);
-                      $if(active) {
-                        shadow_ray->set_t_min(
-                            surface_ray::intersection_t_offset(last_distance));
-                      };
-                };
-            };
-            Var<ShadowTraceResultCall> result;
-            result->transmittance = transmittance;
-            result->first_hit = cast<uint>(first_hit);
-            result->first_object = first_object;
-            result->first_primitive = first_primitive;
-            result->first_kind = first_kind;
-            result->first_distance = first_distance;
-            result->first_barycentric = first_barycentric;
-            return result;
-        };
+    auto trace_shadow =
+        make_fused_shadow_trace_callable(intersection, evaluate_shadow_surface);
     return {.intersect = std::move(intersection),
             .shade_surface = std::move(evaluate_shadow_surface),
             .trace = std::move(trace_shadow)};
+}
+
+TraceShadowCallable make_fused_shadow_trace_callable(
+    std::shared_ptr<const ShadowIntersectionComponent> intersection,
+    EvaluateShadowSurfaceCallable evaluate_shadow_surface) noexcept {
+  return [intersection, evaluate_shadow_surface](
+             Var<luisa::compute::Ray> shadow_ray, Float ray_dP, Float ray_dD,
+             UInt source_object, UInt source_primitive, UInt light_object,
+             UInt light_primitive, UInt transparent_maximum,
+             UInt storage_capacity, UInt storage_block_size, Float3 throughput,
+             Var<ShadowShaderContextCall> context,
+             Var<RenderKernelParameters> parameters) noexcept {
+    Float3 transmittance = make_float3(1.0f);
+    Bool active = true;
+    Bool first_hit = false;
+    UInt first_object = surface_ray::invalid_primitive;
+    UInt first_primitive = surface_ray::invalid_primitive;
+    UInt first_kind = surface_ray::invalid_primitive;
+    Float first_distance = 0.0f;
+    Float2 first_barycentric = make_float2(0.0f);
+
+    // Candidate callbacks have no traversal-order contract. The
+    // collector reduces one traversal to the nearest sorted batch;
+    // repeat whenever the four slots are full, as in Cycles.
+    $while(active) {
+      const auto remaining =
+          transparent_maximum -
+          min(context.path.transparent_depth, transparent_maximum);
+      auto batch = intersection->collect(
+          shadow_ray, source_object, source_primitive, light_object,
+          light_primitive, remaining, storage_capacity, storage_block_size);
+      sort_shadow_intersection_batch(batch);
+      $if(batch->blocked != 0u) {
+        transmittance = make_float3(0.0f);
+        throughput = make_float3(0.0f);
+        active = false;
+      }
+      $else {
+        Bool carries_light = true;
+        Float last_distance = shadow_ray->t_min();
+        for (auto index = std::size_t{0u};
+             index < shadow_intersection_batch_capacity; ++index) {
+          const auto shade = static_cast<std::uint32_t>(index) < batch->count;
+          $if(shade & carries_light) {
+            const auto &intersection =
+                batch->hits[static_cast<luisa::uint>(index)];
+            const auto surface = evaluate_shadow_surface(
+                shadow_ray, intersection, ray_dP, ray_dD, context, parameters);
+            $if(!first_hit) {
+              first_hit = true;
+              first_object = surface->object;
+              first_primitive = surface->primitive;
+              first_kind = surface->kind;
+              first_distance = intersection->distance;
+              first_barycentric = intersection->barycentric;
+            };
+            carries_light =
+                advance_shadow_surface_state(context, throughput, surface);
+            $if(carries_light) {
+              transmittance *= surface->transmittance;
+              last_distance = intersection->distance;
+            }
+            $else {
+              transmittance = make_float3(0.0f);
+              throughput = make_float3(0.0f);
+            };
+          };
+        }
+        $if(context.volume_bounds_bounce > shadow_volume_bounds_max) {
+          carries_light = false;
+          transmittance = make_float3(0.0f);
+          throughput = make_float3(0.0f);
+        };
+        active = carries_light &
+                 (batch->count ==
+                  static_cast<luisa::uint>(shadow_intersection_batch_capacity));
+        $if(active) {
+          shadow_ray->set_t_min(
+              surface_ray::intersection_t_offset(last_distance));
+        };
+      };
+    };
+    Var<ShadowTraceResultCall> result;
+    result->transmittance = transmittance;
+    result->throughput = throughput;
+    result->first_hit = cast<uint>(first_hit);
+    result->first_object = first_object;
+    result->first_primitive = first_primitive;
+    result->first_kind = first_kind;
+    result->first_distance = first_distance;
+    result->first_barycentric = first_barycentric;
+    return result;
+  };
 }
 
 } // namespace psycles::luisa_backend::detail

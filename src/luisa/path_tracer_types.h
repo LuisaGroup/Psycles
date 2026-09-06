@@ -348,6 +348,17 @@ struct ShaderEvaluationStateCall {
     luisa::uint transmission_depth{};
 };
 
+// IntegratorShadowState inputs read by surface_shader_eval. RNG offset is
+// advanced after every surviving surface hit, not captured once per batch.
+struct ShadowShaderContextCall {
+    ShaderEvaluationStateCall path{};
+    float ray_time{};
+    luisa::uint sample_index{};
+    luisa::uint rng_hash{};
+    luisa::uint rng_offset{};
+    luisa::uint volume_bounds_bounce{};
+};
+
 // Backend-neutral result of the geometry-only shadow traversal stage. Keeping
 // this record free of material data makes the INTERSECT_SHADOW ->
 // SHADE_SHADOW boundary explicit: traversal identifies the closest candidate,
@@ -365,8 +376,8 @@ struct ShadowIntersectionCall {
 // the unordered nearest-hit set, `total` counts accepted transparent
 // candidates, and a nonzero `blocked` proves that an opaque candidate or
 // bounce-budget overflow terminated traversal. Consumers order the bounded set
-// immediately before shading. `total > count` is exactly the continuation
-// predicate for the next traversal batch.
+// immediately before shading. Cycles continues traversal whenever all four
+// slots were filled, including an exactly-full final batch.
 inline constexpr std::size_t shadow_intersection_batch_capacity = 4u;
 
 // Private reduction state returned by an externally stored shadow traversal.
@@ -395,10 +406,14 @@ struct ShadowSurfaceEvaluationCall {
     luisa::uint object{};
     luisa::uint primitive{};
     luisa::uint kind{};
+    luisa::uint volume_boundary{};
 };
 
 struct ShadowTraceResultCall {
+    // The factor is retained for legacy volume and optional path tracing
+    // diagnostics. Native direct lighting consumes the canonical throughput.
     luisa::float3 transmittance{};
+    luisa::float3 throughput{};
     luisa::uint first_hit{};
     luisa::uint first_object{};
     luisa::uint first_primitive{};
@@ -789,6 +804,9 @@ LUISA_STRUCT(
     glossy_depth,
     transparent_depth,
     transmission_depth) {};
+LUISA_STRUCT(psycles::luisa_backend::detail::ShadowShaderContextCall,
+             path, ray_time, sample_index, rng_hash, rng_offset,
+             volume_bounds_bounce){};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::ShadowIntersectionCall,
     instance,
@@ -801,10 +819,11 @@ LUISA_STRUCT(psycles::luisa_backend::detail::ShadowIntersectionSummaryCall,
 LUISA_STRUCT(psycles::luisa_backend::detail::ShadowIntersectionBatchCall, hits,
              count, total, blocked){};
 LUISA_STRUCT(psycles::luisa_backend::detail::ShadowSurfaceEvaluationCall,
-             transmittance, object, primitive, kind){};
+             transmittance, object, primitive, kind, volume_boundary){};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::ShadowTraceResultCall,
     transmittance,
+    throughput,
     first_hit,
     first_object,
     first_primitive,

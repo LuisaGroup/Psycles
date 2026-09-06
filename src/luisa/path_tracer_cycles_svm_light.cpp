@@ -1,4 +1,5 @@
 #include "path_tracer_cycles_svm_light.h"
+#include "path_tracer_cycles_svm_shader_data.h"
 
 #include "cycles_svm_internal.h"
 #include "path_tracer_cycles_svm_kernel_globals.h"
@@ -47,43 +48,6 @@ triangle_light_uv(Float3 ray_p, Float3 ray_d,
                      clamp(v * inverse, 0.0f, 1.0f));
 }
 
-void orient_to_incoming(svm::ShaderData &sd) noexcept {
-  $if(dot(sd.Ng, sd.wi) < 0.0f) {
-    sd.flag |= static_cast<unsigned>(abi::SD_BACKFACING);
-    sd.N = -sd.N;
-    sd.Ng = -sd.Ng;
-    sd.dPdu = -sd.dPdu;
-    sd.dPdv = -sd.dPdv;
-  };
-}
-
-// Cycles differential_dudv_compact, including its stable-axis selection and
-// exact zero-determinant branch. There is no application epsilon clamp.
-void setup_dudv(svm::ShaderData &sd) noexcept {
-  auto dP = sd_detail::differential_from_compact(sd.Ng, sd.dP);
-  auto dPdu = def(sd.dPdu);
-  auto dPdv = def(sd.dPdv);
-  const auto n = abs(sd.Ng);
-  $if((n.z < n.x) | (n.z < n.y)) {
-    $if((n.y < n.x) | (n.y < n.z)) {
-      dPdu.x = dPdu.y;
-      dPdv.x = dPdv.y;
-      dP.dx.x = dP.dx.y;
-      dP.dy.x = dP.dy.y;
-    };
-    dPdu.y = dPdu.z;
-    dPdv.y = dPdv.z;
-    dP.dx.y = dP.dx.z;
-    dP.dy.y = dP.dy.z;
-  };
-  Float determinant = dPdu.x * dPdv.y - dPdv.x * dPdu.y;
-  $if(determinant != 0.0f) { determinant = 1.0f / determinant; };
-  sd.du.dx = (dP.dx.x * dPdv.y - dP.dx.y * dPdv.x) * determinant;
-  sd.dv.dx = (dP.dx.y * dPdu.x - dP.dx.x * dPdu.y) * determinant;
-  sd.du.dy = (dP.dy.x * dPdv.y - dP.dy.y * dPdv.x) * determinant;
-  sd.dv.dy = (dP.dy.y * dPdu.x - dP.dy.x * dPdu.y) * determinant;
-}
-
 void setup_triangle(const LuisaSceneData &scene, const svm::KernelGlobals &kg,
                     const svm::TransformState &transforms,
                     const Var<DirectLightTaskCall> &task,
@@ -109,37 +73,11 @@ void setup_triangle(const LuisaSceneData &scene, const svm::KernelGlobals &kg,
   sd.u = uv.x;
   sd.v = uv.y;
   sd.shader = scene.cycles_svm->geometry->triangle_shader_buffer->read(sd.prim);
-  sd.dPdu = vertices.v1 - vertices.v0;
-  sd.dPdv = vertices.v2 - vertices.v0;
-  sd.P = vertices.v0 + sd.u * sd.dPdu + sd.v * sd.dPdv;
-  $if(!transform_applied) {
-    sd.P = cycles_transform::point(transforms.object_to_world, sd.P);
-  };
-  const auto negative_scale_applied =
-      transform_applied &
-      ((sd.object_flag &
-        static_cast<unsigned>(abi::SD_OBJECT_NEGATIVE_SCALE)) != 0u);
-  sd.Ng = sd_detail::normalize_cycles(select(cross(sd.dPdu, sd.dPdv),
-                                             cross(sd.dPdv, sd.dPdu),
-                                             negative_scale_applied));
-  sd.N = sd.Ng;
-  $if((sd.shader & svm::shader_smooth_normal) != 0u) {
-    const auto normals = sd_detail::triangle_normals(kg, sd);
-    const auto smooth =
-        sd_detail::safe_normalize_cycles((1.0f - sd.u - sd.v) * normals.n0 +
-                                         sd.u * normals.n1 + sd.v * normals.n2);
-    sd.N = select(smooth, sd.Ng, all(smooth == 0.0f));
-  };
-  $if(!transform_applied) {
-    sd_detail::object_normal_transform(sd.N, transforms, sd, false);
-    sd_detail::object_normal_transform(sd.Ng, transforms, sd, false);
-    sd_detail::object_dir_transform(sd.dPdu, transforms, sd, false);
-    sd_detail::object_dir_transform(sd.dPdv, transforms, sd, false);
-  };
-  orient_to_incoming(sd);
+  cycles_svm_triangle_shader_setup(kg, transforms, vertices, sd);
+  cycles_svm_shader_setup_backfacing(sd);
   sd.dP = task.ray_dP + task.ray_maximum * task.ray_dD;
   sd.dI = task.ray_dD;
-  setup_dudv(sd);
+  cycles_svm_shader_setup_dudv(sd);
 }
 
 void setup_lamp(const LuisaSceneData &scene,
@@ -192,7 +130,7 @@ void setup_lamp(const LuisaSceneData &scene,
   sd.u = uv.x;
   sd.v = uv.y;
   // shader_setup_from_sample leaves lamp derivatives zero, including dI.
-  orient_to_incoming(sd);
+  cycles_svm_shader_setup_backfacing(sd);
 }
 
 } // namespace

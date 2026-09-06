@@ -29,9 +29,14 @@ Var<ShadowTraceResultCall> DirectLightTaskEvaluator::trace(
       parameters.transparent_max_bounces,
       parameters.shadow_storage_capacity,
       parameters.shadow_storage_block_size,
-      pack_shader_evaluation_state(cycles_path_state::shadow_shader_state(
-          task.path_depth, task.diffuse_depth, task.glossy_depth,
-          task.transparent_depth, task.transmission_depth)));
+      task.shadow_throughput,
+      make_shadow_shader_context(
+          pack_shader_evaluation_state(cycles_path_state::shadow_shader_state(
+              task.path_depth, task.diffuse_depth, task.glossy_depth,
+              task.transparent_depth, task.transmission_depth)),
+          task.ray_time, task.sample_index, task.rng_hash, task.rng_offset,
+          task.volume_bounds_bounce),
+      parameters);
 }
 
 Bool DirectLightTaskEvaluator::shade_light_nee(
@@ -45,6 +50,7 @@ Bool DirectLightTaskEvaluator::shade_light_nee(
   task.unshadowed_contribution = finalize_direct_light_sample(
       light_sample_roulette, local_unshadowed, task.nee_path_throughput,
       task.light_terminate_sample, parameters.light_inv_rr_threshold);
+  task.shadow_throughput = task.unshadowed_contribution;
   return any(task.unshadowed_contribution != 0.0f);
 }
 
@@ -78,6 +84,13 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
     Float last_distance = task.ray_minimum;
     const auto ray = make_ray(task.ray_origin, task.ray_direction,
                               task.ray_minimum, task.ray_maximum);
+    auto context = make_shadow_shader_context(
+        pack_shader_evaluation_state(cycles_path_state::shadow_shader_state(
+            task.path_depth, task.diffuse_depth, task.glossy_depth,
+            task.transparent_depth, task.transmission_depth)),
+        task.ray_time, task.sample_index, task.rng_hash, task.rng_offset,
+        task.volume_bounds_bounce);
+    auto throughput = def(task.shadow_throughput);
     for (auto index = std::size_t{0u};
          index < shadow_intersection_batch_capacity; ++index) {
       const auto shade =
@@ -86,23 +99,23 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
         const auto &hit =
             ordered_batch->hits[static_cast<luisa::uint>(index)];
         const auto surface = shade_shadow_surface(
-            ray, hit, task.ray_dP, task.ray_dD,
-            pack_shader_evaluation_state(cycles_path_state::shadow_shader_state(
-                task.path_depth, task.diffuse_depth, task.glossy_depth,
-                task.transparent_depth, task.transmission_depth)));
-        const auto transparent = surface->transmittance;
+            ray, hit, task.ray_dP, task.ray_dD, context, parameters);
         carries_light =
-            max(transparent.x, max(transparent.y, transparent.z)) > 0.0f;
+            advance_shadow_surface_state(context, throughput, surface);
         $if(carries_light) {
-          task.shadow_transmittance *= transparent;
-          task.transparent_depth += 1u;
           last_distance = hit->distance;
         };
       };
     }
+    task.shadow_throughput = throughput;
+    task.transparent_depth = context.path.transparent_depth;
+    task.rng_offset = context.rng_offset;
+    task.volume_bounds_bounce = context.volume_bounds_bounce;
+    carries_light &= context.volume_bounds_bounce <= shadow_volume_bounds_max;
     $if(carries_light) {
       const auto has_remaining =
-          ordered_batch->total > ordered_batch->count;
+          ordered_batch->count == static_cast<luisa::uint>(
+                                      shadow_intersection_batch_capacity);
       $if(has_remaining) {
         task.ray_minimum = surface_ray::intersection_t_offset(last_distance);
         continue_shadow = true;
@@ -115,9 +128,9 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
 }
 
 Float3 DirectLightTaskEvaluator::contribution(
-    const Var<DirectLightTaskCall> &task, Float3 transmittance,
+    const Var<DirectLightTaskCall> &task, Float3 throughput,
     const Var<RenderKernelParameters> &parameters) const noexcept {
-  return clamp_contribution(task.unshadowed_contribution * transmittance,
+  return clamp_contribution(throughput,
                             task.path_depth, parameters.sample_clamp_direct,
                             parameters.sample_clamp_indirect);
 }
@@ -139,9 +152,9 @@ void DirectLightTaskEvaluator::emit_atomic(
   };
   $if(active) {
     const auto shadow = trace(task, parameters);
-    $if(any(shadow->transmittance > 0.0f)) {
+    $if(any(shadow->throughput != 0.0f)) {
       const auto value =
-          contribution(task, shadow->transmittance, parameters);
+          contribution(task, shadow->throughput, parameters);
       atomic_accumulate_radiance(
           film.combined, film.volume_guiding_raw, task.pixel,
           task.pixel * volume_guiding::raw_pixel_stride, volume_guiding,

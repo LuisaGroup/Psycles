@@ -1,6 +1,20 @@
 include_guard(GLOBAL)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_native_shadow_tests
+    SOURCE tests/test_luisa_cycles_svm_native_shadow.cpp
+    TEST_STEM luisa_cycles_svm_native_shadow
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(psycles_luisa_cycles_svm_native_shadow_tests
+    PRIVATE "${PROJECT_SOURCE_DIR}/src/luisa")
+target_compile_definitions(psycles_luisa_cycles_svm_native_shadow_tests PRIVATE
+    PSYCLES_NATIVE_SHADOW_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_svm_native_shadow.txt")
+if(TEST psycles.luisa_cycles_svm_native_shadow_vk)
+    set_tests_properties(psycles.luisa_cycles_svm_native_shadow_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_shadow_surface_tests
     SOURCE tests/test_luisa_cycles_svm_shadow_surface.cpp
     TEST_STEM luisa_cycles_svm_shadow_surface

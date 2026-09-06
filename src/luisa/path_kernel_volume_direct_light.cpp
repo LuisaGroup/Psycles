@@ -990,7 +990,8 @@ class PathVolumeDirectLightingComponent final
                             .shadow_storage_capacity,
                         invocation.parameters
                             .shadow_storage_block_size,
-                        pack_shader_evaluation_state(
+                        make_float3(1.0f),
+                        make_shadow_shader_context(pack_shader_evaluation_state(
                             cycles_path_state::
                                 shadow_shader_state(
                                     sample.path_depth,
@@ -999,7 +1000,12 @@ class PathVolumeDirectLightingComponent final
                                     sample
                                         .transparent_depth,
                                     sample
-                                        .transmission_depth)));
+                                        .transmission_depth)),
+                            // The current production ray domain is static;
+                            // volume setup carries the same time value.
+                            0.0f, sample.sample_index, sample.rng_hash,
+                            sample.cycles_rng_offset, sample.volume_bounds_bounce),
+                        invocation.parameters);
                 const auto surface_transmittance =
                     surface_shadow->transmittance;
                 const auto volume_transmittance =

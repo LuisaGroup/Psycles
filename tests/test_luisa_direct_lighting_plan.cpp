@@ -329,9 +329,16 @@ int main(int argc, char **argv) {
     // ShadowIntersectionBatchCall is a transition-local value and must not be
     // reintroduced into this aggregate: a fused auxiliary consumer never
     // reads it, and a split coroutine needs it on exactly one edge.
-    if (luisa::compute::Type::of<DirectLightTaskCall>()->size() != 224u ||
-        luisa::compute::Type::of<DirectLightTaskCall>()->members().size() !=
-            31u) {
+    // The Cycles volume-boundary counter uses the former four-byte tail
+    // padding. It is persistent shadow state, unlike the intersection array.
+    static_assert(offsetof(DirectLightTaskCall, volume_bounds_bounce) == 220u);
+    const auto *task_type = luisa::compute::Type::of<DirectLightTaskCall>();
+    const auto task_members = task_type->members();
+    if (task_type->size() != 224u || task_members.size() != 32u ||
+        task_members.back() != Type::of<luisa::uint>() ||
+        std::any_of(task_members.begin(), task_members.end(), [](const Type *t) {
+          return t->is_array() || t->is_structure();
+        })) {
       std::cerr << "Direct-light queue payload retained transition-local "
                    "shadow state on "
                 << backend << '\n';
@@ -345,7 +352,9 @@ int main(int argc, char **argv) {
         const auto runtime_tasks =
             make_runtime_direct_light_task_storage(*tasks, capacity);
         runtime_tasks.pixel.write(x, x + 37u);
-        values.write(x, runtime_tasks.pixel.read(x));
+        runtime_tasks.volume_bounds_bounce.write(x, x + 11u);
+        values.write(x, runtime_tasks.pixel.read(x) +
+                            runtime_tasks.volume_bounds_bounce.read(x));
       }};
     };
     auto small_kernel = make_runtime_soa_kernel(&small_tasks);
@@ -368,14 +377,14 @@ int main(int argc, char **argv) {
            << large_values.copy_to(luisa::span{large_actual})
            << synchronize();
     for (auto index = std::size_t{0u}; index < small_actual.size(); ++index) {
-      if (small_actual[index] != index + 37u) {
+      if (small_actual[index] != 2u * index + 48u) {
         std::cerr << "Small direct-light runtime SoA failed at " << index
                   << " on " << backend << '\n';
         return EXIT_FAILURE;
       }
     }
     for (auto index = std::size_t{0u}; index < large_actual.size(); ++index) {
-      if (large_actual[index] != index + 37u) {
+      if (large_actual[index] != 2u * index + 48u) {
         std::cerr << "Large direct-light runtime SoA failed at " << index
                   << " on " << backend << '\n';
         return EXIT_FAILURE;
