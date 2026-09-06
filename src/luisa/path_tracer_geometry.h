@@ -64,7 +64,8 @@ using EvaluateShadowSurfaceCallable =
         ShadowIntersectionCall,
         float,
         float,
-        ShaderEvaluationStateCall)>;
+        ShadowShaderContextCall,
+        RenderKernelParameters)>;
 
 using TraceShadowCallable =
     Callable<ShadowTraceResultCall(
@@ -81,7 +82,29 @@ using TraceShadowCallable =
         luisa::uint,
         luisa::uint,
         luisa::uint,
-        ShaderEvaluationStateCall)>;
+        // Initial Cycles shadow_path.throughput (not just transparency).
+        luisa::float3,
+        ShadowShaderContextCall,
+        RenderKernelParameters)>;
+
+[[nodiscard]] Var<ShadowShaderContextCall> make_shadow_shader_context(
+    const Var<ShaderEvaluationStateCall> &path, Expr<float> time,
+    Expr<luisa::uint> sample, Expr<luisa::uint> rng_hash,
+    Expr<luisa::uint> rng_offset,
+    Expr<luisa::uint> volume_bounds_bounce = 0u) noexcept;
+
+// Cycles integrate_transparent_shadow's per-surface state transition. A zero
+// cumulative throughput terminates before committing throughput/RNG/bounce;
+// the volume-boundary counter is updated by surface evaluation itself.
+[[nodiscard]] Bool advance_shadow_surface_state(
+    Var<ShadowShaderContextCall> &context, Float3 &throughput,
+    const Var<ShadowSurfaceEvaluationCall> &surface) noexcept;
+
+inline constexpr luisa::uint shadow_volume_bounds_max = 1024u;
+
+[[nodiscard]] TraceShadowCallable make_fused_shadow_trace_callable(
+    std::shared_ptr<const ShadowIntersectionComponent> intersection,
+    EvaluateShadowSurfaceCallable evaluate_shadow_surface) noexcept;
 
 struct ShadowTraceCallables {
     std::shared_ptr<const ShadowIntersectionComponent> intersect;

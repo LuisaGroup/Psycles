@@ -27,7 +27,7 @@ struct DirectLightTaskCall {
   luisa::float3 light_shader{};
   // Running shadow-path throughput. INTERSECT_SHADOW never mutates it;
   // SHADE_SHADOW alone applies transparent closure extinction.
-  luisa::float3 shadow_transmittance{};
+  luisa::float3 shadow_throughput{};
   luisa::float3 diffuse_weight{};
   luisa::float3 glossy_weight{};
   float ray_minimum{};
@@ -53,6 +53,7 @@ struct DirectLightTaskCall {
   luisa::uint glossy_depth{};
   luisa::uint transparent_depth{};
   luisa::uint transmission_depth{};
+  luisa::uint volume_bounds_bounce{};
 };
 
 static_assert(std::is_trivially_copyable_v<DirectLightTaskCall>);
@@ -115,7 +116,7 @@ struct DirectLightTaskEvaluator {
                const Var<ShadowIntersectionBatchCall> &shadow_batch,
                const Var<RenderKernelParameters> &parameters) const noexcept;
   [[nodiscard]] Float3
-  contribution(const Var<DirectLightTaskCall> &task, Float3 transmittance,
+  contribution(const Var<DirectLightTaskCall> &task, Float3 throughput,
                const Var<RenderKernelParameters> &parameters) const noexcept;
   [[nodiscard]] Var<LightPassContributionCall>
   split(const Var<DirectLightTaskCall> &task,
@@ -142,13 +143,14 @@ public:
 
 LUISA_STRUCT(psycles::luisa_backend::detail::DirectLightTaskCall, ray_origin,
              ray_direction, unshadowed_contribution, nee_path_throughput,
-             light_shader, shadow_transmittance, diffuse_weight, glossy_weight,
+             light_shader, shadow_throughput, diffuse_weight, glossy_weight,
              ray_minimum, ray_maximum, ray_dP, ray_dD, ray_time,
              light_terminate_sample, sample_index, rng_hash, rng_offset,
              source_object, source_primitive,
              light_object, light_primitive, constant_light_shader, shader_flags,
              pixel, path_depth, path_flags, path_visibility, diffuse_depth,
-             glossy_depth, transparent_depth, transmission_depth){};
+             glossy_depth, transparent_depth, transmission_depth,
+             volume_bounds_bounce){};
 
 namespace psycles::luisa_backend::detail {
 

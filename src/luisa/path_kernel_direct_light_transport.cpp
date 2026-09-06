@@ -178,7 +178,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 task.unshadowed_contribution = initial_contribution;
                 task.nee_path_throughput = sample.throughput;
                 task.light_shader = transport.light_shader;
-                task.shadow_transmittance = make_float3(1.0f);
+                task.shadow_throughput = initial_contribution;
                 task.diffuse_weight =
                     select(sample.path_diffuse_weight,
                            config.light_transport.light_component_ratio(
@@ -214,6 +214,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 task.glossy_depth = sample.glossy_depth;
                 task.transparent_depth = sample.transparent_depth;
                 task.transmission_depth = sample.transmission_depth;
+                task.volume_bounds_bounce = sample.volume_bounds_bounce;
                 preparation.valid = true;
             };
         };
@@ -286,13 +287,11 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 };
 
                 $if(visible) {
-                    const auto transmittance = task.shadow_transmittance;
-                    const auto unclamped_contribution =
-                        task.unshadowed_contribution * transmittance;
+                    const auto unclamped_contribution = task.shadow_throughput;
                     _trace->record_contribution(
                         bounce, unclamped_contribution);
                     const auto contribution = _evaluator.contribution(
-                        task, transmittance, invocation.parameters);
+                        task, unclamped_contribution, invocation.parameters);
                     sample.accumulate_radiance_at_state(
                         contribution, task.path_flags, task.path_visibility,
                         task.path_depth);
@@ -336,13 +335,13 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                          .first_barycentric =
                              shadow_result->first_barycentric,
                          .transmittance = transmittance});
-                    $if(any(transmittance > 0.0f)) {
+                    $if(any(shadow_result->throughput != 0.0f)) {
                         const auto unclamped_contribution =
-                            task.unshadowed_contribution * transmittance;
+                            shadow_result->throughput;
                         _trace->record_contribution(
                             bounce, unclamped_contribution);
                         const auto contribution = _evaluator.contribution(
-                            task, transmittance, invocation.parameters);
+                            task, unclamped_contribution, invocation.parameters);
                         sample.accumulate_radiance_at_state(
                             contribution, task.path_flags,
                             task.path_visibility, task.path_depth);
