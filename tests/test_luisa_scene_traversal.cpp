@@ -1296,11 +1296,11 @@ int main(int argc, char **argv) {
                 static_cast<std::uint32_t>(shadow_batch_lane_count),
                 shadow_test_block_size)
                 .dispatch(static_cast<std::uint32_t>(shadow_batch_lane_count));
-  shadow_coro_scheduler(
+  stream << shadow_coro_scheduler(
       shadow_coro_output,
       static_cast<std::uint32_t>(shadow_batch_lane_count),
       shadow_test_block_size)
-      .dispatch(static_cast<std::uint32_t>(shadow_batch_lane_count))(stream);
+      .dispatch(static_cast<std::uint32_t>(shadow_batch_lane_count));
   stream << output.copy_to(luisa::span{actual})
          << ambient_occlusion_output.copy_to(
                 luisa::span{ambient_occlusion_actual})

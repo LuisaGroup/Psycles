@@ -77,7 +77,7 @@ void dump(std::string_view backend,
         });
     luisa::compute::coro::StateMachineCoroScheduler<
         Buffer<luisa::float4>> scheduler{device, coroutine};
-    scheduler(output).dispatch(1u)(stream);
+    stream << scheduler(output).dispatch(1u);
     std::array<luisa::float4, 2u> actual{};
     stream << output.copy_to(luisa::span{actual})
            << synchronize();
@@ -156,7 +156,7 @@ void dump(std::string_view backend,
     luisa::compute::coro::StateMachineCoroScheduler<Buffer<float>,
                                                      Buffer<float>>
         scheduler{device, coroutine};
-    scheduler(source, output).dispatch(1u)(stream);
+    stream << scheduler(source, output).dispatch(1u);
     std::array<float, scalar_count> actual{};
     stream << output.copy_to(luisa::span{actual}) << synchronize();
     auto values_ok = true;

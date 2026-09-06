@@ -172,7 +172,7 @@ bool run(const char *program, const char *backend, bool no_cache) {
                            Buffer<luisa::uint4>>
         scheduler{device, coroutine, config};
     for (auto c = 0u; c < cases; ++c) {
-      scheduler(c, output, meta).dispatch(paths)(stream);
+      stream << scheduler(c, output, meta).dispatch(paths);
       stream << output.copy_to(actual.data()) << meta.copy_to(state.data())
              << synchronize();
       const auto &stats = scheduler.last_dispatch_stats();
