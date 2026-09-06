@@ -85,6 +85,9 @@ struct PathKernelConfig {
     std::uint32_t surface_program_execution_histogram_base{};
     std::uint32_t surface_program_execution_histogram_topology_count{};
     bool staged_surface_sorting{};
+    // Graph/persistent compatibility paths retain the legacy export ABI.
+    // Host wavefront uses the application's typed Extension/Handler instead.
+    bool staged_surface_sort_annotation{};
   // Optional host/JIT execution policy. When present, the canonical direct-
   // light transport stage publishes its reduced visibility task instead of
   // evaluating it inline. The material/lighting algorithm remains the same
