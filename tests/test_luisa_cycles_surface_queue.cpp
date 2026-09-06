@@ -1,9 +1,9 @@
-#include "path_kernel_surface_queue.h"
 #include "cycles_shader_identity.h"
 #include "cycles_surface_sort.h"
+#include "path_kernel_surface_queue.h"
 
-#include <luisa/luisa-compute.h>
 #include <luisa/coro/schedulers/wavefront.h>
+#include <luisa/luisa-compute.h>
 
 #include <array>
 #include <fstream>
@@ -67,9 +67,9 @@ bool check_partition_policy() {
   return true;
 }
 
-bool check_scheduler(Device &device, Stream &stream, const Oracle &oracle) {
+bool check_scheduler(Device &device, Stream &stream, const Oracle &oracle,
+                     unsigned capacity, bool annotations) {
   using namespace luisa::compute::coro;
-  constexpr auto capacity = 131073u;
   const auto divisor = cycles_surface_sort_partition_size(capacity, oracle.shaders);
   auto records = device.create_buffer<luisa::uint4>(oracle.rows.size());
   auto order = device.create_buffer<unsigned>(capacity);
@@ -77,25 +77,52 @@ bool check_scheduler(Device &device, Stream &stream, const Oracle &oracle) {
   stream << records.copy_from(oracle.rows.data()) << order.copy_from(actual.data())
          << synchronize();
   Coroutine<void(Buffer<luisa::uint4>, Buffer<unsigned>)> coroutine{
-      [](BufferUInt4 rows, BufferUInt physical_order) {
+      [annotations, shaders = oracle.shaders](BufferUInt4 rows,
+                                              BufferUInt physical_order) {
         const auto id = dispatch_x();
         const auto hint = rows.read(id % 6u).z;
-        $suspend("shade_surface", coro_frame_export("coro_hint", hint));
+        if (annotations) {
+          $suspend("shade_surface", make_surface_sort_annotation(hint, shaders, true));
+        } else {
+          $suspend("shade_surface", coro_frame_export("coro_hint", hint));
+        }
         // dispatch_x is restored from the frame; block/thread IDs are the
         // physical launch position after the scheduler applies its indices.
         physical_order.write(block_x() * 128u + thread_x(), id);
       }};
   WavefrontCoroSchedulerConfig config;
   config.thread_count = capacity;
-  config.hint_range = oracle.shaders;
-  config.hint_fields = {"shade_surface"};
+  if (!annotations) {
+    config.hint_range = oracle.shaders;
+    config.hint_fields = {"shade_surface"};
+    config.hint_partition_size = divisor;
+  }
   config.execution_block_size = 128u;
   config.largest_continuation_first = true;
   config.incremental_continuation_counts = true;
-  config.hint_partition_size = divisor;
   WavefrontCoroScheduler<Buffer<luisa::uint4>, Buffer<unsigned>> scheduler{
       device, coroutine, config};
-  scheduler(records, order).dispatch(capacity)(stream);
+  auto handlers = 0u;
+  const auto partitions = capacity / divisor + unsigned(capacity % divisor != 0u);
+  const auto can_sort = oracle.shaders * partitions <= radix_sort::hist_block_size ||
+                        device.compute_warp_size() == radix_sort::warp_size;
+  if (annotations) {
+    if (coroutine.frame().field("coro_hint") != nullptr ||
+        !scheduler.config().hint_fields.empty()) {
+      std::cerr << "Typed surface-sort annotation must not rely on the legacy hint ABI\n";
+      return false;
+    }
+    scheduler.register_extension_handler(stream, [&](auto &context, auto &stage) {
+      auto handler = make_surface_sort_handler(context, stage);
+      handlers += unsigned(handler != nullptr);
+      return handler;
+    });
+    if ((handlers != 0u) != can_sort) {
+      std::cerr << "Surface-sort handler must honor the radix subgroup precondition\n";
+      return false;
+    }
+  }
+  stream << scheduler(records, order).dispatch(capacity);
   stream << order.copy_to(actual.data()) << synchronize();
   std::vector<bool> seen(capacity);
   unsigned previous_key = 0u;
@@ -106,7 +133,7 @@ bool check_scheduler(Device &device, Stream &stream, const Oracle &oracle) {
     }
     seen[id] = true;
     const auto key = oracle.rows[id % 6u].z + oracle.shaders * (id / divisor);
-    if (key < previous_key) {
+    if (can_sort && key < previous_key) {
       std::cerr << "Continuation is not ordered by Cycles locality/shader key\n";
       return false;
     }
@@ -147,18 +174,16 @@ int main(int argc, char **argv) {
       MaterialBindingGpu{.surface_tag = 7u, .cycles_shader_index = 12u},
       MaterialBindingGpu{.surface_tag = 9u, .cycles_shader_index = 38u}};
   const std::array material_slots{0u, 1u};
-  const std::array segments{
-      CurveSegmentGpu{.curve_index = 0u, .cycles_curve_index = 1u},
-      CurveSegmentGpu{.curve_index = 1u, .cycles_curve_index = 0u}};
+  const std::array segments{CurveSegmentGpu{.curve_index = 0u, .cycles_curve_index = 1u},
+                            CurveSegmentGpu{.curve_index = 1u, .cycles_curve_index = 0u}};
   const std::array<unsigned, 4u> triangles{
       12u | cycles_shader_identity::smooth_normal | cycles_shader_identity::cast_shadow,
       19u | cycles_shader_identity::cast_shadow,
       12u | cycles_shader_identity::cast_shadow, 38u | cycles_shader_identity::use_mis};
-  const std::array curves{
-      abi::KernelCurve{.shader_id =
-                           static_cast<int>(3u | cycles_shader_identity::cast_shadow)},
-      abi::KernelCurve{.shader_id =
-                           static_cast<int>(6u | cycles_shader_identity::use_mis)}};
+  const std::array curves{abi::KernelCurve{.shader_id = static_cast<int>(
+                                               3u | cycles_shader_identity::cast_shadow)},
+                          abi::KernelCurve{.shader_id = static_cast<int>(
+                                               6u | cycles_shader_identity::use_mis)}};
   const std::array hits{CommittedHit{.inst = 0u, .prim = 0u, .hit_type = 1u},
                         CommittedHit{.inst = 0u, .prim = 1u, .hit_type = 1u},
                         CommittedHit{.inst = 1u, .prim = 0u, .hit_type = 1u},
@@ -190,8 +215,7 @@ int main(int argc, char **argv) {
          << scene->geometry_material_buffer.copy_from(materials.data())
          << scene->override_material_buffer.copy_from(overrides.data())
          << slot_buffer.copy_from(material_slots.data())
-         << segment_buffer.copy_from(segments.data())
-         << hit_buffer.copy_from(hits.data())
+         << segment_buffer.copy_from(segments.data()) << hit_buffer.copy_from(hits.data())
          << geometry.triangle_shader_buffer.copy_from(triangles.data())
          << geometry.curve_buffer.copy_from(curves.data()) << scene->heap.update()
          << synchronize();
@@ -210,8 +234,7 @@ int main(int argc, char **argv) {
          {ScenePrimitiveStagePlan{true, false}, ScenePrimitiveStagePlan{false, true},
           ScenePrimitiveStagePlan{true, true}}) {
       const auto stage = make_surface_queue_key_stage(plan);
-      Kernel1D kernel = [&](Var<Buffer<CommittedHit>> input, BufferUInt out,
-                            UInt first) {
+      Kernel1D kernel = [&](Var<Buffer<CommittedHit>> input, BufferUInt out, UInt first) {
         const auto row = first + dispatch_x();
         const Var<CommittedHit> hit = input.read(row);
         out.write(row, stage->emit(scene, hit));
@@ -231,7 +254,10 @@ int main(int argc, char **argv) {
       }
     }
   }
-  ok = check_scheduler(device, stream, oracle) && ok;
+  ok = check_scheduler(device, stream, oracle, 131073u, false) && ok;
+  for (auto capacity : {65u, 131073u, 1048576u}) {
+    ok = check_scheduler(device, stream, oracle, capacity, true) && ok;
+  }
   if (ok) {
     std::cout << "Cycles surface queue shader identity passed\n";
   }

@@ -229,9 +229,17 @@ void PathKernelPipeline::emit(
         if (_impl->surface_queue_key) {
           const auto surface_queue_key = _impl->surface_queue_key->emit(
               sample.invocation.config.scene, bounce.hit);
-          $suspend(path_transition::shade_surface,
-                   coro_frame_export(path_transition::scheduler_hint,
-                                     surface_queue_key));
+          if (sample.invocation.config.staged_surface_sort_annotation) {
+            $suspend(path_transition::shade_surface,
+                     make_surface_sort_annotation(
+                         surface_queue_key,
+                         surface_queue_key_range(*sample.invocation.config.scene),
+                         sample.invocation.config.scene->native_cycles_svm_surface));
+          } else {
+            $suspend(path_transition::shade_surface,
+                     coro_frame_export(path_transition::scheduler_hint,
+                                       surface_queue_key));
+          }
         } else {
           $suspend(path_transition::shade_surface);
         }

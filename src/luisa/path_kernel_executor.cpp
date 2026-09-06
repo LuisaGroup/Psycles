@@ -394,6 +394,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
     LUISA_ASSERT(config.wavefront_frame_capacity != 0u,
                 "Staged wavefront frame capacity must be positive.");
     auto staged_path = make_local_shadow_path(path);
+    staged_path.staged_surface_sort_annotation = true;
     DirectLightTaskQueueBinding direct_light_queue;
     const auto stage_plan = make_path_kernel_scene_stage_plan(
         path.next_event_estimation,
@@ -424,20 +425,20 @@ build_path_kernel_executor(luisa::compute::Device &device,
             scheduler_config.incremental_continuation_counts = true;
             scheduler_config.refill_continuations = {
                 path_transition::intersect_closest};
-            const auto has_surface_queue_hint = configure_surface_queue_hint(
-                staged_path, coroutine, scheduler_config);
     scheduler_config.shader_option = config.shader_option;
     auto scheduler = std::make_unique<RenderSchedulers::Wavefront>(
                     device, coroutine, scheduler_config);
+    auto preparation_stream = device.create_stream();
+    scheduler->register_extension_handler(preparation_stream, make_surface_sort_handler);
+    preparation_stream << luisa::compute::synchronize();
     if (direct_light_queue.work) {
       scheduler->register_auxiliary_work(direct_light_queue.work);
     }
-    LUISA_INFO("Psycles staged surface queue: keys={} partition_size={} requested={} "
-               "hint_sort={} direct_light_queue={}",
-               scheduler->config().hint_range,
-               scheduler->config().hint_partition_size,
+    LUISA_INFO("Psycles staged surface queue: keys={} requested={} "
+               "typed_annotation={} direct_light_queue={}",
+               surface_queue_key_range(*path.scene),
                path.staged_surface_sorting,
-               !scheduler->config().hint_fields.empty(),
+               staged_path.staged_surface_sort_annotation,
                direct_light_queue.work != nullptr);
     return PathKernelExecutor{std::make_unique<CoroutineExecutor>(
         config.scheduler, std::move(scheduler))};
