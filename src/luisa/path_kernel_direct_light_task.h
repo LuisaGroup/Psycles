@@ -105,6 +105,12 @@ struct DirectLightTaskEvaluator {
   [[nodiscard]] Var<ShadowTraceResultCall>
   trace(const Var<DirectLightTaskCall> &task,
         const Var<RenderKernelParameters> &parameters) const noexcept;
+  // The production coroutine driver. The traversal batch is live only on
+  // the INTERSECT_SHADOW -> SHADE_SHADOW edge, never in the invariant task.
+  void
+  trace_staged(Var<DirectLightTaskCall> &task,
+               const Var<RenderKernelParameters> &parameters, Bool &active,
+               Bool &visible) const noexcept;
   [[nodiscard]] Bool
   shade_light_nee(Var<DirectLightTaskCall> &task,
                   const Var<RenderKernelParameters> &parameters) const noexcept;

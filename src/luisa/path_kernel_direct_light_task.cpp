@@ -1,9 +1,11 @@
 #include "path_kernel_direct_light_task.h"
 #include "path_kernel_builder.h"
 #include "path_kernel_film.h"
+#include "path_kernel_transitions.h"
 #include "path_tracer_cycles_svm_light.h"
 
 #include <psycles/luisa/surface_ray.h>
+#include <luisa/dsl/coro_func.h>
 
 #include <utility>
 
@@ -37,6 +39,25 @@ Var<ShadowTraceResultCall> DirectLightTaskEvaluator::trace(
           task.ray_time, task.sample_index, task.rng_hash, task.rng_offset,
           task.volume_bounds_bounce),
       parameters);
+}
+
+void DirectLightTaskEvaluator::trace_staged(
+    Var<DirectLightTaskCall> &task,
+    const Var<RenderKernelParameters> &parameters, Bool &active,
+    Bool &visible) const noexcept {
+  $while(active) {
+    $suspend(path_transition::intersect_shadow);
+    const auto shadow_batch = intersect(task, parameters);
+    // Cycles integrator_intersect_shadow terminates opaque paths here. An
+    // empty, unblocked batch still needs SHADE_SHADOW for film output.
+    $if(shadow_batch.blocked != 0u) { active = false; }
+    $else {
+      $suspend(path_transition::shade_shadow);
+      const auto step = shade_shadow(task, shadow_batch, parameters);
+      active = step.continue_shadow;
+      visible |= step.visible;
+    };
+  };
 }
 
 Bool DirectLightTaskEvaluator::shade_light_nee(
