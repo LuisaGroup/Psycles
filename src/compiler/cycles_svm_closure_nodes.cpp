@@ -284,6 +284,10 @@ protected:
   }
 
 public:
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return _closure;
+  }
+
   [[nodiscard]] std::uint32_t get_feature() const noexcept override {
     return GraphNode::get_feature() | kernel_feature_node_bsdf;
   }
@@ -353,6 +357,10 @@ class SheenBsdfNode final : public BsdfNode {
 public:
   SheenBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_SHEEN_ID} {}
 
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return sheen_distribution(this).value_or(CLOSURE_NONE_ID);
+  }
+
   void compile(SVMCompiler &compiler) override {
     const auto distribution = sheen_distribution(this);
     if (!distribution) {
@@ -412,6 +420,10 @@ class HairBsdfNode final : public BsdfNode {
 public:
   HairBsdfNode() noexcept : BsdfNode{CLOSURE_BSDF_HAIR_REFLECTION_ID} {}
 
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return hair_component(this).value_or(CLOSURE_NONE_ID);
+  }
+
   void compile(SVMCompiler &compiler) override {
     const auto component = hair_component(this);
     if (!component) {
@@ -433,6 +445,10 @@ class GlassBsdfNode final : public BsdfNode {
 public:
   GlassBsdfNode() noexcept
       : BsdfNode{CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID} {}
+
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return glass_distribution(this).value_or(CLOSURE_NONE_ID);
+  }
 
   void compile(SVMCompiler &compiler) override {
     const auto distribution = glass_distribution(this);
@@ -465,6 +481,10 @@ private:
 public:
   GlossyBsdfNode() noexcept
       : BsdfNode{CLOSURE_BSDF_MICROFACET_GGX_ID} {}
+
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return glossy_distribution(this).value_or(CLOSURE_NONE_ID);
+  }
 
   [[nodiscard]] bool has_attribute_dependency() const noexcept override {
     return true;
@@ -513,6 +533,10 @@ class RefractionBsdfNode final : public BsdfNode {
 public:
   RefractionBsdfNode() noexcept
       : BsdfNode{CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID} {}
+
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return refraction_distribution(this).value_or(CLOSURE_NONE_ID);
+  }
 
   void compile(SVMCompiler &compiler) override {
     const auto distribution = refraction_distribution(this);
@@ -599,6 +623,10 @@ class SubsurfaceScatteringNode final : public BsdfNode {
 public:
   SubsurfaceScatteringNode() noexcept
       : BsdfNode{CLOSURE_BSSRDF_RANDOM_WALK_ID} {}
+
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return subsurface_method(this, "Method").value_or(CLOSURE_NONE_ID);
+  }
 
   [[nodiscard]] bool has_surface_bssrdf() const noexcept override {
     return true;
@@ -692,6 +720,10 @@ public:
 
 class AbsorptionVolumeNode final : public VolumeClosureNode {
 public:
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return CLOSURE_VOLUME_ABSORPTION_ID;
+  }
+
   void compile(SVMCompiler &compiler) override {
     compile_volume(compiler, CLOSURE_VOLUME_ABSORPTION_ID, "Density");
   }
@@ -699,6 +731,10 @@ public:
 
 class ScatterVolumeNode final : public VolumeClosureNode {
 public:
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return volume_phase(this).value_or(CLOSURE_NONE_ID);
+  }
+
   void compile(SVMCompiler &compiler) override {
     const auto phase = volume_phase(this);
     if (!phase) {
@@ -729,6 +765,11 @@ public:
 };
 
 class PrincipledBsdfNode final : public GraphNode {
+public:
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return CLOSURE_BSDF_PRINCIPLED_ID;
+  }
+
 private:
   [[nodiscard]] bool has_nonzero_weight(std::string_view name) const noexcept {
     const auto *weight = input(name);

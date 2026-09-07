@@ -157,6 +157,9 @@ struct GraphNode {
   [[nodiscard]] virtual TextureMapping *texture_mapping() noexcept;
   [[nodiscard]] virtual const TextureMapping *texture_mapping() const noexcept;
   [[nodiscard]] virtual std::uint32_t get_feature() const noexcept;
+  [[nodiscard]] virtual ClosureType get_closure_type() const noexcept {
+    return CLOSURE_NONE_ID;
+  }
   [[nodiscard]] virtual ShaderNodeType shader_node_type() const noexcept;
   [[nodiscard]] virtual bool equals(const GraphNode &other) const noexcept;
   [[nodiscard]] virtual bool has_surface_emission() const noexcept;
@@ -204,6 +207,7 @@ public:
   [[nodiscard]] const std::string &diagnostic() const noexcept {
     return _diagnostic;
   }
+  [[nodiscard]] std::uint32_t get_num_closures() const noexcept;
   [[nodiscard]] const std::vector<std::unique_ptr<GraphNode>> &nodes() const
       noexcept {
     return _nodes;

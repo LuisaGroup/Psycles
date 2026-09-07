@@ -198,8 +198,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         volume_capabilities;
     data->volume_metadata
         .closure_allocation_budget =
-        cycles_scene_closure_allocation_budget(
-            data->materials);
+        data->native_cycles_svm_surface
+            ? data->cycles_svm->compilation.max_closures
+            : cycles_scene_closure_allocation_budget(data->materials);
 
     luisa::vector<float> scalar_parameters;
     luisa::vector<luisa::float3> vector_parameters;
