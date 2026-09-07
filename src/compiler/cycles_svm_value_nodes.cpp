@@ -6,6 +6,7 @@
 
 #include "cycles_svm_compiler_internal.h"
 #include "cycles_svm_constant_fold.h"
+#include "cycles_svm_range_nodes.h"
 
 #include <psycles/compiler/core_nodes.h>
 
@@ -91,7 +92,7 @@ std::unique_ptr<GraphNode> make_value_graph_node(std::string_view type) {
   if (type == node_type::constant_color) {
     return std::make_unique<ColorNode>();
   }
-  return nullptr;
+  return make_range_graph_node(type);
 }
 
 } // namespace psycles::compiler::cycles_svm

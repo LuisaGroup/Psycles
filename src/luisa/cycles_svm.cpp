@@ -654,6 +654,16 @@ void eval_nodes(const KernelGlobals &kernel_globals,
               (kernel_features & kernel_feature_object_motion) != 0u);
         };
       }
+      if (node_types_used[NODE_MAP_RANGE]) {
+        PSYCLES_SVM_CASE(NODE_MAP_RANGE) {
+          detail::node_map_range(cursor, stack);
+        };
+      }
+      if (node_types_used[NODE_VECTOR_MAP_RANGE]) {
+        PSYCLES_SVM_CASE(NODE_VECTOR_MAP_RANGE) {
+          detail::node_vector_map_range(cursor, stack);
+        };
+      }
       if (node_types_used[NODE_CLAMP]) {
         PSYCLES_SVM_CASE(NODE_CLAMP) { detail::node_clamp(cursor, stack); };
       }
