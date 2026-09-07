@@ -10,6 +10,19 @@
 namespace psycles::luisa_backend::detail {
 namespace {
 
+[[nodiscard]] Bool can_continue_surface_sample(const SurfaceSample &sample) noexcept {
+    // Cycles integrate_surface_bsdf_bssrdf_bounce rejects a zero BsdfEval
+    // even when the directional PDF and event label are nonzero (e.g. narrow
+    // Ashikhmin velvet at normal incidence). Do not advance path state or
+    // schedule another traversal for that sample. This is an exact zero
+    // predicate, not an energy cutoff. The earlier BSSRDF branch in Cycles
+    // does not pass through the ordinary BSDF test.
+    const auto subsurface = (sample.evaluation.events &
+        static_cast<std::uint32_t>(contract::event_subsurface)) != 0u;
+    return sample.valid & (sample.evaluation.pdf > 0.0f) &
+           (subsurface | any(sample.evaluation.f != 0.0f));
+}
+
 class SurfaceScatterStageImpl final : public SurfaceScatterStage {
 
   public:
@@ -110,9 +123,11 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 // Cycles returns directly from subsurface_bounce after the
                 // closure pick. It neither samples an ordinary BSDF here nor
                 // reaches that branch's BSDF/post-bounce observation points.
-                const Bool record_bsdf = config.scene->native_cycles_svm_surface
+                const Bool ordinary_bsdf = config.scene->native_cycles_svm_surface
                     ? !cycles_closure::is_bssrdf(sample_trace.closure_type)
                     : Bool{true};
+                const Bool record_bsdf =
+                    ordinary_bsdf & can_continue_surface_sample(surface_sample);
                 $if(record_bsdf) {
                 const auto cycles_label = cycles_closure::label_from_events(
                     sample_trace.sample.evaluation.events);
@@ -152,8 +167,7 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 make_float3(trace_uint32(cycles_surface_runtime_flags).xy(),
                             0.0f));
         }
-        Bool valid = surface_sample.valid &
-                     (surface_sample.evaluation.pdf > 0.0f);
+        Bool valid = can_continue_surface_sample(surface_sample);
         Bool subsurface = false;
         $if(valid) {
 
