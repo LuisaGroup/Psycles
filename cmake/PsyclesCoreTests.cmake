@@ -1,4 +1,14 @@
 if(PSYCLES_BUILD_TESTS)
+    add_executable(psycles_cycles_wavefront_policy_tests
+        tests/test_cycles_wavefront_policy.cpp)
+    target_include_directories(psycles_cycles_wavefront_policy_tests PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/../src/luisa")
+    target_compile_features(psycles_cycles_wavefront_policy_tests PRIVATE cxx_std_20)
+    target_compile_definitions(psycles_cycles_wavefront_policy_tests PRIVATE
+        PSYCLES_WAVEFRONT_POLICY_ORACLE="${CMAKE_CURRENT_LIST_DIR}/../tests/data/cycles_wavefront_policy.txt")
+    add_test(NAME psycles.cycles_wavefront_policy
+        COMMAND psycles_cycles_wavefront_policy_tests)
+
     add_executable(psycles_tests tests/test_main.cpp)
     target_link_libraries(psycles_tests PRIVATE Psycles::core)
     target_compile_features(psycles_tests PRIVATE cxx_std_20)

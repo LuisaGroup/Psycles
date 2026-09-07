@@ -1,5 +1,6 @@
 #include "path_kernel_direct_light_queue.h"
 
+#include "cycles_wavefront_policy.h"
 #include "path_kernel_film.h"
 #include "path_kernel_transitions.h"
 
@@ -229,24 +230,32 @@ public:
     return _host_counts[stage];
   }
 
-  void prepare_for_producer(Stream &stream, unsigned required) noexcept override {
+  void prepare_for_admission(Stream &stream) noexcept override {
     const auto live = host_count();
-    LUISA_ASSERT(required <= _capacity - live, "Shadow producer was not admitted.");
     const auto extent = _host_counts[3];
-    // Compact only when the append tail cannot fit an admitted producer.
-    // Stage counts do not change. The scheduler's proof concerns live slots;
-    // this operation materializes the corresponding contiguous free suffix.
-    if (required <= _capacity - extent) {
-      return;
-    }
-    if (live != 0u) {
+    const auto plan = cycles_shadow_compaction(extent, live);
+    // Cycles decides whether relocation is worthwhile before testing append
+    // admission. Unreclaimed holes are not available producer slots; when
+    // the tail is insufficient, the generic scheduler drains this side pool.
+    if (plan.compact) {
       stream << _scratch_count.copy_from(luisa::span{&_zero, 1u})
              << _gather(0u, live).dispatch(live)
              << _scratch_count.copy_from(luisa::span{&_zero, 1u})
              << _compact(_capacity, live, extent).dispatch(extent - live);
     }
-    _host_counts[3] = live;
-    stream << _count.view().subview(3u, 1u).copy_from(&_host_counts[3]);
+    if (plan.upload_extent) {
+      _host_counts[3] = plan.extent;
+      stream << _count.view().subview(3u, 1u).copy_from(&_host_counts[3]);
+    }
+  }
+
+  [[nodiscard]] unsigned host_available_slots() const noexcept override {
+    return _capacity - _host_counts[3];
+  }
+
+  void prepare_for_producer(Stream &, unsigned required) noexcept override {
+    LUISA_ASSERT(required <= host_available_slots(),
+                 "Shadow producer exceeds its admitted append storage.");
   }
 
   void dispatch_stage(unsigned stage, Stream &stream,

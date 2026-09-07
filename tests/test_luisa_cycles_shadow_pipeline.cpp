@@ -175,9 +175,9 @@ bool run(const char *program, const char *backend, bool no_cache) {
       std::vector<unsigned> visits(paths);
       stream << combined.copy_from(colors.data()) << passes.copy_from(light_passes.data())
              << main_visits.copy_from(visits.data());
-      stream << scheduler(combined, combined, combined, passes, main_visits, combined, main_visits,
-                combined, 0u, 0u, combined, dummy, parameters)
-          .dispatch(paths);
+      stream << scheduler(combined, combined, combined, passes, main_visits, combined,
+                          main_visits, combined, 0u, 0u, combined, dummy, parameters)
+                    .dispatch(paths);
       stream << combined.copy_to(colors.data()) << passes.copy_to(light_passes.data())
              << main_visits.copy_to(visits.data()) << synchronize();
       std::array<uint64_t, 3u> expected_counts{};
@@ -210,16 +210,26 @@ bool run(const char *program, const char *backend, bool no_cache) {
       }
       passed &= binding.work->host_count() == 0u;
     }
-    if (capacity == 19u) {
-      // Force in-place relocation while BOTH NEE payloads and shade-owned
-      // traversal batches remain live: 19 allocated, six opaque terminals,
-      // 13 live, then six new publications. Sources and destination holes
-      // straddle the live-prefix boundary; restarting the whole pool or
-      // copying only the invariant task would lose contributions here.
-      Kernel1D publish = [sink = binding.sink](Var<RenderKernelParameters> params,
-                                               UInt first, UInt count) {
+    {
+      // Exercise both sides of Cycles' host compaction policy. At extent 19,
+      // dead holes must not bypass the minimum-32 rule: drain before append.
+      // At extent 32, 20 opaque terminals leave four NEE payloads and eight
+      // shade-owned traversal batches. Compact those 12 live slots, then
+      // append 20 items. Moving only invariant state would lose film output.
+      const auto compact_case = capacity == 32u;
+      const auto append_count = compact_case ? 20u : 6u;
+      Kernel1D publish = [sink = binding.sink, compact_case](
+                             Var<RenderKernelParameters> params, UInt first, UInt count) {
         $if(dispatch_x() < count) {
-          sink->emit(fixture_task(first + dispatch_x()), params.wavefront_frame_capacity);
+          const auto id = first + dispatch_x();
+          auto task = fixture_task(id);
+          if (compact_case) {
+            $if(id < 16u) {
+              task.source_object = 0u;
+              task.constant_light_shader = 1u;
+            };
+          }
+          sink->emit(task, params.wavefront_frame_capacity);
         };
       };
       auto publisher = device.compile(publish, options);
@@ -238,16 +248,33 @@ bool run(const char *program, const char *backend, bool no_cache) {
                                      combined, dummy, parameters);
         read_counts();
       };
-      stream << publisher(parameters, 0u, 19u).dispatch(19u);
+      stream << publisher(parameters, 0u, capacity).dispatch(capacity);
       read_counts();
       dispatch_stage(1u);
-      passed &= binding.work->host_count() == 13u;
+      passed &= binding.work->host_count() == (compact_case ? 12u : 13u);
       passed &= binding.work->stage_host_count(0u) == 4u;
-      passed &= binding.work->stage_host_count(2u) == 9u;
-      binding.work->prepare_for_producer(stream, 6u);
-      stream << publisher(parameters, 19u, 6u).dispatch(6u);
+      passed &= binding.work->stage_host_count(2u) == (compact_case ? 8u : 9u);
+      passed &= binding.work->host_available_slots() == 0u;
+      binding.work->prepare_for_admission(stream);
+      if (compact_case) {
+        passed &= binding.work->host_available_slots() == 20u;
+        passed &= binding.work->host_count() == 12u;
+        passed &= binding.work->stage_host_count(0u) == 4u;
+        passed &= binding.work->stage_host_count(2u) == 8u;
+      } else {
+        passed &= binding.work->host_available_slots() == 0u;
+        auto drains = 0u;
+        while (binding.work->host_available_slots() < append_count && drains++ < 12u) {
+          dispatch_stage(binding.work->admission_stage());
+          binding.work->prepare_for_admission(stream);
+        }
+        passed &= binding.work->host_count() == 0u;
+        passed &= binding.work->host_available_slots() == capacity;
+      }
+      binding.work->prepare_for_producer(stream, append_count);
+      stream << publisher(parameters, capacity, append_count).dispatch(append_count);
       read_counts();
-      passed &= binding.work->host_count() == 19u;
+      passed &= binding.work->host_count() == (compact_case ? 32u : 6u);
       auto steps = 0u;
       while (binding.work->host_count() != 0u && steps++ < 12u) {
         dispatch_stage(binding.work->admission_stage());
@@ -257,8 +284,10 @@ bool run(const char *program, const char *backend, bool no_cache) {
              << synchronize();
       const std::array<float, cases> factors{0, 1, 0, .25f, .0625f, 0, .03125f, 0};
       for (auto i = 0u; i < paths; ++i) {
-        auto expected =
-            luisa::make_float3(2.0f, 4.0f, 8.0f) * (i < 25u ? factors[i % cases] : 0.0f);
+        const auto contributes =
+            i < capacity + append_count && (!compact_case || i >= 16u);
+        auto expected = luisa::make_float3(2.0f, 4.0f, 8.0f) *
+                        (contributes ? factors[i % cases] : 0.0f);
         auto pass = light_passes[i * light_pass_buffer_count +
                                  light_pass_index(LightPassBuffer::diffuse_direct)];
         for (auto lane = 0u; lane < 3u; ++lane) {
