@@ -1,4 +1,5 @@
 #include "path_kernel_emissive_triangle.h"
+#include "path_tracer_cycles_svm_emission.h"
 
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/native_vector_math.h>
@@ -595,6 +596,13 @@ class PathEmissiveTriangleComponent final
         PathSampleContext &sample,
         const EmissiveTriangleLightProposal
             &proposal) const noexcept override {
+        if (sample.invocation.config.scene->native_cycles_svm_surface) {
+            Float3 emission = make_float3(1.0f);
+            static_cast<void>(cycles_svm_constant_emission(
+                *sample.invocation.config.scene,
+                proposal.geometry.emitter.cycles_shader_id, emission));
+            return emission;
+        }
         return sample.invocation
             .constant_surface_emission(
                 proposal.geometry.emitter.surface_tag,

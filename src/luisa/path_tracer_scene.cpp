@@ -116,11 +116,34 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         compiler::make_core_node_registry()};
     const auto material_reachability =
         build_scene_material_reachability(snapshot);
+    // Only the still-unmigrated mesh-displacement consumer needs legacy
+    // parameters. Its private input contains the displacement domain alone;
+    // no surface, volume, light or world graph may be gated by this compiler.
+    SceneSnapshot displacement_inputs;
+    std::set<contract::MaterialId> displacement_materials;
+    for (const auto material : material_reachability.surface_materials) {
+        const auto &source = snapshot.materials.at(material);
+        if (!contract::uses_true_displacement(source.displacement_method) ||
+            !source.shader.root(contract::ShaderDomain::displacement)) {
+            continue;
+        }
+        auto &input = displacement_inputs.materials.emplace(material, source).first->second;
+        // SurfaceProgram requires a surface root even for its displacement
+        // method. This inert terminal belongs only to that private input;
+        // the native compiler below always receives the unmodified snapshot.
+        const auto terminal = input.shader.add_node(
+            compiler::node_type::null_closure, "Displacement-only input");
+        input.shader.set_root(contract::ShaderDomain::surface,
+            contract::OutputRef{terminal, "Closure"});
+        input.shader.set_root(contract::ShaderDomain::surface_normal, std::nullopt);
+        input.shader.set_root(contract::ShaderDomain::volume, std::nullopt);
+        displacement_materials.emplace(material);
+    }
     auto material_update =
         data->materials.update(
-            snapshot,
+            displacement_inputs,
             shader_compiler,
-            material_reachability.shader_materials);
+            displacement_materials);
     if (!material_update.committed) {
         for (const auto &diagnostic :
              material_update.diagnostics) {
@@ -151,24 +174,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     const auto &reachable_surface_materials =
         material_reachability.surface_materials;
     for (const auto material_id : reachable_surface_materials) {
-        auto has_bssrdf = false;
-        auto has_bssrdf_bump = false;
-        if (data->native_cycles_svm_surface) {
-            const auto &metadata = cycles_svm_material_metadata(*data, material_id);
-            has_bssrdf = metadata.has_surface_bssrdf;
-            has_bssrdf_bump = metadata.has_bssrdf_bump;
-        } else {
-            const auto &material = data->materials.materials().at(material_id);
-            has_bssrdf = compiler::cycles_surface_has_bssrdf(
-                *material.surface_program(), material.parameters());
-            has_bssrdf_bump = compiler::cycles_surface_has_bssrdf_bump(
-                *material.surface_program(), material.parameters(),
-                snapshot.materials.at(material_id).displacement_method);
-        }
-        if (has_bssrdf) {
+        const auto &metadata = cycles_svm_material_metadata(*data, material_id);
+        if (metadata.has_surface_bssrdf) {
             surface_bssrdf_materials.emplace(material_id);
         }
-        if (has_bssrdf_bump) {
+        if (metadata.has_bssrdf_bump) {
             surface_bssrdf_bump_materials.emplace(material_id);
         }
     }
@@ -177,7 +187,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     const auto subsurface_scene_plan = subsurface_scene.plan(
         snapshot, surface_bssrdf_materials);
     const AmbientOcclusionSceneComponent ambient_occlusion_scene{
-        snapshot, data->materials, reachable_surface_materials};
+        data->cycles_svm->compilation};
     ambient_occlusion_scene.initialize(data);
     auto cycles_instance_intersection_plan =
         build_cycles_instance_intersection_plan(
@@ -197,9 +207,14 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
     data->volume_metadata
         .closure_allocation_budget =
-        data->native_cycles_svm_surface
-            ? data->cycles_svm->compilation.max_closures
-            : cycles_scene_closure_allocation_budget(data->materials);
+        data->cycles_svm->compilation.max_closures;
+
+    for (const auto &[id, shader_index] : data->cycles_svm->material_shader_indices) {
+        static_cast<void>(shader_index);
+        const auto identity = static_cast<std::uint32_t>(data->material_bindings.size());
+        data->material_bindings.emplace(
+            id, make_cycles_svm_material_binding(*data, id, 0u, 0u, identity));
+    }
 
     luisa::vector<float> scalar_parameters;
     luisa::vector<luisa::float3> vector_parameters;
@@ -252,49 +267,12 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         if (surface_bssrdf_bump_materials.contains(id)) {
             surface_bssrdf_bump_tags.emplace(surface_iter->second);
         }
-        const auto capabilities =
-            data->surfaces.capabilities(
-                surface_iter->second);
-        const auto identity =
-            static_cast<std::uint32_t>(data->material_bindings.size());
-        if (data->native_cycles_svm_surface) {
-            data->material_bindings.emplace(
-                id, make_cycles_svm_material_binding(
-                        *data, id, surface_iter->second, base, identity));
-        } else {
-            const auto &source = snapshot.materials.at(id);
-            const auto emission_estimate = compiler::estimate_surface_emission(
-                *material.surface_program(), material.parameters());
-            const auto effective_emission_sampling =
-                compiler::resolve_cycles_emission_sampling(
-                    source.emission_sampling, emission_estimate);
-            // Endpoint emission remains independent of participation in NEE.
-            const auto may_emit = emission_estimate != Vec3f{};
-            const auto has_transparent_shadow =
-                (capabilities.may_be_transparent && source.use_transparent_shadow) ||
-                capabilities.may_have_volume;
-            const auto emission_is_constant =
-                material.surface_program()->emission_evaluation() !=
-                compiler::EmissionEvaluationMode::deferred;
-            data->material_bindings.emplace(
-                id, MaterialBinding{
-                    .surface_tag = surface_iter->second,
-                    .parameter_block = base,
-                    .cycles_shader_index = source.cycles_shader_index.value_or(
-                        cycles_shader_identity::invalid_index),
-                    .material_identity = identity,
-                    .flags =
-                        (capabilities.may_have_volume ? material_flag_has_volume : 0u) |
-                        (may_emit ? material_flag_may_emit : 0u) |
-                        (emission_is_constant ? material_flag_constant_emission : 0u) |
-                        (source.use_bump_map_correction
-                             ? material_flag_use_bump_map_correction : 0u) |
-                        (surface_bssrdf_bump_materials.contains(id)
-                             ? material_flag_has_bssrdf_bump : 0u) |
-                        (has_transparent_shadow ? material_flag_has_transparent_shadow : 0u),
-                    .emission_sampling = effective_emission_sampling,
-                    .volume_sampling = source.volume_sampling});
-        }
+        // These two addresses are private to the remaining displacement
+        // prepass. Every shading capability and Cycles identity above came
+        // from the native KernelShader image, including unused shader slots.
+        auto &binding = data->material_bindings.at(id);
+        binding.surface_tag = surface_iter->second;
+        binding.parameter_block = base;
         const auto &program = *material.surface_program();
         const auto scalar_parameter =
             [&](compiler::ValueExpressionId expression)
@@ -454,7 +432,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     for (const auto tag : surface_bssrdf_bump_tags) {
         data->surface_bssrdf_bump_tags.emplace_back(tag);
     }
-    if (compact_surface_values_requested()) {
+    if (!data->native_cycles_svm_surface && compact_surface_values_requested()) {
         std::string diagnostic;
         data->surface_values = build_surface_value_runtime(
             data->device,
@@ -501,7 +479,8 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
 
     const auto attribute_residency =
         build_scene_attribute_residency_plan(
-            snapshot, data->materials);
+            snapshot, data->cycles_svm->compilation,
+            data->cycles_svm->material_shader_indices);
     for (const auto &[id, geometry] :
          snapshot.geometries) {
         const auto requires_pointiness =

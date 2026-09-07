@@ -81,9 +81,6 @@ struct PathKernelConfig {
     // dimensions and dispatch chunking.
     bool surface_closure_count_histogram_enabled{};
     std::uint32_t surface_closure_count_histogram_base{};
-    bool surface_program_execution_histogram_enabled{};
-    std::uint32_t surface_program_execution_histogram_base{};
-    std::uint32_t surface_program_execution_histogram_topology_count{};
     bool staged_surface_sorting{};
     // Graph/persistent compatibility paths retain the legacy export ABI.
     // Host wavefront uses the application's typed Extension/Handler instead.
@@ -413,7 +410,6 @@ struct PathSampleContext {
   void trace_write_closure(UInt event, std::uint32_t closure,
                            std::uint32_t field, Float3 value) const noexcept;
     void record_surface_closure_count(UInt count) const noexcept;
-    void record_surface_program_execution(UInt surface_tag) const noexcept;
     void
     accumulate_light_pass(Var<LightPassContributionCall> contribution) noexcept;
     // These are host-specialized film operations. Serial construction updates

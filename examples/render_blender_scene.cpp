@@ -91,25 +91,6 @@ public:
     }
 };
 
-class MemorySurfaceProgramExecutionHistogramSink final
-    : public psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogramSink {
-
-private:
-  std::optional<psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogram>
-      _histogram;
-
-public:
-  void write(const psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogram
-                 &histogram) override {
-    _histogram = histogram;
-  }
-
-  [[nodiscard]] const std::optional<
-      psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogram> &
-  histogram() const noexcept {
-    return _histogram;
-  }
-};
 
 [[nodiscard]] bool
 write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
@@ -186,232 +167,6 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
     return written;
 }
 
-[[nodiscard]] bool write_surface_program_execution_histogram(
-    const psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogram
-        &histogram,
-    const std::filesystem::path &path) {
-  auto *document = yyjson_mut_doc_new(nullptr);
-  if (document == nullptr) {
-    return false;
-  }
-  auto *root = yyjson_mut_obj(document);
-  yyjson_mut_doc_set_root(document, root);
-  yyjson_mut_obj_add_str(document, root, "schema",
-                         "psycles.surface-program-execution-histogram.v6");
-  yyjson_mut_obj_add_bool(document, root, "exact", histogram.exact);
-  const auto add_uint_array =
-      [document](yyjson_mut_val *object, const char *name,
-                 const auto &values) {
-        auto *array = yyjson_mut_arr(document);
-        for (const auto value : values) {
-          yyjson_mut_arr_add_uint(document, array, value);
-        }
-        yyjson_mut_obj_add_val(document, object, name, array);
-      };
-
-  auto surface_populations = std::uint64_t{0u};
-  auto *topologies = yyjson_mut_arr(document);
-  for (auto topology = std::size_t{0u};
-       topology < histogram.topology_surface_populations.size(); ++topology) {
-    const auto count = histogram.topology_surface_populations[topology];
-    surface_populations += count;
-    auto *entry = yyjson_mut_obj(document);
-    yyjson_mut_obj_add_uint(document, entry, "topology", topology);
-    yyjson_mut_obj_add_uint(document, entry, "surface_populations", count);
-    yyjson_mut_arr_add_val(topologies, entry);
-  }
-  yyjson_mut_obj_add_uint(document, root, "surface_populations",
-                          surface_populations);
-  yyjson_mut_obj_add_val(document, root, "topologies", topologies);
-  yyjson_mut_obj_add_uint(document, root, "value_instruction_executions",
-                          histogram.value_instruction_executions);
-  yyjson_mut_obj_add_uint(document, root,
-                          "surface_normal_transition_executions",
-                          histogram.surface_normal_transition_executions);
-  auto *operand_routes = yyjson_mut_obj(document);
-  yyjson_mut_obj_add_uint(
-      document, operand_routes, "direct_local",
-      histogram.value_operand_executions.direct_local);
-  yyjson_mut_obj_add_uint(
-      document, operand_routes, "direct_parameter",
-      histogram.value_operand_executions.direct_parameter);
-  yyjson_mut_obj_add_uint(
-      document, operand_routes, "dynamic_local",
-      histogram.value_operand_executions.dynamic_local);
-  yyjson_mut_obj_add_uint(
-      document, operand_routes, "dynamic_parameter",
-      histogram.value_operand_executions.dynamic_parameter);
-  yyjson_mut_obj_add_val(document, root, "value_operand_executions",
-                         operand_routes);
-  auto *unique_parameters = yyjson_mut_obj(document);
-  yyjson_mut_obj_add_uint(document, unique_parameters, "scalar",
-                          histogram.unique_parameter_values.scalar);
-  yyjson_mut_obj_add_uint(document, unique_parameters, "vector",
-                          histogram.unique_parameter_values.vector);
-  yyjson_mut_obj_add_uint(
-      document, unique_parameters, "unsigned_integer",
-      histogram.unique_parameter_values.unsigned_integer);
-  yyjson_mut_obj_add_val(document, root, "unique_parameter_values",
-                         unique_parameters);
-
-  constexpr std::array parameter_bank_names{
-      "scalar", "vector", "unsigned_integer"};
-  auto *parameter_reuse = yyjson_mut_obj(document);
-  for (auto bank = std::size_t{};
-       bank < histogram.parameter_reuse_bins.size(); ++bank) {
-    auto *bins = yyjson_mut_arr(document);
-    for (auto bin = std::size_t{};
-         bin < histogram.parameter_reuse_bins[bank].size(); ++bin) {
-      const auto &source = histogram.parameter_reuse_bins[bank][bin];
-      auto *entry = yyjson_mut_obj(document);
-      yyjson_mut_obj_add_uint(document, entry, "minimum_references", bin + 1u);
-      yyjson_mut_obj_add_uint(
-          document, entry, "maximum_references",
-          bin + 1u ==
-                  psycles::luisa_backend::
-                      luisa_surface_parameter_reuse_bin_count
-              ? std::numeric_limits<std::uint64_t>::max()
-              : bin + 1u);
-      yyjson_mut_obj_add_uint(document, entry, "unique_values",
-                              source.unique_values);
-      yyjson_mut_obj_add_uint(document, entry, "references",
-                              source.references);
-      yyjson_mut_obj_add_uint(document, entry, "dynamic_references",
-                              source.dynamic_references);
-      yyjson_mut_obj_add_uint(document, entry, "instruction_span",
-                              source.instruction_span);
-      yyjson_mut_arr_add_val(bins, entry);
-    }
-    yyjson_mut_obj_add_val(document, parameter_reuse,
-                           parameter_bank_names[bank], bins);
-  }
-  yyjson_mut_obj_add_val(document, root, "parameter_reuse_bins",
-                         parameter_reuse);
-
-  auto *value_handlers = yyjson_mut_arr(document);
-  for (const auto &handler : histogram.value_handlers) {
-    auto *entry = yyjson_mut_obj(document);
-    yyjson_mut_obj_add_uint(document, entry, "variant_index",
-                            handler.variant_index);
-    yyjson_mut_obj_add_uint(document, entry, "handler_key",
-                            handler.handler_key);
-    yyjson_mut_obj_add_uint(document, entry, "operation", handler.operation);
-    yyjson_mut_obj_add_uint(document, entry, "result_bank",
-                            handler.result_bank);
-    yyjson_mut_obj_add_uint(document, entry, "svm_immediate",
-                            handler.svm_immediate);
-    yyjson_mut_obj_add_uint(document, entry, "executions", handler.executions);
-    yyjson_mut_arr_add_val(value_handlers, entry);
-  }
-  yyjson_mut_obj_add_val(document, root, "value_handlers", value_handlers);
-
-  auto *value_handler_transitions = yyjson_mut_arr(document);
-  for (const auto &transition : histogram.value_handler_transitions) {
-    auto *entry = yyjson_mut_obj(document);
-    yyjson_mut_obj_add_uint(document, entry, "source_variant_index",
-                            transition.source_variant_index);
-    yyjson_mut_obj_add_uint(document, entry, "source_handler_key",
-                            transition.source_handler_key);
-    yyjson_mut_obj_add_uint(document, entry, "source_operation",
-                            transition.source_operation);
-    yyjson_mut_obj_add_uint(document, entry, "source_result_bank",
-                            transition.source_result_bank);
-    yyjson_mut_obj_add_uint(document, entry, "target_variant_index",
-                            transition.target_variant_index);
-    yyjson_mut_obj_add_uint(document, entry, "target_handler_key",
-                            transition.target_handler_key);
-    yyjson_mut_obj_add_uint(document, entry, "target_operation",
-                            transition.target_operation);
-    yyjson_mut_obj_add_uint(document, entry, "direct_operand_mask",
-                            transition.direct_operand_mask);
-    yyjson_mut_obj_add_uint(document, entry, "dynamic_direct_operand_mask",
-                            transition.dynamic_direct_operand_mask);
-    yyjson_mut_obj_add_bool(document, entry, "direct_dependency",
-                            transition.direct_dependency);
-    yyjson_mut_obj_add_bool(document, entry,
-                            "source_last_used_by_target",
-                            transition.source_last_used_by_target);
-    yyjson_mut_obj_add_uint(document, entry, "executions",
-                            transition.executions);
-    yyjson_mut_arr_add_val(value_handler_transitions, entry);
-  }
-  yyjson_mut_obj_add_val(document, root, "value_handler_transitions",
-                         value_handler_transitions);
-
-  yyjson_mut_obj_add_uint(document, root, "value_region_invocations",
-                          histogram.value_region_invocations);
-  yyjson_mut_obj_add_uint(
-      document, root, "value_region_instruction_executions",
-      histogram.value_region_instruction_executions);
-  yyjson_mut_obj_add_uint(
-      document, root, "value_region_forwarded_edge_executions",
-      histogram.value_region_forwarded_edge_executions);
-  yyjson_mut_obj_add_uint(
-      document, root, "value_region_live_input_executions",
-      histogram.value_region_live_input_executions);
-  yyjson_mut_obj_add_uint(
-      document, root, "value_region_live_output_executions",
-      histogram.value_region_live_output_executions);
-  auto *value_regions = yyjson_mut_arr(document);
-  for (const auto &region : histogram.value_regions) {
-    auto *entry = yyjson_mut_obj(document);
-    yyjson_mut_obj_add_uint(document, entry, "executions", region.executions);
-    yyjson_mut_obj_add_uint(document, entry, "instruction_count",
-                            region.shape.variant_indices.size());
-    add_uint_array(entry, "variant_indices", region.shape.variant_indices);
-    add_uint_array(entry, "successor_operand_masks",
-                   region.shape.successor_operand_masks);
-    add_uint_array(entry, "operand_offsets", region.shape.operand_offsets);
-    add_uint_array(entry, "operand_source_kinds",
-                   region.shape.operand_source_kinds);
-    add_uint_array(entry, "operand_source_indices",
-                   region.shape.operand_source_indices);
-    add_uint_array(entry, "live_input_banks",
-                   region.shape.live_input_banks);
-    add_uint_array(entry, "live_output_instruction_offsets",
-                   region.shape.live_output_instruction_offsets);
-    yyjson_mut_arr_add_val(value_regions, entry);
-  }
-  yyjson_mut_obj_add_val(document, root, "value_regions", value_regions);
-
-  constexpr std::array closure_kind_names{"leaf", "mix_both", "mix_left",
-                                          "mix_right"};
-  auto *closure_kinds = yyjson_mut_arr(document);
-  for (auto kind = std::size_t{0u};
-       kind < histogram.closure_instruction_kind_visits.size(); ++kind) {
-    auto *entry = yyjson_mut_obj(document);
-    yyjson_mut_obj_add_str(document, entry, "kind", closure_kind_names[kind]);
-    yyjson_mut_obj_add_uint(document, entry, "visits",
-                            histogram.closure_instruction_kind_visits[kind]);
-    yyjson_mut_arr_add_val(closure_kinds, entry);
-  }
-  yyjson_mut_obj_add_uint(document, root, "closure_instruction_visits",
-                          histogram.closure_instruction_visits);
-  yyjson_mut_obj_add_val(document, root, "closure_instruction_kinds",
-                         closure_kinds);
-
-  auto *closure_leaves = yyjson_mut_arr(document);
-  for (const auto &leaf : histogram.closure_leaf_variants) {
-    auto *entry = yyjson_mut_obj(document);
-    yyjson_mut_obj_add_uint(document, entry, "static_variant",
-                            leaf.static_variant);
-    yyjson_mut_obj_add_uint(document, entry, "operation", leaf.operation);
-    yyjson_mut_obj_add_uint(document, entry, "visits", leaf.visits);
-    yyjson_mut_arr_add_val(closure_leaves, entry);
-  }
-  yyjson_mut_obj_add_val(document, root, "closure_leaf_variants",
-                         closure_leaves);
-
-  yyjson_write_err error{};
-  const auto written = yyjson_mut_write_file(
-      path.string().c_str(), document, YYJSON_WRITE_PRETTY, nullptr, &error);
-  if (!written) {
-    std::cerr << "error: could not write surface program histogram: "
-              << (error.msg != nullptr ? error.msg : "unknown error") << '\n';
-  }
-  yyjson_mut_doc_free(document);
-  return written;
-}
 
 [[nodiscard]] bool write_sample_chunk_probe(
     const std::filesystem::path &path, std::uint32_t pixel_x,
@@ -465,7 +220,7 @@ write_raw_path_trace(const psycles::luisa_backend::LuisaPathTrace &trace,
 }// namespace
 
 int main(int argc, char **argv) {
-    if (argc < 3) {
+    if (argc < 3 || argc > 33) {
       std::cerr << "usage: psycles_render_blender_scene "
                    "<export-directory> <output.ppm> "
                    "[backend=fallback] [width] [height] [samples] "
@@ -491,8 +246,7 @@ int main(int argc, char **argv) {
                    "[wavefront-graph-refill-threshold=0] "
                    "[fast-math=1] "
                    "[wavefront-frame-capacity=1048576] "
-                   "[surface-closure-count-histogram.json|-] "
-                   "[surface-program-execution-histogram.json|-]\n";
+                   "[surface-closure-count-histogram.json|-]\n";
       return EXIT_FAILURE;
     }
     const auto bundle = std::filesystem::path{argv[1]};
@@ -786,15 +540,6 @@ int main(int argc, char **argv) {
           return EXIT_FAILURE;
       }
   }
-  std::optional<std::filesystem::path>
-      surface_program_execution_histogram_output;
-  if (argc > 33 && std::string_view{argv[33]} != "-") {
-    surface_program_execution_histogram_output =
-        std::filesystem::path{argv[33]};
-    if (surface_program_execution_histogram_output->empty()) {
-      return EXIT_FAILURE;
-    }
-  }
   if (!psycles::luisa_backend::valid_luisa_persistent_scheduler_shape(
           persistent_worker_count, persistent_block_size,
                 persistent_fetch_size)) {
@@ -809,10 +554,6 @@ int main(int argc, char **argv) {
       surface_closure_count_histogram_output
           ? std::make_shared<MemorySurfaceClosureCountHistogramSink>()
           : std::shared_ptr<MemorySurfaceClosureCountHistogramSink>{};
-  auto surface_program_execution_histogram_sink =
-      surface_program_execution_histogram_output
-          ? std::make_shared<MemorySurfaceProgramExecutionHistogramSink>()
-          : std::shared_ptr<MemorySurfaceProgramExecutionHistogramSink>{};
   std::optional<psycles::luisa_backend::LuisaPathTraceRequest>
         path_trace_request;
     if (path_trace_sink) {
@@ -829,14 +570,6 @@ int main(int argc, char **argv) {
     surface_closure_count_histogram_request =
         psycles::luisa_backend::LuisaSurfaceClosureCountHistogramRequest{
             .sink = surface_closure_count_histogram_sink};
-  }
-  std::optional<
-      psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogramRequest>
-      surface_program_execution_histogram_request;
-  if (surface_program_execution_histogram_sink) {
-    surface_program_execution_histogram_request =
-        psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogramRequest{
-            .sink = surface_program_execution_histogram_sink};
   }
 
     enforce_vulkan_native_xir_spirv(backend_name);
@@ -866,9 +599,7 @@ int main(int argc, char **argv) {
          .max_samples_per_dispatch = max_samples_per_dispatch,
          .path_trace = path_trace_request,
          .surface_closure_count_histogram =
-             surface_closure_count_histogram_request,
-         .surface_program_execution_histogram =
-             surface_program_execution_histogram_request}};
+             surface_closure_count_histogram_request}};
     const auto compile_begin = std::chrono::steady_clock::now();
     auto compilation = renderer.compile_scene(*imported.scene);
     if (!compilation.ok()) {
@@ -983,23 +714,6 @@ int main(int argc, char **argv) {
             *surface_closure_count_histogram_sink->histogram(),
             *surface_closure_count_histogram_output);
     };
-    const auto write_surface_program_histogram_if_requested = [&]() {
-      if (!surface_program_execution_histogram_output) {
-        return true;
-      }
-      if (!surface_program_execution_histogram_sink->histogram()) {
-        std::cerr << "error: requested surface program histogram was not "
-                     "produced\n";
-        return false;
-      }
-      if (!surface_program_execution_histogram_output->parent_path().empty()) {
-        std::filesystem::create_directories(
-            surface_program_execution_histogram_output->parent_path());
-      }
-      return write_surface_program_execution_histogram(
-          *surface_program_execution_histogram_sink->histogram(),
-          *surface_program_execution_histogram_output);
-    };
     if (sample_chunk_output) {
         const auto raster_y = height - 1u - path_trace_y;
     psycles::io::PixelOutputSink pixel_sink{path_trace_x, raster_y};
@@ -1058,9 +772,6 @@ int main(int argc, char **argv) {
         if (!write_surface_closure_histogram_if_requested()) {
             return EXIT_FAILURE;
         }
-        if (!write_surface_program_histogram_if_requested()) {
-          return EXIT_FAILURE;
-        }
         const auto render_seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                       render_begin)
@@ -1103,9 +814,6 @@ int main(int argc, char **argv) {
     }
     if (!write_surface_closure_histogram_if_requested()) {
         return EXIT_FAILURE;
-    }
-    if (!write_surface_program_histogram_if_requested()) {
-      return EXIT_FAILURE;
     }
     const auto render_seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() -
@@ -1202,11 +910,6 @@ int main(int argc, char **argv) {
         << (surface_closure_count_histogram_output
                 ? "Closure histogram: " +
                       surface_closure_count_histogram_output->string() + "\n"
-                : std::string{})
-        << (surface_program_execution_histogram_output
-                ? "Surface program histogram: " +
-                      surface_program_execution_histogram_output->string() +
-                      "\n"
                 : std::string{})
 #if defined(PSYCLES_WITH_OPENIMAGEIO)
         << "Multilayer EXR:  " << exr_path << '\n'

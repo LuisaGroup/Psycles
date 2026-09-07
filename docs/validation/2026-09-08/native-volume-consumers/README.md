@@ -114,10 +114,13 @@ data. No new large-scene performance measurement is claimed at this checkpoint.
 
 ## Remaining scene blocker
 
-The Classroom 1920x1080/256 canary currently stops before JIT: its Object Index
+At this checkpoint the Classroom 1920x1080/256 canary stopped before JIT: its Object Index
 outputs are implemented by native SVM, but the loader still first compiles
 every material through SurfaceProgram, which rejects those outputs. This is
 not a missing native Object Info handler and does not justify extending the
 legacy executor. Removing that remaining compilation/resource dependency is
 the next structural task. No new Classroom rendering/performance result is
 claimed from this failed attempt.
+
+Resolved by the subsequent [native scene admission checkpoint](../native-scene-admission/README.md),
+which records the successful 1920x1080/256 run and the remaining indirect residual.

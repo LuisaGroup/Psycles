@@ -1,6 +1,7 @@
 #pragma once
 
 #include <psycles/compiler/material_library.h>
+#include <psycles/compiler/cycles_svm_scene.h>
 #include <psycles/contract/scene.h>
 
 #include <cstddef>
@@ -54,5 +55,16 @@ struct SceneAttributeResidencyPlan {
 build_scene_attribute_residency_plan(
     const contract::SceneSnapshot &snapshot,
     const compiler::MaterialLibrary &materials);
+
+// Native shader requests use Cycles' scene-assigned names/standard IDs, not
+// the contract's transport hashes. Project those requests onto the source
+// upload slots (including MikkTSpace inputs) without invoking SurfaceProgram.
+// The union is Geometry::used_shaders, including unused slots and overrides,
+// exactly like the native attribute-map packer; it is not primitive reachability.
+[[nodiscard]] SceneAttributeResidencyPlan
+build_scene_attribute_residency_plan(
+    const contract::SceneSnapshot &snapshot,
+    const compiler::cycles_svm::CompiledShaderTable &compilation,
+    const std::map<contract::MaterialId, std::uint32_t> &material_shader_indices);
 
 }// namespace psycles::luisa_backend::detail

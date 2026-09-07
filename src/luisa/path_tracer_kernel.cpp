@@ -60,10 +60,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
       count * volume_guiding::denoised_pixel_stride);
   _volume_guiding_intermediate = _scene->device.create_buffer<luisa::uint>(
       count * volume_guiding::denoised_pixel_stride);
-  const auto surface_program_histogram_topology_count =
-      surface_program_execution_histogram_topology_count();
-  const auto diagnostic_layout = path_diagnostic_buffer_layout(
-      _options, surface_program_histogram_topology_count);
+  const auto diagnostic_layout = path_diagnostic_buffer_layout(_options);
   _path_trace = _scene->device.create_buffer<luisa::float4>(
       diagnostic_layout.allocation_slot_count);
   const auto generated_filter_table = sampling::make_pixel_filter_table(
@@ -324,13 +321,6 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             static_cast<bool>(_options.surface_closure_count_histogram),
         .surface_closure_count_histogram_base = static_cast<std::uint32_t>(
             diagnostic_layout.surface_closure_count_histogram_base),
-        .surface_program_execution_histogram_enabled =
-            surface_program_histogram_topology_count != 0u,
-        .surface_program_execution_histogram_base = static_cast<std::uint32_t>(
-            diagnostic_layout.surface_program_execution_histogram_base),
-        .surface_program_execution_histogram_topology_count =
-            static_cast<std::uint32_t>(
-                surface_program_histogram_topology_count),
         .staged_surface_sorting = _options.staged_surface_sorting,
         .volume_stack_size = scene->volume_metadata.stack_size,
         .camera_may_be_inside_volume = camera_may_be_inside_volume,

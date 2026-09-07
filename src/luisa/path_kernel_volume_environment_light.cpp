@@ -104,8 +104,8 @@ class EnvironmentVolumeLightProvider final
                 _result.maximum_distance =
                     ray_maximum;
                 _result.light_object =
-                    surface_ray::
-                        invalid_primitive;
+                    _event.bounce.sample.invocation.config.scene
+                        ->cycles_background_object_index;
                 _result.light_primitive =
                     surface_ray::
                         invalid_primitive;
@@ -116,6 +116,9 @@ class EnvironmentVolumeLightProvider final
                     surface_ray::
                         invalid_primitive;
                 _result.use_mis = true;
+                _result.emission_is_constant =
+                    _event.bounce.sample.invocation.config.scene
+                        ->environment_emission_is_constant;
                 _result.valid = true;
             };
         };

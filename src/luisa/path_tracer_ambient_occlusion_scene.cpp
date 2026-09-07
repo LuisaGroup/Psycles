@@ -5,6 +5,16 @@
 namespace psycles::luisa_backend::detail {
 
 AmbientOcclusionSceneComponent::AmbientOcclusionSceneComponent(
+    const compiler::cycles_svm::CompiledShaderTable &compilation) noexcept {
+    // Native AO is not admitted by the compiler yet. Do not consult an
+    // unrelated SurfaceProgram to silently supply raytrace state. Adding the
+    // native opcode must also implement its scene/provider boundary here.
+    LUISA_ASSERT(!compilation.table.node_types_used[
+        compiler::cycles_svm::NODE_AMBIENT_OCCLUSION],
+        "Native SVM AO requires its native scene/provider implementation.");
+}
+
+AmbientOcclusionSceneComponent::AmbientOcclusionSceneComponent(
     const contract::SceneSnapshot &snapshot,
     const compiler::MaterialLibrary &materials,
     const std::set<contract::MaterialId> &

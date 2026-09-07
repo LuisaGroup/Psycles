@@ -22,6 +22,9 @@ private:
     AmbientOcclusionScenePlan _plan;
 
 public:
+    explicit AmbientOcclusionSceneComponent(
+        const compiler::cycles_svm::CompiledShaderTable &compilation) noexcept;
+
     AmbientOcclusionSceneComponent(
         const contract::SceneSnapshot &snapshot,
         const compiler::MaterialLibrary &materials,

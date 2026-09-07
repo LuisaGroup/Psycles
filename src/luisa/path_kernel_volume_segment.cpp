@@ -162,6 +162,7 @@ class PathVolumeSegmentStageImpl final
         VolumeDirectLightSample
             direct_light{
             .direction = make_float3(0.0f),
+            .position = make_float3(0.0f),
             .radiance = make_float3(0.0f),
             .pdf = 0.0f,
             .maximum_distance =
@@ -174,6 +175,7 @@ class PathVolumeSegmentStageImpl final
                 surface_ray::invalid_primitive,
             .light_accel_primitive =
                 surface_ray::invalid_primitive,
+            .emission_is_constant = false,
             .use_mis = false,
             .valid = false};
         std::unique_ptr<

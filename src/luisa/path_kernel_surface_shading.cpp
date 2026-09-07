@@ -195,15 +195,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         $if(bounce.subsurface_exit) {
           path_flags &= ~cycles_path_state::flag_subsurface;
         };
-        if (config.surface_program_execution_histogram_enabled) {
-          if (populated_surface) {
-            $if(populated_surface->material_evaluated()) {
-              sample.record_surface_program_execution(surface_tag);
-            };
-          } else {
-            sample.record_surface_program_execution(surface_tag);
-          }
-        }
         if (config.surface_closure_count_histogram_enabled) {
             UInt closure_count =
                 populated_surface
