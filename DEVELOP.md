@@ -1,6 +1,6 @@
 # Psycles development status
 
-This is a living implementation plan, last updated 2026-07-29. “Implemented”
+Updated 2026-09-08. This page contains current development rules and remaining gates. “Implemented”
 does not mean “Cycles compatible”: compatibility requires an exact-revision
 Cycles render, linear-pass metrics, and visual comparison. The current
 commands, machine, reports, and triptychs are in
@@ -68,7 +68,7 @@ to reproduce a CPU/GPU rounding sequence.
 
 ## Authoritative-reference policy
 
-The checked-out latest Blender/Cycles source and renders from the same
+The version-pinned Blender Cycles 5.2.1 source and renders from the same
 `.blend`, frame, integrator settings, seed, samples, and linear passes are the
 only correctness oracle for Psycles rendering and sampling.
 
@@ -85,368 +85,116 @@ only correctness oracle for Psycles rendering and sampling.
   the implementation language; it is not permission to substitute a different
   interpreter architecture.
 
-## Active handoff checkpoint
+## Current implementation and evidence
 
-Continue on `main`. The published renderer boundary is `dcb96e3`; it pins the
-published LuisaCompute `next@d57720955`. The clean Blender/Cycles source
-checkout is `main@4fe17ef6`, and its Blender 5.3.0 Alpha / `gfx1201` HIP build
-produced the primary 1440×1080/256 spp Lone Monk reference. The current
-Cycles/Psycles report and all 13 real triptychs are committed. The older
-640×480 Blender 5.2.0 LTS result remains an explicitly versioned historical
-checkpoint.
+Native Cycles 5.2.1 SVM is the default material execution path. Ordinary
+surface, volume, shadow, world and light consumers no longer depend on the
+legacy material evaluator. A private displacement-prepass bridge remains;
+it is removal work, not an approved alternate architecture.
 
-The active sequence is:
+Use [the compatibility status](docs/cycles-compatibility.md) for current
+coverage and [the validation index](VALIDATION.md) for completed gates.
+The [four-scene HIP campaign](docs/validation/2026-09-08/four-scene-hip/README.md)
+records 12 paired 256 spp runs at Psycles eaa7c72e / Luisa 9ea3b720f.
+Historical progress notes and old performance results are not current gates;
+their dated reports remain under docs/validation and in Git history.
 
-1. [x] implement and upload the current Cycles flat-light distribution for
-   emissive triangles, analytic lights, and the sampled background;
-2. [x] preserve material emission/world sampling metadata and compile the
-   original closure graph through Luisa without Blender/Cycles pre-baking;
-3. [x] repair Luisa XIR restructuring from CFG, dominance, scope, affine-state,
-   and executable-semantics invariants; publish the regressions to `next`;
-4. [x] enable strict fallback/HIP/Vulkan targets, validate HIP and Vulkan on
-   the RX 9070 XT, and eliminate opaque transparent-dispatch code through
-   semantic JIT capability specialization;
-5. [x] add Cycles-compatible full-float multilayer EXR output, EXR-to-EXR
-   comparison, and committed Cycles/Psycles/difference triptychs;
-6. [x] run the unmodified 35-material Lone Monk scene at 640×480/64 spp on
-   Cycles HIP and Psycles Vulkan on the same RX 9070 XT, record every pass,
-   inspect real triptychs, and fix the missing Blender 5.2
-   `SINGLE_SCATTERING` sun-guiding contract with regressions;
-7. [x] use the completed exact-current-Cycles HIP build to repeat Lone Monk
-   at 1440×1080/256 spp with peak-memory collection; repair Release Vulkan
-   error propagation and formally partition samples into watchdog-safe exact
-   batches; use the pass evidence to rank remaining differences;
-8. [ ] implement environment-map importance CDFs, remaining MIS paths, and
-   formal automatic-emission classification exposed by the full-scene gate;
-9. [ ] replace per-material expanded DSL ASTs with a buffer-driven shared
-   device instruction executor and remeasure cold/hot compilation.
+## Worktree and publication discipline
 
-Every independently validated stage is committed and pushed before the next
-long-running build or render. Historical checkpoints below explain how the
-current architecture was reached; their old Blender 4.5 measurements remain
-historical evidence and do not supersede the 2026-07-29 record.
+Verify the designated root worktree and its nested Luisa checkout before
+editing. Do not assume the shell's default directory or reuse an independent
+Luisa checkout. On the validated workstation, the active worktree is
+/home/mike/Projects/Psycles-surface-svm. Inspect both repositories' status,
+branch, remotes and diffs; preserve unrelated user changes.
 
-## Historical checkpoints
+Publish generic Luisa corrections to origin/next before advancing the
+Psycles gitlink. Publish reviewed Psycles changes to origin/main without
+force-pushing. Stage exact task files, including a gitlink only after its
+referenced child commit is published and validated. Commit useful validated
+checkpoints promptly; do not accumulate unrelated edits into one change.
 
-Checkpoint 0 removes the `PSYCLES_LUISA_SOURCE_DIR` override so the pinned
-submodule is the single normal source of LuisaCompute. Repository-wide option
-references and whitespace checks pass. A clean GNU 13.3/CMake 3.27.7
-`PSYCLES_ENABLE_LUISA=OFF` configure and build also pass with the Unix
-Makefiles generator, followed by 4/4 core CTest groups. The existing
-Luisa/fallback 6/6 gate remains the required full-build check before any
-rendering change is published; checkpoint 1b expands that gate to 8/8.
+Renderer-specific coroutine policies belong in generic Coro Ext/Handler
+clients, not Psycles-specific branches in Luisa compiler/scheduler facilities.
+Use stream insertion for scheduler dispatch commands. Keep frame storage in
+scheduler-owned pools; never introduce a per-thread/per-resume malloc path.
+Do not use noinline markers as a renderer optimization strategy.
 
-Checkpoint 1a historically introduced the tabulated-Sobol resource contract.
-The current host module retains only sequence sizing and construction of the
-256-pattern × float4 lookup table required for device upload; its test locks
-that immutable table with an IEEE-754 FNV-1a fingerprint. The old host
-pixel-hash, dimension, shuffle, and sample-lookup mirror has been deleted, so
-there is no CPU sampling oracle. Camera, bounce, light, BSDF, and shuffle
-semantics are exercised only through the Luisa device regression in checkpoint
-1b and compared with exact-revision Cycles renders.
+## Verification order
 
-Checkpoint 1b is a passing device-sampling gate. It adds a Luisa-native
-tabulated-Sobol lowering in
-`include/psycles/luisa/cycles_sampler.h`, extends the Luisa AST test to
-instantiate it, and executes the lowering in
-`tests/test_luisa_sobol_fallback.cpp`. The fixture uploads the complete table,
-passes pixel/sample/path-step values as runtime uniforms, initializes outputs
-to sentinels, performs device-side float-to-uint bitcasts, and locks four
-camera/light/BSDF probes plus dimension/index metadata. Shader cache and fast
-math are disabled for this fixture.
+Compiler/XIR work follows: formal effect/control-flow analysis, a minimal
+failing counterexample, a permanent regression, the generic correction, then
+validation of the full original module. Passing a reduced sibling is not
+evidence that the original renderer compiles or runs.
 
-The recovery environment configures and builds a non-empty ELF
-fallback module with Ubuntu 24.04.3, GCC 13.3, CMake 3.27.7, Ninja 1.11.1,
-LLVM 22.1.8, and Embree 4.3.0. CMake also rejects
-`PSYCLES_ENABLE_LUISA_FALLBACK=ON` if Luisa silently disables the backend.
-The focused AST/host/device gate passes 3/3 and the complete fallback gate
-passes 8/8.
-
-Checkpoint 1c integrates that stream into the production kernel. It adds a
-whole-render `SampleRange.total` contract, derives the Sobol sequence size from
-that total rather than a progressive chunk, uploads the production
-`Buffer<float4>` table, and replaces the old scalar seed argument while
-retaining the nine-argument kernel ABI. Seed and sequence size are runtime
-parameters. Camera filter/lens, per-`path_step` light, light roulette, BSDF,
-and Russian-roulette sampling use the fixed Cycles dimensions; no PCG call
-sites remain. Do not extend this work into a CPU renderer or additional
-CPU-only validation.
-
-Checkpoint 1d is the architecture-only production split published as
-`cba0428`. The public backend façade is 51 lines; common host utilities,
-sampling, lighting, surfaces, environment, geometry, the kernel, the render
-session, and the scene compiler now have separate private implementation
-boundaries. The production path-state machine remains one cohesive kernel.
-The nine explicit shader arguments, `SampleRange.total`, fixed Sobol lanes,
-and lowered argument metadata are unchanged.
-
-The split completed a full fallback build and the complete CTest gate 8/8.
-Across `emission_surface`, `diffuse_bsdf_matrix`, and `diffuse_surface`, all
-39 emitted Psycles PFM passes match their pre-refactor baselines byte for
-byte. The explicit callable boundaries produce a legitimate one-time
-structural-cache migration; the modular focused key is
-`kernel_4c0f6e0d82a53e90`, with the same
-`ARGUMENT_HASH cf9ee8fec3c444f6` and `ARGUMENT_COUNT 19` as the historical
-production-Sobol key.
-
-An earlier Lone Monk 640×480 end-to-end diagnostic exposed an exporter
-geometry-cache regression. `arch.005` through `arch.008` share one source Mesh
-datablock but use object-specific Mirror modifier inputs; their evaluated
-render widths are approximately 8.88, 15.07, 15.09, and 8.88 scene units.
-Caching every evaluated geometry by the source datablock incorrectly mapped
-all four instances to the small `arch.005` mesh. The repair only shares
-unmodified render Mesh datablocks, including the effective material-slot
-signature, while modified and non-Mesh objects retain object-specific
-evaluated geometry. The Blender regression exports four objects as exactly
-three geometries: two unmodified instances share, while Array=2 and Array=4
-objects sharing one source Mesh retain distinct 4/8-triangle results.
-
-The repaired full Lone Monk export contains 7,543 instances and 350
-geometries. `arch.005` through `arch.008` map to distinct geometry IDs
-262/263/264/265 with independently hashed vertex streams and evaluated widths
-8.8776/15.0709/15.0898/8.8762; 841 `grass_blade.002` instances still share
-geometry 340. A clean Release fallback build and all eight existing tests plus
-the Blender regression pass (9/9 with Blender 4.5.10 available). A fresh
-production fallback render compiled 350 geometries, 7,543 instances, and 37
-materials. Cold shader JIT took 3,947.13 seconds and 640x480/64 spp rendering
-took 61.20 seconds. The Combined preview using the scene's Filmic, Medium
-Contrast, -2 EV display settings and the separate linear Normal comparison
-both confirm one continuous foreground arch matching the Cycles structure.
-This accepts the geometry repair only: existing lighting/environment and pass
-semantics differences remain visible and are not hidden by the display
-transform. The unusually slow cold JIT is a separate full-scene performance
-issue.
-
-The production integration exposed a Luisa XIR
-`local_load_elimination` heap use-after-free. The historical
-LuisaCompute `next@f42f3c6e` checkpoint pre-created all
-block/predecessor data-flow entries and forbade map insertion while a block
-result reference was live. The new loop/fanout fixture failed the old
-implementation under ASan and passed the fix. Production cold JIT changed
-from 6/20 crashes to 20/20 successes; a subsequent hot load took about
-9.498 ms and all 13 PFM outputs were byte-identical. The current pin
-`f83725d27` includes this repair and the later formal CFG restructuring work.
-
-Every transport, light-distribution, or environment-sampling boundary must be
-compared against an exact-revision current Cycles render. New meaningful
-render comparisons are committed as viewable triptychs in addition to
-recording RMSE, energy ratios, invalid-pixel counts, and
-deterministic-cache status.
-
-AMD full-scene runs use the same configurable sysfs sampler for both
-renderers (50 ms for current Cycles, 20 ms for current Psycles):
+Build with every hardware thread (32 on the validated workstation). Validate
+HIP first, then fallback, then strict native XIR-to-SPIR-V Vulkan canaries.
+Vulkan validation must set all three guards:
 
 ```bash
-python3 tools/measure_amd_vram.py \
-  --output /tmp/render-vram.json --interval 0.05 -- \
-  <renderer> <arguments...>
+LUISA_VULKAN_USE_XIR=1 \
+LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+LUISA_VULKAN_DISABLE_DXC=1 \
+ctest --test-dir build --output-on-failure -j32 -R '<focused-native-Vulkan-tests>'
 ```
 
-The report records the command, DRM device, machine-wide pre-launch baseline,
-absolute peak, increase over baseline, final usage, duration, sample count,
-and child exit status. Performance reports must retain both the absolute peak
-and baseline-relative increase; desktop VRAM already in use is not renderer
-memory.
+Report configuration, compilation, focused tests, complete suites, and real
+scene canaries separately. Do not call a build successful from configuration
+alone, promote an expected failure into a pass, or conceal pre-existing
+suite failures. Keep toolchains and generated evidence in local build/temp
+directories; do not modify system packages or shell profiles for a probe.
 
-Long Luisa renders must also preserve bounded device progress. The current
-sample scheduler partitions `[first, first + count)` so adjacent nonempty
-batches meet exactly, every batch has at most
-`max_samples_per_dispatch` samples, and the final endpoint equals the
-requested endpoint. The default is 8. Each dispatch is independently
-synchronized, and the global sample index plus whole-sequence sample total
-are passed unchanged to the device sampler. Do not replace this invariant
-with scene-specific sample counts. Larger-image tiling must define the same
-kind of exact ordered cover over pixels and prove output equivalence.
+## Static specialization and binding
 
-## Current checkpoint
+Preserve the original word stream and runtime predicates. Derive generated
+node cases and stack/closure bounds from compile-time graph/emission facts
+and used-scene data, never from a pre-render, profile or scene-name table.
+Both arms of dynamic branches contribute to the conservative bound. The bump
+prefix belongs to the surface ShaderJump entry and must not be discarded.
 
-| Area | Verified state |
-|---|---|
-| Shader inventory | 96 Cycles-applicable nodes tracked from 105 Blender shader node types |
-| Complete coverage | 48/96 complete: 46 `cycles_verified` device nodes and 2 structural output adapters |
-| Remaining nodes | 13 partial and 35 pending; no implemented node is waiting for a probe, and 1 Cycles OSL-only node is tracked separately |
-| Automated gate | Release configuration builds fallback, HIP, and Vulkan with 32 jobs; Psycles passes 171/171 in 6.69 s. Luisa `test_device_math vk` passes 388 assertions across native SPIR-V and HLSL-to-SPIR-V, and the CUDA backend target compiles with 32 jobs. |
-| Path-tracer architecture | Public façade plus private modules; unified flat-light CDF is uploaded once and selected through one Luisa upper-bound callable; opaque transparent-extinction dispatch is removed by semantic capability specialization; sample intervals are exact ordered partitions with at most 8 spp per synchronized dispatch |
-| Production Sobol probes | Historical 4.5 emission/diffuse probes remain recorded; current 5.2 flat-light 64×64/256 spp Combined RMSE is `0.000256543`, luminance ratio `1.000089120`, invalid pixels 0, with DiffCol and Normal exact |
-| Analytic lights | 11 Point/Spot/Area/Sun baselines, including shapes, spread, finite Sun disk, and light node trees |
-| Transparent closure probes | `transparent_mix` Combined RMSE is `7.93035e-7`; `transparent_data_pass` Combined RMSE is `0.000179912`; selected data passes are exact and all invalid-pixel counts are 0 |
-| Image pipeline | Psycles writes full-float Cycles-compatible multilayer EXR; EXR readback locks channel names, exact float values, and `lin_rec709_scene` identity; the differential runner commits Cycles/Psycles/absolute-difference triptychs |
-| AMD backends | RX 9070 XT / gfx1201 passes focused HIP and Vulkan renders; Release Vulkan results are never discarded; the 1440×1080/256 spp render completes in 32 bounded dispatches without a timeout/reset |
-| Full-scene geometry/AOV | Negative-scale normal transforms and closure-weighted glossy normals are fixed |
-| Full-scene transport | Current Blender-main same-RX-9070-XT 1440×1080/256 spp Lone Monk Combined RMSE is `0.216918692`, relative RMSE `0.135484421`, luminance ratio `1.0224346`, and invalid pixels 0; diffuse/glossy indirect remain 8.63%/6.07% low |
-| Cold/hot fallback JIT | The pre-Sobol Lone Monk baseline is `327.574 s` cold and `0.682609 s` hot; the historical focused production-Sobol kernel `kernel_70ce93bbfda41afc` passed 20/20 cold compiles after the XIR fix; the modular focused key `kernel_4c0f6e0d82a53e90` cold-compiled in about 0.407 s and subsequently hot-loaded in about 8–11 ms |
-| Persistent fallback cache | Native object plus exact metadata implemented, 8/8 isolated assertions pass, and the full-scene cross-process run is bitwise equal across 13 passes |
-| Upstream integration | LuisaCompute PR [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253) is merged as `98f0150e`; Psycles pins published `next@d57720955`, including GPU subdirectory paths, formal XIR repairs, read-only callable preservation, the frozen module argument-layout ABI, and build-independent Vulkan result checking |
+Keep frequently changing render values in arguments/resources when the
+generated program remains valid: seed, sample range, extent, camera,
+transforms and integrator parameters. Changes that affect folded words,
+reachable cases, static array bounds or binding types require appropriate
+program/cache invalidation. Never pin an old shader cache name to hide a
+structural change. Ordinary scalar/vector default zero initialization is
+unchanged; lifetime-without-initialization is not permission to read
+uninitialized storage.
 
-An earlier glossy-normal probe reduced Normal RMSE from `0.399218` to
-`0.00192210` (about 99.5%) and measures Combined relative RMSE `0.5273%`.
-The earlier 64×48/256 spp glossy-normal checkpoint measured Normal RMSE
-`0.02515`. That historical 640×480/64 spp component run measured 95.75% Combined,
-97.91% Diffuse Direct, 86.21% Diffuse Indirect, 95.15% Glossy Direct, and
-84.33% Glossy Indirect mean energy relative to Cycles. The historical
-`e13a1c0` 640×480 result measures 102.29% Combined, 102.40% Diffuse Direct,
-91.16% Diffuse Indirect, 101.54% Glossy Direct, and 94.42% Glossy Indirect.
-The current 1440×1080/256 spp result measures 102.24% Combined, 102.19%
-Diffuse Direct, 91.37% Diffuse Indirect, 101.53% Glossy Direct, and 93.93%
-Glossy Indirect.
-This keeps the remaining indirect-transport deficit separate from the
-repaired exposure/sun-sampling path and geometric-normal errors.
+## Measurement and sampling gates
 
-## Binding and JIT policy
+Use the [schema-v2 benchmark runner](docs/scene-benchmark.md). Compare Cycles'
+original main-loop wall time with Psycles render-only wall time. Keep scene
+compilation, main JIT, whole render calls, process time and profiled GPU sums
+separate. State cache policy, exact revision/build, device, seed, frame,
+extent, samples and scheduler options. Do not overlap performance runs with
+other renders or builds.
 
-Values that can change without changing generated control flow belong in a
-kernel argument, resource buffer, or bindless resource:
+Repeated full-scene measurements accompany performance conclusions. Smaller
+IR, scratch, or coroutine frames alone do not prove a renderer speedup.
+Inspect per-pass absolute error, relative error, reference signal scale and
+non-finite counts; aggregate energy agreement is not same-path correctness.
 
-- render seed, sample start/count, resolution, and exposure;
-- camera and transform values;
-- integrator thresholds, bounce limits, and clamps;
-- material socket values and texture/resource handles;
-- light parameters and scene data.
+The Cycles 5.2.1 sampler uses the scene's actual scrambling configuration and
+path-event dimensions. Verify random words and advancement decisions through
+the original Cycles trace, not a second host sampler. A matching subset of
+random fields or pixels is not proof of global RNG/path parity.
 
-Topology, static node modes, callable signatures, and resource binding types
-remain structural. The cache key represents that structural program and its
-code-generation environment; it must not absorb frequently changing values.
-Each migration to a runtime argument needs two tests: changing the value must
-change the result, and it must not create a new shader cache entry.
+## Remaining completion gates
 
-Changing private callable boundaries is itself a structural program change, so
-the architecture split correctly created a new automatic cache key even
-though rendered bits and the argument ABI stayed fixed. Never pin
-`ShaderOption.name` to an old key to hide such a migration.
+- Implement the remaining native semantic opcodes with original word/state
+  oracles; unsupported reachable behavior must not silently fall back.
+- Remove the private legacy displacement bridge and unreachable old material
+  execution code, then validate displacement/bump, geometry and camera state.
+- Resolve remaining indirect-light/path structural differences and remove
+  unnecessary work at the same predicates as Cycles.
+- Keep surface/volume/displacement control flow, closure allocation, sampling,
+  scene identity and all exposed render passes faithful to the original.
+- Complete original-scene correctness and performance checks after each
+  material change, including failures and remaining uncertainty.
+- Reach the requested rendering-efficiency target across the tested scenes;
+  one faster scene or a successful showcase render does not finish the goal.
 
-The existing per-material `GraphSurface` specialization still makes AST size
-grow with material topology. Shared callables are an intermediate reduction.
-The intended endpoint is a compact, buffer-driven typed-value instruction
-stream whose kernel structure stays stable as ordinary material parameters
-and most graph data change.
-
-## Sampling parity
-
-Psycles is deterministic for a fixed seed, and the production path kernel now
-uses the official Cycles 4.5 tabulated-Sobol LUT, pixel hashing, Owen
-scrambling, pattern shuffling, camera dimensions, per-`path_step`
-light/BSDF/Russian-roulette dimensions, and 16-dimension stride. Checkpoint 1b
-locks the Luisa lowering bit for bit on the real fallback device; checkpoint
-1c connects the same lowering to production. The integration removes the old
-PCG generator but does not by itself prove that every conditional Cycles event
-consumes an identical dimension.
-
-No “exact RNG” claim will be made from converged image statistics. The release
-gate is a trace probe that records, for fixed pixel/seed/sample indices:
-
-1. pixel-filter and lens samples;
-2. light selection and light-shape dimensions;
-3. BSDF component and direction dimensions at every bounce;
-4. transparency and Russian-roulette dimensions;
-5. the final consumed dimension index.
-
-Every value and advancement decision must match the corresponding Cycles trace
-before the full trace gate can turn green. Current official probes establish
-pixel-exact camera/emission and focused diffuse-matrix paths, while the
-16-spp diffuse sphere retains Combined RMSE `0.006317606` pending unified
-direct-light sampling.
-
-## Roadmap
-
-### P0 — iteration latency and reproducibility
-
-- [x] Validate fallback persistent cache on a full Lone Monk cold/hot
-  cross-process run, including 13 bitwise-identical linear passes.
-- [x] Submit the cache as LuisaCompute draft PR
-  [#253](https://github.com/LuisaGroup/LuisaCompute/pull/253) and pin the
-  tested commit through the Psycles submodule.
-- [x] Move render window/resolution, sample range/seed, continuous camera
-  values, bounce limits, clamps, background, filter width, and pass alpha
-  threshold out of the AST and into kernel arguments.
-- [x] Record cache hit/miss and compile-stage timings: `183.578 s` main
-  AST-to-XIR cold, `327.574 s` total cold JIT, `0.682609 s` hot JIT, and
-  `1.8655 ms` main-object load.
-
-Before production Sobol integration, changing the render from 64×48/1 spp to
-640×480/64 spp retained the pre-Sobol Lone Monk key
-`kernel_bb7a6886f6f75b90` and completed shader setup in `0.789711 s`. The
-historical monolithic production-Sobol key was
-`kernel_70ce93bbfda41afc`; the modular focused key is
-`kernel_4c0f6e0d82a53e90`. These differently scoped or structurally distinct
-probes must not be compared as a performance regression. Structural modes
-such as projection type, static node modes, and callable topology remain
-deliberately outside the runtime argument block.
-
-### P1 — transport parity
-
-- [x] Execute the tabulated-Sobol lowering on LLVM 22.1.8/Embree 4.3.0
-  fallback and lock the camera/light/BSDF results bit for bit.
-- [x] Integrate that stream into the production kernel using total AA samples
-  and `path_step`, then validate focused official Cycles linear passes.
-- [x] Split the 6,848-line production monolith by stable responsibility while
-  preserving its nine-argument ABI, Sobol dimensions, and rendered bits;
-  validate the full fallback build, CTest 8/8, and 39/39 PFM regression
-  outputs.
-- [x] Implement Cycles' flat unified single-light selection distribution and
-  exact selection PDF.
-  - [x] Checkpoint the production host-side Cycles 4.5 flat-distribution
-    builder and its exact upper-bound lookup. Emissive triangles are ordered
-    by scene/primitive order and weighted by world-space area; lamps are
-    uniform, with triangles and lamps each receiving 50% probability when
-    both classes exist. The focused test locks the CDF, per-emitter selection
-    PDFs, zero-area intervals, and boundary behavior.
-  - [x] Populate the distribution from the compiled scene, upload one CDF, and
-    replace the independent environment/triangle/all-lamp NEE selection with
-    one device-side upper-bound lookup. Import raw material emission-sampling
-    and world-sampling metadata, and validate the result through current
-    Cycles EXR metrics and triptychs.
-- Implement the Cycles light tree without changing flat-distribution
-  semantics when the tree is disabled.
-- Implement Cycles-compatible environment and emitter importance
-  distributions, including PDFs used by MIS and the Nishita
-  conditional/marginal CDFs.
-- Close indirect-transmission and glossy-indirect energy gaps.
-- Complete the remaining Principled lobes and event labels.
-- Finish Bump/Normal modes and derivative behavior, then re-run full-scene
-  AOV and Combined gates.
-- Add the bitwise Cycles random-dimension trace and replace the current RNG
-  path only when each event is covered.
-
-### P2 — shader graph coverage
-
-- Convert each of the 16 partial nodes into focused mode/socket probes.
-- Implement the 41 pending Cycles nodes in dependency order.
-- Keep `tools/check_cycles_shader_node_coverage.py --require-complete` red
-  until every applicable node is verified or explicitly classified outside
-  device scope.
-- Add volume and displacement roots after their isolated contracts exist;
-  do not silently route them through Surface.
-
-### P3 — performance architecture
-
-- Replace per-material expanded DSL graphs with a shared device instruction
-  executor and immutable program buffers.
-- Deduplicate texture/attribute services and material parameter layouts.
-- [x] Add focused HIP/Vulkan differential and timing runs on the RX 9070 XT.
-- [x] Add a packaged-Cycles same-device 640×480 full-scene performance run.
-- [x] Build current Cycles and add the 1440×1080/256 spp full-scene run plus
-  peak-memory reporting. Current render-only throughput is `0.729514×`
-  Cycles; baseline-relative peak VRAM is 1,711,570,944 bytes for Psycles
-  versus 2,659,450,880 bytes for Cycles.
-- Add an exact pixel/tile partition before larger images if the fixed 8-spp
-  dispatch bound is not sufficient for a backend watchdog.
-- Evaluate scheduling or material clustering only after semantic gates remain
-  green under the shared device IR.
-
-## Completion criteria
-
-Psycles is not complete merely because a showcase scene renders. A release
-candidate requires:
-
-- all 96 applicable shader nodes resolved by versioned policy and all supported
-  modes officially probed;
-- Surface, Volume, and Displacement behavior explicitly supported or rejected
-  at import with no silent approximation;
-- integrator, analytic-light, world, BSDF, transparency, pass, and color
-  management gates green;
-- exact sampling-trace status documented (green if exact, otherwise a named
-  compatibility limitation);
-- no invalid pixels, deterministic cache behavior, reproducible builds, and
-  accepted full-scene linear-pass thresholds;
-- cold and warm JIT, render time, and memory baselines recorded for both the
-  fallback backend and at least one supported GPU backend.
+OSL and unadmitted geometry/motion configurations are not implicitly supported
+by the default SVM switch. Exact coverage and known backend exceptions belong
+in the current compatibility/validation records, not an obsolete node count
+or roadmap copied from an earlier Cycles version.
