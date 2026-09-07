@@ -295,6 +295,79 @@ bool run(const char *program, const char *backend, bool no_cache) {
         }
       }
     }
+    if (capacity == 32u) {
+      // E=32, L=8. Force H=0, 4, or 8 holes below L, with exactly H
+      // live sources above L. Publishing one item per dispatch fixes slot
+      // order independently of atomic scheduling. All live tasks own a
+      // two-hit traversal batch, so relocation must preserve that payload.
+      Kernel1D publish = [sink = binding.sink](Var<RenderKernelParameters> params,
+                                              UInt id, UInt holes) {
+        auto task = fixture_task(id);
+        const auto live = (id < 8u - holes) | (id >= 32u - holes);
+        task.source_object = select(0u, 3u, live);
+        task.constant_light_shader = 1u;
+        sink->emit(task, params.wavefront_frame_capacity);
+      };
+      auto publisher = device.compile(publish, options);
+      for (auto holes : {0u, 4u, 8u}) {
+        std::vector<luisa::float4> colors(paths),
+            light_passes(paths * light_pass_buffer_count);
+        stream << combined.copy_from(colors.data())
+               << passes.copy_from(light_passes.data());
+        binding.work->reset(stream);
+        auto read_counts = [&] {
+          binding.work->enqueue_count_readback(stream);
+          stream << synchronize();
+        };
+        auto dispatch_stage = [&](unsigned stage) {
+          binding.work->dispatch_stage(stage, stream, combined, combined, combined,
+                                       passes, main_visits, combined, main_visits,
+                                       combined, 0u, 0u, combined, dummy, parameters);
+          read_counts();
+        };
+        for (auto id = 0u; id < capacity; ++id) {
+          stream << publisher(parameters, id, holes).dispatch(1u);
+        }
+        read_counts();
+        passed &= binding.work->stage_host_count(1u) == 32u;
+        dispatch_stage(1u);
+        passed &= binding.work->host_count() == 8u;
+        passed &= binding.work->stage_host_count(2u) == 8u;
+        binding.work->prepare_for_admission(stream);
+        passed &= binding.work->host_count() == 8u;
+        passed &= binding.work->host_available_slots() == 24u;
+        binding.work->prepare_for_producer(stream, 24u);
+        for (auto id = capacity; id < 56u; ++id) {
+          stream << publisher(parameters, id, holes).dispatch(1u);
+        }
+        read_counts();
+        passed &= binding.work->host_count() == 32u;
+        passed &= binding.work->stage_host_count(1u) == 24u;
+        passed &= binding.work->stage_host_count(2u) == 8u;
+        auto steps = 0u;
+        while (binding.work->host_count() != 0u && steps++ < 12u) {
+          dispatch_stage(binding.work->admission_stage());
+        }
+        passed &= binding.work->host_count() == 0u;
+        stream << combined.copy_to(colors.data()) << passes.copy_to(light_passes.data())
+               << synchronize();
+        for (auto id = 0u; id < paths; ++id) {
+          const auto live = id < 56u && (id < 8u - holes || id >= 32u - holes);
+          const auto expected = luisa::make_float3(0.5f, 1.0f, 2.0f) * float(live);
+          const auto pass = light_passes[id * light_pass_buffer_count +
+                                         light_pass_index(LightPassBuffer::diffuse_direct)];
+          for (auto lane = 0u; lane < 3u; ++lane) {
+            if (colors[id][lane] != expected[lane] || pass[lane] != expected[lane]) {
+              std::cerr << "Shadow relocation H=" << holes << " pixel=" << id
+                        << " lane=" << lane << " combined=" << colors[id][lane]
+                        << " pass=" << pass[lane] << " expected=" << expected[lane]
+                        << '\n';
+              passed = false;
+            }
+          }
+        }
+      }
+    }
   }
   return passed;
 }
