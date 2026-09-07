@@ -125,7 +125,6 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
     std::unique_ptr<svm::ShaderData> _shader_data;
     svm_detail::ClosureTypeMask _closure_types;
     SurfacePreparation _preparation;
-    Bool _material_evaluated{true};
 
   private:
     [[nodiscard]] SurfacePreparation make_preparation(
@@ -443,9 +442,9 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
            svm::kernel_feature_subsurface) != 0u) {
         const auto subsurface_exit =
             (path_state.flag & cycles_path_state::flag_subsurface) != 0u;
-        _material_evaluated = svm_detail::surface_shader_material_eval_required(
+        const auto material_evaluated = svm_detail::surface_shader_material_eval_required(
             subsurface_exit, _shader_data->flag);
-        $if(_material_evaluated) { evaluate_material(); };
+        $if(material_evaluated) { evaluate_material(); };
         $if(subsurface_exit) {
           svm_detail::subsurface_shader_data_setup(*_shader_data);
         }
@@ -455,10 +454,6 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
         prepare_closures();
       }
       _preparation = make_preparation(context);
-    }
-
-    [[nodiscard]] Expr<bool> material_evaluated() const noexcept override {
-      return _material_evaluated;
     }
 
     [[nodiscard]] Expr<std::uint32_t>

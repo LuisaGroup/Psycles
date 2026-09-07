@@ -1405,6 +1405,9 @@ if(PSYCLES_ENABLE_LUISA)
                 add_executable(
                     psycles_luisa_volume_triangle_tests
                     tests/test_luisa_volume_triangle.cpp)
+                target_include_directories(
+                    psycles_luisa_volume_triangle_tests
+                    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
                 target_link_libraries(
                     psycles_luisa_volume_triangle_tests
                     PRIVATE Psycles::luisa_runtime)
@@ -1829,6 +1832,14 @@ if(PSYCLES_ENABLE_LUISA)
             add_test(
                 NAME psycles.cycles_tangent_space
                 COMMAND psycles_cycles_tangent_space_tests)
+
+            add_executable(
+                psycles_cycles_svm_attribute_residency_tests
+                tests/test_cycles_svm_attribute_residency.cpp)
+            target_link_libraries(psycles_cycles_svm_attribute_residency_tests
+                PRIVATE Psycles::luisa_runtime)
+            add_test(NAME psycles.cycles_svm_attribute_residency
+                COMMAND psycles_cycles_svm_attribute_residency_tests)
 
             add_executable(
                 psycles_attribute_residency_tests

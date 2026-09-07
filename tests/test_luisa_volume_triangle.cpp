@@ -3,12 +3,15 @@
 #include <psycles/io/image.h>
 #include <psycles/luisa/path_tracer.h>
 
+#include "path_tracer_internal.h"
+
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -69,7 +72,7 @@ volume_scatter_shader() {
 }
 
 [[nodiscard]] ShaderGraph
-emission_shader() {
+emission_shader(bool deferred = false) {
     ShaderGraph graph;
     const auto emission =
         graph.add_node(
@@ -87,6 +90,19 @@ emission_shader() {
             "Strength",
             SocketValue::floating(
                 10.0f)));
+    if (deferred) {
+        // Object.pass_id is zero in this scene, so this has the same radiance
+        // as the Cycles golden below. Unlike the literal 10, Object Index
+        // requires native VM execution at the sampled mesh-light point.
+        const auto info = graph.add_node(node_type::object_info, "Emitter object");
+        const auto add = graph.add_node(node_type::math, "Object index plus ten");
+        if (!graph.set_property(add, "Operation", SocketValue::string("ADD")) ||
+            !graph.set_input(add, "B", SocketValue::floating(10.0f)) ||
+            !graph.connect({info, "ObjectIndex"}, add, "A") ||
+            !graph.connect({add, "Value"}, emission, "Strength")) {
+            throw std::runtime_error{"cannot construct deferred volume emitter"};
+        }
+    }
     graph.set_root(
         ShaderDomain::surface,
         OutputRef{
@@ -360,7 +376,8 @@ make_settings() {
     SceneSnapshot scene,
     const RenderSettings &settings,
     psycles::io::MemoryOutputSink
-        &sink) {
+        &sink,
+    bool require_deferred = false) {
     const auto compilation =
         renderer.compile_scene(scene);
     if (!compilation.ok()) {
@@ -371,6 +388,21 @@ make_settings() {
                 << '\n';
         }
         return false;
+    }
+    if (require_deferred) {
+        namespace detail = psycles::luisa_backend::detail;
+        namespace svm = psycles::compiler::cycles_svm;
+        const auto *compiled = dynamic_cast<const detail::LuisaCompiledScene *>(
+            compilation.scene.get());
+        if (compiled == nullptr || !compiled->data()->cycles_svm) { return false; }
+        const auto &native = *compiled->data()->cycles_svm;
+        const auto shader = native.material_shader_indices.at(MaterialId{3u});
+        if (!native.compilation.table.node_types_used[svm::NODE_INFO_OB_INDEX] ||
+            (native.compilation.kernel_shaders.at(shader).flags &
+             svm::SD_HAS_CONSTANT_EMISSION) != 0) {
+            std::cerr << "deferred volume emitter bypassed native SVM\n";
+            return false;
+        }
     }
     auto session =
         renderer.create_session(
@@ -505,6 +537,28 @@ int main(int argc, char **argv) {
                 << "mesh-volume alpha failed on "
                 << backend << " pixel "
                 << pixel << '\n';
+            passed = false;
+        }
+    }
+
+    auto deferred_scene = make_scene();
+    deferred_scene.materials.at(MaterialId{3u}).shader = emission_shader(true);
+    psycles::io::MemoryOutputSink deferred_sink;
+    if (!render_scene(renderer, std::move(deferred_scene), settings,
+                      deferred_sink, true)) {
+        std::cerr << "deferred mesh-volume render failed on " << backend << '\n';
+        return EXIT_FAILURE;
+    }
+    const auto *deferred_volume = deferred_sink.find(PassKind::volume_direct);
+    if (deferred_volume == nullptr || deferred_volume->pixels.size() != volume->pixels.size()) {
+        return EXIT_FAILURE;
+    }
+    for (auto i = std::size_t{0u}; i < deferred_volume->pixels.size(); ++i) {
+        if (!approximately_equal(deferred_volume->pixels[i], cycles[i / 3u])) {
+            std::cerr << "native deferred volume emission differs from Cycles on "
+                      << backend << " component " << i << ": got "
+                      << deferred_volume->pixels[i] << ", expected "
+                      << cycles[i / 3u] << '\n';
             passed = false;
         }
     }

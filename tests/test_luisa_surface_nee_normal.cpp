@@ -271,7 +271,8 @@ int main(int argc, char **argv) {
                 .cycles_shader_index = 2u});
         // Material 99 occupies both an unused geometry slot and an unused
         // instance-override slot. Slot 0 is the only primitive image, so the
-        // table holes must remain inert without entering the SVM domain.
+        // native Geometry.used_shaders domain still contains both slots, but
+        // only slot 0 can enable subsurface path transport.
         unreachable.geometries.at(GeometryId{2u})
             .material_slots.emplace_back(MaterialId{99u});
         unreachable.instances.at(InstanceId{3u}).material_overrides = {
@@ -283,10 +284,10 @@ int main(int argc, char **argv) {
                                     : CompiledSubsurfaceCapability{};
         const auto compiled_material_domain_is_exact =
             capability.ok() &&
-            compiled_scene_data(capability).materials.materials().size() ==
-                1u &&
-            compiled_scene_data(capability).materials.find(
-                MaterialId{99u}) == nullptr;
+            compiled_scene_data(capability).materials.materials().empty() &&
+            compiled_scene_data(capability).cycles_svm &&
+            compiled_scene_data(capability).cycles_svm->material_shader_indices
+                .contains(MaterialId{99u});
         if (!capability.ok() || subsurface.enabled ||
             subsurface.local_instance_count != 0u ||
             !compiled_material_domain_is_exact) {

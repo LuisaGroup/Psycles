@@ -4,6 +4,7 @@
 #include "path_kernel_volume_environment_light.h"
 #include "path_kernel_volume_mesh_light.h"
 #include "path_kernel_volume_shadow.h"
+#include "path_tracer_cycles_svm_light.h"
 
 #include <psycles/luisa/cycles_light.h>
 
@@ -126,6 +127,13 @@ class AnalyticVolumeLightProvider final
              light_flag_constant_emission) !=
                 0u,
             valid);
+        _result.position = select(_result.position, position, valid);
+        _result.light_object = select(
+            _result.light_object, light.cycles_object_index, valid);
+        _result.light_primitive = select(
+            _result.light_primitive, light_index, valid);
+        _result.emission_is_constant = select(
+            _result.emission_is_constant, _emission_is_constant, valid);
         _sample_valid |= valid;
     }
 
@@ -466,6 +474,11 @@ class CombinedVolumeLightProvider final
         VolumeDirectLightProvider>>
         _providers;
     VolumeDirectLightSample &_result;
+    ClosestPathEvent &_event;
+    Float3 _segment_position;
+    Float3 _segment_direction;
+    mutable Float3 _position{make_float3(0.0f)};
+    std::shared_ptr<const DirectLightEmissionComponent> _native_emission;
 
   public:
     CombinedVolumeLightProvider(
@@ -473,14 +486,23 @@ class CombinedVolumeLightProvider final
             VolumeDirectLightProvider>>
             providers,
         VolumeDirectLightSample
-            &result) noexcept
+            &result,
+        ClosestPathEvent &event,
+        Float3 segment_position,
+        Float3 segment_direction,
+        std::shared_ptr<const DirectLightEmissionComponent> native_emission) noexcept
         : _providers{
               std::move(providers)},
-          _result{result} {}
+          _result{result},
+          _event{event},
+          _segment_position{std::move(segment_position)},
+          _segment_direction{std::move(segment_direction)},
+          _native_emission{std::move(native_emission)} {}
 
     VolumeDirectDirectionSample sample_direction(
         Float distance)
         const noexcept override {
+        _position = _segment_position + _segment_direction * distance;
         for (const auto &provider :
              _providers) {
             static_cast<void>(
@@ -506,6 +528,43 @@ class CombinedVolumeLightProvider final
     void evaluate_deferred_emission(
         Bool receiving_nonzero)
         const noexcept override {
+        if (_native_emission) {
+            // A volume collision chooses one emitter before the phase test.
+            // As in Cycles SHADE_LIGHT_NEE, all emitter kinds then share one
+            // native shader evaluation, reconstructed from the shadow ray.
+            $if(_result.valid & !_result.emission_is_constant & receiving_nonzero) {
+                const auto &sample = _event.bounce.sample;
+                auto task = def<DirectLightTaskCall>();
+                task.ray_origin = _position;
+                task.ray_direction = _result.direction;
+                task.ray_maximum = _result.maximum_distance;
+                $if(task.ray_maximum != ray_maximum) {
+                    // kernel/light/sample.h::shadow_ray_setup. Keep the
+                    // sampled endpoint; do not reconstruct it from D * t.
+                    const auto delta = _result.position - _position;
+                    const auto distance = length(delta);
+                    task.ray_direction = delta * select(
+                        1.0f / distance, 0.0f, distance == 0.0f);
+                    task.ray_maximum = distance;
+                };
+                // shader_setup_from_volume currently has zero compact ray
+                // differentials and the static scene's midpoint time.
+                task.ray_time = 0.5f;
+                task.light_object = _result.light_object;
+                task.light_primitive = _result.light_primitive;
+                task.sample_index = sample.sample_index;
+                task.rng_hash = sample.rng_hash;
+                task.rng_offset = sample.cycles_rng_offset;
+                task.path_depth = sample.path_depth;
+                task.transparent_depth = sample.transparent_depth;
+                task.diffuse_depth = sample.diffuse_depth;
+                task.glossy_depth = sample.glossy_depth;
+                task.transmission_depth = sample.transmission_depth;
+                _result.radiance *= _native_emission->evaluate(
+                    task, sample.invocation.parameters);
+            };
+            return;
+        }
         for (const auto &provider :
              _providers) {
             provider
@@ -891,15 +950,19 @@ class PathVolumeDirectLightingComponent final
                 ->make_light_provider(
                     event,
                     proposal,
-                    std::move(
-                        segment_position),
-                    std::move(
-                        segment_direction),
+                    segment_position,
+                    segment_direction,
                     result));
         return std::make_unique<
             CombinedVolumeLightProvider>(
                 std::move(providers),
-                result);
+                result, event, std::move(segment_position),
+                std::move(segment_direction),
+                _config.scene->native_cycles_svm_surface
+                    ? make_cycles_svm_light_emission_component(
+                          _config.scene, _config.camera_projection,
+                          _config.reflective_caustics, _config.refractive_caustics)
+                    : nullptr);
     }
 
     void accumulate(

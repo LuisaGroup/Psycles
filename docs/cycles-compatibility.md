@@ -17,11 +17,13 @@ Blender/Cycles itself supplies the compiler and GPU-state oracles. There is
 no independent CPU reference renderer.
 
 The default switch is **not** completion of the legacy code removal:
-the displacement prepass still has SurfaceProgram consumers, and the scene
-loader still compiles transitional material resources. Background, stacked
-volume, shadow-volume, collision and majorant evaluation now use native SVM.
-The remaining loader dependency currently rejects Classroom's Object Index
-output despite native SVM supporting it. These are
+the displacement prepass still has SurfaceProgram consumers. Its private
+compilation input now contains only displacement plus an inert required root;
+ordinary surface, volume, light and world admission no longer depends on it.
+Native KernelShader metadata supplies all material bindings, while native
+attribute requests supply geometry residency. Background, stacked volume,
+shadow-volume, collision and majorant evaluation use native SVM. Classroom's
+Object Index admission blocker is fixed. Remaining legacy dependencies are
 removal work, not supported alternate SVM architectures. The
 [default-path checkpoint](validation/2026-09-07/native-default/README.md)
 records the actual deletions and remaining dependencies.
@@ -80,6 +82,7 @@ Recent independently checked native families include:
 | Background/NEE ShaderData, native world evaluation and camera-dependent importance baking | [Native background](validation/2026-09-08/native-background/README.md) |
 | Volume Absorption/Scatter, Volume Coefficients and Principled Volume node streams and allocation state | [Native volume SVM](validation/2026-09-07/native-volume-svm/README.md) |
 | Ordered volume stacks, main/shadow consumers, phase copy, runtime extrema and density baking | [Native volume consumers](validation/2026-09-08/native-volume-consumers/README.md) |
+| Native scene admission, used-shader attribute residency, mesh constant emission and volume NEE emission | [Scene admission](validation/2026-09-08/native-scene-admission/README.md) |
 | Map Range and analytic Sky node behavior | [Map Range](validation/2026-09-07/map-range/README.md), [analytic Sky](validation/2026-09-07/analytic-sky/README.md) |
 
 The native volume consumer retains one closure allocator across the whole
@@ -104,14 +107,22 @@ been removed from this current-status page. Their dated evidence remains
 under `docs/validation/`.
 
 Current large HIP checkpoints use fixed samples and native fast math.
-Lone Monk runs at 1440x1080 / 256 spp and Monster at 1080x1080 / 256 spp.
-The [native background checkpoint](validation/2026-09-08/native-background/README.md)
-records Combined / DiffInd relative RMSE of
-0.01240469 / 0.12881537 for Monk and 0.00547924 / 0.02552799 for Monster.
-Single render-only canaries take 13.5612 s / 14.9770 s; the main application
-coroutine frames remain 220 B / 284 B. Background migration did not materially
-change the residuals or establish a speedup. These are dated measurements,
-not guarantees for subsequent changes.
+The old SurfaceProgram instruction/topology histogram and its CLI/API have
+been removed; its counts do not describe native Cycles SVM. Closure-count
+histograms and per-path traces remain supported.
+The [native scene admission checkpoint](validation/2026-09-08/native-scene-admission/README.md)
+records these 256 spp single canaries, with all 46 channels finite:
+
+| Scene | Extent | Cold main JIT s | Render-only s | Frame | Combined / DiffInd rel. RMSE |
+| --- | --- | ---: | ---: | ---: | --- |
+| Lone Monk | 1440x1080 | 44.3570 | 13.8669 | 220 B | 0.01240942 / 0.12881692 |
+| Monster | 1080x1080 | 57.2307 | 15.1202 | 284 B | 0.00547924 / 0.02552799 |
+| Classroom | 1920x1080 | 58.5554 | 18.3531 | 264 B | 0.00353344 / 0.17820336 |
+
+Barbershop currently stops at unavailable-image admission; it has no new
+successful rendering or performance result. Missing-image identity and
+sampling state need an original-Cycles regression. Shader/binding cleanup
+shortened the observed JIT canaries but did not remove the indirect residuals.
 
 A fresh, profiler-free Cycles HIP check on 2026-09-08 ran each scene three
 times. Main-loop times were 13.4344/13.4429/13.4521 s for Monk and
@@ -119,11 +130,11 @@ times. Main-loop times were 13.4344/13.4429/13.4521 s for Monk and
 Evidence is in `/var/tmp/psycles-cycles-hip-check-9wipGw`; Blender build identity
 is `9e2066aef7ef`, with fixed 256 spp, seed 0, no adaptive sampling or denoise,
 on the same RX 9070 XT. These are main-loop wall times, not summed kernel
-timings or the Python render-call duration. Against the preceding single
-Psycles canaries this suggests approximately 0.9%/3.8% slower rendering, not a
-paired current-revision performance result. Psycles' corresponding main-path
-JIT times were 66.0925/71.9387 s; Cycles' precompiled/cache behavior is not
-equivalent to that cold main-path compilation. The older Monk reference was
+timings or the Python render-call duration. The latest single Psycles canaries
+are approximately 3.2%/4.8% slower; this is not a paired current-revision
+benchmark. A fresh Classroom Cycles main loop takes 20.7432 s at the same
+1920x1080/256 and seed 1. Cycles' precompiled/cache behavior is not equivalent
+to Psycles' cold main-path compilation. The older Monk reference was
 captured under rocprofv3 and is not the timing baseline for this comparison.
 
 The [same-sample Monk diagnosis](validation/2026-09-07/lone-monk-residual/README.md)

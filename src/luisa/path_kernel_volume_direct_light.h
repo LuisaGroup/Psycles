@@ -10,6 +10,7 @@ namespace psycles::luisa_backend::detail {
 
 struct VolumeDirectLightSample {
     Float3 direction;
+    Float3 position;
     Float3 radiance;
     Float pdf;
     Float maximum_distance;
@@ -17,6 +18,7 @@ struct VolumeDirectLightSample {
     UInt light_primitive;
     UInt light_instance;
     UInt light_accel_primitive;
+    Bool emission_is_constant;
     Bool use_mis;
     Bool valid;
 };

@@ -589,6 +589,20 @@ make_unreachable_surface_replay_callables() noexcept {
 
 SurfaceCallables
 make_surface_callables(const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    if (scene->native_cycles_svm_surface) {
+        // All production consumers use the retained native population or the
+        // dedicated native light/emission evaluator. Do not build unused
+        // legacy closure, emission, BSSRDF-normal or topology replay ASTs.
+        return {make_cycles_svm_surface_population_component(scene),
+                SurfacePreparationCallable{luisa::shared_ptr<const luisa::compute::detail::FunctionBuilder>{}},
+                SurfaceEvaluateLightCallable{luisa::shared_ptr<const luisa::compute::detail::FunctionBuilder>{}},
+                SurfaceConstantEmissionCallable{luisa::shared_ptr<const luisa::compute::detail::FunctionBuilder>{}},
+                SurfaceEmissionCallable{luisa::shared_ptr<const luisa::compute::detail::FunctionBuilder>{}},
+                SurfaceSampleCallable{luisa::shared_ptr<const luisa::compute::detail::FunctionBuilder>{}},
+                SurfaceClosureTraceCallable{luisa::shared_ptr<const luisa::compute::detail::FunctionBuilder>{}},
+                SurfaceSampleTraceCallable{luisa::shared_ptr<const luisa::compute::detail::FunctionBuilder>{}},
+                SurfaceBssrdfNormalCallable{luisa::shared_ptr<const luisa::compute::detail::FunctionBuilder>{}}};
+    }
     const auto closure_identity = make_surface_closure_identity_callable();
     const auto closure_setup = make_surface_closure_setup_callables();
     const auto texture_sampling = make_texture_2d_sampling_callables();

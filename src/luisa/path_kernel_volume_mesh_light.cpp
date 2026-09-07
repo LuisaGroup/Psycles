@@ -109,6 +109,7 @@ class MeshVolumeLightProvider final
             $if(valid) {
                 _result.direction =
                     light.light.direction;
+                _result.position = light.light.position;
                 _result.radiance =
                     make_float3(1.0f);
                 _result.pdf = light.pdf;
@@ -131,6 +132,7 @@ class MeshVolumeLightProvider final
                         .emitter
                         .primitive_index;
                 _result.use_mis = true;
+                _result.emission_is_constant = _emission_is_constant;
                 _result.valid = true;
             };
         };

@@ -4,8 +4,10 @@
 #include <psycles/compiler/surface_execution_plan.h>
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace psycles::luisa_backend::detail {
@@ -323,6 +325,82 @@ SceneAttributeResidencyPlan build_scene_attribute_residency_plan(
                     residency.demand, material, material_demands);
             }
         }
+        measure_geometry(result, geometry, residency);
+    }
+    return result;
+}
+
+SceneAttributeResidencyPlan build_scene_attribute_residency_plan(
+    const contract::SceneSnapshot &snapshot,
+    const compiler::cycles_svm::CompiledShaderTable &compilation,
+    const std::map<contract::MaterialId, std::uint32_t> &material_shader_indices) {
+    namespace abi = compiler::cycles_svm;
+    const auto geometry_requests = [&](contract::GeometryId id, const auto &geometry) {
+        std::set<std::uint64_t> requests;
+        const auto append = [&](contract::MaterialId material) {
+            const auto index = material_shader_indices.at(material);
+            const auto &ids = compilation.shader_attribute_ids_used.at(index);
+            requests.insert(ids.begin(), ids.end());
+        };
+        for (const auto material : geometry.material_slots) { append(material); }
+        for (const auto &[instance_id, instance] : snapshot.instances) {
+            static_cast<void>(instance_id);
+            if (instance.geometry == id) {
+                for (const auto material : instance.material_overrides) { append(material); }
+            }
+        }
+        return requests;
+    };
+    const auto project_named = [&](SurfaceAttributeDemand &demand,
+                                   const auto &geometry, const auto &requests) {
+        for (const auto &[name, id] : compilation.named_attributes) {
+            if (!requests.contains(id)) { continue; }
+            // Match append_mesh_named_sources / append_curve_sources:
+            // an actual UV/color name takes precedence over tangent suffixes.
+            if (geometry.uv_layers.contains(name)) {
+                demand.ids.emplace(contract::uv_attribute_id(name));
+                continue;
+            }
+            if constexpr (requires { geometry.cycles_byte_color_attributes; }) {
+                // Native byte colors are uploaded directly from their exact
+                // source, before float colors or generated tangent names.
+                if (geometry.cycles_byte_color_attributes.contains(name)) { continue; }
+            }
+            if (geometry.color_attributes.contains(name)) {
+                demand.ids.emplace(contract::attribute_id(name));
+            } else if constexpr (requires { geometry.uv_tangent_layers; }) {
+                constexpr std::array<std::pair<std::string_view, bool>, 4u> suffixes{{
+                    {".undisplaced_tangent_sign", true}, {".undisplaced_tangent", true},
+                    {".tangent_sign", false}, {".tangent", false}}};
+                for (const auto &[suffix, undisplaced] : suffixes) {
+                    if (!name.ends_with(suffix)) { continue; }
+                    const auto base = name.substr(0u, name.size() - suffix.size());
+                    if (geometry.uv_layers.contains(base)) {
+                        demand.ids.emplace(undisplaced
+                            ? contract::uv_undisplaced_tangent_attribute_id(base)
+                            : contract::uv_tangent_attribute_id(base));
+                        demand.ids.emplace(contract::uv_attribute_id(base));
+                    }
+                    break;
+                }
+            }
+        }
+    };
+    SceneAttributeResidencyPlan result;
+    for (const auto &[id, geometry] : snapshot.geometries) {
+        auto &residency = result.geometries[id];
+        const auto requests = geometry_requests(id, geometry);
+        if (requests.contains(abi::ATTR_STD_POINTINESS)) {
+            residency.demand.ids.emplace(contract::cycles_pointiness_attribute_id);
+        }
+        project_named(residency.demand, geometry, requests);
+        close_tangent_dependencies(residency.demand, geometry);
+        measure_geometry(result, geometry, residency);
+    }
+    for (const auto &[id, geometry] : snapshot.curve_geometries) {
+        auto &residency = result.geometries[id];
+        const auto requests = geometry_requests(id, geometry);
+        project_named(residency.demand, geometry, requests);
         measure_geometry(result, geometry, residency);
     }
     return result;

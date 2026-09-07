@@ -1,5 +1,4 @@
 #include <psycles/compiler/core_nodes.h>
-#include <psycles/compiler/surface_execution_plan.h>
 #include <psycles/contract/scene.h>
 #include <psycles/io/image.h>
 #include <psycles/luisa/path_trace_schema.h>
@@ -256,26 +255,12 @@ public:
   }
 };
 
-class SurfaceProgramHistogramSink final
-    : public psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogramSink {
-
-public:
-  std::optional<psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogram>
-      histogram;
-
-  void write(const psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogram
-                 &value) override {
-    histogram = value;
-  }
-};
 
 struct RenderResult {
   psycles::io::MemoryOutputSink output;
   std::optional<psycles::luisa_backend::LuisaPathTrace> trace;
   std::optional<psycles::luisa_backend::LuisaSurfaceClosureCountHistogram>
       closure_histogram;
-  std::optional<psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogram>
-      surface_program_histogram;
 };
 
 [[nodiscard]] std::optional<RenderResult>
@@ -297,10 +282,6 @@ render(luisa::compute::Context &context, std::string_view backend,
   auto closure_histogram_sink = diagnostic_histograms_enabled
                                     ? std::make_shared<ClosureHistogramSink>()
                                     : std::shared_ptr<ClosureHistogramSink>{};
-  auto surface_program_histogram_sink =
-      diagnostic_histograms_enabled
-          ? std::make_shared<SurfaceProgramHistogramSink>()
-          : std::shared_ptr<SurfaceProgramHistogramSink>{};
   const auto trace_request =
       trace_sink
           ? std::optional{psycles::luisa_backend::LuisaPathTraceRequest{
@@ -316,14 +297,6 @@ render(luisa::compute::Context &context, std::string_view backend,
     closure_histogram_request =
         psycles::luisa_backend::LuisaSurfaceClosureCountHistogramRequest{
             .sink = closure_histogram_sink};
-  }
-  std::optional<
-      psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogramRequest>
-      surface_program_histogram_request;
-  if (surface_program_histogram_sink) {
-    surface_program_histogram_request =
-        psycles::luisa_backend::LuisaSurfaceProgramExecutionHistogramRequest{
-            .sink = surface_program_histogram_sink};
   }
   psycles::luisa_backend::LuisaPathTracerBackend renderer{
       std::move(device),
@@ -347,9 +320,7 @@ render(luisa::compute::Context &context, std::string_view backend,
        .persistent_fetch_size = 4u,
        .max_samples_per_dispatch = samples_per_dispatch,
        .path_trace = trace_request,
-       .surface_closure_count_histogram = closure_histogram_request,
-       .surface_program_execution_histogram =
-           surface_program_histogram_request}};
+       .surface_closure_count_histogram = closure_histogram_request}};
   auto scene = make_scene();
   if (zero_nee_fixture) {
     // An emission-only surface has no BSDF that can receive the sampled
@@ -396,20 +367,12 @@ render(luisa::compute::Context &context, std::string_view backend,
   if (closure_histogram_sink && !closure_histogram_sink->histogram) {
     return std::nullopt;
   }
-  if (surface_program_histogram_sink &&
-      !surface_program_histogram_sink->histogram) {
-    return std::nullopt;
-  }
   return RenderResult{
       .output = std::move(output),
       .trace = trace_sink ? std::move(trace_sink->trace) : std::nullopt,
       .closure_histogram = closure_histogram_sink
                                ? std::move(closure_histogram_sink->histogram)
-                               : std::nullopt,
-      .surface_program_histogram =
-          surface_program_histogram_sink
-              ? std::move(surface_program_histogram_sink->histogram)
-              : std::nullopt};
+                               : std::nullopt};
 }
 
 [[nodiscard]] bool same_bits(float lhs, float rhs) noexcept {
@@ -567,140 +530,6 @@ validate_closure_histograms(const RenderResult &single_request,
   return true;
 }
 
-[[nodiscard]] bool
-validate_surface_program_histograms(const RenderResult &single_request,
-                                    const RenderResult &split_request) {
-  if (!single_request.surface_program_histogram ||
-      !split_request.surface_program_histogram) {
-    std::cerr << "surface program histogram is missing\n";
-    return false;
-  }
-  const auto &expected = *single_request.surface_program_histogram;
-  const auto &actual = *split_request.surface_program_histogram;
-  if (!expected.exact || !actual.exact || expected != actual) {
-    std::cerr << "surface program histogram changed across sample "
-                 "chunking\n";
-    return false;
-  }
-  constexpr auto expected_surface_events =
-      static_cast<std::uint64_t>(width) * height * sample_count;
-  auto surface_events = std::uint64_t{0u};
-  for (const auto count : expected.topology_surface_populations) {
-    surface_events += count;
-  }
-  auto value_handler_executions = std::uint64_t{0u};
-  for (const auto &entry : expected.value_handlers) {
-    value_handler_executions += entry.executions;
-    if (entry.executions == 0u ||
-        entry.executions % expected_surface_events != 0u) {
-      std::cerr << "one-topology value handler count is not an exact "
-                   "multiple of surface events\n";
-      return false;
-    }
-  }
-  auto value_handler_transition_executions = std::uint64_t{0u};
-  auto directly_dependent_transition_executions = std::uint64_t{0u};
-  auto last_use_forwarding_transition_executions = std::uint64_t{0u};
-  constexpr auto valid_direct_operand_mask =
-      (std::uint32_t{1u} << surface_value_max_operand_count) - 1u;
-  for (const auto &entry : expected.value_handler_transitions) {
-    value_handler_transition_executions += entry.executions;
-    directly_dependent_transition_executions +=
-        entry.direct_dependency ? entry.executions : 0u;
-    last_use_forwarding_transition_executions +=
-        entry.source_last_used_by_target ? entry.executions : 0u;
-    if (entry.executions == 0u ||
-        entry.executions % expected_surface_events != 0u ||
-        entry.direct_dependency != (entry.direct_operand_mask != 0u) ||
-        (entry.dynamic_direct_operand_mask & ~entry.direct_operand_mask) !=
-            0u ||
-        (entry.direct_operand_mask & ~valid_direct_operand_mask) != 0u ||
-        (entry.source_last_used_by_target && !entry.direct_dependency) ||
-        entry.source_result_bank >
-            static_cast<std::uint32_t>(SurfaceValueBank::unsigned_integer)) {
-      std::cerr << "one-topology value handler transition count is not an "
-                   "exact multiple of surface events, or its exact data-flow "
-                   "classification is malformed\n";
-      return false;
-    }
-  }
-  // The split-stream maximal-region experiment has no canonical image in
-  // the structured SVM. Its retained ABI fields must remain explicitly
-  // empty instead of fabricating a linear partition across guards.
-  if (!expected.value_regions.empty() ||
-      expected.value_region_invocations != 0u ||
-      expected.value_region_instruction_executions != 0u ||
-      expected.value_region_forwarded_edge_executions != 0u ||
-      expected.value_region_live_input_executions != 0u ||
-      expected.value_region_live_output_executions != 0u) {
-    std::cerr << "obsolete split-stream region census was populated\n";
-    return false;
-  }
-  const auto &operand_executions = expected.value_operand_executions;
-  const auto total_operand_executions =
-      operand_executions.direct_local + operand_executions.direct_parameter +
-      operand_executions.dynamic_local + operand_executions.dynamic_parameter;
-  const auto &unique_parameters = expected.unique_parameter_values;
-  const auto unique_parameter_values = unique_parameters.scalar +
-                                       unique_parameters.vector +
-                                       unique_parameters.unsigned_integer;
-  const auto parameter_operand_executions =
-      operand_executions.direct_parameter +
-      operand_executions.dynamic_parameter;
-  auto interval_parameter_references = std::uint64_t{0u};
-  auto interval_dynamic_parameter_references = std::uint64_t{0u};
-  auto interval_unique_parameters = std::uint64_t{0u};
-  for (const auto &bank : expected.parameter_reuse_bins) {
-    for (const auto &bin : bank) {
-      interval_parameter_references += bin.references;
-      interval_dynamic_parameter_references += bin.dynamic_references;
-      interval_unique_parameters += bin.unique_values;
-      if (bin.dynamic_references > bin.references ||
-          (bin.unique_values != 0u && bin.instruction_span == 0u)) {
-        std::cerr << "surface parameter interval census is malformed\n";
-        return false;
-      }
-    }
-  }
-  auto closure_kind_visits = std::uint64_t{0u};
-  for (const auto visits : expected.closure_instruction_kind_visits) {
-    closure_kind_visits += visits;
-  }
-  auto closure_leaf_visits = std::uint64_t{0u};
-  for (const auto &entry : expected.closure_leaf_variants) {
-    closure_leaf_visits += entry.visits;
-    if (entry.visits == 0u || entry.visits % expected_surface_events != 0u) {
-      std::cerr << "one-topology closure leaf count is not an exact "
-                   "multiple of surface events\n";
-      return false;
-    }
-  }
-  if (surface_events != expected_surface_events ||
-      expected.value_instruction_executions == 0u ||
-      total_operand_executions == 0u || operand_executions.direct_local == 0u ||
-      operand_executions.direct_parameter == 0u ||
-      operand_executions.dynamic_local == 0u ||
-      operand_executions.dynamic_parameter == 0u ||
-      unique_parameter_values == 0u ||
-      unique_parameter_values % expected_surface_events != 0u ||
-      parameter_operand_executions <= unique_parameter_values ||
-      interval_parameter_references != parameter_operand_executions ||
-      interval_dynamic_parameter_references !=
-          operand_executions.dynamic_parameter ||
-      interval_unique_parameters < unique_parameter_values ||
-      value_handler_transition_executions == 0u ||
-      directly_dependent_transition_executions == 0u ||
-      last_use_forwarding_transition_executions != 0u ||
-      value_handler_transition_executions >= value_handler_executions ||
-      value_handler_executions != expected.value_instruction_executions ||
-      closure_kind_visits != expected.closure_instruction_visits ||
-      closure_leaf_visits != expected.closure_instruction_kind_visits[0u]) {
-    std::cerr << "surface program host projection violated its "
-                 "instruction partition\n";
-    return false;
-  }
-  return true;
-}
 
 } // namespace
 
@@ -812,7 +641,6 @@ int main(int argc, char **argv) {
       !compare_outputs(*reference, *chunked, false,
                        "chunked per-sample dispatch") ||
       !validate_closure_histograms(*per_sample, *chunked) ||
-      !validate_surface_program_histograms(*per_sample, *chunked) ||
       !compare_outputs(*per_sample_no_trace, *staged_direct_inline, false,
                        "deferred shadow after surface continuation") ||
       !compare_outputs(*reference, *wavefront, false, "wavefront dispatch") ||
