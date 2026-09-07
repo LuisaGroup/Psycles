@@ -271,7 +271,7 @@ int main(int argc, char **argv) {
             evaluate,
             ShaderOption{
                 .enable_cache = false,
-                .enable_fast_math = false});
+                .enable_fast_math = true});
         std::array<luisa::float4, record_count>
             actual{};
         std::array<luisa::uint4, 1u>

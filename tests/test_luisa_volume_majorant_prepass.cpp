@@ -307,7 +307,8 @@ class FixturePointProvider final
 
 void run_fixture(
     std::string_view backend,
-    const char *program) {
+    const char *program,
+    bool fast_math) {
     auto graph =
         make_spatial_volume_graph();
     ShaderCompiler compiler{
@@ -457,7 +458,7 @@ void run_fixture(
             evaluate,
             ShaderOption{
                 .enable_cache = false,
-                .enable_fast_math = false});
+                .enable_fast_math = fast_math});
     std::array<luisa::float4, 9u>
         actual_samples{};
     std::array<luisa::float2, 3u>
@@ -506,7 +507,8 @@ void run_fixture(
             "Cycles Sobol-Burley bits changed at fixture " +
                 std::to_string(index) +
                 " on " +
-                std::string{backend});
+                std::string{backend} +
+                " fast_math=" + std::to_string(fast_math));
     }
 
     constexpr std::array<luisa::float2, 3u>
@@ -530,7 +532,8 @@ void run_fixture(
             "raw volume majorant extrema changed at fixture " +
                 std::to_string(index) +
                 " on " +
-                std::string{backend});
+                std::string{backend} +
+                " fast_math=" + std::to_string(fast_math));
     }
 }
 
@@ -541,11 +544,14 @@ int main(int argc, char **argv) {
         const auto backend =
             std::string_view{
                 argc > 1 ? argv[1] : "fallback"};
-        run_fixture(
-            backend, argv[0]);
+        // Floating extrema retain the existing tolerance in both modes;
+        // the integer Sobol/hash sequence must not change with fast math.
+        for (const auto fast_math : {false, true}) {
+            run_fixture(backend, argv[0], fast_math);
+        }
         std::cout
             << "All current-Cycles raw volume majorant prepass "
-               "fixtures passed on "
+               "fixtures passed with strict and fast math on "
             << backend << ".\n";
         return EXIT_SUCCESS;
     } catch (const std::exception &error) {

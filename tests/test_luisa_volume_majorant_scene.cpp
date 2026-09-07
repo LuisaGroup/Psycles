@@ -1423,7 +1423,7 @@ void run_scene_build(
         };
     ShaderOption provider_options;
     provider_options.enable_cache = true;
-    provider_options.enable_fast_math = false;
+    provider_options.enable_fast_math = true;
     auto provider_shader =
         device.compile(
             evaluate_provider,
@@ -1708,7 +1708,7 @@ void run_scene_build(
         };
     ShaderOption transport_options;
     transport_options.enable_cache = true;
-    transport_options.enable_fast_math = false;
+    transport_options.enable_fast_math = true;
     auto transport_shader =
         device.compile(
             evaluate_transport,
