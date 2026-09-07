@@ -526,6 +526,7 @@ struct SurfaceGeometryContext {
     Float3 object_hit_position;
     Float differential_radius;
     Bool is_curve;
+    UInt cycles_primitive_type;
     Bool cycles_transform_applied;
     Bool triangle_smooth;
     Float3 shadow_shading_normal;

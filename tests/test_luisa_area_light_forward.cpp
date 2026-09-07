@@ -192,6 +192,8 @@ constexpr std::string_view zero_emission_attribute{
     const auto bind_attribute =
         [&](NodeId node, std::string_view name) {
             static_cast<void>(graph.set_property(
+                node, "Attribute", SocketValue::string(std::string{name})));
+            static_cast<void>(graph.set_property(
                 node,
                 "AttributeId",
                 SocketValue::unsigned_integer(
@@ -304,6 +306,10 @@ constexpr std::string_view zero_emission_attribute{
         graph.add_node(
             node_type::emission,
             "Raw triangle emission closure");
+    static_cast<void>(graph.set_property(
+        zero,
+        "Attribute",
+        SocketValue::string(std::string{zero_emission_attribute})));
     static_cast<void>(graph.set_property(
         zero,
         "AttributeId",

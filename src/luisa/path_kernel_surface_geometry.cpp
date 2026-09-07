@@ -135,6 +135,7 @@ public:
             .object_hit_position = std::move(primitive.object_hit_position),
             .differential_radius = primitive.differential_radius,
             .is_curve = primitive.is_curve,
+            .cycles_primitive_type = primitive.cycles_primitive_type,
             .cycles_transform_applied =
                 primitive.cycles_transform_applied,
             .triangle_smooth = std::move(primitive.triangle_smooth),

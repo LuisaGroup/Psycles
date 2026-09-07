@@ -4,6 +4,7 @@
 #include "path_tracer_mesh_light_scene.h"
 
 #include <psycles/compiler/core_nodes.h>
+#include <psycles/luisa/cycles_svm.h>
 
 #include <array>
 #include <cmath>
@@ -271,6 +272,26 @@ int main(int argc, char **argv) {
     };
     check("analytic lights without legacy lowering",
           [&] { verify_lights(snapshot, *make_scene(device, snapshot)); });
+    check("authored lights use the same native identity plan as KernelObject", [&] {
+      auto authored = snapshot;
+      for (auto &[id, light] : authored.lights) {
+        static_cast<void>(id);
+        light.cycles_object_index.reset();
+        light.cycles_shader_index.reset();
+      }
+      auto scene = make_scene(device, authored);
+      const auto lights = AnalyticLightSceneComponent{}.build(authored, *scene);
+      require(lights.ok() && lights.regular_count == 1u,
+              "authored light did not compile");
+      const auto &light = lights.device_lights.front();
+      require(light.cycles_object_index ==
+                  scene->cycles_svm->object_identities.light_indices.at(LightId{5u}),
+              "light resource did not use its assigned native object identity");
+      require((light.cycles_shader_id &
+               psycles::luisa_backend::cycles_svm::shader_mask) ==
+                  scene->cycles_svm->material_shader_indices.at(emitter),
+              "light resource did not use its assigned native shader identity");
+    });
     check("analytic lights ignore stale legacy metadata", [&] {
       auto scene = make_scene(device, snapshot);
       install_stale_library(*scene, snapshot);

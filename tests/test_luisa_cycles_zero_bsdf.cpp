@@ -2,6 +2,8 @@
 #include <psycles/io/image.h>
 #include <psycles/luisa/path_tracer.h>
 
+#include "path_tracer_internal.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -11,6 +13,7 @@
 #include <iostream>
 #include <optional>
 #include <stdexcept>
+#include <vector>
 
 #include <luisa/runtime/context.h>
 
@@ -111,10 +114,10 @@ bool render(luisa::compute::Device &device,
 int main(int argc, char **argv) {
   try {
 #if defined(_WIN32)
-    _putenv_s("PSYCLES_NATIVE_CYCLES_SVM_SURFACE", "1");
+    _putenv_s("PSYCLES_NATIVE_CYCLES_SVM_SURFACE", "");
     _putenv_s("PSYCLES_DISABLE_SHADER_CACHE", "1");
 #else
-    setenv("PSYCLES_NATIVE_CYCLES_SVM_SURFACE", "1", 1);
+    unsetenv("PSYCLES_NATIVE_CYCLES_SVM_SURFACE");
     setenv("PSYCLES_DISABLE_SHADER_CACHE", "1", 1);
 #endif
     Bundle fixture;
@@ -126,6 +129,50 @@ int main(int argc, char **argv) {
     auto compiled = compiler.compile_scene(*imported.scene);
     for (const auto &d : compiled.diagnostics) { std::cerr << d.message << '\n'; }
     require(compiled.ok(), "external zero-BSDF fixture did not compile");
+    const auto &native = dynamic_cast<const backend::detail::LuisaCompiledScene &>(
+        *compiled.scene).data();
+    require(native->native_cycles_svm_surface && native->cycles_svm,
+            "Cycles SVM must be the default without an environment opt-in");
+    // A stale shell setting must not resurrect the retired surface route.
+#if defined(_WIN32)
+    _putenv_s("PSYCLES_NATIVE_CYCLES_SVM_SURFACE", "0");
+#else
+    setenv("PSYCLES_NATIVE_CYCLES_SVM_SURFACE", "0", 1);
+#endif
+    const auto disabled = compiler.compile_scene(*imported.scene);
+    require(disabled.ok(), "retired opt-out broke scene compilation");
+    require(dynamic_cast<const backend::detail::LuisaCompiledScene &>(
+                *disabled.scene).data()->native_cycles_svm_surface,
+            "retired opt-out selected the legacy evaluator");
+    // Renderer-authored scenes have no Blender indices. Reserve a sparse
+    // explicit index as well: container order is not the native object ID.
+    auto authored = *imported.scene;
+    authored.cycles_object_count.reset();
+    authored.cycles_background_object_index.reset();
+    for (auto &[id, instance] : authored.instances) {
+      static_cast<void>(id);
+      instance.cycles_object_index.reset();
+    }
+    authored.instances.begin()->second.cycles_object_index = 8u;
+    for (auto &[id, light] : authored.lights) {
+      static_cast<void>(id);
+      light.cycles_object_index.reset();
+    }
+    const auto assigned = compiler.compile_scene(authored);
+    require(assigned.ok(), "authored native identity fixture did not compile");
+    const auto &assigned_data = dynamic_cast<const backend::detail::LuisaCompiledScene &>(
+        *assigned.scene).data();
+    std::vector<backend::detail::InstanceGpu> instances(authored.instances.size());
+    auto inspect = device.create_stream();
+    inspect << assigned_data->instance_buffer.copy_to(instances.data())
+            << luisa::compute::synchronize();
+    auto resource = std::size_t{0u};
+    for (const auto &[id, instance] : authored.instances) {
+      static_cast<void>(instance);
+      require(instances[resource++].cycles_object_index ==
+                  assigned_data->cycles_svm->object_identities.instance_indices.at(id),
+              "instance resource diverged from native KernelObject identity");
+    }
     bool passed = true;
     for (auto scheduler : {backend::LuisaPathScheduler::megakernel,
                            backend::LuisaPathScheduler::wavefront_staged}) {

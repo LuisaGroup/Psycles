@@ -1,6 +1,7 @@
 #include "path_tracer_cycles_svm_shadow.h"
 
 #include "cycles_svm_internal.h"
+#include "path_tracer_cycles_svm_curve.h"
 #include "path_tracer_cycles_svm_kernel_globals.h"
 #include "path_tracer_cycles_svm_shader_data.h"
 
@@ -68,14 +69,23 @@ CyclesSvmShadowShaderData setup_cycles_svm_ray_shader_data(
   sd.object_flag =
       scene->cycles_svm->objects->object_flag_buffer->read(object_index);
   sd.type = object.primitive_type.cast<unsigned>();
-  // The production native geometry image currently contains static triangles.
-  // Motion, curves and points require their own Cycles setup, not a cast to
-  // triangle data or a legacy SurfacePoint projection.
-  assume(sd.type == static_cast<unsigned>(abi::PRIMITIVE_TRIANGLE));
-  sd.shader =
-      scene->cycles_svm->geometry->triangle_shader_buffer->read(sd.prim);
-  cycles_svm_triangle_shader_setup(
-      kg, transforms, kg.triangle_vertices(sd.object, sd.prim), sd);
+  const auto triangle_setup = [&] {
+    assume(sd.type == static_cast<unsigned>(abi::PRIMITIVE_TRIANGLE));
+    sd.shader = scene->cycles_svm->geometry->triangle_shader_buffer->read(sd.prim);
+    cycles_svm_triangle_shader_setup(
+        kg, transforms, kg.triangle_vertices(sd.object, sd.prim), sd);
+  };
+  const auto curve_setup = [&] {
+    cycles_svm_curve_shader_setup(scene, kg, transforms, instance, primitive_id, ray, sd);
+  };
+  if (scene->curve_geometries.empty()) {
+    triangle_setup();
+  } else if (scene->geometries.empty()) {
+    curve_setup();
+  } else {
+    $if((sd.type & unsigned(abi::PRIMITIVE_CURVE)) != 0u) { curve_setup(); }
+    $else { triangle_setup(); };
+  }
   sd.flag = (*scene->cycles_svm->kernel_shader_buffer)
                 ->read(sd.shader & svm::shader_mask)
                 .flags.cast<unsigned>();
@@ -105,8 +115,8 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
     const std::shared_ptr<LuisaSceneData> &scene) noexcept {
   LUISA_ASSERT(
       scene->cycles_svm && scene->cycles_svm->geometry &&
-          scene->cycles_svm->objects && scene->curve_geometries.empty(),
-      "Native Cycles shadow setup requires the native triangle image.");
+          scene->cycles_svm->objects,
+      "Native Cycles shadow setup requires the native geometry image.");
   return [scene](Var<luisa::compute::Ray> ray,
                  Var<ShadowIntersectionCall> intersection, Float ray_dP,
                  Float ray_dD, Var<ShadowShaderContextCall> context,
@@ -122,7 +132,8 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
     Var<ShadowSurfaceEvaluationCall> surface;
     surface.object = sd.object;
     surface.primitive = sd.prim;
-    surface.kind = geometry_kind_triangle;
+    surface.kind = select(geometry_kind_triangle, geometry_kind_curve,
+                          (sd.type & unsigned(abi::PRIMITIVE_CURVE)) != 0u);
     const auto volume_only =
         (sd.flag & static_cast<unsigned>(abi::SD_HAS_ONLY_VOLUME)) != 0u;
     surface.volume_boundary = volume_only.cast<unsigned>();

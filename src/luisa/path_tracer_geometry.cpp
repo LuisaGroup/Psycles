@@ -2,9 +2,7 @@
 
 #include "path_kernel_scene_traversal.h"
 #include "path_kernel_shadow_storage.h"
-#include "path_kernel_surface_primitive.h"
 #include "path_tracer_cycles_svm_shadow.h"
-#include "path_tracer_shader_services.h"
 
 #include <psycles/luisa/surface_ray.h>
 
@@ -116,96 +114,25 @@ namespace {
 
 [[nodiscard]] EvaluateShadowSurfaceCallable
 make_evaluate_shadow_surface_callable(
-    const std::shared_ptr<LuisaSceneData> &scene,
-    const SafeNormalizeCallable &safe_normalize) noexcept {
-    if (scene->native_cycles_svm_surface &&
-        (!scene->geometries.empty() || !scene->curve_geometries.empty())) {
+    const std::shared_ptr<LuisaSceneData> &scene) noexcept {
+    if (!scene->geometries.empty() || !scene->curve_geometries.empty()) {
         return make_cycles_svm_shadow_surface_callable(scene);
     }
-    const auto primitive_plan =
-        make_scene_primitive_stage_plan(
-            scene->geometries.size(),
-            scene->curve_geometries.size());
-    const auto geometry =
-        primitive_plan.empty()
-            ? nullptr
-            : make_surface_primitive_geometry_component(
-                  primitive_plan);
-    EvaluateShadowSurfaceCallable evaluate_shadow_surface =
-        [scene, safe_normalize, geometry](
-            Var<luisa::compute::Ray> candidate_ray,
-            Var<ShadowIntersectionCall> intersection,
-            Float ray_dP,
-            Float ray_dD,
-            Var<ShadowShaderContextCall> context,
-            Var<RenderKernelParameters> parameters) noexcept {
-            Var<ShadowSurfaceEvaluationCall> result;
-            if (!geometry) {
-                result->transmittance =
-                    make_float3(1.0f);
-                result->object =
-                    surface_ray::invalid_primitive;
-                result->primitive =
-                    surface_ray::invalid_primitive;
-                result->kind =
-                    surface_ray::invalid_primitive;
-                return result;
-            }
-            Var<luisa::compute::CommittedHit> hit;
-            hit->inst = intersection->instance;
-            hit->prim = intersection->primitive;
-            hit->bary = intersection->barycentric;
-            hit->hit_type = intersection->hit_type;
-            hit->committed_ray_t = intersection->distance;
-            const auto shader_state =
-                unpack_shader_evaluation_state(context.path);
-            BufferShaderServices services{
-                scene->scalar_parameter_buffer,
-                scene->vector_parameter_buffer,
-                scene->cycles_bsdf_table_buffer,
-                scene->texture_heap,
-                scene->heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space};
-            auto primitive = geometry->emit(
-                scene,
-                hit,
-                candidate_ray,
-                ray_dP,
-                ray_dD,
-                context.ray_time,
-                parameters,
-                safe_normalize);
-            auto point = std::move(primitive.point);
-            point.time = context.ray_time;
-            point.ray_visibility = shadow_visibility;
-            cycles_path_state::apply_shader_state(point, shader_state);
-            result->transmittance = clamp(
-                scene->surfaces.transparent_extinction(
-                    primitive.surface_tag, services, point),
-                make_float3(0.0f),
-                make_float3(1.0f));
-            result->object = primitive.cycles_object_index;
-            result->primitive = primitive.cycles_primitive_index;
-            result->kind = select(
-                geometry_kind_triangle,
-                geometry_kind_curve,
-                primitive.is_curve);
-            return result;
-        };
-    return evaluate_shadow_surface;
+    return [](Var<luisa::compute::Ray>, Var<ShadowIntersectionCall>,
+              Float, Float, Var<ShadowShaderContextCall>,
+              Var<RenderKernelParameters>) noexcept {
+        Var<ShadowSurfaceEvaluationCall> result;
+        result.transmittance = make_float3(1.0f);
+        result.object = result.primitive = result.kind = surface_ray::invalid_primitive;
+        return result;
+    };
 }
 
 } // namespace
 
-ShadowTraceCallables make_shadow_trace_callables(
+std::shared_ptr<const ShadowIntersectionComponent> make_shadow_intersection_component(
     const std::shared_ptr<LuisaSceneData> &scene,
-    const SafeNormalizeCallable &safe_normalize,
     std::shared_ptr<const ShadowIntersectionBatchStorage> storage) noexcept {
-    const auto evaluate_shadow_surface =
-        make_evaluate_shadow_surface_callable(scene, safe_normalize);
     const auto traversal =
         make_scene_traversal_component(
             make_scene_traversal_stage_plan(
@@ -247,6 +174,15 @@ ShadowTraceCallables make_shadow_trace_callables(
       intersection = std::make_shared<ShadowIntersectionComponent>(
           std::move(intersect_local));
     }
+    return intersection;
+}
+
+ShadowTraceCallables make_shadow_trace_callables(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const SafeNormalizeCallable &,
+    std::shared_ptr<const ShadowIntersectionBatchStorage> storage) noexcept {
+    auto intersection = make_shadow_intersection_component(scene, std::move(storage));
+    auto evaluate_shadow_surface = make_evaluate_shadow_surface_callable(scene);
     auto trace_shadow =
         make_fused_shadow_trace_callable(intersection, evaluate_shadow_surface);
     return {.intersect = std::move(intersection),

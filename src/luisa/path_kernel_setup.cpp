@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_tracer_cycles_svm_emission.h"
 #include "subsurface_exit_closure_component.h"
 
 #include <psycles/luisa/analytic_light_sampling.h>
@@ -894,9 +895,9 @@ PathSampleContext::analytic_light_constant_shader(
     Var<LightGpu> light) const noexcept {
     Float3 result = make_float3(1.0f);
     $if(light.surface_tag != ~std::uint32_t{0u}) {
-        result = invocation.constant_surface_emission(
-            light.surface_tag,
-            light.parameter_block);
+        const auto constant = cycles_svm_constant_emission(
+            *invocation.config.scene, light.cycles_shader_id, result);
+        assume(constant);
     };
     return result;
 }
@@ -911,87 +912,14 @@ PathSampleContext::analytic_light_shader(Var<LightGpu> light,
                                          Float light_distance) const noexcept {
     Float3 result = make_float3(1.0f);
     $if(light.surface_tag != ~std::uint32_t{0u}) {
-        Float3 relative_position = light_position - light.position;
-        const auto light_transform =
-            analytic_light_sampling::light_linear_transform(
-                light.axis_x, light.axis_y, light.axis_z, light.axis_scale);
-        Float3 object_position =
-            analytic_light_sampling::world_to_light_direction(relative_position,
-                                                              light_transform);
-        Float3 object_normal = analytic_light_sampling::world_to_light_normal(
-            light_normal, light_transform);
-        SurfacePoint light_point{
-            .position = light_position,
-            .object_position = object_position,
-            .object_location = light.position,
-            .generated = object_position,
-            .geometric_normal = light_normal,
-            .shading_normal = light_normal,
-            .object_shading_normal = object_normal,
-            .object_tangent = light.axis_x,
-            .tangent_sign = 1.0f,
-            .undisplaced_position = light_position,
-            .undisplaced_object_position = object_position,
-            .undisplaced_shading_normal = light_normal,
-            .undisplaced_object_shading_normal = object_normal,
-            .undisplaced_object_tangent = light.axis_x,
-            .undisplaced_tangent_sign = 1.0f,
-            .normal_to_world_x = light_transform.inverse_row_x,
-            .normal_to_world_y = light_transform.inverse_row_y,
-            .normal_to_world_z = light_transform.inverse_row_z,
-            .dpdu = make_float3(0.0f),
-            .dpdv = make_float3(0.0f),
-            .dPdx = make_float3(0.0f),
-            .dPdy = make_float3(0.0f),
-            .object_dPdx = make_float3(0.0f),
-            .object_dPdy = make_float3(0.0f),
-            .undisplaced_dPdx = make_float3(0.0f),
-            .undisplaced_dPdy = make_float3(0.0f),
-            .undisplaced_object_dPdx = make_float3(0.0f),
-            .undisplaced_object_dPdy = make_float3(0.0f),
-            .generated_dx = make_float3(0.0f),
-            .generated_dy = make_float3(0.0f),
-            .incoming = incoming,
-            .uv = light_uv,
-            .uv_dx = make_float2(0.0f),
-            .uv_dy = make_float2(0.0f),
-            .geometry_index = ~0u,
-            .barycentric = make_float2(0.0f),
-            .barycentric_dx = make_float2(0.0f),
-            .barycentric_dy = make_float2(0.0f),
-            .instance_id = 0u,
-            .primitive_id = light_index,
-            .parameter_block = light.parameter_block,
-            .object_random = 0.0f,
-            .particle_index = 0u,
-            .random_per_island = 0.0f,
-            .triangle_smooth = false,
-            .is_curve = false,
-            .curve_intercept = 0.0f,
-            .curve_length = 0.0f,
-            .curve_thickness = 0.0f,
-            .curve_tangent_normal = make_float3(0.0f),
-            .curve_random = 0.0f,
-            .ray_visibility = shader_ray_visibility(),
-            .ray_events = ray_events,
-            .ray_depth = path_depth,
-            .diffuse_depth = diffuse_depth,
-            .glossy_depth = glossy_depth,
-            .transparent_depth = transparent_depth,
-            .transmission_depth = transmission_depth,
-            .ray_length = light_distance,
-            .time = 0.0f,
-            .use_bump_map_correction = false,
-            .back_facing = false};
-        cycles_path_state::apply_shader_state(
-            light_point,
-            cycles_path_state::light_emission_shader_state(path_depth,
-                                                           diffuse_depth,
-                                                           glossy_depth,
-                                                           transparent_depth,
-                                                           transmission_depth));
-        result = invocation.surface_emission(
-            light.surface_tag, light_point, incoming);
+        const cycles_svm::PathState state{
+            0u, cycles_svm::path_ray_emission, path_depth, transparent_depth,
+            diffuse_depth, glossy_depth, transmission_depth, 0u};
+        result = evaluate_cycles_svm_lamp_emission(
+            invocation.config.scene, invocation.parameters,
+            light.cycles_shader_id, light.cycles_object_index, light_index,
+            light_position, light_normal, incoming, light_uv, light_distance,
+            0.0f, state);
     };
     return result;
 }

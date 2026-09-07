@@ -1119,24 +1119,18 @@ int main(int argc, char **argv) {
       shadow_batch_lane_count * shadow_coro_record_count;
   auto shadow_coro_output =
       device.create_buffer<luisa::float4>(shadow_coro_output_count);
-  SafeNormalizeCallable safe_normalize =
-      [](Float3 value, Float3 fallback) noexcept {
-        const auto valid = dot(value, value) > 1.0e-20f;
-        const auto selected = select(fallback, value, valid);
-        return normalize(select(make_float3(0.0f, 0.0f, 1.0f), selected,
-                                dot(selected, selected) > 1.0e-20f));
-      };
-  const auto shadow_callables = make_shadow_trace_callables(
-      scene, safe_normalize,
-      local_shadow_hits ? nullptr : shadow_batch_storage);
-  if (!shadow_callables.intersect) {
+  // Use the same production INTERSECT_SHADOW factory, without constructing
+  // a material evaluator: this fixture intentionally owns traversal only.
+  const auto shadow_intersection = make_shadow_intersection_component(
+      scene, local_shadow_hits ? nullptr : shadow_batch_storage);
+  if (!shadow_intersection) {
     std::cerr << "split shadow traversal has no local intersection component on "
               << backend << '\n';
     return EXIT_FAILURE;
   }
   if (!local_shadow_hits) {
     const auto summary_function =
-        shadow_callables.intersect->summary_callable().function();
+        shadow_intersection->summary_callable().function();
     const auto summary_has_batch_local = std::any_of(
         summary_function.local_variables().begin(),
         summary_function.local_variables().end(),
@@ -1155,7 +1149,7 @@ int main(int argc, char **argv) {
   auto shadow_callable_output =
       device.create_buffer<luisa::float4>(shadow_batch_lane_count);
   Kernel1D evaluate_shadow_callable =
-      [stored_intersection = shadow_callables.intersect](
+      [stored_intersection = shadow_intersection](
           BufferFloat4 records, UInt runtime_capacity,
           UInt runtime_block_size) noexcept {
         set_block_size(shadow_test_block_size);
@@ -1177,7 +1171,7 @@ int main(int argc, char **argv) {
                      luisa::compute::ShaderOption{.enable_cache = false});
   auto shadow_coro =
       Coroutine<void(Buffer<luisa::float4>, std::uint32_t, std::uint32_t)>{
-      [stored_intersection = shadow_callables.intersect](
+      [stored_intersection = shadow_intersection](
           BufferFloat4 records, UInt runtime_capacity,
           UInt runtime_block_size) noexcept {
         $if((dispatch_x() & 1u) == 0u) {

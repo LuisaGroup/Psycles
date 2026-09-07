@@ -211,8 +211,8 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_shadow_storage.cpp
     src/luisa/path_kernel_setup.cpp
     src/luisa/path_kernel_surface_geometry.cpp
-    src/luisa/path_kernel_surface_primitive.cpp
     src/luisa/path_kernel_cycles_svm_surface_geometry.cpp
+    src/luisa/path_tracer_cycles_svm_curve.cpp
     src/luisa/path_kernel_surface_queue.cpp
     src/luisa/path_kernel_surface_scatter.cpp
     src/luisa/path_kernel_surface_shading.cpp
@@ -245,6 +245,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_attribute_residency.cpp
     src/luisa/path_tracer_cycles_svm_kernel_globals.cpp
     src/luisa/path_tracer_cycles_svm_light.cpp
+    src/luisa/path_tracer_cycles_svm_emission.cpp
     src/luisa/path_tracer_cycles_svm_shader_data.cpp
     src/luisa/path_tracer_cycles_svm_shadow.cpp
     src/luisa/path_tracer_cycles_svm_scene.cpp

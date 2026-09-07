@@ -4,7 +4,6 @@
 #include "path_tracer_mesh_light_scene.h"
 #include "path_tracer_cycles_svm_scene.h"
 
-#include <psycles/compiler/surface_program.h>
 #include <psycles/sampling/light_distribution.h>
 
 #include <algorithm>
@@ -21,14 +20,7 @@ namespace {
 [[nodiscard]] Vec3f emission_estimate(
     const LuisaSceneData &scene,
     contract::MaterialId material) {
-    if (scene.native_cycles_svm_surface) {
-        return cycles_svm_material_metadata(scene, material).emission_estimate;
-    }
-    const auto *compiled = scene.materials.find(material);
-    return compiled == nullptr
-               ? Vec3f{1.0f, 1.0f, 1.0f}
-               : compiler::estimate_surface_emission(
-                     *compiled->surface_program(), compiled->parameters());
+    return cycles_svm_material_metadata(scene, material).emission_estimate;
 }
 
 [[nodiscard]] Vec3f environment_emission_estimate(

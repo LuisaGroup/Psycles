@@ -24,6 +24,7 @@ struct SurfacePrimitiveGeometryContext {
   Float3 object_hit_position;
   Float differential_radius;
   Bool is_curve;
+  UInt cycles_primitive_type;
   Bool cycles_transform_applied;
   Bool triangle_smooth;
   UInt emission_sampling;
@@ -57,8 +58,5 @@ public:
 [[nodiscard]] std::shared_ptr<const SurfacePrimitiveGeometryComponent>
 make_surface_primitive_geometry_component(
     ScenePrimitiveStagePlan plan);
-
-[[nodiscard]] std::shared_ptr<const SurfacePrimitiveGeometryComponent>
-make_cycles_svm_surface_geometry_component();
 
 } // namespace psycles::luisa_backend::detail

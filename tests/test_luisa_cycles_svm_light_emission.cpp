@@ -3,6 +3,7 @@
 #include "cycles_svm_light_emission_fixture.h"
 #include "luisa_cycles_svm_test_kernel_globals.h"
 #include "path_tracer_bsdf_tables.h"
+#include "path_tracer_cycles_svm_emission.h"
 
 #include <algorithm>
 #include <array>
@@ -132,6 +133,99 @@ bool near(float actual, float expected) {
              5.0e-5f * std::max(std::abs(expected), 1.0e-8f);
 }
 
+bool production_lamp(Device &device, Stream &stream) {
+  namespace backend = psycles::luisa_backend::detail;
+  auto scene = std::make_shared<backend::LuisaSceneData>();
+  scene->device = Device{device.impl_shared()};
+  scene->cycles_svm = std::make_unique<backend::CyclesSvmRuntime>();
+  auto &runtime = *scene->cycles_svm;
+  runtime.geometry = std::make_unique<backend::CyclesSvmGeometryRuntime>();
+  runtime.objects = std::make_unique<backend::CyclesSvmObjectRuntime>();
+  runtime.compilation.table.words =
+      psycles::test_support::make_light_emission_image();
+  auto &used = runtime.compilation.table.node_types_used;
+  for (const auto node : {NODE_SHADER_JUMP, NODE_VALUE_F, NODE_CLOSURE_BSDF,
+                           NODE_CLOSURE_SET_WEIGHT, NODE_END}) {
+    used[node] = true;
+  }
+  runtime.compilation.table.peak_stack_usage = 1u;
+  std::array<KernelShader, case_count + 2u> records{};
+  records[case_count].flags = SD_HAS_CONSTANT_EMISSION;
+  records[case_count + 1u].flags = SD_HAS_CONSTANT_EMISSION;
+  records[case_count + 1u].constant_emission = {0.25f, -0.5f, 2.0f};
+  const auto table = backend::make_cycles_bsdf_table_values({});
+  std::array<KernelObject, 1u> objects{};
+  objects[0].tfm = objects[0].itfm =
+      PackedTransform{{1.0f, 0.0f, 0.0f, 0.0f},
+                      {0.0f, 1.0f, 0.0f, 0.0f},
+                      {0.0f, 0.0f, 1.0f, 0.0f}};
+  const std::array<unsigned, 1u> flags{};
+  const auto upload = [&]<typename T>(const T &values) {
+    using Element = typename T::value_type;
+    auto buffer = device.create_buffer<Element>(values.size());
+    stream << buffer.copy_from(values.data()) << synchronize();
+    return buffer;
+  };
+  runtime.word_buffer = upload(runtime.compilation.table.words);
+  runtime.kernel_shader_buffer = upload(records);
+  runtime.objects->object_buffer = upload(objects);
+  runtime.objects->object_flag_buffer = upload(flags);
+  scene->cycles_bsdf_table_buffer = upload(table);
+  std::array<float, case_count + 2u> cosine{};
+  for (auto i = 0u; i < case_count; ++i) {
+    cosine[i] = light_emission_cases[i].cosine;
+  }
+  const auto cosines = upload(cosine);
+  // No SurfaceProgram, parameter buffers, GraphSurface or legacy callables.
+  // Constant rows have no SVM jump entries: executing their node stream is an
+  // out-of-range access, so black emission must use the same constant branch.
+  Kernel1D kernel = [scene](BufferFloat cosines, BufferFloat4 output) noexcept {
+    const auto i = dispatch_x();
+    const auto c = cosines.read(i);
+    Var<backend::RenderKernelParameters> parameters;
+    parameters.camera_transform = parameters.camera_inverse_transform =
+        make_float4x4(1.0f);
+    const svm::PathState state{0u, svm::path_ray_emission};
+    const auto emission = backend::evaluate_cycles_svm_lamp_emission(
+        scene, parameters, i, 0u, 0u, make_float3(0.0f),
+        make_float3(0.0f, 0.0f, 1.0f),
+        make_float3(sqrt(1.0f - c * c), 0.0f, c),
+        make_float2(0.25f), 1.0f, 0.5f, state);
+    output.write(i, make_float4(emission, 0.0f));
+  };
+  ShaderOption options;
+  options.enable_cache = false;
+  options.enable_fast_math = true;
+  auto shader = device.compile(kernel, options);
+  auto output = device.create_buffer<luisa::float4>(case_count + 2u);
+  std::array<luisa::float4, case_count + 2u> values{};
+  stream << shader(cosines, output).dispatch(values.size())
+         << output.copy_to(values.data()) << synchronize();
+  std::ifstream oracle{PSYCLES_LIGHT_EMISSION_ORACLE};
+  bool passed = true;
+  for (auto i = 0u; i < case_count; ++i) {
+    unsigned scenario{}, flags{}, offset{}, count{}, left{};
+    luisa::float3 emission{}, extinction{};
+    if (!(oracle >> scenario >> emission.x >> emission.y >> emission.z >>
+          flags >> extinction.x >> extinction.y >> extinction.z >> offset >>
+          count >> left) || scenario != i) {
+      return false;
+    }
+    const auto actual = values[i];
+    if (!near(actual.x, emission.x) || !near(actual.y, emission.y) ||
+        !near(actual.z, emission.z)) {
+      std::cerr << "production lamp differs from original Cycles, case " << i << '\n';
+      passed = false;
+    }
+  }
+  for (auto i : {case_count, case_count + 1u}) {
+    const auto expected = records[i].constant_emission;
+    const auto actual = values[i];
+    passed &= actual.x == expected.x && actual.y == expected.y && actual.z == expected.z;
+  }
+  return passed;
+}
+
 bool run(int argc, char **argv) {
   const auto backend = std::string_view{argc > 1 ? argv[1] : "fallback"};
   Context context{argv[0]};
@@ -214,6 +308,7 @@ bool run(int argc, char **argv) {
       }
     }
   }
+  passed = production_lamp(device, stream) && passed;
   if (passed) {
     std::cout << "Cycles closure-free light-emission tests passed\n";
   }

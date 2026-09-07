@@ -1,4 +1,5 @@
 #include "../src/luisa/path_tracer_analytic_light_scene.h"
+#include "../src/luisa/path_tracer_cycles_svm_scene.h"
 #include "../src/luisa/path_tracer_light_tree.h"
 #include "../src/luisa/path_tracer_light_tree_importance.h"
 #include "../src/luisa/path_tracer_light_tree_scene.h"
@@ -72,7 +73,24 @@ constexpr std::uint32_t sample_count = 8192u;
     return graph;
 }
 
-[[nodiscard]] bool verify_scene_upload() {
+[[nodiscard]] bool compile_native_scene(
+    Device &device, LuisaSceneData &scene, const SceneSnapshot &snapshot) {
+    auto owner = std::make_shared<LuisaSceneData>();
+    owner->device = Device{device.impl_shared()};
+    std::string diagnostic;
+    scene.cycles_svm = build_cycles_svm_runtime(owner, snapshot, diagnostic);
+    if (!scene.cycles_svm) {
+        std::cerr << diagnostic << '\n';
+        return false;
+    }
+    for (const auto &[material, shader] : scene.cycles_svm->material_shader_indices) {
+        scene.material_bindings.emplace(
+            material, make_cycles_svm_material_binding(scene, material, shader, 0u, shader));
+    }
+    return true;
+}
+
+[[nodiscard]] bool verify_scene_upload(Device &device) {
     constexpr MaterialId base_material{1u};
     constexpr MaterialId override_material{2u};
     constexpr GeometryId geometry_id{3u};
@@ -118,9 +136,7 @@ constexpr std::uint32_t sample_count = 8192u;
         LightDesc{.name = "point emitter", .type = LightType::point});
 
     LuisaSceneData scene;
-    ShaderCompiler compiler{make_core_node_registry()};
-    const auto material_update = scene.materials.update(snapshot, compiler);
-    if (!material_update.committed) {
+    if (!compile_native_scene(device, scene, snapshot)) {
         std::cerr << "light-tree scene material compilation failed\n";
         return false;
     }
@@ -235,7 +251,7 @@ constexpr std::uint32_t sample_count = 8192u;
     return true;
 }
 
-[[nodiscard]] bool verify_analytic_light_population() {
+[[nodiscard]] bool verify_analytic_light_population(Device &device) {
     constexpr MaterialId dark_shader{1u};
     SceneSnapshot snapshot;
     snapshot.materials.emplace(
@@ -280,9 +296,7 @@ constexpr std::uint32_t sample_count = 8192u;
     snapshot.lights.emplace(LightId{6u}, background);
 
     LuisaSceneData scene;
-    ShaderCompiler compiler{make_core_node_registry()};
-    const auto material_update = scene.materials.update(snapshot, compiler);
-    if (!material_update.committed) {
+    if (!compile_native_scene(device, scene, snapshot)) {
         std::cerr << "analytic-light material compilation failed\n";
         return false;
     }
@@ -331,7 +345,7 @@ constexpr std::uint32_t sample_count = 8192u;
     return true;
 }
 
-[[nodiscard]] bool verify_mesh_scene_quotient() {
+[[nodiscard]] bool verify_mesh_scene_quotient(Device &device) {
     constexpr MaterialId base_material{1u};
     constexpr MaterialId override_material{2u};
     constexpr GeometryId geometry_id{3u};
@@ -380,8 +394,7 @@ constexpr std::uint32_t sample_count = 8192u;
                      .material_overrides = {override_material}});
 
     LuisaSceneData scene;
-    ShaderCompiler compiler{make_core_node_registry()};
-    if (!scene.materials.update(snapshot, compiler).committed) {
+    if (!compile_native_scene(device, scene, snapshot)) {
         std::cerr << "mesh-light quotient material compilation failed\n";
         return false;
     }
@@ -426,7 +439,7 @@ constexpr std::uint32_t sample_count = 8192u;
     return true;
 }
 
-[[nodiscard]] bool verify_mesh_proxy_uses_built_subtree_measure() {
+[[nodiscard]] bool verify_mesh_proxy_uses_built_subtree_measure(Device &device) {
     constexpr MaterialId material_id{1u};
     constexpr GeometryId geometry_id{2u};
     SceneSnapshot snapshot;
@@ -473,8 +486,7 @@ constexpr std::uint32_t sample_count = 8192u;
         InstanceDesc{.geometry = geometry_id, .transform = Mat4f{}});
 
     LuisaSceneData scene;
-    ShaderCompiler compiler{make_core_node_registry()};
-    if (!scene.materials.update(snapshot, compiler).committed) {
+    if (!compile_native_scene(device, scene, snapshot)) {
         std::cerr << "mesh-proxy material compilation failed\n";
         return false;
     }
@@ -612,14 +624,14 @@ constexpr std::uint32_t sample_count = 8192u;
 }// namespace
 
 int main(int argc, char **argv) {
-    if (!verify_scene_upload() || !verify_analytic_light_population() ||
-        !verify_mesh_scene_quotient() ||
-        !verify_mesh_proxy_uses_built_subtree_measure()) {
-        return 1;
-    }
     const std::string backend = argc > 1 ? argv[1] : "fallback";
     Context context{argv[0]};
     auto device = context.create_device(backend);
+    if (!verify_scene_upload(device) || !verify_analytic_light_population(device) ||
+        !verify_mesh_scene_quotient(device) ||
+        !verify_mesh_proxy_uses_built_subtree_measure(device)) {
+        return 1;
+    }
     auto stream = device.create_stream(StreamTag::COMPUTE);
 
     std::array<LightTreeEmitter, emitter_count> emitters{

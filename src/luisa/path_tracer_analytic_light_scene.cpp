@@ -3,8 +3,6 @@
 #include "cycles_shader_identity.h"
 #include "path_tracer_cycles_svm_scene.h"
 
-#include <psycles/compiler/surface_program.h>
-
 #include <cmath>
 #include <exception>
 #include <limits>
@@ -27,21 +25,12 @@ namespace {
   if (!light.shader) {
     return {1.0f, 1.0f, 1.0f};
   }
-  if (scene.native_cycles_svm_surface) {
-    return cycles_svm_material_metadata(scene, *light.shader).emission_estimate;
-  }
-  const auto *compiled = scene.materials.find(*light.shader);
-  // A malformed reference must not silently remove a light. Scene
-  // validation diagnoses it independently; Cycles also treats an unknown
-  // linked output conservatively as contributing.
-  return compiled == nullptr
-             ? Vec3f{1.0f, 1.0f, 1.0f}
-             : compiler::estimate_surface_emission(*compiled->surface_program(),
-                                                   compiled->parameters());
+  return cycles_svm_material_metadata(scene, *light.shader).emission_estimate;
 }
 
-[[nodiscard]] LightGpu make_device_light(const contract::LightDesc &light,
-                                         const LuisaSceneData &scene) noexcept {
+[[nodiscard]] LightGpu make_device_light(contract::LightId light_id,
+                                         const contract::LightDesc &light,
+                                         const LuisaSceneData &scene) {
   const auto [axis_x, axis_x_length] =
       normalized_axis(matrix_axis(light.transform, 0u));
   const auto [axis_y, axis_y_length] =
@@ -85,10 +74,16 @@ namespace {
                  light.spread > 0.0f
        : light.type == contract::LightType::distant ? light.angle > 0.0f
                                                     : true);
+  // A graph-bearing lamp uses the compiled material's shader coordinate.
+  // A non-node lamp has unit shader emission, but retains its exported
+  // Cycles default-light shader identity for flags, MIS and tracing.
+  const auto shader_index = light.shader
+      ? binding.cycles_shader_index
+      : light.cycles_shader_index.value_or(cycles_shader_identity::invalid_index);
   const auto cycles_shader_id =
-      light.cycles_shader_index
+      shader_index != cycles_shader_identity::invalid_index
           ? cycles_shader_identity::analytic_light(
-                *light.cycles_shader_index, light.cast_shadow,
+                shader_index, light.cast_shadow,
                 light.visibility_mask, light.is_shadow_catcher, effective_mis)
           : cycles_shader_identity::invalid_index;
   const auto cycles_shader_flags = cycles_shader_identity::analytic_light_flags(
@@ -125,8 +120,8 @@ namespace {
                   .flags = flags,
                   .surface_tag = binding.surface_tag,
                   .parameter_block = binding.parameter_block,
-                  .cycles_object_index = light.cycles_object_index.value_or(
-                      cycles_shader_identity::invalid_index),
+                  .cycles_object_index =
+                      scene.cycles_svm->object_identities.light_indices.at(light_id),
                   .cycles_light_group = light.cycles_light_group,
                   .cycles_shader_id = cycles_shader_id,
                   .cycles_shader_flags = cycles_shader_flags,
@@ -192,10 +187,10 @@ AnalyticLightSceneComponent::build(const contract::SceneSnapshot &snapshot,
           result.diagnostic = "Cycles portal light is not an area light";
           return result;
         }
-        portals.emplace_back(make_device_light(light, scene));
+        portals.emplace_back(make_device_light(light_id, light, scene));
         break;
       case AnalyticLightRole::regular:
-        regular.emplace_back(make_device_light(light, scene));
+        regular.emplace_back(make_device_light(light_id, light, scene));
         result.regular_shader_emission_estimates.emplace_back(estimate);
         break;
       }

@@ -118,6 +118,13 @@ struct ShadowTraceCallables {
 void sort_shadow_intersection_batch(
     Var<ShadowIntersectionBatchCall> &batch) noexcept;
 
+// INTERSECT_SHADOW owns traversal resources only. Its construction and tests
+// must not instantiate the separate SHADE_SHADOW material program.
+[[nodiscard]] std::shared_ptr<const ShadowIntersectionComponent>
+make_shadow_intersection_component(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    std::shared_ptr<const ShadowIntersectionBatchStorage> storage = {}) noexcept;
+
 [[nodiscard]] ShadowTraceCallables make_shadow_trace_callables(
     const std::shared_ptr<LuisaSceneData> &scene,
     const SafeNormalizeCallable &safe_normalize,
