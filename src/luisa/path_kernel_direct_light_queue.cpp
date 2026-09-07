@@ -4,6 +4,7 @@
 #include "path_kernel_film.h"
 #include "path_kernel_transitions.h"
 
+#include <algorithm>
 #include <array>
 #include <utility>
 
@@ -27,17 +28,20 @@ private:
   luisa::compute::Buffer<luisa::uint> _tokens;
   luisa::compute::Buffer<luisa::uint> _indices;
   luisa::compute::Buffer<luisa::uint> _scratch_count;
+  luisa::compute::Buffer<luisa::uint> _relocation_counts;
   // Counts 0..2 are live stages; count 3 is the append allocation extent.
   luisa::compute::Buffer<luisa::uint> _count;
   std::array<DirectLightConsumerShader, 3u> _consumers;
   luisa::compute::Shader1D<luisa::uint> _initialize;
   luisa::compute::Shader1D<luisa::uint, luisa::uint> _gather;
-  luisa::compute::Shader1D<luisa::uint, luisa::uint, luisa::uint> _compact;
+  luisa::compute::Shader1D<luisa::uint, luisa::uint> _collect_relocations;
+  luisa::compute::Shader1D<luisa::uint, luisa::uint> _compact;
   std::array<luisa::compute::coro::WavefrontCoroAuxiliaryProducer, 1u> _producers;
   std::uint32_t _capacity{};
   std::uint32_t _execution_block_size{};
   std::array<std::uint32_t, 4u> _host_counts{};
   std::array<std::uint32_t, 4u> _zeros{};
+  std::array<std::uint32_t, 2u> _relocation_zeros{};
   std::uint32_t _zero{};
 
   [[nodiscard]] auto batch_storage(UInt capacity) const noexcept {
@@ -55,6 +59,7 @@ public:
         _tokens{device.create_buffer<luisa::uint>(capacity)},
         _indices{device.create_buffer<luisa::uint>(capacity)},
         _scratch_count{device.create_buffer<luisa::uint>(1u)},
+        _relocation_counts{device.create_buffer<luisa::uint>(2u)},
         _count{device.create_buffer<luisa::uint>(4u)},
         _producers{{{.continuation = path_transition::shade_surface,
                      .max_emitted_per_invocation = 1u}}},
@@ -65,8 +70,8 @@ public:
       $if(dispatch_x() < capacity) { _tokens->write(dispatch_x(), 0u); };
     };
     _initialize = device.compile(initialize, shader_option);
-    // Enumerate exactly the selected stage (or token-zero holes for
-    // compaction). Consumers dispatch the queue count, not the whole pool.
+    // Enumerate exactly the selected stage. Consumers dispatch the queue
+    // count, not the whole pool.
     luisa::compute::Kernel1D gather = [this](UInt token, UInt extent) {
       const auto slot = dispatch_x();
       $if(slot < extent) {
@@ -77,28 +82,52 @@ public:
       };
     };
     _gather = device.compile(gather, shader_option);
-    // The sources [live, extent) and holes [0, live) are disjoint, so
-    // compaction is in-place without a second payload allocation or barriers.
-    luisa::compute::Kernel1D compact = [this](UInt capacity, UInt live, UInt extent) {
-      const auto source = live + dispatch_x();
-      $if(source < extent) {
-        const auto token = _tokens->read(source);
-        $if(token != 0u) {
-          const auto index = _scratch_count->atomic(0u).fetch_add(1u);
-          const auto destination = _indices->read(index);
-          const auto storage = make_runtime_direct_light_task_storage(_tasks, capacity);
-          storage.write(destination, storage.read(source));
-          // Only this edge owns a traversal batch. Never read the scratch
-          // fields of a task at NEE or INTERSECT_SHADOW.
-          $if(token == 3u) {
-            const auto batches = batch_storage(capacity);
-            batches.write(destination, batches.read(source));
+    // Cycles' compact_paths stores source indices at 0 and hole indices at
+    // live. If H slots below live are empty, exactly H live sources remain
+    // above it. Thus H <= min(live, extent-live), and live+H <= extent:
+    // both lists fit in the existing index allocation without overlapping.
+    luisa::compute::Kernel1D collect_relocations = [this](UInt live, UInt extent) {
+      const auto slot = dispatch_x();
+      $if(slot < extent) {
+        const auto token = _tokens->read(slot);
+        $if(slot < live) {
+          $if(token == 0u) {
+            const auto index = _relocation_counts->atomic(0u).fetch_add(1u);
+            _indices->write(live + index, slot);
           };
-          _tokens->write(destination, token);
-          _tokens->write(source, 0u);
+        }
+        $elif(token != 0u) {
+          const auto index = _relocation_counts->atomic(1u).fetch_add(1u);
+          _indices->write(index, slot);
         };
       };
     };
+    LUISA_INFO("Psycles shadow relocation: name='collect' kernel_{:016x}.",
+               collect_relocations.function()->function().hash());
+    _collect_relocations = device.compile(collect_relocations, shader_option);
+    // Only the dense relocation list reaches the payload-copy kernel. The
+    // sources [live, extent) and holes [0, live) are disjoint, so the move is
+    // in-place without a second payload allocation or inter-thread barriers.
+    luisa::compute::Kernel1D compact = [this](UInt capacity, UInt live) {
+      const auto index = dispatch_x();
+      $if(index < _relocation_counts->read(1u)) {
+        const auto source = _indices->read(index);
+        const auto destination = _indices->read(live + index);
+        const auto token = _tokens->read(source);
+        const auto storage = make_runtime_direct_light_task_storage(_tasks, capacity);
+        storage.write(destination, storage.read(source));
+        // Only this edge owns a traversal batch. Never read the scratch
+        // fields of a task at NEE or INTERSECT_SHADOW.
+        $if(token == 3u) {
+          const auto batches = batch_storage(capacity);
+          batches.write(destination, batches.read(source));
+        };
+        _tokens->write(destination, token);
+        _tokens->write(source, 0u);
+      };
+    };
+    LUISA_INFO("Psycles shadow relocation: name='copy' kernel_{:016x}.",
+               compact.function()->function().hash());
     _compact = device.compile(compact, shader_option);
     for (auto stage = 0u; stage < 3u; ++stage) {
       luisa::compute::Kernel1D consume = [this, evaluator, execution_block_size,
@@ -238,10 +267,12 @@ public:
     // admission. Unreclaimed holes are not available producer slots; when
     // the tail is insufficient, the generic scheduler drains this side pool.
     if (plan.compact) {
-      stream << _scratch_count.copy_from(luisa::span{&_zero, 1u})
-             << _gather(0u, live).dispatch(live)
-             << _scratch_count.copy_from(luisa::span{&_zero, 1u})
-             << _compact(_capacity, live, extent).dispatch(extent - live);
+      // Use the proven host bound instead of reading H back or using HIP
+      // indirect dispatch, both of which require an extra host synchronization.
+      const auto bound = std::min(live, extent - live);
+      stream << _relocation_counts.copy_from(luisa::span{_relocation_zeros})
+             << _collect_relocations(live, extent).dispatch(extent)
+             << _compact(_capacity, live).dispatch(bound);
     }
     if (plan.upload_extent) {
       _host_counts[3] = plan.extent;
@@ -323,7 +354,7 @@ make_direct_light_task_queue(luisa::compute::Device &device,
              capacity, luisa::compute::Type::of<DirectLightTaskCall>()->members().size(),
              luisa::compute::Type::of<DirectLightTaskCall>()->size(),
              storage_words * sizeof(luisa::uint), batch_words * sizeof(luisa::uint),
-             (2ull * capacity + 5u) * sizeof(luisa::uint));
+             (2ull * capacity + 7u) * sizeof(luisa::uint));
   return {.sink = queue, .work = std::move(queue)};
 }
 
