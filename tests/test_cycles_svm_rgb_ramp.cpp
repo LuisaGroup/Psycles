@@ -75,7 +75,8 @@ void require(bool condition, const char *message) {
 
 [[nodiscard]] ShaderGraph
 make_dynamic_graph(bool color, bool sampled = true,
-                   std::string interpolation = "LINEAR") {
+                   std::string interpolation = "LINEAR",
+                   std::string table = {}) {
   ShaderGraph graph;
   const auto coordinates =
       graph.add_node(node_type::texture_coordinate, "Generated Coordinates");
@@ -97,7 +98,9 @@ make_dynamic_graph(bool color, bool sampled = true,
       graph.set_property(ramp, "Interpolation",
                          SocketValue::string(std::move(interpolation))) &&
       graph.set_property(ramp, "Table",
-                         SocketValue::string(table_string(a, b)));
+                         SocketValue::string(
+                             table.empty() ? table_string(a, b)
+                                           : std::move(table)));
   if (color) {
     valid = valid && graph.connect({ramp, "Color"}, emission, "Color");
   } else {
@@ -270,6 +273,22 @@ void test_schema_and_invalid_tables() {
       make_dynamic_graph(true, true, "NOT_AN_INTERPOLATION");
   require(!compile_graph(invalid_interpolation).valid,
           "invalid RGB Ramp interpolation was accepted");
+
+  auto scientific = make_dynamic_graph(
+      true, true, "LINEAR",
+      "0,1e-1,-2.5e-1,3E-1,4e-1;1,9e-1,8e-1,7e-1,6e-1");
+  require(compile_graph(scientific).valid,
+          "finite scientific RGB Ramp values were rejected");
+  auto trailing_garbage = make_dynamic_graph(
+      true, true, "LINEAR",
+      "0,0.1x,0.2,0.3,0.4;1,0.9,0.8,0.7,0.6");
+  require(!compile_graph(trailing_garbage).valid,
+          "RGB Ramp value with trailing garbage was accepted");
+  auto out_of_range = make_dynamic_graph(
+      true, true, "LINEAR",
+      "0,1e999,0.2,0.3,0.4;1,0.9,0.8,0.7,0.6");
+  require(!compile_graph(out_of_range).valid,
+          "out-of-range RGB Ramp value was accepted");
 }
 
 } // namespace

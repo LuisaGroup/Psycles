@@ -11,9 +11,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <optional>
 #include <string>
@@ -100,11 +102,26 @@ floating_property(const GraphNode *node, std::string_view name) noexcept {
   if (text.empty()) {
     return false;
   }
+#if defined(_LIBCPP_VERSION) &&                                      \
+    defined(_LIBCPP_AVAILABILITY_HAS_FROM_CHARS_FLOATING_POINT) &&  \
+    !_LIBCPP_AVAILABILITY_HAS_FROM_CHARS_FLOATING_POINT
+  // libc++ exposes the C++17 overload in its headers even when the linked
+  // dylib is too old to provide it (including Homebrew LLVM 21 on macOS).
+  // Own the token so strtof always receives a null-terminated range, then
+  // retain from_chars' full-consumption and range-error contract.
+  const auto owned = std::string{text};
+  char *parsed_end = nullptr;
+  errno = 0;
+  value = std::strtof(owned.c_str(), &parsed_end);
+  return errno != ERANGE &&
+         parsed_end == owned.c_str() + owned.size();
+#else
   const auto *begin = text.data();
   const auto *end = begin + text.size();
   const auto result =
       std::from_chars(begin, end, value, std::chars_format::general);
   return result.ec == std::errc{} && result.ptr == end;
+#endif
 }
 
 template<std::size_t N>
