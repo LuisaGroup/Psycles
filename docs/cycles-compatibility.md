@@ -1,6 +1,6 @@
 # Cycles compatibility status
 
-Updated 2026-09-07. This page describes the current implementation, not the
+Updated 2026-09-08. This page describes the current implementation, not the
 performance or feature coverage of the legacy material executor.
 
 ## Default execution path
@@ -41,6 +41,9 @@ profiling, pre-rendering nor scene-name constants determine allocation sizes.
   Luisa Local lifetime and coroutine extension/handler mechanisms express
   storage lifetime and scheduling. Ordinary scalar/vector initialization
   remains zero.
+- Fallback's separate LLVM barrier frames use a CPU-worker-owned arena with
+  reusable, pointer-stable overflow chunks. Its 4 MiB fast buffer is not a
+  frame-size limit; capacity reuse avoids per-lane/per-dispatch malloc/free.
 - Native fast math remains enabled. No forced noinline boundary or slow
   software floating-point/intersection path is used for bitwise alignment.
 
