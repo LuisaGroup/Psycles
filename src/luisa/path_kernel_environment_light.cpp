@@ -1,6 +1,8 @@
 #include "path_kernel_environment_light.h"
 #include "path_kernel_background_portal.h"
 
+#include <psycles/luisa/cycles_noise.h>
+
 #include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/cycles_path_state.h>
 
@@ -18,14 +20,15 @@ class PathEnvironmentLightComponent final
     _sample_direction(
         const std::shared_ptr<
             LuisaSceneData> &scene,
+        const BackgroundSamplingDistribution &distribution,
         Float3 reference,
         Float2 random,
         UInt portal_offset,
         UInt portal_count) noexcept {
         if (scene->background_portal_weight <= 0.0f) {
             return background_sampling::sample(
-                scene->background_conditional_cdf,
-                scene->background_marginal_cdf,
+                distribution.conditional,
+                distribution.marginal,
                 scene->background_map_width,
                 scene->background_map_height,
                 scene->background_map_weight,
@@ -80,8 +83,8 @@ class PathEnvironmentLightComponent final
             }
             if (scene->background_map_weight > 0.0f) {
                 result_pdf += map_probability * background_sampling::map_pdf(
-                    scene->background_conditional_cdf,
-                    scene->background_marginal_cdf,
+                    distribution.conditional,
+                    distribution.marginal,
                     scene->background_map_width,
                     scene->background_map_height,
                     direction);
@@ -107,8 +110,8 @@ class PathEnvironmentLightComponent final
                 direction);
             if (scene->background_map_weight > 0.0f) {
                 result_pdf += map_probability * background_sampling::map_pdf(
-                    scene->background_conditional_cdf,
-                    scene->background_marginal_cdf,
+                    distribution.conditional,
+                    distribution.marginal,
                     scene->background_map_width,
                     scene->background_map_height,
                     direction);
@@ -119,8 +122,8 @@ class PathEnvironmentLightComponent final
                 (random.x - sun_cdf) / max(map_probability, 1.0e-20f),
                 random.y);
             const auto map = background_sampling::sample_map(
-                scene->background_conditional_cdf,
-                scene->background_marginal_cdf,
+                distribution.conditional,
+                distribution.marginal,
                 scene->background_map_width,
                 scene->background_map_height,
                 map_random);
@@ -146,14 +149,15 @@ class PathEnvironmentLightComponent final
     _direction_pdf(
         const std::shared_ptr<
             LuisaSceneData> &scene,
+        const BackgroundSamplingDistribution &distribution,
         Float3 reference,
         Float3 direction,
         UInt portal_offset,
         UInt portal_count) noexcept {
         if (scene->background_portal_weight <= 0.0f) {
             return background_sampling::pdf(
-                scene->background_conditional_cdf,
-                scene->background_marginal_cdf,
+                distribution.conditional,
+                distribution.marginal,
                 scene->background_map_width,
                 scene->background_map_height,
                 scene->background_map_weight,
@@ -190,8 +194,8 @@ class PathEnvironmentLightComponent final
             if (scene->background_map_weight > 0.0f) {
                 result += scene->background_map_weight * inverse_total *
                           background_sampling::map_pdf(
-                              scene->background_conditional_cdf,
-                              scene->background_marginal_cdf,
+                              distribution.conditional,
+                              distribution.marginal,
                               scene->background_map_width,
                               scene->background_map_height,
                               direction);
@@ -205,6 +209,7 @@ class PathEnvironmentLightComponent final
     from_position(
         const std::shared_ptr<
             LuisaSceneData> &scene,
+        const BackgroundSamplingDistribution &distribution,
         Float3 reference,
         Float2 random,
         Float selection_pdf,
@@ -213,7 +218,7 @@ class PathEnvironmentLightComponent final
         const noexcept override {
         const auto direction_sample =
             _sample_direction(
-                scene,
+                scene, distribution,
                 std::move(reference),
                 std::move(random),
                 std::move(portal_offset),
@@ -230,15 +235,22 @@ class PathEnvironmentLightComponent final
 
     Float3 evaluate_emission(
         PathSampleContext &sample,
-        Float3 direction,
-        const cycles_path_state::
-            ShaderEvaluationState
-                &shader_state)
-        const noexcept override {
-        return sample.invocation
-            .evaluate_environment(
-                std::move(direction),
-                shader_state);
+        Float3 origin, Float3 direction, Float differential,
+        CyclesSvmBackgroundEvaluation evaluation) const noexcept override {
+        const auto forward = evaluation == CyclesSvmBackgroundEvaluation::forward;
+        const cycles_svm::PathState state{
+            forward ? sample.cycles_path_visibility : UInt{0u},
+            forward ? sample.path_flags | cycles_svm::path_ray_emission
+                    : UInt{cycles_svm::path_ray_emission},
+            sample.path_depth, sample.transparent_depth, sample.diffuse_depth,
+            sample.glossy_depth, sample.transmission_depth, 0u};
+        const auto lcg_state = cycles_noise::hash_uint3(
+            sample.rng_hash ^ 0xb4bc3953u, sample.cycles_rng_offset, sample.sample_index);
+        // The admitted scene domain is static: camera_sample uses time 0.5
+        // when shuttertime == -1. Do not substitute a lens RNG dimension.
+        return evaluate_environment_emission(
+            sample.invocation.config.scene, sample.invocation.parameters,
+            origin, direction, differential, 0.5f, state, lcg_state, evaluation);
     }
 
     Float3 evaluate_constant_emission(
@@ -251,6 +263,7 @@ class PathEnvironmentLightComponent final
     Float from_direction(
         const std::shared_ptr<
             LuisaSceneData> &scene,
+        const BackgroundSamplingDistribution &distribution,
         Float3 reference,
         Float3 direction,
         Float selection_pdf,
@@ -258,7 +271,7 @@ class PathEnvironmentLightComponent final
         UInt portal_count)
         const noexcept override {
         return _direction_pdf(
-                   scene,
+                   scene, distribution,
                    std::move(reference),
                    std::move(direction),
                    std::move(portal_offset),

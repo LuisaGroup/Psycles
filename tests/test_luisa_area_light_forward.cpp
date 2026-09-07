@@ -76,6 +76,7 @@ using EnvironmentProposalFunction =
     EnvironmentLightProposal (
         EnvironmentLightComponent::*)(
         const std::shared_ptr<LuisaSceneData> &,
+        const BackgroundSamplingDistribution &,
         Float3,
         Float2,
         Float,
@@ -84,10 +85,8 @@ using EnvironmentProposalFunction =
 using EnvironmentEvaluationFunction =
     Float3 (EnvironmentLightComponent::*)(
         PathSampleContext &,
-        Float3,
-        const psycles::luisa_backend::
-            cycles_path_state::
-                ShaderEvaluationState &)
+        Float3, Float3, Float,
+        CyclesSvmBackgroundEvaluation)
         const noexcept;
 using EnvironmentConstantEvaluationFunction =
     Float3 (EnvironmentLightComponent::*)(

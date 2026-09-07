@@ -151,6 +151,10 @@ Bool PathCyclesSvmKernelGlobals::caustics_refractive() const noexcept {
   return _caustics_refractive;
 }
 
+Bool PathCyclesSvmKernelGlobals::background_use_sun_guiding() const noexcept {
+  return _scene->background_guided_sun_weight > 0.0f;
+}
+
 Float PathCyclesSvmKernelGlobals::object_shadow_terminator_shading_offset(
     Expr<std::uint32_t> object) const noexcept {
   const auto record = object_record(*_scene, object);

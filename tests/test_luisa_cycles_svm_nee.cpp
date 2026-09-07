@@ -126,10 +126,6 @@ bool run(const char *program, const char *backend) {
                    unbound<SurfaceClosureTraceCallable>(),
                    unbound<SurfaceSampleTraceCallable>(),
                    unbound<SurfaceBssrdfNormalCallable>()},
-      .environment = {unbound<EnvironmentConstantCallable>(),
-                      unbound<EnvironmentBaseCallable>(),
-                      {},
-                      unbound<EnvironmentSunCallable>()},
       .shade_shadow_surface = unbound<EvaluateShadowSurfaceCallable>(),
       .trace_shadow = unbound<TraceShadowCallable>()};
   const auto evaluator = make_direct_light_task_evaluator(config);

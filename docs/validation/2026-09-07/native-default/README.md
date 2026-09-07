@@ -144,8 +144,10 @@ Curve oracle SHA-256:
 
 ## Remaining deletion boundary
 
-The loader still builds legacy material resources for background emission,
-the stacked-volume renderer and displacement prepass. Their consumers must
+The 2026-09-08 [native background follow-up](../../2026-09-08/native-background/README.md)
+removes the background SurfaceProgram consumer and ports importance baking.
+The loader still builds transitional material resources for the
+stacked-volume renderer and displacement prepass. Their consumers must
 move to the original domain-specific SVM state/control flow before deleting
 the resources. Old surface callables, graph/value-program compiler/runtime
 and corresponding tests are still pending removal. No completed legacy-path

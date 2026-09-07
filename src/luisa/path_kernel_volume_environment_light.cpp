@@ -33,6 +33,7 @@ class EnvironmentVolumeLightProvider final
         const EnvironmentLightComponent>
         _environment_light;
     mutable Bool _sample_valid{false};
+    mutable Float3 _sample_position{make_float3(0.0f)};
 
   public:
     EnvironmentVolumeLightProvider(
@@ -71,6 +72,7 @@ class EnvironmentVolumeLightProvider final
                 _segment_position +
                 _segment_direction *
                     distance;
+            _sample_position = position;
             const auto light =
                 _environment_light
                     ->from_position(
@@ -78,6 +80,7 @@ class EnvironmentVolumeLightProvider final
                             .sample
                             .invocation
                             .config.scene,
+                        *_event.bounce.sample.invocation.config.background_sampling,
                         position,
                         _event.bounce.random()
                             .light_sample
@@ -151,19 +154,11 @@ class EnvironmentVolumeLightProvider final
                         ->evaluate_emission(
                             _event.bounce
                                 .sample,
+                            _sample_position,
                             _result.direction,
-                            cycles_path_state::
-                                light_emission_shader_state(
-                                    _event.bounce
-                                        .sample.path_depth,
-                                    _event.bounce
-                                        .sample.diffuse_depth,
-                                    _event.bounce
-                                        .sample.glossy_depth,
-                                    _event.bounce
-                                        .sample.transparent_depth,
-                                    _event.bounce
-                                        .sample.transmission_depth));
+                            // shadow_ray_setup sets the volume shadow dD to zero.
+                            0.0f,
+                            CyclesSvmBackgroundEvaluation::light);
             };
         }
     }

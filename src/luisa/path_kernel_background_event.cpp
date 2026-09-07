@@ -32,8 +32,6 @@ class BackgroundEventStageImpl final
         auto &ray = sample.ray;
         const auto traversal_ray_visibility =
             sample.traversal_ray_visibility();
-        const auto shader_ray_visibility =
-            sample.shader_ray_visibility();
         const auto mis_competition_skipped =
             sample.mis_competition_skipped();
         auto &previous_bsdf_pdf =
@@ -45,15 +43,9 @@ class BackgroundEventStageImpl final
         auto &throughput = sample.throughput;
         auto &path_depth = sample.path_depth;
         auto &path_flags = sample.path_flags;
-        auto &transparent_depth =
-            sample.transparent_depth;
-        auto &diffuse_depth =
-            sample.diffuse_depth;
-        auto &glossy_depth =
-            sample.glossy_depth;
+        auto &glossy_depth = sample.glossy_depth;
         auto &transmission_depth =
             sample.transmission_depth;
-        auto &ray_events = sample.ray_events;
         const auto &forward_light_weight =
             config.light_transport
                 .forward_light_weight;
@@ -83,6 +75,7 @@ class BackgroundEventStageImpl final
             _environment_light
                 ->from_direction(
                     scene,
+                    *config.background_sampling,
                     ray->origin(),
                     ray->direction(),
                     environment_selection_pdf,
@@ -100,27 +93,17 @@ class BackgroundEventStageImpl final
             (scene->world_visibility_mask &
              traversal_ray_visibility) != 0u;
         Float3 environment_radiance;
-        if (scene->environment_emission_is_constant) {
-            environment_radiance =
-                _environment_light
-                    ->evaluate_constant_emission(
-                        sample);
-        } else {
-            environment_radiance =
-                _environment_light
-                    ->evaluate_emission(
-                        sample,
-                        ray->direction(),
-                        cycles_path_state::
-                            background_emission_shader_state(
-                                shader_ray_visibility,
-                                ray_events,
-                                path_depth,
-                                diffuse_depth,
-                                glossy_depth,
-                                transparent_depth,
-                                transmission_depth));
-        }
+        // Cycles rejects invisible background shaders before evaluating SVM.
+        $if(world_visible) {
+            if (scene->environment_emission_is_constant) {
+                environment_radiance =
+                    _environment_light->evaluate_constant_emission(sample);
+            } else {
+                environment_radiance = _environment_light->evaluate_emission(
+                    sample, ray->origin(), ray->direction(), sample.ray_dD,
+                    CyclesSvmBackgroundEvaluation::forward);
+            }
+        };
         if (_ambient_occlusion_bounce_approximation) {
             const auto ambient_occlusion_bounce =
                 cycles_path_state::ambient_occlusion_bounce(

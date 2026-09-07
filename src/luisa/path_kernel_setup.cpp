@@ -498,24 +498,8 @@ Float3 PathKernelInvocation::surface_bssrdf_normal(
         refractive_caustics);
 }
 
-Float3 PathKernelInvocation::evaluate_environment(
-    Float3 direction,
-    const cycles_path_state::ShaderEvaluationState &shader_state)
-    const noexcept {
-    Float3 result =
-        config.environment.base(direction,
-                                parameters.background,
-                                pack_shader_evaluation_state(shader_state));
-    for (const auto &sun : config.environment.suns) {
-        result += sun(direction);
-    }
-    result += config.environment.nishita_sun(direction);
-    return result;
-}
-
 Float3 PathKernelInvocation::constant_environment() const noexcept {
-    return config.environment.constant(
-        parameters.background);
+    return constant_environment_emission(*config.scene, parameters.background);
 }
 
 UInt PathSampleContext::traversal_ray_visibility() const noexcept {

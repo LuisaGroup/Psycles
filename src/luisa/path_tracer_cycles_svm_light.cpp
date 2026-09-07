@@ -1,4 +1,5 @@
 #include "path_tracer_cycles_svm_light.h"
+#include "path_tracer_cycles_svm_background.h"
 #include "path_tracer_cycles_svm_shader_data.h"
 
 #include "cycles_svm_internal.h"
@@ -197,25 +198,11 @@ CyclesSvmLightShaderData setup_cycles_svm_light_shader_data(
   if (scene->cycles_background_shader_id != ~0u) {
     $if(task.light_object == scene->cycles_background_object_index) {
       background = true;
-      sd.P = task.ray_direction;
-      sd.N = sd.Ng = -task.ray_direction;
-      sd.shader = scene->cycles_background_shader_id;
-      sd.object = svm::object_none;
-      sd.prim = ~0u;
-      sd.type = 0u;
-      sd.ray_length = ray_maximum;
-      const auto map_dD =
-          scene->background_map_weight > 0.0f &&
-                  scene->background_map_width > 0u &&
-                  scene->background_map_height > 0u
-              ? std::min(pi / scene->background_map_height,
-                         2.0f * pi / scene->background_map_width)
-              : std::numeric_limits<float>::max();
-      sd.dP = sd.dI = min(task.ray_dD, map_dD);
-      const auto basis = sd_detail::differential_from_compact(sd.Ng, 1.0f);
-      sd.dPdu = basis.dx;
-      sd.dPdv = basis.dy;
-      sd.du.dx = sd.dv.dy = sd.dP;
+      const auto lcg_state = sd.lcg_state;
+      sd = setup_cycles_svm_background_shader_data(
+          *scene, task.ray_origin, task.ray_direction, task.ray_dD,
+          task.ray_time, 0u, CyclesSvmBackgroundEvaluation::light);
+      sd.lcg_state = lcg_state;
     }
     $else { setup_nonbackground(); };
   } else {

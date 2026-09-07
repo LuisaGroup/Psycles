@@ -1,42 +1,36 @@
 #pragma once
 
-#include "path_tracer_lighting.h"
-#include "path_tracer_surfaces.h"
+#include "path_tracer_cycles_svm_background.h"
 
 namespace psycles::luisa_backend::detail {
 
-using EnvironmentBaseCallable =
-    Callable<luisa::float3(
-        luisa::float3,
-        luisa::float3,
-        ShaderEvaluationStateCall)>;
-using EnvironmentConstantCallable =
-    Callable<luisa::float3(luisa::float3)>;
-using EnvironmentSunCallable =
-    Callable<luisa::float3(luisa::float3)>;
-
-struct EnvironmentCallables {
-    EnvironmentConstantCallable constant;
-    EnvironmentBaseCallable base;
-    std::vector<EnvironmentSunCallable> suns;
-    EnvironmentSunCallable nishita_sun;
+// The shader can observe camera projection and final render extent while
+// baking. Each render session therefore owns its CDF, not the shared scene.
+struct BackgroundSamplingDistribution {
+    Buffer<luisa::float2> conditional;
+    Buffer<luisa::float2> marginal;
 };
 
-[[nodiscard]] EnvironmentCallables
-make_environment_callables(
+[[nodiscard]] Float3 constant_environment_emission(
+    const LuisaSceneData &scene, Float3 background) noexcept;
+[[nodiscard]] Float3 evaluate_environment_emission(
     const std::shared_ptr<LuisaSceneData> &scene,
-    const SafeNormalizeCallable &safe_normalize,
-    const SurfaceConstantEmissionCallable
-        &surface_constant_emission,
-    const SurfaceEmissionCallable &surface_emission);
+    const Var<RenderKernelParameters> &parameters,
+    Float3 origin, Float3 direction, Float differential, Float time,
+    const cycles_svm::PathState &state, UInt lcg_state,
+    CyclesSvmBackgroundEvaluation evaluation) noexcept;
+[[nodiscard]] Float3 evaluate_background_importance(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const Var<RenderKernelParameters> &parameters, Float u, Float v) noexcept;
 
 void configure_background_sampling(
     LuisaSceneData &scene,
     const SceneSnapshot &snapshot,
     bool include_environment) noexcept;
 
-void build_background_sampling_distribution(
+[[nodiscard]] std::shared_ptr<const BackgroundSamplingDistribution>
+build_background_sampling_distribution(
     const std::shared_ptr<LuisaSceneData> &scene,
-    Stream &stream);
+    Stream &stream, const RenderKernelParameters &parameters);
 
 }// namespace psycles::luisa_backend::detail
