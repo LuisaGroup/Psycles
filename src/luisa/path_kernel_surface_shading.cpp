@@ -168,10 +168,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                  .cycles_surface_shader = cycles_surface_shader,
                  .cycles_object_index = cycles_object_index,
                  .cycles_primitive_index = cycles_primitive_index,
-                 // The native route currently admits only static triangle
-                 // scenes. The legacy population strategy ignores this field.
-                 .primitive_type =
-                     ::psycles::luisa_backend::cycles_svm::primitive_triangle,
+                 .primitive_type = surface.cycles_primitive_type,
                  .ray_origin = sample.ray->origin(),
                  .ray_position_differential = surface.differential_radius,
                  .ray_direction_differential = sample.ray_dD,

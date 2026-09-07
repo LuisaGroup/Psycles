@@ -1,4 +1,5 @@
 #include "path_kernel_builder.h"
+#include "path_kernel_coro_transitions.h"
 #include "path_kernel_direct_light_task.h"
 #include "path_kernel_direct_light_trace.h"
 #include "path_kernel_surface_queue.h"
@@ -116,11 +117,9 @@ void PathKernelPipeline::emit(
     // guarded by a device-side predicate. At this boundary only canonical
     // per-path state is live; no hit shading or closure temporaries have
     // been populated yet.
-    if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
-      // This names the semantic work queue; traversal remains the same
-      // PathBounceSetupStage used by both megakernel variants.
-      $suspend(path_transition::intersect_closest);
-    }
+    suspend_before_closest_intersection(
+        cut_policy, static_cast<bool>(_impl->subsurface_transport),
+        sample.pending_subsurface_exit);
     auto bounce = _impl->bounce_setup->emit(sample, path_step);
     std::optional<PathBounceRandomState> dominating_random_state;
     if (random_plan.before_event_resolution) {

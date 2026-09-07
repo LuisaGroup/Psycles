@@ -224,6 +224,8 @@ def _main() -> None:
             "combined shader-probe registry is not an exact partition"
         )
     if oracle_probes != {
+        "color_to_scalar",
+        "math_clamp_svm_oracle",
         "metallic_svm_oracle",
         "principled_burley_svm_oracle",
         "principled_coat_svm_oracle",
@@ -234,6 +236,7 @@ def _main() -> None:
         "principled_thin_wall_svm_oracle",
         "principled_transmission_svm_oracle",
         "svm_tangent_dynamic",
+        "svm_vector_displacement_nested_both_oracle",
         "standalone_sheen_ashikhmin_svm_oracle",
         "standalone_sheen_microfiber_svm_oracle",
         "standalone_ray_portal_authored_svm_oracle",
@@ -246,6 +249,10 @@ def _main() -> None:
         "subsurface_random_walk_svm_oracle",
         "vector_to_scalar",
         "volume_scatter_svm",
+        "volume_coefficients_svm",
+        "principled_volume_svm",
+        "principled_volume_named_svm",
+        "principled_volume_linked_svm",
     }:
         raise AssertionError(
             "unexpected Cycles SVM oracle-only probe set: "

@@ -163,6 +163,7 @@ _ALL_PROBES = (
     "svm_geometry_attributes",
     "svm_geometry_bump_offsets",
     "svm_gabor_matrix",
+    "svm_map_range_matrix",
     "svm_spectral_dynamic",
     "svm_vertex_color",
     "svm_vector_displacement",

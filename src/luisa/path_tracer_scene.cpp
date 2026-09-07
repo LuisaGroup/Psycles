@@ -90,8 +90,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->device =
         luisa::compute::Device{_device.impl_shared()};
     data->revision = snapshot.revision;
-    data->native_cycles_svm_surface =
-        native_cycles_svm_surface_requested();
+    data->native_cycles_svm_surface = true;
     data->populate_surface_once =
         data->native_cycles_svm_surface ||
         populate_surface_once_requested();
@@ -146,6 +145,9 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         }
     }
     std::set<contract::MaterialId> surface_bssrdf_materials;
+    data->cycles_background_object_index =
+        data->cycles_svm->object_identities.background_index.value_or(
+            cycles_shader_identity::invalid_index);
     std::set<contract::MaterialId> surface_bssrdf_bump_materials;
     const auto &reachable_surface_materials =
         material_reachability.surface_materials;
@@ -1558,7 +1560,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         const auto instance_index =
             static_cast<std::uint32_t>(instances.size());
         const auto cycles_object_index =
-            instance.cycles_object_index.value_or(instance_index);
+            data->cycles_svm->object_identities.instance_indices.at(instance_id);
         if (ambient_occlusion_object_distances.size() <=
             cycles_object_index) {
             ambient_occlusion_object_distances.resize(
@@ -1591,9 +1593,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                         .shadow_terminator_geometry_offset,
                     0.0f),
             .cycles_object_index =
-                instance.cycles_object_index.value_or(
-                    cycles_shader_identity::
-                        invalid_index),
+                cycles_object_index,
             .cycles_primitive_offset =
                 geometry_gpu[geometry_iter->second]
                     .cycles_primitive_offset,
@@ -1718,8 +1718,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                             static_cast<std::uint32_t>(
                                 primitive_index),
                         .cycles_object_index =
-                            instance.cycles_object_index.value_or(
-                                instance_index),
+                            cycles_object_index,
                         .cycles_shader_id =
                             cycles_shader_identity::emissive_triangle(
                                 base_shader_index,
