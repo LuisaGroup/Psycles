@@ -67,6 +67,7 @@ inline constexpr std::uint32_t kernel_feature_hair_thick = 1u << 14u;
 inline constexpr std::uint32_t kernel_feature_hair =
     kernel_feature_hair_ribbon | kernel_feature_hair_thick;
 inline constexpr std::uint32_t kernel_feature_object_motion = 1u << 15u;
+inline constexpr std::uint32_t kernel_feature_subsurface = 1u << 17u;
 
 inline constexpr std::uint32_t kernel_feature_node_mask_surface_light =
     kernel_feature_node_emission | kernel_feature_node_voronoi_extra |
@@ -715,6 +716,10 @@ public:
   [[nodiscard]] std::size_t capacity() const noexcept;
   [[nodiscard]] luisa::compute::UInt count() const noexcept;
   [[nodiscard]] luisa::compute::UInt left() const noexcept;
+
+  // Cycles num_closure = 0; num_closure_left = max_closures. Old ordinary
+  // and extra payload bytes become unreachable; neither is zero-filled.
+  void reset() noexcept;
 
   [[nodiscard]] Allocation
   allocate(luisa::compute::Expr<std::uint32_t> type,

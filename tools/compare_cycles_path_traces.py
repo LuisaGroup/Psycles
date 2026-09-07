@@ -41,6 +41,10 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("actual", type=pathlib.Path)
     parser.add_argument("output", type=pathlib.Path, nargs="?")
     parser.add_argument(
+        "--align-by-rng-offset", action="store_true",
+        help="Pair surface events by RNG offset, not trace storage index",
+    )
+    parser.add_argument(
         "--absolute-tolerance",
         type=float,
         default=DEFAULT_ABSOLUTE_TOLERANCE,
@@ -66,11 +70,13 @@ def _load(path: pathlib.Path) -> dict[str, Any]:
     return document
 
 
-def _record(trace: dict[str, Any], slot: TraceSlot) -> dict[str, Any]:
+def _record(
+    trace: dict[str, Any], slot: TraceSlot, event_index: int | None = None
+) -> dict[str, Any]:
     if slot.scope == "global":
         return trace["global"][slot.name]
     assert slot.event is not None
-    event = trace["events"][slot.event]
+    event = trace["events"][slot.event if event_index is None else event_index]
     if slot.scope == "event":
         return event["slots"][slot.name]
     assert slot.closure is not None
@@ -112,9 +118,12 @@ def _event_surface_equivalent(
     event: int,
     absolute_tolerance: float,
     relative_tolerance: float,
+    actual_event_index: int | None = None,
 ) -> bool:
     reference_event = reference["events"][event]["slots"]
-    actual_event = actual["events"][event]["slots"]
+    actual_event = actual["events"][
+        event if actual_event_index is None else actual_event_index
+    ]["slots"]
     exact_invariants = (
         ("isect_id", "object"),
         ("isect_id", "primitive_type"),
@@ -137,12 +146,28 @@ def _event_surface_equivalent(
     return True
 
 
+def _event_rng_indices(trace: dict[str, Any]) -> dict[float, int]:
+    result: dict[float, int] = {}
+    for index, event in enumerate(trace["events"]):
+        depth = event["slots"]["state_depth"]
+        if not depth["written"]:
+            continue
+        offset = depth["rng_offset"]
+        if not math.isfinite(offset) or offset != int(offset) or offset < 0:
+            raise ValueError(f"Invalid event RNG offset at {index}: {offset}")
+        if offset in result:
+            raise ValueError(f"Ambiguous duplicate event RNG offset: {offset}")
+        result[offset] = index
+    return result
+
+
 def compare_traces(
     reference: dict[str, Any],
     actual: dict[str, Any],
     *,
     absolute_tolerance: float = DEFAULT_ABSOLUTE_TOLERANCE,
     relative_tolerance: float = DEFAULT_RELATIVE_TOLERANCE,
+    align_by_rng_offset: bool = False,
 ) -> dict[str, Any]:
     for label, trace in (("reference", reference), ("actual", actual)):
         if trace.get("schema") != SCHEMA_NAME:
@@ -167,9 +192,57 @@ def compare_traces(
     max_relative_error = 0.0
     max_error_field: str | None = None
 
+    event_mapping = {i: i for i in range(MAX_EVENTS)}
+    alignment: dict[str, Any] | None = None
+    if align_by_rng_offset:
+        # Cycles' observer stores at rng_offset / PRNG_BOUNCE_NUM - 1,
+        # while Psycles stores at the path-loop ordinal. A subsurface walk
+        # advances the RNG block without an ordinary surface-loop event.
+        # Do not match by geometry or bounce: those remain equality gates.
+        reference_offsets = _event_rng_indices(reference)
+        actual_offsets = _event_rng_indices(actual)
+        event_mapping = {
+            ref: actual_offsets[offset]
+            for offset, ref in reference_offsets.items()
+            if offset in actual_offsets
+        }
+        alignment = {
+            "matched": [
+                {"rng_offset": offset, "reference_event": ref,
+                 "actual_event": actual_offsets[offset]}
+                for offset, ref in reference_offsets.items()
+                if offset in actual_offsets
+            ],
+            "unmatched_reference": sorted(reference_offsets.keys() - actual_offsets.keys()),
+            "unmatched_actual": sorted(actual_offsets.keys() - reference_offsets.keys()),
+        }
+        if alignment["unmatched_reference"] or alignment["unmatched_actual"]:
+            failures.append({
+                "field": "event_rng_offsets", "policy": COMPARE_EXACT,
+                "reference": sorted(reference_offsets),
+                "actual": sorted(actual_offsets),
+            })
+        # Slots written before surface setup (e.g. a terminal background hit)
+        # have no pairing key. Report incomplete coverage instead of silently
+        # declaring equality for those records.
+        for label, trace in (("reference", reference), ("actual", actual)):
+            unidentified = [
+                i for i, event in enumerate(trace["events"])
+                if not event["slots"]["state_depth"]["written"]
+                and any(record["written"] for record in event["slots"].values())
+            ]
+            alignment[f"unidentified_{label}"] = unidentified
+            if unidentified:
+                failures.append({"field": f"{label}.unidentified_events",
+                                 "policy": COMPARE_EXACT,
+                                 "events": unidentified})
+
     for slot in SLOTS:
+        if slot.event is not None and slot.event not in event_mapping:
+            continue
         reference_record = _record(reference, slot)
-        actual_record = _record(actual, slot)
+        actual_event_index = event_mapping.get(slot.event)
+        actual_record = _record(actual, slot, actual_event_index)
         policies = comparison_policies(slot)
         if all(policy == COMPARE_RESERVED for policy in policies):
             continue
@@ -199,6 +272,10 @@ def compare_traces(
             policies,
         ):
             if policy == COMPARE_RESERVED:
+                continue
+            if align_by_rng_offset and slot.name == "state_depth" and component == "event":
+                # Storage index is explicitly recorded in the alignment map;
+                # RNG block and every real depth/identity field still compare.
                 continue
             checked[policy] += 1
             field = f"{field_prefix}.{component}"
@@ -251,6 +328,7 @@ def compare_traces(
                     slot.event,
                     absolute_tolerance,
                     relative_tolerance,
+                    actual_event_index,
                 )
             ):
                 topology_equivalent.append(mismatch)
@@ -263,6 +341,7 @@ def compare_traces(
         "actual": actual.get("source"),
         "absolute_tolerance": absolute_tolerance,
         "relative_tolerance": relative_tolerance,
+        "event_alignment": alignment,
         "checked": checked,
         "topology_equivalent": topology_equivalent,
         "max_absolute_error": max_absolute_error,
@@ -281,6 +360,7 @@ def _main() -> None:
         _load(arguments.actual),
         absolute_tolerance=arguments.absolute_tolerance,
         relative_tolerance=arguments.relative_tolerance,
+        align_by_rng_offset=arguments.align_by_rng_offset,
     )
     serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if arguments.output is None:

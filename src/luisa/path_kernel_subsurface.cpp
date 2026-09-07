@@ -502,10 +502,9 @@ public:
         $else {
             success = _random_walk.transport(path, state);
         };
-        // This stage is the sole consumer of these method tags. Psycles keeps
-        // exact exit identity in pending_subsurface_exit rather than asking
-        // the next surface stage to infer it from transient transport flags.
-        path.path_flags &= ~cycles_path_state::flag_subsurface;
+        // Cycles retains PATH_RAY_SUBSURFACE through shader evaluation at
+        // the exit. The surface stage clears it only after replacing the
+        // material closures with the exit diffuse closure.
         return success;
     }
 };

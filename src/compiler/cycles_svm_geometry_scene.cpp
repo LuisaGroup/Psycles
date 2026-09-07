@@ -517,6 +517,30 @@ packed_normal pack_geometry_normal(packed_float3 normal) noexcept {
   return {.value = encode(vx) | (encode(vy) << 16u)};
 }
 
+packed_normal pack_transformed_geometry_normal(
+    packed_float3 normal, const PackedTransform &t) noexcept {
+  const auto stored = pack_geometry_normal(normal).value;
+  constexpr float inv_half = 2.0f / 65535.0f;
+  auto x = static_cast<float>(stored & 65535u) * inv_half - 1.0f;
+  auto y = static_cast<float>(stored >> 16u) * inv_half - 1.0f;
+  const auto z = 1.0f - std::fabs(x) - std::fabs(y);
+  const auto wrap = std::max(-z, 0.0f);
+  x += std::copysign(wrap, -x);
+  y += std::copysign(wrap, -y);
+  const auto length = std::sqrt(x * x + y * y + z * z);
+  const packed_float3 decoded{x / length, y / length, z / length};
+  const auto transform = [&](const packed_float4 &r) {
+    return std::fma(decoded.x, r.x, std::fma(decoded.y, r.y, decoded.z * r.z));
+  };
+  const packed_float3 transformed{transform(t.x), transform(t.y), transform(t.z)};
+  const auto inverse_length = 1.0f / std::sqrt(
+      transformed.x * transformed.x + transformed.y * transformed.y +
+      transformed.z * transformed.z);
+  return pack_geometry_normal({transformed.x * inverse_length,
+                               transformed.y * inverse_length,
+                               transformed.z * inverse_length});
+}
+
 GeometryAttributeTableImage build_geometry_attribute_table(
     const std::vector<GeometryAttributeInput> &geometries) {
   GeometryAttributeTableImage result;

@@ -1,5 +1,42 @@
 include_guard(GLOBAL)
 
+if(PSYCLES_ENABLE_OPENIMAGEIO)
+    add_executable(psycles_scene_jpeg_decode_tests tests/test_scene_jpeg_decode.cpp)
+    target_link_libraries(psycles_scene_jpeg_decode_tests PRIVATE Psycles::luisa_runtime)
+    target_include_directories(psycles_scene_jpeg_decode_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+    target_compile_definitions(psycles_scene_jpeg_decode_tests PRIVATE
+        PSYCLES_JPEG_ORACLE_DIRECTORY="${PROJECT_SOURCE_DIR}/tests/data")
+    add_test(NAME psycles.scene_jpeg_decode COMMAND psycles_scene_jpeg_decode_tests)
+endif()
+
+psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_surface_geometry_tests
+    SOURCE tests/test_luisa_cycles_svm_surface_geometry.cpp
+    TEST_STEM luisa_cycles_svm_surface_geometry
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(psycles_luisa_cycles_svm_surface_geometry_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+target_compile_definitions(psycles_luisa_cycles_svm_surface_geometry_tests PRIVATE
+    PSYCLES_NATIVE_SHADOW_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_svm_native_shadow.txt")
+if(TEST psycles.luisa_cycles_svm_surface_geometry_vk)
+    set_tests_properties(psycles.luisa_cycles_svm_surface_geometry_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_subsurface_exit_tests
+    SOURCE tests/test_luisa_cycles_svm_subsurface_exit.cpp
+    TEST_STEM luisa_cycles_svm_subsurface_exit
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(psycles_luisa_cycles_svm_subsurface_exit_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+target_compile_definitions(psycles_luisa_cycles_svm_subsurface_exit_tests PRIVATE
+    PSYCLES_SUBSURFACE_EXIT_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_subsurface_exit.txt")
+if(TEST psycles.luisa_cycles_svm_subsurface_exit_vk)
+    set_tests_properties(psycles.luisa_cycles_svm_subsurface_exit_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
 psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_map_range_tests
     SOURCE tests/test_luisa_cycles_svm_map_range.cpp

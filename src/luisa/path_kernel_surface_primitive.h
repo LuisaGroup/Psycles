@@ -49,12 +49,16 @@ public:
   emit(const std::shared_ptr<LuisaSceneData> &scene,
        const Var<luisa::compute::CommittedHit> &hit,
        const Var<luisa::compute::Ray> &ray, Expr<float> ray_dP,
-       Expr<float> ray_dD,
+       Expr<float> ray_dD, Expr<float> ray_time,
+       const Var<RenderKernelParameters> &parameters,
        const SafeNormalizeCallable &safe_normalize) const noexcept = 0;
 };
 
 [[nodiscard]] std::shared_ptr<const SurfacePrimitiveGeometryComponent>
 make_surface_primitive_geometry_component(
     ScenePrimitiveStagePlan plan);
+
+[[nodiscard]] std::shared_ptr<const SurfacePrimitiveGeometryComponent>
+make_cycles_svm_surface_geometry_component();
 
 } // namespace psycles::luisa_backend::detail

@@ -87,6 +87,11 @@ UInt ClosurePool::count() const noexcept { return _count; }
 
 UInt ClosurePool::left() const noexcept { return _left; }
 
+void ClosurePool::reset() noexcept {
+  _count = 0u;
+  _left = static_cast<std::uint32_t>(_capacity);
+}
+
 ClosurePool::Allocation
 ClosurePool::allocate(Expr<std::uint32_t> closure_type,
                       Expr<luisa::float3> weight) noexcept {

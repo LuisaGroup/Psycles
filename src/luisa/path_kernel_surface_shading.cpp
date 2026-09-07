@@ -134,9 +134,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 surface.path_surface_query,
                 include_runtime_flags,
                 include_aov);
-        if (config.surface_program_execution_histogram_enabled) {
-          sample.record_surface_program_execution(surface_tag);
-        }
         if (config.surfaces.population) {
             std::optional<PathSurfaceAmbientOcclusionContext>
                 ambient_occlusion;
@@ -198,6 +195,18 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                                            surface.path_surface_query,
                                            include_runtime_flags,
                                            include_aov);
+        $if(bounce.subsurface_exit) {
+          path_flags &= ~cycles_path_state::flag_subsurface;
+        };
+        if (config.surface_program_execution_histogram_enabled) {
+          if (populated_surface) {
+            $if(populated_surface->material_evaluated()) {
+              sample.record_surface_program_execution(surface_tag);
+            };
+          } else {
+            sample.record_surface_program_execution(surface_tag);
+          }
+        }
         if (config.surface_closure_count_histogram_enabled) {
             UInt closure_count =
                 populated_surface
@@ -209,10 +218,10 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                           surface.path_surface_query.reflective_caustics,
                           surface.path_surface_query.refractive_caustics)
                           .count;
-            // A BSSRDF exit samples the synthetic one-closure local domain;
-            // the material population above is not the directional consumer.
-            closure_count = select(
-                closure_count, 1u, bounce.subsurface_exit);
+            if (!scene->native_cycles_svm_surface) {
+              closure_count = select(
+                  closure_count, 1u, bounce.subsurface_exit);
+            }
             sample.record_surface_closure_count(closure_count);
         }
         surface.set_evaluated_shadow_shading_normal(
@@ -374,10 +383,12 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         UInt cycles_surface_runtime_flags = 0u;
         if (next_event_estimation || path_trace_enabled) {
             cycles_surface_runtime_flags = preparation.runtime_flags;
-            cycles_surface_runtime_flags = select(
-                cycles_surface_runtime_flags,
-                SubsurfaceExitClosureComponent{}.runtime_flags(point),
-                bounce.subsurface_exit);
+            if (!scene->native_cycles_svm_surface) {
+              cycles_surface_runtime_flags = select(
+                  cycles_surface_runtime_flags,
+                  SubsurfaceExitClosureComponent{}.runtime_flags(point),
+                  bounce.subsurface_exit);
+            }
         }
         // This random tuple has no use in traversal or volume transport.
         // Materialize it only after the surface continuation resumes, at the
@@ -402,10 +413,12 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 0u,
                 surface.path_surface_query.reflective_caustics,
                 surface.path_surface_query.refractive_caustics);
-            $if(bounce.subsurface_exit) {
-                closure_summary = SubsurfaceExitClosureComponent{}.trace(
-                    point, surface.path_surface_query, 0u);
-            };
+            if (!scene->native_cycles_svm_surface) {
+              $if(bounce.subsurface_exit) {
+                  closure_summary = SubsurfaceExitClosureComponent{}.trace(
+                      point, surface.path_surface_query, 0u);
+              };
+            }
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::state_depth,
                               make_float3(cast<float>(path_step),
@@ -453,7 +466,10 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
             trace_write_event(
                 path_step,
                 path_trace_schema::EventSlot::surface_flags,
-                make_float3(trace_uint32(cycles_surface_runtime_flags).xy(),
+                make_float3(trace_uint32(
+                                scene->native_cycles_svm_surface && populated_surface
+                                    ? populated_surface->native_shader_data_flags()
+                                    : Expr<std::uint32_t>{cycles_surface_runtime_flags}).xy(),
                             0.0f));
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::surface_p,
@@ -489,12 +505,14 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                         closure_index,
                         surface.path_surface_query.reflective_caustics,
                         surface.path_surface_query.refractive_caustics);
-                $if(bounce.subsurface_exit) {
-                    closure = SubsurfaceExitClosureComponent{}.trace(
-                        point,
-                        surface.path_surface_query,
-                        closure_index);
-                };
+                if (!scene->native_cycles_svm_surface) {
+                  $if(bounce.subsurface_exit) {
+                      closure = SubsurfaceExitClosureComponent{}.trace(
+                          point,
+                          surface.path_surface_query,
+                          closure_index);
+                  };
+                }
                 $if(closure.valid) {
                     trace_write_closure(path_step,
                                         closure_index,

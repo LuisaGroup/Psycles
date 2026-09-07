@@ -47,8 +47,11 @@ public:
     const auto reflective_caustics = config.reflective_caustics;
     const auto refractive_caustics = config.refractive_caustics;
 
+    // Cycles camera_sample: shuttertime == -1 gives time 0.5 for the
+    // currently admitted non-motion production path.
     auto primitive =
-        _geometry->emit(scene, hit, ray, ray_dP, ray_dD, safe_normalize);
+        _geometry->emit(scene, hit, ray, ray_dP, ray_dD, 0.5f,
+                        kernel_parameters, safe_normalize);
     auto point = std::move(primitive.point);
     point.ray_visibility = shader_ray_visibility;
     point.ray_events = ray_events;
@@ -87,14 +90,16 @@ public:
         static_cast<std::uint32_t>(contract::event_transparent),
         terminate_after_transparent);
     Float3 subsurface_normal = point.shading_normal;
-    $if(bounce.subsurface_exit) {
-      subsurface_normal = invocation.surface_bssrdf_normal(
-          primitive.surface_tag,
-          point,
-          primitive.surface_has_bssrdf_bump,
-          path_reflective_caustics,
-          path_refractive_caustics);
-    };
+    if (!scene->native_cycles_svm_surface) {
+      $if(bounce.subsurface_exit) {
+        subsurface_normal = invocation.surface_bssrdf_normal(
+            primitive.surface_tag,
+            point,
+            primitive.surface_has_bssrdf_bump,
+            path_reflective_caustics,
+            path_refractive_caustics);
+      };
+    }
     SurfaceQuery path_surface_query{
         .lobe_mask = path_lobe_mask,
         .transport_mode = surface_query.transport_mode,

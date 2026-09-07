@@ -138,7 +138,7 @@ make_evaluate_shadow_surface_callable(
             Float ray_dP,
             Float ray_dD,
             Var<ShadowShaderContextCall> context,
-            Var<RenderKernelParameters>) noexcept {
+            Var<RenderKernelParameters> parameters) noexcept {
             Var<ShadowSurfaceEvaluationCall> result;
             if (!geometry) {
                 result->transmittance =
@@ -175,6 +175,8 @@ make_evaluate_shadow_surface_callable(
                 candidate_ray,
                 ray_dP,
                 ray_dD,
+                context.ray_time,
+                parameters,
                 safe_normalize);
             auto point = std::move(primitive.point);
             point.time = context.ray_time;

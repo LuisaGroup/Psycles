@@ -93,6 +93,11 @@ struct GeometryAttributeTableImage {
 
 [[nodiscard]] packed_normal pack_geometry_normal(packed_float3 normal) noexcept;
 
+// Blender stores packed object normals before Mesh::apply_transform. Baking
+// a transform must decode that stored value and pack the transformed result.
+[[nodiscard]] packed_normal pack_transformed_geometry_normal(
+    packed_float3 normal, const PackedTransform &normal_transform) noexcept;
+
 [[nodiscard]] GeometryAttributeTableImage build_geometry_attribute_table(
     const std::vector<GeometryAttributeInput> &geometries);
 
