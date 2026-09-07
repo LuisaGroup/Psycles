@@ -1,1017 +1,126 @@
-# Psycles validation record — 2026-07-29
+# Psycles validation index
 
-This record covers the renderer boundary on Psycles `main` and LuisaCompute
-`next@d57720955`. It records the commands, numeric results, real triptychs,
-original-resolution visual inspection, and known limitations for the AMD GPU
-bring-up, Cycles differential rendering, XIR control-flow repair, and
-multilayer OpenEXR output.
+Updated 2026-09-08. This is the current evidence index, not a cumulative
+roadmap. Older timing tables and legacy-executor claims have been removed
+from this page; their dated reports remain under docs/validation and in Git
+history.
 
-## Latest checkpoint
+## Current full-scene baseline
 
-The newest
-[Lone Monk five-way 1440x1080/256-spp checkpoint](docs/validation/2026-08-10/lone-monk-five-way-1440x1080-256/README.md)
-runs Cycles CPU/HIP and Psycles fallback/HIP/native-XIR Vulkan from the same
-raw-graph scene export. On the Ryzen 9 9950X3D, fallback renders in
-`142.7930 s` versus Cycles CPU's `72.1837 s`, a `1.9782x` gap. On the RX 9070
-XT, Psycles HIP renders in `58.0613 s` versus Cycles HIP's `19.3186 s`, a
-stable `3.0055x` gap; Vulkan takes `226.6200 s`, or `11.7306x` Cycles HIP.
-Psycles is not faster than Cycles yet. Combined relative RMSE is `1.34%` for
-fallback versus Cycles CPU, `1.71%` for HIP versus Cycles HIP, and `1.67%`
-for Vulkan versus Cycles HIP. All original-resolution Combined triptychs were
-inspected and show no backend-specific structured mismatch. The checkpoint
-retains exact commands, output hashes, full per-pass reports, and triptychs.
+The [four-scene HIP campaign](docs/validation/2026-09-08/four-scene-hip/README.md)
+completed **12 paired runs**, three per original scene, at fixed 256 spp.
+Psycles eaa7c72e / Luisa 9ea3b720f is compared against original Blender
+Cycles 5.2.1 LTS build 9e2066aef7ef on the RX 9070 XT. This baseline precedes
+the subsequent per-ShaderJump-entry specialization change; it must not be
+relabeled as a benchmark of later code.
 
-The preceding
-[post-population surface-closure ABI checkpoint](docs/validation/2026-08-10/surface-closure-point-abi/README.md)
-replaces the complete `SurfacePoint` argument of nested closure evaluation and
-sampling callables with an exact six-field semantic projection. Material graph
-population still receives all original coordinates, attributes, derivatives,
-and raw Cycles closure inputs. A 48-byte packed callable record and named flag
-bits are locked by fallback, HIP, and native XIR-to-SPIR-V Vulkan regressions.
-On the unchanged Lone Monk kernel, per-thread scratch falls 26.4% from 3,676 to
-2,704 bytes. Three warm 960x540/64-spp HIP samples have a 5.28907-second median,
-4.2--4.6% below the preceding checkpoint. Twelve of fifteen passes are
-byte-identical; Combined relative RMSE is `6.49595e-5`, p99 pixel RMSE is zero,
-and original-resolution triptychs show only isolated indirect-sample specks.
-The matched five-way matrix above establishes the current performance gap;
-the local ABI gain does not imply a Psycles-over-Cycles lead.
+Seconds below are medians. Cycles is its original main-loop wall interval;
+Psycles is render-only wall time. These are not whole render-call durations
+or summed profiled kernel times.
 
-The newest
-[sparse XIR restructure analyses checkpoint](docs/validation/2026-08-10/xir-restructure-sparse-analyses/README.md)
-value-numbers loop-boundary membership per immutable CFG, constructs the
-physical hierarchy with enter/merge events on the sparse immediate-dominator
-tree, replaces the final selection-by-block re-entry scan with exact
-dominance-frontier queries, carries enclosing loops as persistent contexts,
-and solves all loop-boundary arm classifications with block value numbering
-plus sparse reverse-CFG dataflow. The follow-ups through Luisa
-`next@8c6951520` replace DCE's repeated whole-function least-fixed-point scan
-with an
-equivalent linear reverse-use worklist, then replace the remaining per-arm
-loop-boundary merge searches with versioned sparse dataflow and explicitly
-invalidated rewrite batches. The newest follow-up eliminates per-If dominator
-rebuilds with an exact immutable-tree overlay: transparent merge subdivisions
-carry nearest-common-dominator anchors, while dynamic merge inference still
-observes the mutated graph. Selection-merge inference now also value-numbers
-blocks once per batch, carries enclosing loops as persistent dominator-tree
-contexts, and reuses dense epoch arrays for shortest reachability. All 48
-XIR tests and 92 Vulkan native-codegen runtime tests pass. On the unchanged
-Lone Monk module, raw/optimized SPIR-V remain 1,431,985/1,116,158 words and
-the compile-smoke output is byte-identical. DCE aggregate time falls 4.72x
-from `14.182 s` to `3.004 s`, XIR legalization falls another 24.0% to
-`33.540 s`, and native AST-to-SPIR-V falls another 17.7% to `47.533 s`.
-The merge canonicalizer then falls 67.8x from `5.706 s` to `0.084 s`, taking
-`restructure_cfg` to `12.737 s`, XIR legalization to `27.515 s`, and native
-AST-to-SPIR-V to `41.046 s`. Eliminating 1,723 redundant dominator rebuilds
-then takes `try_restructure_if_batch` from `7.930 s` to `2.091 s` (3.79x),
-`restructure_cfg` to `6.826 s`, XIR legalization to `21.587 s`, and native
-AST-to-SPIR-V to `35.714 s`, again with identical SPIR-V and output.
-The dense merge workspace then takes the if batch to `0.299 s` (another
-6.99x), `restructure_cfg` to `5.191 s`, XIR legalization to `20.334 s`, and
-native AST-to-SPIR-V to `33.752 s`, still with byte-identical output.
-Versioning ownership and dominance across read-only loop-continue sites then
-takes continue normalization from `1.531 s` to `0.552 s`, `restructure_cfg`
-to `4.053 s`, XIR legalization to `18.883 s`, and native AST-to-SPIR-V to
-`32.691 s`, again without changing SPIR-V or output.
-The latest selection-exit stage defers unobserved post-dominator refreshes to
-the fixed-point boundary, restricts each loop dataflow to its successor-closed
-active region, and uses dependency-local site invalidation for one-target
-funnels. Selection-exit drain falls from `0.726 s` to about `0.408 s`, its
-relation construction falls from about `0.282 s` to `0.069 s`, and
-`restructure_cfg` reaches `3.555 s`. All 48 XIR and 92 native Vulkan tests
-still pass; SPIR-V sizes and the output SHA-256 remain identical.
-The newest dense post-dominator stage value-numbers each immutable CFG once,
-stores both graph directions as sparse CSR, and solves immediate dominance on
-the sink-reachable reversed graph using only dense RPO IDs. Aggregate
-post-dominator time falls 3.73x from `0.649 s` to `0.174 s` across the same
-229 calls; `restructure_cfg` reaches `3.036 s`, XIR legalization `17.722 s`,
-and native AST-to-SPIR-V `31.228 s`. The system-STL gates, all 48 XIR tests,
-and all 92 native Vulkan tests pass, with identical SPIR-V and byte-identical
-output.
-Profiling then attributes 90.4% of loop-continue normalization to 129 complete
-dominator rebuilds, not to its region walk. Intermediate mutation versions now
-rebuild exact idom ancestry but defer the unobserved dominance frontier to the
-final tree retained by each batch. Loop-continue falls from `0.520 s` to
-`0.356 s`, `restructure_cfg` to `2.877 s`, and native AST-to-SPIR-V to
-`30.921 s`; 129 invalidations still cause 129 ancestry rebuilds but only eight
-frontier materializations. The output and SPIR-V remain identical.
-The current dense-dominator follow-up retains the historical reachable domain
-but value-numbers it once, stores predecessors as sparse CSR, and performs the
-CHK fixed point entirely on RPO IDs. Loop-continue ancestry falls from
-`319.951 ms` to `230.078 ms` (-28.1%) and `restructure_cfg` from `3.056 s` to
-`2.745 s` (-10.2%). The 129 rebuilds converge in exactly 258 passes over
-645,720 numbered blocks and 807,853 edges. Full XIR, system-STL, and native
-Vulkan gates pass; raw/optimized SPIR-V and the output remain identical.
-The selection-exit drain now batches SSA transport at its final CFG fixed
-point. This is exact because intervening drain queries inspect graph structure
-but never instruction operands, while state dispatch preserves each original
-dynamic successor. Nine logical repair requests therefore require one
-physical repair. Site scanning falls from `307.857 ms` to `58.156 ms`
-(-81.1%), the drain from `392.109 ms` to `163.168 ms` (-58.4%),
-`restructure_cfg` to `2.428 s`, XIR legalization to `17.201 s`, and native
-AST-to-SPIR-V to `30.399 s`. Full XIR, system-STL, and native Vulkan gates
-pass; both SPIR-V modules and the output remain byte-identical.
-Selection-merge scoring now enumerates only the query's aggregate support,
-and its enclosing-selection fallback walks exactly the header's dominator
-ancestors. Dense block IDs preserve the prior tie order. On Lone Monk,
-`try_restructure_if_batch` falls from `271.223 ms` to `101.746 ms` (-62.5%)
-and `restructure_cfg` to `2.271 s`. All gates pass and both SPIR-V modules and
-the PPM remain byte-identical.
-Against the earlier complete
-run, `drain_selection_exits` falls 18.30x to `0.723 s`, `restructure_cfg`
-falls 49.0% to `17.945 s`, native AST-to-SPIR-V falls 23.9% to `57.766 s`,
-and peak RSS falls 82.4% to `1,654,768 KiB`. The observed complete JIT hit the
-RADV disk cache, so its `57.933 s` wall is recorded but not attributed to the
-compiler change. The DCE follow-up retriggered an `84.119 s` RADV compile, so
-its total wall and process RSS are likewise separated from compiler-boundary
-comparisons. The former merge-inference hotspot is now only part of a
-`0.286 s` if batch, and dense post-dominance is no longer a primary perf
-hotspot. If-batch is now `0.102 s` and selection-exit drain `0.162 s`; the
-next measured restructure target is `0.269 s` loop-continue normalization,
-including `0.219 s` of exact dominance rebuilding.
+| Scene | Extent / seed | Cycles HIP | Psycles HIP | Psycles / Cycles |
+| --- | --- | ---: | ---: | ---: |
+| Lone Monk | 1440x1080 / 0 | 13.4183 | 13.9693 | 1.0411 |
+| Monster | 1080x1080 / 0 | 14.4289 | 15.2304 | 1.0555 |
+| Classroom | 1920x1080 / 1 | 20.7624 | 18.8207 | 0.9065 |
+| Barbershop | 2048x858 / 0 | 28.7312 | 41.0285 | 1.4280 |
 
-The preceding
-[sparse XIR verifier dominance checkpoint](docs/validation/2026-08-10/xir-verifier-sparse-dominance/README.md)
-replaces the verifier's quadratic all-dominator sets with block value
-numbering, sparse predecessor CSR, one immediate-dominator parent per block,
-and ancestry-interval queries. The 6,145-block structural regression proves
-`V - 1` tree storage; malformed cross-function edges remain diagnosed and are
-excluded from the numbered CFG. All 48 XIR tests and 92 Vulkan native-codegen
-runtime tests pass. On the unchanged 37-material Lone Monk kernel, with
-identical 1,431,985/1,116,158-word raw/optimized SPIR-V, cache-cold Vulkan JIT
-falls 3.15x from `569.378 s` to `180.533 s`. Handoff verification is now
-`1.009 s`; the remaining `53.138 s` restructure cost is independently traced
-to repeated post-fixed-point graph scans, and RADV pipeline creation remains
-`86.780 s`.
+Only Classroom is faster in this campaign. Main JIT medians are
+18.8151 / 22.3434 / 18.1598 / 27.4798 s respectively, with main shader
+caching disabled and auxiliary/OS caches retaining normal policy.
+Coroutine frames are 220 / 284 / 264 / 416 B. Cycles loads precompiled
+kernels; these JIT observations are not a symmetric compiler comparison.
 
-The newest
-[Monster BSSRDF exit-normal checkpoint](docs/validation/2026-08-07/monster-bssrdf-exit-normal/README.md)
-implements Cycles' exact retained-BSSRDF normal reduction for the synthetic
-unit Lambert at a subsurface exit. A real Monster path now agrees through the
-weighted exit normal, cosine-hemisphere sample, and following
-object/primitive. At 960x960x512, Combined relative RMSE falls 1.69x from
-`0.082721` to `0.048905`, Diffuse Direct falls 1.89x, and Combined mean
-luminance becomes `1.003553x` Cycles. Current `main@8b688ec` further restricts
-the exit callable from the real-BSSRDF superset to Cycles' exact
-`SD_HAS_BSSRDF_BUMP` predicate. It models immediate Normal-parent topology,
-BUMP/BOTH displacement policy, direct Thin Wall semantics, and per-real-
-BSSRDF closure attribution without baking a closure or device expression.
-Monster's unbumped child-skin material now skips exit graph evaluation while
-the linked-normal monster material remains. Total cache-cold HIP JIT falls
-another 2.12% to `126.944 s`, 5.38% below the unfiltered callable; the
-96.676-second HIP bitcode link remains dominant. The current warm render is
-`137.286 s`, or `5.172x` Cycles HIP, so no runtime speedup is claimed. Combined
-relative RMSE remains `0.04890434`; two new original-resolution triptychs were
-inspected and the complete 218/218 gate passes. Full Principled Thin Wall
-closure evaluation remains an explicit, unexercised runtime gap.
+All 46 Psycles channels are finite in all 12 images, and all 15 comparison
+passes completed. Combined relative RMSE is approximately
+1.241% / 0.548% / 0.353% / 1.080%; DiffInd remains
+12.881% / 2.553% / 17.820% / 7.451%. These residuals remain correctness
+work, not a noise-based exemption. Original Cycles Classroom contains
+25 non-finite DiffDir and 27 non-finite GlossDir pixels in every pair;
+affected metrics exclude the union of invalid pixels explicitly.
 
-The newest
-[Lone Monk background-Sun checkpoint](docs/validation/2026-08-07/lone-monk-background-sun-sampling/README.md)
-aligns Cycles' deterministic concentric-disk cone mapping, canonical
-orthonormal frame, small-angle cone measure, and stable forward-PDF membership
-for guided Nishita sampling. At the real film `(491, 221)`, sample-zero event,
-the direction error falls from `0.776416` degrees to one float32 ULP and sky
-radiance error falls from 23.21% to 0.0283%. At 960x720x512, Combined relative
-RMSE falls from `0.015995` to `0.012203` and Diffuse Direct relative RMSE falls
-1.83x. Render-only HIP time remains `82.336 s`, or `4.666x` slower than Cycles
-HIP on the same RX 9070 XT. All 215 tests pass, including the real-oracle
-fallback/HIP/Vulkan regression; numeric reports and three original-resolution
-triptychs are retained.
+The campaign report retains exact commands, cache policy, ranges, manifests,
+build/device and source/export/output hashes, all pass metrics, and the
+location of original-resolution EXRs and reviewed triptychs. Native fast
+math is enabled. No profiler or concurrent build/render overlapped these
+performance runs. Use the [schema-v2 runner](docs/scene-benchmark.md);
+schema-v1 Cycles whole-call ratios are not comparable.
 
-The preceding
-[Lone Monk muted-node checkpoint](docs/validation/2026-08-07/lone-monk-muted-node-bypass/README.md)
-proves that the stable book-page residual was lost Blender/Cycles graph
-topology, not a transform or UV defect. The source `paper - page / Mix.001`
-is muted and must become its runtime `A_Color -> Result_Color` internal link.
-The generic exporter/normalizer rule reduces 960x720x512 Diffuse Color RMSE
-20.52x to `0.00020008`; exact closure-weight error falls from 20--24% to about
-0.1%. Cycles CPU/HIP and Psycles fallback/HIP/Vulkan then all complete a fresh
-960x720x128 matrix, with Psycles Diffuse Color relative RMSE
-`0.001106--0.001160` and no invalid pixels. The full 32-job build and 215/215
-tests pass. Numeric reports and original-resolution before/after plus
-cross-backend triptychs are retained.
+## Published compiler and backend gate
 
-The preceding
-[2026-08-07 current-head Lone Monk checkpoint](docs/validation/2026-08-07/lone-monk-current-head/README.md)
-first established five-way 960x720x128 completion and structurally aligned
-grass coverage. The refreshed matrix now measures Psycles HIP Combined
-relative RMSE `0.026161` and a `1.001226` mean-luminance ratio. This remains
-short of a final indirect-transport parity claim. Render-only fallback, HIP,
-and Vulkan are respectively `10.06x` slower than Cycles CPU, `4.10x` slower
-than Cycles HIP, and `103.61x` slower than Cycles HIP. The new cold Vulkan JIT
-is 19.75 minutes; about 243 seconds end at optimized SPIR-V and roughly 942
-seconds remain in RADV NIR/ACO lowering.
+The [read-only-reference checkpoint](docs/validation/2026-09-08/coro-readonly-forwarding/README.md)
+records the complete suites for Psycles 2d89cf1d / Luisa 9ea3b720f. The later
+eaa7c72e change corrects benchmark timing/resume contracts, with 22 Python
+tests and its focused CTest passing; it does not change renderer code.
 
-The accompanying
-[Monster Under the Bed checkpoint](docs/validation/2026-08-07/monster-current-head/README.md)
-records five-way 960x960x128 completion, the formal fallback committed-hit
-kind and Vulkan dispatch-bound fixes, and the independent Principled Coat
-Normal correction. Monster is structurally improved but remains at `0.156101`
-Combined relative RMSE after the semantic fix, so it is still an active
-higher-spp transport-alignment target.
+| Gate | Result | Qualification |
+| --- | --- | --- |
+| Full Psycles and Luisa builds | Passed | All 32 hardware threads |
+| Psycles HIP | 177/177 | Correctness suite, not performance timing |
+| Psycles fallback | 178/179 | Existing sample-dispatch film light_ng.z mismatch |
+| Psycles host | 152/153 | Existing four source-size violations |
+| Luisa registered non-device-specialized tests | 140/140 | Includes 69 XIR/coroutine tests |
+| Strict native Vulkan focused Psycles tests | 5/5 | XIR -> SPIR-V, DXC disabled |
+| New read-only coroutine runtime oracle | 1031 assertions per backend | HIP, fallback and strict native Vulkan |
+| Existing ordinary coroutine initialization | 22 tests / 306 assertions | HIP and fallback retain default-zero semantics |
 
-The earlier
-[2026-08-02 Apple Classroom and Lone Monk checkpoint](docs/validation/2026-08-02/apple-classroom-lone-monk/README.md)
-brings up strict Luisa fallback and Metal builds on an M1 Max, records 69/69
-passing tests, and renders both official scenes from their raw Blender graphs.
-It fixes Classroom's legacy Hosek-Wilkie daylight portal without scene-side
-scaling and replaces the magenta missing-material sentinel on deliberately
-empty window-frame slots with Cycles' default Principled surface. Combined
-mean luminance changes from `2.005238x` to `1.009643x` Cycles, and the focused
-raw-sky probe agrees within `0.029%` on both Psycles backends. The checkpoint
-includes exact asset hashes, commands, full pass reports, timings, and
-inspected triptychs. It is a development checkpoint; Classroom's Wave Texture
-and Glass closures remain explicitly tracked.
+The fallback mismatch is expected 0xbf1f8bfd versus actual 0xbf1f8a50.
+It has not been hidden by a tolerance change or slow arithmetic. The four
+source-size violations are cycles_svm_nodes.cpp, test_cycles_svm_compiler.cpp,
+test_luisa_compact_surface_preparation.cpp and test_luisa_cycles_svm.cpp.
+Do not describe these full suites as entirely green or relax their limits
+to manufacture a pass.
 
-The historical
-[2026-08-01 Lone Monk Principled physical-closure validation](docs/validation/2026-08-01/lone-monk-principled-physical-closures/README.md)
-records the full Cycles CPU/HIP and Psycles fallback/HIP/Vulkan matrix after
-expanding Principled into Cycles physical closures. At 640x480 and 64 fixed
-samples, Psycles HIP Combined relative RMSE is `0.084969`, MAE is `0.029320`,
-and render time is 16.4% slower than Cycles HIP on the same RX 9070 XT. That
-checkpoint includes pass reports, original-resolution visual inspection,
-triptychs, and cold HIP/Vulkan compilation diagnosis. It remains an
-intermediate parity checkpoint rather than a replacement for the high-sample
-1080p validation below.
+The native Vulkan loader audit records native SPIR-V compilation without
+loading DXC/DXIL. A separate initial CUDA-interop loader failure is preserved;
+only that local build's CUDA-interop option was disabled. No system package
+or toolchain changes were made.
 
-The accompanying
-[Vulkan CFG disposable-compilation checkpoint](docs/validation/2026-08-01/vulkan-cfg-disposable-compile/README.md)
-pins Luisa `next@5018c341f`, preserves the default transactional XIR contract,
-and uses the explicit disposable-module policy only for fresh SPIR-V
-legalization input. On the exact Lone Monk production kernel this reduces
-`restructure-cfg` from 34.336 s to 17.684 s and complete native AST-to-SPIR-V
-from 75.477 s to 58.759 s. The generated SPIR-V and linear Combined pixels are
-byte-identical; the committed zero-difference triptych was inspected at
-original resolution.
+## Native semantic and scheduling evidence
 
-## Verdict
+These are scoped checkpoints, not interchangeable full-render certificates.
 
-- Psycles configures and builds the Luisa fallback, HIP, and Vulkan backends
-  together. All three requested backend targets are strict CMake
-  postconditions rather than optional best-effort features.
-- The complete Psycles gate passes 13/13 after a 32-job build.
-- Luisa's focused `restructure_cfg` gate passes 51/51 tests and 1013
-  assertions. All 21 structural SPIR-V tests pass, and the RX 9070 XT Vulkan
-  runtime gate passes 86/86 tests / 2029 assertions. The current complete
-  CTest gate passes 115/116; the sole failure is the pre-existing EASTL
-  `fixed_vector` allocation contract described below.
-- Vulkan and HIP both render the focused flat-light scene on the Radeon RX
-  9070 XT. Vulkan also passes the two transparent-closure probes.
-- Psycles now writes one full-float multilayer OpenEXR with
-  `ViewLayer.<pass>.<component>` channel names. The end-to-end comparison reads
-  Cycles EXR and Psycles EXR directly. Both files identify their RGB values as
-  `lin_rec709_scene`.
-- The Lone Monk `column marble` blocker is repaired without changing its raw
-  closure graph: whole-scene attribute metadata is now device data rather than
-  host-recorded shader control flow.
-- A module-wide SPIR-V argument-layout ordering defect exposed by outlined
-  read-only resource callables is repaired and covered by a red/green Vulkan
-  subview regression. The complete 35-material Lone Monk export now reaches a
-  strict-native Vulkan first pixel from an empty shader cache.
-- The current matched Lone Monk gate is complete at 1440×1080, 256 fixed spp,
-  seed zero, using locally built Blender/Cycles 5.3 Alpha
-  `main@4fe17ef6`. Cycles HIP and Psycles Vulkan both selected the RX 9070
-  XT. Combined RMSE is `0.216918692`, relative RMSE `0.135484421`, and all
-  13 compared passes have zero invalid pixels.
-- A monolithic 256-spp Vulkan dispatch first triggered the AMDGPU watchdog.
-  Psycles now uses a formally exact ordered partition with at most 8 spp per
-  synchronized dispatch. Luisa Release builds now reject every non-success
-  Vulkan result instead of silently discarding device loss.
-- The focused Cycles/Psycles images are visually coincident at normal display
-  scale. The committed focused and Lone Monk triptychs include independently
-  amplified absolute differences and were inspected at original resolution.
+| Contract | Original-source / regression evidence |
+| --- | --- |
+| Default native SVM, geometry, curve and light state | [Native default](docs/validation/2026-09-07/native-default/README.md), [surface state](docs/validation/2026-09-07/native-surface-state/README.md) |
+| Omitted node cases, feature guards and static array bounds | [Static pruning](docs/validation/2026-09-07/native-static-pruning/README.md), [scene-local extents](docs/validation/2026-09-07/scene-local-extents/README.md), [closure budget](docs/validation/2026-09-07/native-closure-budget/README.md) |
+| Native volume words, ordered stack and consumers | [Volume SVM](docs/validation/2026-09-07/native-volume-svm/README.md), [volume consumers](docs/validation/2026-09-08/native-volume-consumers/README.md) |
+| World/background and camera-dependent baking | [Native background](docs/validation/2026-09-08/native-background/README.md) |
+| Scene admission, attribute residency and deferred volume emission | [Native admission](docs/validation/2026-09-08/native-scene-admission/README.md) |
+| Assigned-but-failed images | [Missing-image state](docs/validation/2026-09-08/native-missing-image/README.md) |
+| Shared surface/volume closure weights | [Original full words and GPU allocator state](docs/validation/2026-09-08/shared-closure-weights/README.md) |
+| Local lifetime, generic scheduler policy and subsurface continuation | [Luisa publication](docs/validation/2026-09-07/luisa-local-coro-publication/README.md), [coroutine boundaries](docs/validation/2026-09-07/coroutine-boundaries/README.md), [surface-sort handler](docs/validation/2026-09-07/surface-sort-handler/README.md) |
+| Sampler properties and same-path diagnosis | [Sampler contract](docs/validation/2026-09-07/sampler-contract/README.md), [Monk residual](docs/validation/2026-09-07/lone-monk-residual/README.md) |
 
-This is not a claim of complete Cycles compatibility. At 1440×1080/256 spp,
-Lone Monk's Combined relative RMSE remains `0.1355`; diffuse and glossy
-indirect mean luminance remain about 8.63% and 6.07% low. Psycles render-only
-throughput is currently `0.7295×` current Cycles on the same GPU, or
-`1.3708×` slower. The high-sample pass evidence now replaces the former
-pending 1080p gate and defines the next transport-alignment work.
+The repaired Barbershop shared closure matches the first four surface events
+and all 45 sampled random fields at the diagnosed pixel. A later NEE event
+still selects an adjacent emitter triangle. Monk retains the original
+coincident leaf geometry and a visibility divergence. Neither observation
+establishes global RNG/path parity or permits deduplication and bit-matching
+intersection emulation.
 
-## Reference policy
+## Reproduction and completion gates
 
-Cycles is the only rendering and sampling oracle. The validation path is:
-
-1. create or open the Blender scene;
-2. render the requested linear passes with Cycles;
-3. export geometry, settings, and the original node/closure graph;
-4. compile and execute that graph through the Luisa DSL/JIT;
-5. compare the Cycles and Psycles linear EXR channels numerically and
-   visually.
-
-There is no CPU reference renderer, CPU sampler, or host-side BSDF/light/MIS
-oracle in this workflow. Blender/Cycles is not used to pre-bake materials.
-Host code only normalizes immutable scene data and preserves the original
-closure topology and socket values for Luisa execution.
-
-## Revisions and machine
-
-| Item | Validated value |
-|---|---|
-| Psycles renderer implementation | `dcb96e3` on published `main` |
-| Psycles input boundary | `32d4217dc543b1778729f23a18f3f3143e001a24` |
-| LuisaCompute | `d57720955` on published `next` |
-| Cycles source inspected | clean Blender `main@4fe17ef6be5d46251fa5e7dbff9018efb1c719d5`, fetched 2026-07-29 |
-| Current Cycles render executable | locally built Blender 5.3.0 Alpha Release, hash `4fe17ef6be5d`, built 2026-07-29 |
-| Historical 640×480 executable | Blender 5.2.0 LTS, build hash `fbe6228777e7`, built 2026-07-15 |
-| OS/kernel | Arch Linux, Linux `7.1.4-zen1-1-zen` |
-| CPU/build concurrency | Ryzen 9 9950X3D, 16 cores / 32 threads; build and CTest use 32 jobs |
-| GPU | AMD Radeon RX 9070 XT, Navi 48 / `gfx1201` |
-| Vulkan | instance 1.4.350; RADV device API 1.4.354; Mesa 26.1.5 |
-| HIP | ROCm HIP runtime 7.2.4; HIP reports 7.2.53211 |
-| Compiler/build tools | GCC 16.1.1, CMake 4.4.0, Ninja 1.13.2 |
-| Fallback dependencies | LLVM 22.1.8, Embree 4.4.1 |
-| Image dependencies | OpenImageIO 3.1.12.1, OpenEXR 3.4.13, NumPy 2.5.1, Pillow 12.3.0 |
-
-The committed 1440×1080 pixels come from the locally built current checkout.
-The older 640×480 section remains explicitly labeled as a packaged Blender
-5.2.0 historical baseline and is not presented as current-`main` output.
-
-## Configure, build, and unit checks
-
-The exact three-backend release configuration was:
+Use the designated worktree and nested Luisa submodule, inspect both Git
+states, and preserve unrelated changes. Build with all hardware threads.
+Validate HIP first, then fallback; native Vulkan canaries require all three:
 
 ```bash
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DPSYCLES_ENABLE_LUISA_FALLBACK=ON \
-  -DPSYCLES_ENABLE_LUISA_HIP=ON \
-  -DPSYCLES_ENABLE_LUISA_VULKAN=ON \
-  -DPSYCLES_ENABLE_OPENIMAGEIO=ON \
-  -DLLVM_DIR=/usr/lib/cmake/llvm \
-  -Dembree_DIR=/usr/lib/cmake/embree-4.4.1
-cmake --build build --parallel 32
-ctest --test-dir build --output-on-failure -j32
+LUISA_VULKAN_USE_XIR=1 \
+LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
+LUISA_VULKAN_DISABLE_DXC=1 \
+ctest --test-dir build --output-on-failure -j32 -R '<focused-native-Vulkan-tests>'
 ```
 
-The generated cache contains all four requested feature flags and all three
-Luisa backend flags as `ON`. CMake reported the HIP 7.2.53211, Vulkan, and
-LLVM 22.1.8 / Embree 4.4.1 fallback backends. The final Psycles result was
-12/12 tests passing in 0.42 seconds.
-
-The `psycles.openexr` regression writes Combined RGBA and Normal XYZ, reopens
-the file through OpenImageIO, checks the seven Cycles-compatible channel
-names, verifies `oiio:ColorSpace` and `colorInteropID` are both
-`lin_rec709_scene`, and compares every float value exactly. This prevents the
-unstable `scene_linear` OCIO role from relabeling Rec.709 pixels as ACEScg.
-The Blender 4.5/5.2 multilayer-EXR API compatibility regression is also part
-of the 12-test gate.
-
-## Luisa XIR repair
-
-The repair is expressed in control-flow and ownership invariants rather than
-scene-specific pattern patches:
-
-- a block belongs to a structured loop region only when it is reachable
-  within the region and dominated by the loop entry;
-- nested Loop, SimpleLoop, and Switch constructs are atomic break scopes
-  during parent-loop boundary traversal;
-- for a non-trivial old loop-update region `R`, with old update `U`, prepare
-  `P`, merge `M`, and canonical update trampoline `U'`, the semantics are:
-
-  ```text
-  Continue(source outside R -> U) => Branch(source -> U)
-  Continue(source inside  R -> U) => Continue(source -> U')
-  U'                              => Branch(U' -> P)
-  ```
-
-  This preserves execution of state updates and early Break paths in `R`;
-  redirecting all continues to `U'` would incorrectly bypass them.
-- a selection arm re-entered after its merge is node-split at the declared
-  merge frontier, making the new entry explicit instead of repeatedly wrapping
-  an invalid multi-entry construct;
-- opaque ray-query state is affine. When node splitting duplicates a mutually
-  exclusive initializer, its alloca is cloned and all cloned uses are remapped
-  to the new storage;
-- disconnected predecessors are excluded consistently from executable-CFG
-  construct legality.
-- an if-restructuring batch processes its entire stable candidate snapshot.
-  Every successful rewrite strictly reduces the raw conditional count and
-  creates no raw conditional, so progress is monotonic rather than one
-  graph-wide walk per branch;
-- for every emitted selection `(H, M)`, no edge may leave the region dominated
-  by `M` and re-enter the `H`-dominated interior before `M`. Merge inference
-  ranks ordinary common joins first and an enclosing loop-boundary convergence
-  proxy second.
-
-The relevant published Luisa commits are:
-
-| Commit | Result |
-|---|---|
-| `6ead8e714` | backend resource paths work when Luisa is built as a subdirectory |
-| `83a04feb8` | preserve CFG and SSA invariants during restructuring |
-| `f83725d27` | preserve executable semantics for update regions, re-entry, affine state, and disconnected edges |
-| `0e6f4376e` | make conditional batching monotonic, verify selection merge frontiers, and add opt-in pass tracing |
-| `5cf0c548d` | preserve declared loop merge boundaries |
-| `30602e640` | preserve uniquely rooted read-only resource callables instead of duplicating them into the kernel |
-| `eb167454a` | freeze the module argument layout before callable emission and add the nonzero-subview ABI regression |
-| `d57720955` | check every Vulkan result in Release builds and add a forced-`NDEBUG` device-loss regression |
-
-The focused and complete commands were:
-
-```bash
-./build/luisa-tests/bin/test_xir_pass_restructure_cfg
-ctest --test-dir build/luisa-tests --output-on-failure -j32
-```
-
-The focused binary passes 51 tests / 1013 assertions. With the current
-expanded build, the complete suite passes 115/116. `test_eastl_allocation`
-fails eight assertions concerning EASTL `fixed_vector` max-size and
-move/overflow buffer ownership. It reproduces when run alone and is outside
-the XIR/SPIR-V files changed by these commits; it is recorded as an existing
-dependency/toolchain baseline failure, not hidden or counted as passing.
-
-## Vulkan reset diagnosis and formal specialization
-
-Before specialization, the opaque flat-light scene generated about 130,021
-SPIR-V words, 16 loops, and 6340 Phi nodes; XIR legalization took about 3.2
-seconds and RADV reported a guilty device reset. Diagnostic removal of
-material evaluation in the transparent-shadow callback reduced the shader,
-showing that the failure scaled with closure dispatch rather than scene
-geometry or the light distribution.
-
-The final fix keeps the original closure graphs and specializes only on the
-static capability `may_be_transparent`: the
-`transparent_extinction` dispatch table contains exactly the surface programs
-that may contribute transparent extinction. Provably opaque programs are not
-recorded into that callable. A regression uses host recording counters to
-prove that an opaque surface is recorded zero times and a transparent surface
-exactly once.
-
-The final opaque shader is 61,528 SPIR-V words. It no longer resets RADV and
-still uses the same material programs for all non-transparent operations.
-This is JIT dead-dispatch elimination from a semantic capability, not closure
-pre-baking or a value approximation.
-
-## Render process
-
-Canonical scene performance runs use the fixed Cycles CPU/HIP plus
-Psycles-Luisa fallback/HIP/Vulkan matrix documented in
-[docs/scene-benchmark.md](docs/scene-benchmark.md). The five entries share
-the same source scene, final-render export, seed, extent, and fixed sample
-count. Fallback is always retained in the report, including when it is slower
-than the GPU paths.
-
-The first completed five-renderer Lone Monk result, including cold-stage
-timings, all numeric reports, original-resolution inspection, and committed
-triptychs, is in
-[docs/validation/2026-07-30/lone-monk-five-way](docs/validation/2026-07-30/lone-monk-five-way/).
-
-The focused probe command was:
-
-```bash
-python3 tools/run_cycles_shader_probes.py \
-  --blender /usr/bin/blender \
-  --psycles-render build/bin/psycles_render_blender_scene \
-  --output-dir /tmp/psycles-exr-validation-20260729 \
-  --backend vk \
-  --width 64 --height 64 --samples 256 \
-  flat_light_distribution \
-  transparent_mix \
-  transparent_data_pass
-```
-
-For each probe the runner created the `.blend`, rendered a Cycles multilayer
-EXR, exported the raw scene and node graphs, rendered with Luisa/Vulkan,
-wrote a Psycles multilayer EXR, compared all requested named channels, and
-generated triptychs. Blender is launched with `--python-exit-code 1`, so a
-Python-side failure cannot be mistaken for a passing process.
-
-The Cycles reference script also accepts an explicit compute backend and
-device-name filter. Before beginning the full-scene gate, both selection paths
-were exercised at 16×16/1 spp:
-
-```bash
-/usr/bin/blender flat_light_distribution.blend --background \
-  --python-exit-code 1 --python tools/render_cycles_golden.py -- \
-  cpu.exr 16 16 1 0 --cycles-device CPU
-
-/usr/bin/blender flat_light_distribution.blend --background \
-  --python-exit-code 1 --python tools/render_cycles_golden.py -- \
-  hip.exr 16 16 1 0 --cycles-device HIP \
-  --device-name "Radeon RX 9070 XT"
-```
-
-The CPU metadata contains only
-`CPU: AMD Ryzen 9 9950X3D 16-Core Processor`. The HIP metadata contains only
-`HIP: AMD Radeon RX 9070 XT`, device id
-`HIP_AMD Radeon RX 9070 XT_0000:03:00`, while `scene.cycles.device` is `GPU`.
-This explicit device inventory is recorded beside every future golden EXR so
-that a silent CPU fallback cannot be reported as a same-device comparison.
-
-The flat distribution follows the current Cycles flat-light construction:
-world-space emissive-triangle area weighting, uniform analytic/background
-lamp probability, and a 50/50 class split when triangles and lamps both
-exist. Selection and PDF lookup use one uploaded CDF and one Luisa upper-bound
-callable. Material emission-sampling metadata and world-sampling metadata are
-imported with the original material graphs.
-
-## Lone Monk full-scene bring-up
-
-The first complex-scene input is
-`lone-monk_cycles_and_exposure-node_demo.blend`, SHA-256
-`4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7`.
-Blender 5.2 reads scene `daylight`, frame 4, camera `cam.001`. Its original
-configuration is 1440×1080 at 4096 samples with adaptive sampling and
-denoising enabled. Differential runs will disable the latter two features and
-use one identical fixed sample count.
-
-The raw export command was:
-
-```bash
-/usr/bin/blender \
-  /home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend \
-  --background --python-exit-code 1 \
-  --python tools/export_psycles_scene.py -- \
-  /tmp/lone-monk-20260729/export
-```
-
-It completed in 24.85 seconds and produced 350 geometries, 7,543 evaluated
-instances, 35 original material graphs, and 47 images. `geometry.bin` is
-450,966,096 bytes and `scene.json` is 10,834,008 bytes. The largest material
-has 38 nodes. The set includes 32 Principled nodes and real combinations of
-Image Texture, Noise, Mapping, Mix, Color Ramp, Bump, Normal Map, Light Path,
-Transparent, Glossy, and Translucent nodes. Geometry/modifier/particle
-evaluation is permitted; material closure evaluation remains in Luisa and is
-not pre-baked by Blender or Cycles.
-
-The first 64×48/1 spp Vulkan smoke used the default optimization and persistent
-shader-cache settings. The auxiliary shader compiled, Vulkan selected
-`AMD Radeon RX 9070 XT (RADV GFX1201)`, and the scene allocated about 5.0 GiB
-VRAM. The main render kernel did not produce a cache entry or first pixel
-within 1,245.51 seconds and was deliberately interrupted at the documented
-20-minute bound. It consumed about 198% CPU and was sampled at 9,749,995,520
-bytes RSS.
-
-A diagnostic Vulkan run set:
-
-```bash
-LUISA_XIR_DISABLE_OPTIMIZATION=1
-LUISA_SPIRV_OPT_LEVEL=0
-```
-
-The auxiliary SPIR-V changed from 11,221 optimized words to 14,927
-unoptimized words, proving the switches took effect. The main kernel retained
-the same approximately two-thread, multi-gigabyte code-generation profile and
-did not reach a cache artifact or first pixel in 311.18 seconds. This narrows
-the dominant cost to the giant render-kernel code-generation boundary rather
-than an optional XIR or SPIR-V optimization pass alone.
-
-The equivalent HIP smoke selected the RX 9070 XT through HIP 7.2.53211.
-HIPRT then remained in acceleration-structure construction for 622.45 seconds
-at 100% observed GPU utilization and about 5.5 GiB VRAM, without reaching the
-main render-kernel JIT. It was interrupted at the documented ten-minute bound.
-HIP acceleration-structure construction and Vulkan monolithic-kernel JIT are
-therefore recorded as separate engineering issues.
-
-Opt-in XIR tracing then reduced the problem without changing geometry. A
-six-original-material controlled input retained all 350 geometries and 7,543
-instances. The old one-rewrite-per-batch implementation spent approximately
-113.29 seconds and still emitted an invalid selection: a merge-dominated path
-branched back into the selection interior. The invariant-based batch and merge
-repair passes its two red/green regressions and renders the same controlled
-input. Vulkan scene compilation took 0.648155 seconds, main-kernel JIT
-22.5549 seconds, and 64×48/1 spp rendering 0.00485903 seconds; the 497,049-word
-SPIR-V passed validation and Psycles wrote PPM, PFM passes, and multilayer EXR.
-
-The decoded image was inspected at original resolution. It contains finite
-image data without a full-frame NaN, Inf, or exposure failure, but its sparse
-one-sample appearance and reduced material set make it a compiler/first-pixel
-smoke only. The committed preview and inspection record are in the
-[Lone Monk investigation](docs/validation/2026-07-29/lone-monk/README.md).
-
-An eleven-material controlled input reached 50,020 blocks and 2,205,924
-instructions before restructuring and was interrupted at 180 seconds. Five
-single-material trials isolated the nonlinear lowering to `column marble`.
-That material alone reaches 45,900 blocks, 1,543,437 instructions, and 15,266
-raw conditional branches; its graph includes a 257-sample Color Ramp, Bump,
-and two RGB Curves. The other four isolated materials compile and render in
-3.35–18.73 seconds.
-
-Reducing the Color Ramp and both RGB Curve tables from 257 samples to two did
-not change the `column marble` XIR counts, disproving sampled-table cardinality
-as the cause. Disconnecting Base Color reduced the graph to 900 blocks and
-137,567 instructions, while retaining only the Base Color dependency kept
-45,420 blocks and 1,500,987 instructions. That path reaches Vertex Color.
-Lone Monk has 367 named UV layers plus 12 color attributes. The old attribute
-service recorded one `$if` for each of these 379 whole-scene bindings every
-time a material callable used an attribute.
-
-The formal code-size invariant is that, for a fixed shader and fixed number of
-attribute lookup operations, recorded AST/XIR control-flow size is independent
-of scene attribute-table cardinality. The repair uploads a flat binding table
-and one compact range per geometry. Luisa reads only the current geometry's
-range through bindless buffers and performs one device loop whose predicate
-contains a `found` state. No material node, link, lookup sample, or closure was
-removed or pre-baked.
-
-The regression records the real shader service and translates it to XIR. A
-512-binding old implementation failed the constant selection-count bound; the
-device-table implementation stays at or below eight structured selections.
-The original `column marble` graph now enters restructuring with 1,360 blocks,
-203,797 instructions, 406 raw conditionals, and 10 indexed branches. XIR
-restructuring completes in 10.47494 seconds, Vulkan JIT in 12.3495 seconds,
-and the 432,610-word shader renders 64×48/1 spp in 0.00485309 seconds.
-Psycles' complete 12-test gate passes with 32-way scheduling.
-
-Preserving uniquely rooted read-only resource callables then reduced the
-`column marble` module to about 238 thousand words and 1.31 seconds of JIT,
-but the first outlined result differed from the known-good pre-preservation
-Psycles output by RMS `0.0483804`, maximum `7.020724`, over 383 pixels.
-SPIR-V optimization level 2 preserved the error, as did exhaustive SPIR-V
-function inlining, placing the defect before the driver-call boundary.
-
-The cause was a module ABI initialization-order violation. SPIR-V callable
-post-order emits callees before the kernel, while the direct-buffer metadata
-offset had been initialized only inside kernel emission. An outlined
-read-only callable therefore loaded its buffer subview metadata from argument
-word zero. Luisa now freezes one validated kernel argument-layout plan before
-emitting any function and asserts that the kernel observes the same immutable
-layout. The regression uses a nonzero buffer subview, a scalar argument that
-moves the metadata trailer, and a real `OpFunctionCall`; it failed before the
-repair and now returns `{18, 29, 40, 51}`. The historical cold
-`column marble` result at `next@eb167454a` is pixel-exact with the known-good
-Psycles result, uses
-237,944 SPIR-V words, and JITs in 1.30926 seconds. That equivalence checks a
-compiler transformation only and is not a Cycles quality reference.
-
-The unmodified 35-material export was then run from an empty cache with
-optional XIR/SPIR-V optimization disabled and strict native Vulkan required.
-AST-to-XIR took 15.95796 seconds, destructuring 15.36656 seconds,
-restructuring 120.05845 seconds, and complete SPIR-V XIR legalization
-136.25386 seconds. The validated 2,611,188-word / 26-binding module reached a
-RADV pipeline and first pixel: scene compilation was 0.737443 seconds,
-main-kernel JIT 226.27 seconds, cold wall time 227.24 seconds, and 64×48/1 spp
-rendering 0.0114453 seconds. This is a measurable cold-start optimization
-target, not yet acceptable production compilation latency.
-
-The complete commands, stage timings, per-material results, test counts, and
-machine-readable measurements are in the
-[Lone Monk bring-up report](docs/validation/2026-07-29/lone-monk/bringup.json).
-The full-scene 40-channel EXR has 3,072 finite values and zero NaN/Inf values
-per channel. Its
-[decoded preview](docs/validation/2026-07-29/lone-monk/full-scene-vulkan-1spp.png)
-was inspected at original resolution: the central monk and architecture are
-recognizable through one-sample noise, without a full-frame clear color,
-exposure failure, or obvious stale-buffer pattern.
-
-The first 640×480/64 spp comparison then used the installed Blender 5.2.0 LTS
-Cycles binary in HIP mode and Psycles in strict-native Vulkan mode on the same
-RX 9070 XT. Adaptive sampling and denoising were disabled, seed zero was
-fixed, and all 35 original raw material graphs were retained.
-
-The initial result had Combined RMS `22.190855`, a `0.819773` luminance ratio,
-and dark/noisy direct illumination, while Diffuse Color and Normal already
-aligned. The scene contains no analytic light and uses a procedural Sky
-Texture. Blender 5.2 exports its supported mode as `SINGLE_SCATTERING` and
-uses `aerosol_density`; the importer recognized only legacy `NISHITA` and
-`dust_density`. Background-ray evaluation still used the raw graph, but the
-environment-light descriptor lost explicit sun sampling and fell back to
-uniform-sphere sampling.
-
-The versioned importer contract now maps current `SINGLE_SCATTERING` and
-legacy `NISHITA` to Psycles' implemented single-scattering path, prefers
-`aerosol_density`, and retains `dust_density` as a legacy fallback. It does
-not claim simple-world support for Blender's distinct
-`MULTIPLE_SCATTERING` mode. The regression imports both current and legacy
-spellings and asserts procedural transfer and density. No closure or
-environment was pre-baked.
-
-After the repair, Combined RMS is `0.262420535`, relative RMS `0.168320400`,
-luminance ratio `1.0228698`, and maximum error `10.245852`. All 40 Psycles
-channels contain 307,200 finite values and no NaN/Inf. The complete
-[numeric report](docs/validation/2026-07-29/lone-monk/report-640x480-64.json),
-[Combined triptych](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/combined.png),
-and the other real pass triptychs are committed with the
-[full process and visual record](docs/validation/2026-07-29/lone-monk/README.md).
-This is a measured convergence baseline, not a final 1:1 quality pass.
-
-## Numeric comparison
-
-All tables compare linear float channels. Relative RMSE is RMSE divided by the
-Cycles RMS for that pass.
-
-### Lone Monk 1440×1080/256 spp, current Blender main
-
-This is the primary full-scene result. Both sides use Blender/Cycles
-`main@4fe17ef6be5d46251fa5e7dbff9018efb1c719d5`, the same source scene,
-frame 4, camera `cam.001`, seed zero, 256 fixed samples, and the same RX 9070
-XT. Psycles consumes the current Blender export with all 35 raw material
-graphs and no material pre-bake.
-
-| Pass | RMSE | Relative RMSE | Luminance ratio | Maximum error | Invalid pixels |
-|---|---:|---:|---:|---:|---:|
-| Combined | `0.216918692` | `13.548442%` | `1.0224346` | `10.427597` | 0 |
-| Diffuse Color | `0.011697795` | `6.150709%` | `1.0037321` | `0.318984` | 0 |
-| Diffuse Direct | `1.680650711` | `18.344467%` | `1.0218524` | `149.06863` | 0 |
-| Diffuse Indirect | `0.247345969` | `61.018448%` | `0.9136612` | `71.994682` | 0 |
-| Glossy Color | `0.002655193` | `3.748704%` | `0.9994948` | `0.113261` | 0 |
-| Glossy Direct | `0.557576835` | `12.878255%` | `1.0152723` | `138.39240` | 0 |
-| Glossy Indirect | `0.190440401` | `49.969987%` | `0.9392910` | `34.497143` | 0 |
-| Emission | `0.006447404` | `0.880313%` | `0.9996184` | `0.951205` | 0 |
-| Environment | `0.000162833` | `10.518015%` | `0.9914694` | `0.122636` | 0 |
-| Normal | `0.029506562` | `5.308572%` | n/a | `1.389746` | 0 |
-| Transmission Color / Direct / Indirect | `0` | `0` | both zero | `0` | 0 |
-
-Machine-readable result:
-[current 1080p report](docs/validation/2026-07-29/lone-monk/report-1440x1080-256-main-4fe17ef6.json).
-
-Real current-source triptychs:
-[Combined](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/combined.png),
-[Diffuse Color](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/diffcol.png),
-[Normal](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/normal.png),
-[Diffuse Direct](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/diffdir.png),
-[Diffuse Indirect](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/diffind.png),
-[Glossy Color](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/glosscol.png),
-[Glossy Direct](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/glossdir.png),
-[Glossy Indirect](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/glossind.png),
-[Emission](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/emit.png),
-[Environment](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/env.png),
-[Transmission Color](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/transcol.png),
-[Transmission Direct](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/transdir.png),
-and
-[Transmission Indirect](docs/validation/2026-07-29/lone-monk/triptychs-1440x1080-256-main-4fe17ef6/transind.png).
-
-Every panel was opened at original resolution. Camera/framing, silhouettes,
-architecture, texture placement, and large-scale materials/normals align.
-There is no flip, missing object, full-frame corruption, or device-reset
-residue. Direct illumination appears on the same surfaces but Psycles is
-slightly brighter. Diffuse and glossy indirect preserve the same spatial
-structure but remain visibly darker, matching the 0.914 and 0.939 mean-energy
-ratios. Emission is nearly identical; all transmission panels are exact
-black. The detailed visual notes and commands are in the
-[Lone Monk process log](docs/validation/2026-07-29/lone-monk/README.md).
-
-### Lone Monk 640×480/64 spp
-
-| Pass | RMSE | Relative RMSE | Luminance ratio | Maximum error | Invalid pixels |
-|---|---:|---:|---:|---:|---:|
-| Combined | `0.262420535` | `16.832040%` | `1.0228698` | `10.245852` | 0 |
-| Diffuse Color | `0.011069954` | `5.873532%` | `1.0036870` | `0.279242` | 0 |
-| Diffuse Direct | `2.92519927` | `32.096863%` | `1.0240113` | `144.32452` | 0 |
-| Diffuse Indirect | `0.572785676` | `94.700590%` | `0.9115970` | `339.22046` | 0 |
-| Glossy Color | `0.003341173` | `4.800315%` | `0.9994941` | `0.090504` | 0 |
-| Glossy Direct | `0.836308777` | `20.425919%` | `1.0154054` | `97.110794` | 0 |
-| Glossy Indirect | `0.381446093` | `84.778720%` | `0.9441791` | `14.612365` | 0 |
-| Emission | `0.014200922` | `1.970841%` | `0.9995498` | `1.187111` | 0 |
-| Environment | `0.000476680` | `60.939653%` | `1.4539939` | `0.277972` | 0 |
-| Normal | `0.030848974` | `5.677077%` | n/a | `1.206512` | 0 |
-| Transmission Color / Direct / Indirect | `0` | `0` | `0` | `0` | 0 |
-
-The indirect relative errors are noise-sensitive, but their mean-energy gaps
-are also systematic at this sample count: diffuse indirect is approximately
-8.8% low and glossy indirect approximately 5.6% low. Environment has high
-relative error only because its absolute reference energy is tiny.
-
-Machine-readable result:
-[Lone Monk report](docs/validation/2026-07-29/lone-monk/report-640x480-64.json).
-
-Real triptychs:
-[Combined](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/combined.png),
-[Diffuse Color](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/diffcol.png),
-[Diffuse Direct](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/diffdir.png),
-[Diffuse Indirect](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/diffind.png),
-[Glossy Color](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/glosscol.png),
-[Glossy Direct](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/glossdir.png),
-[Glossy Indirect](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/glossind.png),
-[Emission](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/emit.png),
-[Environment](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/env.png),
-and [Normal](docs/validation/2026-07-29/lone-monk/triptychs-640x480-64/normal.png).
-The three transmission triptychs are retained beside them and are exactly
-black in all panels.
-
-### Flat light distribution
-
-| Pass | RMSE | Relative RMSE | Luminance ratio | Maximum error | Invalid pixels |
-|---|---:|---:|---:|---:|---:|
-| Combined | `0.000256542553` | `1.294632%` | `1.000089120` | `0.001330458` | 0 |
-| DiffDir | `0.000557016116` | `0.904113%` | `1.000055316` | `0.002803124` | 0 |
-| DiffCol | `0` | `0` | `1` | `0` | 0 |
-| Normal | `0` | `0` | `1` | `0` | 0 |
-
-Machine-readable result:
-[flat-light report](docs/validation/2026-07-29/flat-light-vk/report.json).
-
-Triptychs:
-[Combined](docs/validation/2026-07-29/flat-light-vk/triptychs/combined.png),
-[Diffuse Direct](docs/validation/2026-07-29/flat-light-vk/triptychs/diffdir.png),
-[Diffuse Color](docs/validation/2026-07-29/flat-light-vk/triptychs/diffcol.png),
-and [Normal](docs/validation/2026-07-29/flat-light-vk/triptychs/normal.png).
-
-### Transparent closure mix
-
-| Pass | RMSE | Relative RMSE | Luminance ratio | Maximum error | Invalid pixels |
-|---|---:|---:|---:|---:|---:|
-| Combined | `0.000000793035` | `0.000183525%` | `0.999997026` | `0.000001326203` | 0 |
-| Emit | `0` | `0` | `1` | `0` | 0 |
-| Env | `0` | `0` | `1` | `0` | 0 |
-| Normal | `0` | `0` | `1` | `0` | 0 |
-
-Machine-readable result:
-[transparent-mix report](docs/validation/2026-07-29/transparent-mix-vk/report.json).
-
-Triptychs:
-[Combined](docs/validation/2026-07-29/transparent-mix-vk/triptychs/combined.png),
-[Emission](docs/validation/2026-07-29/transparent-mix-vk/triptychs/emit.png),
-[Environment](docs/validation/2026-07-29/transparent-mix-vk/triptychs/env.png),
-and [Normal](docs/validation/2026-07-29/transparent-mix-vk/triptychs/normal.png).
-
-### Transparent data passes
-
-| Pass | RMSE | Relative RMSE | Luminance ratio | Maximum error | Invalid pixels |
-|---|---:|---:|---:|---:|---:|
-| Combined | `0.000179912153` | `0.321085%` | `0.999992053` | `0.001019992` | 0 |
-| DiffDir | `0.001175414538` | `0.409927%` | `0.999992597` | `0.006618649` | 0 |
-| DiffCol | `0` | `0` | `1` | `0` | 0 |
-| Normal | `0` | `0` | `1` | `0` | 0 |
-
-Machine-readable result:
-[transparent-data report](docs/validation/2026-07-29/transparent-data-pass-vk/report.json).
-
-Triptychs:
-[Combined](docs/validation/2026-07-29/transparent-data-pass-vk/triptychs/combined.png),
-[Diffuse Direct](docs/validation/2026-07-29/transparent-data-pass-vk/triptychs/diffdir.png),
-[Diffuse Color](docs/validation/2026-07-29/transparent-data-pass-vk/triptychs/diffcol.png),
-and [Normal](docs/validation/2026-07-29/transparent-data-pass-vk/triptychs/normal.png).
-
-## Visual inspection
-
-The Cycles and Psycles panels in each triptych share one diagnostic linear to
-sRGB mapping and one exposure scale. Normal uses the fixed
-`normal * 0.5 + 0.5` mapping. The third panel is absolute linear difference
-scaled by the reciprocal of its 99.5th percentile; the multiplier is printed
-in the title. Thus the left/right appearance is directly comparable while the
-third panel deliberately makes very small errors visible.
-
-The inspection result is:
-
-- Lone Monk Combined aligns in silhouette, camera, architecture, principal
-  colors, and sun/shadow placement after the single-scattering-sky repair.
-  The former missing-direct-light/exposure failure is absent. Psycles is
-  slightly brighter and the amplified panel contains both radiance-correlated
-  sampling noise and coherent edge/detail residuals;
-- Lone Monk Diffuse Color aligns brick, marble, wood, foliage, books, and
-  texture placement, while Normal aligns large-scale orientation and
-  mapped/bump structure. Their amplified residuals concentrate on
-  high-frequency detail and visibility edges, not a frame flip, normal-space
-  rotation, or material-slot permutation;
-- Lone Monk direct-pass illuminated regions align and have mean luminance
-  within 2.4%. Diffuse and Glossy Indirect preserve the same spatial
-  structure but are visibly darker, matching the measured 0.912 and 0.944
-  luminance ratios. This prevents a final visual-acceptance verdict;
-- flat-light Combined and DiffDir are visually coincident. The amplified
-  difference is per-pixel sampling noise whose amplitude follows scene
-  radiance; it has no geometry-edge displacement, missing light region, or
-  coherent color bias;
-- transparent-mix Combined is visually identical. At approximately
-  `6.79e5×` amplification, the remaining difference is a spatially uniform
-  green-channel rounding offset;
-- transparent-data Combined is visually identical. At approximately
-  `1.32e3×` amplification, the difference is unstructured per-pixel sampling
-  noise with no silhouette or systematic shading pattern;
-- the committed exact DiffCol and Normal triptychs have black difference
-  panels.
-
-No orientation search is used to select a result. EXR is compared in its
-top-left scanline order; legacy PFM support applies its fixed format-defined
-vertical conversion. The reports retain identity and flipped-orientation
-diagnostics as a guard against accidental format changes.
-
-## GPU timings
-
-The current primary measurement is the complete Lone Monk five-way gate at
-1440x1080/256 spp:
-
-| Renderer/backend | Render-only | Process wall | Relative result |
-|---|---:|---:|---:|
-| Cycles CPU | `72.1837 s` | `72.6319 s` | CPU reference |
-| Cycles HIP | `19.3186 s` | `19.7859 s` | GPU reference |
-| Psycles fallback | `142.7930 s` | `167.5741 s` | `1.9782x` slower than Cycles CPU |
-| Psycles HIP | `58.0613 s` | `63.4840 s` | `3.0055x` slower than Cycles HIP |
-| Psycles Vulkan | `226.6200 s` | `287.8886 s` | `11.7306x` slower than Cycles HIP |
-
-The HIP comparison was repeated three times and stayed between `2.9985x` and
-`3.0196x` slower. Psycles HIP is `1.2432x` faster than Cycles CPU, but none of
-the like-for-like backend comparisons beats Cycles. Fallback's process wall
-includes a `22.0529 s` cold JIT; Vulkan includes a `58.4686 s` cold native
-XIR-to-SPIR-V/driver JIT; HIP used a warm cache (`0.1460 s`). Full commands,
-hashes, numerical reports, and original-resolution triptychs are in the
-[five-way checkpoint](docs/validation/2026-08-10/lone-monk-five-way-1440x1080-256/README.md).
-
-The following 2026-07-29 row is retained as a historical checkpoint and is no
-longer the primary current-head result:
-
-| Measurement | Cycles 5.3 Alpha HIP | Psycles Vulkan |
-|---|---:|---:|
-| Lone Monk 1440×1080/256 spp render-only | `18.961390479 s` | `25.9918 s` |
-| Whole monitored command | `19.439086148 s` | `29.805725258 s` |
-| Scene / shader setup reported separately | included in Cycles call | `0.66606 s` scene + `2.2724 s` warm JIT |
-| VRAM absolute peak | `6,764,978,176 B` | `5,793,931,264 B` |
-| VRAM increase over baseline | `2,659,450,880 B` | `1,711,570,944 B` |
-
-On render-only intervals, Psycles throughput is `0.729514×` current Cycles,
-or `1.370775×` slower. There is no same-device speedup yet. Psycles' measured
-baseline-relative VRAM increase is 947,879,936 bytes lower (35.64%), while
-its absolute peak is 971,046,912 bytes lower (14.35%). Both forms are
-reported because desktop VRAM already in use is not renderer memory.
-
-The historical packaged-Blender 5.2 640×480/64 spp row measured `0.96 s`
-for Cycles and `1.48413 s` for Psycles. It remains useful as a pre-current-
-source checkpoint but is no longer the primary performance boundary.
-
-The remaining rows are small 64×64/256 spp probes and are useful for
-shader-size and backend health only.
-
-| Backend/probe | Scene compile | Shader JIT | Render |
-|---|---:|---:|---:|
-| Vulkan flat, cold cache | `0.025667 s` | `0.559935 s` | `0.015133 s` |
-| Vulkan flat, hot cache | `0.015175 s` | `0.032178 s` | `0.014824 s` |
-| HIP flat, cold cache | `0.303026 s` | `0.974313 s` | `0.009619 s` |
-| HIP flat, repeat | `0.043706 s` | `0.355552 s` | `0.009915 s` |
-| Vulkan transparent mix, hot | `0.013557 s` | `0.036953 s` | `0.012637 s` |
-| Vulkan transparent data, hot | `0.019546 s` | `0.019263 s` | `0.013890 s` |
-
-The focused Cycles metadata selected CPU execution, so only the Lone Monk row
-supports the same-device comparison.
-
-## Current-source Cycles build gate
-
-Blender/Cycles `main@4fe17ef6be5d46251fa5e7dbff9018efb1c719d5`
-was built locally as Blender 5.3.0 Alpha with Release, headless Cycles HIP,
-and a `gfx1201`-only AOT kernel. The official Linux dependency checkout is
-`ecbd06cf6d2a4aa6b00a61ffb479fc81b17aba08`; Git LFS integrity passes.
-The 32-job incremental resume completed 2863 tasks in 5:21.19 with no swap,
-and the installed binary selects only the RX 9070 XT for HIP.
-
-The first unmodified Lone Monk smoke at 64×48/1 spp completed in
-`1.011486 s` of Cycles render time. Its 43-channel multilayer EXR contains
-132,096 finite values and no NaN or Inf. At 50 ms sampling, whole-process
-VRAM rose from `4,067,905,536` to `6,000,680,960` bytes, an increase of
-`1,932,775,424` bytes. Full configuration, the initial missing-LFS failure,
-external signal-15 resume, non-system staging install, and smoke command are
-recorded in the
-[Lone Monk log](docs/validation/2026-07-29/lone-monk/README.md).
-
-The matched 1440×1080/256 spp reference then completed in `18.961390479 s`
-of Cycles render time. Its 43-channel EXR contains 66,873,600 finite values,
-has no NaN or Inf, and names only the RX 9070 XT HIP device. The current
-Blender export retains 350 geometries, 7,543 instances, 35 raw material
-graphs, and 47 images; Blender/Cycles does not evaluate or bake any material
-for Psycles.
-
-The first Psycles attempt exposed two independent production defects. One
-256-spp Vulkan dispatch exceeded the AMDGPU compute watchdog and reset the
-queue. Luisa's Release-only `VK_CHECK_RESULT` macro then discarded
-`VK_ERROR_DEVICE_LOST`, so the process falsely returned success with an
-almost-all-zero EXR and four extreme pixels. The corrupt output and its
-`2.19935 s` claimed render time are explicitly excluded from performance and
-quality results.
-
-Luisa `d57720955` now checks every Vulkan result in every build configuration.
-Its forced-`NDEBUG` regression proves success is evaluated once and device
-loss terminates with `SIGABRT`. Psycles `dcb96e3` partitions a requested
-sample interval into a contiguous, ordered, non-overlapping exact cover with
-at most 8 samples per synchronized dispatch. The exhaustive regression checks
-small ranges and the 32-bit boundary; a real 64×48/16 spp Vulkan render is
-pixel-equivalent as one 16-spp dispatch or two 8-spp dispatches.
-
-With 32 bounded dispatches, the 1440×1080/256 spp Psycles run completed in
-`25.9918 s` render-only. Its 40-channel EXR contains 62,208,000 finite values,
-zero NaN/Inf, and no kernel timeout/reset record. Full commands, output
-hashes, failure diagnostics, invariants, regressions, VRAM samples, and
-triptychs are in the
-[Lone Monk log](docs/validation/2026-07-29/lone-monk/README.md).
-
-## Known limitations and next gate
-
-- The current Lone Monk Combined result has no large structured mismatch and
-  reaches `1.34--1.71%` relative RMSE across Psycles backends, but this does
-  not prove every closure, pass, volume, or stochastic distribution complete.
-  Cycles remains the sole oracle; do not add a CPU reference renderer.
-- Performance remains below the like-for-like Cycles paths: fallback is
-  `1.9782x` slower than Cycles CPU, HIP is `3.0055x` slower than Cycles HIP,
-  and Vulkan is `11.7306x` slower than Cycles HIP. HIP still uses 256 VGPR,
-  128 SGPR, and 2,704 scratch bytes per thread. Vulkan additionally has a
-  400,579-word optimized SPIR-V module and a 58.47-second cold JIT.
-- The bounded sample count limits per-dispatch work for this gate. Extremely
-  large images may also need a formally exact pixel/tile partition so one
-  8-spp dispatch remains below device watchdog limits.
-- Blender 5.2 `MULTIPLE_SCATTERING` sky is distinct from the implemented
-  single-scattering equations and is not yet supported by the simple-world
-  importance sampler.
-- The flat distribution and a reciprocal Luisa light-tree estimator are
-  implemented. The current tree is flattened and does not yet reproduce
-  Cycles' mesh/instance subtrees, per-light specialized proposal parameters,
-  receiver light-link roots, or finite-sample selection probabilities. The
-  implementation, three-backend regressions, HIP backend repair, and exact
-  remaining boundary are recorded in the
-  [Light Tree checkpoint](docs/validation/2026-08-07/light-tree/README.md).
-- Environment map importance CDFs and the imported
-  `world_sample_map_resolution` are not yet connected to sampling.
-- Automatic emissive sampling classification still needs a formal
-  Cycles-aligned static analysis; no host pre-evaluation workaround is
-  acceptable.
-- Imported per-light MIS metadata is preserved, but the remaining
-  visible-light forward-MIS path is not complete.
-- Complex demo scenes must expand the material, volume, displacement,
-  subdivision, motion, denoising, and pass coverage beyond these focused
-  probes before any 1:1 feature/quality claim.
+Compiler corrections require formal cause, a minimal failing regression, a
+generic fix and validation of the full original module. Expected shading
+state comes from version-pinned Cycles source/GPU execution, never a second
+host renderer. Do not use profile/prerender observations as local-array
+bounds. Separate exact structural contracts from harmless native arithmetic
+rounding, and keep fast math enabled.
+
+The requested goal remains open: nine native semantic opcodes, private
+legacy displacement removal, indirect/path structural differences and
+cross-scene rendering efficiency are not complete. See
+[compatibility status](docs/cycles-compatibility.md) for current scope and
+[DEVELOP.md](DEVELOP.md) for mandatory implementation/publication rules.

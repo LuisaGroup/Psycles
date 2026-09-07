@@ -1,0 +1,1712 @@
+{
+  "schema": "psycles.hip-campaign.v1",
+  "psycles_revision": "eaa7c72e",
+  "luisa_revision": "9ea3b720f",
+  "evidence_root": "/var/tmp/psycles-four-scene-hip-0PRq34",
+  "scenes": {
+    "monk": {
+      "extent": [
+        1440,
+        1080
+      ],
+      "samples": 256,
+      "seed": 0,
+      "frame": 4,
+      "source": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+      "source_sha256": "4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7",
+      "scene_json_sha256": "e68042f88d3af4c23a4b0552f1c86085a0dbbbf201a46d6b442e8830324c810a",
+      "geometry_bin_sha256": "a56c361515de69da6f84891db24212bacdd970e87157ce752820f78a93e0b668",
+      "cycles_median_seconds": 13.4183,
+      "psycles_median_seconds": 13.9693,
+      "psycles_relative_time": 1.0410633239680138,
+      "runs": [
+        {
+          "repeat": 1,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/monk/run-1/benchmark.json",
+          "cycles_seconds": 13.4015,
+          "cycles_render_call_seconds": 16.050986074958928,
+          "psycles_seconds": 13.9594,
+          "main_jit_seconds": 18.956,
+          "scene_compile_seconds": 5.02562,
+          "frame": {
+            "stages": 4,
+            "fields": 55,
+            "bytes": 220
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.01240997680493337,
+              "rmse": 0.0198681503534317,
+              "cycles_rms": 1.6009820699691772,
+              "luminance_mean_ratio": 1.0006790695616934,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.0005459427494630807,
+              "rmse": 0.00010383005428593606,
+              "cycles_rms": 0.19018487632274628,
+              "luminance_mean_ratio": 1.0000019230298205,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.013663062755290376,
+              "rmse": 0.12517009675502777,
+              "cycles_rms": 9.161203384399414,
+              "luminance_mean_ratio": 1.0005327601425462,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffInd": {
+              "relative_rmse": 0.12881211433300174,
+              "rmse": 0.05210506170988083,
+              "cycles_rms": 0.40450435876846313,
+              "luminance_mean_ratio": 1.001532642348616,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.00021499499236075432,
+              "rmse": 0.00015746212739031762,
+              "cycles_rms": 0.732399046421051,
+              "luminance_mean_ratio": 1.000009405509368,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 5.827636801616285E-7,
+              "rmse": 9.021989266777553E-10,
+              "cycles_rms": 0.0015481385635212064,
+              "luminance_mean_ratio": 1.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.0007616562644702467,
+              "rmse": 0.00005394774052547291,
+              "cycles_rms": 0.07082951068878174,
+              "luminance_mean_ratio": 0.9999981929244214,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.03059618829237428,
+              "rmse": 0.1324462741613388,
+              "cycles_rms": 4.328848838806152,
+              "luminance_mean_ratio": 1.0008441910763353,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossInd": {
+              "relative_rmse": 0.13596196216622,
+              "rmse": 0.05176829919219017,
+              "cycles_rms": 0.380755752325058,
+              "luminance_mean_ratio": 1.0020575507240355,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.0019270403664979352,
+              "rmse": 0.0010711050126701593,
+              "cycles_rms": 0.5558290481567383,
+              "luminance_mean_ratio": -1.0000076732444019,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        },
+        {
+          "repeat": 2,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/monk/run-2/benchmark.json",
+          "cycles_seconds": 13.4183,
+          "cycles_render_call_seconds": 16.031161021906883,
+          "psycles_seconds": 13.9693,
+          "main_jit_seconds": 18.8151,
+          "scene_compile_seconds": 4.98274,
+          "frame": {
+            "stages": 4,
+            "fields": 55,
+            "bytes": 220
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.012405732579072348,
+              "rmse": 0.019861355423927307,
+              "cycles_rms": 1.6009820699691772,
+              "luminance_mean_ratio": 1.0006744767215487,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.0005459383498749441,
+              "rmse": 0.00010382921755081043,
+              "cycles_rms": 0.19018487632274628,
+              "luminance_mean_ratio": 1.0000019230298205,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.01365809201654595,
+              "rmse": 0.12512455880641937,
+              "cycles_rms": 9.161203384399414,
+              "luminance_mean_ratio": 1.0005280758505541,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffInd": {
+              "relative_rmse": 0.12881869499331608,
+              "rmse": 0.05210765451192856,
+              "cycles_rms": 0.40450382232666016,
+              "luminance_mean_ratio": 1.0015349530217827,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.00021499411813204913,
+              "rmse": 0.00015746148710604757,
+              "cycles_rms": 0.732399046421051,
+              "luminance_mean_ratio": 1.000009405509368,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 5.779003991026501E-7,
+              "rmse": 8.946698937251085E-10,
+              "cycles_rms": 0.0015481385635212064,
+              "luminance_mean_ratio": 1.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.0007613599543654045,
+              "rmse": 0.0000539267530257348,
+              "cycles_rms": 0.07082951068878174,
+              "luminance_mean_ratio": 0.9999980638475944,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.030595059220638682,
+              "rmse": 0.13244138658046722,
+              "cycles_rms": 4.328848838806152,
+              "luminance_mean_ratio": 1.0008411167584392,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossInd": {
+              "relative_rmse": 0.13597207495280442,
+              "rmse": 0.0517723523080349,
+              "cycles_rms": 0.38075724244117737,
+              "luminance_mean_ratio": 1.0020525406257683,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.0019133311785462588,
+              "rmse": 0.0010634850477799773,
+              "cycles_rms": 0.5558290481567383,
+              "luminance_mean_ratio": -1.0000089009635063,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        },
+        {
+          "repeat": 3,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/monk/run-3/benchmark.json",
+          "cycles_seconds": 13.4589,
+          "cycles_render_call_seconds": 16.07572796603199,
+          "psycles_seconds": 14.0269,
+          "main_jit_seconds": 18.7779,
+          "scene_compile_seconds": 4.972,
+          "frame": {
+            "stages": 4,
+            "fields": 55,
+            "bytes": 220
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.01239457194826036,
+              "rmse": 0.019843488931655884,
+              "cycles_rms": 1.6009821891784668,
+              "luminance_mean_ratio": 1.0006734493849063,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.0005459121436325652,
+              "rmse": 0.00010382423351984471,
+              "cycles_rms": 0.19018487632274628,
+              "luminance_mean_ratio": 1.0000019230298205,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.013645432779015344,
+              "rmse": 0.12500859797000885,
+              "cycles_rms": 9.16120433807373,
+              "luminance_mean_ratio": 1.0005269828490895,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffInd": {
+              "relative_rmse": 0.12881690729011047,
+              "rmse": 0.0521068200469017,
+              "cycles_rms": 0.4045029580593109,
+              "luminance_mean_ratio": 1.0015358121844864,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.0002149951910490964,
+              "rmse": 0.0001574622729094699,
+              "cycles_rms": 0.732399046421051,
+              "luminance_mean_ratio": 1.000009405509368,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 5.74341735811755E-7,
+              "rmse": 8.891605229877086E-10,
+              "cycles_rms": 0.0015481384471058846,
+              "luminance_mean_ratio": 1.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.0007618438402204432,
+              "rmse": 0.00005396102642407641,
+              "cycles_rms": 0.07082951068878174,
+              "luminance_mean_ratio": 0.9999981929244214,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.030592601424238624,
+              "rmse": 0.13243074715137482,
+              "cycles_rms": 4.328848838806152,
+              "luminance_mean_ratio": 1.0008396210047998,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossInd": {
+              "relative_rmse": 0.13597234923886029,
+              "rmse": 0.051772501319646835,
+              "cycles_rms": 0.38075757026672363,
+              "luminance_mean_ratio": 1.0020508161320523,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.0019148157209677925,
+              "rmse": 0.0010643101995810866,
+              "cycles_rms": 0.5558290481567383,
+              "luminance_mean_ratio": -1.0000085173012863,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        }
+      ]
+    },
+    "monster": {
+      "extent": [
+        1080,
+        1080
+      ],
+      "samples": 256,
+      "seed": 0,
+      "frame": 1,
+      "source": "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+      "source_sha256": "9463082f8d365ad8ae19c1ba86429deb3b532c5a2d0db0b9492c3c759f64d28d",
+      "scene_json_sha256": "68f22ae6410ea1828a1135ceb89b350231ba0706a71c27087c53adb509419c03",
+      "geometry_bin_sha256": "c9f99eecc11102adb940a161b2248e7f67b645512668b16aa119f8e06b48d59d",
+      "cycles_median_seconds": 14.4289,
+      "psycles_median_seconds": 15.2304,
+      "psycles_relative_time": 1.0555482399905745,
+      "runs": [
+        {
+          "repeat": 1,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-1/benchmark.json",
+          "cycles_seconds": 14.4179,
+          "cycles_render_call_seconds": 15.405204460024834,
+          "psycles_seconds": 15.2614,
+          "main_jit_seconds": 22.3434,
+          "scene_compile_seconds": 1.99987,
+          "frame": {
+            "stages": 6,
+            "fields": 71,
+            "bytes": 284
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.005478905325819515,
+              "rmse": 0.0007778746075928211,
+              "cycles_rms": 0.1419762820005417,
+              "luminance_mean_ratio": 1.000029503711133,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.00011011373200502099,
+              "rmse": 0.00003870953878504224,
+              "cycles_rms": 0.3515414297580719,
+              "luminance_mean_ratio": 0.9999695607552905,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.002333536871787492,
+              "rmse": 0.0007270662463270128,
+              "cycles_rms": 0.3115726411342621,
+              "luminance_mean_ratio": 0.9999770233842278,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffInd": {
+              "relative_rmse": 0.025525200064475135,
+              "rmse": 0.0021791839972138405,
+              "cycles_rms": 0.08537382632493973,
+              "luminance_mean_ratio": 1.000264864257658,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.0001399990518145785,
+              "rmse": 4.429637954217469E-7,
+              "cycles_rms": 0.0031640485394746065,
+              "luminance_mean_ratio": 0.999999339762506,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.00022617567716662633,
+              "rmse": 0.000016145135305123404,
+              "cycles_rms": 0.07138316333293915,
+              "luminance_mean_ratio": 0.9999995336629662,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.004396787532717529,
+              "rmse": 0.001544186961837113,
+              "cycles_rms": 0.35120800137519836,
+              "luminance_mean_ratio": 0.9999303230235108,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossInd": {
+              "relative_rmse": 0.042208816525112484,
+              "rmse": 0.0037307734601199627,
+              "cycles_rms": 0.08838848769664764,
+              "luminance_mean_ratio": 1.0004895249060932,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.00008546016679652337,
+              "rmse": 0.00004898081533610821,
+              "cycles_rms": 0.5731420516967773,
+              "luminance_mean_ratio": -1.0000005687563267,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        },
+        {
+          "repeat": 2,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-2/benchmark.json",
+          "cycles_seconds": 14.4289,
+          "cycles_render_call_seconds": 15.412854832015,
+          "psycles_seconds": 15.185,
+          "main_jit_seconds": 22.3526,
+          "scene_compile_seconds": 1.49867,
+          "frame": {
+            "stages": 6,
+            "fields": 71,
+            "bytes": 284
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.005478847518416242,
+              "rmse": 0.0007778664003126323,
+              "cycles_rms": 0.1419762820005417,
+              "luminance_mean_ratio": 1.000029503711133,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.00010993944006136245,
+              "rmse": 0.0000386482679459732,
+              "cycles_rms": 0.3515414297580719,
+              "luminance_mean_ratio": 0.9999694539509232,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.002333542849992582,
+              "rmse": 0.000727068108972162,
+              "cycles_rms": 0.3115726411342621,
+              "luminance_mean_ratio": 0.9999770233842278,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffInd": {
+              "relative_rmse": 0.025525308652480042,
+              "rmse": 0.002179193077608943,
+              "cycles_rms": 0.08537381887435913,
+              "luminance_mean_ratio": 1.0002647855720654,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.0001347351157870175,
+              "rmse": 4.263084463218547E-7,
+              "cycles_rms": 0.0031640485394746065,
+              "luminance_mean_ratio": 0.9999986135012625,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.0002284440638583034,
+              "rmse": 0.000016307059922837652,
+              "cycles_rms": 0.07138316333293915,
+              "luminance_mean_ratio": 0.999999766831465,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.004396789190073303,
+              "rmse": 0.001544187543913722,
+              "cycles_rms": 0.35120800137519836,
+              "luminance_mean_ratio": 0.9999303230235108,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossInd": {
+              "relative_rmse": 0.042211273147636924,
+              "rmse": 0.00373099185526371,
+              "cycles_rms": 0.08838851749897003,
+              "luminance_mean_ratio": 1.0004893675773223,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.00008530632414602084,
+              "rmse": 0.000048892641643760726,
+              "cycles_rms": 0.5731420516967773,
+              "luminance_mean_ratio": -1.0000005687563267,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        },
+        {
+          "repeat": 3,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-3/benchmark.json",
+          "cycles_seconds": 14.4603,
+          "cycles_render_call_seconds": 15.445101115037687,
+          "psycles_seconds": 15.2304,
+          "main_jit_seconds": 22.2571,
+          "scene_compile_seconds": 1.49378,
+          "frame": {
+            "stages": 6,
+            "fields": 71,
+            "bytes": 284
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.005478695170303613,
+              "rmse": 0.0007778446888551116,
+              "cycles_rms": 0.1419762670993805,
+              "luminance_mean_ratio": 1.0000295904893217,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.00011011539915097453,
+              "rmse": 0.00003871012813760899,
+              "cycles_rms": 0.3515414595603943,
+              "luminance_mean_ratio": 0.9999695607552905,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.002333541915898037,
+              "rmse": 0.0007270678179338574,
+              "cycles_rms": 0.3115726411342621,
+              "luminance_mean_ratio": 0.9999770233842278,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffInd": {
+              "relative_rmse": 0.025524676173292286,
+              "rmse": 0.0021791381295770407,
+              "cycles_rms": 0.08537378162145615,
+              "luminance_mean_ratio": 1.0002653363714729,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.00013999794694206588,
+              "rmse": 4.4296029955148697E-7,
+              "cycles_rms": 0.0031640485394746065,
+              "luminance_mean_ratio": 0.999999339762506,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.00022822155458958858,
+              "rmse": 0.00001629117650736589,
+              "cycles_rms": 0.07138316333293915,
+              "luminance_mean_ratio": 0.999999611385775,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.004396789521544459,
+              "rmse": 0.0015441876603290439,
+              "cycles_rms": 0.35120800137519836,
+              "luminance_mean_ratio": 0.9999303230235108,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossInd": {
+              "relative_rmse": 0.04220760494193057,
+              "rmse": 0.0037306654267013073,
+              "cycles_rms": 0.08838846534490585,
+              "luminance_mean_ratio": 1.0004899968927026,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.00008409033436832279,
+              "rmse": 0.00004819570676772855,
+              "cycles_rms": 0.5731420516967773,
+              "luminance_mean_ratio": -1.0000005687563267,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        }
+      ]
+    },
+    "classroom": {
+      "extent": [
+        1920,
+        1080
+      ],
+      "samples": 256,
+      "seed": 1,
+      "frame": 1,
+      "source": "/home/mike/Projects/Psycles/assets/official-blender-scenes/classroom/classroom.blend",
+      "source_sha256": "5c526ea3f280566e80253673c9955640527cd0f247ea41b1742620b5bc39f7a4",
+      "scene_json_sha256": "b94d259b820527c946be9e527c2f261842c3fdc9004d16914665a2fb10c0d7f2",
+      "geometry_bin_sha256": "97efedc93fbda033861a3faa21a2c3d307d18e89114b1ebaf26ef1aa22cb9a60",
+      "cycles_median_seconds": 20.7624,
+      "psycles_median_seconds": 18.8207,
+      "psycles_relative_time": 0.9064799830462759,
+      "runs": [
+        {
+          "repeat": 1,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/classroom/run-1/benchmark.json",
+          "cycles_seconds": 20.7869,
+          "cycles_render_call_seconds": 22.241238293936476,
+          "psycles_seconds": 18.8588,
+          "main_jit_seconds": 18.377,
+          "scene_compile_seconds": 2.05883,
+          "frame": {
+            "stages": 5,
+            "fields": 66,
+            "bytes": 264
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.003533304124688139,
+              "rmse": 0.0015206170501187444,
+              "cycles_rms": 0.4303668737411499,
+              "luminance_mean_ratio": 0.9999981700685963,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.0001023851997272491,
+              "rmse": 0.0000334239739459008,
+              "cycles_rms": 0.32645317912101746,
+              "luminance_mean_ratio": 0.9999998858808605,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.002656739209598774,
+              "rmse": 0.002316684927791357,
+              "cycles_rms": 0.8720031380653381,
+              "luminance_mean_ratio": 0.999996133318869,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 25
+            },
+            "DiffInd": {
+              "relative_rmse": 0.17820332693924645,
+              "rmse": 0.03805907815694809,
+              "cycles_rms": 0.21357108652591705,
+              "luminance_mean_ratio": 0.9997979199639649,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.00018370088856576412,
+              "rmse": 0.000039428552554454654,
+              "cycles_rms": 0.21463452279567719,
+              "luminance_mean_ratio": 1.0000081078447254,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.0002983511397445338,
+              "rmse": 0.00002793096973618958,
+              "cycles_rms": 0.09361777454614639,
+              "luminance_mean_ratio": 0.999991238722045,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.012267139200411937,
+              "rmse": 0.0057423971593379974,
+              "cycles_rms": 0.46811217069625854,
+              "luminance_mean_ratio": 0.9998807326519072,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 27
+            },
+            "GlossInd": {
+              "relative_rmse": 0.15040170805745165,
+              "rmse": 0.02418167144060135,
+              "cycles_rms": 0.16078056395053864,
+              "luminance_mean_ratio": 1.0005385642332665,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.00021518836646520497,
+              "rmse": 0.00012059741129633039,
+              "cycles_rms": 0.560427188873291,
+              "luminance_mean_ratio": -0.9999997257792212,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.0001538296048058499,
+              "rmse": 0.000008861054993758444,
+              "cycles_rms": 0.057603053748607635,
+              "luminance_mean_ratio": 0.9999979734299672,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.5358126440355542,
+              "rmse": 2.1779726910864383E-9,
+              "cycles_rms": 4.064802716641225E-9,
+              "luminance_mean_ratio": 1.1848939176315028,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.08735138342194243,
+              "rmse": 0.0012093717232346535,
+              "cycles_rms": 0.013844906352460384,
+              "luminance_mean_ratio": 1.0018351990621748,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        },
+        {
+          "repeat": 2,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/classroom/run-2/benchmark.json",
+          "cycles_seconds": 20.7624,
+          "cycles_render_call_seconds": 22.186677803983912,
+          "psycles_seconds": 18.8207,
+          "main_jit_seconds": 18.1598,
+          "scene_compile_seconds": 2.06238,
+          "frame": {
+            "stages": 5,
+            "fields": 66,
+            "bytes": 264
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.003533234064536689,
+              "rmse": 0.0015205868985503912,
+              "cycles_rms": 0.4303668737411499,
+              "luminance_mean_ratio": 0.9999982354232893,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.00010236442739930095,
+              "rmse": 0.00003341719275340438,
+              "cycles_rms": 0.32645317912101746,
+              "luminance_mean_ratio": 0.9999997717617211,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.002656379017617142,
+              "rmse": 0.002316370839253068,
+              "cycles_rms": 0.8720031380653381,
+              "luminance_mean_ratio": 0.9999962407266783,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 25
+            },
+            "DiffInd": {
+              "relative_rmse": 0.17820334438210522,
+              "rmse": 0.03805908188223839,
+              "cycles_rms": 0.21357108652591705,
+              "luminance_mean_ratio": 0.9997979199639649,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.00018370088856576412,
+              "rmse": 0.000039428552554454654,
+              "cycles_rms": 0.21463452279567719,
+              "luminance_mean_ratio": 1.0000081078447254,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.0002986156008993913,
+              "rmse": 0.000027955728000961244,
+              "cycles_rms": 0.09361777454614639,
+              "luminance_mean_ratio": 0.9999911219050055,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.012267072764984349,
+              "rmse": 0.005742366425693035,
+              "cycles_rms": 0.46811220049858093,
+              "luminance_mean_ratio": 0.9998806203474363,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 27
+            },
+            "GlossInd": {
+              "relative_rmse": 0.15040185866263892,
+              "rmse": 0.02418169565498829,
+              "cycles_rms": 0.16078056395053864,
+              "luminance_mean_ratio": 1.0005384044544086,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.00021479298590983289,
+              "rmse": 0.00012037582928314805,
+              "cycles_rms": 0.560427188873291,
+              "luminance_mean_ratio": -0.9999997257792212,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.00015383075740295907,
+              "rmse": 0.000008861121386871673,
+              "cycles_rms": 0.057603053748607635,
+              "luminance_mean_ratio": 0.9999979734299672,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.535808070368488,
+              "rmse": 2.1779698045065743E-9,
+              "cycles_rms": 4.064832026529075E-9,
+              "luminance_mean_ratio": 1.1847304417127178,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.08735138342194243,
+              "rmse": 0.0012093717232346535,
+              "cycles_rms": 0.013844906352460384,
+              "luminance_mean_ratio": 1.0018352767568655,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        },
+        {
+          "repeat": 3,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/classroom/run-3/benchmark.json",
+          "cycles_seconds": 20.7338,
+          "cycles_render_call_seconds": 22.149773058947176,
+          "psycles_seconds": 18.5953,
+          "main_jit_seconds": 18.1243,
+          "scene_compile_seconds": 2.05174,
+          "frame": {
+            "stages": 5,
+            "fields": 66,
+            "bytes": 264
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.0035328705091561942,
+              "rmse": 0.0015204304363578558,
+              "cycles_rms": 0.4303668737411499,
+              "luminance_mean_ratio": 0.9999984314873682,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.00010231018978120886,
+              "rmse": 0.000033399486710550264,
+              "cycles_rms": 0.32645317912101746,
+              "luminance_mean_ratio": 0.9999997717617211,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.00265616781535067,
+              "rmse": 0.0023161866702139378,
+              "cycles_rms": 0.8720031380653381,
+              "luminance_mean_ratio": 0.9999963481344875,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 25
+            },
+            "DiffInd": {
+              "relative_rmse": 0.17820365835356297,
+              "rmse": 0.03805914893746376,
+              "cycles_rms": 0.21357108652591705,
+              "luminance_mean_ratio": 0.9997980228036779,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.00018370088856576412,
+              "rmse": 0.000039428552554454654,
+              "cycles_rms": 0.21463452279567719,
+              "luminance_mean_ratio": 1.0000081078447254,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.0002985508408502296,
+              "rmse": 0.000027949665309279226,
+              "cycles_rms": 0.09361777454614639,
+              "luminance_mean_ratio": 0.999991238722045,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.012251605175486284,
+              "rmse": 0.005735125858336687,
+              "cycles_rms": 0.46811220049858093,
+              "luminance_mean_ratio": 0.9998834279592088,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 27
+            },
+            "GlossInd": {
+              "relative_rmse": 0.15040288427344917,
+              "rmse": 0.02418190985918045,
+              "cycles_rms": 0.1607808917760849,
+              "luminance_mean_ratio": 1.0005401608601436,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.00021434396010408982,
+              "rmse": 0.0001201241830131039,
+              "cycles_rms": 0.560427188873291,
+              "luminance_mean_ratio": -0.9999997257792212,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.00015383039425592468,
+              "rmse": 0.000008861100468493532,
+              "cycles_rms": 0.057603053748607635,
+              "luminance_mean_ratio": 0.9999979734299672,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.5358147342522803,
+              "rmse": 2.1780068859555968E-9,
+              "cycles_rms": 4.064850678275889E-9,
+              "luminance_mean_ratio": 1.1846611826364508,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.08735138342194243,
+              "rmse": 0.0012093717232346535,
+              "cycles_rms": 0.013844906352460384,
+              "luminance_mean_ratio": 1.0018352767568655,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        }
+      ]
+    },
+    "barbershop": {
+      "extent": [
+        2048,
+        858
+      ],
+      "samples": 256,
+      "seed": 0,
+      "frame": 1,
+      "source": "/var/tmp/psycles-official-redownload-20260814/barbershop_interior.blend",
+      "source_sha256": "95972b56180462cac47ec82f3a755bd9111ec18ca37a6196a319c013db994130",
+      "scene_json_sha256": "69478daa3cc0efc2a6d38ac1d5de89df120fe2acd1e50ca4490621bbd1c72893",
+      "geometry_bin_sha256": "17e7d73b058c04127cab5aa14d374eca732701cdf192160b52f3df95135f7478",
+      "cycles_median_seconds": 28.7312,
+      "psycles_median_seconds": 41.0285,
+      "psycles_relative_time": 1.4280120565796068,
+      "runs": [
+        {
+          "repeat": 1,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-1/benchmark.json",
+          "cycles_seconds": 28.6916,
+          "cycles_render_call_seconds": 39.352694070897996,
+          "psycles_seconds": 41.2048,
+          "main_jit_seconds": 27.4798,
+          "scene_compile_seconds": 15.3404,
+          "frame": {
+            "stages": 6,
+            "fields": 93,
+            "bytes": 416
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.010798308954233978,
+              "rmse": 0.0023712709080427885,
+              "cycles_rms": 0.2195965051651001,
+              "luminance_mean_ratio": 0.9999529893146687,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.0015976496717399328,
+              "rmse": 0.0003974839928559959,
+              "cycles_rms": 0.24879296123981476,
+              "luminance_mean_ratio": 0.9999993696998156,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.009854515395481104,
+              "rmse": 0.005853191949427128,
+              "cycles_rms": 0.5939604043960571,
+              "luminance_mean_ratio": 0.9999512638290149,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffInd": {
+              "relative_rmse": 0.07451034288917963,
+              "rmse": 0.008915698155760765,
+              "cycles_rms": 0.11965718865394592,
+              "luminance_mean_ratio": 0.999946002941367,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.0002119693615350563,
+              "rmse": 0.000016852283806656487,
+              "cycles_rms": 0.07950339466333389,
+              "luminance_mean_ratio": 1.00000013681225,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 0.00045627798673005546,
+              "rmse": 0.0000058762325352290645,
+              "cycles_rms": 0.01287862379103899,
+              "luminance_mean_ratio": 0.9999998963219163,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.001935823725598375,
+              "rmse": 0.00038606912130489945,
+              "cycles_rms": 0.19943402707576752,
+              "luminance_mean_ratio": 0.9999492110561293,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.008179512389497321,
+              "rmse": 0.018456244841217995,
+              "cycles_rms": 2.256399154663086,
+              "luminance_mean_ratio": 1.000019641261103,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossInd": {
+              "relative_rmse": 0.12879489408978378,
+              "rmse": 0.02813340537250042,
+              "cycles_rms": 0.21843571960926056,
+              "luminance_mean_ratio": 1.0001830887735796,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.0009164082118476315,
+              "rmse": 0.0005051404586993158,
+              "cycles_rms": 0.5512177348136902,
+              "luminance_mean_ratio": 0.9999790944347294,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.0002701348977036109,
+              "rmse": 0.000017556052625877783,
+              "cycles_rms": 0.06498994678258896,
+              "luminance_mean_ratio": 1.000000200185612,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.028148848845807838,
+              "rmse": 0.000009330462489742786,
+              "cycles_rms": 0.00033146870555356145,
+              "luminance_mean_ratio": 0.9991588106035609,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.02999409180838406,
+              "rmse": 0.0004108845314476639,
+              "cycles_rms": 0.013698848895728588,
+              "luminance_mean_ratio": 1.0006790611546057,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        },
+        {
+          "repeat": 2,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-2/benchmark.json",
+          "cycles_seconds": 28.7474,
+          "cycles_render_call_seconds": 39.34200466808397,
+          "psycles_seconds": 41.0215,
+          "main_jit_seconds": 27.635,
+          "scene_compile_seconds": 15.1248,
+          "frame": {
+            "stages": 6,
+            "fields": 93,
+            "bytes": 416
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.010799487642254586,
+              "rmse": 0.002371529582887888,
+              "cycles_rms": 0.2195964902639389,
+              "luminance_mean_ratio": 0.9999530683242239,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.0015972336904332737,
+              "rmse": 0.00039738049963489175,
+              "cycles_rms": 0.24879296123981476,
+              "luminance_mean_ratio": 0.9999993696998156,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.009852153222096694,
+              "rmse": 0.00585178891196847,
+              "cycles_rms": 0.5939604043960571,
+              "luminance_mean_ratio": 0.9999517693714477,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffInd": {
+              "relative_rmse": 0.0745461763490598,
+              "rmse": 0.008920003660023212,
+              "cycles_rms": 0.11965742707252502,
+              "luminance_mean_ratio": 0.9999437450095786,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.00021196970472594983,
+              "rmse": 0.00001685231109149754,
+              "cycles_rms": 0.07950339466333389,
+              "luminance_mean_ratio": 1.000000342030695,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 0.00045627798673005546,
+              "rmse": 0.0000058762325352290645,
+              "cycles_rms": 0.01287862379103899,
+              "luminance_mean_ratio": 0.9999998963219163,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.0019358406537243447,
+              "rmse": 0.00038607249734923244,
+              "cycles_rms": 0.19943402707576752,
+              "luminance_mean_ratio": 0.9999492110561293,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.008179502483563018,
+              "rmse": 0.018456222489476204,
+              "cycles_rms": 2.256399154663086,
+              "luminance_mean_ratio": 1.0000196412583575,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossInd": {
+              "relative_rmse": 0.12879644552228242,
+              "rmse": 0.028133748099207878,
+              "cycles_rms": 0.21843574941158295,
+              "luminance_mean_ratio": 1.0001815587029768,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.0009164192996701197,
+              "rmse": 0.0005051465705037117,
+              "cycles_rms": 0.5512177348136902,
+              "luminance_mean_ratio": 0.9999790944347294,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.0002701351496026421,
+              "rmse": 0.000017556068996782415,
+              "cycles_rms": 0.06498994678258896,
+              "luminance_mean_ratio": 1.000000200185612,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.02814884610197505,
+              "rmse": 0.000009330461580248084,
+              "cycles_rms": 0.00033146870555356145,
+              "luminance_mean_ratio": 0.9991588106035609,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.02999405500801923,
+              "rmse": 0.0004108838038519025,
+              "cycles_rms": 0.013698841445147991,
+              "luminance_mean_ratio": 1.0006812742987612,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        },
+        {
+          "repeat": 3,
+          "manifest": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-3/benchmark.json",
+          "cycles_seconds": 28.7312,
+          "cycles_render_call_seconds": 39.35682633402757,
+          "psycles_seconds": 41.0285,
+          "main_jit_seconds": 26.8178,
+          "scene_compile_seconds": 15.1295,
+          "frame": {
+            "stages": 6,
+            "fields": 93,
+            "bytes": 416
+          },
+          "passes": {
+            "Combined": {
+              "relative_rmse": 0.010799203818490111,
+              "rmse": 0.0023714674171060324,
+              "cycles_rms": 0.2195965051651001,
+              "luminance_mean_ratio": 0.9999529893146687,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffCol": {
+              "relative_rmse": 0.0015973165123582215,
+              "rmse": 0.0003974011051468551,
+              "cycles_rms": 0.24879296123981476,
+              "luminance_mean_ratio": 0.9999994484873387,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffDir": {
+              "relative_rmse": 0.009852323553454737,
+              "rmse": 0.005851889494806528,
+              "cycles_rms": 0.5939603447914124,
+              "luminance_mean_ratio": 0.9999517693714477,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "DiffInd": {
+              "relative_rmse": 0.07457403641958646,
+              "rmse": 0.008923124521970749,
+              "cycles_rms": 0.1196545735001564,
+              "luminance_mean_ratio": 0.9999469846384063,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Emit": {
+              "relative_rmse": 0.0002119693157762705,
+              "rmse": 0.00001685228016867768,
+              "cycles_rms": 0.07950339466333389,
+              "luminance_mean_ratio": 1.000000342030695,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Env": {
+              "relative_rmse": 0.00045627798673005546,
+              "rmse": 0.0000058762325352290645,
+              "cycles_rms": 0.01287862379103899,
+              "luminance_mean_ratio": 0.9999998963219163,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossCol": {
+              "relative_rmse": 0.0019357827186725345,
+              "rmse": 0.0003860609431285411,
+              "cycles_rms": 0.19943402707576752,
+              "luminance_mean_ratio": 0.999949121952719,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossDir": {
+              "relative_rmse": 0.008179517342464474,
+              "rmse": 0.01845625601708889,
+              "cycles_rms": 2.256399154663086,
+              "luminance_mean_ratio": 1.0000197111574518,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "GlossInd": {
+              "relative_rmse": 0.12879749825362782,
+              "rmse": 0.028133949264883995,
+              "cycles_rms": 0.21843552589416504,
+              "luminance_mean_ratio": 1.000184618708826,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Normal": {
+              "relative_rmse": 0.0009163611150016344,
+              "rmse": 0.0005051144980825484,
+              "cycles_rms": 0.5512177348136902,
+              "luminance_mean_ratio": 0.9999790944347294,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransCol": {
+              "relative_rmse": 0.0002701350936250796,
+              "rmse": 0.000017556065358803608,
+              "cycles_rms": 0.06498994678258896,
+              "luminance_mean_ratio": 1.000000200185612,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransDir": {
+              "relative_rmse": 0.028148848845807838,
+              "rmse": 0.000009330462489742786,
+              "cycles_rms": 0.00033146870555356145,
+              "luminance_mean_ratio": 0.9991588106035609,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "TransInd": {
+              "relative_rmse": 0.02999390892666237,
+              "rmse": 0.0004108819703105837,
+              "cycles_rms": 0.013698847033083439,
+              "luminance_mean_ratio": 1.0006800349368281,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Direct": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            },
+            "Volume Indirect": {
+              "relative_rmse": 0.0,
+              "rmse": 0.0,
+              "cycles_rms": 0.0,
+              "luminance_mean_ratio": 0.0,
+              "actual_invalid_pixels": 0,
+              "reference_invalid_pixels": 0
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,185 @@
+{
+  "commands": {
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+        "--background",
+        "--debug-cycles",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-3/cycles/hip.exr",
+        "1080",
+        "1080",
+        "256",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "9070 XT"
+      ],
+      "log": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-3/logs/cycles-hip.log",
+      "log_sha256": "3d90b69e5530ae54769e636de11b452774e361e9eb98b2c77dfe88b3b0cc1c84",
+      "returncode": 0,
+      "wall_seconds": 16.02169209695421
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_hip-wavefront-staged": {
+      "command": [
+        "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-four-scene-hip-0PRq34/monster/export",
+        "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-3/psycles/hip-wavefront-staged.ppm",
+        "hip",
+        "1080",
+        "1080",
+        "256",
+        "64",
+        "-",
+        "540",
+        "540",
+        "0",
+        "0",
+        "256",
+        "-",
+        "1",
+        "0",
+        "wavefront-staged",
+        "32",
+        "32768",
+        "32",
+        "1",
+        "1",
+        "1",
+        "4",
+        "2",
+        "0",
+        "0",
+        "0",
+        "0",
+        "1",
+        "1048576"
+      ],
+      "log": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-3/logs/psycles-hip-wavefront-staged.log",
+      "log_sha256": "fbecf4ca73127a463a827ad820d7cbda7a355ad1dc8ed045d90091d06142be5b",
+      "returncode": 0,
+      "wall_seconds": 39.69156991201453
+    }
+  },
+  "comparisons": {
+    "psycles-hip-wavefront-staged-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-3/psycles/hip-wavefront-staged.exr",
+      "process_wall_seconds": 8.08184706303291,
+      "reference": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-3/cycles/hip.exr",
+      "report": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-3/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/report.json"
+    }
+  },
+  "matrix": {
+    "cycles": [
+      "hip"
+    ],
+    "psycles": [
+      "hip-wavefront-staged"
+    ]
+  },
+  "relative_performance": {
+    "hip-wavefront-staged": {
+      "slowdown_vs_cycles_hip": 1.0532561565112757,
+      "speedup_over_cycles_hip": 0.94943665300977
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-3/cycles/hip.json",
+        "metadata_sha256": "37bc7363541ed70d109d9acad339d1879412e2afce33b457ee12307e9465b050",
+        "output": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-3/cycles/hip.exr",
+        "process_wall_seconds": 16.02169209695421,
+        "render_call_seconds": 15.445101115037687,
+        "render_seconds": 14.4603,
+        "sha256": "5c6682b4d6cb70eef015b9453412da6a35ddeece755de47a52bf5283d5a2f006",
+        "timing_scope": "cycles_main_loop_wall"
+      }
+    },
+    "psycles": {
+      "hip-wavefront-staged": {
+        "backend": "hip",
+        "output": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/run-3/psycles/hip-wavefront-staged.exr",
+        "process_wall_seconds": 39.69156991201453,
+        "render_seconds": 15.2304,
+        "scene_compile_seconds": 1.49378,
+        "scheduler": "wavefront-staged",
+        "sha256": "d6ff017365967d161f3e7bb1480a9023597651a1a02395068d49e34c087adaaa",
+        "shader_jit_seconds": 22.2571
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": false,
+    "requested": false,
+    "reused_stages": []
+  },
+  "scene": {
+    "blend": "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "bundle": "/var/tmp/psycles-four-scene-hip-0PRq34/monster/export",
+    "geometry_bin_sha256": "c9f99eecc11102adb940a161b2248e7f67b645512668b16aa119f8e06b48d59d",
+    "scene_json_sha256": "68f22ae6410ea1828a1135ceb89b350231ba0706a71c27087c53adb509419c03",
+    "sha256": "9463082f8d365ad8ae19c1ba86429deb3b532c5a2d0db0b9492c3c759f64d28d"
+  },
+  "schema": "psycles.scene-benchmark.v2",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "9070 XT",
+    "height": 1080,
+    "max_samples_per_dispatch": 64,
+    "psycles_environment": {
+      "PSYCLES_COMPACT_SURFACE_VALUES": null,
+      "PSYCLES_DISABLE_SHADER_CACHE": "1",
+      "PSYCLES_POPULATE_SURFACE_ONCE": null
+    },
+    "psycles_scheduler_config": {
+      "fast_math": true,
+      "persistent_block_size": 32,
+      "persistent_fetch_size": 1,
+      "persistent_worker_count": 32768,
+      "staged_direct_light_queue": true,
+      "staged_surface_sorting": true,
+      "wavefront_counter_readback_batch_size": 4,
+      "wavefront_counter_readback_pipeline_depth": 2,
+      "wavefront_execution_block_size": 32,
+      "wavefront_frame_capacity": 1048576,
+      "wavefront_graph_refill_threshold": 0,
+      "wavefront_graph_selective": false,
+      "wavefront_graph_worker_count": 0,
+      "wavefront_tail_megakernel_threshold": 0
+    },
+    "psycles_schedulers": [
+      "wavefront-staged"
+    ],
+    "samples": 256,
+    "width": 1080
+  },
+  "status": "complete"
+}

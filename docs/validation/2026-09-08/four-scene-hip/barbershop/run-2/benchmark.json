@@ -1,0 +1,185 @@
+{
+  "commands": {
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "/var/tmp/psycles-official-redownload-20260814/barbershop_interior.blend",
+        "--background",
+        "--debug-cycles",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-2/cycles/hip.exr",
+        "2048",
+        "858",
+        "256",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "9070 XT"
+      ],
+      "log": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-2/logs/cycles-hip.log",
+      "log_sha256": "130c512832f4688883212b9cc71232e88dda733dd21913ef0f8f75bc6c7cf855",
+      "returncode": 0,
+      "wall_seconds": 40.39479245909024
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_hip-wavefront-staged": {
+      "command": [
+        "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export",
+        "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-2/psycles/hip-wavefront-staged.ppm",
+        "hip",
+        "2048",
+        "858",
+        "256",
+        "64",
+        "-",
+        "1024",
+        "429",
+        "0",
+        "0",
+        "256",
+        "-",
+        "1",
+        "0",
+        "wavefront-staged",
+        "32",
+        "32768",
+        "32",
+        "1",
+        "1",
+        "1",
+        "4",
+        "2",
+        "0",
+        "0",
+        "0",
+        "0",
+        "1",
+        "1048576"
+      ],
+      "log": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-2/logs/psycles-hip-wavefront-staged.log",
+      "log_sha256": "7b6bd2222b337f578351714f398aa3b75358250fcb46aa1ee2fe98c0ba7c4a33",
+      "returncode": 0,
+      "wall_seconds": 85.97919662098866
+    }
+  },
+  "comparisons": {
+    "psycles-hip-wavefront-staged-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "process_wall_seconds": 12.773265331983566,
+      "reference": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-2/cycles/hip.exr",
+      "report": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/report.json"
+    }
+  },
+  "matrix": {
+    "cycles": [
+      "hip"
+    ],
+    "psycles": [
+      "hip-wavefront-staged"
+    ]
+  },
+  "relative_performance": {
+    "hip-wavefront-staged": {
+      "slowdown_vs_cycles_hip": 1.4269638297724319,
+      "speedup_over_cycles_hip": 0.7007886108504077
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-2/cycles/hip.json",
+        "metadata_sha256": "5e509e09fd4c52372c06fb81726d153f89f8bf8a099fec7775c87ca10c8ec73b",
+        "output": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-2/cycles/hip.exr",
+        "process_wall_seconds": 40.39479245909024,
+        "render_call_seconds": 39.34200466808397,
+        "render_seconds": 28.7474,
+        "sha256": "dcb3e5baa9a62ff8545634cf99b5cfe115b3cba41aa098e1e6aa28677c0152a2",
+        "timing_scope": "cycles_main_loop_wall"
+      }
+    },
+    "psycles": {
+      "hip-wavefront-staged": {
+        "backend": "hip",
+        "output": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+        "process_wall_seconds": 85.97919662098866,
+        "render_seconds": 41.0215,
+        "scene_compile_seconds": 15.1248,
+        "scheduler": "wavefront-staged",
+        "sha256": "8c70d3abe69e3d10543024938a4105e52a179df815b8ce0b97773048fcd67354",
+        "shader_jit_seconds": 27.635
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": false,
+    "requested": false,
+    "reused_stages": []
+  },
+  "scene": {
+    "blend": "/var/tmp/psycles-official-redownload-20260814/barbershop_interior.blend",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "bundle": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export",
+    "geometry_bin_sha256": "17e7d73b058c04127cab5aa14d374eca732701cdf192160b52f3df95135f7478",
+    "scene_json_sha256": "69478daa3cc0efc2a6d38ac1d5de89df120fe2acd1e50ca4490621bbd1c72893",
+    "sha256": "95972b56180462cac47ec82f3a755bd9111ec18ca37a6196a319c013db994130"
+  },
+  "schema": "psycles.scene-benchmark.v2",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "9070 XT",
+    "height": 858,
+    "max_samples_per_dispatch": 64,
+    "psycles_environment": {
+      "PSYCLES_COMPACT_SURFACE_VALUES": null,
+      "PSYCLES_DISABLE_SHADER_CACHE": "1",
+      "PSYCLES_POPULATE_SURFACE_ONCE": null
+    },
+    "psycles_scheduler_config": {
+      "fast_math": true,
+      "persistent_block_size": 32,
+      "persistent_fetch_size": 1,
+      "persistent_worker_count": 32768,
+      "staged_direct_light_queue": true,
+      "staged_surface_sorting": true,
+      "wavefront_counter_readback_batch_size": 4,
+      "wavefront_counter_readback_pipeline_depth": 2,
+      "wavefront_execution_block_size": 32,
+      "wavefront_frame_capacity": 1048576,
+      "wavefront_graph_refill_threshold": 0,
+      "wavefront_graph_selective": false,
+      "wavefront_graph_worker_count": 0,
+      "wavefront_tail_megakernel_threshold": 0
+    },
+    "psycles_schedulers": [
+      "wavefront-staged"
+    ],
+    "samples": 256,
+    "width": 2048
+  },
+  "status": "complete"
+}

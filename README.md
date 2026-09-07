@@ -16,10 +16,8 @@ The surrounding project boundaries include:
 - a typed, extensible ShaderGraph contract with explicit surface, volume, and
   displacement roots;
 - a pre-SVM Cycles graph adapter with explicit node/socket coverage failures;
-- a parameterized `SurfaceProgram` that preserves add/mix closure trees;
-- structural-versus-parameter change analysis for correct JIT invalidation;
-- an atomic incremental material library that reuses programs on parameter-only
-  edits;
+- the original Cycles SVM shader jump table, typed word payloads and stack ABI;
+- scene-derived static node/feature specialization and allocation bounds;
 - transactional scene snapshots with stable resource identifiers;
 - a Luisa DSL implementation of the Cycles SVM material execution boundary;
 - a Luisa device execution path with camera rays, hardware/fallback RayQuery,
@@ -33,7 +31,7 @@ shader-graph path, integrator contract, and explicit compatibility gaps.
 
 ## Build
 
-Clone with submodules and build the default Luisa/fallback configuration:
+Clone with submodules and build the enabled Luisa backends:
 
 ```bash
 git clone --recurse-submodules https://github.com/LuisaGroup/Psycles.git
@@ -56,8 +54,9 @@ cmake -S . -B build-core -G Ninja -DPSYCLES_ENABLE_LUISA=OFF
 ```
 
 See [BUILD.md](BUILD.md) for prerequisites, backend options, cache behavior,
-and troubleshooting. Current implementation status and release gates are in
-[DEVELOP.md](DEVELOP.md).
+and troubleshooting. Current implementation status is in
+[docs/cycles-compatibility.md](docs/cycles-compatibility.md); development rules
+and completion gates are in [DEVELOP.md](DEVELOP.md).
 
 ## Render through Luisa
 
@@ -73,11 +72,11 @@ Correctness is not inferred from another Psycles implementation. The
 regression harness renders the same `.blend` with Blender Cycles to linear
 multilayer EXR and compares those passes directly with Psycles-Luisa output.
 
-Full-scene checkpoints use the canonical
-[five-renderer benchmark](docs/scene-benchmark.md): Cycles CPU/HIP and
-Psycles-Luisa fallback/HIP/Vulkan at matched scene settings. It records
-render-only and process timings, EXR hashes, numeric pass comparisons, and
-device-labeled triptychs.
+The [scene benchmark](docs/scene-benchmark.md) supports the full Cycles CPU/HIP
+and Psycles fallback/HIP/Vulkan matrix, or an explicit focused HIP campaign.
+It compares Cycles' original main-loop wall time with Psycles' render-only
+wall time and records compilation, enclosing process times, EXR hashes,
+numeric pass comparisons and device-labeled triptychs separately.
 
 When a pass comparison diverges, the
 [per-path Cycles oracle](docs/cycles-path-trace.md) compares RNG dimensions,
@@ -85,30 +84,21 @@ raw closures, light/BSDF sampling, PDFs, and path-state transitions at the
 first mismatching event. Discrete state and random samples are exact gates;
 continuous fields have explicit float32 bounds.
 
-## Current vertical slice
+## Current execution path
 
-The implemented slice can:
+Native Cycles 5.2.1 SVM is the default material path, including surface,
+background, sampled/forward light emission and volume consumers. The staged
+path tracer uses Cycles-aligned coroutine boundaries and generic Luisa
+scheduler extensions for application-specific surface sorting. Local SVM
+arrays are bounded by static compiler analysis, not rendering profiles.
 
-1. accept a normalized, pre-SVM Cycles graph representation;
-2. map constant, RGB, geometry, math add/multiply, color mix, diffuse,
-   emission, transparent, add-closure, and mix-closure nodes;
-3. validate node coverage, sockets, roots, graph types, and acyclicity;
-4. compile the surface root to typed float, float3, and closure instructions;
-5. keep editable values in a generated parameter block while using graph
-   structure and static properties as the program signature;
-6. rebind material parameters without regenerating a `SurfaceProgram`, or
-   recompile atomically when structure changes;
-7. trace the program through Luisa DSL as a polymorphic `GraphSurface`;
-8. evaluate Lambertian and current Cycles rough diffuse semantics, emission,
-   RGB transparent extinction, and add/mix closure sample weights;
-9. apply complete scene deltas atomically and reject dangling references;
-10. upload cameras, transformed triangle instances, smooth normals, material
-    overrides, point/spot/area/distant/background lights, and world emission
-    to Luisa resources and acceleration structures;
-11. render multi-bounce transport with next-event estimation, Russian
-    roulette, deterministic sampling, and Film accumulation in Luisa kernels;
-12. output Combined, Normal, Albedo, Denoising Normal/Albedo, and Sample Count
-    passes.
+Lone Monk, Monster, Classroom and Barbershop run on HIP at 256 spp, with
+original Cycles linear-pass comparisons. This is not a claim of complete
+SVM coverage or performance parity. Nine semantic opcodes remain unsupported,
+indirect-light/path residuals remain under diagnosis, and the displacement
+prepass still contains a private legacy evaluator that must be removed.
+See [the current compatibility status](docs/cycles-compatibility.md) and
+[validation index](VALIDATION.md) for exact gates and evidence.
 
 Unsupported execution features are explicit compilation diagnostics rather
 than silent approximations. Node and render semantics are accepted only after

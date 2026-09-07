@@ -1,625 +1,148 @@
 # Architecture
 
-## Decision
+Updated 2026-09-08. Current coverage and measured limitations belong in
+[cycles-compatibility.md](cycles-compatibility.md) and
+[the validation index](../VALIDATION.md).
 
-Cycles defines what Blender users can express and what results are observable.
-For the active SVM replacement, Cycles 5.2.1 also defines the implementation
-model: node stream, typed payloads, stack ABI, program-counter loop, single
-node-type dispatch, closure state, feature masks, and
-surface/volume/displacement control flow. Psycles must reproduce that model in
-Luisa DSL without architectural substitutions until the project owner
-explicitly lifts the lock in `DEVELOP.md`. This SVM lock does not independently
-prescribe the outer path-tracing scheduler.
+## Required execution model
 
-```mermaid
-flowchart TD
-    A["Blender / Cycles normalized graph"] --> B["Cycles contract adapter"]
-    B --> C["ShaderGraph + SceneSnapshot"]
-    C --> D["Cycles-isomorphic SVM compiler + parameter blocks"]
-    D --> E["RendererBackend contract"]
-    E --> F["Cycles-isomorphic Luisa SVM"]
-    F --> G["Luisa DSL AST + device JIT"]
-    G --> H["Renderer session + Cycles passes"]
-    I["Blender Cycles golden"] --> J["Linear pass differential"]
-    H --> J
+Cycles 5.2.1 defines both the observable material behavior and its SVM
+execution model. Psycles implements the original node word stream, typed
+payloads, stack addressing, program-counter loop, node dispatch, closure
+state, feature masks and surface/volume/displacement control flow in Luisa
+DSL. The implementation lock in [DEVELOP.md](../DEVELOP.md) forbids an
+alternative material interpreter. Cycles itself is the only rendering oracle;
+there is no independently implemented CPU reference renderer.
+
+The data flow is:
+
+```text
+Blender evaluated scene and normalized graph
+  -> typed graph / immutable scene contract
+  -> Cycles-isomorphic SVM words, shader metadata and geometry images
+  -> scene-specialized Luisa DSL and device JIT
+  -> renderer session, linear passes and original-Cycles differential
 ```
 
-The repository implements the path from the normalized graph DTO through Luisa
-AST construction and device execution. Compatibility is measured directly
-against Blender Cycles; Psycles does not contain a second host renderer.
-
-## Stable boundaries
-
-### Cycles adapter
-
-`adapter::CyclesNormalizedShaderGraph` represents the graph after
-Cycles-independent semantic normalization and before SVM-specific
-multi-closure transformation. `adapt_cycles_shader_graph()` rejects a graph
-marked as SVM-lowered; reconstructing a closure tree from bytecode is not a
-supported path.
-
-Node lowering is registered by canonical `(Cycles type, variant)` keys. Socket
-and property names are mapped explicitly, so a new or renamed Cycles node
-produces a coverage diagnostic instead of silently changing its meaning.
-Operation-dependent nodes use a canonical variant, for example
-`("math", "multiply")`.
-
-The Blender JSON bridge uses ordered `BlenderNodeLoweringComponent` objects
-for input/context, value, procedural, and closure families. Components receive
-a typed graph-mutation context; node-group recursion, output memoization, and
-diagnostic ownership stay in the normalizer. This is a host-side extensibility
-boundary only. Components forward raw socket topology, defaults, properties,
-and closure composition into `ShaderGraph`; invoking Blender or Cycles to
-pre-bake a material is forbidden.
-
-### ShaderGraph
-
-`contract::ShaderGraph` is a typed DAG with three independent roots:
-
-- `Surface` produces a surface closure;
-- `Volume` produces a volume closure;
-- `Displacement` produces a vector displacement.
-
-Node types are strings registered in `NodeRegistry`, not a closed enum. This is
-intentional: a Cycles upgrade that introduces a new node must produce an
-explicit coverage failure rather than silently falling back to an unrelated
-implementation.
-
-Socket defaults are runtime parameters unless they are declared as static node
-properties. The compiler therefore produces two signatures:
-
-- `structure_signature`: node types, topology, socket types, roots, and static
-  properties; a change requires DSL/JIT regeneration;
-- `parameter_signature`: unlinked socket values; a change may be handled by
-  updating parameter storage.
-
-This split is a correctness and invalidation contract. It does not prescribe
-how parameters are packed or cached.
-
-### Legacy surface program (wholesale replacement in progress)
-
-The remainder of this subsection records the current implementation so that it
-can be removed safely; it is not an approved target architecture. Under the
-mandatory lock in `DEVELOP.md`, no new work may extend these custom execution
-boundaries. Their replacement is the Cycles 5.2.1 SVM stream, stack, PC loop,
-single node dispatch, and closure flow.
-
-`compiler::SurfaceProgram` is a typed, immutable semantic program with one
-topologically ordered value instruction stream plus separate surface- and
-volume-closure trees.
-The unified stream is required for cross-type dependencies such as
-texture-color to scalar Math to Principled roughness, and for explicit Cycles
-socket conversions. Closure composition remains a tree in both domains; there
-is no fixed-size `ShaderClosure[]`.
-
-`SurfaceProgramBuilder` emits this stream directly from the topological
-`evaluation_order` produced by graph analysis. While Luisa records a material
-branch,
-`GraphSurfaceImplementation` visits the stream once in that order and retains
-each result as a host-stage `SurfaceValueExpression`. That type is a C++
-`variant<Expr<float>, Expr<float3>>` used only while constructing the AST. The
-selected Luisa expression reaches device code without a runtime tag, union, or
-four-component padding. An edge whose consumer requests the wrong static type
-is an AST-construction error rather than a device-side conversion.
-
-Every unlinked editable socket becomes a typed `ParameterDesc`. A
-`SurfaceParameterBlock` can therefore be regenerated from a new shader graph
-without rebuilding the program if its `structure_signature` still matches.
-Production device storage preserves that type boundary with separate scalar
-and vector buffers. Both use the same `parameter_block + ParameterId` address,
-but a scalar parameter node can only issue a scalar load and a vector parameter
-node can only issue a vector load. The former weak `Buffer<float4>` material ABI
-is not present in surface callables.
-
-Runtime literals deliberately remain parameterized instead of being embedded
-into every material AST. Materials with the same structure signature can then
-share one recorded branch while retaining different raw Blender socket values.
-Literal specialization is a possible compiler optimization only when its extra
-material branches and native-JIT cost are measured to be beneficial; it is not
-the semantic representation and must never become Blender/Cycles material
-pre-baking.
-This gives multistage code a precise binding-time boundary:
-
-| Value | Current representation | Update action |
-|---|---|---|
-| Node topology, static operation, socket type | Program structure | Recompile program |
-| Unlinked color, roughness, strength, mix factor | Typed scalar/vector parameter block | Rebind data |
-| Position, normals, incoming direction, tangent | Surface point | Evaluate on device |
-
-Emission has two deliberately separate host-stage analyses. The structural
-closure transfer relation decides whether the generated Luisa AST may use the
-restricted constant-emission callable; Principled is always deferred because
-its Alpha, Sheen, and Coat layers may affect radiance. A second per-material
-metadata query mirrors Cycles' `output_estimate_emission` for mesh-emitter
-discovery: it reads direct parameter literals and closure topology while
-treating linked values conservatively. That estimate controls proposal
-membership only. The original Blender closure and all linked expressions are
-still evaluated by `SurfaceDispatch` on the device and are never replaced by
-the host estimate.
-
-Principled emission layering is generated by the dedicated
-`PrincipledEmissionLayerComponent` host-stage C++ object. It composes Alpha,
-Sheen LTC attenuation, reflective Coat GGX/Fresnel attenuation, and Coat Tint
-into one ordered Luisa expression while retaining every socket as a runtime
-device value. Whether Coat Normal is linked is an explicit immutable bit in
-the closure instruction; numeric values cannot recover that graph-topology
-fact. The effective reflective-caustics predicate is supplied per ray through
-the surface-emission callable, so material AST reuse does not freeze an
-integrator/path-state decision.
-
-Physical Alpha uses the same ordered device expression. Each standalone
-Transparent or Principled Alpha leaf first applies Cycles' signed
-`abs(average(weight))` cutoff independently. A closure-tree reduction then
-sums only allocated weights and sample weights and places the single merged
-transparent closure at the first dynamically allocated leaf. This preserves
-closure indices and random-lobe order when earlier runtime candidates fall
-below cutoff; it also supplies transparent extinction without a host material
-surrogate.
-
-`compiler::MaterialLibrary` applies this rule atomically to a scene revision.
-If any material fails to compile or bind, the previous library and revision
-remain visible.
-
-### Surface dispatch
-
-`luisa_backend::SurfaceDispatch` owns
-`luisa::compute::Polymorphic<Surface>`. Integrators dispatch by a runtime
-surface tag and consume a uniform semantic protocol:
-
-- BSDF evaluation and sampling;
-- emission;
-- visibility opacity;
-- volume extinction, scattering, and emission coefficients;
-- AOV properties;
-- static capability metadata.
-
-The dispatch is not treated as legacy scaffolding. It remains in the emitted
-DSL. A future compiler pass may fuse or specialize it when proven safe, but
-neither the renderer contract nor an integrator is allowed to assume that this
-has happened.
-
-The surface protocol exposes semantic values, not a fixed Cycles
-`ShaderClosure[]` layout. Each implementation may construct and specialize its
-closure tree using ordinary host control flow while tracing Luisa DSL.
-
-`luisa_backend::GraphSurface` is the first implementation. It consumes a shared
-`SurfaceProgram`, emits host-specialized Luisa expressions, and obtains runtime
-parameters, textures, attributes, and surface differentials from
-`ShaderServices`. Implementations visible in a complex scene remain
-unverified until focused Cycles probes pass; the authoritative status is
-reported by `tools/check_cycles_shader_node_coverage.py`.
-
-`GraphSurface` is compiled as a host-side AST builder rather than implemented
-by textual header fragments. Its public header owns an opaque implementation.
-The implementation binds each immutable value instruction to a polymorphic
-node component, then invokes that component while Luisa is recording a
-kernel. Ordinary C++ classes, virtual methods, visitors, and host booleans may
-therefore organize shader construction without appearing as device-side
-objects, virtual calls, or dynamic branches. The resulting device program
-remains one fused Luisa AST. New node families extend the component factory
-and a focused translation unit instead of expanding a central shader switch.
-
-`ShaderServices::attribute` returns both the value and an explicit presence
-bit. This is required for volume grids: an existing density voxel whose value
-is zero is semantically different from a missing `density` attribute, for
-which Cycles retains the node's scalar density. Volume coefficient evaluation
-also receives an explicit context that carries object-density scaling and
-whether emission is observable; shadow and extinction-only evaluations never
-infer that context from unrelated surface flags.
-
-Volume phase mathematics is kept outside the path integrator in
-`cycles_volume_phase.h`. It exposes normalized phase closures and samples,
-while `cycles_fast_math.h` fixes the small set of Cycles numerical
-approximations used by fitted Mie parameters. `GraphSurface` emits the
-original phase closures through the host-stage `VolumePhaseCollector`
-protocol. The combined `Surface::evaluate_volume` boundary returns
-coefficients and optionally emits phases from one graph trace. `VolumePhaseSet`
-is a separate `.h`/`.cpp` AST-builder component:
-it stores closures in device-local memory, merges only exactly equal
-family-specific parameters, preserves source order, and keeps the allocation
-budget monotonic even when merging compacts live storage, exactly like
-Cycles' separate `num_closure`/`num_closure_left` state. It then applies
-Cycles' explicit eight-phase copy limit, evaluates the scalar
-sample-weighted mixture used for direct lighting, and performs Cycles'
-single-closure reservoir selection with random-number reuse for indirect
-continuation.
-
-`StackedVolumeEvaluator` is the host-stage aggregation boundary. At one
-spatial sample it visits the runtime `VolumeStack` in order, dispatches every
-original `GraphSurface` with that entry's parameter block, adds extinction,
-scattering, and emission coefficients, and sends all raw phases to one
-`VolumePhaseSet`. It deliberately skips merging after stack entry zero and
-performs exact family/parameter merging after every later entry, matching
-Cycles' `volume_shader_eval()` control flow before the stable first-eight copy.
-`VolumeStackEntryPointProvider` is a polymorphic host interface for
-object-dependent shader coordinates and density scale; world, mesh, motion,
-and grid implementations can evolve without changing stack aggregation.
-Neither layer may collapse phase parameters into an averaged anisotropy.
-
-`VolumeStack` is the device-local boundary-state component. Its fixed storage
-contains Cycles' mandatory terminator slot, is capped at
-`MAX_VOLUME_STACK_SIZE == 32`, and identifies media by the exact
-`(object, shader)` pair. Enter transitions append in order, exit transitions
-swap the last active entry into the removed slot, and updates are gated by
-volume capability plus a transmitted surface label. The same component owns
-the extra Psycles dispatch handles needed to evaluate the original volume
-graph; those handles do not replace Cycles identity. Camera enclosure discovery
-is split between two host-stage components. Each entry also retains its
-material's raw Cycles volume-sampling policy. `VolumeStack::sample_method()`
-reduces those two-bit technique sets by union: an all-distance or
-all-equiangular stack keeps that estimator, while either authored MIS or a
-mixed stack produces MIS independent of entry order. This is the exact
-algebra implemented by Cycles' `volume_stack_sample_method()`, not a
-light-type heuristic. `TriangleVolumeBoundaryComponent`
-reuses `TrianglePrimitiveComponent` for exact material/object identity and
-reconstructs only the geometric normal needed for front/back classification.
-`CameraVolumeStackComponent` performs Cycles' bounded +Z TLAS probe with
-volume-only any-hit filtering, exact primitive self identity, the one-ULP
-intersection offset, object-only membership tests, and duplicate front-hit
-accounting. `VolumeStackCameraInitializer` remains the storage-independent
-state machine beneath that traversal.
-
-`PathVolumeStateComponent` installs this boundary state in the real
-per-sample path context. It keeps the non-copyable Luisa `Local` arrays alive
-through the host-stage pipeline with a move-only owner and initializes
-Cycles' `volume_bounce`, `volume_bounds_bounce`, and `optical_depth` state.
-Host specialization omits both the local arrays and enclosure ray query from
-volume-free kernel ASTs. A volume-enabled path always receives the world
-medium and terminator; the +Z probe is emitted only when the camera view plane
-may overlap an object volume. After a successful surface sample, the
-host-stage component consumes the exact Cycles continuation label and updates
-the stack only when `LABEL_TRANSMIT` is present. The entry comes from the same
-`TrianglePrimitiveComponent` used by camera traversal and carries the
-effective object/shader identity plus raw graph dispatch handles; reflection,
-non-volume surfaces, duplicate entrances, and exits therefore use one formal
-boundary transition rather than path-local special cases. This call is
-absent from volume-free ASTs. `PathVolumeSegmentStage` consumes that same
-state before every typed closest event, so free flight and boundary crossing
-cannot diverge into separate path-local stack rules.
-
-`VolumeSceneMetadataComponent` performs the matching host preprocessing. It
-resolves each instance's effective material slots, transforms the geometry
-bound through all eight AABB corners, marks pairwise-overlapping volume
-objects, and applies Cycles' conservative stack-size rule: two slots for the
-background and terminator, one shared slot for disjoint object volumes, and an
-additional slot for every object whose bound intersects another volume, capped
-at 32. At render-kernel construction it builds the camera near-view-plane
-bound for the actual aspect, projection, shift, near clip, aperture, focal
-distance, and aperture ratio. Only overlap with an object-volume bound enables
-the +Z enclosure query. A host stack size of zero is solely the Luisa
-specialization sentinel for a volume-free scene; it is never exposed as a
-Cycles stack size.
-
-The world entry is not identified by its shader alone. BlenderSync creates a
-background-light object and Cycles stores that object's index beside the world
-volume shader in kernel data. Scene schema v2 therefore exports and imports the
-background object index independently of the world material's exact Cycles
-shader index; the camera stack never guesses either half of the pair.
-
-`HomogeneousVolumeTransport` is another host-stage AST component. It owns the
-analytic segment measure independently of scene traversal: Cycles' weighted
-RGB channel choice, bounded exponential sampling and density, scatter-versus-
-transmit estimator, transmittance, and the numerically stable emission
-integral. The two random inputs retain their official
-`PRNG_VOLUME_SCATTER_DISTANCE` and `PRNG_VOLUME_RESERVOIR` identities; phase
-sampling remains a later `PRNG_VOLUME_PHASE` operation. The default entry point
-uses Cycles' unguided scatter probability, while an explicit-probability entry
-point admits the history-dependent VSPG probability without changing the
-estimator measure or duplicating its implementation.
-
-`VolumeProgramCapabilityComponent` is the host-side proof boundary for the
-currently enabled subset. It recursively follows only values reachable from
-the original Volume closure tree and admits a scene to analytic segment
-integration only when no reachable spatial value exists. This is a capability
-check, not shader preprocessing: accepted programs retain their raw closures
-and dynamic parameter buffers, while heterogeneous programs remain intact and
-receive a diagnostic.
-
-`HeterogeneousVolumeTracking` is the first component beyond that gate. It
-records the local weighted-delta-tracking transition independently of spatial
-acceleration: scalar-majorant exponential free flight, Hash Prospector path
-offset scrambling, null coefficients, Cycles' throughput/albedo channel
-measure, real-versus-null probabilities, absorption-only deterministic
-continuation, and both continuation weights. Its result carries an explicit
-`majorant_exceeded` predicate. That predicate is a failed preprocessing
-contract, not permission to continue with an estimated bound. Majorant
-construction, octree traversal, overlapping-stack reduction, VSPG reservoir
-selection, residual-ratio transmittance, and direct-light MIS are separate
-components so that none can silently alter this local measure. These stages
-now compose in the production camera-path AST, including raw collision/phase
-recovery and both distance/equiangular direct techniques. The scene capability
-gate continues to reject heterogeneous material graphs until the same
-residual-ratio traversal replaces homogeneous attenuation on volume shadow
-rays.
-
-`VolumeMajorantSceneComponent` owns the next host-stage boundary. It maps each
-internal instance and its effective material overrides to one object/shader
-root for every volume stack candidate, appends the distinct World range,
-dispatches the raw `GraphSurface` prepass, reduces each result through the
-Cycles hierarchy builder, formally validates each full eight-child tree,
-relocates all local indices, and uploads compact node/root/range buffers.
-Structurally homogeneous closures use Cycles' one-cell grid; spatially varying
-closures use the depth-seven 128-cubed grid. Both evaluate the same sixteen
-padded Sobol points per cell and both remain available to the unified
-overlapping-root traversal. The ranges form an exact ordered partition and the
-World range is always last, so traversal does not depend on host pointer or
-map ordering. This component builds acceleration metadata only; it neither
-evaluates transport on the CPU nor replaces the original closure graph.
-
-### Scene
-
-`SceneDatabase` stores immutable logical snapshots and accepts a `SceneDelta`
-against an explicit base revision. A delta is applied to a candidate copy,
-validated as a complete scene, and committed atomically. This lets a Blender
-adapter update materials, geometry, instances, cameras, and lights in any
-command order without temporarily exposing dangling references.
-
-The scene contract uses stable typed identifiers. It contains no Luisa resource
-handles and no Cycles device pointers.
-
-Triangle attributes retain their semantic domain in the contract:
-`MeshAttribute<T>` is explicitly point-, corner-, or face-domain. Blender
-scene schema v2 preserves shared vertex indices; positions and Generated
-coordinates are point attributes, UV/tangent data is corner-domain, and
-normals follow Blender/Cycles' point-versus-corner decision. Named attributes
-retain their source domain. This mirrors Cycles' triangle attribute lookup
-instead of manufacturing a different vertex for every triangle corner.
-The schema also retains Cycles' Generated affine transform separately.
-Surface shaders interpolate the point attribute; volume shaders transform
-their object-space shading point because no surface primitive exists.
-
-### Renderer
-
-`contract::RendererBackend` compiles a snapshot into an opaque
-`CompiledScene`; a `RenderSession` then accepts synchronous sample ranges and
-writes named pass tiles to an `OutputSink`. This maps cleanly to Cycles
-`PathTraceWork::render_samples()` and output tiles without importing
-`PathTraceWorkGPU`, `DeviceScene`, or its queue state machine.
-
-The Luisa integrator is assembled by a host-stage `PathKernelPipeline`.
-`LuisaRenderSession::initialize()` supplies immutable scene resources,
-settings, and existing Luisa callables through `PathKernelConfig`; it does not
-contain transport code. While the `Kernel1D` constructor records its AST, the
-pipeline invokes typed virtual stages for closest-event handling, surface
-reconstruction, surface shading, direct lighting, and closure continuation.
-Environment, emissive-mesh, and analytic-light NEE are independently
-extensible `DirectLightingComponent` objects.
-
-Volume graph aggregation follows the same host-stage component boundary.
-`StackedVolumeEvaluator` owns stack ordering and raw closure accumulation,
-while a `VolumeStackEntryPointProvider` builds exact world/object shader
-state. The production provider uses scene transforms and Generated metadata;
-fixtures can substitute a provider without branching the aggregation
-algorithm or introducing a CPU reference renderer.
-
-The stage values are explicit `PathSampleContext`, `PathBounceContext`,
-`ClosestPathEvent`, `SurfaceGeometryContext`, and `SurfaceShadingState`
-objects. These are C++ AST-builder state, not a device ABI or a wavefront
-queue. `PathBounceSetupStage` consumes one Cycles set of Sobol dimensions and
-records the closest mesh once. `ClosestEventStage` then produces exactly one
-of analytic light, mesh surface, or background, with the event's absolute ray
-distance. `ForwardLightStage` resolves a lamp as a transparent event and the
-pipeline asks for the next event without consuming another path bounce;
-`BackgroundEventStage` terminates the path. Thus the complete free-flight
-segment is an explicit boundary before any event contribution is evaluated.
-For volume-specialized kernels, `PathVolumeSegmentStage` consumes that
-boundary first. Attenuation preserves the event, a phase collision discards it
-and restarts the outer path loop, and volume termination ends the path. The
-same stage owns the fixed Cycles Sobol dimensions, closest-event roulette
-reuse, volume emission/pass accumulation, and the atomic
-`cycles_path_state::next_volume()` transition.
-
-Homogeneous volume direct lighting is composed from additional host-stage
-objects. `HomogeneousVolumeScatterProbability` owns the VSPG sampling
-probability without changing transport weights. `VolumeDirectSampling` owns
-the exact Distance/Equiangular/MIS technique algebra, equiangular geometry,
-and power heuristic independently of light shape.
-`PathVolumeDirectLightingComponent` first asks the selected emitter family
-for a proposal and its valid ray interval. After the segment component has
-selected a collision distance, a polymorphic `VolumeDirectLightProvider`
-samples that same emitter again from the collision point with the original
-light random coordinates. Its explicit host-stage protocol records direction
-sampling, constant emission evaluation, and deferred emission evaluation as
-three ordered Luisa AST phases. The deferred phase receives the computed
-receiving-phase nonzero predicate, matching Cycles' scheduling boundary
-without evaluating a material on the host. Analytic, mesh-emitter, and
-environment providers retain their proposal state as device expressions and
-are composed at the host stage. This proposal/re-sample protocol preserves
-Cycles' coupled RNG measure while allowing point, spot, area, triangle,
-environment, and future light-tree implementations to supply geometry and
-raw radiometry without branching the homogeneous estimator itself. The
-component then owns phase/light MIS, pre-shadow light roulette, clamping, and
-pass routing.
-`HomogeneousVolumeShadowComponent` copies the active volume stack and walks
-ordered closest boundary events to integrate shadow transmittance. Surface
-transparency stays in the shared shadow component. These objects are ordinary
-C++ abstractions while the resulting device work remains one fused path
-kernel.
-
-`VolumeAnalyticLightSampling` specializes the host-stage point/spot geometry
-contract without duplicating the transport pipeline. In particular, the spot
-segment proposal retains Cycles' zero-attenuation samples and visible-sphere
-cap, while the collision-position method delegates to the ordinary spot
-measure. `AreaLightSampling` similarly owns the authored-primitive segment
-proposal, the exact spread-clamped rectangle/circle/ellipse collision
-proposal, and known-hit evaluation. Surface NEE, volume NEE, and analytic
-forward intersections all construct their AST through this object;
-`path_kernel_area_light` maps the shared `LightGpu` flags and axes once.
-`TriangleLightSampling` owns the corresponding three triangle measures:
-area sampling for the volume-segment proposal, position-dependent
-solid-angle/area sampling at the final collision, and known-hit PDF
-evaluation. `EmissiveTriangleComponent` adds instance geometry, Cycles'
-negative-scale orientation convention, side selection, and evaluation of the
-original raw emission closure. Its radiometry-free proposal accepts only scene
-data; a separate virtual evaluator requires path state after validity and
-self-intersection rejection. `EnvironmentLightComponent` applies the same
-proposal/evaluator split to raw World closures. Surface NEE, background hits,
-forward-hit MIS, and the volume-light components all construct their AST
-through those boundaries. `SurfaceParameterServices` is the narrower
-constant-emission boundary: it exposes only device parameter-buffer reads and
-cannot access a shading point, texture, attribute, geometry, or BSDF table.
-The host-stage `SurfaceDispatch` records this callable only for graphs proven
-constant by the compiler's closure-tree relation. Surface analytic, triangle,
-and environment NEE evaluate that path before the receiving BSDF; deferred
-graphs evaluate the ordinary raw closure only after a non-zero BSDF and before
-shadow traversal. This mirrors Cycles' constant/`SHADE_LIGHT_NEE` split while
-retaining one fused Luisa device program and the original per-instance
-parameter blocks.
-`VolumeLightInterval` independently maps the original segment to spot, area,
-or one-sided triangle geometric support. This separation prevents
-radiometric rejection, proposal measure, and interval algebra from becoming
-emitter-specific branches inside the homogeneous estimator.
-
-Heterogeneous transport is split at the same semantic boundaries.
-`VolumeMajorantPrepass` records the raw Luisa volume graph at the same
-sixteen padded Sobol-Burley positions Cycles uses for every cell of its
-128-cubed grid. Cell addressing is x-fast, sample index is
-`cell_index * 16 + sample`, and the bake state is camera visibility, zero
-path state and direction, and time `0.5`. The ordinary polymorphic
-`SurfaceDispatch` and `VolumeStackEntryPointProvider` construct the shader
-AST, so this pass evaluates the original closure graph rather than a
-host-side material surrogate. It reduces the maximum extinction or emission
-channel, then divides the entry-invariant object-density scale out of the
-cell extrema exactly where Cycles does.
-
-`VolumeMajorantHierarchyBuilder` consumes those extrema and reduces them into
-Cycles' eight-contiguous-child hierarchy. It applies the current depth-seven and
-`range * node_diagonal * volume_scale > 1.442` split rule and records the
-object-bounds-to-`[1, 2)` transform. The builder is host acceleration-metadata
-code only: it neither evaluates a material nor acts as a CPU transport
-oracle. Cycles obtains each cell's extrema from sixteen padded Sobol samples,
-so this hierarchy is a sampled estimate rather than a mathematical proof of
-an upper bound. The transport contract detects a sampled extinction above the
-stored estimate and follows the explicit Cycles correction path.
-
-`VolumeMajorantTraversal` records a single-root Luisa hierarchical DDA. It
-mirrors positive ray axes, derives octants and common ancestors from IEEE-754
-mantissa bits, walks parent links without a device stack, and preserves
-Cycles' root-extrema tail for an implicit medium whose active segment extends
-beyond the root bounds.
-
-`VolumeMajorantOverlapTraversal` owns the separate ordered stack reduction.
-It persists only the currently selected single-root traversal and rebuilds
-every other root at the new common minimum, accumulates extrema in stack
-order, and uses Cycles' `<=` replacement so the last equal endpoint is active.
-Instance ranges and the final World range are searched backward by masked
-shader identity. Missing, malformed, or invalid root coverage fails the whole
-segment closed and cannot invoke the coordinate/extrema provider. The
-host-stage-polymorphic `VolumeMajorantEntryProvider` keeps object transforms
-and runtime Light Path extrema evaluation outside the interval algebra; its
-default policy is the baked leaf extrema times object density. The production
-scene provider transforms object entries through the inverse TLAS transform
-while leaving the World entry untouched. A compact per-surface capability
-buffer selects Cycles' camera/baked path or exact raw-closure re-evaluation:
-one midpoint for homogeneous closures, four shade-offset samples for
-heterogeneous closures, followed by the `max(0.5, 1.5 * maximum)` safety
-expansion. Capability analysis visits every reachable dependency edge, so
-Volume homogeneity is independent of expression order. The Light Path flag
-separately matches current Cycles' deliberately broad finalized-shader scan,
-including a surface-only Light Path dependency.
-
-`HeterogeneousVolumeTracking` independently owns exponential candidate
-distance and the throughput/albedo-weighted real/null collision measure.
-Scene-side prepass resources, hierarchy traversal, and multi-root reduction
-now compose the acceleration stages with the production scene-aware provider.
-Production transport still needs the collision/phase/direct-light connection.
-
-Volume-scattering probability guidance is persistent render-session state,
-not path-local policy. The path kernel accumulates Cycles' raw scatter,
-primary-transmit, and optical-depth statistics in dedicated per-pixel buffers.
-All Combined contributions pass through one classification method so the
-`PRIMARY_TRANSMIT` priority and primary-volume shadow-state override cannot
-diverge between emitters. `VolumeGuidingFilter` owns two independently
-compiled Luisa passes that implement the signed-RGBE horizontal and vertical
-filter. `SampleDispatchPartition` composes ordinary dispatch limits with the
-Cycles cumulative 1, 2, 4, 8, ... history boundaries; the session filters
-after a boundary only when another sample remains. Denoised RGBE history is
-constant during a dispatch, while the raw optical-depth mean is derived again
-for every sample from the mutable running sum/count. That distinction makes
-fused and split sample batches the same estimator.
-
-The Combined buffer also follows Cycles' internal film convention: its fourth
-component stores accumulated transparency, not alpha. Session readback first
-normalizes all samples and only then computes
-`saturate(1 - transparency)`, independently of exposure. Transparent
-background termination and volume-primary-transmit guiding therefore share
-one source value without per-event alpha approximations.
-
-The pipeline owns the path loop, the top-level builder owns the sample loop,
-and the setup/film module owns accumulation. This makes `$break` scope and
-cross-stage lifetime formal while retaining one fused device kernel, the
-original expression construction order, and the original Cycles
-RNG-dimension order. A new transport feature extends a component or a typed
-context instead of relying on textual inclusion into another function's
-lexical scope.
-
-Subsurface transport follows that boundary. `SubsurfaceTransportStage`
-selects the statically typed Burley or Random Walk family while tracing the
-path AST. `SubsurfaceRandomWalkComponent` owns coefficient remapping, entry
-sampling, and the local volumetric walk as ordinary `.h`/`.cpp` host methods;
-its values and 256-event loop are still Luisa device expressions in the one
-fused kernel. The component mutates only the INTERSECT_SUBSURFACE-owned state:
-throughput, exact pending hit, synthetic exit ray, and RNG offset. It neither
-reconstructs shader graphs nor introduces a host reference transport.
-
-Triangle reconstruction is a pair of composable host-stage components.
-`TrianglePrimitiveComponent` is the shared semantic boundary for instance and
-geometry lookup, face material selection, instance overrides, smooth flags,
-Cycles shader/object identity, and material capability bits. It produces the
-same `VolumeStackEntry` identity that camera and path boundary traversal
-consume. Exact exported Cycles shader indices take precedence; a stable
-per-scene material identity keeps renderer-neutral contract scenes usable when
-that optional diagnostic identity is absent. `TriangleGeometryComponent`
-builds on the primitive component and emits the remaining bindless attribute
-reads and domain-index selection once while Luisa records the kernel.
-Closest-hit shading, emissive-mesh evaluation, and transparent-shadow
-evaluation depend on these interfaces rather than duplicating resource-slot
-arithmetic. Generic named attributes use the same domain model through
-`ShaderServices`; individual shader nodes never decide whether an attribute
-index is a point, corner, or face index.
-
-### Cycles differential contract
-
-Official Blender Cycles is the sole rendering oracle. A regression case owns
-one `.blend`, frame, camera, sampling configuration, and pass list. Blender
-emits linear multilayer EXR; Psycles exports the same evaluated scene and
-renders it through Luisa. The comparator reports per-pass RMSE, relative error,
-high-percentile error, invalid pixels, and an error image. Small node probes
-isolate formula or socket differences before a full-scene failure is accepted.
-
-Image residuals are localized with the versioned
-[per-path trace](cycles-path-trace.md). Diagnostic-only Cycles instrumentation
-observes existing CPU/HIP kernel state without consuming RNG dimensions or
-changing transport branches. Psycles emits the same indexed schema from Luisa
-fallback/HIP/Vulkan. Random values and discrete transitions are exact gates;
-continuous values and accelerator-specific triangle-edge ties use documented
-numeric and topological equivalence rules.
-
-The Luisa `fallback` backend is useful on hosts without a supported GPU, but it
-is still the Luisa AST/JIT implementation. It must not be confused with an
-independently written CPU renderer.
-
-## Explicit non-goals of the current milestone
-
-- No alternative SVM interpreter, stack ABI, multi-level dispatch, or
-  independently invented material execution model.
-- No recreation of Cycles `KernelData` or `IntegratorStateGPU`.
-- No material clustering, dispatch grouping, or scene-specific switch
-  rewriting.
-- No wavefront-versus-megakernel decision.
-- No closure-array size limit.
-- No approximate implementation labeled as Cycles-compatible.
-- No OSL execution path yet.
-- No compatibility claim based only on a full-scene image or an unverified
-  node implementation.
-
-## Next implementation slices
-
-1. Replace the existing Psycles-specific material executor with the
-   Cycles 5.2.1 SVM stream, stack, PC loop, node dispatch, and closure flow.
-2. Migrate every used Cycles node family with field/state mapping and direct
-   Cycles-oracle regressions.
-3. Run node probes and complex Blender scenes through official Cycles and the
-   Luisa executor, including full-pass and visual comparison.
-4. Only after the owner explicitly lifts the implementation lock may a
-   different material execution architecture be considered.
+Native SVM is the default path for ordinary surface, volume, shadow, world
+and light material evaluation. A private displacement-prepass bridge still
+uses the old evaluator. That dependency and unreachable legacy helpers are
+removal work, not a second supported architecture.
+
+## Graph and scene contracts
+
+The pre-SVM Cycles adapter preserves socket topology, defaults, properties
+and closure composition. Canonical node/variant keys and explicit socket
+mappings make unsupported nodes a coverage diagnostic. A graph already
+marked SVM-lowered is not reconstructed into a different closure tree.
+Node-group recursion and memoization belong to normalization; host code
+does not bake or evaluate shading as a substitute for device execution.
+
+The typed ShaderGraph has surface, volume and displacement roots, with an
+internal surface-normal projection for Cycles' bump terminal. Structure and
+parameter signatures describe invalidation boundaries, not permission to
+change semantics. Values folded into SVM words or host-specialized DSL must
+invalidate the corresponding compiled program when changed.
+
+SceneDatabase applies a SceneDelta to a candidate immutable snapshot,
+validates references, and commits atomically. Contract identifiers do not
+contain Luisa resource handles or Cycles device pointers. Mesh attributes
+retain point, corner or face domains; shared vertices are not duplicated to
+replace domain-aware interpolation. Generated affine transforms and native
+attribute requests control the data needed by admitted shaders.
+
+## Native compiler and material runtime
+
+The native compiler performs the Cycles graph transformations and stack
+allocation, then emits typed opcode payloads. The linked image retains a
+ShaderJump table and the original surface, volume and displacement entries.
+The bump prefix falls through into surface evaluation without an intervening
+END. BOTH-displacement evaluation saves P and its derivatives, evaluates
+undisplaced geometry and the bump graph, installs the new normal, restores
+P/derivatives, then continues into the surface program. Restoring N at that
+boundary would change Cycles' state machine.
+
+KernelShader metadata carries material capabilities, closure bounds and
+emission information. Used-shader attribute requests determine native
+geometry residency. KernelObject, triangle, curve/key and attribute images
+supply ShaderData services rather than an alternate per-node geometry model.
+Static ribbon curves use containing-curve identity plus packed segment
+indices; they are not represented as triangle identities.
+
+The Luisa SVM retains one PC-loop node dispatcher. Unused cases are omitted
+during host recording; original node/scene feature masks also remove
+unreachable handlers and consumers. Stack bounds are derived from native
+compiler allocation facts, closure bounds from the finalized Cycles graph
+and scene cap. Neither is inferred from a render/profile or a scene name.
+Unknown specialization information retains a conservative bound.
+
+Surface closure initialization, allocation, setup, evaluation and sampling
+use native Cycles state. Shared incoming closure weights accumulate with
+ADD, as in Cycles' multi-closure transformation. Failed image loading remains
+distinct from an unassigned socket and follows native missing-image behavior.
+These are independently tested word/state contracts, not visual heuristics.
+
+Ordered volume evaluation retains one closure allocator across the stack.
+Per-entry phase merging precedes the final active-prefix copy of up to eight
+phases; only allocated closures contribute scattering. Main/shadow volume,
+collision, majorant and density consumers use native SVM. Camera-dependent
+background importance and density resources are built after finalizing the
+session's camera parameters.
+
+## Transport and coroutine scheduling
+
+RendererBackend compiles a scene into an opaque CompiledScene. A
+RenderSession accepts sample ranges and writes named pass tiles to an
+OutputSink. Host-stage PathKernelPipeline components assemble Luisa device
+expressions for event handling, shading, direct lighting, volume and closure
+continuation. They are AST-building interfaces, not host shading evaluators.
+
+Megakernel and staged wavefront modes execute the native material path.
+Coroutine boundaries preserve Cycles event ownership: closest-event work,
+volume handling when needed, surface shading, shadow work and subsurface
+continuation. A successful subsurface intersection proceeds to shade the
+known surface instead of repeating closest intersection. Stage presence
+depends on statically admitted scene features; a scene's stage count alone
+does not prove state-machine parity.
+
+Psycles-specific sorting/queue policy is expressed through generic Luisa
+Coro Ext/Handler facilities. Scheduler dispatch produces stream commands,
+using `stream << scheduler(...).dispatch(...)`. Persistent per-path frame
+state is separate from temporary shader-local storage and uniform arguments.
+Frames live in scheduler-owned reusable pools, not per-thread malloc paths.
+Fallback's LLVM barrier-frame arena can reuse overflow chunks beyond its
+4 MiB fast buffer; that fast buffer is not a maximum frame size.
+
+Generic Luisa analyses may eliminate provably unnecessary zero stores or
+promote transitively read-only references. Ordinary scalar/vector default
+zero initialization remains unchanged. Such compiler work must establish
+effect, alias and lifetime safety independently and validate the original
+renderer module after the minimal regression. No renderer-specific branch
+belongs in Luisa's compiler analysis.
+
+Direct-light components preserve Cycles' RNG dimensions, proposal/resampling
+relationships, PDFs, roulette, MIS, closure evaluation and pass routing.
+Deferred emission is evaluated only at its corresponding transport predicate.
+Structural alignment of every remaining work predicate is still under audit;
+component composition or matching aggregate energy is not proof of parity.
+
+## Validation and remaining boundaries
+
+Every migrated family needs original Cycles words or GPU-state fixtures and
+whole-program validation. The fallback backend executes the same Luisa DSL;
+it is not a separate correctness oracle. Full-scene comparisons use the same
+original .blend, frame, camera, settings, seed and fixed samples, with linear
+passes, invalid counts and visual inspection. Indexed per-path traces locate
+the first RNG/state/visibility divergence without consuming extra samples.
+
+Fast math stays enabled. Discrete words, state, addressing, predicates and
+sampling dimensions must align; a harmless last-bit difference does not
+justify slow software math, texture filtering or intersections. Inlining is
+left to the compiler rather than manually forced noinline boundaries.
+
+The [four-scene HIP baseline](validation/2026-09-08/four-scene-hip/README.md)
+separates render wall time, scene compilation, main JIT and coroutine frame
+size. It does not establish complete performance or path parity. Remaining
+native opcodes, legacy displacement removal, unsupported geometry/motion
+configurations and indirect-light differences are listed in the compatibility
+status. OSL and unadmitted features are not silently approximated.

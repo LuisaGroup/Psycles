@@ -113,64 +113,66 @@ Current large HIP checkpoints use fixed samples and native fast math.
 The old SurfaceProgram instruction/topology histogram and its CLI/API have
 been removed; its counts do not describe native Cycles SVM. Closure-count
 histograms and per-path traces remain supported.
-The [read-only forwarding checkpoint](validation/2026-09-08/coro-readonly-forwarding/README.md)
-records these four 256 spp single canaries after the same correction, with
-all 46 channels finite. The main shader cache is disabled; auxiliary caches
-retain their normal policy. These are not paired benchmark medians:
+The [four-scene HIP campaign](validation/2026-09-08/four-scene-hip/README.md)
+completed 12 matched pairs at Psycles eaa7c72e / Luisa 9ea3b720f, with fixed
+256 spp and original production Cycles 5.2.1 LTS build 9e2066aef7ef on the
+same RX 9070 XT. This is the baseline before the subsequent per-entry static
+specialization work, not a performance claim for later unmeasured code.
 
-| Scene | Extent | Cold main JIT s | Render-only s | Frame | Combined / DiffInd rel. RMSE |
-| --- | --- | ---: | ---: | ---: | --- |
-| Lone Monk | 1440x1080 | 19.1313 | 13.9315 | 220 B | 0.01241366 / 0.12881629 |
-| Monster | 1080x1080 | 22.6170 | 15.2468 | 284 B | 0.00547924 / 0.02552799 |
-| Classroom | 1920x1080 | 18.8041 | 18.7757 | 264 B | 0.00353334 / 0.17820336 |
-| Barbershop | 2048x858 | 76.5101 | 40.8750 | 416 B | 0.01079811 / 0.07450762 |
+Times are three-run medians in seconds. Cycles uses the original main-loop
+wall interval; Psycles uses render-only wall time. Main shader caching is
+disabled, auxiliary/OS caches retain normal policy, and there is no concurrent
+build/render or GPU profiler. Cycles loads precompiled GPU kernels.
 
-Barbershop's JIT observation includes compiler-phase logging. There is no
-GPU profiler or concurrent build/GPU workload in these rendering canaries.
+| Scene / extent / seed | Cycles HIP | Psycles HIP | Relative time | Main JIT | Frame |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Monk / 1440x1080 / 0 | 13.4183 | 13.9693 | 1.0411 | 18.8151 | 220 B |
+| Monster / 1080x1080 / 0 | 14.4289 | 15.2304 | 1.0555 | 22.3434 | 284 B |
+| Classroom / 1920x1080 / 1 | 20.7624 | 18.8207 | 0.9065 | 18.1598 | 264 B |
+| Barbershop / 2048x858 / 0 | 28.7312 | 41.0285 | 1.4280 | 27.4798 | 416 B |
+
+The performance goal is not complete. Only Classroom is faster in this
+campaign; Barbershop still takes 42.8% more rendering time. Old schema-v1
+benchmark ratios used Cycles' enclosing render-call duration and are not
+comparable main-loop baselines. Smaller IR, local arrays or frames are not
+standalone evidence of a renderer speedup.
+
+All 46 Psycles channels are finite in every run. First-pair Combined /
+DiffCol / DiffInd relative RMSE is:
+
+| Scene | Combined | DiffCol | DiffInd |
+| --- | ---: | ---: | ---: |
+| Monk | 0.01240998 | 0.000545943 | 0.12881211 |
+| Monster | 0.00547891 | 0.000110114 | 0.02552520 |
+| Classroom | 0.00353330 | 0.000102385 | 0.17820333 |
+| Barbershop | 0.01079831 | 0.001597650 | 0.07451034 |
+
+The report retains all 15 passes for all repeats, observed timing ranges,
+source/export/output and implementation hashes, and visually reviewed
+original-resolution triptychs. Original Cycles Classroom has 25 non-finite
+DiffDir and 27 non-finite GlossDir pixels per run; affected metrics explicitly
+exclude the union of invalid pixels. Relative errors in nearly empty passes
+are reported with their absolute error and reference signal scale.
 
 Barbershop's unavailable-image admission and missing shared transparent
-closure are fixed, with original-Cycles word/GPU-state regressions. Shared
-closure contributions were incorrectly multiplied instead of added. DiffCol
-relative RMSE is now 0.00159771. At the diagnosed pixel, the first four
-surface events and all 45 recorded random fields now match. Full trace
-parity is not established: a later NEE selection chooses an adjacent emitter
-triangle and downstream light/shadow fields diverge. A generic Luisa
-read-only-reference correction removes immutable render parameters from
-the frame, reducing it from 896 B to 416 B without changing six-stage
-control flow. The latest rendering canary takes 17.5% less time, with nearly
-unchanged pass errors. Indirect residuals and the performance gap remain
-open. Single JIT fluctuations are not evidence of a compiler speedup.
-
-A fresh, profiler-free Cycles HIP check on 2026-09-08 ran Monk and Monster
-three times. Main-loop times were 13.4344/13.4429/13.4521 s for Monk and
-14.4242/14.4129/14.4294 s for Monster (medians 13.4429/14.4242 s).
-Evidence is in `/var/tmp/psycles-cycles-hip-check-9wipGw`; Blender build identity
-is `9e2066aef7ef`, with fixed 256 spp, seed 0, no adaptive sampling or denoise,
-on the same RX 9070 XT. These are main-loop wall times, not summed kernel
-timings or the Python render-call duration. The latest single Psycles canaries
-are approximately 3.6%/5.7% slower; this is not a paired current-revision
-benchmark. A fresh Classroom Cycles main loop takes 20.7432 s at the same
-1920x1080/256 and seed 1. A fresh Barbershop Cycles main loop takes 28.7062 s
-at 2048x858/256 and seed 0, versus Psycles' 40.8750 s (about 42% slower).
-These two Cycles checks are single runs, recorded under
-`/var/tmp/psycles-native-volume-svm-06XnDX`. The older 40.379 s Barbershop
-render-call duration is not a comparable main-loop baseline.
-Cycles' precompiled/cache behavior is not equivalent
-to Psycles' cold main-path compilation. The older Monk reference was
-captured under rocprofv3 and is not the timing baseline for this comparison.
+closure are fixed by original-Cycles word/GPU-state regressions. Shared
+closure contributions were incorrectly multiplied instead of added. At the
+diagnosed pixel, the first four surface events and all 45 sampled random
+fields match, but a later NEE selection still chooses an adjacent emitter
+triangle. The generic Luisa read-only-reference correction reduces its frame
+from 896 B to 416 B without changing six-stage control flow. Neither repair
+establishes full path parity.
 
 The [same-sample Monk diagnosis](validation/2026-09-07/lone-monk-residual/README.md)
-identifies a concrete visibility divergence at coincident leaf geometry.
-The original scene and duplicate primitives are retained. The observation
-does not justify deduplication, extra shading, a global RNG mismatch claim,
-or a slow bit-matching intersection path. The
-[sampler contract](validation/2026-09-07/sampler-contract/README.md) separately
-pins the actual Cycles automatic-scrambling property.
+identifies a visibility divergence at coincident leaf geometry. Original
+duplicate primitives are retained. The observation does not justify
+deduplication, extra shading, a global RNG-mismatch claim or a slow bit-matching
+intersection path. The [sampler contract](validation/2026-09-07/sampler-contract/README.md)
+separately pins Cycles' actual automatic-scrambling property.
 
-Single canary times are not a paired benchmark. The complete current-revision,
-multi-scene performance campaign and remaining structural DiffInd/visibility
-alignment are still open. Do not infer a speedup from smaller IR, fewer local
-lanes or a smaller frame alone.
+The complete baseline campaign is now recorded. Remaining structural
+DiffInd/visibility alignment and cross-scene efficiency are still open;
+average-energy agreement is not same-path correctness.
 
 ## Differential policy
 
