@@ -47,6 +47,7 @@ static_assert(jump_node_word_count == 4u);
   const auto &b = rhs.metadata;
   const auto same_metadata =
       a.kernel_features == b.kernel_features &&
+      a.num_closures == b.num_closures &&
       a.has_surface == b.has_surface &&
       a.has_surface_transparent == b.has_surface_transparent &&
       a.has_surface_raytrace == b.has_surface_raytrace &&
@@ -319,6 +320,12 @@ compile_shader_table(std::span<const ShaderTableCompileUnit> shaders) {
   result.shader_attribute_ids_used.reserve(local.size());
   for (const auto &shader : local) {
     result.kernel_features |= shader.metadata.kernel_features;
+    // Scene::max_closure_global starts at one, then includes the permanently
+    // referenced default Principled graph (12). A future persistent scene
+    // updater must also retain the previous high watermark just as Cycles
+    // does, rather than shrinking live allocations.
+    result.max_closures = std::max(
+        result.max_closures, std::min(shader.metadata.num_closures, 64u));
     result.shader_metadata.emplace_back(shader.metadata);
     result.shader_node_types_used.emplace_back(shader.node_types_used);
     auto &ordered_ids =

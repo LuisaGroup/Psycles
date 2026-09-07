@@ -1,0 +1,25 @@
+# Cycles 5.2.1 cb168525138fecc792cc393f94afc39582b0103c, HIP RX 9070 XT.
+# Read-only GDB observations of ShaderGraph::get_num_closures (probe graph)
+# and Scene::get_max_closure_count (includes default Principled), 8x8/1 spp.
+# Generator: docs/validation/2026-09-07/native-closure-budget/{probe.py,observe.gdb}
+# case graph_closures scene_max_closures
+diffuse 1 12
+emission 0 12
+background 0 12
+principled 12 12
+bssrdf 3 12
+conductor 2 12
+hair 1 12
+glossy-GGX 1 12
+glossy-MULTI_GGX 2 12
+glossy-BECKMANN 1 12
+glossy-ASHIKHMIN_SHIRLEY 1 12
+glass-GGX 2 12
+glass-MULTI_GGX 2 12
+glass-BECKMANN 2 12
+absorption 32 32
+scatter 32 32
+volume-cap 96 64
+folded-principled 1 12
+shared-diffuse 1 12
+diffuse-emission 1 12

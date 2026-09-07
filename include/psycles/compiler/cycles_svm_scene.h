@@ -55,6 +55,10 @@ struct CompiledShaderTable {
   // remain owned by their respective scene components.
   std::uint32_t kernel_features{
       kernel_feature_node_bsdf | kernel_feature_node_emission};
+  // Cycles background-render Scene::get_max_closure_count(), including the
+  // always-referenced default Principled graph in ShaderManager::add_default
+  // (12 closures). Unrepresented shader-index holes add nothing further.
+  std::uint32_t max_closures{12u};
   // Parallel native DeviceScene::shaders image in the identical dense shader
   // index domain. Unrepresented source holes are byte-zero and unreachable.
   std::vector<KernelShader> kernel_shaders;

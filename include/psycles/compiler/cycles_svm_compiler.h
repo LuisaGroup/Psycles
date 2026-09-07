@@ -124,6 +124,9 @@ struct ShaderCompileMetadata {
   // scene linker supplies Cycles' unconditional BSDF/Emission base bits and
   // unions this field across the dense used-shader domain.
   std::uint32_t kernel_features{};
+  // ShaderGraph::get_num_closures() on the finalized Cycles graph, before
+  // Scene::get_max_closure_count() applies its scene-wide floor and cap.
+  std::uint32_t num_closures{};
   bool has_surface{};
   bool has_surface_transparent{};
   bool has_surface_raytrace{};

@@ -1143,6 +1143,7 @@ public:
         _background{context.background},
         _use_bump_eval_state{
             context.displacement_method == contract::DisplacementMethod::both} {
+    _metadata.num_closures = _graph.get_num_closures();
     _metadata.has_surface = _graph.root(GraphDomain::surface) != nullptr;
     _metadata.has_volume = _graph.root(GraphDomain::volume) != nullptr;
     _metadata.has_volume_connected =

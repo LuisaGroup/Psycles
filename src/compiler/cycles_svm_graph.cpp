@@ -1851,4 +1851,35 @@ void CyclesGraph::transform_multi_closure(GraphNode *node,
   }
 }
 
+std::uint32_t CyclesGraph::get_num_closures() const noexcept {
+  // Cycles 5.2.1 ShaderGraph::get_num_closures. Count finalized graph nodes,
+  // not SVM instructions, mix occurrences, or only the Surface output tree.
+  auto count = std::uint32_t{};
+  for (const auto &node : _nodes) {
+    const auto type = node->get_closure_type();
+    if (type == CLOSURE_NONE_ID) {
+      continue;
+    }
+    if (CLOSURE_IS_BSSRDF(type)) {
+      count += 3u;
+    } else if (CLOSURE_IS_BSDF_MULTISCATTER(type)) {
+      count += 2u;
+    } else if (CLOSURE_IS_PRINCIPLED(type)) {
+      count += 12u;
+    } else if (CLOSURE_IS_VOLUME(type)) {
+      count += 32u; // Cycles MAX_VOLUME_STACK_SIZE, not active stack depth.
+    } else if (type == CLOSURE_BSDF_PHYSICAL_CONDUCTOR ||
+               type == CLOSURE_BSDF_F82_CONDUCTOR ||
+               type == CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID ||
+               type == CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID ||
+               type == CLOSURE_BSDF_HAIR_CHIANG_ID ||
+               type == CLOSURE_BSDF_HAIR_HUANG_ID) {
+      count += 2u;
+    } else {
+      ++count;
+    }
+  }
+  return count;
+}
+
 } // namespace psycles::compiler::cycles_svm

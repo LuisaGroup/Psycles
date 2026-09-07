@@ -253,7 +253,9 @@ int main(int argc, char **argv) {
       verify_device_upload(device, *runtime);
       const auto &table = runtime->compilation.table;
       std::cout << "Native scene compile/upload passed: " << table.shader_count
-                << " shaders, " << table.words.size() << " words\n";
+                << " shaders, " << table.words.size() << " words, static stack "
+                << table.peak_stack_usage << " lanes, static closure capacity "
+                << runtime->compilation.max_closures << '\n';
       return EXIT_SUCCESS;
     }
     TemporaryBundle fixture;
