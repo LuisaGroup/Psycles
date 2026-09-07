@@ -4,10 +4,11 @@
 #include "cycles_svm_bsdf.h"
 #include "cycles_svm_internal.h"
 #include "cycles_svm_surface_shader.h"
-#include "subsurface_exit_closure_component.h"
+#include "cycles_svm_subsurface.h"
 
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_noise.h>
+#include <psycles/luisa/cycles_path_state.h>
 
 #include <algorithm>
 #include <memory>
@@ -125,6 +126,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
     svm_detail::ClosureTypeMask _closure_types{
         svm_detail::all_closure_types};
     SurfacePreparation _preparation;
+    Bool _material_evaluated{true};
 
   private:
     void apply_filter_glossy(Expr<float> roughness) noexcept {
@@ -394,26 +396,54 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           context.point.glossy_depth,
           context.point.transmission_depth,
           0u};
-      svm::EvaluationResult evaluation;
       const Expr<Buffer<luisa::uint>> words{
           *_scene->cycles_svm->word_buffer};
-      svm::eval_nodes(
-          _kernel_globals,
-          words,
-          abi::SHADER_TYPE_SURFACE,
-          0u,
-          svm::kernel_feature_node_mask_surface,
-          _scene->cycles_svm->compilation.table.node_types_used,
-          transform_state,
-          *_shader_data,
-          path_state,
-          evaluation);
-      $if(evaluation.status !=
-          static_cast<std::uint32_t>(svm::EvaluationStatus::ended)) {
-        dsl::unreachable("native Cycles surface SVM did not reach NODE_END");
+      const auto evaluate_material = [&] {
+        svm::EvaluationResult evaluation;
+        svm::eval_nodes(
+            _kernel_globals,
+            words,
+            abi::SHADER_TYPE_SURFACE,
+            0u,
+            svm::kernel_feature_node_mask_surface,
+            _scene->cycles_svm->compilation.table.node_types_used,
+            transform_state,
+            *_shader_data,
+            path_state,
+            evaluation);
+        $if(evaluation.status !=
+            static_cast<std::uint32_t>(svm::EvaluationStatus::ended)) {
+          dsl::unreachable("native Cycles surface SVM did not reach NODE_END");
+        };
       };
-      apply_filter_glossy(context.query.glossy_filter_roughness);
+      // Cycles integrate_surface: SSS exits without bump never evaluate the
+      // material. Bumped exits evaluate it once for the BSSRDF normal, then
+      // replace the retained closures before any ordinary BSDF consumer.
+      if ((_scene->cycles_svm->kernel_features &
+           svm::kernel_feature_subsurface) != 0u) {
+        const auto subsurface_exit =
+            (path_state.flag & cycles_path_state::flag_subsurface) != 0u;
+        _material_evaluated = svm_detail::surface_shader_material_eval_required(
+            subsurface_exit, _shader_data->flag);
+        $if(_material_evaluated) { evaluate_material(); };
+        $if(subsurface_exit) {
+          svm_detail::subsurface_shader_data_setup(*_shader_data);
+        }
+        $else { apply_filter_glossy(context.query.glossy_filter_roughness); };
+      } else {
+        evaluate_material();
+        apply_filter_glossy(context.query.glossy_filter_roughness);
+      }
       _preparation = make_preparation(context);
+    }
+
+    [[nodiscard]] Expr<bool> material_evaluated() const noexcept override {
+      return _material_evaluated;
+    }
+
+    [[nodiscard]] Expr<std::uint32_t>
+    native_shader_data_flags() const noexcept override {
+      return _shader_data->flag;
     }
 
     [[nodiscard]] Expr<std::uint32_t>
@@ -441,16 +471,12 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           .average_roughness_squared =
               evaluation.average_roughness_squared,
           .events = evaluation_events(evaluation, *_shader_data, outgoing)};
-      $if(query.surface.subsurface_exit) {
-        result = SubsurfaceExitClosureComponent{}.evaluate_light(
-            _point, outgoing, query.surface, query.shader_flags);
-      };
       return result;
     }
 
     [[nodiscard]] SurfaceClosureTrace closure_trace(
         Expr<std::uint32_t> requested_index,
-        const SurfaceQuery &query) const noexcept override {
+        const SurfaceQuery &) const noexcept override {
       const auto safe_index = min(
           requested_index,
           static_cast<std::uint32_t>(_closures->capacity() - 1u));
@@ -465,35 +491,21 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           .weight = select(make_float3(0.0f), common.weight, valid),
           .normal = select(make_float3(0.0f, 0.0f, 1.0f), common.N, valid),
           .valid = valid};
-      $if(query.subsurface_exit) {
-        result = SubsurfaceExitClosureComponent{}.trace(
-            _point, query, requested_index);
-      };
       return result;
     }
 
     [[nodiscard]] SurfaceSample sample(
         Expr<float> u_lobe,
         Expr<luisa::float2> u_direction,
-        const SurfaceQuery &query) const noexcept override {
-      auto result = sample_impl(u_lobe, u_direction).sample;
-      $if(query.subsurface_exit) {
-        result = SubsurfaceExitClosureComponent{}.sample(
-            _point, u_direction, query);
-      };
-      return result;
+        const SurfaceQuery &) const noexcept override {
+      return sample_impl(u_lobe, u_direction).sample;
     }
 
     [[nodiscard]] SurfaceSampleTrace sample_trace(
         Expr<float> u_lobe,
         Expr<luisa::float2> u_direction,
-        const SurfaceQuery &query) const noexcept override {
-      auto result = sample_impl(u_lobe, u_direction);
-      $if(query.subsurface_exit) {
-        result = SubsurfaceExitClosureComponent{}.sample_trace(
-            _point, u_direction, query);
-      };
-      return result;
+        const SurfaceQuery &) const noexcept override {
+      return sample_impl(u_lobe, u_direction);
     }
 };
 

@@ -4,6 +4,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_ashikhmin_shirley.cpp
     src/luisa/cycles_svm_bsdf.cpp
     src/luisa/cycles_svm_surface_shader.cpp
+    src/luisa/cycles_svm_subsurface.cpp
     src/luisa/cycles_svm_dual_math.cpp
     src/luisa/cycles_svm_bump.cpp
     src/luisa/cycles_svm_bssrdf.cpp
@@ -209,6 +210,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_setup.cpp
     src/luisa/path_kernel_surface_geometry.cpp
     src/luisa/path_kernel_surface_primitive.cpp
+    src/luisa/path_kernel_cycles_svm_surface_geometry.cpp
     src/luisa/path_kernel_surface_queue.cpp
     src/luisa/path_kernel_surface_scatter.cpp
     src/luisa/path_kernel_surface_shading.cpp

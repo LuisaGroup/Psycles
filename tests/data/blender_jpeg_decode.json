@@ -1,0 +1,12 @@
+{
+  "blender": "5.2.1 LTS",
+  "build_hash": "cb168525138f",
+  "width": 32,
+  "height": 24,
+  "channels": 4,
+  "row_order": "top-down",
+  "storage": "unorm8",
+  "source": "generated integer RGB pattern in this script",
+  "jpeg_sha256": "1d1f1b529efe2cab93cace2aead78883fce70719353ca83b35079676794f5e57",
+  "rgba_sha256": "8498c6a5f78d61abc7441be787bd80855330eb319a9fd351a59651c57f8922de"
+}

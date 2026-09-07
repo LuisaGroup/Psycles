@@ -59,6 +59,50 @@ def _trace() -> dict[str, object]:
 
 
 class CyclesPathTraceComparisonTests(unittest.TestCase):
+    def test_subsurface_rng_gap_is_not_an_extra_surface_event(self) -> None:
+        reference = _trace()
+        for index, event in enumerate(reference["events"]):
+            event["slots"]["state_depth"].update(event=index, rng_offset=16 * (index + 1))
+        # Offset 32 belongs to the subsurface transport, not an exit shader.
+        for record in reference["events"][1]["slots"].values():
+            record["written"] = False
+        for closure in reference["events"][1]["closures"]:
+            for name, record in closure.items():
+                if name != "index":
+                    record["written"] = False
+        actual = copy.deepcopy(reference)
+        actual["events"] = [actual["events"][i] for i in (0, 2, 3, 1)]
+        for index, event in enumerate(actual["events"]):
+            event["slots"]["state_depth"]["event"] = index
+        report = comparison.compare_traces(reference, actual, align_by_rng_offset=True)
+        self.assertTrue(report["passed"], report["failures"])
+        self.assertEqual([row["actual_event"] for row in report["event_alignment"]["matched"]], [0, 1, 2])
+        actual["events"][1]["slots"]["state_depth"]["bounce"] += 1
+        report = comparison.compare_traces(reference, actual, align_by_rng_offset=True)
+        self.assertFalse(report["passed"])
+        self.assertEqual(report["failures"][0]["field"], "events[2].state_depth.bounce")
+
+    def test_rng_alignment_rejects_ambiguous_or_missing_events(self) -> None:
+        reference = _trace()
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            comparison.compare_traces(reference, copy.deepcopy(reference), align_by_rng_offset=True)
+        for i, event in enumerate(reference["events"]):
+            event["slots"]["state_depth"]["rng_offset"] = 16 * (i + 1)
+        actual = copy.deepcopy(reference)
+        actual["events"][2]["slots"]["state_depth"]["rng_offset"] = 96
+        report = comparison.compare_traces(reference, actual, align_by_rng_offset=True)
+        self.assertFalse(report["passed"])
+        self.assertEqual(report["event_alignment"]["unmatched_reference"], [48])
+        self.assertEqual(report["event_alignment"]["unmatched_actual"], [96])
+
+    def test_rescaled_selection_is_derived_not_a_new_random_draw(self) -> None:
+        reference = _trace()
+        actual = copy.deepcopy(reference)
+        actual["events"][0]["slots"]["closure_random"]["selection_rescaled"] = 5e-7
+        self.assertTrue(comparison.compare_traces(reference, actual)["passed"])
+        actual["events"][0]["slots"]["random_bsdf"]["selection"] = 5e-7
+        self.assertFalse(comparison.compare_traces(reference, actual)["passed"])
+
     def test_float32_rounding_is_bounded(self) -> None:
         reference = _trace()
         actual = copy.deepcopy(reference)

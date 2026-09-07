@@ -72,28 +72,16 @@ struct StaticMeshTransform {
           .z = {e[2u], e[6u], e[10u], e[14u]}};
 }
 
-[[nodiscard]] packed_float3 transform_static_normal(
+[[nodiscard]] packed_normal transform_static_normal(
     const Mat4f &world_to_object, luisa::float3 normal) noexcept {
   // Cycles' Mesh::apply_transform multiplies normals by the transpose of the
   // object inverse. Mat4f is column-major, so the columns of world_to_object
   // become the rows of the normal transform here.
   const auto &e = world_to_object.elements;
-  const auto transformed = Vec3f{
-      std::fma(normal.x, e[0u],
-               std::fma(normal.y, e[1u], normal.z * e[2u])),
-      std::fma(normal.x, e[4u],
-               std::fma(normal.y, e[5u], normal.z * e[6u])),
-      std::fma(normal.x, e[8u],
-               std::fma(normal.y, e[9u], normal.z * e[10u]))};
-  const auto length_squared = transformed.x * transformed.x +
-                              transformed.y * transformed.y +
-                              transformed.z * transformed.z;
-  if (!(length_squared > 0.0f) || !std::isfinite(length_squared)) {
-    return pack(transformed);
-  }
-  const auto inverse_length = 1.0f / std::sqrt(length_squared);
-  return {transformed.x * inverse_length, transformed.y * inverse_length,
-          transformed.z * inverse_length};
+  return pack_transformed_geometry_normal(
+      pack(normal), {{e[0u], e[1u], e[2u], 0.0f},
+                      {e[4u], e[5u], e[6u], 0.0f},
+                      {e[8u], e[9u], e[10u], 0.0f}});
 }
 
 [[nodiscard]] bool same_position(luisa::float3 actual,
@@ -497,13 +485,12 @@ template <typename Geometry>
       .type = NODE_ATTR_FLOAT3,
       .payload = convert_values<packed_normal>(
           upload.normals, [static_transform](luisa::float3 value) {
-            const auto normal = static_transform == nullptr
-                                    ? pack(value)
+            return static_transform == nullptr
+                                    ? pack_geometry_normal(pack(value))
                                     : transform_static_normal(
                                           static_transform->plan
                                               ->world_to_object,
                                           value);
-            return pack_geometry_normal(normal);
           })});
 
   if (upload.default_uv_available) {

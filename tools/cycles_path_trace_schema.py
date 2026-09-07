@@ -238,7 +238,9 @@ _EVENT_COMPARISON = {
         COMPARE_EXACT,
         COMPARE_FLOAT32,
     ),
-    "closure_random": (COMPARE_RANDOM_EXACT,) * 3,
+    # z is a derived reuse of the base random number after a floating-point
+    # closure-weight reduction, not another independent sampler output.
+    "closure_random": (COMPARE_RANDOM_EXACT, COMPARE_RANDOM_EXACT, COMPARE_FLOAT32),
     "closure_weight": (COMPARE_FLOAT32,) * 3,
     "closure_n": (COMPARE_FLOAT32,) * 3,
     "bsdf_meta": (

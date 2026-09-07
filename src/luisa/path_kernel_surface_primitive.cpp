@@ -32,8 +32,13 @@ public:
   emit(const std::shared_ptr<LuisaSceneData> &scene,
        const Var<luisa::compute::CommittedHit> &hit,
        const Var<luisa::compute::Ray> &ray, Expr<float> ray_dP,
-       Expr<float> ray_dD,
+       Expr<float> ray_dD, Expr<float> ray_time,
+       const Var<RenderKernelParameters> &parameters,
        const SafeNormalizeCallable &safe_normalize) const noexcept override {
+    if (scene->native_cycles_svm_surface) {
+      return make_cycles_svm_surface_geometry_component()->emit(
+          scene, hit, ray, ray_dP, ray_dD, ray_time, parameters, safe_normalize);
+    }
     Bool is_curve = false;
     if (_plan.curves) {
       is_curve = _plan.triangles ? hit->is_procedural() : Bool{true};

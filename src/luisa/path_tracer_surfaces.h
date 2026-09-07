@@ -137,6 +137,19 @@ class PopulatedSurfaceShader {
   public:
     virtual ~PopulatedSurfaceShader() noexcept = default;
 
+    // Observes the actual population decision for optional work counters.
+    // A native SSS exit without bump has a closure but no material evaluation.
+    [[nodiscard]] virtual Expr<bool> material_evaluated() const noexcept {
+      return Expr<bool>{true};
+    }
+
+    // Diagnostic observation of native ShaderData::flag. This is not the
+    // legacy contract runtime-flag encoding used by integrator consumers.
+    [[nodiscard]] virtual Expr<std::uint32_t>
+    native_shader_data_flags() const noexcept {
+      return Expr<std::uint32_t>{0u};
+    }
+
     // Number of entries in the retained ShaderData-equivalent closure
     // prefix. This observes the already-populated arena and never replays the
     // graph or substitutes a static material count.

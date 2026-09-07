@@ -107,6 +107,13 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 trace_write_event(path_step,
                                   path_trace_schema::EventSlot::closure_n,
                                   sample_trace.closure_normal);
+                // Cycles returns directly from subsurface_bounce after the
+                // closure pick. It neither samples an ordinary BSDF here nor
+                // reaches that branch's BSDF/post-bounce observation points.
+                const Bool record_bsdf = config.scene->native_cycles_svm_surface
+                    ? !cycles_closure::is_bssrdf(sample_trace.closure_type)
+                    : Bool{true};
+                $if(record_bsdf) {
                 const auto cycles_label = cycles_closure::label_from_events(
                     sample_trace.sample.evaluation.events);
                 trace_write_event(
@@ -126,6 +133,7 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                     path_trace_schema::EventSlot::bsdf_roughness_eta,
                     make_float3(sample_trace.sample.roughness,
                                 sample_trace.sample.eta));
+                };
             };
         } else {
             surface_sample = sample_surface(surface_tag,
@@ -135,7 +143,9 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                                             path_surface_query);
         }
         cycles_surface_runtime_flags = surface_sample.runtime_flags;
-        if (path_trace_enabled) {
+        // Native ShaderData flags were observed at the Cycles shade-surface
+        // boundary. Do not overwrite them with the legacy runtime encoding.
+        if (path_trace_enabled && !config.scene->native_cycles_svm_surface) {
             trace_write_event(
                 path_step,
                 path_trace_schema::EventSlot::surface_flags,
@@ -277,6 +287,9 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 next_maximum);
         };
         if (path_trace_enabled) {
+            const Bool record_post = config.scene->native_cycles_svm_surface
+                ? !subsurface : Bool{true};
+            $if(record_post) {
             trace_write_event(path_step,
                               path_trace_schema::EventSlot::post_depth,
                               make_float3(cast<float>(path_depth),
@@ -303,6 +316,7 @@ class SurfaceScatterStageImpl final : public SurfaceScatterStage {
                 path_step,
                 path_trace_schema::EventSlot::post_visibility,
                 make_float3(trace_uint32(cycles_path_visibility).xy(), 0.0f));
+            };
         }
         };
         };

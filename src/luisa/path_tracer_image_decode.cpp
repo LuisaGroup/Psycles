@@ -29,10 +29,17 @@ decode_scene_image(
             encoded.data(),
             static_cast<int>(encoded.size())) != 0;
 #if defined(PSYCLES_WITH_OPENIMAGEIO)
-    if (is_hdr || is_sixteen_bit) {
+    // Blender ImBuf uses libjpeg's default integer IDCT. STB is a different
+    // decoder: even an identical JPEG payload can change texture bytes and
+    // therefore closure weights, normals and subsequent path decisions.
+    // Use the existing libjpeg-backed loader before STB for JPEG resources.
+    const auto is_jpeg = encoded.size() >= 3u && encoded[0] == 0xffu &&
+                         encoded[1] == 0xd8u && encoded[2] == 0xffu;
+    if (is_hdr || is_sixteen_bit || is_jpeg) {
         io::DecodedImageRgba image;
         if (io::decode_image_rgba(
-                encoded, filename_hint, image)) {
+                encoded, is_jpeg ? std::string_view{"texture.jpg"} : filename_hint,
+                image)) {
             return image;
         }
     }

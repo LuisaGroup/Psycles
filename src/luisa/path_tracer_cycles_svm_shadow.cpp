@@ -13,16 +13,18 @@ using namespace luisa::compute;
 namespace svm = cycles_svm;
 namespace abi = compiler::cycles_svm;
 
-CyclesSvmShadowShaderData setup_cycles_svm_shadow_shader_data(
+CyclesSvmShadowShaderData setup_cycles_svm_ray_shader_data(
     const std::shared_ptr<LuisaSceneData> &scene, const svm::KernelGlobals &kg,
     const Var<luisa::compute::Ray> &ray,
-    const Var<ShadowIntersectionCall> &intersection, Expr<float> ray_dP,
-    Expr<float> ray_dD, const Var<ShadowShaderContextCall> &context,
+    Expr<unsigned> instance_id, Expr<unsigned> primitive_id,
+    Expr<luisa::float2> barycentric, Expr<float> distance,
+    Expr<float> ray_dP, Expr<float> ray_dD, Expr<float> ray_time,
+    Expr<unsigned> lcg_state,
     const Var<RenderKernelParameters> &parameters) noexcept {
-  const auto instance = scene->instance_buffer->read(intersection.instance);
+  const auto instance = scene->instance_buffer->read(instance_id);
   const auto object_index = instance.cycles_object_index;
   const auto primitive_index =
-      instance.cycles_primitive_offset + intersection.primitive;
+      instance.cycles_primitive_offset + primitive_id;
   const auto object =
       scene->cycles_svm->objects->object_buffer->read(object_index);
   const auto unpack = [](Var<abi::PackedTransform> t) noexcept {
@@ -44,11 +46,11 @@ CyclesSvmShadowShaderData setup_cycles_svm_shadow_shader_data(
                      0u,
                      0u,
                      primitive_index,
-                     intersection.barycentric.x,
-                     intersection.barycentric.y,
+                     barycentric.x,
+                     barycentric.y,
                      object_index,
-                     context.ray_time,
-                     intersection.distance,
+                     ray_time,
+                     distance,
                      0.0f,
                      0.0f,
                      0.0f,
@@ -59,9 +61,7 @@ CyclesSvmShadowShaderData setup_cycles_svm_shadow_shader_data(
                      make_float3(0.0f),
                      identity,
                      identity,
-                     cycles_noise::hash_uint3(context.rng_hash ^ 0xb4bc3953u,
-                                              context.rng_offset,
-                                              context.sample_index),
+                     lcg_state,
                      nullptr};
   sd.ray_P = ray->origin();
   sd.object_flag =
@@ -79,10 +79,25 @@ CyclesSvmShadowShaderData setup_cycles_svm_shadow_shader_data(
                 ->read(sd.shader & svm::shader_mask)
                 .flags.cast<unsigned>();
   cycles_svm_shader_setup_backfacing(sd);
-  sd.dP = ray_dP + intersection.distance * ray_dD;
+  sd.dP = ray_dP + distance * ray_dD;
   sd.dI = ray_dD;
   cycles_svm_shader_setup_dudv(sd);
   return {std::move(sd), std::move(transforms)};
+}
+
+CyclesSvmShadowShaderData setup_cycles_svm_shadow_shader_data(
+    const std::shared_ptr<LuisaSceneData> &scene, const svm::KernelGlobals &kg,
+    const Var<luisa::compute::Ray> &ray,
+    const Var<ShadowIntersectionCall> &intersection, Expr<float> ray_dP,
+    Expr<float> ray_dD, const Var<ShadowShaderContextCall> &context,
+    const Var<RenderKernelParameters> &parameters) noexcept {
+  return setup_cycles_svm_ray_shader_data(
+      scene, kg, ray, intersection.instance, intersection.primitive,
+      intersection.barycentric, intersection.distance, ray_dP, ray_dD,
+      context.ray_time,
+      cycles_noise::hash_uint3(context.rng_hash ^ 0xb4bc3953u,
+                               context.rng_offset, context.sample_index),
+      parameters);
 }
 
 EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
