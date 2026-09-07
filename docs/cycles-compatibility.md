@@ -59,6 +59,7 @@ Proofs, counterexamples and regression boundaries:
 - [Scene-local stack extents](validation/2026-09-07/scene-local-extents/README.md)
 - [Published Luisa Local/coroutine integration](validation/2026-09-07/luisa-local-coro-publication/README.md)
 - [Coroutine boundary audit and SSS queue correction](validation/2026-09-07/coroutine-boundaries/README.md)
+- [Transitive read-only references and uniform frame state](validation/2026-09-08/coro-readonly-forwarding/README.md)
 
 The latter reports are dated checkpoints; their isolated-snapshot or
 then-unpublished qualifications describe those runs, not a second current
@@ -112,27 +113,33 @@ Current large HIP checkpoints use fixed samples and native fast math.
 The old SurfaceProgram instruction/topology histogram and its CLI/API have
 been removed; its counts do not describe native Cycles SVM. Closure-count
 histograms and per-path traces remain supported.
-The [shared-closure checkpoint](validation/2026-09-08/shared-closure-weights/README.md)
+The [read-only forwarding checkpoint](validation/2026-09-08/coro-readonly-forwarding/README.md)
 records these four 256 spp single canaries after the same correction, with
 all 46 channels finite. The main shader cache is disabled; auxiliary caches
 retain their normal policy. These are not paired benchmark medians:
 
 | Scene | Extent | Cold main JIT s | Render-only s | Frame | Combined / DiffInd rel. RMSE |
 | --- | --- | ---: | ---: | ---: | --- |
-| Lone Monk | 1440x1080 | 64.5614 | 13.9186 | 220 B | 0.01240020 / 0.12881657 |
-| Monster | 1080x1080 | 75.4817 | 15.1713 | 284 B | 0.00547924 / 0.02552799 |
-| Classroom | 1920x1080 | 58.1559 | 18.9070 | 264 B | 0.00353348 / 0.17820336 |
-| Barbershop | 2048x858 | 27.5668 | 49.5599 | 896 B | 0.01079813 / 0.07450770 |
+| Lone Monk | 1440x1080 | 19.1313 | 13.9315 | 220 B | 0.01241366 / 0.12881629 |
+| Monster | 1080x1080 | 22.6170 | 15.2468 | 284 B | 0.00547924 / 0.02552799 |
+| Classroom | 1920x1080 | 18.8041 | 18.7757 | 264 B | 0.00353334 / 0.17820336 |
+| Barbershop | 2048x858 | 76.5101 | 40.8750 | 416 B | 0.01079811 / 0.07450762 |
+
+Barbershop's JIT observation includes compiler-phase logging. There is no
+GPU profiler or concurrent build/GPU workload in these rendering canaries.
 
 Barbershop's unavailable-image admission and missing shared transparent
 closure are fixed, with original-Cycles word/GPU-state regressions. Shared
 closure contributions were incorrectly multiplied instead of added. DiffCol
-relative RMSE is now 0.00159745. At the diagnosed pixel, the first four
+relative RMSE is now 0.00159771. At the diagnosed pixel, the first four
 surface events and all 45 recorded random fields now match. Full trace
 parity is not established: a later NEE selection chooses an adjacent emitter
-triangle and downstream light/shadow fields diverge. The indirect residuals,
-896 B frame and performance gap remain open. Single JIT fluctuations are
-not evidence of a compiler speedup.
+triangle and downstream light/shadow fields diverge. A generic Luisa
+read-only-reference correction removes immutable render parameters from
+the frame, reducing it from 896 B to 416 B without changing six-stage
+control flow. The latest rendering canary takes 17.5% less time, with nearly
+unchanged pass errors. Indirect residuals and the performance gap remain
+open. Single JIT fluctuations are not evidence of a compiler speedup.
 
 A fresh, profiler-free Cycles HIP check on 2026-09-08 ran Monk and Monster
 three times. Main-loop times were 13.4344/13.4429/13.4521 s for Monk and
@@ -141,10 +148,10 @@ Evidence is in `/var/tmp/psycles-cycles-hip-check-9wipGw`; Blender build identit
 is `9e2066aef7ef`, with fixed 256 spp, seed 0, no adaptive sampling or denoise,
 on the same RX 9070 XT. These are main-loop wall times, not summed kernel
 timings or the Python render-call duration. The latest single Psycles canaries
-are approximately 3.5%/5.2% slower; this is not a paired current-revision
+are approximately 3.6%/5.7% slower; this is not a paired current-revision
 benchmark. A fresh Classroom Cycles main loop takes 20.7432 s at the same
 1920x1080/256 and seed 1. A fresh Barbershop Cycles main loop takes 28.7062 s
-at 2048x858/256 and seed 0, versus Psycles' 49.5599 s (about 73% slower).
+at 2048x858/256 and seed 0, versus Psycles' 40.8750 s (about 42% slower).
 These two Cycles checks are single runs, recorded under
 `/var/tmp/psycles-native-volume-svm-06XnDX`. The older 40.379 s Barbershop
 render-call duration is not a comparable main-loop baseline.
