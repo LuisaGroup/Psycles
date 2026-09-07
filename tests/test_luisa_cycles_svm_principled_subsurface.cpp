@@ -131,7 +131,9 @@ template <std::size_t Capacity> [[nodiscard]] auto transition_kernel() {
                 device_svm::path_ray_visibility_diffuse,
             path_flag};
         device_svm::EvaluationResult result;
-        device_svm::eval_nodes(kernel_globals, words, SHADER_TYPE_SURFACE, 0u,
+        device_svm::eval_nodes(
+                               kernel_globals, words, SHADER_TYPE_SURFACE,
+                               device_svm::kernel_feature_subsurface,
                                device_svm::kernel_feature_node_bsdf |
                                    device_svm::kernel_feature_node_emission,
                                used, identity_transform_state(), shader_data,

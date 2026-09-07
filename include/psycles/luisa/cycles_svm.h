@@ -67,7 +67,10 @@ inline constexpr std::uint32_t kernel_feature_hair_thick = 1u << 14u;
 inline constexpr std::uint32_t kernel_feature_hair =
     kernel_feature_hair_ribbon | kernel_feature_hair_thick;
 inline constexpr std::uint32_t kernel_feature_object_motion = 1u << 15u;
+inline constexpr std::uint32_t kernel_feature_baking = 1u << 16u;
 inline constexpr std::uint32_t kernel_feature_subsurface = 1u << 17u;
+inline constexpr std::uint32_t kernel_feature_volume = 1u << 18u;
+inline constexpr std::uint32_t kernel_feature_transparent = 1u << 19u;
 
 inline constexpr std::uint32_t kernel_feature_node_mask_surface_light =
     kernel_feature_node_emission | kernel_feature_node_voronoi_extra |
@@ -978,6 +981,20 @@ void eval_nodes(
     const std::array<bool, compiler::cycles_svm::NODE_NUM> &node_types_used,
     const TransformState &transform_state, ShaderData &shader_data,
     const PathState &path_state, EvaluationResult &result,
+    std::size_t stack_size = SVM_STACK_SIZE) noexcept;
+
+/* Cycles' production SVM loop has no status machine: a compiler-generated
+ * stream reaches NODE_END, while invalid opcodes are kernel assertions (and
+ * therefore unreachable in HIP release builds). Use this form only for a
+ * validated scene image; eval_nodes() remains the diagnostic entry point. */
+void eval_nodes_assume_valid(
+    const KernelGlobals &kernel_globals,
+    luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> words,
+    compiler::cycles_svm::ShaderType shader_type, std::uint32_t kernel_features,
+    std::uint32_t node_feature_mask,
+    const std::array<bool, compiler::cycles_svm::NODE_NUM> &node_types_used,
+    const TransformState &transform_state, ShaderData &shader_data,
+    const PathState &path_state,
     std::size_t stack_size = SVM_STACK_SIZE) noexcept;
 
 } // namespace psycles::luisa_backend::cycles_svm

@@ -147,7 +147,7 @@ brick_payload(SVMStackOffset color_out, SVMStackOffset factor_out) noexcept {
       [](BufferUInt words, BufferFloat4 points, BufferFloat4 output,
          BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
-        svm_detail::Stack stack;
+        svm_detail::Stack stack{SVM_STACK_SIZE};
         svm_detail::stack_store_float3(stack, vector_offset,
                                        points.read(index).xyz());
         svm_detail::stack_store_float3(stack, color_offset,

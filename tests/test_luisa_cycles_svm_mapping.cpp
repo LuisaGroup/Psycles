@@ -60,7 +60,7 @@ void append_payload(std::vector<std::uint32_t> &words,
       [](BufferUInt words, BufferFloat3 output,
          BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
-        svm_detail::Stack plain_stack;
+        svm_detail::Stack plain_stack{SVM_STACK_SIZE};
         svm_detail::stack_store_float3(
             plain_stack, input_offset,
             make_float3(0.17f, 0.31f, 0.47f));
@@ -71,7 +71,7 @@ void append_payload(std::vector<std::uint32_t> &words,
                      svm_detail::stack_load_float3(plain_stack,
                                                    output_offset));
 
-        svm_detail::Stack dual_stack;
+        svm_detail::Stack dual_stack{SVM_STACK_SIZE};
         svm_detail::stack_store_dual3(
             dual_stack, input_offset,
             {.val = make_float3(0.17f, 0.31f, 0.47f),
@@ -100,7 +100,7 @@ void append_payload(std::vector<std::uint32_t> &words,
                   Buffer<std::uint32_t>>{
       [](BufferUInt words, BufferFloat3 output,
          BufferUInt cursors) noexcept {
-        svm_detail::Stack stack;
+        svm_detail::Stack stack{SVM_STACK_SIZE};
         svm_detail::stack_store_dual3(
             stack, input_offset,
             {.val = make_float3(0.17f, 0.31f, 0.47f),
@@ -122,7 +122,7 @@ void append_payload(std::vector<std::uint32_t> &words,
                      svm_detail::stack_load_float3(stack, output_offset + 6u));
         cursors.write(0u, cursor_offset);
 
-        svm_detail::Stack normalize_stack;
+        svm_detail::Stack normalize_stack{SVM_STACK_SIZE};
         svm_detail::stack_store_dual3(
             normalize_stack, input_offset,
             {.val = make_float3(3.0f, 4.0f, 0.0f),

@@ -7,11 +7,17 @@
 #include <psycles/luisa/surface_closure_operations.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 
 namespace psycles::luisa_backend {
 
 class SurfaceClosureSet;
+
+enum class SurfaceClosurePopulationAovMode : std::uint8_t {
+    streaming,
+    post_population,
+};
 
 // ShaderData-equivalent state produced by one retained-closure transaction.
 // Its private constructor makes provenance part of the type boundary: a
@@ -36,9 +42,10 @@ class SurfaceClosurePopulationState {
 };
 
 // One-pass product of Cycles-compatible closure allocation. For the retained
-// source-order subsequence S, this collector stores exactly physical(S), while
-// runtime flags and camera AOVs are folded over that same S before setup-only
-// expressions leave the material branch. No directional response is baked.
+// source-order subsequence S, this collector stores exactly physical(S).
+// Runtime flags and transparent extinction are always folded with the setup
+// transaction. Camera AOVs can either be folded there for standalone callers
+// or deferred to the Cycles-shaped post-population physical traversal.
 class SurfaceClosurePopulationCollector final
     : public SurfaceClosureCollector {
 
@@ -52,7 +59,9 @@ class SurfaceClosurePopulationCollector final
         std::size_t capacity,
         const SurfacePopulationQuery &query,
         const SurfaceClosureIdentityCallable &identity,
-        const SurfaceClosureAovCallable &aov_operation) noexcept;
+        const SurfaceClosureAovCallable &aov_operation,
+        SurfaceClosurePopulationAovMode aov_mode =
+            SurfaceClosurePopulationAovMode::streaming) noexcept;
     ~SurfaceClosurePopulationCollector() noexcept override;
 
     SurfaceClosurePopulationCollector(

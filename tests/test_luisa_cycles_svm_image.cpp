@@ -264,7 +264,7 @@ make_sampling_kernel() {
     const UInt index = dispatch_x();
     $if(index < sampling_case_count) {
       const Float3 coordinate = coordinates.read(index);
-      svm_detail::Stack stack;
+      svm_detail::Stack stack{SVM_STACK_SIZE};
       svm_detail::stack_store_float3(stack, coordinate_offset, coordinate);
       svm_detail::stack_store_float3(
           stack, coordinate_offset + 3u,
@@ -386,7 +386,7 @@ make_projection_kernel() {
       const UInt image_flags = flags.read(index);
       const Float3 coordinate = coordinates.read(index);
       const Float3 normal = normals.read(index);
-      svm_detail::Stack stack;
+      svm_detail::Stack stack{SVM_STACK_SIZE};
       svm_detail::stack_store_float3(stack, coordinate_offset, coordinate);
       svm_detail::stack_store_float3(
           stack, coordinate_offset + 3u,
@@ -458,7 +458,7 @@ make_projection_kernel() {
 make_dual_pole_kernel() {
   return [](BufferUInt words, BufferFloat4 output,
             BufferUInt cursors) noexcept {
-    svm_detail::Stack stack;
+    svm_detail::Stack stack{SVM_STACK_SIZE};
     svm_detail::stack_store_float3(
         stack, coordinate_offset, make_float3(0.0f, 1.0f, 0.0f));
     svm_detail::stack_store_float3(

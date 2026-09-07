@@ -63,112 +63,59 @@ aov_contribution(
     Expr<luisa::float3> geometric_normal_expression,
     Expr<bool> use_bump_map_correction,
     const Closure &closure) noexcept {
+    static_cast<void>(incoming_expression);
+    static_cast<void>(shading_normal_expression);
+    static_cast<void>(geometric_normal_expression);
+    static_cast<void>(use_bump_map_correction);
     const UInt type{closure.closure_type};
     const auto is_transparent =
         type == cycles_closure::type_transparent;
-    const auto is_diffuse =
-        cycles_closure::is_diffuse_or_oren_nayar(type);
-    const auto is_translucent =
-        type == cycles_closure::type_translucent;
-    const auto is_rough_translucent =
-        type == cycles_closure::type_rough_translucent;
-    const auto is_sheen =
-        type == cycles_closure::type_sheen;
-    const auto is_ashikhmin =
-        type == cycles_closure::type_ashikhmin_velvet;
-    const auto is_hair_reflection =
-        type == cycles_closure::type_hair_reflection;
-    const auto is_hair_transmission =
-        type == cycles_closure::type_hair_transmission;
-    const auto is_hair = is_hair_reflection | is_hair_transmission;
     const auto is_glass =
         cycles_closure::is_glass_microfacet(type);
-    const auto is_refraction =
-        cycles_closure::is_refraction_microfacet(type);
-    const auto is_thin_glass_transmission =
-        type == cycles_closure::type_thin_glass_transmission;
     const auto is_bssrdf =
         cycles_closure::is_bssrdf(type);
-    const auto is_dielectric = is_glass | is_refraction;
-    const auto is_dielectric_family =
-        is_dielectric | is_thin_glass_transmission;
-    const auto generic_glossy =
-        cycles_closure::is_reflection_microfacet(type) | is_ashikhmin;
-
-    const auto incoming = detail::safe_normalize(
-        Float3{incoming_expression},
-        Float3{shading_normal_expression});
-    const auto corrected_glossy_normal = select(
-        closure.normal,
-        detail::ensure_valid_specular_reflection(
-            Float3{geometric_normal_expression},
-            incoming,
-            Float3{closure.normal}),
-        Bool{use_bump_map_correction} &
-            !all(closure.normal == geometric_normal_expression));
-    const auto glossy_normal = select(
-        corrected_glossy_normal,
-        closure.normal,
-        is_sheen | is_ashikhmin | is_rough_translucent |
-            is_thin_glass_transmission | is_hair);
-
-    const auto diffuse_family =
-        is_diffuse | is_translucent | is_rough_translucent | is_bssrdf;
-    const auto diffuse_albedo = select(
-        select(
-            make_float3(0.0f),
-            closure.albedo,
-            diffuse_family),
-        closure.albedo,
-        is_sheen);
+    const auto is_bsdf = cycles_closure::is_bsdf(type);
+    const auto is_bsdf_or_bssrdf =
+        cycles_closure::is_bsdf_or_bssrdf(type);
+    const auto diffuse_pass =
+        cycles_closure::is_bsdf_diffuse(type) | is_bssrdf;
+    const auto glossy_pass =
+        cycles_closure::is_bsdf_glossy(type) | is_glass;
+    const auto transmission_pass =
+        cycles_closure::is_bsdf_transmission(type) | is_glass;
     const auto closure_pass_weight =
         detail::pass_weight(Float3{closure.weight});
-    const auto diffuse_weight = select(
-        select(0.0f,
-            closure_pass_weight,
-            diffuse_family),
-        closure_pass_weight,
-        is_sheen);
-    const auto glossy_weight = select(
-        0.0f,
-        closure_pass_weight,
-        is_dielectric_family | generic_glossy | is_hair);
+
+    const auto roughness_value = roughness_pass_value(type, closure.roughness);
+    const auto has_roughness = is_bsdf & (roughness_value >= 0.0f);
 
     luisa::compute::Var<SurfaceAovContributionCall> result;
-    result.albedo = diffuse_albedo;
-    result.glossy_albedo =
-        select(
-            make_float3(0.0f),
-            closure.reflection_albedo,
-            is_dielectric_family | is_hair_reflection) +
-        select(
-            make_float3(0.0f),
-            closure.albedo,
-            generic_glossy);
+    result.albedo = select(
+        make_float3(0.0f), closure.albedo, diffuse_pass);
+    result.glossy_albedo = select(
+        make_float3(0.0f),
+        select(closure.albedo, closure.reflection_albedo, is_glass),
+        glossy_pass);
     result.transmission_albedo = select(
         make_float3(0.0f),
-        closure.transmission_albedo,
-        is_dielectric_family | is_hair_transmission);
+        select(closure.albedo, closure.transmission_albedo, is_glass),
+        transmission_pass);
     result.transparency = select(
         make_float3(0.0f),
         closure.weight,
         is_transparent);
-    result.normal =
-        diffuse_weight * select(
-                             closure.normal,
-                             glossy_normal,
-                             is_translucent |
-                                 is_rough_translucent) +
-        glossy_weight * glossy_normal;
-    result.total_weight =
-        diffuse_weight + glossy_weight;
-    const auto roughness_value = roughness_pass_value(type, closure.roughness);
-    const auto has_roughness =
-        cycles_closure::is_bsdf(type) & (roughness_value >= 0.0f);
+    result.normal = select(
+        make_float3(0.0f),
+        closure.normal * closure_pass_weight,
+        is_bsdf_or_bssrdf);
+    result.total_weight = select(
+        0.0f, closure_pass_weight, is_bsdf_or_bssrdf);
     result.roughness_weight = select(
         0.0f, closure_pass_weight, has_roughness);
     result.roughness = select(
-        0.0f, closure_pass_weight * roughness_value, has_roughness);
+        0.0f,
+        closure_pass_weight * roughness_value,
+        has_roughness);
     return result;
 }
 

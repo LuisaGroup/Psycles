@@ -233,7 +233,7 @@ oracle_inputs() noexcept {
         const auto first = inputs.read(index * 3u);
         const auto second = inputs.read(index * 3u + 1u);
         const auto third = inputs.read(index * 3u + 2u);
-        svm_detail::Stack stack;
+        svm_detail::Stack stack{SVM_STACK_SIZE};
         svm_detail::stack_store_float3(stack, vector_offset, first.xyz());
         svm_detail::stack_store_float(stack, w_input_offset, first.w);
         svm_detail::stack_store_float(stack, scale_input_offset, second.x);

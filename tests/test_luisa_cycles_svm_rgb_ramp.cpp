@@ -166,7 +166,7 @@ struct RampCase {
         const UInt begin = offsets.read(index);
         UInt cursor_offset = begin;
         svm_detail::Cursor cursor{words, cursor_offset};
-        svm_detail::Stack stack;
+        svm_detail::Stack stack{SVM_STACK_SIZE};
         svm_detail::stack_store_float3(stack, color_offset,
                                        make_float3(-91.0f, -92.0f, -93.0f));
         svm_detail::stack_store_float(stack, alpha_offset, -94.0f);

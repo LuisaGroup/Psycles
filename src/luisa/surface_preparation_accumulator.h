@@ -12,6 +12,17 @@ enum class RuntimeFlagReductionMode : std::uint8_t {
     retained_state,
 };
 
+// Cycles keeps closure setup and film-data reduction as two distinct phases:
+// ShaderData::closure[] is populated first, then the camera data passes walk
+// the retained prefix. Compact bytecode consumers which do not retain a
+// physical closure array still need the original streaming fold; population
+// collectors select post_population so setup carries only ShaderData state
+// (runtime flags and transparent extinction) across the material program.
+enum class AovReductionMode : std::uint8_t {
+    streaming,
+    post_population,
+};
+
 // Device-stage left fold over the retained source-order closure sequence.
 // Unlike SurfaceClosureExpressionVisitor, this remains valid inside a runtime
 // bytecode loop: every add() records one dynamic transaction instead of
@@ -25,6 +36,7 @@ class SurfacePreparationAccumulator {
     Bool _include_runtime_flags;
     Bool _include_aov;
     RuntimeFlagReductionMode _runtime_flag_mode;
+    AovReductionMode _aov_mode;
     SurfaceClosureIdentityCallable _identity;
     SurfaceClosureAovCallable _aov_operation;
     UInt _retained_count;
@@ -36,6 +48,8 @@ class SurfacePreparationAccumulator {
     Float3 _aov_normal;
 
     void fold_runtime_identity(
+        const SurfaceClosureRecord &closure) noexcept;
+    void fold_retained_aov(
         const SurfaceClosureRecord &closure) noexcept;
     void fold_retained(
         const SurfaceClosureRecord &closure) noexcept;
@@ -50,7 +64,9 @@ class SurfacePreparationAccumulator {
         const SurfaceClosureIdentityCallable &identity,
         const SurfaceClosureAovCallable &aov_operation,
         RuntimeFlagReductionMode runtime_flag_mode =
-            RuntimeFlagReductionMode::projected_output) noexcept;
+            RuntimeFlagReductionMode::projected_output,
+        AovReductionMode aov_mode =
+            AovReductionMode::streaming) noexcept;
 
     // SurfaceClosureCollector::begin supplies the final shader normal after
     // automatic bump evaluation. Updating the fold state here makes that
@@ -75,9 +91,11 @@ class SurfacePreparationAccumulator {
     // conditionally commits the slot between them.
     void begin_transparent_setup(
         const SurfaceClosureRecord &closure) noexcept;
+    [[nodiscard]] Bool reserve_transparent_slot() noexcept;
     void retain_transparent_slot() noexcept;
     void finalize_transparent_setup(
-        Expr<luisa::float3> weight) noexcept;
+        Expr<luisa::float3> weight,
+        Expr<bool> retained) noexcept;
 
     void finish() noexcept;
 

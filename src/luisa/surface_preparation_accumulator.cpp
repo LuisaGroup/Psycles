@@ -19,7 +19,8 @@ SurfacePreparationAccumulator::SurfacePreparationAccumulator(
     Expr<bool> include_aov,
     const SurfaceClosureIdentityCallable &identity,
     const SurfaceClosureAovCallable &aov_operation,
-    RuntimeFlagReductionMode runtime_flag_mode) noexcept
+    RuntimeFlagReductionMode runtime_flag_mode,
+    AovReductionMode aov_mode) noexcept
     : _point{point},
       _capacity{std::clamp(
           capacity,
@@ -30,6 +31,7 @@ SurfacePreparationAccumulator::SurfacePreparationAccumulator(
       _include_runtime_flags{include_runtime_flags},
       _include_aov{include_aov},
       _runtime_flag_mode{runtime_flag_mode},
+      _aov_mode{aov_mode},
       _identity{identity},
       _aov_operation{aov_operation},
       _retained_count{0u},
@@ -73,6 +75,14 @@ void SurfacePreparationAccumulator::fold_runtime_identity(
 void SurfacePreparationAccumulator::fold_retained(
     const SurfaceClosureRecord &closure) noexcept {
     fold_runtime_identity(closure);
+    if (_aov_mode == AovReductionMode::streaming) {
+        fold_retained_aov(closure);
+    }
+    _retained_count += 1u;
+}
+
+void SurfacePreparationAccumulator::fold_retained_aov(
+    const SurfaceClosureRecord &closure) noexcept {
     $if(_include_aov) {
         const auto contribution = _aov_operation(
             _point.incoming,
@@ -96,7 +106,6 @@ void SurfacePreparationAccumulator::fold_retained(
         _aov_roughness += contribution.roughness;
         _aov_normal += contribution.normal;
     };
-    _retained_count += 1u;
 }
 
 void SurfacePreparationAccumulator::add(
@@ -114,7 +123,7 @@ void SurfacePreparationAccumulator::add(
         $if(retained) {
             retain_transparent_slot();
         };
-        finalize_transparent_setup(closure.weight);
+        finalize_transparent_setup(closure.weight, retained);
     };
     $if(retained & !transparent) {
         fold_retained(closure);
@@ -131,18 +140,50 @@ void SurfacePreparationAccumulator::begin_transparent_setup(
     fold_runtime_identity(closure);
 }
 
+Bool SurfacePreparationAccumulator::reserve_transparent_slot() noexcept {
+    const Bool retained =
+        _retained_count < static_cast<std::uint32_t>(_capacity);
+    _retained_count += select(0u, 1u, retained);
+    return retained;
+}
+
 void SurfacePreparationAccumulator::retain_transparent_slot() noexcept {
     _retained_count += 1u;
 }
 
 void SurfacePreparationAccumulator::finalize_transparent_setup(
-    Expr<luisa::float3> weight) noexcept {
-    $if(_include_aov) {
-        _aov.transparency += weight;
+    Expr<luisa::float3> weight,
+    Expr<bool> retained_expression) noexcept {
+    const Float3 merged_weight{weight};
+    if (_aov_mode == AovReductionMode::post_population) {
+        $if(_include_aov) {
+            _aov.transparency += merged_weight;
+        };
+        return;
+    }
+    const Bool retained{retained_expression};
+    $if(retained) {
+        auto closure = SurfaceClosureRecord::zero();
+        closure.closure_type = cycles_closure::type_transparent;
+        closure.weight = merged_weight;
+        closure.allocation_weight =
+            abs((merged_weight.x + merged_weight.y + merged_weight.z) /
+                3.0f);
+        closure.sample_weight = closure.allocation_weight;
+        closure.normal = _point.shading_normal;
+        fold_retained_aov(closure);
+    };
+    $if(_include_aov & !retained) {
+        // Cycles keeps transparent extinction even when closure_alloc fails;
+        // film normal/roughness reductions still see only retained closures.
+        _aov.transparency += merged_weight;
     };
 }
 
 void SurfacePreparationAccumulator::finish() noexcept {
+    if (_aov_mode == AovReductionMode::post_population) {
+        return;
+    }
     const auto computed_roughness = make_float2(select(
         1.0f,
         _aov_roughness /

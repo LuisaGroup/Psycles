@@ -98,7 +98,7 @@ void append_payload(std::vector<std::uint32_t> &words, const T &payload) {
          BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
         const auto point = points.read(index);
-        svm_detail::Stack stack;
+        svm_detail::Stack stack{SVM_STACK_SIZE};
         svm_detail::stack_store_float3(stack, vector_offset, point.xyz());
         svm_detail::stack_store_float(stack, factor_offset, -91.0f);
         svm_detail::stack_store_float3(stack, color_offset,

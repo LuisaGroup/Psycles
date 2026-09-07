@@ -153,7 +153,7 @@ make_shader_data(UInt shader, UInt flags, UInt object_flags) noexcept {
   const auto kernel =
       Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>>{
           [](BufferUInt payload, BufferFloat4 output) noexcept {
-            device_svm::detail::Stack stack;
+            device_svm::detail::Stack stack{SVM_STACK_SIZE};
             UInt scalar_offset = 0u;
             device_svm::detail::Cursor scalar_cursor{payload, scalar_offset};
             device_svm::detail::node_value_f(scalar_cursor, stack, true);
@@ -221,7 +221,7 @@ make_shader_data(UInt shader, UInt flags, UInt object_flags) noexcept {
             const device_svm::TransformState transforms{
                 identity, identity, static_object_to_world(),
                 static_world_to_object()};
-            device_svm::detail::Stack stack;
+            device_svm::detail::Stack stack{SVM_STACK_SIZE};
             device_svm::detail::stack_store_float3(
                 stack, 10u,
                 select(make_float3(1.0f, 0.0f, 0.0f),
@@ -314,7 +314,7 @@ make_shader_data(UInt shader, UInt flags, UInt object_flags) noexcept {
                 static_world_to_object()};
             const BumpStateKernelGlobals kernel_globals;
             auto shader_data = make_shader_data(shader, flags, object_flags);
-            device_svm::detail::Stack stack;
+            device_svm::detail::Stack stack{SVM_STACK_SIZE};
             UInt offset = 0u;
             device_svm::detail::Cursor cursor{payload, offset};
             device_svm::detail::node_enter_bump_eval(

@@ -126,10 +126,16 @@ SurfaceSampleTrace SurfaceClosureEvaluator::sample_impl(
             const luisa::compute::Var<
                 SurfaceClosureSelectionCall> &selection) noexcept {
             const auto choice = inversion.consider(selection);
-            selected_index = select(
-                selected_index, index, choice.choose);
-            selected_rescaled = select(
-                selected_rescaled, choice.rescaled, choice.choose);
+            // Cycles 5.2.1 surface_shader_bsdf_bssrdf_pick() stops the
+            // inverse-CDF walk at the first interval containing the sample.
+            // Besides avoiding unobservable reads of the remaining closure
+            // suffix, keeping the same break shortens the dynamic lifetime of
+            // the categorical state on divergent waves.
+            $if(choice.choose) {
+                selected_index = index;
+                selected_rescaled = choice.rescaled;
+                $break;
+            };
         });
 
     // Exactly one p(w_i | i) executes. Keeping the runtime-indexed load under

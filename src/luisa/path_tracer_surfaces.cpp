@@ -124,7 +124,8 @@ class PopulatedSurfaceShaderImpl final
               _scene->volume_metadata.closure_allocation_budget,
               query,
               identity,
-              aov_operation},
+              aov_operation,
+              SurfaceClosurePopulationAovMode::post_population},
           _preparation{SurfacePreparation::zero(_point)} {
         const auto population = _program->populate(
             surface_tag, _services, _point, query, _population,
@@ -141,6 +142,22 @@ class PopulatedSurfaceShaderImpl final
             _shading_normal,
             _population.runtime_state(),
             reachability);
+        // Cycles runs film/data-pass reductions only after ShaderData's
+        // closure prefix is complete. Keep transparent extinction from the
+        // setup transaction (it survives allocation overflow), while the
+        // retained-closure fields come from the same physical postpass used
+        // by native SVM.
+        $if(query.include_aov) {
+            const auto post_aov = _evaluator->aov(
+                _services, query.glossy_filter_roughness);
+            _preparation.aov.albedo = post_aov.albedo;
+            _preparation.aov.glossy_albedo =
+                post_aov.glossy_albedo;
+            _preparation.aov.transmission_albedo =
+                post_aov.transmission_albedo;
+            _preparation.aov.roughness = post_aov.roughness;
+            _preparation.aov.normal = post_aov.normal;
+        };
     }
 
     [[nodiscard]] Expr<std::uint32_t>

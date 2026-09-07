@@ -107,7 +107,8 @@ make_shader_data(device_svm::ClosurePool *closures,
 }
 
 template <std::size_t Capacity,
-          std::uint32_t FeatureMask = device_svm::kernel_feature_node_bsdf>
+          std::uint32_t NodeFeatureMask = device_svm::kernel_feature_node_bsdf,
+          std::uint32_t KernelFeatures = device_svm::kernel_feature_hair>
 [[nodiscard]] auto transition_kernel() {
   const auto used = node_types();
   return Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>,
@@ -123,9 +124,10 @@ template <std::size_t Capacity,
         const device_svm::PathState path_state{
             device_svm::path_ray_visibility_camera, 0u};
         device_svm::EvaluationResult result;
-        device_svm::eval_nodes(kernel_globals, words, SHADER_TYPE_SURFACE, 0u,
-                               FeatureMask, used, identity_transform_state(),
-                               shader_data, path_state, result);
+        device_svm::eval_nodes(kernel_globals, words, SHADER_TYPE_SURFACE,
+                               KernelFeatures, NodeFeatureMask, used,
+                               identity_transform_state(), shader_data,
+                               path_state, result);
 
         const auto output_base = scenario * output_stride;
         const auto meta_base = scenario * meta_stride;

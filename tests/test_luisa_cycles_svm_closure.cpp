@@ -846,11 +846,12 @@ make_shader_data(Expr<luisa::float3> normal,
 }
 
 [[nodiscard]] auto closure_kernel(std::array<bool, NODE_NUM> node_types_used,
-                                  std::size_t closure_capacity) {
+                                  std::size_t closure_capacity,
+                                  bool assume_valid_stream = false) {
   return Kernel1D<Buffer<std::uint32_t>, Buffer<float>,
                   Buffer<luisa::float4>, Buffer<luisa::float4>,
                   Buffer<std::uint32_t>>{
-      [node_types_used, closure_capacity](
+      [node_types_used, closure_capacity, assume_valid_stream](
           BufferUInt words, BufferFloat table, BufferFloat4 state,
           BufferFloat4 output, BufferUInt meta) noexcept {
         const TableKernelGlobals kernel_globals{table};
@@ -862,12 +863,26 @@ make_shader_data(Expr<luisa::float3> normal,
             normal, geometric_normal, initial_flag, &closures);
         const device_svm::PathState path_state{
             device_svm::path_ray_visibility_camera, 0u};
-        device_svm::EvaluationResult result;
-        device_svm::eval_nodes(kernel_globals, words, SHADER_TYPE_SURFACE, 0u,
-                               device_svm::kernel_feature_node_bsdf |
-                                   device_svm::kernel_feature_node_emission,
-                               node_types_used, identity_transform_state(),
-                               shader_data, path_state, result);
+        UInt evaluation_status = 0x13579bdfu;
+        UInt final_offset = 0x2468ace0u;
+        if (assume_valid_stream) {
+          device_svm::eval_nodes_assume_valid(
+              kernel_globals, words, SHADER_TYPE_SURFACE, 0u,
+              device_svm::kernel_feature_node_bsdf |
+                  device_svm::kernel_feature_node_emission,
+              node_types_used, identity_transform_state(), shader_data,
+              path_state);
+        } else {
+          device_svm::EvaluationResult result;
+          device_svm::eval_nodes(
+              kernel_globals, words, SHADER_TYPE_SURFACE, 0u,
+              device_svm::kernel_feature_node_bsdf |
+                  device_svm::kernel_feature_node_emission,
+              node_types_used, identity_transform_state(), shader_data,
+              path_state, result);
+          evaluation_status = result.status;
+          final_offset = result.final_offset;
+        }
 
         Float3 weight = make_float3(0.0f);
         Float sample_weight = 0.0f;
@@ -927,16 +942,16 @@ make_shader_data(Expr<luisa::float3> normal,
               (common.type == static_cast<std::uint32_t>(
                                   CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID))) {
             const auto microfacet = closures.microfacet(0u);
+            const auto generalized_schlick =
+                microfacet.load_generalized_schlick();
             thin_film_exponent = make_float4(
-                microfacet.generalized_schlick.thin_film.thickness,
-                microfacet.generalized_schlick.thin_film.ior,
-                microfacet.generalized_schlick.exponent, 0.0f);
-            reflection_tint =
-                microfacet.generalized_schlick.reflection_tint;
-            transmission_tint =
-                microfacet.generalized_schlick.transmission_tint;
-            f0 = microfacet.generalized_schlick.f0;
-            f90 = microfacet.generalized_schlick.f90;
+                generalized_schlick.thin_film.thickness,
+                generalized_schlick.thin_film.ior,
+                generalized_schlick.exponent, 0.0f);
+            reflection_tint = generalized_schlick.reflection_tint;
+            transmission_tint = generalized_schlick.transmission_tint;
+            f0 = generalized_schlick.f0;
+            f90 = generalized_schlick.f90;
           };
           $if(fresnel_type == static_cast<std::uint32_t>(
                                   device_svm::MicrofacetFresnel::conductor)) {
@@ -984,10 +999,241 @@ make_shader_data(Expr<luisa::float3> normal,
         meta.write(1u, closures.count());
         meta.write(2u, closures.left());
         meta.write(3u, shader_data.flag);
-        meta.write(4u, result.status);
-        meta.write(5u, result.final_offset);
+        meta.write(4u, evaluation_status);
+        meta.write(5u, final_offset);
         meta.write(6u, fresnel_type);
       }};
+}
+
+inline constexpr std::size_t tail_allocator_capacity =
+    device_svm::maximum_closure_capacity;
+inline constexpr std::size_t tail_allocator_value_count = 20u;
+
+[[nodiscard]] auto closure_tail_allocator_kernel() {
+  return Kernel1D<Buffer<luisa::float4>, Buffer<luisa::float4>,
+                  Buffer<std::uint32_t>>{
+      [](BufferFloat4 input, BufferFloat4 output, BufferUInt meta) noexcept {
+        device_svm::ClosurePool closures{tail_allocator_capacity};
+
+        const auto first_common = input.read(0u);
+        const auto first_identity = input.read(1u);
+        const auto first_param = input.read(2u);
+        const auto first_tangent_and_tag = input.read(3u);
+        const auto first = closures.allocate(
+            cast<luisa::uint>(first_identity.w), first_common.xyz());
+        Bool first_extra = false;
+        $if(first.valid) {
+          closures.set_sample_weight(first.index, first_common.w);
+          closures.set_normal(first.index, first_identity.xyz());
+          closures.set_microfacet_param(
+              first.index,
+              {.alpha_x = first_param.x,
+               .alpha_y = first_param.y,
+               .ior = first_param.z,
+               .energy_scale = first_param.w,
+               .fresnel_type = cast<luisa::uint>(first_tangent_and_tag.w),
+               .T = first_tangent_and_tag.xyz()});
+          /* Keep the allocator transition device-dependent. This exercises
+           * the same dynamic front/tail state machine as production and
+           * avoids replacing it with a compile-time arithmetic puzzle. */
+          first_extra = closures.allocate_extra(first, dispatch_x() + 1u);
+          $if(first_extra) {
+            const auto film = input.read(4u);
+            closures.set_generalized_schlick(
+                first.index,
+                {.thin_film = {.thickness = film.x, .ior = film.y},
+                 .reflection_tint = input.read(5u).xyz(),
+                 .transmission_tint = input.read(6u).xyz(),
+                 .f0 = input.read(7u).xyz(),
+                 .f90 = input.read(8u).xyz(),
+                 .exponent = film.z});
+          };
+        };
+
+        const auto second_common = input.read(9u);
+        const auto second_identity = input.read(10u);
+        const auto second_param = input.read(11u);
+        const auto second_tangent_and_tag = input.read(12u);
+        const auto second = closures.allocate(
+            cast<luisa::uint>(second_identity.w), second_common.xyz());
+        Bool second_extra = false;
+        $if(second.valid) {
+          closures.set_sample_weight(second.index, second_common.w);
+          closures.set_normal(second.index, second_identity.xyz());
+          closures.set_microfacet_param(
+              second.index,
+              {.alpha_x = second_param.x,
+               .alpha_y = second_param.y,
+               .ior = second_param.z,
+               .energy_scale = second_param.w,
+               .fresnel_type = cast<luisa::uint>(second_tangent_and_tag.w),
+               .T = second_tangent_and_tag.xyz()});
+          second_extra = closures.allocate_extra(second, dispatch_x() + 1u);
+          $if(second_extra) {
+            const auto film = input.read(13u);
+            closures.set_fresnel_conductor(
+                second.index,
+                {.thin_film = {.thickness = film.x, .ior = film.y},
+                 .ior = input.read(14u).xyz(),
+                 .extinction = input.read(15u).xyz()});
+          };
+        };
+
+        const auto third_common = input.read(16u);
+        const auto third_identity = input.read(17u);
+        const auto third_param = input.read(18u);
+        const auto third_tangent_and_tag = input.read(19u);
+        const auto third = closures.allocate(
+            cast<luisa::uint>(third_identity.w), third_common.xyz());
+        $if(third.valid) {
+          closures.set_sample_weight(third.index, third_common.w);
+          closures.set_normal(third.index, third_identity.xyz());
+          closures.set_microfacet_param(
+              third.index,
+              {.alpha_x = third_param.x,
+               .alpha_y = third_param.y,
+               .ior = third_param.z,
+               .energy_scale = third_param.w,
+               .fresnel_type = cast<luisa::uint>(third_tangent_and_tag.w),
+               .T = third_tangent_and_tag.xyz()});
+        };
+
+        const auto first_value = closures.microfacet(first.index);
+        const auto first_fresnel =
+            first_value.load_generalized_schlick();
+        output.write(0u, make_float4(first_value.common.weight,
+                                     first_value.common.sample_weight));
+        output.write(1u, make_float4(first_value.common.N,
+                                     cast<float>(first_value.common.type)));
+        output.write(2u,
+                     make_float4(first_value.param.alpha_x,
+                                 first_value.param.alpha_y,
+                                 first_value.param.ior,
+                                 first_value.param.energy_scale));
+        output.write(3u, make_float4(first_value.param.T,
+                                     cast<float>(first_value.param.fresnel_type)));
+        output.write(
+            4u,
+            make_float4(first_fresnel.thin_film.thickness,
+                        first_fresnel.thin_film.ior,
+                        first_fresnel.exponent, 0.0f));
+        output.write(5u,
+                     make_float4(first_fresnel.reflection_tint, 0.0f));
+        output.write(6u,
+                     make_float4(first_fresnel.transmission_tint, 0.0f));
+        output.write(7u, make_float4(first_fresnel.f0, 0.0f));
+        output.write(8u, make_float4(first_fresnel.f90, 0.0f));
+
+        const auto second_value = closures.microfacet_conductor(second.index);
+        output.write(9u, make_float4(second_value.common.weight,
+                                     second_value.common.sample_weight));
+        output.write(10u, make_float4(second_value.common.N,
+                                      cast<float>(second_value.common.type)));
+        output.write(11u,
+                     make_float4(second_value.param.alpha_x,
+                                 second_value.param.alpha_y,
+                                 second_value.param.ior,
+                                 second_value.param.energy_scale));
+        output.write(
+            12u, make_float4(second_value.param.T,
+                             cast<float>(second_value.param.fresnel_type)));
+        output.write(
+            13u,
+            make_float4(second_value.conductor.thin_film.thickness,
+                        second_value.conductor.thin_film.ior, 0.0f, 0.0f));
+        output.write(14u, make_float4(second_value.conductor.ior, 0.0f));
+        output.write(15u,
+                     make_float4(second_value.conductor.extinction, 0.0f));
+
+        /* This closure has fresnel_type NONE and deliberately has no live
+         * extra payload. Cycles never dereferences its null/unspecified
+         * fresnel pointer, and this projection must obey the same rule. */
+        const auto third_value = closures.microfacet(third.index);
+        output.write(16u, make_float4(third_value.common.weight,
+                                      third_value.common.sample_weight));
+        output.write(
+            17u, make_float4(third_value.common.N,
+                             cast<float>(third_value.common.type)));
+        output.write(18u,
+                     make_float4(third_value.param.alpha_x,
+                                 third_value.param.alpha_y,
+                                 third_value.param.ior,
+                                 third_value.param.energy_scale));
+        output.write(
+            19u, make_float4(third_value.param.T,
+                             cast<float>(third_value.param.fresnel_type)));
+
+        meta.write(0u, closures.count());
+        meta.write(1u, closures.left());
+        meta.write(2u, cast<luisa::uint>(first.valid));
+        meta.write(3u, cast<luisa::uint>(first_extra));
+        meta.write(4u, cast<luisa::uint>(second.valid));
+        meta.write(5u, cast<luisa::uint>(second_extra));
+        meta.write(6u, cast<luisa::uint>(third.valid));
+      }};
+}
+
+[[nodiscard]] bool run_tail_allocator_regression(
+    Device &device, Stream &stream, std::string_view backend,
+    const decltype(closure_tail_allocator_kernel()) &kernel) {
+  auto shader = device.compile(
+      kernel, ShaderOption{.enable_cache = false, .enable_fast_math = false});
+  auto input = device.create_buffer<luisa::float4>(
+      tail_allocator_value_count);
+  auto output = device.create_buffer<luisa::float4>(
+      tail_allocator_value_count);
+  auto meta = device.create_buffer<std::uint32_t>(7u);
+  std::array<luisa::float4, tail_allocator_value_count> actual{};
+  std::array<std::uint32_t, 7u> actual_meta{};
+
+  const std::array<luisa::float4, tail_allocator_value_count> expected{
+      luisa::float4{0.1f, 0.2f, 0.3f, 0.25f},
+      luisa::float4{1.0f, 2.0f, 3.0f,
+                    static_cast<float>(
+                        CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)},
+      luisa::float4{0.11f, 0.12f, 1.45f, 0.91f},
+      luisa::float4{4.0f, 5.0f, 6.0f,
+                    static_cast<float>(
+                        device_svm::MicrofacetFresnel::generalized_schlick)},
+      luisa::float4{0.21f, 1.31f, 3.5f, 0.0f},
+      luisa::float4{0.22f, 0.23f, 0.24f, 0.0f},
+      luisa::float4{0.32f, 0.33f, 0.34f, 0.0f},
+      luisa::float4{0.42f, 0.43f, 0.44f, 0.0f},
+      luisa::float4{0.52f, 0.53f, 0.54f, 0.0f},
+      luisa::float4{0.6f, 0.7f, 0.8f, 0.65f},
+      luisa::float4{-1.0f, -2.0f, -3.0f,
+                    static_cast<float>(CLOSURE_BSDF_MICROFACET_GGX_ID)},
+      luisa::float4{0.71f, 0.72f, 1.55f, 0.81f},
+      luisa::float4{7.0f, 8.0f, 9.0f,
+                    static_cast<float>(
+                        device_svm::MicrofacetFresnel::conductor)},
+      luisa::float4{0.61f, 1.61f, 0.0f, 0.0f},
+      luisa::float4{1.1f, 1.2f, 1.3f, 0.0f},
+      luisa::float4{2.1f, 2.2f, 2.3f, 0.0f},
+      luisa::float4{0.9f, 0.8f, 0.7f, 0.75f},
+      luisa::float4{0.1f, 0.2f, 0.3f,
+                    static_cast<float>(CLOSURE_BSDF_MICROFACET_GGX_ID)},
+      luisa::float4{0.31f, 0.32f, 1.33f, 0.73f},
+      luisa::float4{0.4f, 0.5f, 0.6f,
+                    static_cast<float>(
+                        device_svm::MicrofacetFresnel::none)}};
+  stream << input.copy_from(expected.data())
+         << shader(input, output, meta).dispatch(1u)
+         << output.copy_to(actual.data()) << meta.copy_to(actual_meta.data())
+         << synchronize();
+  auto valid = actual_meta ==
+               std::array<std::uint32_t, 7u>{3u, 59u, 1u, 1u, 1u, 1u, 1u};
+  for (auto index = std::size_t{0u}; index < expected.size(); ++index) {
+    valid &= near(actual[index], expected[index]);
+  }
+  if (!valid) {
+    std::cerr << "Cycles closure front/tail allocation mismatch on " << backend
+              << "; meta=(" << actual_meta[0] << ", " << actual_meta[1]
+              << ", " << actual_meta[2] << ", " << actual_meta[3] << ", "
+              << actual_meta[4] << ", " << actual_meta[5] << ", "
+              << actual_meta[6] << ")\n";
+  }
+  return valid;
 }
 
 template <std::size_t word_count>
@@ -998,7 +1244,8 @@ template <std::size_t word_count>
     const ExpectedClosure &expected,
     const Shader1D<Buffer<std::uint32_t>, Buffer<float>,
                    Buffer<luisa::float4>, Buffer<luisa::float4>,
-                   Buffer<std::uint32_t>> &shader) {
+                   Buffer<std::uint32_t>> &shader,
+    bool assume_valid_stream = false) {
   auto words = device.create_buffer<std::uint32_t>(word_count);
   auto state = device.create_buffer<luisa::float4>(2u);
   auto output = device.create_buffer<luisa::float4>(13u);
@@ -1027,9 +1274,12 @@ template <std::size_t word_count>
                actual_meta[1] == expected.count &&
                actual_meta[2] == expected.left &&
                actual_meta[3] == expected.flag &&
-               actual_meta[4] == static_cast<std::uint32_t>(
-                                     device_svm::EvaluationStatus::ended) &&
-               actual_meta[5] == expected.final_offset;
+               (assume_valid_stream
+                    ? actual_meta[4] == 0x13579bdfu &&
+                          actual_meta[5] == 0x2468ace0u
+                    : actual_meta[4] == static_cast<std::uint32_t>(
+                                            device_svm::EvaluationStatus::ended) &&
+                          actual_meta[5] == expected.final_offset);
   if (expected.oren_nayar) {
     valid &= near(actual[1].w, 0.43f) &&
              near(actual[2].x, 0.28325653076171875f) &&
@@ -1095,6 +1345,11 @@ int main(int argc, char **argv) {
   Context context{argv[0]};
   auto device = context.create_device(backend);
   auto stream = device.create_stream();
+  const auto tail_allocator_kernel = closure_tail_allocator_kernel();
+  if (!run_tail_allocator_regression(
+          device, stream, backend, tail_allocator_kernel)) {
+    return EXIT_FAILURE;
+  }
   const auto table_values =
       psycles::luisa_backend::detail::make_cycles_bsdf_table_values(
           psycles::contract::ShaderColorSpace{});
@@ -1106,74 +1361,102 @@ int main(int argc, char **argv) {
   auto rollback_shader = device.compile(
       closure_kernel(closure_node_types(), 1u),
       ShaderOption{.enable_cache = false, .enable_fast_math = false});
-  return run_oracle(device, stream, backend, table, diffuse_surface_words,
-                    diffuse_expected, shader) &&
+  auto assume_valid_shader = device.compile(
+      closure_kernel(closure_node_types(), 8u, true),
+      ShaderOption{.enable_cache = false, .enable_fast_math = false});
+  auto assume_valid_rollback_shader = device.compile(
+      closure_kernel(closure_node_types(), 1u, true),
+      ShaderOption{.enable_cache = false, .enable_fast_math = false});
+  const auto run_all_oracles =
+      [&](const auto &candidate, const auto &rollback_candidate,
+          bool assume_valid_stream) noexcept {
+        return run_oracle(device, stream, backend, table,
+                          diffuse_surface_words, diffuse_expected, candidate,
+                          assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             translucent_surface_words, translucent_expected,
-                            shader) &&
+                            candidate, assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             transparent_mix_words, transparent_expected,
-                            shader) &&
+                            candidate, assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             transparent_merge_words,
-                            transparent_merge_expected, shader) &&
+                            transparent_merge_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             glass_beckmann_words, glass_beckmann_expected,
-                            shader) &&
+                            candidate, assume_valid_stream) &&
                  run_oracle(device, stream, backend, table, glossy_ggx_words,
-                            glossy_ggx_expected, shader) &&
+                            glossy_ggx_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             glossy_ashikhmin_shirley_words,
-                            glossy_ashikhmin_shirley_expected, shader) &&
+                            glossy_ashikhmin_shirley_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             glossy_anisotropic_default_tangent_words,
                             glossy_anisotropic_default_tangent_expected,
-                            shader) &&
+                            candidate, assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             glossy_beckmann_words,
-                            glossy_beckmann_expected, shader) &&
+                            glossy_beckmann_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             glossy_multi_ggx_words,
-                            glossy_multi_ggx_expected, shader) &&
+                            glossy_multi_ggx_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             refraction_beckmann_words,
-                            refraction_beckmann_expected, shader) &&
+                            refraction_beckmann_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             refraction_ggx_words,
-                            refraction_ggx_expected, shader) &&
+                            refraction_ggx_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             refraction_beckmann_backface_words,
-                            refraction_beckmann_backface_expected, shader) &&
+                            refraction_beckmann_backface_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             metallic_f82_ggx_words,
-                            metallic_f82_ggx_expected, shader) &&
+                            metallic_f82_ggx_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             metallic_f82_beckmann_words,
-                            metallic_f82_beckmann_expected, shader) &&
+                            metallic_f82_beckmann_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             metallic_f82_multi_anisotropic_words,
-                            metallic_f82_multi_anisotropic_expected, shader) &&
+                            metallic_f82_multi_anisotropic_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             metallic_f82_multi_linked_anisotropic_words,
                             metallic_f82_multi_linked_anisotropic_expected,
-                            shader) &&
+                            candidate, assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             metallic_conductor_ggx_words,
-                            metallic_conductor_ggx_expected, shader) &&
+                            metallic_conductor_ggx_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             metallic_conductor_beckmann_words,
-                            metallic_conductor_beckmann_expected, shader) &&
+                            metallic_conductor_beckmann_expected, candidate,
+                            assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             metallic_conductor_multi_anisotropic_words,
                             metallic_conductor_multi_anisotropic_expected,
-                            shader) &&
+                            candidate, assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             metallic_f82_ggx_words,
                             metallic_extra_rollback_expected,
-                            rollback_shader) &&
+                            rollback_candidate, assume_valid_stream) &&
                  run_oracle(device, stream, backend, table,
                             glass_beckmann_words,
-                            glass_extra_rollback_expected, rollback_shader)
+                            glass_extra_rollback_expected,
+                            rollback_candidate, assume_valid_stream);
+      };
+  return run_all_oracles(shader, rollback_shader, false) &&
+                 run_all_oracles(assume_valid_shader,
+                                 assume_valid_rollback_shader, true)
              ? EXIT_SUCCESS
              : EXIT_FAILURE;
 }

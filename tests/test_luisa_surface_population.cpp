@@ -744,20 +744,32 @@ int main(int argc, char **argv) {
             closure_capacity,
             population_query,
             closure_identity,
-            closure_aov};
+            closure_aov,
+            SurfaceClosurePopulationAovMode::post_population};
         const auto population = surfaces.populate(
             tag,
             services,
             point,
             population_query,
             closures);
-        const auto preparation = closures.preparation(
+        auto preparation = closures.preparation(
             population.emission);
         const SurfaceClosureEvaluator evaluator{
             point,
             closures.closures(),
             population.shading_normal,
             closures.runtime_state()};
+        $if(include_aov) {
+            const auto post_aov = evaluator.aov(
+                services, inputs.query.glossy_filter_roughness);
+            preparation.aov.albedo = post_aov.albedo;
+            preparation.aov.glossy_albedo =
+                post_aov.glossy_albedo;
+            preparation.aov.transmission_albedo =
+                post_aov.transmission_albedo;
+            preparation.aov.roughness = post_aov.roughness;
+            preparation.aov.normal = post_aov.normal;
+        };
         const auto closure = evaluator.closure_trace(scenario);
         const auto regular = evaluator.evaluate(
             services, inputs.outgoing, inputs.query);

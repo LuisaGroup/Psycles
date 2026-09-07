@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_svm.h>
 
 #include <cstdint>
@@ -37,6 +38,33 @@ struct BsdfRoughnessEta {
  * changes the retained closure ABI or device dispatch model. */
 using ClosureTypeMask = std::uint64_t;
 inline constexpr ClosureTypeMask all_closure_types = ~ClosureTypeMask{0u};
+
+[[nodiscard]] constexpr ClosureTypeMask closure_types_for_kernel_features(
+    std::uint32_t kernel_features) noexcept {
+  namespace closure = ::psycles::luisa_backend::cycles_closure;
+  auto result = all_closure_types;
+  // Direct projection of Cycles features.h: __HAIR__ encloses every hair
+  // consumer, __PRINCIPLED_HAIR__ further guards Chiang/Huang, and
+  // __SUBSURFACE__ encloses all BSSRDF consumers.
+  if ((kernel_features & kernel_feature_hair) == 0u) {
+    result &= ~(ClosureTypeMask{1u} << closure::type_hair_reflection);
+    result &= ~(ClosureTypeMask{1u} << closure::type_hair_transmission);
+    result &= ~(ClosureTypeMask{1u} << closure::type_hair_chiang);
+    result &= ~(ClosureTypeMask{1u} << closure::type_hair_huang);
+  } else if ((kernel_features & kernel_feature_node_principled_hair) == 0u) {
+    result &= ~(ClosureTypeMask{1u} << closure::type_hair_chiang);
+    result &= ~(ClosureTypeMask{1u} << closure::type_hair_huang);
+  }
+  if ((kernel_features & kernel_feature_subsurface) == 0u) {
+    result &= ~(ClosureTypeMask{1u} << closure::type_bssrdf_burley);
+    result &= ~(ClosureTypeMask{1u} << closure::type_bssrdf_random_walk);
+    result &= ~(ClosureTypeMask{1u} <<
+                closure::type_bssrdf_random_walk_legacy);
+    result &= ~(ClosureTypeMask{1u} <<
+                closure::type_bssrdf_random_walk_skin);
+  }
+  return result;
+}
 
 [[nodiscard]] luisa::compute::Float bsdf_get_specular_roughness_squared(
     const ClosurePool &pool,

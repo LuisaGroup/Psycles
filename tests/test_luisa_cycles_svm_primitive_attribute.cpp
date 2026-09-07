@@ -791,7 +791,7 @@ int main(int argc, char **argv) {
                 object_map_offsets, true};
             const auto shader_data = make_shader_data(
                 0u, 0u, device_svm::primitive_triangle);
-            device_svm::detail::Stack stack;
+            device_svm::detail::Stack stack{SVM_STACK_SIZE};
             for (auto lane = vertex_color_offset;
                  lane <= vertex_alpha_offset; ++lane) {
               stack[lane] = -9.0f;

@@ -231,7 +231,7 @@ inline void initialize_stack(svm_detail::Stack &stack) noexcept {
       [](BufferUInt words, BufferFloat4 output) noexcept {
         const UInt index = dispatch_x();
         $if(index < object_case_count) {
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           initialize_stack(stack);
           auto shader_data =
               make_shader_data(device_svm::primitive_triangle);
@@ -251,7 +251,7 @@ inline void initialize_stack(svm_detail::Stack &stack) noexcept {
       [](BufferUInt words, BufferFloat4 output) noexcept {
         const UInt index = dispatch_x();
         $if(index < particle_case_count) {
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           initialize_stack(stack);
           auto shader_data =
               make_shader_data(device_svm::primitive_triangle);
@@ -271,7 +271,7 @@ inline void initialize_stack(svm_detail::Stack &stack) noexcept {
       [curve](BufferUInt words, BufferFloat4 output) noexcept {
         const UInt index = dispatch_x();
         $if(index < hair_case_count) {
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           initialize_stack(stack);
           auto shader_data = make_shader_data(
               curve ? device_svm::primitive_curve
@@ -280,9 +280,10 @@ inline void initialize_stack(svm_detail::Stack &stack) noexcept {
           UInt cursor_offset = index * 2u;
           const UInt begin = cursor_offset;
           Bool supported = true;
+          const svm_detail::EvaluationTransition transition{&supported};
           svm_detail::Cursor cursor{words, cursor_offset};
           svm_detail::node_hair_info(cursor, stack, &kernel_globals,
-                                     shader_data, supported);
+                                     shader_data, transition);
           output.write(index, capture_stack(stack, cursor_offset - begin));
         };
       }};
@@ -293,7 +294,7 @@ inline void initialize_stack(svm_detail::Stack &stack) noexcept {
       [point](BufferUInt words, BufferFloat4 output) noexcept {
         const UInt index = dispatch_x();
         $if(index < point_case_count) {
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           initialize_stack(stack);
           auto shader_data = make_shader_data(
               point ? device_svm::primitive_point

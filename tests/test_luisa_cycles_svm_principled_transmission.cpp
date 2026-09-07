@@ -167,6 +167,7 @@ inline constexpr std::uint32_t meta_stride = 10u;
 
     $if(reflective_caustics | refractive_caustics) {
       const auto glass = closures.microfacet(1u);
+      const auto generalized_schlick = glass.load_generalized_schlick();
       output.write(output_base + 1u, make_float4(glass.common.weight,
                                                  glass.common.sample_weight));
       output.write(output_base + 4u, make_float4(glass.common.N, 0.0f));
@@ -175,19 +176,19 @@ inline constexpr std::uint32_t meta_stride = 10u;
                                glass.param.ior, glass.param.energy_scale));
       output.write(output_base + 6u, make_float4(glass.param.T, 0.0f));
       output.write(output_base + 7u,
-                   make_float4(glass.generalized_schlick.thin_film.thickness,
-                               glass.generalized_schlick.thin_film.ior,
-                               glass.generalized_schlick.exponent, 0.0f));
+                   make_float4(generalized_schlick.thin_film.thickness,
+                               generalized_schlick.thin_film.ior,
+                               generalized_schlick.exponent, 0.0f));
       output.write(
           output_base + 8u,
-          make_float4(glass.generalized_schlick.reflection_tint, 0.0f));
+          make_float4(generalized_schlick.reflection_tint, 0.0f));
       output.write(
           output_base + 9u,
-          make_float4(glass.generalized_schlick.transmission_tint, 0.0f));
+          make_float4(generalized_schlick.transmission_tint, 0.0f));
       output.write(output_base + 10u,
-                   make_float4(glass.generalized_schlick.f0, 0.0f));
+                   make_float4(generalized_schlick.f0, 0.0f));
       output.write(output_base + 11u,
-                   make_float4(glass.generalized_schlick.f90, 0.0f));
+                   make_float4(generalized_schlick.f90, 0.0f));
       meta.write(meta_base + 6u, glass.common.type);
       meta.write(meta_base + 9u, glass.param.fresnel_type);
 

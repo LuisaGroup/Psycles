@@ -571,7 +571,7 @@ attribute_node_types(bool use_bump) {
                 identity,
                 identity};
             ProbeKernelGlobals kernel_globals;
-            device_svm::detail::Stack stack;
+            device_svm::detail::Stack stack{SVM_STACK_SIZE};
             UInt offset = index * 2u;
             device_svm::detail::Cursor cursor{words, offset};
             device_svm::detail::node_geometry(
@@ -747,7 +747,7 @@ attribute_node_types(bool use_bump) {
             auto shader_data =
                 make_attribute_shader_data(primitive_type, object);
             ProbeKernelGlobals kernel_globals;
-            device_svm::detail::Stack stack;
+            device_svm::detail::Stack stack{SVM_STACK_SIZE};
             for (auto lane = 0u; lane < 9u; ++lane) {
               stack[lane] = 0.0f;
             }
@@ -912,7 +912,7 @@ attribute_node_types(bool use_bump) {
             auto shader_data =
                 make_attribute_shader_data(primitive_type, object);
             ProbeKernelGlobals kernel_globals;
-            device_svm::detail::Stack stack;
+            device_svm::detail::Stack stack{SVM_STACK_SIZE};
             for (auto lane = 0u; lane < 9u; ++lane) {
               stack[lane] = 0.0f;
             }
@@ -988,7 +988,7 @@ attribute_node_types(bool use_bump) {
             auto shader_data = make_attribute_shader_data(
                 device_svm::primitive_volume, 0u);
             ProbeKernelGlobals kernel_globals;
-            device_svm::detail::Stack stack;
+            device_svm::detail::Stack stack{SVM_STACK_SIZE};
             for (auto lane = 0u; lane < 3u; ++lane) {
               stack[lane] = 0.0f;
             }

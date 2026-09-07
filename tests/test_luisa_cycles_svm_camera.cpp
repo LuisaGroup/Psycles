@@ -47,7 +47,7 @@ pack_offsets(std::uint32_t vector, std::uint32_t zdepth,
                                             BufferUInt cursors) noexcept {
     const UInt index = dispatch_x();
     $if(index < case_count) {
-      svm_detail::Stack stack;
+      svm_detail::Stack stack{SVM_STACK_SIZE};
       svm_detail::stack_store_float3(
           stack, vector_offset,
           make_float3(sentinel_x, sentinel_y, sentinel_z));

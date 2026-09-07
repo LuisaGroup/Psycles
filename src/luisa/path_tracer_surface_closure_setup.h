@@ -146,10 +146,11 @@ using PrincipledDiffuseSetupCallable =
     luisa::compute::Callable<PrincipledDiffuseSetupCall(
         PrincipledDiffuseSetupInputCall)>;
 using PrincipledDielectricSetupCallable =
-    luisa::compute::Callable<PrincipledDielectricSetupCall(
+    luisa::compute::Callable<void(
         luisa::compute::Buffer<float>,
         PrincipledDielectricSetupInputCall,
-        bool)>;
+        bool,
+        PrincipledDielectricSetupCall &)>;
 
 struct SurfaceClosureSetupCallables {
     PrincipledMetallicSetupCallable

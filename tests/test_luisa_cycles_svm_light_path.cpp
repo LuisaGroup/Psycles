@@ -87,7 +87,7 @@ make_shader_data(Expr<std::uint32_t> flags, Expr<float> ray_length) noexcept {
       [](BufferUInt words, BufferFloat output, BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
         $if(index < light_path_case_count) {
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           const auto shader_data =
               make_shader_data(device_svm::shader_data_backfacing, 12.5f);
           const device_svm::PathState path_state{
@@ -131,7 +131,7 @@ make_shader_data(Expr<std::uint32_t> flags, Expr<float> ray_length) noexcept {
           const auto shader_data = make_shader_data(0u, 1.0f);
           const device_svm::PathState path_state{visibility, flags, 9u,  10u,
                                                  11u,        12u,   13u, 14u};
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           UInt cursor_offset = index * 2u;
           svm_detail::Cursor cursor{words, cursor_offset};
           svm_detail::node_light_path(cursor, stack, shader_data, path_state,
@@ -148,7 +148,7 @@ make_shader_data(Expr<std::uint32_t> flags, Expr<float> ray_length) noexcept {
                                     BufferFloat output) noexcept {
     const UInt index = dispatch_x();
     $if(index < primary_case_count) {
-      svm_detail::Stack stack;
+      svm_detail::Stack stack{SVM_STACK_SIZE};
       // External Cycles 5.2.1 CPU oracle: the canonical orthographic probe's
       // primary ray travels 2.8999814987182617 units to the surface.
       const auto shader_data = make_shader_data(0u, 2.8999814987182617f);

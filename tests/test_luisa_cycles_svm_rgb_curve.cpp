@@ -146,7 +146,7 @@ struct CurveCase {
         const UInt begin = offsets.read(index);
         UInt cursor_offset = begin;
         svm_detail::Cursor cursor{words, cursor_offset};
-        svm_detail::Stack stack;
+        svm_detail::Stack stack{SVM_STACK_SIZE};
         const Float4 input = inputs.read(index);
         svm_detail::stack_store_float3(stack, input_color_offset, input.xyz());
         svm_detail::stack_store_float(stack, input_factor_offset, input.w);

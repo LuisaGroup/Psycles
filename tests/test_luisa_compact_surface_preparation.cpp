@@ -830,6 +830,8 @@ int main(int argc, char **argv) {
     fixtures.emplace_back(compile_fixture(
         compiler,
         make_minimal_principled_graph()));
+    const auto zero_alpha_transparent_topology =
+        static_cast<std::uint32_t>(fixtures.size());
     auto direct_clamp = compile_fixture(compiler, make_typed_clamp_graph());
     constexpr std::array direct_clamp_operations{
         ValueOperation::clamp01,
@@ -1899,6 +1901,27 @@ int main(int argc, char **argv) {
     const auto first_invocation = [](std::uint32_t topology) noexcept {
         return static_cast<std::size_t>(topology) * scenario_count;
     };
+    // The typed Clamp fixture drives Principled Alpha to exactly zero in
+    // scenario zero. Cycles retains the resulting transparent BSDF, so the
+    // film roughness pass observes its exact-zero roughness rather than the
+    // empty-prefix fallback of one. This also locks the compact transparent
+    // lifecycle against replacing the retained record with a zero-weight
+    // reservation placeholder.
+    const auto &zero_alpha_transparent =
+        actual[first_invocation(zero_alpha_transparent_topology)];
+    if (!equal(
+            zero_alpha_transparent.transparency,
+            luisa::make_float3(1.0f),
+            tolerance) ||
+        !equal(
+            zero_alpha_transparent.roughness,
+            luisa::make_float2(0.0f),
+            tolerance)) {
+        std::cerr << "zero-alpha transparent closure did not contribute "
+                     "Cycles film roughness/transparency on "
+                  << backend << '\n';
+        return EXIT_FAILURE;
+    }
     const auto portal_emission =
         actual_emission[first_invocation(portal_depth_topology)];
     const auto transmission_emission =

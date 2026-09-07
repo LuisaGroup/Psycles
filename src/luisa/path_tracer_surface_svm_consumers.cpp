@@ -324,6 +324,7 @@ class SurfaceSvmPreparationConsumer final
     Float3 _emission{make_float3(0.0f)};
     Float3 _transparent_weight{make_float3(0.0f)};
     Bool _transparent_pending{false};
+    Bool _transparent_retained{false};
 
   public:
     SurfaceSvmPreparationConsumer(
@@ -356,10 +357,12 @@ class SurfaceSvmPreparationConsumer final
                         cycles_closure::closure_weight_cutoff;
                     $if(allocated) {
                         $if(!_transparent_pending) {
-                            auto placeholder =
+                            const auto transparent =
                                 canonical_surface_closure(physical);
-                            placeholder.weight = make_float3(0.0f);
-                            _accumulator.add(placeholder);
+                            _accumulator.begin_transparent_setup(
+                                transparent);
+                            _transparent_retained =
+                                _accumulator.reserve_transparent_slot();
                         };
                         _transparent_weight += physical.weight;
                         _transparent_pending = true;
@@ -372,7 +375,8 @@ class SurfaceSvmPreparationConsumer final
 
     void finish() noexcept {
         $if(_transparent_pending) {
-            _accumulator.finalize_transparent_setup(_transparent_weight);
+            _accumulator.finalize_transparent_setup(
+                _transparent_weight, _transparent_retained);
         };
         _accumulator.finish();
     }
