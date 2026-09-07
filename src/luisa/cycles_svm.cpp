@@ -142,8 +142,10 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       }
       if (node_types_used[NODE_CLOSURE_BACKGROUND]) {
         PSYCLES_SVM_CASE(NODE_CLOSURE_BACKGROUND) {
-          detail::node_closure_background(cursor, stack, closure_weight,
-                                          shader_data);
+          if ((node_feature_mask & kernel_feature_node_emission) != 0u) {
+            detail::node_closure_background(cursor, stack, closure_weight,
+                                            shader_data);
+          }
         };
       }
       if (node_types_used[NODE_CLOSURE_SET_WEIGHT]) {
@@ -244,8 +246,10 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       }
       if (node_types_used[NODE_TEX_IMAGE_DERIVATIVE]) {
         PSYCLES_SVM_CASE(NODE_TEX_IMAGE_DERIVATIVE) {
-          detail::node_tex_image(cursor, stack, kernel_globals, shader_data,
-                                 true);
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_tex_image(cursor, stack, kernel_globals, shader_data,
+                                   true);
+          }
         };
       }
       if (node_types_used[NODE_TEX_IMAGE_BOX]) {
@@ -257,9 +261,11 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       }
       if (node_types_used[NODE_TEX_IMAGE_BOX_DERIVATIVE]) {
         PSYCLES_SVM_CASE(NODE_TEX_IMAGE_BOX_DERIVATIVE) {
-          detail::node_tex_image_box(
-              cursor, stack, kernel_globals, transform_state, shader_data, true,
-              (kernel_features & kernel_feature_object_motion) != 0u);
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_tex_image_box(
+                cursor, stack, kernel_globals, transform_state, shader_data, true,
+                (kernel_features & kernel_feature_object_motion) != 0u);
+          }
         };
       }
       if (node_types_used[NODE_TEX_NOISE]) {
@@ -330,8 +336,10 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       }
       if (node_types_used[NODE_TEX_ENVIRONMENT_DERIVATIVE]) {
         PSYCLES_SVM_CASE(NODE_TEX_ENVIRONMENT_DERIVATIVE) {
-          detail::node_tex_environment(cursor, stack, kernel_globals,
-                                       shader_data, true);
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_tex_environment(cursor, stack, kernel_globals,
+                                         shader_data, true);
+          }
         };
       }
       if (node_types_used[NODE_TEX_SKY]) {
@@ -415,7 +423,9 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       }
       if (node_types_used[NODE_MAPPING_DERIVATIVE]) {
         PSYCLES_SVM_CASE(NODE_MAPPING_DERIVATIVE) {
-          detail::node_mapping(cursor, stack, true);
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_mapping(cursor, stack, true);
+          }
         };
       }
       if (node_types_used[NODE_TEXTURE_MAPPING]) {
@@ -425,7 +435,9 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       }
       if (node_types_used[NODE_TEXTURE_MAPPING_DERIVATIVE]) {
         PSYCLES_SVM_CASE(NODE_TEXTURE_MAPPING_DERIVATIVE) {
-          detail::node_texture_mapping(cursor, stack, true);
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_texture_mapping(cursor, stack, true);
+          }
         };
       }
       if (node_types_used[NODE_MIN_MAX]) {
@@ -438,7 +450,9 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       }
       if (node_types_used[NODE_VECTOR_MATH_DERIVATIVE]) {
         PSYCLES_SVM_CASE(NODE_VECTOR_MATH_DERIVATIVE) {
-          detail::node_vector_math(cursor, stack, true);
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_vector_math(cursor, stack, true);
+          }
         };
       }
       if (node_types_used[NODE_SET_BUMP]) {
@@ -586,7 +600,9 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       }
       if (node_types_used[NODE_SEPARATE_VECTOR_DERIVATIVE]) {
         PSYCLES_SVM_CASE(NODE_SEPARATE_VECTOR_DERIVATIVE) {
-          detail::node_separate_vector(cursor, stack, true);
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_separate_vector(cursor, stack, true);
+          }
         };
       }
       if (node_types_used[NODE_COMBINE_VECTOR]) {
@@ -596,7 +612,9 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       }
       if (node_types_used[NODE_COMBINE_VECTOR_DERIVATIVE]) {
         PSYCLES_SVM_CASE(NODE_COMBINE_VECTOR_DERIVATIVE) {
-          detail::node_combine_vector(cursor, stack, true);
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_combine_vector(cursor, stack, true);
+          }
         };
       }
       if (node_types_used[NODE_VECTOR_ROTATE]) {
@@ -630,9 +648,11 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       }
       if (node_types_used[NODE_TANGENT_DERIVATIVE]) {
         PSYCLES_SVM_CASE(NODE_TANGENT_DERIVATIVE) {
-          detail::node_tangent(
-              cursor, stack, kernel_globals, transform_state, shader_data, true,
-              (kernel_features & kernel_feature_object_motion) != 0u);
+          if ((node_feature_mask & kernel_feature_node_volume) == 0u) {
+            detail::node_tangent(
+                cursor, stack, kernel_globals, transform_state, shader_data, true,
+                (kernel_features & kernel_feature_object_motion) != 0u);
+          }
         };
       }
       if (node_types_used[NODE_LIGHT_FALLOFF]) {

@@ -1,5 +1,13 @@
 include_guard(GLOBAL)
 
+# Host-side AST regression: no device or backend optimizer is involved.
+add_executable(psycles_luisa_cycles_svm_static_pruning_tests
+    tests/test_luisa_cycles_svm_static_pruning.cpp)
+target_link_libraries(psycles_luisa_cycles_svm_static_pruning_tests
+    PRIVATE Psycles::luisa_runtime)
+add_test(NAME psycles.luisa_cycles_svm_static_pruning
+    COMMAND psycles_luisa_cycles_svm_static_pruning_tests)
+
 psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_zero_bsdf_tests
     SOURCE tests/test_luisa_cycles_zero_bsdf.cpp
