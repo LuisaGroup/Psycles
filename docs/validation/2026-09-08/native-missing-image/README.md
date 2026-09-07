@@ -80,6 +80,11 @@ and succeeds without loading DXC/DXIL. Logs use `native-missing-image-*`.
 
 ## Barbershop: admission fixed, image parity not yet achieved
 
+The subsequent [shared-closure correction](../shared-closure-weights/README.md)
+fixes the missing transparent closure identified below and records the large
+reduction in image residual. The timings and images here remain the exact
+before-correction checkpoint, not the current best Barbershop result.
+
 Fresh export from the original `barbershop_interior.blend` retains 197 image
 datablocks, including seven failed images. The original source is unchanged.
 The main shader cache is disabled; fast math and the staged surface/NEE

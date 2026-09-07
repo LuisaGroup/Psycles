@@ -82,9 +82,6 @@ template<typename T>
 
 [[nodiscard]] std::optional<NodeMathType>
 math_type(const GraphNode *node) noexcept {
-  if (node->type == cycles_synthetic_math) {
-    return NODE_MATH_MULTIPLY;
-  }
   const auto operation = string_property(node, "Operation");
   if (!operation) {
     return std::nullopt;

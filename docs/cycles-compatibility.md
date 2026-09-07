@@ -84,6 +84,7 @@ Recent independently checked native families include:
 | Ordered volume stacks, main/shadow consumers, phase copy, runtime extrema and density baking | [Native volume consumers](validation/2026-09-08/native-volume-consumers/README.md) |
 | Native scene admission, used-shader attribute residency, mesh constant emission and volume NEE emission | [Scene admission](validation/2026-09-08/native-scene-admission/README.md) |
 | Assigned-but-failed image identity and native sampling before UV wrapping | [Failed-image state](validation/2026-09-08/native-missing-image/README.md) |
+| Shared surface/volume closure weight accumulation, full word images and original GPU allocator state | [Shared closure weights](validation/2026-09-08/shared-closure-weights/README.md) |
 | Map Range and analytic Sky node behavior | [Map Range](validation/2026-09-07/map-range/README.md), [analytic Sky](validation/2026-09-07/analytic-sky/README.md) |
 
 The native volume consumer retains one closure allocator across the whole
@@ -111,36 +112,43 @@ Current large HIP checkpoints use fixed samples and native fast math.
 The old SurfaceProgram instruction/topology histogram and its CLI/API have
 been removed; its counts do not describe native Cycles SVM. Closure-count
 histograms and per-path traces remain supported.
-The [native scene admission](validation/2026-09-08/native-scene-admission/README.md)
-and [failed-image state](validation/2026-09-08/native-missing-image/README.md)
-checkpoints record these 256 spp single canaries, with all 46 channels finite.
-They are successive checkpoints, not a paired current-revision benchmark:
+The [shared-closure checkpoint](validation/2026-09-08/shared-closure-weights/README.md)
+records these four 256 spp single canaries after the same correction, with
+all 46 channels finite. The main shader cache is disabled; auxiliary caches
+retain their normal policy. These are not paired benchmark medians:
 
 | Scene | Extent | Cold main JIT s | Render-only s | Frame | Combined / DiffInd rel. RMSE |
 | --- | --- | ---: | ---: | ---: | --- |
-| Lone Monk | 1440x1080 | 44.3570 | 13.8669 | 220 B | 0.01240942 / 0.12881692 |
-| Monster | 1080x1080 | 57.2307 | 15.1202 | 284 B | 0.00547924 / 0.02552799 |
-| Classroom | 1920x1080 | 58.5554 | 18.3531 | 264 B | 0.00353344 / 0.17820336 |
-| Barbershop | 2048x858 | 95.2809 | 48.0181 | 896 B | 0.13641207 / 0.26861247 |
+| Lone Monk | 1440x1080 | 64.5614 | 13.9186 | 220 B | 0.01240020 / 0.12881657 |
+| Monster | 1080x1080 | 75.4817 | 15.1713 | 284 B | 0.00547924 / 0.02552799 |
+| Classroom | 1920x1080 | 58.1559 | 18.9070 | 264 B | 0.00353348 / 0.17820336 |
+| Barbershop | 2048x858 | 27.5668 | 49.5599 | 896 B | 0.01079813 / 0.07450770 |
 
-Barbershop's unavailable-image admission is fixed, with original-Cycles GPU
-and full-render regressions. Its image parity is not achieved: DiffCol
-relative RMSE is 0.12181950. A same-sample trace identifies a missing
-transparent closure at the first `cobwebs.001` surface, where both renderers
-hit the same geometry/shader. That structural discrepancy and its larger
-frame require further work. Shader/binding cleanup shortened the observed
-JIT canaries but did not remove the other scenes' indirect residuals.
+Barbershop's unavailable-image admission and missing shared transparent
+closure are fixed, with original-Cycles word/GPU-state regressions. Shared
+closure contributions were incorrectly multiplied instead of added. DiffCol
+relative RMSE is now 0.00159745. At the diagnosed pixel, the first four
+surface events and all 45 recorded random fields now match. Full trace
+parity is not established: a later NEE selection chooses an adjacent emitter
+triangle and downstream light/shadow fields diverge. The indirect residuals,
+896 B frame and performance gap remain open. Single JIT fluctuations are
+not evidence of a compiler speedup.
 
-A fresh, profiler-free Cycles HIP check on 2026-09-08 ran each scene three
-times. Main-loop times were 13.4344/13.4429/13.4521 s for Monk and
+A fresh, profiler-free Cycles HIP check on 2026-09-08 ran Monk and Monster
+three times. Main-loop times were 13.4344/13.4429/13.4521 s for Monk and
 14.4242/14.4129/14.4294 s for Monster (medians 13.4429/14.4242 s).
 Evidence is in `/var/tmp/psycles-cycles-hip-check-9wipGw`; Blender build identity
 is `9e2066aef7ef`, with fixed 256 spp, seed 0, no adaptive sampling or denoise,
 on the same RX 9070 XT. These are main-loop wall times, not summed kernel
 timings or the Python render-call duration. The latest single Psycles canaries
-are approximately 3.2%/4.8% slower; this is not a paired current-revision
+are approximately 3.5%/5.2% slower; this is not a paired current-revision
 benchmark. A fresh Classroom Cycles main loop takes 20.7432 s at the same
-1920x1080/256 and seed 1. Cycles' precompiled/cache behavior is not equivalent
+1920x1080/256 and seed 1. A fresh Barbershop Cycles main loop takes 28.7062 s
+at 2048x858/256 and seed 0, versus Psycles' 49.5599 s (about 73% slower).
+These two Cycles checks are single runs, recorded under
+`/var/tmp/psycles-native-volume-svm-06XnDX`. The older 40.379 s Barbershop
+render-call duration is not a comparable main-loop baseline.
+Cycles' precompiled/cache behavior is not equivalent
 to Psycles' cold main-path compilation. The older Monk reference was
 captured under rocprofv3 and is not the timing baseline for this comparison.
 

@@ -252,6 +252,15 @@ if(PSYCLES_BUILD_TESTS)
         NAME psycles.cycles_svm_kernel_features
         COMMAND psycles_cycles_svm_kernel_features_tests)
 
+    add_executable(psycles_cycles_svm_shared_closure_tests
+        tests/test_cycles_svm_shared_closure.cpp)
+    target_link_libraries(psycles_cycles_svm_shared_closure_tests PRIVATE Psycles::core)
+    target_compile_features(psycles_cycles_svm_shared_closure_tests PRIVATE cxx_std_20)
+    target_compile_definitions(psycles_cycles_svm_shared_closure_tests PRIVATE
+        PSYCLES_SHARED_CLOSURE_WORDS_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_svm_shared_closure_words.txt")
+    add_test(NAME psycles.cycles_svm_shared_closure
+        COMMAND psycles_cycles_svm_shared_closure_tests)
+
     add_executable(psycles_cycles_svm_closure_budget_tests
         tests/test_cycles_svm_closure_budget.cpp)
     target_link_libraries(psycles_cycles_svm_closure_budget_tests PRIVATE Psycles::core)
