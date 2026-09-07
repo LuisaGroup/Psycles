@@ -9,8 +9,9 @@ namespace psycles::luisa_backend::cycles_svm::detail {
  * true evaluates the surface BSDF path, false evaluates emission only. */
 void node_principled_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                           Stack &stack, luisa::compute::Expr<float> mix_weight,
-                          bool evaluate_bsdf, ShaderData &shader_data,
+                          bool evaluate_bsdf, bool subsurface_enabled,
+                          ShaderData &shader_data,
                           const PathState &path_state,
-                          luisa::compute::Bool &supported) noexcept;
+                          const EvaluationTransition &transition) noexcept;
 
 } // namespace psycles::luisa_backend::cycles_svm::detail

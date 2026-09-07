@@ -4,6 +4,7 @@
 #include "cycles_svm_test_compile.h"
 #include <psycles/luisa/cycles_svm.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -874,12 +875,14 @@ compile_dynamic_vector_transform(const VectorTransformCase &item,
 
 [[nodiscard]] auto make_interpreter_kernel(
     std::array<bool, NODE_NUM> node_types_used,
-    luisa::float3 shader_normal = {0.0f, 0.0f, 1.0f}) {
+    luisa::float3 shader_normal = {0.0f, 0.0f, 1.0f},
+    bool assume_valid_stream = false,
+    std::size_t stack_size = SVM_STACK_SIZE) {
   return Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>,
                   Buffer<luisa::uint4>>{
-      [node_types_used, shader_normal](BufferUInt words,
-                                       BufferFloat4 floating_output,
-                                       BufferUInt4 integer_output) noexcept {
+      [node_types_used, shader_normal, assume_valid_stream,
+       stack_size](BufferUInt words, BufferFloat4 floating_output,
+                   BufferUInt4 integer_output) noexcept {
         const UInt index = dispatch_x();
         const auto identity = make_float4x4(1.0f);
         const device_svm::TransformState transform_state{identity, identity,
@@ -914,22 +917,35 @@ compile_dynamic_vector_transform(const VectorTransformCase &item,
             identity};
         const device_svm::PathState path_state{
             device_svm::path_ray_visibility_camera, 0u};
-        device_svm::EvaluationResult result;
-        device_svm::eval_nodes(
-            kernel_globals, words, SHADER_TYPE_SURFACE,
-            0u,
-            device_svm::kernel_feature_node_emission |
-                device_svm::kernel_feature_node_light_path,
-            node_types_used, transform_state, shader_data, path_state,
-            result);
-        floating_output.write(
-            index,
-            make_float4(shader_data.closure_emission_background,
-                        result.closure_weight.x));
-        integer_output.write(
-            index,
-            make_uint4(result.status, result.final_offset, shader_data.flag,
-                       0u));
+        if (assume_valid_stream) {
+          device_svm::eval_nodes_assume_valid(
+              kernel_globals, words, SHADER_TYPE_SURFACE, 0u,
+              device_svm::kernel_feature_node_emission |
+                  device_svm::kernel_feature_node_light_path,
+              node_types_used, transform_state, shader_data, path_state,
+              stack_size);
+          floating_output.write(
+              index,
+              make_float4(shader_data.closure_emission_background, 0.0f));
+          integer_output.write(
+              index, make_uint4(0x13579bdfu, 0u, shader_data.flag, 0u));
+        } else {
+          device_svm::EvaluationResult result;
+          device_svm::eval_nodes(
+              kernel_globals, words, SHADER_TYPE_SURFACE, 0u,
+              device_svm::kernel_feature_node_emission |
+                  device_svm::kernel_feature_node_light_path,
+              node_types_used, transform_state, shader_data, path_state,
+              result, stack_size);
+          floating_output.write(
+              index,
+              make_float4(shader_data.closure_emission_background,
+                          result.closure_weight.x));
+          integer_output.write(
+              index,
+              make_uint4(result.status, result.final_offset, shader_data.flag,
+                         0u));
+        }
       }};
 }
 
@@ -1029,10 +1045,18 @@ struct InterpreterShape final : StmtVisitor {
   std::uint32_t switch_depth{};
   std::uint32_t loops{};
   std::uint32_t primary_switches{};
+  std::uint32_t returns{};
+  std::uint32_t primary_switch_returns{};
+  std::uint32_t true_bool_initializers{};
+  std::uint32_t primary_loop_true_bool_initializers{};
+  std::uint32_t materialized_stack_lane_initializers{};
 
   void visit(const BreakStmt *) override {}
   void visit(const ContinueStmt *) override {}
-  void visit(const ReturnStmt *) override {}
+  void visit(const ReturnStmt *) override {
+    ++returns;
+    primary_switch_returns += loop_depth == 1u && switch_depth == 1u;
+  }
   void visit(const ScopeStmt *stmt) override {
     for (const auto *statement : stmt->statements()) {
       statement->accept(*this);
@@ -1063,7 +1087,31 @@ struct InterpreterShape final : StmtVisitor {
   void visit(const SwitchDefaultStmt *stmt) override {
     stmt->body()->accept(*this);
   }
-  void visit(const AssignStmt *) override {}
+  void visit(const AssignStmt *stmt) override {
+    const auto *rhs = stmt->rhs();
+    if (stmt->lhs()->type() == Type::of<bool>() &&
+        rhs->tag() == Expression::Tag::LITERAL &&
+        luisa::get<bool>(
+            static_cast<const LiteralExpr *>(rhs)->value().to_variant())) {
+      ++true_bool_initializers;
+      primary_loop_true_bool_initializers += loop_depth == 1u;
+    }
+    const auto *stack_type = Type::array(Type::of<float>(), SVM_STACK_SIZE);
+    auto touches_stack = false;
+    traverse_subexpressions(
+        stmt->lhs(),
+        [&](const Expression *expression) noexcept {
+          touches_stack = touches_stack ||
+                          (expression->tag() == Expression::Tag::REF &&
+                           expression->type() == stack_type);
+        },
+        [](const Expression *) noexcept {});
+    const auto is_fresh_lifetime_seed =
+        rhs->tag() == Expression::Tag::CALL &&
+        static_cast<const CallExpr *>(rhs)->op() == CallOp::UNDEFINED;
+    materialized_stack_lane_initializers +=
+        touches_stack && !is_fresh_lifetime_seed;
+  }
   void visit(const ForStmt *stmt) override { stmt->body()->accept(*this); }
   void visit(const CommentStmt *) override {}
   void visit(const RayQueryStmt *stmt) override {
@@ -1099,9 +1147,11 @@ struct InterpreterShape final : StmtVisitor {
 void run_image(Device &device, Stream &stream, const ShaderImage &image,
                std::array<luisa::float4, 2u> &floating,
                std::array<luisa::uint4, 2u> &integer,
-               luisa::float3 shader_normal = {0.0f, 0.0f, 1.0f}) {
+               luisa::float3 shader_normal = {0.0f, 0.0f, 1.0f},
+               bool assume_valid_stream = false) {
   const auto kernel =
-      make_interpreter_kernel(image.node_types_used, shader_normal);
+      make_interpreter_kernel(image.node_types_used, shader_normal,
+                              assume_valid_stream);
   auto shader = device.compile(kernel, ShaderOption{.enable_cache = false});
   auto word_buffer = device.create_buffer<std::uint32_t>(image.words.size());
   auto floating_buffer = device.create_buffer<luisa::float4>(floating.size());
@@ -1196,7 +1246,11 @@ int main(int argc, char **argv) {
   }
   const auto modern_chain_image = compile_dynamic_modern_mix_chain();
 
-  const auto shape_kernel = make_interpreter_kernel(math_image.node_types_used);
+  auto interpreter_shape_node_types = std::array<bool, NODE_NUM>{};
+  interpreter_shape_node_types[NODE_END] = true;
+  interpreter_shape_node_types[NODE_SHADER_JUMP] = true;
+  const auto shape_kernel =
+      make_interpreter_kernel(interpreter_shape_node_types);
   InterpreterShape shape;
   shape_kernel.function()->function().body()->accept(shape);
   if (shape.loops != 1u || shape.primary_switches != 1u) {
@@ -1204,6 +1258,155 @@ int main(int argc, char **argv) {
                  "primary opcode switch; loops="
               << shape.loops << ", primary switches=" << shape.primary_switches
               << '\n';
+    return EXIT_FAILURE;
+  }
+  if (shape.materialized_stack_lane_initializers != 0u) {
+    std::cerr << "Cycles SVM stack must preserve Cycles' uninitialized local "
+                 "storage semantics; materialized lane initializers="
+              << shape.materialized_stack_lane_initializers << '\n';
+    return EXIT_FAILURE;
+  }
+  const auto assume_valid_shape_kernel = make_interpreter_kernel(
+      interpreter_shape_node_types, {0.0f, 0.0f, 1.0f}, true);
+  const luisa::compute::detail::FunctionBuilder *assume_valid_interpreter =
+      nullptr;
+  auto assume_valid_interpreter_count = std::size_t{};
+  for (const auto &callable :
+       assume_valid_shape_kernel.function()->function().custom_callables()) {
+    if (callable->name() == "svm_eval_nodes") {
+      assume_valid_interpreter = callable.get();
+      ++assume_valid_interpreter_count;
+    }
+  }
+  if (assume_valid_interpreter_count != 1u) {
+    std::cerr << "compiler-validated Cycles SVM path must have exactly one "
+                 "svm_eval_nodes callable; count="
+              << assume_valid_interpreter_count << '\n';
+    return EXIT_FAILURE;
+  }
+  constexpr auto exact_stack_extent = std::size_t{24u};
+  const auto exact_stack_kernel = make_interpreter_kernel(
+      interpreter_shape_node_types, {0.0f, 0.0f, 1.0f}, true,
+      exact_stack_extent);
+  const luisa::compute::detail::FunctionBuilder *exact_stack_interpreter =
+      nullptr;
+  for (const auto &callable :
+       exact_stack_kernel.function()->function().custom_callables()) {
+    if (callable->name() == "svm_eval_nodes") {
+      exact_stack_interpreter = callable.get();
+      break;
+    }
+  }
+  if (exact_stack_interpreter == nullptr) {
+    std::cerr << "exact-extent Cycles SVM interpreter callable is missing\n";
+    return EXIT_FAILURE;
+  }
+  const auto *exact_stack_type =
+      Type::array(Type::of<float>(), exact_stack_extent);
+  const auto *maximum_stack_type =
+      Type::array(Type::of<float>(), SVM_STACK_SIZE);
+  const auto exact_stack_locals = exact_stack_interpreter->local_variables();
+  const auto exact_stack_count = std::ranges::count_if(
+      exact_stack_locals, [&](const auto &variable) noexcept {
+        return variable.type() == exact_stack_type;
+      });
+  const auto maximum_stack_count = std::ranges::count_if(
+      exact_stack_locals, [&](const auto &variable) noexcept {
+        return variable.type() == maximum_stack_type;
+      });
+  if (exact_stack_count != 1 || maximum_stack_count != 0) {
+    std::cerr << "compiler-proven Cycles SVM stack extent was not preserved; "
+                 "exact locals="
+              << exact_stack_count << ", maximum locals="
+              << maximum_stack_count << '\n';
+    return EXIT_FAILURE;
+  }
+  InterpreterShape assume_valid_shape;
+  assume_valid_interpreter->function().body()->accept(assume_valid_shape);
+  if (assume_valid_shape.loops != 1u ||
+      assume_valid_shape.primary_switches != 1u ||
+      shape.primary_loop_true_bool_initializers != 1u ||
+      shape.true_bool_initializers != 2u ||
+      assume_valid_shape.true_bool_initializers != 0u ||
+      assume_valid_shape.primary_switch_returns != 1u) {
+    std::cerr << "compiler-validated Cycles SVM path must remove the generic "
+                 "lifetime/status Bool initializers and return directly at "
+                 "NODE_END; diagnostic loop="
+              << shape.primary_loop_true_bool_initializers
+              << ", diagnostic total=" << shape.true_bool_initializers
+              << ", validated total="
+              << assume_valid_shape.true_bool_initializers
+              << ", loops=" << assume_valid_shape.loops
+              << ", primary switches="
+              << assume_valid_shape.primary_switches
+              << ", returns=" << assume_valid_shape.returns
+              << ", switch returns="
+              << assume_valid_shape.primary_switch_returns << '\n';
+    return EXIT_FAILURE;
+  }
+
+  auto outline_shape_node_types = std::array<bool, NODE_NUM>{};
+  for (const auto type : {
+           NODE_CLOSURE_BSDF,
+           NODE_CLOSURE_EMISSION,
+           NODE_CLOSURE_BACKGROUND,
+           NODE_MIX_CLOSURE,
+           NODE_GEOMETRY,
+           NODE_GEOMETRY_DERIVATIVE,
+           NODE_LAYER_WEIGHT,
+           NODE_TEX_COORD,
+           NODE_TEX_COORD_DERIVATIVE,
+           NODE_TEX_IMAGE,
+           NODE_TEX_NOISE,
+           NODE_TEX_GRADIENT,
+           NODE_TEX_BRICK,
+           NODE_RGB_RAMP,
+           NODE_CURVES,
+           NODE_TEX_SKY,
+           NODE_ATTR,
+           NODE_ATTR_DERIVATIVE,
+           NODE_VERTEX_COLOR,
+           NODE_CONVERT,
+           NODE_MAPPING,
+           NODE_SET_BUMP,
+           NODE_HSV,
+           NODE_MATH,
+           NODE_LIGHT_PATH,
+           NODE_OBJECT_INFO,
+           NODE_PARTICLE_INFO,
+           NODE_INVERT,
+           NODE_SEPARATE_COLOR,
+           NODE_COMBINE_COLOR,
+           NODE_NORMAL_MAP,
+           NODE_CLAMP,
+           NODE_MIX_COLOR,
+       }) {
+    outline_shape_node_types[type] = true;
+  }
+  const auto outline_shape_kernel =
+      make_interpreter_kernel(outline_shape_node_types);
+  /* Cycles' source-level noinline annotations are not SVM semantics. Leave
+   * profitability to the backend: both in-place handlers and ordinary
+   * callables are valid, but the application must not force a boundary. */
+  const auto uses_default_inline_policy =
+      [](auto &&self, Function function) noexcept -> bool {
+    if (function.requires_noinline()) {
+      std::cerr << "Cycles SVM must not force noinline: " << function.name()
+                << '\n';
+      return false;
+    }
+    for (const auto &callable : function.custom_callables()) {
+      if (!self(self, callable->function())) {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (!uses_default_inline_policy(
+          uses_default_inline_policy,
+          outline_shape_kernel.function()->function()) ||
+      !uses_default_inline_policy(uses_default_inline_policy,
+                                  assume_valid_interpreter->function())) {
     return EXIT_FAILURE;
   }
 
@@ -1229,6 +1432,23 @@ int main(int argc, char **argv) {
                        device_svm::shader_data_emission)) {
     std::cerr << "Background Cycles SVM state mismatch on " << backend
               << '\n';
+    return EXIT_FAILURE;
+  }
+
+  floating = {};
+  integer = {};
+  run_image(device, stream, background_image, floating, integer,
+            {0.0f, 0.0f, 1.0f}, true);
+  if (!require_float3(floating[0], {0.368f, 1.104f, 1.771f},
+                      "validated front-facing Background") ||
+      !require_float3(floating[1], {0.368f, 1.104f, 1.771f},
+                      "validated back-facing Background") ||
+      integer[0].x != 0x13579bdfu || integer[1].x != 0x13579bdfu ||
+      integer[0].z != device_svm::shader_data_emission ||
+      integer[1].z != (device_svm::shader_data_backfacing |
+                       device_svm::shader_data_emission)) {
+    std::cerr << "compiler-validated Background Cycles SVM mismatch on "
+              << backend << '\n';
     return EXIT_FAILURE;
   }
 

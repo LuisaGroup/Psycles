@@ -26,15 +26,6 @@ SurfaceValueLocals::SurfaceValueLocals(std::uint32_t capacity) noexcept
                   capacity) == surface_value_stack_lane_buckets.end()) {
         std::abort();
     }
-    // The host bytecode verifier proves read-before-write for every legal
-    // operand. This one aggregate must-definition starts a fresh device-side
-    // lifetime wherever the interpreter stack is instantiated. Encoding the
-    // invariant in construction prevents a caller from accidentally exposing
-    // the undefined root-scope contents to coroutine liveness.
-    auto builder = luisa::compute::detail::FunctionBuilder::current();
-    const auto undefined = builder->call(
-        stack.type(), luisa::compute::CallOp::UNDEFINED, {});
-    builder->assign(stack.expression(), undefined);
 }
 
 SurfaceValueLocalsView SurfaceValueLocals::view() const noexcept {

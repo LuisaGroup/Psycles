@@ -74,6 +74,14 @@ class SurfaceClosureEvaluator {
 
     [[nodiscard]] SurfaceAov aov() const noexcept;
 
+    // Cycles-shaped film/data-pass traversal over the populated physical
+    // closure prefix. The table services are needed only by microfacet albedo
+    // estimators; glossy_filter_roughness observes the same post-setup blur
+    // state as surface_shader_prepare_closures().
+    [[nodiscard]] SurfaceAov aov(
+        const ShaderServices &services,
+        Expr<float> glossy_filter_roughness) const noexcept;
+
     [[nodiscard]] SurfaceEvaluation evaluate(
         const ShaderServices &services,
         Expr<luisa::float3> outgoing,

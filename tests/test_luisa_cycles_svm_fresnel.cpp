@@ -45,7 +45,7 @@ pack_normal_output(std::uint32_t normal, std::uint32_t output) noexcept {
       [](BufferUInt words, BufferFloat output, BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
         $if(index < fresnel_case_count) {
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           svm_detail::stack_store_float(stack, input_offset, 1.45f);
           Float3 explicit_normal = make_float3(0.0f, 0.0f, 1.0f);
           $switch(index) {
@@ -105,7 +105,7 @@ pack_normal_output(std::uint32_t normal, std::uint32_t output) noexcept {
       [](BufferUInt words, BufferFloat output, BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
         $if(index < layer_case_count) {
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           svm_detail::stack_store_float(stack, input_offset, 0.75f);
           Float3 explicit_normal = make_float3(0.0f, 0.0f, 1.0f);
           $switch(index) {

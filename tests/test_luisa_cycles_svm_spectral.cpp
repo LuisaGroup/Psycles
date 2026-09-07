@@ -132,7 +132,7 @@ template<bool blackbody, typename KernelGlobals>
                   Buffer<std::uint32_t>>{
       [](BufferUInt words, BufferFloat4 output, BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
-        svm_detail::Stack stack;
+        svm_detail::Stack stack{SVM_STACK_SIZE};
         UInt cursor_offset = index * spectral_word_count;
         svm_detail::Cursor cursor{words, cursor_offset};
         const KernelGlobals kernel_globals;

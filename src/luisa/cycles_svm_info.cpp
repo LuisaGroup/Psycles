@@ -121,7 +121,7 @@ void node_particle_info(Cursor &cursor, Stack &stack,
 void node_hair_info(Cursor &cursor, Stack &stack,
                     const InfoServices *services,
                     const ShaderData &shader_data,
-                    Bool &supported) noexcept {
+                    const EvaluationTransition &transition) noexcept {
   const auto info_type = cursor.word();
   const auto packed_output = cursor.word();
   const auto output_offset = cursor.byte(packed_output, 0u);
@@ -141,7 +141,7 @@ void node_hair_info(Cursor &cursor, Stack &stack,
         stack_store_float(
             stack, output_offset, services->curve_thickness(shader_data));
       } else {
-        supported = false;
+        transition.unsupported();
       }
     };
     PSYCLES_SVM_CASE(NODE_INFO_CURVE_TANGENT_NORMAL) {

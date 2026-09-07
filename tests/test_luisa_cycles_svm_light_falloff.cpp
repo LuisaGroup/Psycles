@@ -132,7 +132,7 @@ constexpr auto expected = std::array<float, case_count>{
       [](BufferUInt words, BufferFloat lengths, BufferFloat output,
          BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
-        svm_detail::Stack stack;
+        svm_detail::Stack stack{SVM_STACK_SIZE};
         svm_detail::stack_store_float(stack, 0u, 4.0f);
         svm_detail::stack_store_float(stack, 1u, 3.0f);
         UInt cursor_offset = index * payload_word_count;

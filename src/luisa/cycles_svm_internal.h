@@ -6,6 +6,7 @@
 
 #include <psycles/luisa/cycles_svm.h>
 
+#include <luisa/dsl/builtin.h>
 #include <luisa/dsl/local.h>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
@@ -18,6 +19,29 @@ class Stack final : public luisa::compute::Local<float> {
 public:
   explicit Stack(std::size_t size = SVM_STACK_SIZE) noexcept
       : luisa::compute::Local<float>{size} {}
+};
+
+/* A diagnostic evaluator reports unsupported dynamic transitions through a
+ * device Bool. The renderer's compiler-validated path instead makes the same
+ * transitions unreachable, matching Cycles' release SVM contract without
+ * carrying a per-node status lane through the interpreter merge. */
+class EvaluationTransition final {
+private:
+  luisa::compute::Bool *_diagnostic_supported;
+
+public:
+  explicit EvaluationTransition(
+      luisa::compute::Bool *diagnostic_supported) noexcept
+      : _diagnostic_supported{diagnostic_supported} {}
+
+  void unsupported() const noexcept {
+    if (_diagnostic_supported != nullptr) {
+      *_diagnostic_supported = false;
+    } else {
+      luisa::compute::dsl::unreachable(
+          "unsupported transition in compiler-validated Cycles SVM stream");
+    }
+  }
 };
 
 struct Differential3 {
@@ -174,7 +198,7 @@ void node_particle_info(Cursor &cursor, Stack &stack,
                         const ShaderData &shader_data) noexcept;
 void node_hair_info(Cursor &cursor, Stack &stack, const InfoServices *services,
                     const ShaderData &shader_data,
-                    luisa::compute::Bool &supported) noexcept;
+                    const EvaluationTransition &transition) noexcept;
 void node_point_info(Cursor &cursor, Stack &stack, const InfoServices &services,
                      const ShaderData &shader_data) noexcept;
 void node_normal(Cursor &cursor, Stack &stack) noexcept;
@@ -334,7 +358,7 @@ void node_closure_emission(const KernelGlobals &kernel_globals,
                            Cursor &cursor, Stack &stack,
                            luisa::compute::Expr<luisa::float3> closure_weight,
                            ShaderData &shader_data,
-                           luisa::compute::Bool &supported) noexcept;
+                           const EvaluationTransition &transition) noexcept;
 void node_closure_background(Cursor &cursor, Stack &stack,
                              luisa::compute::Expr<luisa::float3> closure_weight,
                              ShaderData &shader_data) noexcept;
@@ -342,9 +366,10 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                        Stack &stack,
                        luisa::compute::Expr<luisa::float3> closure_weight,
                        compiler::cycles_svm::ShaderType shader_type,
+                       std::uint32_t kernel_features,
                        std::uint32_t node_feature_mask, ShaderData &shader_data,
                        const PathState &path_state,
-                       luisa::compute::Bool &supported) noexcept;
+                       const EvaluationTransition &transition) noexcept;
 void node_closure_bsdf_skip(
     Cursor &cursor, luisa::compute::Expr<std::uint32_t> closure_type) noexcept;
 

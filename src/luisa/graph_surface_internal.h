@@ -292,6 +292,8 @@ template <typename Id, typename Values>
 [[nodiscard]] Float3 bsdf_allocated_weight(Float3 value) noexcept;
 [[nodiscard]] Float pass_weight(Float3 value) noexcept;
 [[nodiscard]] Float max_component(Float3 value) noexcept;
+[[nodiscard]] Float fresnel_dielectric_cos(
+    Float cosine, Float eta) noexcept;
 [[nodiscard]] Float f0_from_ior(Float ior) noexcept;
 [[nodiscard]] Float ior_from_f0(Float f0) noexcept;
 [[nodiscard]] Float fresnel_dielectric_fss(Float eta) noexcept;

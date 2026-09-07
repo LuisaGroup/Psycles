@@ -20,7 +20,8 @@ struct SurfaceClosurePopulationCollector::Impl {
         std::size_t capacity,
         const SurfacePopulationQuery &query,
         const SurfaceClosureIdentityCallable &identity_value,
-        const SurfaceClosureAovCallable &aov_operation_value) noexcept
+        const SurfaceClosureAovCallable &aov_operation_value,
+        SurfaceClosurePopulationAovMode aov_mode) noexcept
         : closures{capacity, SurfaceClosureStorageProfile::physical},
           preparation{
               point_value,
@@ -30,7 +31,10 @@ struct SurfaceClosurePopulationCollector::Impl {
               query.include_aov,
               identity_value,
               aov_operation_value,
-              detail::RuntimeFlagReductionMode::retained_state},
+              detail::RuntimeFlagReductionMode::retained_state,
+              aov_mode == SurfaceClosurePopulationAovMode::post_population
+                  ? detail::AovReductionMode::post_population
+                  : detail::AovReductionMode::streaming},
           transparent_index{
               static_cast<std::uint32_t>(closures.capacity())},
           shading_normal{point_value.shading_normal} {}
@@ -41,13 +45,15 @@ SurfaceClosurePopulationCollector::SurfaceClosurePopulationCollector(
     std::size_t capacity,
     const SurfacePopulationQuery &query,
     const SurfaceClosureIdentityCallable &identity,
-    const SurfaceClosureAovCallable &aov_operation) noexcept
+    const SurfaceClosureAovCallable &aov_operation,
+    SurfaceClosurePopulationAovMode aov_mode) noexcept
     : _impl{std::make_unique<Impl>(
           point,
           capacity,
           query,
           identity,
-          aov_operation)} {}
+          aov_operation,
+          aov_mode)} {}
 
 SurfaceClosurePopulationCollector::~SurfaceClosurePopulationCollector()
     noexcept = default;
@@ -107,15 +113,17 @@ void SurfaceClosurePopulationCollector::
     finalize_transparent_closure(
     Expr<luisa::float3> weight,
     Expr<float> sample_weight) noexcept {
-    $if(_impl->transparent_index <
-        static_cast<std::uint32_t>(_impl->closures.capacity())) {
+    const Bool retained =
+        _impl->transparent_index <
+        static_cast<std::uint32_t>(_impl->closures.capacity());
+    $if(retained) {
         _impl->closures.finalize_physical_transparent(
             _impl->transparent_index,
             weight,
             sample_weight,
             _impl->shading_normal);
     };
-    _impl->preparation.finalize_transparent_setup(weight);
+    _impl->preparation.finalize_transparent_setup(weight, retained);
 }
 
 void SurfaceClosurePopulationCollector::finish() noexcept {

@@ -116,6 +116,36 @@ surface_shader_exclude(Expr<std::uint32_t> type,
 
 } // namespace
 
+void surface_shader_initialize_closures(
+    ClosurePool &pool, Expr<std::uint32_t> path_visibility,
+    Expr<std::uint32_t> path_flag) noexcept {
+  const auto stores_closures =
+      ((path_visibility & path_ray_visibility_shadow) == 0u) &
+      ((path_flag & (path_ray_terminate | path_ray_emission)) == 0u);
+  pool.set_left(select(
+      0u, static_cast<std::uint32_t>(pool.capacity()), stores_closures));
+}
+
+void surface_shader_prepare_closures(
+    ShaderData &shader_data, Expr<float> blur_roughness,
+    ClosureTypeMask closure_types) noexcept {
+  $if(blur_roughness > 0.0f) {
+    auto &pool = *shader_data.closure;
+    UInt index = 0u;
+    $while(index < pool.count()) {
+      const auto common = pool.common(index);
+      $if(closure::is_bsdf(common.type)) {
+        bsdf_blur(pool, index, blur_roughness, closure_types);
+      };
+      index += 1u;
+    };
+    shader_data.flag |= select(
+        0u, shader_data_bsdf_has_eval,
+        blur_roughness * blur_roughness >
+            closure::microfacet_singular_alpha_product);
+  };
+}
+
 SurfaceShaderBsdfEval
 surface_shader_bsdf_eval(const KernelGlobals &kernel_globals,
                          ShaderData &shader_data, Expr<luisa::float3> wo,

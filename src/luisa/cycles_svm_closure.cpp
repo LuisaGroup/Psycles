@@ -547,7 +547,7 @@ void node_closure_emission(const KernelGlobals &kernel_globals,
                            Cursor &cursor, Stack &stack,
                            Expr<luisa::float3> closure_weight,
                            ShaderData &shader_data,
-                           Bool &supported) noexcept {
+                           const EvaluationTransition &transition) noexcept {
   const auto packed = cursor.word();
   const auto mix_weight_offset = cursor.byte(packed, 0u);
   Float3 weight = closure_weight;
@@ -567,7 +567,7 @@ void node_closure_emission(const KernelGlobals &kernel_globals,
       } else {
         $if(shader_data.object != object_none) {
           active = false;
-          supported = false;
+          transition.unsupported();
         };
       }
     };
@@ -610,9 +610,10 @@ void node_closure_background(Cursor &cursor, Stack &stack,
 
 void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                        Stack &stack, Expr<luisa::float3> closure_weight,
-                       ShaderType shader_type, std::uint32_t node_feature_mask,
+                       ShaderType shader_type, std::uint32_t kernel_features,
+                       std::uint32_t node_feature_mask,
                        ShaderData &shader_data, const PathState &path_state,
-                       Bool &supported) noexcept {
+                       const EvaluationTransition &transition) noexcept {
   const auto closure_type = cursor.word();
   const auto packed = cursor.word();
   const auto mix_weight_offset = cursor.byte(packed, 0u);
@@ -633,18 +634,28 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
         $if(closure_type ==
             static_cast<std::uint32_t>(CLOSURE_BSDF_PRINCIPLED_ID)) {
           node_principled_bsdf(kernel_globals, cursor, stack, mix_weight, true,
-                               shader_data, path_state, supported);
+                               (kernel_features & kernel_feature_subsurface) !=
+                                   0u,
+                               shader_data, path_state, transition);
         }
         $else {
-          const Bool is_bssrdf =
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSSRDF_BURLEY_ID)) |
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSSRDF_RANDOM_WALK_ID)) |
-              (closure_type == static_cast<std::uint32_t>(
-                                   CLOSURE_BSSRDF_RANDOM_WALK_LEGACY_ID)) |
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID));
+          const auto subsurface_enabled =
+              (kernel_features & kernel_feature_subsurface) != 0u;
+          const auto hair_enabled =
+              (kernel_features & kernel_feature_hair) != 0u;
+          const auto principled_hair_enabled =
+              hair_enabled &&
+              (kernel_features & kernel_feature_node_principled_hair) != 0u;
+          const Bool is_bssrdf = subsurface_enabled
+                                      ? (closure_type == static_cast<std::uint32_t>(
+                                                             CLOSURE_BSSRDF_BURLEY_ID)) |
+                                            (closure_type == static_cast<std::uint32_t>(
+                                                                 CLOSURE_BSSRDF_RANDOM_WALK_ID)) |
+                                            (closure_type == static_cast<std::uint32_t>(
+                                                                 CLOSURE_BSSRDF_RANDOM_WALK_LEGACY_ID)) |
+                                            (closure_type == static_cast<std::uint32_t>(
+                                                                 CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID))
+                                      : Bool{false};
           const Bool is_sheen =
               (closure_type ==
                static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID)) |
@@ -658,16 +669,19 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
           const Bool is_ray_portal =
               closure_type ==
               static_cast<std::uint32_t>(CLOSURE_BSDF_RAY_PORTAL_ID);
-          const Bool is_hair =
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_REFLECTION_ID)) |
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_TRANSMISSION_ID));
+          const Bool is_hair = hair_enabled
+                                   ? (closure_type == static_cast<std::uint32_t>(
+                                                          CLOSURE_BSDF_HAIR_REFLECTION_ID)) |
+                                         (closure_type == static_cast<std::uint32_t>(
+                                                              CLOSURE_BSDF_HAIR_TRANSMISSION_ID))
+                                   : Bool{false};
           const Bool is_principled_hair =
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_CHIANG_ID)) |
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_HUANG_ID));
+              principled_hair_enabled
+                  ? (closure_type == static_cast<std::uint32_t>(
+                                         CLOSURE_BSDF_HAIR_CHIANG_ID)) |
+                        (closure_type == static_cast<std::uint32_t>(
+                                             CLOSURE_BSDF_HAIR_HUANG_ID))
+                  : Bool{false};
           const Bool is_glass =
               (closure_type == static_cast<std::uint32_t>(
                                    CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
@@ -696,8 +710,10 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
               (closure_type ==
                static_cast<std::uint32_t>(CLOSURE_BSDF_F82_CONDUCTOR));
           $if(is_bssrdf) {
-            node_bssrdf(cursor, stack, closure_type, closure_weight, mix_weight,
-                        shader_data, path_state);
+            if (subsurface_enabled) {
+              node_bssrdf(cursor, stack, closure_type, closure_weight,
+                          mix_weight, shader_data, path_state);
+            }
           }
           $elif(is_sheen) {
             node_sheen(kernel_globals, cursor, stack, closure_type,
@@ -712,13 +728,17 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
                             shader_data);
           }
           $elif(is_hair) {
-            node_hair(cursor, stack, closure_type, closure_weight, mix_weight,
-                      shader_data);
+            if (hair_enabled) {
+              node_hair(cursor, stack, closure_type, closure_weight, mix_weight,
+                        shader_data);
+            }
           }
           $elif(is_principled_hair) {
-            node_principled_hair(kernel_globals, cursor, stack, closure_type,
-                                 closure_weight, mix_weight, shader_data,
-                                 path_state);
+            if (principled_hair_enabled) {
+              node_principled_hair(kernel_globals, cursor, stack, closure_type,
+                                   closure_weight, mix_weight, shader_data,
+                                   path_state);
+            }
           }
           $elif(is_glass) {
             const auto color_x = cursor.word();
@@ -875,7 +895,7 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
               };
               $default {
                 node_closure_bsdf_skip(cursor, closure_type);
-                supported = false;
+                transition.unsupported();
               };
             };
           };
@@ -896,7 +916,7 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
       // Sheen/coat still use local BSDF values for layer attenuation, but
       // neither their evaluation nor transparency requires a closure array.
       node_principled_bsdf(kernel_globals, cursor, stack, mix_weight, false,
-                           shader_data, path_state, supported);
+                           false, shader_data, path_state, transition);
     };
     return;
   }

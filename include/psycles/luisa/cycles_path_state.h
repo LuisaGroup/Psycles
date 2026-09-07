@@ -56,6 +56,11 @@ inline constexpr std::uint32_t visibility_transmit = 1u << 1u;
 inline constexpr std::uint32_t visibility_diffuse = 1u << 2u;
 inline constexpr std::uint32_t visibility_glossy = 1u << 3u;
 inline constexpr std::uint32_t visibility_volume_scatter = 1u << 4u;
+inline constexpr std::uint32_t visibility_shadow_opaque = 1u << 5u;
+inline constexpr std::uint32_t visibility_shadow_transparent = 1u << 6u;
+inline constexpr std::uint32_t visibility_shadow =
+    visibility_shadow_opaque | visibility_shadow_transparent;
+inline constexpr std::uint32_t visibility_all = (1u << 7u) - 1u;
 
 inline constexpr std::uint32_t bounce_dimension_count = 16u;
 
@@ -577,37 +582,45 @@ decide_closest_continuation(
 }
 
 [[nodiscard]] inline luisa::compute::UInt
+from_contract_shader_visibility(
+    luisa::compute::UInt contract_visibility) noexcept {
+    constexpr auto contract_camera =
+        contract::visibility_bit(contract::RayVisibility::camera);
+    constexpr auto contract_diffuse =
+        contract::visibility_bit(contract::RayVisibility::diffuse);
+    constexpr auto contract_glossy =
+        contract::visibility_bit(contract::RayVisibility::glossy);
+    constexpr auto contract_transmission =
+        contract::visibility_bit(contract::RayVisibility::transmission);
+    constexpr auto contract_shadow =
+        contract::visibility_bit(contract::RayVisibility::shadow);
+    constexpr auto contract_volume =
+        contract::visibility_bit(contract::RayVisibility::volume_scatter);
+    // This is a fixed bit permutation, except that the single contract
+    // shadow category expands to Cycles' opaque and transparent bits.
+    return
+        (contract_visibility & contract_camera) |
+        ((contract_visibility & contract_transmission) >> 2u) |
+        ((contract_visibility & contract_diffuse) << 1u) |
+        ((contract_visibility & contract_glossy) << 1u) |
+        ((contract_visibility & contract_volume) >> 1u) |
+        ((contract_visibility & contract_shadow) << 1u) |
+        ((contract_visibility & contract_shadow) << 2u);
+}
+
+[[nodiscard]] inline luisa::compute::UInt
 to_contract_shader_visibility(
     luisa::compute::UInt cycles_visibility) noexcept {
-    using namespace luisa::compute;
-    UInt result = 0u;
-    result |= select(
-        0u,
-        contract::visibility_bit(
-            contract::RayVisibility::camera),
-        (cycles_visibility & visibility_camera) != 0u);
-    result |= select(
-        0u,
-        contract::visibility_bit(
-            contract::RayVisibility::transmission),
-        (cycles_visibility & visibility_transmit) != 0u);
-    result |= select(
-        0u,
-        contract::visibility_bit(
-            contract::RayVisibility::diffuse),
-        (cycles_visibility & visibility_diffuse) != 0u);
-    result |= select(
-        0u,
-        contract::visibility_bit(
-            contract::RayVisibility::glossy),
-        (cycles_visibility & visibility_glossy) != 0u);
-    result |= select(
-        0u,
-        contract::visibility_bit(
-            contract::RayVisibility::volume_scatter),
-        (cycles_visibility &
-         visibility_volume_scatter) != 0u);
-    return result;
+    // Either Cycles shadow bit folds onto the one contract shadow bit; OR
+    // keeps the result idempotent when both are present.
+    return
+        (cycles_visibility & visibility_camera) |
+        ((cycles_visibility & visibility_transmit) << 2u) |
+        ((cycles_visibility & visibility_diffuse) >> 1u) |
+        ((cycles_visibility & visibility_glossy) >> 1u) |
+        ((cycles_visibility & visibility_volume_scatter) << 1u) |
+        ((cycles_visibility & visibility_shadow_opaque) >> 1u) |
+        ((cycles_visibility & visibility_shadow_transparent) >> 2u);
 }
 
 [[nodiscard]] inline luisa::compute::UInt

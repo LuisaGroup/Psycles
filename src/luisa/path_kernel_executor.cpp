@@ -7,6 +7,7 @@
 #include "cycles_surface_sort.h"
 #include "sample_dispatch_partition.h"
 
+#include <cstdlib>
 #include <utility>
 
 #include <luisa/core/logging.h>
@@ -34,6 +35,14 @@ template <typename... Args> struct RenderSchedulerTypes<void(Args...)> {
 };
 
 using RenderSchedulers = RenderSchedulerTypes<RenderKernelSignature>;
+
+void log_coroutine_frame_if_requested(
+    const RenderCoroutine &coroutine) noexcept {
+  if (std::getenv("PSYCLES_DUMP_COROUTINE_FRAME") != nullptr) {
+    LUISA_INFO("Psycles coroutine frame layout:\n{}",
+               coroutine.frame().dump());
+  }
+}
 
 [[nodiscard]] PathKernelConfig make_local_shadow_path(
     const PathKernelConfig &path) {
@@ -315,6 +324,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
     auto shadow_path = make_local_shadow_path(path);
     auto coroutine =
         build_cycles_stage_coroutine(shadow_path, config.scheduler);
+    log_coroutine_frame_if_requested(coroutine);
     LUISA_INFO("Psycles wavefront path coroutine: subroutines={} "
                 "frame_fields={} frame_bytes={} capacity={}.",
                 coroutine.subroutine_count(),
@@ -337,6 +347,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
             auto shadow_path = make_local_shadow_path(path);
             auto coroutine = build_cycles_stage_coroutine(
                 shadow_path, config.scheduler);
+            log_coroutine_frame_if_requested(coroutine);
             luisa::compute::coro::GraphWavefrontCoroSchedulerConfig
                 scheduler_config;
             scheduler_config.thread_count = config.wavefront_frame_capacity;
@@ -411,6 +422,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
     }
             auto coroutine =
                 build_cycles_stage_coroutine(staged_path, config.scheduler);
+            log_coroutine_frame_if_requested(coroutine);
     LUISA_INFO("Psycles staged wavefront path coroutine: "
                 "subroutines={} frame_fields={} frame_bytes={} capacity={}.",
                 coroutine.subroutine_count(),
@@ -421,8 +433,12 @@ build_path_kernel_executor(luisa::compute::Device &device,
     scheduler_config.thread_count = config.wavefront_frame_capacity;
             scheduler_config.execution_block_size =
                 config.wavefront_execution_block_size;
+            scheduler_config.continuation_block_sizes = {{
+                .continuation = path_transition::shade_surface,
+                .execution_block_size = 512u}};
             scheduler_config.largest_continuation_first = true;
             scheduler_config.incremental_continuation_counts = true;
+            scheduler_config.fused_continuation_counts = true;
             scheduler_config.refill_continuations = {
                 path_transition::intersect_closest};
     scheduler_config.shader_option = config.shader_option;
@@ -453,6 +469,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
     auto shadow_path = make_local_shadow_path(path);
     auto coroutine =
         build_cycles_stage_coroutine(shadow_path, config.scheduler);
+    log_coroutine_frame_if_requested(coroutine);
     luisa::compute::coro::PersistentThreadsCoroSchedulerConfig scheduler_config;
     scheduler_config.thread_count = config.persistent_worker_count;
     scheduler_config.block_size = config.persistent_block_size;

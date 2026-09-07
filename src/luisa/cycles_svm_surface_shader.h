@@ -39,6 +39,24 @@ struct SurfaceShaderBsdfSample {
   luisa::compute::UInt label;
 };
 
+/* Exact closure-capacity initialization at the start of Cycles 5.2.1
+ * surface_shader_eval(). A terminating, emission-only, or shadow evaluation
+ * starts with num_closure_left == 0; bsdf_transparent_setup may temporarily
+ * reopen one slot only for a terminating path. */
+void surface_shader_initialize_closures(
+    ClosurePool &pool,
+    luisa::compute::Expr<std::uint32_t> path_visibility,
+    luisa::compute::Expr<std::uint32_t> path_flag) noexcept;
+
+/* Cycles 5.2.1 surface_shader_prepare_closures() enters the Filter Glossy
+ * closure traversal only for the blur_pdf < 1 path. Surface geometry has
+ * already projected that predicate to a strictly-positive blur roughness;
+ * zero therefore means that the whole traversal must remain unreachable. */
+void surface_shader_prepare_closures(
+    ShaderData &shader_data,
+    luisa::compute::Expr<float> blur_roughness,
+    ClosureTypeMask closure_types = all_closure_types) noexcept;
+
 [[nodiscard]] SurfaceShaderBsdfEval surface_shader_bsdf_eval(
     const KernelGlobals &kernel_globals, ShaderData &shader_data,
     luisa::compute::Expr<luisa::float3> wo,

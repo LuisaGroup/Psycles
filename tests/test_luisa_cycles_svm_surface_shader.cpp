@@ -2,6 +2,7 @@
 #include <psycles/luisa/cycles_svm.h>
 
 #include "cycles_svm_surface_shader.h"
+#include "cycles_svm_simple_closure.h"
 #include "luisa_cycles_svm_test_kernel_globals.h"
 
 #include <array>
@@ -21,8 +22,8 @@ namespace closure = psycles::luisa_backend::cycles_closure;
 namespace detail = psycles::luisa_backend::cycles_svm::detail;
 namespace device_svm = psycles::luisa_backend::cycles_svm;
 
-inline constexpr std::uint32_t value_count = 18u;
-inline constexpr std::uint32_t meta_count = 22u;
+inline constexpr std::uint32_t value_count = 21u;
+inline constexpr std::uint32_t meta_count = 40u;
 inline constexpr std::uint32_t predicate_count = 44u;
 inline constexpr auto closure_mask =
     (detail::ClosureTypeMask{1u} << closure::type_diffuse) |
@@ -185,6 +186,123 @@ void write_pick(BufferUInt &meta, std::uint32_t base,
                      make_float4(prefixed_pick.random.z, 0.0f, 0.0f, 0.0f));
         meta.write(20u, prefixed_pick.index);
         meta.write(21u, prefixed_pool.common(prefixed_pick.index).type);
+
+        device_svm::ClosurePool ordinary_pool{2u};
+        detail::surface_shader_initialize_closures(
+            ordinary_pool, device_svm::path_ray_visibility_camera, 0u);
+        auto ordinary_shader_data = make_shader_data(&ordinary_pool);
+        detail::diffuse_setup(ordinary_shader_data,
+                              make_float3(0.0f, 0.0f, 1.0f),
+                              make_float3(0.25f));
+        meta.write(22u, ordinary_pool.count());
+        meta.write(23u, ordinary_pool.left());
+        meta.write(24u, ordinary_shader_data.flag);
+
+        constexpr auto terminating_flag =
+            device_svm::path_ray_terminate_after_transparent;
+        device_svm::ClosurePool terminated_diffuse_pool{2u};
+        detail::surface_shader_initialize_closures(
+            terminated_diffuse_pool,
+            device_svm::path_ray_visibility_camera,
+            terminating_flag);
+        auto terminated_diffuse_shader_data =
+            make_shader_data(&terminated_diffuse_pool);
+        detail::diffuse_setup(terminated_diffuse_shader_data,
+                              make_float3(0.0f, 0.0f, 1.0f),
+                              make_float3(0.25f));
+        meta.write(25u, terminated_diffuse_pool.count());
+        meta.write(26u, terminated_diffuse_pool.left());
+        meta.write(27u, terminated_diffuse_shader_data.flag);
+
+        device_svm::ClosurePool terminated_transparent_pool{2u};
+        detail::surface_shader_initialize_closures(
+            terminated_transparent_pool,
+            device_svm::path_ray_visibility_camera,
+            terminating_flag);
+        auto terminated_transparent_shader_data =
+            make_shader_data(&terminated_transparent_pool);
+        const device_svm::PathState terminating_path{
+            device_svm::path_ray_visibility_camera, terminating_flag};
+        detail::transparent_setup(terminated_transparent_shader_data,
+                                  terminating_path,
+                                  make_float3(0.5f, 0.25f, 0.125f));
+        const auto terminated_transparent =
+            terminated_transparent_pool.common(0u);
+        meta.write(28u, terminated_transparent_pool.count());
+        meta.write(29u, terminated_transparent_pool.left());
+        meta.write(30u, terminated_transparent.type);
+        meta.write(31u, terminated_transparent_shader_data.flag);
+        values.write(18u, make_float4(
+            terminated_transparent_shader_data.closure_transparent_extinction,
+            terminated_transparent.sample_weight));
+
+        device_svm::ClosurePool emission_pool{2u};
+        detail::surface_shader_initialize_closures(
+            emission_pool, device_svm::path_ray_visibility_camera,
+            device_svm::path_ray_emission);
+        const auto emission_allocation = emission_pool.allocate(
+            closure::type_diffuse, make_float3(1.0f));
+        meta.write(32u, emission_pool.count());
+        meta.write(33u, emission_pool.left());
+        meta.write(34u, select(0u, 1u, emission_allocation.valid));
+
+        device_svm::ClosurePool shadow_pool{2u};
+        detail::surface_shader_initialize_closures(
+            shadow_pool, device_svm::path_ray_visibility_shadow, 0u);
+        const auto shadow_allocation = shadow_pool.allocate(
+            closure::type_diffuse, make_float3(1.0f));
+        meta.write(35u, shadow_pool.count());
+        meta.write(36u, shadow_pool.left());
+        meta.write(37u, select(0u, 1u, shadow_allocation.valid));
+
+        /* A negative alpha is an intentional poison sentinel: valid Cycles
+         * closures never expose one, but max(0, alpha) would make an
+         * accidental zero-roughness bsdf_blur traversal observable. */
+        device_svm::ClosurePool skipped_filter_pool{1u};
+        const auto skipped_filter = skipped_filter_pool.allocate(
+            closure::type_microfacet_ggx, make_float3(1.0f));
+        skipped_filter_pool.set_microfacet_param(
+            skipped_filter.index,
+            {.alpha_x = -0.25f,
+             .alpha_y = -0.5f,
+             .ior = 1.45f,
+             .energy_scale = 1.0f,
+             .fresnel_type = static_cast<std::uint32_t>(
+                 device_svm::MicrofacetFresnel::none),
+             .T = make_float3(1.0f, 0.0f, 0.0f)});
+        auto skipped_filter_shader_data =
+            make_shader_data(&skipped_filter_pool);
+        detail::surface_shader_prepare_closures(
+            skipped_filter_shader_data, 0.0f);
+        const auto skipped_filter_param =
+            skipped_filter_pool.microfacet_param(skipped_filter.index);
+        values.write(19u, make_float4(
+            skipped_filter_param.alpha_x, skipped_filter_param.alpha_y,
+            skipped_filter_param.ior, skipped_filter_param.energy_scale));
+        meta.write(38u, skipped_filter_shader_data.flag);
+
+        device_svm::ClosurePool active_filter_pool{1u};
+        const auto active_filter = active_filter_pool.allocate(
+            closure::type_microfacet_ggx, make_float3(1.0f));
+        active_filter_pool.set_microfacet_param(
+            active_filter.index,
+            {.alpha_x = 0.1f,
+             .alpha_y = 0.2f,
+             .ior = 1.45f,
+             .energy_scale = 1.0f,
+             .fresnel_type = static_cast<std::uint32_t>(
+                 device_svm::MicrofacetFresnel::none),
+             .T = make_float3(1.0f, 0.0f, 0.0f)});
+        auto active_filter_shader_data =
+            make_shader_data(&active_filter_pool);
+        detail::surface_shader_prepare_closures(
+            active_filter_shader_data, 0.4f);
+        const auto active_filter_param =
+            active_filter_pool.microfacet_param(active_filter.index);
+        values.write(20u, make_float4(
+            active_filter_param.alpha_x, active_filter_param.alpha_y,
+            active_filter_param.ior, active_filter_param.energy_scale));
+        meta.write(39u, active_filter_shader_data.flag);
       }};
 }
 
@@ -285,6 +403,13 @@ void write_pick(BufferUInt &meta, std::uint32_t base,
   valid &= near(actual_values[15u].w, actual_values[16u].x / 0.7f);
   valid &= near(actual_values[16u].w, 1.0f);
   valid &= near(actual_values[17u], luisa::float4{0.3f, 0.0f, 0.0f, 0.0f});
+  valid &= near(actual_values[18u],
+                luisa::float4{0.5f, 0.25f, 0.125f,
+                              (0.5f + 0.25f + 0.125f) / 3.0f});
+  valid &= near(actual_values[19u],
+                luisa::float4{-0.25f, -0.5f, 1.45f, 1.0f});
+  valid &= near(actual_values[20u],
+                luisa::float4{0.4f, 0.4f, 1.45f, 1.0f});
 
   constexpr std::array expected_pick_meta{0u, closure::type_diffuse,
                                           1u, 0u,
@@ -307,6 +432,32 @@ void write_pick(BufferUInt &meta, std::uint32_t base,
   valid &= actual_meta[19u] == 0u;
   valid &= actual_meta[20u] == 1u;
   valid &= actual_meta[21u] == closure::type_diffuse;
+  valid &= actual_meta[22u] == 1u;
+  valid &= actual_meta[23u] == 1u;
+  valid &= (actual_meta[24u] &
+            (device_svm::shader_data_bsdf |
+             device_svm::shader_data_bsdf_has_eval)) ==
+           (device_svm::shader_data_bsdf |
+            device_svm::shader_data_bsdf_has_eval);
+  valid &= actual_meta[25u] == 0u;
+  valid &= actual_meta[26u] == 0u;
+  valid &= (actual_meta[27u] & device_svm::shader_data_bsdf) == 0u;
+  valid &= actual_meta[28u] == 1u;
+  valid &= actual_meta[29u] == 0u;
+  valid &= actual_meta[30u] == closure::type_transparent;
+  valid &= (actual_meta[31u] &
+            (device_svm::shader_data_bsdf |
+             device_svm::shader_data_transparent)) ==
+           (device_svm::shader_data_bsdf |
+            device_svm::shader_data_transparent);
+  valid &= actual_meta[32u] == 0u;
+  valid &= actual_meta[33u] == 0u;
+  valid &= actual_meta[34u] == 0u;
+  valid &= actual_meta[35u] == 0u;
+  valid &= actual_meta[36u] == 0u;
+  valid &= actual_meta[37u] == 0u;
+  valid &= (actual_meta[38u] & device_svm::shader_data_bsdf_has_eval) == 0u;
+  valid &= (actual_meta[39u] & device_svm::shader_data_bsdf_has_eval) != 0u;
 
   for (auto type = std::uint32_t{0u}; type < predicate_count; ++type) {
     valid &= actual_predicates[type] == expected_predicates(type);

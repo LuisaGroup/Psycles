@@ -72,7 +72,7 @@ void append_payload(std::vector<std::uint32_t> &words,
       [](BufferUInt words, BufferFloat4 output,
          BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
-        svm_detail::Stack stack;
+        svm_detail::Stack stack{SVM_STACK_SIZE};
         svm_detail::stack_store_float3(
             stack, vector_offset,
             make_float3(0.173f, 0.0f, 1.375f));
@@ -337,7 +337,7 @@ constexpr std::array normalized_fbm_oracle{
 
   Kernel1D kernel = [](BufferUInt payloads, BufferFloat4 output) noexcept {
     const UInt index = dispatch_x();
-    svm_detail::Stack stack;
+    svm_detail::Stack stack{SVM_STACK_SIZE};
     svm_detail::stack_store_float3(
         stack, vector_offset, make_float3(0.173f, 0.0f, 1.375f));
     svm_detail::stack_store_float(stack, value_offset, -91.0f);

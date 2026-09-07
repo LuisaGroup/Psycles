@@ -356,7 +356,7 @@ public:
       [](BufferUInt words, BufferFloat4 output, BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
         $if(index < normal_map_case_count) {
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           svm_detail::stack_store_float3(stack, 0u, make_float3(untouched));
           svm_detail::stack_store_float(stack, 3u, untouched);
           UInt cursor_offset = index * normal_map_record_words + 1u;
@@ -402,7 +402,7 @@ public:
       [](BufferUInt words, BufferFloat4 output, BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
         $if(index < tangent_case_count) {
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           svm_detail::stack_store_float(stack, 3u, untouched);
           UInt cursor_offset = index * tangent_record_words + 1u;
           const UInt begin = cursor_offset;
@@ -429,7 +429,7 @@ public:
       [](BufferUInt words, BufferFloat4 output, BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
         $if(index < tangent_derivative_case_count) {
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           svm_detail::stack_store_float(stack, 9u, untouched);
           UInt cursor_offset = index * tangent_record_words + 1u;
           const UInt begin = cursor_offset;

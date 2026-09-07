@@ -507,15 +507,64 @@ int main(int argc, char **argv) {
                     cast<float>(cycles_path_state::volume_segment_terminates(
                         cycles_path_state::flag_terminate_on_next_surface,
                         false))));
+            const auto from_contract =
+                [](psycles::contract::RayVisibility visibility) noexcept {
+                    return cycles_path_state::
+                        from_contract_shader_visibility(
+                            psycles::contract::visibility_bit(visibility));
+                };
+            output.write(
+                39u,
+                make_float4(
+                    cast<float>(from_contract(
+                        psycles::contract::RayVisibility::camera)),
+                    cast<float>(from_contract(
+                        psycles::contract::RayVisibility::transmission)),
+                    cast<float>(from_contract(
+                        psycles::contract::RayVisibility::diffuse)),
+                    cast<float>(from_contract(
+                        psycles::contract::RayVisibility::glossy))));
+            const auto all_contract_visibility =
+                static_cast<std::uint32_t>(
+                    psycles::contract::all_ray_visibility);
+            output.write(
+                40u,
+                make_float4(
+                    cast<float>(from_contract(
+                        psycles::contract::RayVisibility::volume_scatter)),
+                    cast<float>(from_contract(
+                        psycles::contract::RayVisibility::shadow)),
+                    cast<float>(cycles_path_state::
+                        from_contract_shader_visibility(
+                            all_contract_visibility)),
+                    cast<float>(cycles_path_state::
+                        to_contract_shader_visibility(
+                            cycles_path_state::visibility_shadow_opaque))));
+            output.write(
+                41u,
+                make_float4(
+                    cast<float>(cycles_path_state::
+                        to_contract_shader_visibility(
+                            cycles_path_state::visibility_shadow_transparent)),
+                    cast<float>(cycles_path_state::
+                        to_contract_shader_visibility(
+                            cycles_path_state::visibility_shadow)),
+                    cast<float>(cycles_path_state::
+                        to_contract_shader_visibility(
+                            cycles_path_state::
+                                from_contract_shader_visibility(
+                                    all_contract_visibility))),
+                    cast<float>(cycles_path_state::
+                        from_contract_shader_visibility(0u))));
         };
 
     Context context{argv[0]};
     auto device = context.create_device(backend);
     auto stream = device.create_stream();
     auto output =
-        device.create_buffer<luisa::float4>(39u);
+        device.create_buffer<luisa::float4>(42u);
     auto kernel = device.compile(evaluate);
-    std::array<luisa::float4, 39u> actual{};
+    std::array<luisa::float4, 42u> actual{};
     stream << kernel(output).dispatch(1u)
            << output.copy_to(luisa::span{actual})
            << synchronize();
@@ -660,7 +709,18 @@ int main(int argc, char **argv) {
             0.0f,
             0.0f},
         luisa::float4{0.0f, 0.0f, 1.0f, 1.0f},
-        luisa::float4{1.0f, 1.0f, 1.0f, 0.0f}};
+        luisa::float4{1.0f, 1.0f, 1.0f, 0.0f},
+        // The contract and Cycles visibility domains deliberately order
+        // diffuse/glossy/transmission differently. Entering SVM maps every
+        // bit to Cycles' PathRayVisibility ABI.
+        luisa::float4{1.0f, 2.0f, 4.0f, 8.0f},
+        // Cycles has separate opaque/transparent shadow bits whereas the
+        // renderer contract has one shadow bit; the bridge expands it to
+        // both and otherwise preserves the complete seven-bit domain.
+        luisa::float4{16.0f, 96.0f, 127.0f, 16.0f},
+        // Either Cycles shadow bit folds back to contract shadow, and the
+        // complete contract mask round-trips without losing a category.
+        luisa::float4{16.0f, 16.0f, 63.0f, 0.0f}};
     for (std::size_t index = 0u;
          index < expected.size();
          ++index) {

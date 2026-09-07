@@ -1,6 +1,7 @@
 #include <psycles/luisa/cycles_bsdf_tables.h>
 #include <psycles/luisa/cycles_closure.h>
 #include <psycles/luisa/cycles_svm.h>
+#include <psycles/compiler/cycles_svm_compiler.h>
 
 #include "cycles_svm_bsdf.h"
 #include "cycles_svm_microfacet.h"
@@ -53,6 +54,56 @@ inline constexpr auto modifier_closure_mask =
     (detail::ClosureTypeMask{1u} << closure::type_rough_translucent);
 inline constexpr auto diffuse_only_mask = detail::ClosureTypeMask{1u}
                                           << closure::type_diffuse;
+
+constexpr bool closure_enabled(detail::ClosureTypeMask mask,
+                               std::uint32_t type) noexcept {
+  return (mask & (detail::ClosureTypeMask{1u} << type)) != 0u;
+}
+
+constexpr auto no_optional_features_mask =
+    detail::closure_types_for_kernel_features(0u);
+constexpr auto ordinary_hair_mask = detail::closure_types_for_kernel_features(
+    device_svm::kernel_feature_hair);
+constexpr auto principled_hair_mask = detail::closure_types_for_kernel_features(
+    device_svm::kernel_feature_hair |
+    device_svm::kernel_feature_node_principled_hair);
+constexpr auto subsurface_mask = detail::closure_types_for_kernel_features(
+    device_svm::kernel_feature_subsurface);
+static_assert(!closure_enabled(no_optional_features_mask,
+                               closure::type_hair_chiang));
+static_assert(!closure_enabled(no_optional_features_mask,
+                               closure::type_hair_huang));
+static_assert(!closure_enabled(no_optional_features_mask,
+                               closure::type_hair_reflection));
+static_assert(!closure_enabled(no_optional_features_mask,
+                               closure::type_hair_transmission));
+static_assert(!closure_enabled(no_optional_features_mask,
+                               closure::type_bssrdf_burley));
+static_assert(!closure_enabled(no_optional_features_mask,
+                               closure::type_bssrdf_random_walk));
+static_assert(closure_enabled(ordinary_hair_mask,
+                              closure::type_hair_reflection));
+static_assert(closure_enabled(ordinary_hair_mask,
+                              closure::type_hair_transmission));
+static_assert(!closure_enabled(ordinary_hair_mask,
+                               closure::type_hair_chiang));
+static_assert(!closure_enabled(ordinary_hair_mask,
+                               closure::type_hair_huang));
+static_assert(closure_enabled(principled_hair_mask,
+                              closure::type_hair_chiang));
+static_assert(closure_enabled(principled_hair_mask,
+                              closure::type_hair_huang));
+static_assert(closure_enabled(subsurface_mask, closure::type_bssrdf_burley));
+static_assert(
+    closure_enabled(subsurface_mask, closure::type_bssrdf_random_walk));
+
+static_assert(
+    device_svm::kernel_feature_node_principled_hair ==
+    psycles::compiler::cycles_svm::kernel_feature_node_principled_hair);
+static_assert(device_svm::kernel_feature_hair ==
+              psycles::compiler::cycles_svm::kernel_feature_hair);
+static_assert(device_svm::kernel_feature_subsurface ==
+              psycles::compiler::cycles_svm::kernel_feature_subsurface);
 
 class TableSentinelKernelGlobals final
     : public psycles::test_support::DefaultCyclesSvmKernelGlobals {

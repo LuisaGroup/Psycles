@@ -236,7 +236,9 @@ template <std::size_t Capacity,
         device_svm::EvaluationResult result;
         device_svm::eval_nodes(
             kernel_globals, words, SHADER_TYPE_SURFACE,
-            device_svm::kernel_feature_node_principled_hair, NodeFeatureMask,
+            device_svm::kernel_feature_hair |
+                device_svm::kernel_feature_node_principled_hair,
+            NodeFeatureMask,
             used, identity_transform_state(), shader_data, path_state, result);
 
         const auto output_base = scenario * output_stride;

@@ -135,7 +135,7 @@ public:
       [](BufferUInt words, BufferFloat ies, BufferFloat3 vectors,
          BufferFloat output, BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
-        svm_detail::Stack stack;
+        svm_detail::Stack stack{SVM_STACK_SIZE};
         svm_detail::stack_store_float3(stack, 0u, vectors.read(index));
         UInt cursor_offset = index * payload_word_count;
         const UInt begin = cursor_offset;

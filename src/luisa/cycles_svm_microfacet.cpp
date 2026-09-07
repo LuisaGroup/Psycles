@@ -6,6 +6,7 @@
 
 #include "cycles_svm_microfacet_fresnel.h"
 #include "cycles_svm_simple_closure.h"
+#include "microfacet_albedo.h"
 #include "thin_film_fresnel.h"
 
 #include <psycles/luisa/cycles_bsdf_tables.h>
@@ -223,39 +224,22 @@ ensure_valid_specular_reflection(Expr<luisa::float3> geometric_normal,
     Expr<luisa::float3> normal, const MicrofacetParam &microfacet,
     const FresnelGeneralizedSchlick &fresnel, Expr<bool> eval_reflection,
     Expr<bool> eval_transmission) noexcept {
-    const auto cosine_incoming = dot(incoming, normal);
-    Float3 reflectance;
-    $if (fresnel.thin_film.thickness > table_detail::thin_film_thickness_cutoff) {
-        reflectance =
-            table_detail::thin_film_dielectric_fresnel(
-                kernel_globals, fresnel.thin_film.thickness, fresnel.thin_film.ior,
-                microfacet.ior, fresnel.f0, cosine_incoming)
-                .reflectance;
-    }
-    $else {
-        const auto table_roughness =
-            sqrt(sqrt(microfacet.alpha_x * microfacet.alpha_y));
-        Float z;
-        UInt table_offset;
-        $if (fresnel.exponent < 0.0f) {
-            z = sqrt(abs((microfacet.ior - 1.0f) /
-                         (microfacet.ior + 1.0f)));
-            table_offset = cycles45_tables::ggx_gen_schlick_ior_s_offset;
-        }
-        $else {
-            z = 1.0f / (0.2f * fresnel.exponent + 1.0f);
-            table_offset = cycles45_tables::ggx_gen_schlick_s_offset;
-        };
-        const auto interpolation = table_detail::cycles_table_3d(
-            kernel_globals, table_roughness, cosine_incoming, z,
-            table_offset, 16u, 16u, 16u);
-        reflectance = lerp(fresnel.f0, fresnel.f90, interpolation);
-    };
-    return reflectance * fresnel.reflection_tint *
-               select(0.0f, 1.0f, eval_reflection) +
-           (make_float3(1.0f) - reflectance) *
-               fresnel.transmission_tint *
-               select(0.0f, 1.0f, eval_transmission);
+    return table_detail::microfacet_generalized_schlick_albedo(
+        kernel_globals,
+        Float3{incoming},
+        Float3{normal},
+        microfacet.alpha_x,
+        microfacet.alpha_y,
+        microfacet.ior,
+        fresnel.thin_film.thickness,
+        fresnel.thin_film.ior,
+        fresnel.reflection_tint,
+        fresnel.transmission_tint,
+        fresnel.f0,
+        fresnel.f90,
+        fresnel.exponent,
+        Bool{eval_reflection},
+        Bool{eval_transmission});
 }
 
 struct MultiGgxEnergyAdjustment {
@@ -385,65 +369,42 @@ void preserve_multi_ggx_reflection_energy(
 [[nodiscard]] Float dielectric_reflection_albedo(
     const KernelGlobals &kernel_globals, Expr<luisa::float3> incoming,
     Expr<luisa::float3> normal, const MicrofacetParam &microfacet) noexcept {
-    Float result = 0.0f;
-    /* Principled clamps Coat IOR to at least one. At exactly one, Cycles'
-     * fallback microfacet_fresnel branch is identically zero; above one it
-     * uses the same generalized-Schlick-IOR table as the source. */
-    $if (microfacet.ior > 1.0f) {
-        const auto table_roughness =
-            sqrt(sqrt(microfacet.alpha_x * microfacet.alpha_y));
-        const auto cosine_incoming = dot(incoming, normal);
-        const auto z =
-            sqrt(abs((microfacet.ior - 1.0f) / (microfacet.ior + 1.0f)));
-        const auto interpolation = table_detail::cycles_table_3d(
-            kernel_globals, table_roughness, cosine_incoming, z,
-            UInt{cycles45_tables::ggx_gen_schlick_ior_s_offset}, 16u, 16u,
-            16u);
-        result = lerp(f0_from_ior(microfacet.ior), 1.0f, interpolation);
-    };
-    return result;
+    return table_detail::microfacet_dielectric_reflection_albedo(
+        kernel_globals,
+        Float3{incoming},
+        Float3{normal},
+        microfacet.alpha_x,
+        microfacet.alpha_y,
+        microfacet.ior);
 }
 
 [[nodiscard]] Float3 f82_tint_albedo(
     const KernelGlobals &kernel_globals, Expr<luisa::float3> incoming,
     Expr<luisa::float3> normal, const MicrofacetParam &microfacet,
     const FresnelF82Tint &fresnel) noexcept {
-    const auto cosine_incoming = dot(incoming, normal);
-    Float3 result;
-    $if (fresnel.thin_film.thickness >
-         table_detail::thin_film_thickness_cutoff) {
-        result = table_detail::thin_film_f82_fresnel(
-            kernel_globals, fresnel.thin_film.thickness,
-            fresnel.thin_film.ior, fresnel.f0, fresnel.b, cosine_incoming);
-    }
-    $else {
-        const auto table_roughness =
-            sqrt(sqrt(microfacet.alpha_x * microfacet.alpha_y));
-        const auto interpolation = table_detail::cycles_table_3d(
-            kernel_globals, table_roughness, cosine_incoming, 0.5f,
-            UInt{cycles45_tables::ggx_gen_schlick_s_offset}, 16u, 16u, 16u);
-        result = lerp(fresnel.f0, make_float3(1.0f), interpolation);
-    };
-    return result;
+    return table_detail::microfacet_f82_tint_albedo(
+        kernel_globals,
+        Float3{incoming},
+        Float3{normal},
+        microfacet.alpha_x,
+        microfacet.alpha_y,
+        fresnel.thin_film.thickness,
+        fresnel.thin_film.ior,
+        fresnel.f0,
+        fresnel.b);
 }
 
 [[nodiscard]] Float3 conductor_albedo(
     const KernelGlobals &kernel_globals, Expr<luisa::float3> incoming,
     Expr<luisa::float3> normal, const FresnelConductor &fresnel) noexcept {
-    const auto cosine_incoming = dot(incoming, normal);
-    Float3 result;
-    $if (fresnel.thin_film.thickness >
-         table_detail::thin_film_thickness_cutoff) {
-        result = table_detail::thin_film_conductor_fresnel(
-            kernel_globals, fresnel.thin_film.thickness,
-            fresnel.thin_film.ior, fresnel.ior, fresnel.extinction,
-            cosine_incoming);
-    }
-    $else {
-        result = fresnel_conductor(cosine_incoming, fresnel.ior,
-                                   fresnel.extinction);
-    };
-    return result;
+    return table_detail::microfacet_conductor_albedo(
+        kernel_globals,
+        Float3{incoming},
+        Float3{normal},
+        fresnel.thin_film.thickness,
+        fresnel.thin_film.ior,
+        fresnel.ior,
+        fresnel.extinction);
 }
 
 }// namespace

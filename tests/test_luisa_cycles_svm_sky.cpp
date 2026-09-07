@@ -102,7 +102,7 @@ make_probe_kernel() {
             BufferFloat4 output, BufferUInt cursors) noexcept {
     const UInt index = dispatch_x();
     $if(index < static_cast<std::uint32_t>(probes.size())) {
-      svm_detail::Stack stack;
+      svm_detail::Stack stack{SVM_STACK_SIZE};
       svm_detail::stack_store_float3(
           stack, direction_offset, directions.read(index));
       auto shader_data = make_shader_data();

@@ -78,7 +78,7 @@ constexpr auto payload_words =
       [](BufferUInt words, BufferFloat4 output, BufferUInt cursors) noexcept {
         const UInt index = dispatch_x();
         $if(index < normal_case_count) {
-          svm_detail::Stack stack;
+          svm_detail::Stack stack{SVM_STACK_SIZE};
           svm_detail::stack_store_float3(stack, 0u, make_float3(untouched));
           svm_detail::stack_store_float(stack, 3u, untouched);
           svm_detail::stack_store_float3(stack, stack_input_offset,

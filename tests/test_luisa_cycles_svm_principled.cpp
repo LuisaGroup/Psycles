@@ -120,6 +120,7 @@ make_shader_data(device_svm::ClosurePool *closure) noexcept {
     const auto closure0 = closures.common(0u);
     const auto closure1 = closures.common(1u);
     const auto microfacet = closures.microfacet(0u);
+    const auto generalized_schlick = microfacet.load_generalized_schlick();
     output.write(0u, make_float4(closure0.weight, closure0.sample_weight));
     output.write(1u, make_float4(closure0.N, 0.0f));
     output.write(2u, make_float4(closure1.weight, closure1.sample_weight));
@@ -129,16 +130,15 @@ make_shader_data(device_svm::ClosurePool *closure) noexcept {
                                  microfacet.param.energy_scale));
     output.write(5u, make_float4(microfacet.param.T, 0.0f));
     output.write(6u,
-                 make_float4(microfacet.generalized_schlick.thin_film.thickness,
-                             microfacet.generalized_schlick.thin_film.ior,
-                             microfacet.generalized_schlick.exponent, 0.0f));
+                 make_float4(generalized_schlick.thin_film.thickness,
+                             generalized_schlick.thin_film.ior,
+                             generalized_schlick.exponent, 0.0f));
     output.write(
-        7u, make_float4(microfacet.generalized_schlick.reflection_tint, 0.0f));
+        7u, make_float4(generalized_schlick.reflection_tint, 0.0f));
     output.write(
-        8u,
-        make_float4(microfacet.generalized_schlick.transmission_tint, 0.0f));
-    output.write(9u, make_float4(microfacet.generalized_schlick.f0, 0.0f));
-    output.write(10u, make_float4(microfacet.generalized_schlick.f90, 0.0f));
+        8u, make_float4(generalized_schlick.transmission_tint, 0.0f));
+    output.write(9u, make_float4(generalized_schlick.f0, 0.0f));
+    output.write(10u, make_float4(generalized_schlick.f90, 0.0f));
     output.write(11u,
                  make_float4(shader_data.closure_transparent_extinction, 0.0f));
     output.write(12u,

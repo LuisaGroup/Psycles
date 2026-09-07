@@ -154,7 +154,7 @@ void append_payload(std::vector<std::uint32_t> &words, const T &payload) {
         const auto first = coordinates_scale.read(index);
         const auto second = orientation_frequency.read(index);
         const auto third = anisotropy_orientation.read(index);
-        svm_detail::Stack stack;
+        svm_detail::Stack stack{SVM_STACK_SIZE};
         svm_detail::stack_store_float3(stack, coordinates_offset, first.xyz());
         svm_detail::stack_store_float3(stack, orientation_3d_offset,
                                        second.xyz());

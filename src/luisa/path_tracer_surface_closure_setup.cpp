@@ -6,6 +6,8 @@
 
 #include <utility>
 
+#include <luisa/dsl/local.h>
+
 namespace psycles::luisa_backend::detail {
 namespace {
 
@@ -152,7 +154,8 @@ make_principled_dielectric_setup_callable(
         [preserve_ggx_energy](
             BufferFloat cycles_bsdf_tables,
             Var<PrincipledDielectricSetupInputCall> packed_input,
-            Bool reflective_caustics) noexcept {
+            Bool reflective_caustics,
+            Var<PrincipledDielectricSetupCall> &result) noexcept {
             const CyclesTableShaderServices services{
                 cycles_bsdf_tables};
             const auto populated = populate_principled_dielectric(
@@ -174,7 +177,6 @@ make_principled_dielectric_setup_callable(
                      preserve_ggx_energy});
             const auto setup = setup_principled_dielectric(
                 services, populated, reflective_caustics);
-            Var<PrincipledDielectricSetupCall> result;
             result.weight = setup.weight;
             result.allocation_weight =
                 setup.allocation_weight;
@@ -186,7 +188,6 @@ make_principled_dielectric_setup_callable(
             result.evaluation_scale =
                 setup.evaluation_scale;
             result.lower_weight = setup.lower_weight;
-            return result;
         };
     callable.set_name(
         preserve_ggx_energy
@@ -295,8 +296,10 @@ CallableSurfaceClosureSetupProvider::principled_dielectric(
     packed_input.specular_tint = input.specular_tint;
     packed_input.use_bump_map_correction =
         input.use_bump_map_correction;
-    const auto result = callable(
-        _cycles_bsdf_tables, packed_input, reflective_caustics);
+    Local<PrincipledDielectricSetupCall> result_storage{1u};
+    auto &result = result_storage[0u];
+    callable(
+        _cycles_bsdf_tables, packed_input, reflective_caustics, result);
     return {
         .weight = result.weight,
         .allocation_weight = result.allocation_weight,

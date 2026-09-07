@@ -413,7 +413,7 @@ public:
           const device_svm::PathState path_state{
               device_svm::path_ray_visibility_camera, 0u};
           const ProbeKernelGlobals kernel_globals;
-          device_svm::detail::Stack stack;
+          device_svm::detail::Stack stack{SVM_STACK_SIZE};
           UInt cursor_offset = index * node_word_count;
           device_svm::detail::Cursor cursor{words, cursor_offset};
           device_svm::detail::node_tex_coord(
