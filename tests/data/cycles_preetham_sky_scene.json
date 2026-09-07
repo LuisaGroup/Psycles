@@ -1,0 +1,234 @@
+{
+  "schema": "psycles.blender-scene.v2",
+  "camera": {
+    "angle": 0.6911112070083618,
+    "angle_x": 0.6911112070083618,
+    "angle_y": 0.4710899591445923,
+    "clip_end": 1000.0,
+    "clip_start": 0.10000000149011612,
+    "dof": {
+      "blades": 0,
+      "enabled": false,
+      "focus_distance": 10.0,
+      "fstop": 2.799999952316284,
+      "ratio": 1.0,
+      "rotation": 0.0
+    },
+    "lens": 50.0,
+    "name": "Probe Camera",
+    "ortho_scale": 2.200000047683716,
+    "sensor_fit": "AUTO",
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "transform": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      3.0,
+      1.0
+    ],
+    "type": "ORTHO"
+  },
+  "world": {
+    "color": [
+      0.05000000074505806,
+      0.05000000074505806,
+      0.05000000074505806
+    ],
+    "cycles_sync": {
+      "light_group": -1,
+      "object_index": 1,
+      "pass_id": 0,
+      "shader_index": 3
+    },
+    "max_bounces": 1024,
+    "name": "Hosek-Wilkie Transport World",
+    "node_tree": {
+      "displacement_root": null,
+      "links": [
+        {
+          "from_node": "Hosek-Wilkie Sky",
+          "from_socket": "Color",
+          "to_node": "Background",
+          "to_socket": "Color"
+        },
+        {
+          "from_node": "Background",
+          "from_socket": "Background",
+          "to_node": "World Output",
+          "to_socket": "Surface"
+        }
+      ],
+      "name": "World Nodetree",
+      "nodes": [
+        {
+          "bl_idname": "ShaderNodeBackground",
+          "image": null,
+          "inputs": [
+            {
+              "default": [
+                0.800000011920929,
+                0.800000011920929,
+                0.800000011920929,
+                1.0
+              ],
+              "identifier": "Color",
+              "linked": true,
+              "name": "Color",
+              "type": "NodeSocketColor"
+            },
+            {
+              "default": 1.0,
+              "identifier": "Strength",
+              "linked": false,
+              "name": "Strength",
+              "type": "NodeSocketFloat"
+            },
+            {
+              "default": 0.0,
+              "identifier": "Weight",
+              "linked": false,
+              "name": "Weight",
+              "type": "NodeSocketFloat"
+            }
+          ],
+          "internal_links": [],
+          "label": "",
+          "mute": false,
+          "name": "Background",
+          "node_tree": null,
+          "outputs": [
+            {
+              "identifier": "Background",
+              "linked": true,
+              "name": "Background",
+              "type": "NodeSocketShader"
+            }
+          ],
+          "properties": {},
+          "special": {},
+          "type": "BACKGROUND"
+        },
+        {
+          "bl_idname": "ShaderNodeTexSky",
+          "image": null,
+          "inputs": [
+            {
+              "default": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "identifier": "Vector",
+              "linked": false,
+              "name": "Vector",
+              "type": "NodeSocketVector"
+            }
+          ],
+          "internal_links": [],
+          "label": "",
+          "mute": false,
+          "name": "Hosek-Wilkie Sky",
+          "node_tree": null,
+          "outputs": [
+            {
+              "default": [
+                0.800000011920929,
+                0.800000011920929,
+                0.800000011920929,
+                1.0
+              ],
+              "identifier": "Color",
+              "linked": true,
+              "name": "Color",
+              "type": "NodeSocketColor"
+            }
+          ],
+          "properties": {
+            "aerosol_density": 1.0,
+            "air_density": 1.0,
+            "altitude": 100.0,
+            "ground_albedo": 0.30000001192092896,
+            "ozone_density": 1.0,
+            "sky_type": "PREETHAM",
+            "sun_direction": [
+              -0.9461538195610046,
+              0.0615384615957737,
+              0.31781429052352905
+            ],
+            "sun_disc": true,
+            "sun_elevation": 0.2617993950843811,
+            "sun_intensity": 1.0,
+            "sun_rotation": 0.0,
+            "sun_size": 0.009512044489383698,
+            "turbidity": 2.9000000953674316
+          },
+          "special": {},
+          "type": "TEX_SKY"
+        },
+        {
+          "bl_idname": "ShaderNodeOutputWorld",
+          "image": null,
+          "inputs": [
+            {
+              "identifier": "Surface",
+              "linked": true,
+              "name": "Surface",
+              "type": "NodeSocketShader"
+            },
+            {
+              "identifier": "Volume",
+              "linked": false,
+              "name": "Volume",
+              "type": "NodeSocketShader"
+            }
+          ],
+          "internal_links": [],
+          "label": "",
+          "mute": false,
+          "name": "World Output",
+          "node_tree": null,
+          "outputs": [],
+          "properties": {
+            "is_active_output": true,
+            "target": "ALL"
+          },
+          "special": {},
+          "type": "OUTPUT_WORLD"
+        }
+      ],
+      "surface_root": {
+        "node": "Background",
+        "socket": "Background"
+      },
+      "volume_root": null
+    },
+    "sample_map_resolution": 1024,
+    "sampling_method": "AUTOMATIC",
+    "use_shadows": true,
+    "visibility": {
+      "camera": true,
+      "diffuse": true,
+      "glossy": true,
+      "shadow": true,
+      "transmission": true,
+      "volume_scatter": true
+    },
+    "volume_interpolation": "LINEAR",
+    "volume_sampling": "EQUIANGULAR"
+  },
+  "materials": [],
+  "node_groups": [],
+  "images": []
+}

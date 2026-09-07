@@ -1,6 +1,22 @@
 include_guard(GLOBAL)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_analytic_sky_tests
+    SOURCE tests/test_luisa_cycles_svm_analytic_sky.cpp
+    TEST_STEM luisa_cycles_svm_analytic_sky
+    LIBRARIES Psycles::luisa_runtime)
+target_compile_definitions(psycles_luisa_cycles_svm_analytic_sky_tests PRIVATE
+    PSYCLES_HOSEK_WORDS="${PROJECT_SOURCE_DIR}/tests/data/cycles_hosek_sky_words.txt"
+    PSYCLES_PREETHAM_WORDS="${PROJECT_SOURCE_DIR}/tests/data/cycles_preetham_sky_words.txt"
+    PSYCLES_ANALYTIC_SKY_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_analytic_sky_runtime.txt")
+target_compile_definitions(psycles_luisa_cycles_svm_analytic_sky_tests PRIVATE
+    PSYCLES_ANALYTIC_SKY_ROUNDING="${PROJECT_SOURCE_DIR}/tests/data/cycles_analytic_sky_rounding.txt")
+if(TEST psycles.luisa_cycles_svm_analytic_sky_vk)
+    set_tests_properties(psycles.luisa_cycles_svm_analytic_sky_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_volume_boundary_tests
     SOURCE tests/test_luisa_cycles_volume_boundary.cpp
     TEST_STEM luisa_cycles_volume_boundary

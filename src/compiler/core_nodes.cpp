@@ -561,8 +561,9 @@ NodeRegistry make_core_node_registry() {
                                          SocketValue::string(""))},
                  .required_features = feature_bit(ShaderFeature::surface)}));
 
-  static_cast<void>(registry.register_schema(
-      NodeSchema{.type = node_type::hosek_wilkie_sky,
+  for (const auto sky_type : {node_type::hosek_wilkie_sky, node_type::preetham_sky}) {
+    static_cast<void>(registry.register_schema(
+      NodeSchema{.type = sky_type,
                  .inputs = {input("Vector", SocketType::vector,
                                   SocketValue::vector({0.0f, 0.0f, 0.0f}))},
                  .outputs = {output("Color", SocketType::color)},
@@ -577,6 +578,7 @@ NodeRegistry make_core_node_registry() {
                                 property("GroundAlbedo", SocketType::floating,
                                          SocketValue::floating(0.3f))},
                  .required_features = feature_bit(ShaderFeature::surface)}));
+  }
 
   static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::nishita_sky,

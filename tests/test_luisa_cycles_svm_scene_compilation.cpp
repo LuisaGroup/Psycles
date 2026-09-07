@@ -236,11 +236,28 @@ int main(int argc, char **argv) {
   try {
     Context context{argv[0]};
     auto device = context.create_device(argc > 1 ? argv[1] : "fallback");
+    if (argc > 2) {
+      // Scene diagnostics exercise the production compiler and upload, but do
+      // not apply Camera Data fixture identities to unrelated Blender scenes.
+      const auto imported = psycles::adapter::load_blender_scene_bundle(argv[2]);
+      for (const auto &diagnostic : imported.diagnostics) {
+        std::cerr << diagnostic.message << '\n';
+      }
+      require(imported.ok(), "original Blender export failed to import");
+      auto scene = empty_scene(device);
+      std::string diagnostic;
+      auto runtime = build_cycles_svm_runtime(scene, *imported.scene, diagnostic);
+      require(runtime != nullptr, diagnostic);
+      require(scene->materials.materials().empty(),
+              "native compilation mutated legacy materials");
+      verify_device_upload(device, *runtime);
+      const auto &table = runtime->compilation.table;
+      std::cout << "Native scene compile/upload passed: " << table.shader_count
+                << " shaders, " << table.words.size() << " words\n";
+      return EXIT_SUCCESS;
+    }
     TemporaryBundle fixture;
-    // An optional original Blender export exercises the identical production
-    // entry without replacing or modifying the source scene on disk.
-    auto imported = psycles::adapter::load_blender_scene_bundle(
-        argc > 2 ? std::filesystem::path{argv[2]} : fixture.path());
+    auto imported = psycles::adapter::load_blender_scene_bundle(fixture.path());
     for (const auto &diagnostic : imported.diagnostics) {
       std::cerr << diagnostic.message << '\n';
     }
