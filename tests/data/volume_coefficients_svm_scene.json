@@ -1,0 +1,1902 @@
+{
+  "schema": "psycles.blender-scene.v2",
+  "camera": {
+    "angle": 0.6911112070083618,
+    "angle_x": 0.6911112070083618,
+    "angle_y": 0.4710899591445923,
+    "clip_end": 1000.0,
+    "clip_start": 0.10000000149011612,
+    "dof": {
+      "blades": 0,
+      "enabled": false,
+      "focus_distance": 10.0,
+      "fstop": 2.799999952316284,
+      "ratio": 1.0,
+      "rotation": 0.0
+    },
+    "lens": 50.0,
+    "name": "Probe Camera",
+    "ortho_scale": 2.200000047683716,
+    "pixel_aspect_x": 1.0,
+    "pixel_aspect_y": 1.0,
+    "sensor_fit": "AUTO",
+    "sensor_height": 24.0,
+    "sensor_width": 36.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "transform": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      3.0,
+      1.0
+    ],
+    "type": "ORTHO"
+  },
+  "materials": [
+    {
+      "cycles_sync": {
+        "pass_id": 0,
+        "shader_index": 7
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "AUTO",
+      "name": "Volume Coefficients DRAINE",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Volume Coefficients",
+            "from_socket": "Volume",
+            "to_node": "Material Output",
+            "to_socket": "Volume"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "identifier": "Surface",
+                "linked": false,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeVolumeCoefficients",
+            "image": null,
+            "inputs": [
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.10999999940395355,
+                  0.28999999165534973,
+                  0.5299999713897705
+                ],
+                "identifier": "Absorption Coefficients",
+                "linked": false,
+                "name": "Absorption Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.17000000178813934,
+                  0.4300000071525574,
+                  0.7900000214576721
+                ],
+                "identifier": "Scatter Coefficients",
+                "linked": false,
+                "name": "Scatter Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": -0.25,
+                "identifier": "Anisotropy",
+                "linked": false,
+                "name": "Anisotropy",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 1.3300000429153442,
+                "identifier": "IOR",
+                "linked": false,
+                "name": "IOR",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.10000000149011612,
+                "identifier": "Backscatter",
+                "linked": false,
+                "name": "Backscatter",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": true,
+                "default": 0.46000000834465027,
+                "identifier": "Alpha",
+                "linked": false,
+                "name": "Alpha",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": false,
+                "default": 20.0,
+                "identifier": "Diameter",
+                "linked": false,
+                "name": "Diameter",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.07000000029802322,
+                  0.12999999523162842,
+                  0.3100000023841858
+                ],
+                "identifier": "Emission Coefficients",
+                "linked": false,
+                "name": "Emission Coefficients",
+                "type": "NodeSocketVector"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Coefficients",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {
+              "phase": "DRAINE"
+            },
+            "special": {},
+            "type": "VOLUME_COEFFICIENTS"
+          }
+        ],
+        "surface_root": null,
+        "volume_root": {
+          "node": "Volume Coefficients",
+          "socket": "Volume"
+        }
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_interpolation": "LINEAR",
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    },
+    {
+      "cycles_sync": {
+        "pass_id": 0,
+        "shader_index": 6
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "AUTO",
+      "name": "Volume Coefficients FOURNIER_FORAND",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Volume Coefficients",
+            "from_socket": "Volume",
+            "to_node": "Material Output",
+            "to_socket": "Volume"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "identifier": "Surface",
+                "linked": false,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeVolumeCoefficients",
+            "image": null,
+            "inputs": [
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.10999999940395355,
+                  0.28999999165534973,
+                  0.5299999713897705
+                ],
+                "identifier": "Absorption Coefficients",
+                "linked": false,
+                "name": "Absorption Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.17000000178813934,
+                  0.4300000071525574,
+                  0.7900000214576721
+                ],
+                "identifier": "Scatter Coefficients",
+                "linked": false,
+                "name": "Scatter Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Anisotropy",
+                "linked": false,
+                "name": "Anisotropy",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": true,
+                "default": 1.3700000047683716,
+                "identifier": "IOR",
+                "linked": false,
+                "name": "IOR",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": true,
+                "default": 0.1599999964237213,
+                "identifier": "Backscatter",
+                "linked": false,
+                "name": "Backscatter",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.5,
+                "identifier": "Alpha",
+                "linked": false,
+                "name": "Alpha",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": false,
+                "default": 20.0,
+                "identifier": "Diameter",
+                "linked": false,
+                "name": "Diameter",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.07000000029802322,
+                  0.12999999523162842,
+                  0.3100000023841858
+                ],
+                "identifier": "Emission Coefficients",
+                "linked": false,
+                "name": "Emission Coefficients",
+                "type": "NodeSocketVector"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Coefficients",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {
+              "phase": "FOURNIER_FORAND"
+            },
+            "special": {},
+            "type": "VOLUME_COEFFICIENTS"
+          }
+        ],
+        "surface_root": null,
+        "volume_root": {
+          "node": "Volume Coefficients",
+          "socket": "Volume"
+        }
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_interpolation": "LINEAR",
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    },
+    {
+      "cycles_sync": {
+        "pass_id": 0,
+        "shader_index": 5
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "AUTO",
+      "name": "Volume Coefficients HENYEY_GREENSTEIN",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Volume Coefficients",
+            "from_socket": "Volume",
+            "to_node": "Material Output",
+            "to_socket": "Volume"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "identifier": "Surface",
+                "linked": false,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeVolumeCoefficients",
+            "image": null,
+            "inputs": [
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.10999999940395355,
+                  0.28999999165534973,
+                  0.5299999713897705
+                ],
+                "identifier": "Absorption Coefficients",
+                "linked": false,
+                "name": "Absorption Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.17000000178813934,
+                  0.4300000071525574,
+                  0.7900000214576721
+                ],
+                "identifier": "Scatter Coefficients",
+                "linked": false,
+                "name": "Scatter Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": -0.25,
+                "identifier": "Anisotropy",
+                "linked": false,
+                "name": "Anisotropy",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 1.3300000429153442,
+                "identifier": "IOR",
+                "linked": false,
+                "name": "IOR",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.10000000149011612,
+                "identifier": "Backscatter",
+                "linked": false,
+                "name": "Backscatter",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.5,
+                "identifier": "Alpha",
+                "linked": false,
+                "name": "Alpha",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": false,
+                "default": 20.0,
+                "identifier": "Diameter",
+                "linked": false,
+                "name": "Diameter",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.07000000029802322,
+                  0.12999999523162842,
+                  0.3100000023841858
+                ],
+                "identifier": "Emission Coefficients",
+                "linked": false,
+                "name": "Emission Coefficients",
+                "type": "NodeSocketVector"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Coefficients",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {
+              "phase": "HENYEY_GREENSTEIN"
+            },
+            "special": {},
+            "type": "VOLUME_COEFFICIENTS"
+          }
+        ],
+        "surface_root": null,
+        "volume_root": {
+          "node": "Volume Coefficients",
+          "socket": "Volume"
+        }
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_interpolation": "LINEAR",
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    },
+    {
+      "cycles_sync": {
+        "pass_id": 0,
+        "shader_index": 10
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "AUTO",
+      "name": "Volume Coefficients Linked",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Light Path",
+            "from_socket": "Is Camera Ray",
+            "to_node": "Combine XYZ",
+            "to_socket": "X"
+          },
+          {
+            "from_node": "Mix Shader",
+            "from_socket": "Shader",
+            "to_node": "Material Output",
+            "to_socket": "Volume"
+          },
+          {
+            "from_node": "Light Path",
+            "from_socket": "Is Camera Ray",
+            "to_node": "Mix Shader",
+            "to_socket": "Fac"
+          },
+          {
+            "from_node": "Volume Coefficients",
+            "from_socket": "Volume",
+            "to_node": "Mix Shader",
+            "to_socket": "Shader"
+          },
+          {
+            "from_node": "Volume Absorption",
+            "from_socket": "Volume",
+            "to_node": "Mix Shader",
+            "to_socket": "Shader_001"
+          },
+          {
+            "from_node": "Light Path",
+            "from_socket": "Ray Length",
+            "to_node": "Volume Coefficients",
+            "to_socket": "Anisotropy"
+          },
+          {
+            "from_node": "Combine XYZ",
+            "from_socket": "Vector",
+            "to_node": "Volume Coefficients",
+            "to_socket": "Scatter Coefficients"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeCombineXYZ",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "X",
+                "linked": true,
+                "name": "X",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.30000001192092896,
+                "identifier": "Y",
+                "linked": false,
+                "name": "Y",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.699999988079071,
+                "identifier": "Z",
+                "linked": false,
+                "name": "Z",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [
+              {
+                "from_socket": "X",
+                "to_socket": "Vector"
+              }
+            ],
+            "label": "",
+            "mute": false,
+            "name": "Combine XYZ",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "identifier": "Vector",
+                "linked": true,
+                "name": "Vector",
+                "type": "NodeSocketVector"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "COMBXYZ"
+          },
+          {
+            "bl_idname": "ShaderNodeLightPath",
+            "image": null,
+            "inputs": [],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Light Path",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Is Camera Ray",
+                "linked": true,
+                "name": "Is Camera Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Is Shadow Ray",
+                "linked": false,
+                "name": "Is Shadow Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Is Diffuse Ray",
+                "linked": false,
+                "name": "Is Diffuse Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Is Glossy Ray",
+                "linked": false,
+                "name": "Is Glossy Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Is Singular Ray",
+                "linked": false,
+                "name": "Is Singular Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Is Reflection Ray",
+                "linked": false,
+                "name": "Is Reflection Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Is Transmission Ray",
+                "linked": false,
+                "name": "Is Transmission Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Is Volume Scatter Ray",
+                "linked": false,
+                "name": "Is Volume Scatter Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Ray Length",
+                "linked": true,
+                "name": "Ray Length",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Ray Depth",
+                "linked": false,
+                "name": "Ray Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Diffuse Depth",
+                "linked": false,
+                "name": "Diffuse Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Glossy Depth",
+                "linked": false,
+                "name": "Glossy Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Transparent Depth",
+                "linked": false,
+                "name": "Transparent Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Transmission Depth",
+                "linked": false,
+                "name": "Transmission Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Portal Depth",
+                "linked": false,
+                "name": "Portal Depth",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "LIGHT_PATH"
+          },
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "identifier": "Surface",
+                "linked": false,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeMixShader",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "default": 0.5,
+                "identifier": "Fac",
+                "linked": true,
+                "name": "Factor",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": true,
+                "identifier": "Shader",
+                "linked": true,
+                "name": "Shader",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "identifier": "Shader_001",
+                "linked": true,
+                "name": "Shader",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "internal_links": [
+              {
+                "from_socket": "Shader",
+                "to_socket": "Shader"
+              }
+            ],
+            "label": "",
+            "mute": false,
+            "name": "Mix Shader",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Shader",
+                "linked": true,
+                "name": "Shader",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "MIX_SHADER"
+          },
+          {
+            "bl_idname": "ShaderNodeVolumeAbsorption",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "default": [
+                  0.800000011920929,
+                  0.800000011920929,
+                  0.800000011920929,
+                  1.0
+                ],
+                "identifier": "Color",
+                "linked": false,
+                "name": "Color",
+                "type": "NodeSocketColor"
+              },
+              {
+                "available": true,
+                "default": 1.0,
+                "identifier": "Density",
+                "linked": false,
+                "name": "Density",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Absorption",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "VOLUME_ABSORPTION"
+          },
+          {
+            "bl_idname": "ShaderNodeVolumeCoefficients",
+            "image": null,
+            "inputs": [
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.10999999940395355,
+                  0.28999999165534973,
+                  0.5299999713897705
+                ],
+                "identifier": "Absorption Coefficients",
+                "linked": false,
+                "name": "Absorption Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.17000000178813934,
+                  0.4300000071525574,
+                  0.7900000214576721
+                ],
+                "identifier": "Scatter Coefficients",
+                "linked": true,
+                "name": "Scatter Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": -0.25,
+                "identifier": "Anisotropy",
+                "linked": true,
+                "name": "Anisotropy",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 1.3300000429153442,
+                "identifier": "IOR",
+                "linked": false,
+                "name": "IOR",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.10000000149011612,
+                "identifier": "Backscatter",
+                "linked": false,
+                "name": "Backscatter",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.5,
+                "identifier": "Alpha",
+                "linked": false,
+                "name": "Alpha",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": false,
+                "default": 20.0,
+                "identifier": "Diameter",
+                "linked": false,
+                "name": "Diameter",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.07000000029802322,
+                  0.12999999523162842,
+                  0.3100000023841858
+                ],
+                "identifier": "Emission Coefficients",
+                "linked": false,
+                "name": "Emission Coefficients",
+                "type": "NodeSocketVector"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Coefficients",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {
+              "phase": "HENYEY_GREENSTEIN"
+            },
+            "special": {},
+            "type": "VOLUME_COEFFICIENTS"
+          }
+        ],
+        "surface_root": null,
+        "volume_root": {
+          "node": "Mix Shader",
+          "socket": "Shader"
+        }
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_interpolation": "LINEAR",
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    },
+    {
+      "cycles_sync": {
+        "pass_id": 0,
+        "shader_index": 9
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "AUTO",
+      "name": "Volume Coefficients MIE",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Volume Coefficients",
+            "from_socket": "Volume",
+            "to_node": "Material Output",
+            "to_socket": "Volume"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "identifier": "Surface",
+                "linked": false,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeVolumeCoefficients",
+            "image": null,
+            "inputs": [
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.10999999940395355,
+                  0.28999999165534973,
+                  0.5299999713897705
+                ],
+                "identifier": "Absorption Coefficients",
+                "linked": false,
+                "name": "Absorption Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.17000000178813934,
+                  0.4300000071525574,
+                  0.7900000214576721
+                ],
+                "identifier": "Scatter Coefficients",
+                "linked": false,
+                "name": "Scatter Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Anisotropy",
+                "linked": false,
+                "name": "Anisotropy",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 1.3300000429153442,
+                "identifier": "IOR",
+                "linked": false,
+                "name": "IOR",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.10000000149011612,
+                "identifier": "Backscatter",
+                "linked": false,
+                "name": "Backscatter",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.5,
+                "identifier": "Alpha",
+                "linked": false,
+                "name": "Alpha",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": 16.0,
+                "identifier": "Diameter",
+                "linked": false,
+                "name": "Diameter",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.07000000029802322,
+                  0.12999999523162842,
+                  0.3100000023841858
+                ],
+                "identifier": "Emission Coefficients",
+                "linked": false,
+                "name": "Emission Coefficients",
+                "type": "NodeSocketVector"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Coefficients",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {
+              "phase": "MIE"
+            },
+            "special": {},
+            "type": "VOLUME_COEFFICIENTS"
+          }
+        ],
+        "surface_root": null,
+        "volume_root": {
+          "node": "Volume Coefficients",
+          "socket": "Volume"
+        }
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_interpolation": "LINEAR",
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    },
+    {
+      "cycles_sync": {
+        "pass_id": 0,
+        "shader_index": 8
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "AUTO",
+      "name": "Volume Coefficients RAYLEIGH",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Volume Coefficients",
+            "from_socket": "Volume",
+            "to_node": "Material Output",
+            "to_socket": "Volume"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "identifier": "Surface",
+                "linked": false,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeVolumeCoefficients",
+            "image": null,
+            "inputs": [
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.10999999940395355,
+                  0.28999999165534973,
+                  0.5299999713897705
+                ],
+                "identifier": "Absorption Coefficients",
+                "linked": false,
+                "name": "Absorption Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.17000000178813934,
+                  0.4300000071525574,
+                  0.7900000214576721
+                ],
+                "identifier": "Scatter Coefficients",
+                "linked": false,
+                "name": "Scatter Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Anisotropy",
+                "linked": false,
+                "name": "Anisotropy",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 1.3300000429153442,
+                "identifier": "IOR",
+                "linked": false,
+                "name": "IOR",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.10000000149011612,
+                "identifier": "Backscatter",
+                "linked": false,
+                "name": "Backscatter",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.5,
+                "identifier": "Alpha",
+                "linked": false,
+                "name": "Alpha",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": false,
+                "default": 20.0,
+                "identifier": "Diameter",
+                "linked": false,
+                "name": "Diameter",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.07000000029802322,
+                  0.12999999523162842,
+                  0.3100000023841858
+                ],
+                "identifier": "Emission Coefficients",
+                "linked": false,
+                "name": "Emission Coefficients",
+                "type": "NodeSocketVector"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Coefficients",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {
+              "phase": "RAYLEIGH"
+            },
+            "special": {},
+            "type": "VOLUME_COEFFICIENTS"
+          }
+        ],
+        "surface_root": null,
+        "volume_root": {
+          "node": "Volume Coefficients",
+          "socket": "Volume"
+        }
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_interpolation": "LINEAR",
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    },
+    {
+      "cycles_sync": {
+        "pass_id": 0,
+        "shader_index": 11
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "AUTO",
+      "name": "Volume Coefficients Repeated",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Volume Coefficients",
+            "from_socket": "Volume",
+            "to_node": "Add Shader",
+            "to_socket": "Shader"
+          },
+          {
+            "from_node": "Volume Coefficients.001",
+            "from_socket": "Volume",
+            "to_node": "Add Shader",
+            "to_socket": "Shader_001"
+          },
+          {
+            "from_node": "Add Shader",
+            "from_socket": "Shader",
+            "to_node": "Material Output",
+            "to_socket": "Volume"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeAddShader",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "identifier": "Shader",
+                "linked": true,
+                "name": "Shader",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "identifier": "Shader_001",
+                "linked": true,
+                "name": "Shader",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "internal_links": [
+              {
+                "from_socket": "Shader",
+                "to_socket": "Shader"
+              }
+            ],
+            "label": "",
+            "mute": false,
+            "name": "Add Shader",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Shader",
+                "linked": true,
+                "name": "Shader",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "ADD_SHADER"
+          },
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "identifier": "Surface",
+                "linked": false,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeVolumeCoefficients",
+            "image": null,
+            "inputs": [
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.10999999940395355,
+                  0.28999999165534973,
+                  0.5299999713897705
+                ],
+                "identifier": "Absorption Coefficients",
+                "linked": false,
+                "name": "Absorption Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.17000000178813934,
+                  0.4300000071525574,
+                  0.7900000214576721
+                ],
+                "identifier": "Scatter Coefficients",
+                "linked": false,
+                "name": "Scatter Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": -0.25,
+                "identifier": "Anisotropy",
+                "linked": false,
+                "name": "Anisotropy",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 1.3300000429153442,
+                "identifier": "IOR",
+                "linked": false,
+                "name": "IOR",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.10000000149011612,
+                "identifier": "Backscatter",
+                "linked": false,
+                "name": "Backscatter",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.5,
+                "identifier": "Alpha",
+                "linked": false,
+                "name": "Alpha",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": false,
+                "default": 20.0,
+                "identifier": "Diameter",
+                "linked": false,
+                "name": "Diameter",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.07000000029802322,
+                  0.12999999523162842,
+                  0.3100000023841858
+                ],
+                "identifier": "Emission Coefficients",
+                "linked": false,
+                "name": "Emission Coefficients",
+                "type": "NodeSocketVector"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Coefficients",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {
+              "phase": "HENYEY_GREENSTEIN"
+            },
+            "special": {},
+            "type": "VOLUME_COEFFICIENTS"
+          },
+          {
+            "bl_idname": "ShaderNodeVolumeCoefficients",
+            "image": null,
+            "inputs": [
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.10999999940395355,
+                  0.28999999165534973,
+                  0.5299999713897705
+                ],
+                "identifier": "Absorption Coefficients",
+                "linked": false,
+                "name": "Absorption Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.17000000178813934,
+                  0.4300000071525574,
+                  0.7900000214576721
+                ],
+                "identifier": "Scatter Coefficients",
+                "linked": false,
+                "name": "Scatter Coefficients",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": -0.25,
+                "identifier": "Anisotropy",
+                "linked": false,
+                "name": "Anisotropy",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 1.3300000429153442,
+                "identifier": "IOR",
+                "linked": false,
+                "name": "IOR",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.10000000149011612,
+                "identifier": "Backscatter",
+                "linked": false,
+                "name": "Backscatter",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": false,
+                "default": 0.5,
+                "identifier": "Alpha",
+                "linked": false,
+                "name": "Alpha",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": false,
+                "default": 20.0,
+                "identifier": "Diameter",
+                "linked": false,
+                "name": "Diameter",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.07000000029802322,
+                  0.12999999523162842,
+                  0.3100000023841858
+                ],
+                "identifier": "Emission Coefficients",
+                "linked": false,
+                "name": "Emission Coefficients",
+                "type": "NodeSocketVector"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Coefficients.001",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {
+              "phase": "HENYEY_GREENSTEIN"
+            },
+            "special": {},
+            "type": "VOLUME_COEFFICIENTS"
+          }
+        ],
+        "surface_root": null,
+        "volume_root": {
+          "node": "Add Shader",
+          "socket": "Shader"
+        }
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_interpolation": "LINEAR",
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    }
+  ],
+  "images": [],
+  "node_groups": []
+}

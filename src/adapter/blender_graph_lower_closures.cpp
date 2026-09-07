@@ -703,6 +703,17 @@ public:
             const auto id = context.graph().add_node(
                 compiler::node_type::principled_volume,
                 node_name);
+            for (const auto &[target, source, fallback] : {
+                     std::tuple{
+                         "DensityAttribute", "Density Attribute", "density"},
+                     std::tuple{"ColorAttribute", "Color Attribute", ""},
+                     std::tuple{"TemperatureAttribute",
+                                "Temperature Attribute", "temperature"}}) {
+                static_cast<void>(context.graph().set_property(
+                    id, target, SocketValue::string(text(
+                        member(context.raw_input(node, source), "default"),
+                        fallback))));
+            }
             for (const auto &[target, source] : {
                      std::pair{"Color", "Color"},
                      std::pair{

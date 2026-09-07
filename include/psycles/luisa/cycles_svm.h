@@ -83,6 +83,10 @@ inline constexpr std::uint32_t kernel_feature_node_mask_surface_shadow =
 inline constexpr std::uint32_t kernel_feature_node_mask_surface =
     kernel_feature_node_mask_surface_shadow | kernel_feature_node_raytrace |
     kernel_feature_node_aov | kernel_feature_node_light_path;
+inline constexpr std::uint32_t kernel_feature_node_mask_volume =
+    kernel_feature_node_emission | kernel_feature_node_volume |
+    kernel_feature_node_voronoi_extra | kernel_feature_node_light_path |
+    kernel_feature_node_portal;
 
 /* Path visibility and path flags copied from Cycles 5.2.1 kernel/types.h. */
 inline constexpr std::uint32_t path_ray_visibility_camera = 1u << 0u;
@@ -115,6 +119,8 @@ inline constexpr std::uint32_t shader_data_emission = 1u << 1u;
 inline constexpr std::uint32_t shader_data_bsdf = 1u << 2u;
 inline constexpr std::uint32_t shader_data_bsdf_has_eval = 1u << 3u;
 inline constexpr std::uint32_t shader_data_bssrdf = 1u << 4u;
+inline constexpr std::uint32_t shader_data_extinction = 1u << 6u;
+inline constexpr std::uint32_t shader_data_scatter = 1u << 7u;
 inline constexpr std::uint32_t shader_data_is_volume_shader_eval = 1u << 8u;
 inline constexpr std::uint32_t shader_data_transparent = 1u << 9u;
 inline constexpr std::uint32_t shader_data_bsdf_has_transmission = 1u << 10u;
@@ -460,6 +466,15 @@ struct ShaderClosureCommon {
   luisa::compute::Float3 N;
 };
 
+/* SHADER_CLOSURE_VOLUME_BASE has no normal. Its phase parameters start at
+ * byte 20, overlapping ShaderClosure::N; a volume read must not inspect N or
+ * the inactive suffix of another phase payload. */
+struct ShaderVolumeClosureCommon {
+  luisa::compute::Float3 weight;
+  luisa::compute::UInt type;
+  luisa::compute::Float sample_weight;
+};
+
 struct OrenNayarParam {
   luisa::compute::Float roughness;
   luisa::compute::Float a;
@@ -751,6 +766,13 @@ public:
                          luisa::compute::Expr<float> sample_weight) noexcept;
   void set_normal(luisa::compute::Expr<std::uint32_t> index,
                   luisa::compute::Expr<luisa::float3> normal) noexcept;
+  void set_volume_henyey_greenstein(luisa::compute::Expr<std::uint32_t> index,
+                                   luisa::compute::Expr<float> g) noexcept;
+  void set_volume_draine(luisa::compute::Expr<std::uint32_t> index,
+                        luisa::compute::Expr<float> g,
+                        luisa::compute::Expr<float> alpha) noexcept;
+  void set_volume_fournier_forand(luisa::compute::Expr<std::uint32_t> index,
+                                 luisa::compute::Expr<luisa::float3> coefficients) noexcept;
   void set_oren_nayar_param(luisa::compute::Expr<std::uint32_t> index,
                             const OrenNayarParam &param) noexcept;
   void set_sheen_param(luisa::compute::Expr<std::uint32_t> index,
@@ -783,6 +805,14 @@ public:
 
   [[nodiscard]] ShaderClosureCommon
   common(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] ShaderVolumeClosureCommon
+  volume_common(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] luisa::compute::Float
+  volume_henyey_greenstein_g(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] luisa::compute::Float2
+  volume_draine_parameters(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  [[nodiscard]] luisa::compute::Float3
+  volume_fournier_forand_coefficients(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] OrenNayarClosure
   oren_nayar(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] SheenClosure

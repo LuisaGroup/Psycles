@@ -385,6 +385,13 @@ if(PSYCLES_BUILD_TESTS)
         add_test(NAME psycles.cycles_svm_volume_emission
             COMMAND psycles_cycles_svm_volume_emission_tests)
 
+        add_executable(psycles_cycles_svm_volume_tests tests/test_cycles_svm_volume.cpp)
+        target_link_libraries(psycles_cycles_svm_volume_tests PRIVATE Psycles::luisa_runtime)
+        target_compile_features(psycles_cycles_svm_volume_tests PRIVATE cxx_std_20)
+        target_compile_definitions(psycles_cycles_svm_volume_tests PRIVATE
+            PSYCLES_VOLUME_FIXTURE_DIR="${CMAKE_CURRENT_LIST_DIR}/../tests/data")
+        add_test(NAME psycles.cycles_svm_volume COMMAND psycles_cycles_svm_volume_tests)
+
         add_executable(
             psycles_cycles_svm_bump_state_tests
             tests/test_cycles_svm_bump_state.cpp)

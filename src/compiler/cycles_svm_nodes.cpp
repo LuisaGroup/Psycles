@@ -24,6 +24,7 @@
 #include "cycles_svm_texture_coordinate_nodes.h"
 #include "cycles_svm_value_nodes.h"
 #include "cycles_svm_vector_nodes.h"
+#include "cycles_svm_volume_nodes.h"
 
 #include <psycles/compiler/core_nodes.h>
 
@@ -697,57 +698,6 @@ class UnsupportedNode final : public GraphNode {
 public:
   void compile(SVMCompiler &compiler) override {
     compiler.fail("Cycles SVM node family is not migrated: " + type);
-  }
-};
-
-class UnsupportedVolumeNode final : public GraphNode {
-public:
-  void compile(SVMCompiler &compiler) override {
-    compiler.fail("Cycles SVM node family is not migrated: " + type);
-  }
-
-  void attributes(const GraphAttributeContext &context,
-                  AttributeRequestSet &requests) const override {
-    if (type == node_type::principled_volume && context.has_volume) {
-      const auto *density = input("Density");
-      const auto density_value =
-          literal<float>(density, contract::SocketType::floating);
-      if (density != nullptr &&
-          (density->link != nullptr ||
-           (density_value && *density_value > 0.0f))) {
-        requests.add_standard("density");
-        // Cycles' default Color Attribute socket is empty. A future importer
-        // that exposes it must preserve that symbolic socket rather than
-        // silently assuming the volume grid named "color".
-      }
-
-      const auto *blackbody = input("BlackbodyIntensity");
-      const auto blackbody_value =
-          literal<float>(blackbody, contract::SocketType::floating);
-      if (blackbody != nullptr &&
-          (blackbody->link != nullptr ||
-           (blackbody_value && *blackbody_value > 0.0f))) {
-        requests.add_standard("temperature");
-      }
-      requests.add(ATTR_STD_GENERATED_TRANSFORM);
-    }
-    GraphNode::attributes(context, requests);
-  }
-
-  [[nodiscard]] bool has_volume_support() const noexcept override {
-    return true;
-  }
-
-  [[nodiscard]] bool is_linear_operation() const noexcept override {
-    return true;
-  }
-
-  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
-    return GraphNode::get_feature() | kernel_feature_node_volume;
-  }
-
-  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
-    return NODE_CLOSURE_VOLUME;
   }
 };
 
@@ -2061,6 +2011,9 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   if (auto node = make_closure_graph_node(type)) {
     return node;
   }
+  if (auto node = make_volume_graph_node(type)) {
+    return node;
+  }
   if (type == node_type::null_closure || type == node_type::null_volume) {
     return std::make_unique<NullNode>();
   }
@@ -2069,11 +2022,6 @@ std::unique_ptr<GraphNode> make_graph_node(std::string_view type) {
   }
   if (type == node_type::mix_closure || type == node_type::mix_volume) {
     return std::make_unique<MixClosureNode>();
-  }
-  if (type == node_type::volume_coefficients ||
-      type == node_type::volume_emission ||
-      type == node_type::principled_volume) {
-    return std::make_unique<UnsupportedVolumeNode>();
   }
   return std::make_unique<UnsupportedNode>();
 }
