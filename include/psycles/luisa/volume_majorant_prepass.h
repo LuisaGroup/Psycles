@@ -6,7 +6,6 @@
 
 #include <cstdint>
 
-#include <psycles/luisa/stacked_volume.h>
 #include <psycles/luisa/volume_majorant_hierarchy.h>
 
 namespace psycles::luisa_backend {
@@ -26,29 +25,6 @@ struct VolumeMajorantGrid {
 struct VolumeMajorantCellExtrema {
     Float minimum;
     Float maximum;
-};
-
-// Records the raw Cycles volume-density bake for one 128^3 cell. The original
-// SurfaceDispatch graph is evaluated at all sixteen padded Sobol-Burley
-// points. This is an acceleration-data producer, not a CPU renderer or a
-// closure bake: runtime transport evaluates the same graph again.
-class VolumeMajorantPrepass {
-
-  private:
-    const SurfaceDispatch &_surfaces;
-    const VolumeStackEntryPointProvider &_points;
-
-  public:
-    VolumeMajorantPrepass(
-        const SurfaceDispatch &surfaces,
-        const VolumeStackEntryPointProvider &points) noexcept;
-
-    [[nodiscard]] VolumeMajorantCellExtrema
-    evaluate_cell(
-        const VolumeStackEntry &entry,
-        const ShaderServices &services,
-        const VolumeMajorantGrid &grid,
-        UInt cell_index) const noexcept;
 };
 
 }// namespace psycles::luisa_backend

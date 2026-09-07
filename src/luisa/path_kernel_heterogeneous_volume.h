@@ -1,6 +1,6 @@
 #pragma once
 
-#include "path_kernel_volume_point.h"
+#include "path_tracer_cycles_svm_volume.h"
 
 #include <psycles/luisa/heterogeneous_volume_segment.h>
 
@@ -14,8 +14,7 @@ namespace psycles::luisa_backend::detail {
 // depending on the enclosing path-kernel context type.
 struct PathHeterogeneousVolumeInput {
     const VolumeStack &stack;
-    const ShaderServices &services;
-    const VolumeShadingState &state;
+    const PathCyclesSvmVolumeShader &shader;
     const BufferFloat4 &sobol_table;
     UInt sobol_sequence_size;
     UInt sample_index;
@@ -37,7 +36,7 @@ struct PathHeterogeneousVolumeInput {
 };
 
 // Production host-stage adapter between path state, scene majorant resources,
-// Cycles random dimensions, raw stacked GraphSurface closures, and the generic
+// Cycles random dimensions, native SVM volume closures, and the generic
 // heterogeneous transport component.
 class PathHeterogeneousVolumeComponent {
 
@@ -58,8 +57,6 @@ class PathHeterogeneousVolumeComponent {
 std::unique_ptr<PathHeterogeneousVolumeComponent>
 make_path_heterogeneous_volume_component(
     std::shared_ptr<LuisaSceneData> scene,
-    std::shared_ptr<
-        const VolumeStackEntryPointProvider> points,
-    std::size_t closure_allocation_budget);
+    std::shared_ptr<const VolumeMajorantRuntime> majorants);
 
 }// namespace psycles::luisa_backend::detail

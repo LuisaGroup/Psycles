@@ -4,6 +4,7 @@
 #include "path_kernel_executor.h"
 #include "sample_dispatch_partition.h"
 #include "path_tracer_internal.h"
+#include "path_tracer_volume_majorant_scene.h"
 
 #include <psycles/compiler/cycles_transform.h>
 #include <psycles/compiler/cycles_camera.h>
@@ -282,6 +283,15 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .camera_inv_aperture_ratio = 1.0f / camera_aperture_ratio};
   _background_sampling = build_background_sampling_distribution(
       scene, _stream, _kernel_parameters);
+  if (scene->volume_majorant_plan) {
+    auto majorants = VolumeMajorantSceneComponent{}.build(
+        scene, _stream, *scene->volume_majorant_plan, _kernel_parameters);
+    LUISA_ASSERT(majorants.ok(), "Native Cycles volume density bake failed: {}",
+                 majorants.diagnostic);
+    _volume_majorants = std::move(majorants.runtime);
+  } else {
+    _volume_majorants.reset();
+  }
   auto light_transport = make_light_transport_callables(direct_light_sampling);
     auto light_distribution_sample_callable =
         make_light_distribution_sample_callable(scene);
@@ -331,6 +341,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .light_tree = std::move(light_tree_callables),
         .surfaces = std::move(surface_callables),
         .background_sampling = _background_sampling,
+        .volume_majorants = _volume_majorants,
         .intersect_shadow = std::move(shadow_trace_callables.intersect),
         .shade_shadow_surface = std::move(shadow_trace_callables.shade_surface),
         .trace_shadow = std::move(shadow_trace_callables.trace)};

@@ -6,6 +6,7 @@
 
 #include <psycles/luisa/cycles_fast_math.h>
 #include <psycles/luisa/cycles_sample_mapping.h>
+#include <psycles/compiler/cycles_svm_types.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -19,10 +20,10 @@ inline constexpr float cube_root_two =
     1.25992104989487316477f;
 
 enum class Type : std::uint32_t {
-    henyey_greenstein,
-    fournier_forand,
-    draine,
-    rayleigh
+    henyey_greenstein = compiler::cycles_svm::CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID,
+    fournier_forand = compiler::cycles_svm::CLOSURE_VOLUME_FOURNIER_FORAND_ID,
+    draine = compiler::cycles_svm::CLOSURE_VOLUME_DRAINE_ID,
+    rayleigh = compiler::cycles_svm::CLOSURE_VOLUME_RAYLEIGH_ID
 };
 
 struct Closure {

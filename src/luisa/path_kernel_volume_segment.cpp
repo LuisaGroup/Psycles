@@ -1,8 +1,9 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_heterogeneous_volume.h"
 #include "path_kernel_volume_direct_light.h"
-#include "path_kernel_volume_point.h"
-#include "path_tracer_shader_services.h"
+#include "path_tracer_cycles_svm_volume.h"
+
+#include <psycles/luisa/cycles_noise.h>
 
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sampler.h>
@@ -22,9 +23,6 @@ class PathVolumeSegmentStageImpl final
 
   private:
     std::shared_ptr<LuisaSceneData> _scene;
-    std::shared_ptr<
-        const VolumeStackEntryPointProvider>
-        _points;
     std::unique_ptr<
         HomogeneousVolumeSegmentComponent>
         _homogeneous;
@@ -37,38 +35,27 @@ class PathVolumeSegmentStageImpl final
 
     [[nodiscard]] static bool
     _has_majorant_resources(
-        const LuisaSceneData &scene) noexcept {
-        return
-            scene.volume_majorant_node_count >
+        const std::shared_ptr<const VolumeMajorantRuntime> &majorants) noexcept {
+        return majorants &&
+            majorants->node_count >
                 0u &&
-            scene.volume_majorant_root_count >
+            majorants->root_count >
                 0u &&
-            scene.volume_majorant_range_count >
+            majorants->range_count >
                 0u &&
-            scene.volume_majorant_world_range <
-                scene.volume_majorant_range_count;
+            majorants->world_range <
+                majorants->range_count;
     }
 
   public:
     explicit PathVolumeSegmentStageImpl(
         const PathKernelConfig &config)
         : _scene{config.scene},
-          _points{
-              make_scene_volume_stack_entry_point_provider(
-                  _scene)},
           _homogeneous{
-              make_homogeneous_volume_segment_component(
-                  _scene->surfaces,
-                  _points,
-                  _scene->volume_metadata
-                      .closure_allocation_budget)},
+              make_homogeneous_volume_segment_component()},
           _heterogeneous{
-              _has_majorant_resources(*_scene)
-                  ? make_path_heterogeneous_volume_component(
-                        _scene,
-                        _points,
-                        _scene->volume_metadata
-                            .closure_allocation_budget)
+              _has_majorant_resources(config.volume_majorants)
+                  ? make_path_heterogeneous_volume_component(_scene, config.volume_majorants)
                   : nullptr},
           _direct_lighting{
               config.next_event_estimation
@@ -103,8 +90,6 @@ class PathVolumeSegmentStageImpl final
             sample.cycles_path_visibility;
         auto &cycles_rng_offset =
             sample.cycles_rng_offset;
-        const auto shader_ray_visibility =
-            sample.shader_ray_visibility();
         auto &ray_events = sample.ray_events;
         auto &volume_bounce =
             sample.volume_bounce;
@@ -212,34 +197,15 @@ class PathVolumeSegmentStageImpl final
                         direct_light);
         }
 
-        BufferShaderServices services{
-            _scene->scalar_parameter_buffer,
-            _scene->vector_parameter_buffer,
-            _scene->cycles_bsdf_table_buffer,
-            _scene->texture_heap,
-            _scene->heap,
-            _scene->attribute_binding_slot,
-            _scene->attribute_range_slot,
-            _scene->nishita_texture_bindings,
-            _scene->shader_color_space};
-        const VolumeShadingState state{
-            .position = segment_position,
-            .incoming =
-                -ray->direction(),
-            .ray_visibility =
-                shader_ray_visibility,
-            .ray_events = ray_events,
-            .ray_depth = path_depth,
-            .diffuse_depth =
-                diffuse_depth,
-            .glossy_depth =
-                glossy_depth,
-            .transparent_depth =
-                transparent_depth,
-            .transmission_depth =
-                transmission_depth,
-            .ray_length = 0.0f,
-            .time = 0.0f};
+        const cycles_svm::PathState volume_state{
+            cycles_path_visibility, path_flags, path_depth, transparent_depth,
+            diffuse_depth, glossy_depth, transmission_depth, 0u};
+        const PathCyclesSvmVolumeShader volume_shader{
+            _scene, parameters, ray->origin(), ray->direction(), segment_start,
+            0.5f, stack.entry(0u).object, volume_state,
+            cycles_noise::hash_uint3(
+                sample.rng_hash ^ 0x15b4f88du, cycles_rng_offset, sample.sample_index),
+            false};
         const auto phase_random =
             cycles_sampler::sample_2d(
                 sobol_table,
@@ -309,9 +275,10 @@ class PathVolumeSegmentStageImpl final
             [&]() noexcept {
                 const auto result =
                     _homogeneous->emit(
+                        volume_shader,
                         stack,
-                        services,
-                        state,
+                        segment_position,
+                        -ray->direction(),
                         segment_length,
                         throughput,
                         scatter_random,
@@ -393,8 +360,7 @@ class PathVolumeSegmentStageImpl final
                 const auto result =
                     _heterogeneous->emit(
                         {.stack = stack,
-                         .services = services,
-                         .state = state,
+                         .shader = volume_shader,
                          .sobol_table =
                              sobol_table,
                          .sobol_sequence_size =

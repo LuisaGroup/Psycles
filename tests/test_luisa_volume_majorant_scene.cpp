@@ -1,3 +1,4 @@
+#include "cycles_svm_volume_scene_fixture.h"
 #include "cycles_shader_identity.h"
 #include "path_kernel_heterogeneous_volume.h"
 #include "path_kernel_volume_majorant_provider.h"
@@ -876,202 +877,23 @@ void run_scene_build(
     scene->device =
         Device{device.impl_shared()};
 
-    const auto spatial_surface_tag =
-        scene->surfaces.create<GraphSurface>(
-            spatial_lowered.program);
-    const auto homogeneous_surface_tag =
-        scene->surfaces.create<GraphSurface>(
-            homogeneous_lowered.program);
-    const auto spatial_light_path_surface_tag =
-        scene->surfaces.create<GraphSurface>(
-            spatial_light_path_lowered.program);
-    auto host_parameters =
-        parameter_data(*spatial_lowered.program);
-    const auto homogeneous_parameter_block =
-        static_cast<std::uint32_t>(
-            host_parameters.scalars.size());
-    const auto homogeneous_parameters =
-        parameter_data(
-            *homogeneous_lowered.program);
-    host_parameters.scalars.insert(
-        host_parameters.scalars.end(),
-        homogeneous_parameters.scalars.begin(),
-        homogeneous_parameters.scalars.end());
-    host_parameters.vectors.insert(
-        host_parameters.vectors.end(),
-        homogeneous_parameters.vectors.begin(),
-        homogeneous_parameters.vectors.end());
-    const auto spatial_light_path_parameter_block =
-        static_cast<std::uint32_t>(
-            host_parameters.scalars.size());
-    const auto spatial_light_path_parameters =
-        parameter_data(
-            *spatial_light_path_lowered.program);
-    host_parameters.scalars.insert(
-        host_parameters.scalars.end(),
-        spatial_light_path_parameters.scalars.begin(),
-        spatial_light_path_parameters.scalars.end());
-    host_parameters.vectors.insert(
-        host_parameters.vectors.end(),
-        spatial_light_path_parameters.vectors.begin(),
-        spatial_light_path_parameters.vectors.end());
-    scene->scalar_parameter_buffer =
-        device.create_buffer<float>(
-            host_parameters.scalars.size());
-    scene->vector_parameter_buffer =
-        device.create_buffer<luisa::float3>(
-            host_parameters.vectors.size());
-    scene->cycles_bsdf_table_buffer =
-        device.create_buffer<float>(1u);
-    std::vector<std::uint32_t>
-        volume_surface_flags;
-    capabilities.merge_surface_flags(
-        volume_surface_flags,
-        spatial_surface_tag,
-        *spatial_lowered.program);
-    capabilities.merge_surface_flags(
-        volume_surface_flags,
-        homogeneous_surface_tag,
-        *homogeneous_lowered.program);
-    capabilities.merge_surface_flags(
-        volume_surface_flags,
-        spatial_light_path_surface_tag,
-        *spatial_light_path_lowered.program);
-    expect(
-        volume_surface_flags.size() ==
-                spatial_light_path_surface_tag +
-                    1u &&
-            volume_surface_flags[
-                spatial_surface_tag] ==
-                volume_surface_flag_heterogeneous &&
-            volume_surface_flags[
-                homogeneous_surface_tag] ==
-                volume_surface_flag_light_path &&
-            volume_surface_flags[
-                spatial_light_path_surface_tag] ==
-                (volume_surface_flag_heterogeneous |
-                 volume_surface_flag_light_path),
-        "volume surface capability flag table changed");
-    scene->volume_surface_flag_count =
-        static_cast<std::uint32_t>(
-            volume_surface_flags.size());
-    scene->volume_surface_flag_buffer =
-        device.create_buffer<luisa::uint>(
-            volume_surface_flags.size());
-
-    const auto generated_mapping =
-        make_generated_coordinate_mapping(
-            geometry);
-    const std::array geometry_records{
-        GeometryGpu{
-            .generated_transform =
-                to_luisa(
-                    generated_mapping
-                        .object_to_generated)}};
-    constexpr std::array instance_records{
-        InstanceGpu{
-            .geometry_index = 0u,
-            .cycles_object_index = 91u}};
-    scene->geometry_buffer =
-        device.create_buffer<GeometryGpu>(1u);
-    scene->instance_buffer =
-        device.create_buffer<InstanceGpu>(1u);
-
-    constexpr std::array positions{
-        luisa::float3{-1.0f, -1.0f, -1.0f},
-        luisa::float3{1.0f, -1.0f, -1.0f},
-        luisa::float3{0.0f, 1.0f, 1.0f}};
-    constexpr std::array triangles{
-        Triangle{0u, 1u, 2u}};
-    auto position_buffer =
-        device.create_buffer<luisa::float3>(
-            positions.size());
-    auto triangle_buffer =
-        device.create_buffer<Triangle>(
-            triangles.size());
-    auto mesh = device.create_mesh(
-        position_buffer, triangle_buffer);
-    scene->accel = device.create_accel();
-    scene->accel.emplace_back(
-        mesh,
-        to_luisa(
-            snapshot.instances.begin()
-                ->second.transform),
-        0xffu,
-        false,
-        0u);
-
-    scene->attribute_binding_slot = 0u;
-    scene->attribute_range_slot = 1u;
-    scene->attribute_binding_buffer =
-        device.create_buffer<
-            AttributeBindingGpu>(1u);
-    scene->attribute_range_buffer =
-        device.create_buffer<
-            AttributeRangeGpu>(1u);
-    scene->heap =
-        device.create_bindless_array(2u);
-    scene->heap.emplace_on_update(
-        scene->attribute_binding_slot,
-        scene->attribute_binding_buffer);
-    scene->heap.emplace_on_update(
-        scene->attribute_range_slot,
-        scene->attribute_range_buffer);
-
-    scene->texture_heap =
-        device.create_bindless_array(1u);
-    scene->images.emplace_back(
-        device.create_image<float>(
-            PixelStorage::BYTE4, 1u, 1u));
-    scene->texture_heap.emplace_on_update(
-        0u,
-        scene->images.back(),
-        Sampler::linear_point_repeat());
-
-    constexpr std::array cycles_table{1.0f};
-    constexpr std::array attribute_bindings{
-        AttributeBindingGpu{}};
-    constexpr std::array attribute_ranges{
-        AttributeRangeGpu{}};
-    constexpr std::array dummy_pixel{
-        std::byte{255u},
-        std::byte{0u},
-        std::byte{255u},
-        std::byte{255u}};
-    stream
-        << scene->scalar_parameter_buffer.copy_from(
-               luisa::span{host_parameters.scalars})
-        << scene->vector_parameter_buffer.copy_from(
-               luisa::span{host_parameters.vectors})
-        << scene->cycles_bsdf_table_buffer
-               .copy_from(
-                   luisa::span{cycles_table})
-        << scene->volume_surface_flag_buffer
-               .copy_from(
-                   luisa::span{
-                       volume_surface_flags})
-        << scene->geometry_buffer.copy_from(
-               luisa::span{geometry_records})
-        << scene->instance_buffer.copy_from(
-               luisa::span{instance_records})
-        << scene->attribute_binding_buffer
-               .copy_from(
-                   luisa::span{
-                       attribute_bindings})
-        << scene->attribute_range_buffer
-               .copy_from(
-                   luisa::span{attribute_ranges})
-        << position_buffer.copy_from(
-               luisa::span{positions})
-        << triangle_buffer.copy_from(
-               luisa::span{triangles})
-        << scene->images.back().copy_from(
-               luisa::span{dummy_pixel})
-        << mesh.build()
-        << scene->texture_heap.update()
-        << scene->heap.update()
-        << scene->accel.build()
-        << synchronize();
+    namespace abi = psycles::compiler::cycles_svm;
+    constexpr unsigned spatial_surface_tag = 0u, homogeneous_surface_tag = 1u;
+    constexpr unsigned spatial_light_path_surface_tag = 2u;
+    constexpr unsigned homogeneous_parameter_block = 0u, spatial_light_path_parameter_block = 0u;
+    const std::array units{
+        abi::ShaderTableCompileUnit{.shader_index = 37u, .shader = spatial_shader_program.program.get()},
+        abi::ShaderTableCompileUnit{.shader_index = 38u, .shader = homogeneous_shader_program.program.get()},
+        abi::ShaderTableCompileUnit{.shader_index = 39u, .shader = spatial_light_path_shader_program.program.get()}};
+    std::vector<abi::KernelObject> objects(92u);
+    objects[91].visibility = abi::PATH_RAY_VISIBILITY_ALL;
+    objects[91].volume_density = 1.0f;
+    objects[91].tfm = {{0.5f, 0, 0, 2}, {0, 0.5f, 0, -3}, {0, 0, 0.5f, 5}};
+    objects[91].itfm = {{2, 0, 0, -4}, {0, 2, 0, 6}, {0, 0, 2, -10}};
+    test_support::initialize_volume_fixture(scene, stream, abi::compile_shader_table(units),
+                                            objects, std::vector<unsigned>(92u));
+    test_support::volume_generated_fixture(scene, stream,
+        {{{0.5f, 0, 0, 0.5f}, {0, 0.5f, 0, 0.5f}, {0, 0, 0.5f, 0.5f}}});
 
     const std::map<MaterialId, VolumeMajorantSceneMaterial>
         materials{
@@ -1107,7 +929,7 @@ void run_scene_build(
         "per Cycles volume class");
 
     const auto built =
-        component.build(scene, stream, plan);
+        component.build(scene, stream, plan, RenderKernelParameters{});
     expect(
         built.ok(),
         "scene majorant build failed on " +
@@ -1127,11 +949,11 @@ void run_scene_build(
     std::vector<VolumeMajorantRootRangeGpu> ranges(
         built.range_count);
     stream
-        << scene->volume_majorant_root_buffer
+        << built.runtime->root_buffer
                .copy_to(luisa::span{roots})
-        << scene->volume_majorant_node_buffer
+        << built.runtime->node_buffer
                .copy_to(luisa::span{nodes})
-        << scene->volume_majorant_range_buffer
+        << built.runtime->range_buffer
                .copy_to(luisa::span{ranges})
         << synchronize();
 
@@ -1167,7 +989,7 @@ void run_scene_build(
             ranges[0u].count == 2u &&
             ranges[1u].offset == 2u &&
             ranges[1u].count == 0u &&
-            scene->volume_majorant_world_range == 1u,
+            built.runtime->world_range == 1u,
         "uploaded instance/World range partition "
         "changed on " +
             std::string{backend});
@@ -1202,14 +1024,10 @@ void run_scene_build(
         "as a single raw-graph cell on " +
             std::string{backend});
 
-    auto points =
-        make_scene_volume_stack_entry_point_provider(
-            scene);
     auto provider_output =
         device.create_buffer<luisa::float4>(7u);
     Kernel1D evaluate_provider =
         [scene,
-         points,
          spatial_surface_tag,
          homogeneous_surface_tag,
          homogeneous_parameter_block,
@@ -1217,66 +1035,26 @@ void run_scene_build(
          spatial_light_path_parameter_block](
             BufferVar<luisa::float4> output)
             noexcept {
-            BufferShaderServices services{
-                scene->scalar_parameter_buffer,
-                scene->vector_parameter_buffer,
-                scene->cycles_bsdf_table_buffer,
-                scene->texture_heap,
-                scene->heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space};
             const auto world_origin =
                 make_float3(
                     2.5f, -2.0f, 6.5f);
             const auto world_direction =
                 make_float3(
                     1.0f, 0.0f, 0.0f);
-            const VolumeShadingState
-                camera_state{
-                    .position = world_origin,
-                    .incoming =
-                        -world_direction,
-                    .ray_visibility =
-                        camera_visibility,
-                    .ray_events = 0u,
-                    .ray_depth = 0u,
-                    .diffuse_depth = 0u,
-                    .glossy_depth = 0u,
-                    .transparent_depth = 0u,
-                    .transmission_depth = 0u,
-                    .ray_length = 0.0f,
-                    .time = 0.0f};
-            const VolumeShadingState
-                indirect_state{
-                    .position = world_origin,
-                    .incoming =
-                        -world_direction,
-                    .ray_visibility =
-                        diffuse_visibility,
-                    .ray_events = 0u,
-                    .ray_depth = 1u,
-                    .diffuse_depth = 1u,
-                    .glossy_depth = 0u,
-                    .transparent_depth = 0u,
-                    .transmission_depth = 0u,
-                    .ray_length = 0.0f,
-                    .time = 0.0f};
-            auto camera_provider =
-                make_scene_volume_majorant_entry_provider(
-                    scene,
-                    points,
-                    services,
-                    camera_state,
-                    true);
-            auto indirect_provider =
-                make_scene_volume_majorant_entry_provider(
-                    scene,
-                    points,
-                    services,
-                    indirect_state,
-                    true);
+            Var<RenderKernelParameters> parameters;
+            parameters.camera_transform = parameters.camera_inverse_transform = make_float4x4(1.0f);
+            const psycles::luisa_backend::cycles_svm::PathState camera_state{
+                psycles::luisa_backend::cycles_svm::path_ray_visibility_camera, 0u};
+            const psycles::luisa_backend::cycles_svm::PathState indirect_state{
+                psycles::luisa_backend::cycles_svm::path_ray_visibility_diffuse, 0u, 1u, 0u, 1u};
+            const PathCyclesSvmVolumeShader camera_shader{
+                scene, parameters, world_origin, world_direction, 0.0f, 0.5f,
+                91u, camera_state, 0u, false};
+            const PathCyclesSvmVolumeShader indirect_shader{
+                scene, parameters, world_origin, world_direction, 0.0f, 0.5f,
+                91u, indirect_state, 0u, false};
+            auto camera_provider = make_scene_volume_majorant_entry_provider(camera_shader);
+            auto indirect_provider = make_scene_volume_majorant_entry_provider(indirect_shader);
             const VolumeStackEntry
                 spatial_entry{
                     .object = 91u,
@@ -1511,47 +1289,27 @@ void run_scene_build(
             6u);
     auto path_segment =
         make_path_heterogeneous_volume_component(
-            scene,
-            points,
-            8u);
+            scene, built.runtime);
     Kernel1D evaluate_transport =
         [scene,
-         points,
          path_segment =
              path_segment.get(),
          spatial_surface_tag](
             BufferFloat4 sobol,
             BufferFloat4 output) noexcept {
-            BufferShaderServices services{
-                scene->scalar_parameter_buffer,
-                scene->vector_parameter_buffer,
-                scene->cycles_bsdf_table_buffer,
-                scene->texture_heap,
-                scene->heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space};
             const auto ray_origin =
                 make_float3(
                     2.0f, -3.0f, 5.0f);
             const auto ray_direction =
                 make_float3(
                     1.0f, 0.0f, 0.0f);
-            const VolumeShadingState state{
-                .position = ray_origin,
-                .incoming =
-                    -ray_direction,
-                .ray_visibility =
-                    camera_visibility,
-                .ray_events = 0u,
-                .ray_depth = 0u,
-                .diffuse_depth = 0u,
-                .glossy_depth = 0u,
-                .transparent_depth = 0u,
-                .transmission_depth = 0u,
-                .ray_length = 0.0f,
-                .time = 0.0f};
+            Var<RenderKernelParameters> parameters;
+            parameters.camera_transform = parameters.camera_inverse_transform = make_float4x4(1.0f);
+            const psycles::luisa_backend::cycles_svm::PathState state{
+                psycles::luisa_backend::cycles_svm::path_ray_visibility_camera, 0u};
+            const PathCyclesSvmVolumeShader shader{
+                scene, parameters, ray_origin, ray_direction, 0.0f, 0.5f,
+                91u, state, 0u, false};
             const VolumeStackEntry entry{
                 .object = 91u,
                 .shader =
@@ -1596,8 +1354,7 @@ void run_scene_build(
             const auto result =
                 path_segment->emit(
                     {.stack = stack,
-                     .services = services,
-                     .state = state,
+                     .shader = shader,
                      .sobol_table = sobol,
                      .sobol_sequence_size =
                          sequence_size,

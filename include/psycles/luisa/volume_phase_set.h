@@ -14,6 +14,8 @@
 
 namespace psycles::luisa_backend {
 
+namespace cycles_svm { class ClosurePool; }
+
 inline constexpr std::uint32_t
     maximum_volume_phase_closures = 8u;
 
@@ -67,6 +69,10 @@ class VolumePhaseSet final : public VolumePhaseCollector {
     void add(
         const cycles_volume_phase::Closure &phase,
         Float3 weight) noexcept override;
+
+    // Cycles volume_shader_copy_phases. Copy the already allocated, merged
+    // active prefix; never clamp/reallocate weights or recompute sample_weight.
+    void copy_from(const cycles_svm::ClosurePool &closures) noexcept;
 
     [[nodiscard]] UInt count() const noexcept;
     [[nodiscard]] VolumePhaseEntry entry(

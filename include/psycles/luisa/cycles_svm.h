@@ -815,6 +815,12 @@ public:
   volume_draine_parameters(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] luisa::compute::Float3
   volume_fournier_forand_coefficients(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  // Only initialized phase-specific parameters are read. Unused lanes are
+  // not ShaderClosure::N and have no volume meaning.
+  [[nodiscard]] luisa::compute::Float3
+  volume_phase_parameters(luisa::compute::Expr<std::uint32_t> index) const noexcept;
+  // volume_shader_merge_closures: stable removal, without refunding left.
+  void merge_volume_closures() noexcept;
   [[nodiscard]] OrenNayarClosure
   oren_nayar(luisa::compute::Expr<std::uint32_t> index) const noexcept;
   [[nodiscard]] SheenClosure

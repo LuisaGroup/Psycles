@@ -4,7 +4,7 @@
 #include <psycles/luisa/path_tracer.h>
 
 #include "../src/luisa/path_tracer_internal.h"
-#include "../src/luisa/path_tracer_volume_capabilities.h"
+#include "../src/luisa/path_tracer_volume_majorant_scene.h"
 
 #include <array>
 #include <cmath>
@@ -895,49 +895,19 @@ int main(int argc, char **argv) {
             heterogeneous_compilation
                 .scene.get());
     if (heterogeneous_scene == nullptr ||
-        heterogeneous_scene->data()
-                ->volume_majorant_root_count !=
-            1u ||
-        heterogeneous_scene->data()
-                ->volume_majorant_node_count ==
-            0u ||
-        heterogeneous_scene->data()
-                ->volume_majorant_range_count !=
-            2u) {
-        std::cerr
-            << "spatial Volume graph did not retain its "
-               "adaptive production majorant hierarchy\n";
+        !heterogeneous_scene->data()->volume_majorant_plan ||
+        heterogeneous_scene->data()->volume_majorant_plan->roots.size() != 1u ||
+        !heterogeneous_scene->data()->volume_majorant_plan->roots.front().heterogeneous ||
+        heterogeneous_scene->data()->volume_majorant_plan->ranges.size() != 2u) {
+        std::cerr << "spatial Volume graph lost its native majorant plan\n";
         return EXIT_FAILURE;
     }
-    const auto heterogeneous_tag =
-        heterogeneous_scene->data()
-            ->material_bindings
-            .at(MaterialId{1u})
-            .surface_tag;
-    std::vector<std::uint32_t>
-        heterogeneous_flags(
-            heterogeneous_scene->data()
-                ->volume_surface_flag_count);
-    auto heterogeneous_stream =
-        heterogeneous_scene->data()
-            ->device.create_stream();
-    heterogeneous_stream
-        << heterogeneous_scene->data()
-               ->volume_surface_flag_buffer
-               .copy_to(
-                   luisa::span{
-                       heterogeneous_flags})
-        << luisa::compute::synchronize();
-    if (heterogeneous_tag >=
-            heterogeneous_flags.size() ||
-        (heterogeneous_flags[
-             heterogeneous_tag] &
-         psycles::luisa_backend::detail::
-             volume_surface_flag_heterogeneous) ==
-            0u) {
-        std::cerr
-            << "spatial Volume graph lost its "
-               "heterogeneous runtime dispatch flag\n";
+    const auto native_shader = heterogeneous_scene->data()->material_bindings
+        .at(MaterialId{1u}).cycles_shader_index;
+    const auto &kernel_shaders = heterogeneous_scene->data()->cycles_svm->compilation.kernel_shaders;
+    if (native_shader >= kernel_shaders.size() ||
+        (kernel_shaders[native_shader].flags & psycles::compiler::cycles_svm::SD_HETEROGENEOUS_VOLUME) == 0) {
+        std::cerr << "spatial Volume graph lost its native heterogeneous shader flag\n";
         return EXIT_FAILURE;
     }
     auto compilation =
@@ -954,23 +924,12 @@ int main(int argc, char **argv) {
             const psycles::luisa_backend::detail::
                 LuisaCompiledScene *>(
             compilation.scene.get());
-    if (compiled_scene == nullptr ||
-        compiled_scene->data()
-                ->volume_majorant_root_count !=
-            1u ||
-        compiled_scene->data()
-                ->volume_majorant_node_count !=
-            1u ||
-        compiled_scene->data()
-                ->volume_majorant_range_count !=
-            2u ||
-        compiled_scene->data()
-                ->volume_majorant_world_range !=
-            1u) {
-        std::cerr
-            << "production scene compilation did not "
-               "retain homogeneous Cycles majorant "
-               "resources\n";
+    if (compiled_scene == nullptr || !compiled_scene->data()->volume_majorant_plan ||
+        compiled_scene->data()->volume_majorant_plan->roots.size() != 1u ||
+        compiled_scene->data()->volume_majorant_plan->roots.front().heterogeneous ||
+        compiled_scene->data()->volume_majorant_plan->ranges.size() != 2u ||
+        compiled_scene->data()->volume_majorant_plan->world_range != 1u) {
+        std::cerr << "production scene did not retain its native homogeneous majorant plan\n";
         return EXIT_FAILURE;
     }
 

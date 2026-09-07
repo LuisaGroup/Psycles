@@ -29,6 +29,24 @@ using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
 
+// This transport fixture retains its original authored DSL input. Production
+// volume entry/state semantics are covered by the native Cycles GPU oracle.
+class FixtureVolumeShader final : public VolumeShaderEvaluator {
+    const StackedVolumeEvaluator &_evaluator;
+    const ShaderServices &_services;
+    const VolumeShadingState &_base;
+public:
+    FixtureVolumeShader(const StackedVolumeEvaluator &evaluator,
+                        const ShaderServices &services, const VolumeShadingState &state)
+        : _evaluator{evaluator}, _services{services}, _base{state} {}
+    VolumeCoefficients evaluate(const VolumeStack &stack, Float3 position,
+                                VolumePhaseSet *phases) const noexcept override {
+        auto state = _base;
+        state.position = position;
+        return _evaluator.evaluate(stack, _services, state, true, phases);
+    }
+};
+
 inline constexpr std::size_t record_count = 30u;
 
 void require(bool condition, const char *message) {
@@ -611,10 +629,7 @@ int main(int argc, char **argv) {
     StackedVolumeEvaluator evaluator{
         surfaces, *point_provider};
     auto segment =
-        make_homogeneous_volume_segment_component(
-            surfaces,
-            point_provider,
-            64u);
+        make_homogeneous_volume_segment_component(64u);
     auto heterogeneous_segment =
         make_heterogeneous_volume_segment_component(
             64u);
@@ -869,11 +884,13 @@ int main(int argc, char **argv) {
                             .has_emission),
                     cast<float>(empty.count())));
 
+            const FixtureVolumeShader volume_shader{evaluator, services, state};
             const auto collision =
                 segment->emit(
+                    volume_shader,
                     single,
-                    services,
-                    state,
+                    state.position,
+                    state.incoming,
                     0.5f,
                     make_float3(1.0f),
                     0.2f,
@@ -960,9 +977,10 @@ int main(int argc, char **argv) {
                     &deferred_receiving};
             const auto direct_checkpoint =
                 segment->emit(
+                    volume_shader,
                     single,
-                    services,
-                    state,
+                    state.position,
+                    state.incoming,
                     0.5f,
                     make_float3(1.0f),
                     0.2f,
@@ -1014,9 +1032,10 @@ int main(int argc, char **argv) {
 
             const auto empty_segment =
                 segment->emit(
+                    volume_shader,
                     empty,
-                    services,
-                    state,
+                    state.position,
+                    state.incoming,
                     0.5f,
                     make_float3(1.0f),
                     0.2f,
@@ -1062,11 +1081,8 @@ int main(int argc, char **argv) {
                     tracking_offset};
             auto raw_collisions =
                 make_stacked_heterogeneous_volume_collision_provider(
-                    surfaces,
-                    point_provider,
+                    volume_shader,
                     single,
-                    services,
-                    state,
                     state.position,
                     -state.incoming);
             const auto heterogeneous =
@@ -1204,6 +1220,11 @@ int main(int argc, char **argv) {
     // scales have been evaluated. The final record pins Cycles'
     // shadow-invisible-volume rule: the object remains in the two-entry stack
     // while only its raw closure evaluation is suppressed.
+    // Only the type encoding changed: use Cycles ClosureType directly rather
+    // than the former private HG=0 enumeration. Floating oracle values below
+    // are untouched.
+    constexpr auto hg = static_cast<float>(
+        psycles::compiler::cycles_svm::CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID);
     constexpr std::array expected{
         luisa::float4{
             1.35f, 1.95f, 2.7f, 1.0f},
@@ -1212,7 +1233,7 @@ int main(int argc, char **argv) {
         luisa::float4{
             0.1f, 0.2f, 0.3f, 1.0f},
         luisa::float4{
-            2.0f, 1.0f, 0.0f, 0.0f},
+            2.0f, 1.0f, hg, hg},
         luisa::float4{
             0.2f, 0.4f, 0.6f, 0.4f},
         luisa::float4{
@@ -1226,7 +1247,7 @@ int main(int argc, char **argv) {
         luisa::float4{
             0.3f, 0.6f, 0.9f, 1.0f},
         luisa::float4{
-            1.0f, 2.0f, 0.0f, 0.42f},
+            1.0f, 2.0f, hg, 0.42f},
         luisa::float4{
             1.45f, 2.15f, 3.3f, 2.3f},
         luisa::float4{
@@ -1260,7 +1281,8 @@ int main(int argc, char **argv) {
             -0.419815481f,
             0.044300843f},
         luisa::float4{
-            0.58f, 0.17f, 1.0f, 0.0f},
+            0.58f, 0.17f, 1.0f,
+            static_cast<float>(psycles::compiler::cycles_svm::CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID)},
         luisa::float4{
             0.407461792f,
             0.0f,
@@ -1292,7 +1314,8 @@ int main(int argc, char **argv) {
             -0.419815481f,
             0.044300843f},
         luisa::float4{
-            0.58f, 0.17f, 1.0f, 0.0f},
+            0.58f, 0.17f, 1.0f,
+            static_cast<float>(psycles::compiler::cycles_svm::CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID)},
         luisa::float4{
             2.0f, 1.0f, 1.0f, 1.0f},
         luisa::float4{

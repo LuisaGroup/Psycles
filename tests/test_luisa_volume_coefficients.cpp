@@ -850,6 +850,11 @@ int main(int argc, char **argv) {
     // Generated from official Cycles main b82c3f0. The graph must preserve
     // four raw closures in source order: Draine, fitted-Mie HG, fitted-Mie
     // Draine, and Principled HG. No closure is pre-baked by Blender/Cycles.
+    // Preserve the oracle's closure identity using the native ClosureType ABI;
+    // only the former private enumeration is translated, never float values.
+    constexpr auto hg = static_cast<float>(psycles::compiler::cycles_svm::CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID);
+    constexpr auto draine = static_cast<float>(psycles::compiler::cycles_svm::CLOSURE_VOLUME_DRAINE_ID);
+    constexpr auto rayleigh = static_cast<float>(psycles::compiler::cycles_svm::CLOSURE_VOLUME_RAYLEIGH_ID);
     constexpr std::array phase_expected{
         luisa::float4{
             4.0f,
@@ -874,19 +879,19 @@ int main(int argc, char **argv) {
             0.4f,
             0.283333331f},
         luisa::float4{
-            0.0f, 0.5f, 0.0f, 2.0f},
+            0.0f, 0.5f, 0.0f, draine},
         luisa::float4{
             0.994610012f,
             0.0f,
             0.0f,
-            0.0f},
+            hg},
         luisa::float4{
             0.59379518f,
             27.1138496f,
             0.0f,
-            2.0f},
+            draine},
         luisa::float4{
-            0.0f, 0.0f, 0.0f, 0.0f},
+            0.0f, 0.0f, 0.0f, hg},
         luisa::float4{
             1.0f, 1.0f, 1.0f, 0.0f},
         luisa::float4{
@@ -898,7 +903,7 @@ int main(int argc, char **argv) {
             0.00538998842f,
             0.0227289386f,
             1.0f,
-            0.0f},
+            hg},
         luisa::float4{
             -0.484209776f,
             -0.0472326875f,
@@ -908,7 +913,7 @@ int main(int argc, char **argv) {
             1.0f,
             0.948791504f,
             3.0f,
-            0.0f},
+            hg},
         luisa::float4{
             -0.543359995f,
             -0.777569592f,
@@ -918,7 +923,7 @@ int main(int argc, char **argv) {
             1.0f,
             0.685185194f,
             0.0f,
-            2.0f}};
+            draine}};
     for (auto index = std::size_t{0u};
          index < phase_expected.size();
          ++index) {
@@ -949,15 +954,15 @@ int main(int argc, char **argv) {
         luisa::float4{
             0.9f, 0.3f, 0.0f, 0.4f},
         luisa::float4{
-            0.0f, 2.0f, 3.0f, 0.2f},
+            hg, draine, rayleigh, 0.2f},
         luisa::float4{
             10.0f, 8.0f, 0.35f, 0.0f},
         luisa::float4{
-            2.0f, 0.0f, 2.0f, 0.0f},
+            2.0f, hg, draine, 0.0f},
         luisa::float4{
             0.0f, 0.0f, 0.0f, 0.0f},
         luisa::float4{
-            0.0f, 0.0f, 0.0f, 0.0f}};
+            0.0f, 0.0f, 0.0f, hg}};
     for (auto index = std::size_t{0u};
          index < set_expected.size();
          ++index) {
@@ -991,7 +996,7 @@ int main(int argc, char **argv) {
     }
     if (!approximately_equal(
             actual[37u],
-            luisa::float4{2.0f, 3.0f, 2.0f, 0.0f})) {
+            luisa::float4{2.0f, 3.0f, draine, 0.0f})) {
         std::cerr
             << "volume phase allocation budget was refunded by merge on "
             << backend << ": got {" << actual[37u].x

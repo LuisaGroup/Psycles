@@ -1,9 +1,8 @@
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/compiler/shader_program.h>
-#include <psycles/compiler/surface_program.h>
 #include <psycles/contract/scene.h>
 #include <psycles/luisa/cycles_sampler.h>
-#include <psycles/luisa/graph_surface.h>
+#include "cycles_svm_volume_scene_fixture.h"
 #include <psycles/luisa/volume_majorant_prepass.h>
 
 #include <array>
@@ -26,6 +25,8 @@ using namespace psycles;
 using namespace psycles::compiler;
 using namespace psycles::contract;
 using namespace psycles::luisa_backend;
+using namespace psycles::luisa_backend::detail;
+namespace abi = psycles::compiler::cycles_svm;
 
 void expect(
     bool condition,
@@ -97,201 +98,6 @@ make_spatial_volume_graph() {
     return graph;
 }
 
-[[nodiscard]] std::vector<luisa::float4>
-parameter_data(const SurfaceProgram &program) {
-    std::vector<luisa::float4> result;
-    result.reserve(program.parameters().size());
-    for (const auto &parameter :
-         program.parameters()) {
-        const auto &value =
-            parameter.default_value;
-        if (const auto *scalar =
-                std::get_if<float>(
-                    &value.value)) {
-            result.emplace_back(
-                *scalar,
-                0.0f,
-                0.0f,
-                0.0f);
-        } else if (
-            const auto *vector =
-                std::get_if<Vec3f>(
-                    &value.value)) {
-            result.emplace_back(
-                vector->x,
-                vector->y,
-                vector->z,
-                0.0f);
-        } else {
-            throw std::runtime_error{
-                "volume-majorant fixture has an unsupported parameter type"};
-        }
-    }
-    if (result.empty()) {
-        result.emplace_back(
-            0.0f, 0.0f, 0.0f, 0.0f);
-    }
-    return result;
-}
-
-class FixtureShaderServices final
-    : public ShaderServices {
-
-  private:
-    const BufferFloat4 &_parameters;
-
-  public:
-    explicit FixtureShaderServices(
-        const BufferFloat4 &parameters) noexcept
-        : _parameters{parameters} {}
-
-    [[nodiscard]] Float4 texture_2d(
-        Expr<std::uint32_t>,
-        Expr<luisa::float2>,
-        Expr<luisa::float2>,
-        Expr<luisa::float2>,
-        std::uint32_t,
-        std::uint32_t) const noexcept override {
-        return make_float4(0.0f);
-    }
-
-    [[nodiscard]] ShaderAttribute attribute(
-        Expr<luisa::ulong>,
-        const SurfacePoint &) const noexcept override {
-        return ShaderAttribute::missing();
-    }
-
-    [[nodiscard]] Float parameter_float(
-        Expr<std::uint32_t> block,
-        Expr<std::uint32_t> slot)
-        const noexcept override {
-        return _parameters
-            .read(block + slot)
-            .x;
-    }
-
-    [[nodiscard]] Float3 parameter_float3(
-        Expr<std::uint32_t> block,
-        Expr<std::uint32_t> slot)
-        const noexcept override {
-        return _parameters
-            .read(block + slot)
-            .xyz();
-    }
-
-    [[nodiscard]] ULong
-    parameter_uint64(
-        Expr<std::uint32_t> block,
-        Expr<std::uint32_t> slot)
-        const noexcept override {
-        return _parameters.read(block + slot)
-            .xy()
-            .bitcast<luisa::ulong>();
-    }
-
-    [[nodiscard]] Float cycles_bsdf_data(
-        Expr<std::uint32_t>)
-        const noexcept override {
-        return 1.0f;
-    }
-
-    [[nodiscard]] Float3 xyz_to_rgb(
-        Expr<luisa::float3> value)
-        const noexcept override {
-        return Float3{value};
-    }
-
-    [[nodiscard]] Float3 rec709_to_rgb(
-        Expr<luisa::float3> value)
-        const noexcept override {
-        return Float3{value};
-    }
-
-    [[nodiscard]] Float3 nishita_sky(Expr<std::uint32_t>, Expr<std::uint32_t>,
-                                     Expr<luisa::float3>, Expr<float>,
-                                     Expr<float>, Expr<float>,
-                                     Expr<float>) const noexcept override {
-      return make_float3(0.0f);
-    }
-};
-
-class FixturePointProvider final
-    : public VolumeStackEntryPointProvider {
-
-  public:
-    VolumeStackEntryShading emit(
-        const VolumeStackEntry &entry,
-        const VolumeShadingState &state)
-        const noexcept override {
-        const auto state_valid =
-            all(
-                state.incoming ==
-                make_float3(0.0f)) &
-            (state.ray_visibility ==
-             visibility_bit(
-                 RayVisibility::camera)) &
-            (state.ray_events == 0u) &
-            (state.ray_depth == 0u) &
-            (state.diffuse_depth == 0u) &
-            (state.glossy_depth == 0u) &
-            (state.transparent_depth == 0u) &
-            (state.transmission_depth == 0u) &
-            (state.ray_length == 0.0f) &
-            (state.time == 0.5f);
-        const auto object_position =
-            state.position -
-            make_float3(
-                2.0f, -3.0f, 5.0f);
-        const auto generated =
-            select(
-                object_position,
-                make_float3(100.0f),
-                !state_valid);
-
-        SurfacePoint point{};
-        point.position = state.position;
-        point.object_position =
-            object_position;
-        point.generated = generated;
-        point.geometric_normal =
-            state.incoming;
-        point.shading_normal =
-            state.incoming;
-        point.object_shading_normal =
-            state.incoming;
-        point.incoming = state.incoming;
-        point.geometry_index =
-            invalid_volume_identity;
-        point.instance_id =
-            entry.instance_id;
-        point.primitive_id =
-            invalid_volume_identity;
-        point.parameter_block =
-            entry.parameter_block;
-        point.ray_visibility =
-            state.ray_visibility;
-        point.ray_events =
-            state.ray_events;
-        point.ray_depth =
-            state.ray_depth;
-        point.diffuse_depth =
-            state.diffuse_depth;
-        point.glossy_depth =
-            state.glossy_depth;
-        point.transparent_depth =
-            state.transparent_depth;
-        point.transmission_depth =
-            state.transmission_depth;
-        point.ray_length =
-            state.ray_length;
-        point.time = state.time;
-        return {
-            .point = std::move(point),
-            // Cycles divides this factor back out of the baked extrema.
-            .object_density = 2.0f};
-    }
-};
-
 [[nodiscard]] bool approximately_equal(
     float actual,
     float expected,
@@ -318,42 +124,29 @@ void run_fixture(
     expect(
         shader.ok(),
         "failed to compile raw spatial volume graph");
-    const auto lowered =
-        compile_surface_program(*shader.program);
-    expect(
-        lowered.ok(),
-        "failed to lower raw spatial volume graph");
-
-    SurfaceDispatch surfaces;
-    const auto surface_tag =
-        surfaces.create<GraphSurface>(
-            lowered.program);
-    expect(
-        surfaces
-            .capabilities(surface_tag)
-            .may_have_volume,
-        "raw volume capability was lost");
-
     Context context{program};
     auto device =
         context.create_device(backend);
     auto stream = device.create_stream();
-    const auto host_parameters =
-        parameter_data(*lowered.program);
-    auto parameters =
-        device.create_buffer<luisa::float4>(
-            host_parameters.size());
+    auto scene = std::make_shared<LuisaSceneData>();
+    scene->device = Device{device.impl_shared()};
+    const std::array units{abi::ShaderTableCompileUnit{.shader_index = 23u, .shader = shader.program.get()}};
+    std::vector<abi::KernelObject> objects(18u);
+    objects[17].volume_density = 2.0f;
+    objects[17].visibility = abi::PATH_RAY_VISIBILITY_ALL;
+    objects[17].tfm = {{1, 0, 0, 2}, {0, 1, 0, -3}, {0, 0, 1, 5}};
+    objects[17].itfm = {{1, 0, 0, -2}, {0, 1, 0, 3}, {0, 0, 1, -5}};
+    test_support::initialize_volume_fixture(scene, stream, abi::compile_shader_table(units),
+                                            objects, std::vector<unsigned>(18u));
+    test_support::volume_generated_fixture(scene, stream,
+        {{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}}});
     auto samples =
         device.create_buffer<luisa::float4>(9u);
     auto extrema =
         device.create_buffer<luisa::float2>(3u);
 
-    FixturePointProvider points;
-    VolumeMajorantPrepass prepass{
-        surfaces, points};
     Kernel1D evaluate =
-        [&](BufferFloat4 parameter_buffer,
-            BufferFloat4 sample_output,
+        [&](BufferFloat4 sample_output,
             BufferVar<luisa::float2>
                 extrema_output) noexcept {
             constexpr std::array<
@@ -399,13 +192,13 @@ void run_fixture(
             $if(index <
                 static_cast<std::uint32_t>(
                     cells.size())) {
-                FixtureShaderServices services{
-                    parameter_buffer};
+                Var<RenderKernelParameters> parameters;
+                parameters.camera_transform = parameters.camera_inverse_transform = make_float4x4(1.0f);
                 const VolumeStackEntry entry{
                     .object = 17u,
                     .shader = 23u,
                     .surface_tag =
-                        surface_tag,
+                        0u,
                     .parameter_block = 0u,
                     .instance_id = 5u,
                     .sample_method =
@@ -441,11 +234,8 @@ void run_fixture(
                     .resolution =
                         volume_majorant_grid_resolution};
                 const auto value =
-                    prepass.evaluate_cell(
-                        entry,
-                        services,
-                        grid,
-                        cell_table.read(index));
+                    evaluate_cycles_svm_volume_density_cell(
+                        scene, parameters, entry, grid, cell_table.read(index));
                 extrema_output.write(
                     index,
                     make_float2(
@@ -464,10 +254,7 @@ void run_fixture(
     std::array<luisa::float2, 3u>
         actual_extrema{};
     stream
-        << parameters.copy_from(
-               luisa::span{host_parameters})
         << kernel(
-               parameters,
                samples,
                extrema)
                .dispatch(9u)

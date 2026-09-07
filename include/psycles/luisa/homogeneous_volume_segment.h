@@ -8,7 +8,7 @@
 #include <memory>
 
 #include <psycles/luisa/homogeneous_volume_transport.h>
-#include <psycles/luisa/stacked_volume.h>
+#include <psycles/luisa/volume_shader.h>
 #include <psycles/luisa/volume_scatter_probability.h>
 
 namespace psycles::luisa_backend {
@@ -41,9 +41,10 @@ class HomogeneousVolumeSegmentComponent {
     virtual ~HomogeneousVolumeSegmentComponent() noexcept = default;
 
     [[nodiscard]] virtual HomogeneousVolumeSegmentResult
-    emit(const VolumeStack &stack,
-         const ShaderServices &services,
-         const VolumeShadingState &state,
+    emit(const VolumeShaderEvaluator &shader,
+         const VolumeStack &stack,
+         Float3 position,
+         Float3 incoming,
          Float distance,
          Float3 throughput,
          Float scatter_random,
@@ -58,9 +59,7 @@ class HomogeneousVolumeSegmentComponent {
 
 [[nodiscard]] std::unique_ptr<HomogeneousVolumeSegmentComponent>
 make_homogeneous_volume_segment_component(
-    const SurfaceDispatch &surfaces,
-    std::shared_ptr<const VolumeStackEntryPointProvider> points,
-    std::size_t closure_allocation_budget);
+    std::size_t phase_capacity = 8u);
 
 }// namespace psycles::luisa_backend
 

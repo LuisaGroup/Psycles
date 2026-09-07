@@ -12,6 +12,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_camera.cpp
     src/luisa/cycles_svm_closure.cpp
     src/luisa/cycles_svm_volume.cpp
+    src/luisa/cycles_svm_volume_state.cpp
     src/luisa/cycles_svm_microfacet.cpp
     src/luisa/cycles_svm_microfacet_fresnel.cpp
     src/luisa/cycles_svm_microfacet_scattering.cpp
@@ -152,13 +153,13 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/stacked_volume.cpp
     src/luisa/volume_majorant_hierarchy.cpp
     src/luisa/volume_majorant_overlap.cpp
-    src/luisa/volume_majorant_prepass.cpp
     src/luisa/volume_majorant_traversal.cpp
     src/luisa/volume_phase_set.cpp
     src/luisa/volume_shadow_interval.cpp
     src/luisa/volume_stack.cpp)
 
 set(PSYCLES_LUISA_RUNTIME_SOURCES
+    src/luisa/volume_majorant_prepass.cpp
     src/adapter/blender_graph_lower_closures.cpp
     src/adapter/blender_graph_lower_inputs.cpp
     src/adapter/blender_graph_lower_procedural.cpp
@@ -227,7 +228,6 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_volume_environment_light.cpp
     src/luisa/path_kernel_volume_majorant_provider.cpp
     src/luisa/path_kernel_volume_mesh_light.cpp
-    src/luisa/path_kernel_volume_point.cpp
     src/luisa/path_kernel_volume_random.cpp
     src/luisa/path_kernel_volume_segment.cpp
     src/luisa/path_kernel_volume_shadow.cpp
@@ -247,6 +247,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_tracer_cycles_svm_light.cpp
     src/luisa/path_tracer_cycles_svm_emission.cpp
     src/luisa/path_tracer_cycles_svm_background.cpp
+    src/luisa/path_tracer_cycles_svm_volume.cpp
     src/luisa/path_tracer_cycles_svm_shader_data.cpp
     src/luisa/path_tracer_cycles_svm_shadow.cpp
     src/luisa/path_tracer_cycles_svm_scene.cpp

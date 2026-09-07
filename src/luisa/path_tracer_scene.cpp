@@ -20,7 +20,6 @@
 #include "path_tracer_surfaces.h"
 #include "path_tracer_surface_values.h"
 #include "path_tracer_tangent_space.h"
-#include "path_tracer_volume_capabilities.h"
 #include "path_tracer_volume_majorant_scene.h"
 #include "shader_table_data.h"
 
@@ -196,8 +195,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                 instance.geometry, instance.transform);
         }
     }
-    const VolumeProgramCapabilityComponent
-        volume_capabilities;
     data->volume_metadata
         .closure_allocation_budget =
         data->native_cycles_svm_surface
@@ -207,8 +204,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     luisa::vector<float> scalar_parameters;
     luisa::vector<luisa::float3> vector_parameters;
     std::vector<PendingShaderTable> shader_tables;
-    std::vector<std::uint32_t>
-        volume_surface_flags;
     std::map<std::uint64_t, std::uint32_t>
         surface_tags_by_signature;
     std::map<std::uint64_t, compiler::SurfaceClosurePlan>
@@ -260,13 +255,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         const auto capabilities =
             data->surfaces.capabilities(
                 surface_iter->second);
-        if (capabilities.may_have_volume) {
-            volume_capabilities
-                .merge_surface_flags(
-                    volume_surface_flags,
-                    surface_iter->second,
-                    *material.surface_program());
-        }
         const auto identity =
             static_cast<std::uint32_t>(data->material_bindings.size());
         if (data->native_cycles_svm_surface) {
@@ -506,16 +494,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->vector_parameter_buffer =
         data->device.create_buffer<luisa::float3>(
             vector_parameters.size());
-    data->volume_surface_flag_count =
-        static_cast<std::uint32_t>(
-            volume_surface_flags.size());
-    if (volume_surface_flags.empty()) {
-        volume_surface_flags.emplace_back(0u);
-    }
-    data->volume_surface_flag_buffer =
-        data->device.create_buffer<luisa::uint>(
-            volume_surface_flags.size());
-
     auto cycles_bsdf_values = make_cycles_bsdf_table_values(snapshot.shader_color_space);
     data->cycles_bsdf_table_buffer =
         data->device.create_buffer<float>(
@@ -598,9 +576,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
            << data->vector_parameter_buffer.copy_from(
                   luisa::span{vector_parameters})
            << data->cycles_bsdf_table_buffer.copy_from(
-                  luisa::span{cycles_bsdf_values})
-           << data->volume_surface_flag_buffer.copy_from(
-                  luisa::span{volume_surface_flags});
+                  luisa::span{cycles_bsdf_values});
     ambient_occlusion_scene.upload_distance(
         stream, data, snapshot.ambient_occlusion_distance);
     if (data->surface_values) {
@@ -1915,12 +1891,13 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     }
 
     const auto majorants =
-        VolumeMajorantSceneComponent{}.build(
-            data, stream, snapshot);
+        VolumeMajorantSceneComponent{}.plan(data, snapshot);
     if (!majorants.ok()) {
         diagnose(result.diagnostics, majorants.diagnostic);
         return result;
     }
+    data->volume_majorant_plan =
+        std::make_shared<VolumeMajorantScenePlan>(majorants);
 
     configure_background_sampling(
         *data,
