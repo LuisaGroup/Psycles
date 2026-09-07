@@ -1,7 +1,7 @@
 # Canonical scene benchmark
 
-Every full-scene performance and quality checkpoint uses one fixed
-five-renderer matrix:
+The default full-scene performance and quality matrix has five entries;
+focused HIP campaigns explicitly select only the two HIP renderers:
 
 | Implementation | Device path |
 |---|---|
@@ -28,7 +28,7 @@ On the validated AMD workstation:
 ```bash
 TMPDIR=/var/tmp/psycles-compiler-tmp \
 python3 tools/run_scene_benchmark.py \
-  --blender /home/mike/Projects/blender-install-4fe17ef6/blender \
+  --blender /home/mike/Projects/blender-install-5.2-hiprt/blender \
   --psycles-render build/bin/psycles_render_blender_scene \
   --blend /home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend \
   --output-dir /var/tmp/psycles-lone-monk-five-way \
@@ -70,8 +70,9 @@ An interrupted or failed matrix can be continued with `--resume`. The runner
 first requires the manifest schema, renderer matrix, render settings, source
 scene path and hash, and bundle path to match. A completed render is reused
 only when its exact command, successful return code, output path, SHA-256, and
-required timing metadata remain valid. Cycles metadata is parsed again and,
-when available, its own hash is checked. Missing, modified, or incomplete
+required timing metadata remain valid. Cycles metadata and the original log
+are hashed and parsed again: both the main-loop interval and the enclosing
+render-call interval must match the record. Missing, modified, or incomplete
 outputs are rerun; a changed `--reuse-export` bundle is rejected because its
 relationship to the recorded renders can no longer be proven. Comparisons are
 cheap relative to full rendering and are regenerated from the validated final
@@ -88,13 +89,14 @@ the identical command and append:
 ## Recorded outputs
 
 `benchmark.json` is updated after every completed stage and has
-`psycles.scene-benchmark.v1` schema. It records:
+`psycles.scene-benchmark.v2` schema. It records:
 
 - the exact selected matrix and execution order;
 - source and exported-scene SHA-256 hashes;
 - resolution, samples, and maximum samples per Luisa dispatch;
-- every command, log, process wall time, EXR path, and EXR hash;
-- Cycles' selected device inventory and render-call time;
+- every command, log and its SHA-256, process wall time, EXR path, and EXR hash;
+- Cycles' selected device inventory, main-loop wall time (`render_seconds`),
+  and enclosing Python render-call time (`render_call_seconds`);
 - Psycles scene compilation, shader JIT, render-only, and process wall times;
 - render-only speedup and slowdown ratios against the selected Cycles GPU and,
   when enabled, Cycles CPU;
@@ -107,8 +109,18 @@ device path, for example `Cycles HIP` and `Psycles fallback`, so a CPU result
 cannot be mistaken for a same-GPU comparison.
 
 Performance conclusions must state which timing boundary is used. The primary
-throughput number is the renderer-reported render interval; process wall time
-and Psycles compilation/JIT phases remain visible separately. Quality
+throughput comparison is **Cycles' original main-loop wall interval versus
+Psycles' render-only wall interval**. The runner enables `--debug-cycles` and
+requires exactly one `Rendering in main loop is done in ... seconds.` record;
+missing, ambiguous, or non-finite intervals fail the benchmark. This is not a
+sum of GPU kernel durations. Process wall time, Cycles' enclosing render call,
+and Psycles compilation/JIT phases remain visible separately.
+
+The v1 runner incorrectly used Cycles' whole Python render-call time as
+`render_seconds`, including scene synchronization/setup. Its ratios are not
+valid render-only comparisons and must not be mixed with v2 results. Old
+manifests cannot be resumed as v2; retain them as historical artifacts and
+run a new campaign. Quality
 conclusions use numeric pass metrics and original-resolution visual
 inspection. A benchmark is incomplete if any selected renderer fails or
 Cycles silently selects a different device than the explicit name filter.

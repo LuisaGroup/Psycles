@@ -303,6 +303,45 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                 "Rendered 640x480 at 64 spp in 40.75 s: image.ppm\n"
             )
 
+    def test_cycles_command_enables_original_main_loop_timer(self) -> None:
+        command = self.runner._cycles_command(
+            pathlib.Path("/blender"), pathlib.Path("/scene.blend"),
+            pathlib.Path("/golden.py"), pathlib.Path("/cycles.exr"),
+            width=2048, height=858, samples=256,
+            device="HIP", device_name="9070 XT",
+        )
+        self.assertIn("--debug-cycles", command)
+
+    def test_cycles_main_loop_is_distinct_from_render_call(self) -> None:
+        result = self.runner._parse_cycles_timings(
+            "00:39.922 cycles | Rendering in main loop is done in 28.7062 seconds.\n",
+            {"elapsed_seconds": 39.273},
+        )
+        self.assertEqual(result, {
+            "render_seconds": 28.7062,
+            "render_call_seconds": 39.273,
+            "timing_scope": "cycles_main_loop_wall",
+        })
+
+    def test_cycles_main_loop_parser_fails_closed(self) -> None:
+        line = "Rendering in main loop is done in 2.5 seconds.\n"
+        for output, metadata in (
+            ("Render time (without synchronization): 2.5\n", {"elapsed_seconds": 3.0}),
+            (line + line, {"elapsed_seconds": 6.0}),
+            (line, {"elapsed_seconds": 1.0}),
+            (line, {"elapsed_seconds": float("nan")}),
+            (line, {"elapsed_seconds": float("inf")}),
+            (line, {"elapsed_seconds": True}),
+            (line, {"elapsed_seconds": "3.0"}),
+            (line, {}),
+            (line.replace("2.5", "-2.5"), {"elapsed_seconds": 3.0}),
+            (line.replace("2.5", "nan"), {"elapsed_seconds": 3.0}),
+            (line.replace("2.5", "inf"), {"elapsed_seconds": 3.0}),
+        ):
+            with self.subTest(output=output, metadata=metadata):
+                with self.assertRaises(RuntimeError):
+                    self.runner._parse_cycles_timings(output, metadata)
+
     def test_relative_performance_uses_render_only_times(self) -> None:
         manifest = {
             "renderers": {
@@ -362,7 +401,7 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
 
     def test_resume_requires_identical_render_configuration(self) -> None:
         expected = {
-            "schema": "psycles.scene-benchmark.v1",
+            "schema": "psycles.scene-benchmark.v2",
             "matrix": {
                 "cycles": ["cpu", "hip"],
                 "psycles": ["fallback", "hip", "vk"],
@@ -379,6 +418,11 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
         self.runner._validate_resume_configuration(previous, expected)
 
         changed = json.loads(json.dumps(previous))
+        changed["schema"] = "psycles.scene-benchmark.v1"
+        with self.assertRaisesRegex(RuntimeError, "different manifest schema"):
+            self.runner._validate_resume_configuration(changed, expected)
+
+        changed = json.loads(json.dumps(previous))
         changed["settings"]["width"] = 1920
         with self.assertRaisesRegex(RuntimeError, "different settings"):
             self.runner._validate_resume_configuration(changed, expected)
@@ -393,6 +437,9 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             root = pathlib.Path(directory)
             output = root / "cpu.exr"
             metadata = root / "cpu.json"
+            log = root / "cpu.log"
+            log_text = "Rendering in main loop is done in 2.0 seconds.\n"
+            log.write_text(log_text, encoding="utf-8")
             output.write_bytes(b"rendered pixels")
             metadata.write_text(
                 json.dumps({"elapsed_seconds": 3.5}),
@@ -404,6 +451,8 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                     "cycles_cpu": {
                         "command": command,
                         "returncode": 0,
+                        "log": str(log),
+                        "log_sha256": self.runner._sha256(log),
                     }
                 },
                 "renderers": {
@@ -415,7 +464,9 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                             "metadata_sha256": self.runner._sha256(
                                 metadata
                             ),
-                            "render_seconds": 3.5,
+                            "render_seconds": 2.0,
+                            "render_call_seconds": 3.5,
+                            "timing_scope": "cycles_main_loop_wall",
                         }
                     }
                 },
@@ -429,10 +480,27 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                     renderer_key="cpu",
                     expected_command=command,
                     expected_output=output,
-                    required_timings=("render_seconds",),
+                    required_timings=("render_seconds", "render_call_seconds"),
                     metadata_path=metadata,
                 )
 
+            self.assertTrue(can_resume())
+            timings = manifest["renderers"]["cycles"]["cpu"]
+            for name in ("timing_scope", "render_call_seconds", "metadata_sha256"):
+                value = timings.pop(name)
+                self.assertFalse(can_resume())
+                timings[name] = value
+            for value in (3.5, float("nan"), float("inf"), True):
+                timings["render_seconds"] = value
+                self.assertFalse(can_resume())
+            timings["render_seconds"] = 2.0
+            log.write_text(log_text.replace("2.0", "1.0"), encoding="utf-8")
+            self.assertFalse(can_resume())
+            # Even an updated log hash must not validate stale parsed timings.
+            manifest["commands"]["cycles_cpu"]["log_sha256"] = self.runner._sha256(log)
+            self.assertFalse(can_resume())
+            log.write_text(log_text, encoding="utf-8")
+            manifest["commands"]["cycles_cpu"]["log_sha256"] = self.runner._sha256(log)
             self.assertTrue(can_resume())
             output.write_bytes(b"tampered pixels")
             self.assertFalse(can_resume())

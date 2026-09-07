@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import pathlib
 import re
@@ -426,6 +427,7 @@ def _cycles_command(
         str(blender),
         str(blend),
         "--background",
+        "--debug-cycles",
         "--python-exit-code",
         "1",
         "--python",
@@ -601,6 +603,7 @@ def _run_logged(
     record = {
         "command": command,
         "log": str(log_path),
+        "log_sha256": _sha256(log_path),
         "returncode": returncode,
         "wall_seconds": wall_seconds,
         "output": "".join(output_parts),
@@ -631,6 +634,36 @@ def _parse_psycles_timings(output: str) -> dict[str, float]:
             )
         timings[name] = float(match.group(1))
     return timings
+
+
+def _parse_cycles_timings(
+    output: str, metadata: dict[str, Any],
+) -> dict[str, float | str]:
+    # elapsed_seconds surrounds bpy.ops.render(): it also includes scene
+    # synchronization and other setup, not just the integrator's main loop.
+    marker = "Rendering in main loop is done in "
+    matches = re.findall(re.escape(marker) + r"(\S+) seconds\.", output)
+    if output.count(marker) != 1 or len(matches) != 1:
+        raise RuntimeError("Cycles must report exactly one main-loop interval")
+    try:
+        render_seconds = float(matches[0])
+        elapsed = metadata["elapsed_seconds"]
+        if not isinstance(elapsed, (int, float)) or isinstance(elapsed, bool):
+            raise ValueError("invalid render-call interval")
+        render_call_seconds = float(elapsed)
+    except (KeyError, TypeError, ValueError) as exception:
+        raise RuntimeError("Cycles reported invalid timing metadata") from exception
+    if (
+        not math.isfinite(render_seconds)
+        or not math.isfinite(render_call_seconds)
+        or not 0.0 <= render_seconds <= render_call_seconds
+    ):
+        raise RuntimeError("Cycles reported inconsistent main-loop/render-call intervals")
+    return {
+        "render_seconds": render_seconds,
+        "render_call_seconds": render_call_seconds,
+        "timing_scope": "cycles_main_loop_wall",
+    }
 
 
 def _require_output(path: pathlib.Path) -> None:
@@ -734,7 +767,10 @@ def _can_resume_render(
     assert isinstance(record, dict)
     for timing in required_timings:
         value = record.get(timing)
-        if not isinstance(value, (int, float)) or value < 0.0:
+        if (
+            not isinstance(value, (int, float)) or isinstance(value, bool)
+            or not math.isfinite(value) or value < 0.0
+        ):
             return False
     if metadata_path is not None:
         recorded_metadata = record.get("metadata")
@@ -745,17 +781,19 @@ def _can_resume_render(
         if not metadata_path.is_file() or metadata_path.stat().st_size == 0:
             return False
         metadata_hash = record.get("metadata_sha256")
-        if metadata_hash is not None and (
-            not isinstance(metadata_hash, str)
-            or _sha256(metadata_path) != metadata_hash
-        ):
+        if not isinstance(metadata_hash, str) or _sha256(metadata_path) != metadata_hash:
             return False
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            elapsed_seconds = float(metadata["elapsed_seconds"])
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            log_path = pathlib.Path(command_record["log"])
+            if _sha256(log_path) != command_record.get("log_sha256"):
+                return False
+            timings = _parse_cycles_timings(
+                log_path.read_text(encoding="utf-8"), metadata,
+            )
+        except (KeyError, TypeError, ValueError, OSError, RuntimeError):
             return False
-        if elapsed_seconds != float(record["render_seconds"]):
+        if any(record.get(name) != value for name, value in timings.items()):
             return False
     return True
 
@@ -910,7 +948,7 @@ def _main() -> int:
     output_root.mkdir(parents=True, exist_ok=True)
     manifest_path = output_root / "benchmark.json"
     fresh_manifest: dict[str, Any] = {
-        "schema": "psycles.scene-benchmark.v1",
+        "schema": "psycles.scene-benchmark.v2",
         "status": "running",
         "matrix": {
             "cycles": cycles_matrix,
@@ -937,6 +975,7 @@ def _main() -> int:
                 for name in (
                     "PSYCLES_COMPACT_SURFACE_VALUES",
                     "PSYCLES_POPULATE_SURFACE_ONCE",
+                    "PSYCLES_DISABLE_SHADER_CACHE",
                 )
             },
         },
@@ -1067,7 +1106,7 @@ def _main() -> int:
                 renderer_key=key,
                 expected_command=command,
                 expected_output=output,
-                required_timings=("render_seconds",),
+                required_timings=("render_seconds", "render_call_seconds"),
                 metadata_path=metadata_path,
             ):
                 manifest["resume"]["reused_stages"].append(stage)
@@ -1092,7 +1131,7 @@ def _main() -> int:
                 manifest["renderers"]["cycles"][key] = {
                     "output": str(output),
                     "sha256": _sha256(output),
-                    "render_seconds": metadata["elapsed_seconds"],
+                    **_parse_cycles_timings(record["output"], metadata),
                     "device": metadata["cycles_enabled_devices"],
                     "metadata": str(metadata_path),
                     "metadata_sha256": _sha256(metadata_path),
