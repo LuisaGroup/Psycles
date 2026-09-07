@@ -50,13 +50,14 @@ additional per-value specialization.
 `tests/test_luisa_cycles_svm_static_pruning.cpp` inspects the recorded AST,
 before XIR, LLVM, or SPIR-V optimization. It checks an empty usage set, every
 one-hot usage bit, and the all-enabled set against the implementation inventory.
-All 96 existing dispatch handlers obey the outer usage guard. Of the 110 enum
-entries, 12 still lack runtime handlers and two are non-executable placeholders
+All 99 existing dispatch handlers obey the outer usage guard, including the
+three handlers added by the [native volume port](../native-volume-svm/README.md).
+Of the 110 enum entries, nine still lack runtime handlers and two are non-executable placeholders
 (`NODE_NONE` and `NODE_PAD1`); these are explicit gaps, not pruning successes.
 
-The test additionally checks all 22 currently implemented whole-body feature
-guards, enabled and disabled in each of the three shader domains. Six use
-emission/bump/bump-state flags; all 16 derivative variants use the inverse
+The test additionally checks all 25 currently implemented whole-body feature
+guards, enabled and disabled in each of the three shader domains. Nine use
+emission/bump/bump-state/volume flags; all 16 derivative variants use the inverse
 volume flag. The derivative list comes from the Cycles node catalog, not from
 the implementation under test.
 

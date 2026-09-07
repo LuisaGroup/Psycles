@@ -183,27 +183,6 @@ hair_component(const GraphNode *node) noexcept {
 }
 
 [[nodiscard]] std::optional<ClosureType>
-volume_phase(const GraphNode *node) noexcept {
-  const auto phase = string_property(node, "Phase");
-  if (phase == "HENYEY_GREENSTEIN") {
-    return CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID;
-  }
-  if (phase == "FOURNIER_FORAND") {
-    return CLOSURE_VOLUME_FOURNIER_FORAND_ID;
-  }
-  if (phase == "DRAINE") {
-    return CLOSURE_VOLUME_DRAINE_ID;
-  }
-  if (phase == "RAYLEIGH") {
-    return CLOSURE_VOLUME_RAYLEIGH_ID;
-  }
-  if (phase == "MIE") {
-    return CLOSURE_VOLUME_MIE_ID;
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::optional<ClosureType>
 subsurface_method(const GraphNode *node,
                   std::string_view property_name) noexcept {
   const auto method = string_property(node, property_name);
@@ -655,115 +634,6 @@ public:
   }
 };
 
-class VolumeClosureNode : public GraphNode {
-protected:
-  void compile_volume(SVMCompiler &compiler, ClosureType closure,
-                      std::string_view density_name,
-                      std::string_view param1_name = {},
-                      std::string_view param2_name = {}) {
-    auto *color = input("Color");
-    if (color == nullptr) {
-      compiler.fail("Cycles Volume Color input is absent");
-      return;
-    }
-    if (color->link != nullptr) {
-      compiler.add_node(
-          this, NODE_CLOSURE_WEIGHT,
-          SVMNodeClosureWeight{.weight_offset =
-                                   compiler.input_link("Color"),
-                               ._pad = {0u, 0u, 0u}});
-    } else {
-      const auto value = literal<Vec3f>(color, contract::SocketType::color);
-      if (!value) {
-        compiler.fail("Cycles Volume Color input is ill typed");
-        return;
-      }
-      compiler.add_node(
-          this, NODE_CLOSURE_SET_WEIGHT,
-          SVMNodeClosureSetWeight{
-              .rgb = packed_float3{value->x, value->y, value->z}});
-    }
-    compiler.add_node(
-        this, NODE_CLOSURE_VOLUME,
-        SVMNodeClosureVolume{
-            .closure_type = closure,
-            .density = density_name.empty()
-                           ? SVMInputFloat{0u}
-                           : compiler.input_float(density_name),
-            .param1 = param1_name.empty()
-                          ? SVMInputFloat{0u}
-                          : compiler.input_float(param1_name),
-            .param_extra = param2_name.empty()
-                               ? SVMInputFloat{0u}
-                               : compiler.input_float(param2_name),
-            .mix_weight_offset = compiler.closure_mix_weight_offset(),
-            ._pad = {0u, 0u, 0u}});
-  }
-
-public:
-  [[nodiscard]] bool has_volume_support() const noexcept override {
-    return true;
-  }
-
-  [[nodiscard]] bool is_linear_operation() const noexcept override {
-    return true;
-  }
-
-  [[nodiscard]] std::uint32_t get_feature() const noexcept override {
-    return GraphNode::get_feature() | kernel_feature_node_volume;
-  }
-
-  [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
-    return NODE_CLOSURE_VOLUME;
-  }
-};
-
-class AbsorptionVolumeNode final : public VolumeClosureNode {
-public:
-  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
-    return CLOSURE_VOLUME_ABSORPTION_ID;
-  }
-
-  void compile(SVMCompiler &compiler) override {
-    compile_volume(compiler, CLOSURE_VOLUME_ABSORPTION_ID, "Density");
-  }
-};
-
-class ScatterVolumeNode final : public VolumeClosureNode {
-public:
-  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
-    return volume_phase(this).value_or(CLOSURE_NONE_ID);
-  }
-
-  void compile(SVMCompiler &compiler) override {
-    const auto phase = volume_phase(this);
-    if (!phase) {
-      compiler.fail("Cycles Scatter Volume phase is not migrated exactly");
-      return;
-    }
-    switch (*phase) {
-      case CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID:
-        compile_volume(compiler, *phase, "Density", "Anisotropy");
-        break;
-      case CLOSURE_VOLUME_FOURNIER_FORAND_ID:
-        compile_volume(compiler, *phase, "Density", "IOR", "Backscatter");
-        break;
-      case CLOSURE_VOLUME_DRAINE_ID:
-        compile_volume(compiler, *phase, "Density", "Anisotropy", "Alpha");
-        break;
-      case CLOSURE_VOLUME_RAYLEIGH_ID:
-        compile_volume(compiler, *phase, "Density");
-        break;
-      case CLOSURE_VOLUME_MIE_ID:
-        compile_volume(compiler, *phase, "Density", "Diameter");
-        break;
-      default:
-        compiler.fail("Cycles Scatter Volume phase is not a physical phase");
-        break;
-    }
-  }
-};
-
 class PrincipledBsdfNode final : public GraphNode {
 public:
   [[nodiscard]] ClosureType get_closure_type() const noexcept override {
@@ -1174,12 +1044,6 @@ make_closure_graph_node(std::string_view type) {
   }
   if (type == node_type::subsurface_scattering) {
     return std::make_unique<SubsurfaceScatteringNode>();
-  }
-  if (type == node_type::volume_absorption) {
-    return std::make_unique<AbsorptionVolumeNode>();
-  }
-  if (type == node_type::volume_scatter) {
-    return std::make_unique<ScatterVolumeNode>();
   }
   return nullptr;
 }

@@ -11,6 +11,7 @@ set(PSYCLES_LUISA_SOURCES
     src/luisa/cycles_svm_hair.cpp
     src/luisa/cycles_svm_camera.cpp
     src/luisa/cycles_svm_closure.cpp
+    src/luisa/cycles_svm_volume.cpp
     src/luisa/cycles_svm_microfacet.cpp
     src/luisa/cycles_svm_microfacet_fresnel.cpp
     src/luisa/cycles_svm_microfacet_scattering.cpp

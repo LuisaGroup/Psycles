@@ -34,9 +34,6 @@ static_assert(derivative_nodes.size() == 16u);
 constexpr bool implemented(ShaderNodeType node) noexcept {
   switch (node) {
   case NODE_CLOSURE_HOLDOUT:
-  case NODE_CLOSURE_VOLUME:
-  case NODE_VOLUME_COEFFICIENTS:
-  case NODE_PRINCIPLED_VOLUME:
   case NODE_RADIAL_TILING:
   case NODE_BEVEL:
   case NODE_AMBIENT_OCCLUSION:
@@ -135,7 +132,10 @@ void test_every_opcode_usage_bit() {
     const auto node = static_cast<ShaderNodeType>(id);
     Usage used{};
     used[id] = true;
-    const auto actual = record(used, SHADER_TYPE_SURFACE, mask);
+    const auto volume_node = node == NODE_CLOSURE_VOLUME || node == NODE_VOLUME_COEFFICIENTS ||
+                             node == NODE_PRINCIPLED_VOLUME;
+    const auto actual = record(used, SHADER_TYPE_SURFACE,
+                               mask | (volume_node ? svm::kernel_feature_node_volume : 0u));
     auto expected = used;
     expected[id] = implemented(node);
     require(actual.cases == expected,
@@ -164,6 +164,9 @@ void test_cycles_feature_guards() {
       Gate{NODE_CLOSURE_EMISSION, svm::kernel_feature_node_emission, false},
       Gate{NODE_CLOSURE_BACKGROUND, svm::kernel_feature_node_emission, false},
       Gate{NODE_EMISSION_WEIGHT, svm::kernel_feature_node_emission, false},
+      Gate{NODE_CLOSURE_VOLUME, svm::kernel_feature_node_volume, false},
+      Gate{NODE_VOLUME_COEFFICIENTS, svm::kernel_feature_node_volume, false},
+      Gate{NODE_PRINCIPLED_VOLUME, svm::kernel_feature_node_volume, false},
       Gate{NODE_CLOSURE_SET_NORMAL, svm::kernel_feature_node_bump, false},
       Gate{NODE_ENTER_BUMP_EVAL, svm::kernel_feature_node_bump_state, false},
       Gate{NODE_LEAVE_BUMP_EVAL, svm::kernel_feature_node_bump_state, false}};
@@ -193,7 +196,8 @@ void test_cycles_feature_guards() {
     check({node, svm::kernel_feature_node_volume, true});
   }
   require(failures == 0u, "Cycles feature-disabled node bodies leaked into the recorded AST");
-  std::cout << "Node feature guards: 22 families x 3 shader domains x on/off verified\n";
+  std::cout << "Node feature guards: " << gates.size() + derivative_nodes.size()
+            << " families x 3 shader domains x on/off verified\n";
 }
 } // namespace
 

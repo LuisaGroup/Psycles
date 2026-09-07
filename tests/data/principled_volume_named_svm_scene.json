@@ -1,0 +1,283 @@
+{
+  "schema": "psycles.blender-scene.v2",
+  "camera": {
+    "angle": 0.6911112070083618,
+    "angle_x": 0.6911112070083618,
+    "angle_y": 0.4710899591445923,
+    "clip_end": 1000.0,
+    "clip_start": 0.10000000149011612,
+    "dof": {
+      "blades": 0,
+      "enabled": false,
+      "focus_distance": 10.0,
+      "fstop": 2.799999952316284,
+      "ratio": 1.0,
+      "rotation": 0.0
+    },
+    "lens": 50.0,
+    "name": "Probe Camera",
+    "ortho_scale": 2.200000047683716,
+    "pixel_aspect_x": 1.0,
+    "pixel_aspect_y": 1.0,
+    "sensor_fit": "AUTO",
+    "sensor_height": 24.0,
+    "sensor_width": 36.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "transform": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      3.0,
+      1.0
+    ],
+    "type": "ORTHO"
+  },
+  "materials": [
+    {
+      "cycles_sync": {
+        "pass_id": 0,
+        "shader_index": 5
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "AUTO",
+      "name": "Principled Volume Named",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Principled Volume",
+            "from_socket": "Volume",
+            "to_node": "Material Output",
+            "to_socket": "Volume"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "identifier": "Surface",
+                "linked": false,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeVolumePrincipled",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "default": [
+                  0.17000000178813934,
+                  0.4300000071525574,
+                  0.7900000214576721,
+                  1.0
+                ],
+                "identifier": "Color",
+                "linked": false,
+                "name": "Color",
+                "type": "NodeSocketColor"
+              },
+              {
+                "available": true,
+                "default": "probe_color",
+                "identifier": "Color Attribute",
+                "linked": false,
+                "name": "Color Attribute",
+                "type": "NodeSocketString"
+              },
+              {
+                "available": true,
+                "default": 0.75,
+                "identifier": "Density",
+                "linked": false,
+                "name": "Density",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": "probe_density",
+                "identifier": "Density Attribute",
+                "linked": false,
+                "name": "Density Attribute",
+                "type": "NodeSocketString"
+              },
+              {
+                "available": true,
+                "default": -0.20000000298023224,
+                "identifier": "Anisotropy",
+                "linked": false,
+                "name": "Anisotropy",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.03999999910593033,
+                  0.25,
+                  0.8100000023841858,
+                  1.0
+                ],
+                "identifier": "Absorption Color",
+                "linked": false,
+                "name": "Absorption Color",
+                "type": "NodeSocketColor"
+              },
+              {
+                "available": true,
+                "default": 0.800000011920929,
+                "identifier": "Emission Strength",
+                "linked": false,
+                "name": "Emission Strength",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.10000000149011612,
+                  0.25,
+                  0.6000000238418579,
+                  1.0
+                ],
+                "identifier": "Emission Color",
+                "linked": false,
+                "name": "Emission Color",
+                "type": "NodeSocketColor"
+              },
+              {
+                "available": true,
+                "default": 0.6499999761581421,
+                "identifier": "Blackbody Intensity",
+                "linked": false,
+                "name": "Blackbody Intensity",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.75,
+                  0.5,
+                  0.25,
+                  1.0
+                ],
+                "identifier": "Blackbody Tint",
+                "linked": false,
+                "name": "Blackbody Tint",
+                "type": "NodeSocketColor"
+              },
+              {
+                "available": true,
+                "default": 1800.0,
+                "identifier": "Temperature",
+                "linked": false,
+                "name": "Temperature",
+                "type": "NodeSocketFloatColorTemperature"
+              },
+              {
+                "available": true,
+                "default": "probe_temperature",
+                "identifier": "Temperature Attribute",
+                "linked": false,
+                "name": "Temperature Attribute",
+                "type": "NodeSocketString"
+              },
+              {
+                "available": false,
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Principled Volume",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "PRINCIPLED_VOLUME"
+          }
+        ],
+        "surface_root": null,
+        "volume_root": {
+          "node": "Principled Volume",
+          "socket": "Volume"
+        }
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_interpolation": "LINEAR",
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    }
+  ],
+  "images": [],
+  "node_groups": []
+}

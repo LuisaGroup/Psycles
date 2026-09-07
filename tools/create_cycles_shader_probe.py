@@ -356,6 +356,10 @@ _CYCLES_SVM_ORACLE_PROBES: dict[str, Callable[[Any], None]] = {
     ),
     "vector_to_scalar": values._vector_to_scalar,
     "volume_scatter_svm": volume_closures._volume_scatter_svm,
+    "volume_coefficients_svm": volume_closures._volume_coefficients_svm,
+    "principled_volume_svm": volume_closures._principled_volume_svm,
+    "principled_volume_named_svm": volume_closures._principled_volume_named_svm,
+    "principled_volume_linked_svm": volume_closures._principled_volume_linked_svm,
 }
 
 if _CANONICAL_PROBES.keys() & _CYCLES_SVM_ORACLE_PROBES.keys():

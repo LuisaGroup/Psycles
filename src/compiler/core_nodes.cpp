@@ -1658,7 +1658,15 @@ NodeRegistry make_core_node_registry() {
                             input("Temperature", SocketType::floating,
                                   SocketValue::floating(1000.0f))},
                  .outputs = {output("Volume", SocketType::volume_closure)},
-                 .properties = {},
+                 // Cycles' symbolic string sockets are compile-time properties
+                 // at the contract boundary, not entries in the SVM stack.
+                 .properties = {
+                     property("DensityAttribute", SocketType::string,
+                              SocketValue::string("density")),
+                     property("ColorAttribute", SocketType::string,
+                              SocketValue::string("")),
+                     property("TemperatureAttribute", SocketType::string,
+                              SocketValue::string("temperature"))},
                  .required_features = feature_bit(ShaderFeature::volume) |
                                       feature_bit(ShaderFeature::emission)}));
 

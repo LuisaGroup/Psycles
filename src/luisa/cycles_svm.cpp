@@ -5,6 +5,7 @@
 #include <psycles/luisa/cycles_svm.h>
 
 #include "cycles_svm_internal.h"
+#include "cycles_svm_volume.h"
 
 #include <optional>
 
@@ -169,6 +170,45 @@ void eval_nodes_impl(
                 detail::node_closure_emission(kernel_globals, cursor, stack,
                                               closure_weight, shader_data,
                                               transition));
+          }
+        };
+      }
+      if (node_types_used[NODE_CLOSURE_VOLUME]) {
+        PSYCLES_SVM_CASE(NODE_CLOSURE_VOLUME) {
+          if ((node_feature_mask & kernel_feature_node_volume) != 0u) {
+            if (shader_type == SHADER_TYPE_VOLUME &&
+                (kernel_features & kernel_feature_volume) != 0u) {
+              detail::node_closure_volume(kernel_globals, cursor, stack,
+                                           closure_weight, shader_data, transition);
+            } else {
+              cursor.advance(static_cast<unsigned>(sizeof(SVMNodeClosureVolume) / sizeof(std::uint32_t)));
+            }
+          }
+        };
+      }
+      if (node_types_used[NODE_VOLUME_COEFFICIENTS]) {
+        PSYCLES_SVM_CASE(NODE_VOLUME_COEFFICIENTS) {
+          if ((node_feature_mask & kernel_feature_node_volume) != 0u) {
+            if (shader_type == SHADER_TYPE_VOLUME &&
+                (kernel_features & kernel_feature_volume) != 0u) {
+              detail::node_volume_coefficients(kernel_globals, cursor, stack,
+                                                closure_weight, shader_data, path_state, transition);
+            } else {
+              cursor.advance(static_cast<unsigned>(sizeof(SVMNodeVolumeCoefficients) / sizeof(std::uint32_t)));
+            }
+          }
+        };
+      }
+      if (node_types_used[NODE_PRINCIPLED_VOLUME]) {
+        PSYCLES_SVM_CASE(NODE_PRINCIPLED_VOLUME) {
+          if ((node_feature_mask & kernel_feature_node_volume) != 0u) {
+            if (shader_type == SHADER_TYPE_VOLUME &&
+                (kernel_features & kernel_feature_volume) != 0u) {
+              detail::node_principled_volume(kernel_globals, cursor, stack,
+                                             closure_weight, shader_data, path_state, transition);
+            } else {
+              cursor.advance(static_cast<unsigned>(sizeof(SVMNodePrincipledVolume) / sizeof(std::uint32_t)));
+            }
           }
         };
       }
