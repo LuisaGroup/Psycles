@@ -54,10 +54,13 @@ Logs: `subsurface-cut-red-hip.log`, `subsurface-cut-green-hip.log` under
 
 The permanent queue-count regression also passes fallback and strict native
 XIR-to-SPIR-V Vulkan, including both frame layouts and repeated dispatches.
-The complete HIP selection passes 171/171. The complete fallback selection
-has one separate persistent-scheduler failure: its LLVM block-barrier frames
-overflow the backend's fixed 4 MiB arena. This is not the main path's small
-Luisa coroutine frame and does not make the complete fallback suite green.
+The complete HIP selection passes 171/171. A subsequent generic Luisa repair
+removes the fallback LLVM barrier arena's fixed 4 MiB limit, reusing stable
+chunks without per-lane/per-dispatch malloc/free. This is not the main path's
+small Luisa coroutine frame. Complete fallback is still 172/173: after the
+persistent kernel completes, a later wavefront/megakernel comparison reports
+a `light_ng.z` trace discrepancy. The [default-path checkpoint](../native-default/README.md)
+records both the original allocation abort and the post-repair result.
 
 The original Monster scene is rerendered at 1080x1080 / 256 spp after this
 fix, with SVM enabled by default, native fast math and the separate direct
@@ -71,6 +74,11 @@ This cannot explain Monk's residual or establish a Monk speedup: its native
 scene feature mask does not generate the SSS stage in the first place.
 
 ## Remaining concrete discrepancies
+
+This is a queue/state audit, not a request to disable function inlining.
+Per the user's clarification, the inline volume-stack arrangement is left
+unchanged; inlining alone is not treated as a correctness or performance
+defect. Further changes target observable state/order and unnecessary work.
 
 | Cycles boundary or edge | Current Psycles state |
 | --- | --- |

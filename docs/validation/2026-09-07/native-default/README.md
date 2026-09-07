@@ -81,17 +81,30 @@ Evidence directory: `/var/tmp/psycles-native-volume-svm-06XnDX`.
   (`native-default-subsurface-build.log`).
 - Complete HIP selection: 171/171, 490.95 s
   (`native-default-verified-hip.log`).
-- Complete fallback selection: 172/173, 498.84 s. The persistent-scheduler
-  case in `luisa_sample_dispatch_film` exceeds the fallback backend's fixed
-  4 MiB LLVM barrier-coroutine arena; it aborts with `Coroutine buffer
-  overflow` before pixel comparison. This is not the main path's 264-byte
-  Luisa coroutine frame. The backend allocation defect remains open at this
-  checkpoint (`native-default-verified-fallback.log`).
+- Complete fallback initially passes 172/173, 498.84 s: the persistent case
+  exceeds the backend's fixed 4 MiB LLVM barrier-coroutine arena
+  (`native-default-verified-fallback.log`). The 2026-09-08 Luisa follow-up
+  fixes that allocator with reusable, pointer-stable chunks, not per-lane
+  malloc/free. A 4.5 MiB live-frame regression uses one overflow chunk;
+  subsequent epochs perform no additional heap allocation. Individual frames
+  larger than 4 MiB are also tested. This storage is distinct from the small
+  main application coroutine frame.
+- The post-repair complete fallback selection is 172/173, 190.91 s
+  (`fallback-arena-final-integration-fallback.log`). The persistent kernel
+  now completes; a later wavefront/megakernel comparison fails at the first
+  event's `light_ng.z` trace value, -0.62323 versus -0.623204. This remaining
+  numerical discrepancy is not resolved or hidden by changing tolerance,
+  inlining policy or floating-point implementation.
 - Strict native-XIR Vulkan: SSS queue transitions, curve setup, triangle
   setup and lamp emission, 4/4 (`native-default-verified-vulkan.log`). All
   three native-XIR/require-SPIR-V/disable-DXC switches are enabled. An
   additional curve run with `LD_DEBUG=libs` loads neither libdxcompiler nor
   libdxil (`native-curve-vulkan-loader.log`).
+- After the final allocator repair, focused HIP and strict native-XIR Vulkan
+  pass 4/4 each (`fallback-arena-final-integration-{hip,vulkan}.log`). The
+  allocator lifetime/reuse and actual LLVM barrier-frame regressions pass
+  2/2 (`fallback-arena-reuse.log`), as do existing shared-memory and fallback
+  shader-cache/boolean/minimal-codegen tests. No HIP/Vulkan code or inlining policy changes.
 - `native-curve-focused-hip.log`: curve setup, original triangle surface setup
   and full curve-path renderer, 3/3.
 - `native-shadow-split-focused-hip.log`: stored/local traversal, native curve
