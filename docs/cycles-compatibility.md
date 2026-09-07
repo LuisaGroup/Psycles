@@ -83,6 +83,7 @@ Recent independently checked native families include:
 | Volume Absorption/Scatter, Volume Coefficients and Principled Volume node streams and allocation state | [Native volume SVM](validation/2026-09-07/native-volume-svm/README.md) |
 | Ordered volume stacks, main/shadow consumers, phase copy, runtime extrema and density baking | [Native volume consumers](validation/2026-09-08/native-volume-consumers/README.md) |
 | Native scene admission, used-shader attribute residency, mesh constant emission and volume NEE emission | [Scene admission](validation/2026-09-08/native-scene-admission/README.md) |
+| Assigned-but-failed image identity and native sampling before UV wrapping | [Failed-image state](validation/2026-09-08/native-missing-image/README.md) |
 | Map Range and analytic Sky node behavior | [Map Range](validation/2026-09-07/map-range/README.md), [analytic Sky](validation/2026-09-07/analytic-sky/README.md) |
 
 The native volume consumer retains one closure allocator across the whole
@@ -110,19 +111,25 @@ Current large HIP checkpoints use fixed samples and native fast math.
 The old SurfaceProgram instruction/topology histogram and its CLI/API have
 been removed; its counts do not describe native Cycles SVM. Closure-count
 histograms and per-path traces remain supported.
-The [native scene admission checkpoint](validation/2026-09-08/native-scene-admission/README.md)
-records these 256 spp single canaries, with all 46 channels finite:
+The [native scene admission](validation/2026-09-08/native-scene-admission/README.md)
+and [failed-image state](validation/2026-09-08/native-missing-image/README.md)
+checkpoints record these 256 spp single canaries, with all 46 channels finite.
+They are successive checkpoints, not a paired current-revision benchmark:
 
 | Scene | Extent | Cold main JIT s | Render-only s | Frame | Combined / DiffInd rel. RMSE |
 | --- | --- | ---: | ---: | ---: | --- |
 | Lone Monk | 1440x1080 | 44.3570 | 13.8669 | 220 B | 0.01240942 / 0.12881692 |
 | Monster | 1080x1080 | 57.2307 | 15.1202 | 284 B | 0.00547924 / 0.02552799 |
 | Classroom | 1920x1080 | 58.5554 | 18.3531 | 264 B | 0.00353344 / 0.17820336 |
+| Barbershop | 2048x858 | 95.2809 | 48.0181 | 896 B | 0.13641207 / 0.26861247 |
 
-Barbershop currently stops at unavailable-image admission; it has no new
-successful rendering or performance result. Missing-image identity and
-sampling state need an original-Cycles regression. Shader/binding cleanup
-shortened the observed JIT canaries but did not remove the indirect residuals.
+Barbershop's unavailable-image admission is fixed, with original-Cycles GPU
+and full-render regressions. Its image parity is not achieved: DiffCol
+relative RMSE is 0.12181950. A same-sample trace identifies a missing
+transparent closure at the first `cobwebs.001` surface, where both renderers
+hit the same geometry/shader. That structural discrepancy and its larger
+frame require further work. Shader/binding cleanup shortened the observed
+JIT canaries but did not remove the other scenes' indirect residuals.
 
 A fresh, profiler-free Cycles HIP check on 2026-09-08 ran each scene three
 times. Main-loop times were 13.4344/13.4429/13.4521 s for Monk and

@@ -173,6 +173,10 @@ struct ImageDesc {
     std::uint32_t width{};
     std::uint32_t height{};
     std::vector<std::uint8_t> encoded_data;
+    // An assigned image whose original loader could not obtain pixels.
+    // Cycles keeps its ImageManager identity and sampler, but full-image
+    // sampling returns IMAGE_MISSING_RGBA before wrapping or texture access.
+    bool load_failed{};
 };
 
 enum class MeshAttributeDomain : std::uint8_t {

@@ -36,12 +36,16 @@ template<typename Id>
                 SceneDiagnosticCode::invalid_id,
                 "scene contains an invalid image identifier");
         }
-        if (image.width == 0u || image.height == 0u ||
-            image.encoded_data.empty()) {
+        if (!image.load_failed && (image.width == 0u || image.height == 0u ||
+            image.encoded_data.empty())) {
             diagnose(
                 SceneDiagnosticCode::invalid_reference,
                 "image '" + image.name +
                     "' has no encoded pixels or dimensions");
+        }
+        if (image.load_failed && !image.encoded_data.empty()) {
+            diagnose(SceneDiagnosticCode::invalid_reference,
+                     "image '" + image.name + "' has both failed-load state and pixels");
         }
     }
 

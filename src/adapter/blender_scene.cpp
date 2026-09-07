@@ -483,6 +483,7 @@ BlenderSceneImport load_blender_scene_bundle(
         std::uint64_t image_index = 1u;
         while (auto *image =
                    yyjson_arr_iter_next(&image_iterator)) {
+            const auto load_failed = boolean(member(image, "load_failed"));
             const auto relative_path =
                 std::filesystem::path{
                     text(member(image, "path"))};
@@ -504,7 +505,9 @@ BlenderSceneImport load_blender_scene_bundle(
                     .height = static_cast<std::uint32_t>(
                         unsigned_number(
                             member(image, "height"))),
-                    .encoded_data = read_file(source_path)});
+                    .encoded_data = load_failed ? std::vector<std::uint8_t>{}
+                                                : read_file(source_path),
+                    .load_failed = load_failed});
         }
 
         auto *render = member(root, "render");

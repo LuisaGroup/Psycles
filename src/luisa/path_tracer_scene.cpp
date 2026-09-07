@@ -666,6 +666,11 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         luisa::span{dummy_pixels});
 
     for (const auto &[image_id, image] : snapshot.images) {
+        if (image.load_failed) {
+            // The native binding carries failed-image state; no GPU texture
+            // is allocated or sampled for this retained ImageManager handle.
+            continue;
+        }
         if (image.encoded_data.empty() ||
             image.encoded_data.size() >
                 static_cast<std::size_t>(

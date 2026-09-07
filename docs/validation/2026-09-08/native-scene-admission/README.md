@@ -89,7 +89,11 @@ Monster `monster-export` in the evidence directory; Classroom
 `/var/tmp/psycles-multiscene-52-Vw3BkE/classroom/export`.
 Canary and metric filenames use `<scene>-native-admission-*`.
 
-## Remaining multi-scene blocker
+## Multi-scene blocker at this checkpoint
+
+The subsequent [failed-image checkpoint](../native-missing-image/README.md)
+fixes the resource admission failure below and records the first complete
+Barbershop canary, its remaining image/closure discrepancy and frame size.
 
 Barbershop at 2048x858/256 stops before JIT. Its source has unavailable image
 datablocks (`guilder_ornament.png`, `generic_scratches.png`); the exporter
