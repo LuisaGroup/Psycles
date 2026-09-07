@@ -1,5 +1,19 @@
 include_guard(GLOBAL)
 
+psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_zero_bsdf_tests
+    SOURCE tests/test_luisa_cycles_zero_bsdf.cpp
+    TEST_STEM luisa_cycles_zero_bsdf
+    LIBRARIES Psycles::luisa_runtime)
+target_compile_definitions(psycles_luisa_cycles_zero_bsdf_tests PRIVATE
+    PSYCLES_ZERO_BSDF_SCENE="${PROJECT_SOURCE_DIR}/tests/data/cycles_zero_bsdf_scene.json"
+    PSYCLES_ZERO_BSDF_GEOMETRY="${PROJECT_SOURCE_DIR}/tests/data/cycles_zero_bsdf_geometry.txt"
+    PSYCLES_ZERO_BSDF_TRACE="${PROJECT_SOURCE_DIR}/tests/data/cycles_zero_bsdf_trace.txt")
+if(TEST psycles.luisa_cycles_zero_bsdf_vk)
+    set_tests_properties(psycles.luisa_cycles_zero_bsdf_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
 if(PSYCLES_ENABLE_OPENIMAGEIO)
     add_executable(psycles_scene_jpeg_decode_tests tests/test_scene_jpeg_decode.cpp)
     target_link_libraries(psycles_scene_jpeg_decode_tests PRIVATE Psycles::luisa_runtime)
