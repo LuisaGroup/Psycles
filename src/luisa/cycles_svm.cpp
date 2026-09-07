@@ -79,8 +79,11 @@ void eval_nodes(const KernelGlobals &kernel_globals,
                 const std::array<bool, NODE_NUM> &node_types_used,
                 const TransformState &transform_state, ShaderData &shader_data,
                 const PathState &path_state,
-                EvaluationResult &result) noexcept {
-  detail::Stack stack;
+                EvaluationResult &result, std::size_t stack_size) noexcept {
+  LUISA_ASSERT(stack_size != 0u && stack_size <= SVM_STACK_SIZE,
+               "Cycles SVM stack extent must be in [1, {}], got {}.",
+               SVM_STACK_SIZE, stack_size);
+  detail::Stack stack{stack_size};
   Float3 closure_weight = make_float3(0.0f);
   UInt offset = (shader_data.shader & shader_mask) *
                 (1u + static_cast<std::uint32_t>(sizeof(SVMNodeShaderJump) /

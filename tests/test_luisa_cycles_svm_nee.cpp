@@ -1,4 +1,5 @@
 #include "cycles_svm_light_emission_fixture.h"
+#include "cycles_svm_stack_extent_test_support.h"
 #include "path_kernel_builder.h"
 #include "path_kernel_direct_light_task.h"
 #include "path_tracer_bsdf_tables.h"
@@ -132,7 +133,8 @@ bool run(const char *program, const char *backend) {
       .shade_shadow_surface = unbound<EvaluateShadowSurfaceCallable>(),
       .trace_shadow = unbound<TraceShadowCallable>()};
   const auto evaluator = make_direct_light_task_evaluator(config);
-  Kernel1D<Buffer<float>, Buffer<luisa::float4>> kernel =
+  const auto make_kernel = [&] {
+    return Kernel1D<Buffer<float>, Buffer<luisa::float4>>{
       [evaluator](BufferFloat cosines, BufferFloat4 output) noexcept {
         const auto i = dispatch_id().x;
         const auto cosine = cosines.read(i);
@@ -156,7 +158,18 @@ bool run(const char *program, const char *backend) {
         parameters.full_height = 64u;
         const auto active = evaluator.shade_light_nee(task, parameters);
         output.write(i, make_float4(task.light_shader, active.cast<float>()));
-      };
+      }};
+  };
+  for (const auto extent : {7u, 23u, unsigned(SVM_STACK_SIZE)}) {
+    runtime.compilation.table.peak_stack_usage = extent;
+    const auto sizing = make_kernel();
+    psycles::test_support::require_svm_stack_extent(
+        sizing.function()->function(), extent);
+  }
+  runtime.compilation.table.peak_stack_usage = 1u;
+  const auto kernel = make_kernel();
+  psycles::test_support::require_svm_stack_extent(
+      kernel.function()->function(), 1u);
   auto shader = device.compile(kernel);
   auto output = device.create_buffer<luisa::float4>(case_count);
   std::array<luisa::float4, case_count> values{};

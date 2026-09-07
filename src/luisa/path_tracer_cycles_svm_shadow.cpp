@@ -6,6 +6,7 @@
 
 #include <psycles/luisa/cycles_noise.h>
 
+#include <algorithm>
 #include <utility>
 
 namespace psycles::luisa_backend::detail {
@@ -137,7 +138,9 @@ EvaluateShadowSurfaceCallable make_cycles_svm_shadow_surface_callable(
                       scene->cycles_svm->kernel_features,
                       svm::kernel_feature_node_mask_surface_shadow,
                       scene->cycles_svm->compilation.table.node_types_used,
-                      setup.transforms, sd, state, result);
+                      setup.transforms, sd, state, result,
+                      std::max<std::size_t>(
+                          1u, scene->cycles_svm->compilation.table.peak_stack_usage));
       $if(result.status !=
           static_cast<unsigned>(svm::EvaluationStatus::ended)) {
         dsl::unreachable("native Cycles shadow SVM did not reach NODE_END");

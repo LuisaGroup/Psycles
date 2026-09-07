@@ -967,6 +967,9 @@ struct EvaluationResult {
  * to Cycles' template feature mask and kernel_data_svm_usage_NODE_* constants.
  * The device machine still has one word PC loop and one primary opcode switch.
  */
+// stack_size is a host/JIT bound from the compiler's static stack allocator,
+// maximized over the compiled scene's shader images, never a profiled usage.
+// Callers without such a proof retain Cycles' maximum-sized default.
 void eval_nodes(
     const KernelGlobals &kernel_globals,
     luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> words,
@@ -974,6 +977,7 @@ void eval_nodes(
     std::uint32_t node_feature_mask,
     const std::array<bool, compiler::cycles_svm::NODE_NUM> &node_types_used,
     const TransformState &transform_state, ShaderData &shader_data,
-    const PathState &path_state, EvaluationResult &result) noexcept;
+    const PathState &path_state, EvaluationResult &result,
+    std::size_t stack_size = SVM_STACK_SIZE) noexcept;
 
 } // namespace psycles::luisa_backend::cycles_svm

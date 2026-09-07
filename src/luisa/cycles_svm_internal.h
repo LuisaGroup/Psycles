@@ -6,9 +6,19 @@
 
 #include <psycles/luisa/cycles_svm.h>
 
+#include <luisa/dsl/local.h>
+
 namespace psycles::luisa_backend::cycles_svm::detail {
 
-using Stack = luisa::compute::ArrayFloat<SVM_STACK_SIZE>;
+// Cycles stack addressing is unchanged; only the physical local extent is a
+// host/JIT input. The maximum-sized default keeps direct node fixtures and
+// callers without a compiled scene valid. Local storage is uninitialized,
+// matching Cycles' float stack[SVM_STACK_SIZE], not a new zero-fill policy.
+class Stack final : public luisa::compute::Local<float> {
+public:
+  explicit Stack(std::size_t size = SVM_STACK_SIZE) noexcept
+      : luisa::compute::Local<float>{size} {}
+};
 
 struct Differential3 {
   luisa::compute::Float3 dx;
