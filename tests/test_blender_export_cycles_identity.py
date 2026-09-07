@@ -144,11 +144,17 @@ def _main() -> None:
         evaluated_curve.to_mesh_clear()
 
     def add_light(
-        name: str, group: str, max_bounces: int, *, portal: bool = False
-    ) -> None:
-        data = bpy.data.lights.new(
-            f"{name} Data", type="AREA" if portal else "POINT"
-        )
+        name: str,
+        group: str,
+        max_bounces: int,
+        *,
+        portal: bool = False,
+        data: object | None = None,
+    ) -> object:
+        if data is None:
+            data = bpy.data.lights.new(
+                f"{name} Data", type="AREA" if portal else "POINT"
+            )
         if portal:
             data.cycles.is_portal = True
         else:
@@ -165,12 +171,20 @@ def _main() -> None:
         obj.cycles.is_caustics_caster = name == "Zulu Light"
         obj.cycles.is_caustics_receiver = name == "Alpha Light"
         scene.collection.objects.link(obj)
+        return data
 
     # Deliberately insert the reverse of lexical order. Cycles consumes the
     # dependency-graph object iterator; sorting these names changes which
     # emitter a fixed random number selects.
     add_light("Zulu Light", "Group B", 3, portal=True)
-    add_light("Alpha Light", "Group A", 7)
+    shared_light_data = add_light("Alpha Light", "Group A", 7)
+    shared_light_data.use_nodes = True
+    add_light(
+        "Alpha Light Twin",
+        "Group B",
+        7,
+        data=shared_light_data,
+    )
 
     with tempfile.TemporaryDirectory(
         prefix="psycles-blender-cycles-identity-"
@@ -276,7 +290,7 @@ def _main() -> None:
 
     lights = payload["lights"]
     names = [item["name"] for item in lights]
-    if names != ["Zulu Light", "Alpha Light"]:
+    if names != ["Zulu Light", "Alpha Light", "Alpha Light Twin"]:
         raise AssertionError(
             "analytic lights were not exported in Cycles object order: "
             f"{names}"
@@ -294,16 +308,33 @@ def _main() -> None:
             "shader_index": 6,
             "pass_id": 0,
         },
+        "Alpha Light Twin": {
+            "object_index": 3,
+            "light_group": 1,
+            "shader_index": 6,
+            "pass_id": 0,
+        },
     }
     expected_max_bounces = {
         "Zulu Light": 3,
         "Alpha Light": 7,
+        "Alpha Light Twin": 7,
+    }
+    expected_shader_names = {
+        "Zulu Light": "Zulu Light Data",
+        "Alpha Light": "Alpha Light Data",
+        "Alpha Light Twin": "Alpha Light Data",
     }
     for light in lights:
         if light["cycles_sync"] != expected[light["name"]]:
             raise AssertionError(
                 f"{light['name']} identity changed: "
                 f"{light['cycles_sync']}"
+            )
+        if light["shader_name"] != expected_shader_names[light["name"]]:
+            raise AssertionError(
+                f"{light['name']} shader datablock identity changed: "
+                f"{light['shader_name']}"
             )
         if light["max_bounces"] != expected_max_bounces[light["name"]]:
             raise AssertionError(
@@ -358,7 +389,7 @@ def _main() -> None:
             )
 
     if payload.get("cycles_sync") != {
-        "object_count": 4,
+        "object_count": 5,
         "uses_light_linking": True,
     }:
         raise AssertionError(
@@ -372,7 +403,7 @@ def _main() -> None:
         if payload["world"]["cycles_sync"] != {
             "shader_index": 3,
             "pass_id": 0,
-            "object_index": 3,
+            "object_index": 4,
             "light_group": -1,
         }:
             raise AssertionError("world Cycles identity changed")

@@ -68,6 +68,7 @@ void write_scene_bundle(const std::filesystem::path &directory) {
   "geometries":[],"curve_geometries":[],"instances":[],
   "lights":[{
     "name":"Cycles Light Falloff Sun","type":"SUN",
+    "shader_name":"Cycles Shared Falloff Data",
     "transform":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],
     "color":[1,1,1],"temperature_color":[1,1,1],
     "energy":1,"exposure":0,"angle":0.1,"normalize":false,
@@ -190,6 +191,9 @@ void test_light_falloff_import() {
               light.shader.has_value(),
           "SUN light did not retain its authored shader graph");
   const auto &material = imported.scene->materials.at(*light.shader);
+  require(material.name == "Cycles Shared Falloff Data" &&
+              material.name != light.name,
+          "light datablock shader identity was replaced by object identity");
 
   const psycles::contract::ShaderNode *falloff = nullptr;
   auto falloff_count = 0u;
