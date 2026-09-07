@@ -1155,6 +1155,11 @@ def _light(
     )
     return {
         "name": obj.name,
+        # BlenderSync keys lamp shaders by the Light datablock ID and uses
+        # that ID's name for Shader::name. Keep this distinct from the object
+        # name/asset identity: multiple light objects may share one datablock
+        # and therefore one Cycles shader-vector entry.
+        "shader_name": _original_id(light).name,
         "type": light.type,
         "transform": _column_major(
             obj.matrix_world if transform is None else transform

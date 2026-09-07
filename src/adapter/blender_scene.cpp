@@ -1567,6 +1567,10 @@ BlenderSceneImport load_blender_scene_bundle(
         std::uint64_t light_index = 1u;
         while (auto *light =
                    yyjson_arr_iter_next(&light_iterator)) {
+            const auto light_name = text(member(light, "name"));
+            const auto light_shader_name = text(
+                member(light, "shader_name"),
+                light_name + " / Light Shader");
             const auto type = text(member(light, "type"));
             auto *cycles_sync =
                 member(light, "cycles_sync");
@@ -1602,9 +1606,7 @@ BlenderSceneImport load_blender_scene_bundle(
                 scene.materials.emplace(
                     *light_shader,
                     MaterialDesc{
-                        .name =
-                            text(member(light, "name")) +
-                            " / Light Shader",
+                        .name = light_shader_name,
                         .shader =
                             normalized_material_graph(
                                 light,
@@ -1624,7 +1626,7 @@ BlenderSceneImport load_blender_scene_bundle(
             scene.lights.emplace(
                 LightId{light_index++},
                 LightDesc{
-                    .name = text(member(light, "name")),
+                    .name = light_name,
                     .cycles_asset_name = text(
                         member(light, "asset_name")),
                     .type =
