@@ -796,7 +796,10 @@ if(PSYCLES_ENABLE_LUISA)
                 tests/test_luisa_volume_majorant_prepass.cpp)
             target_link_libraries(
                 psycles_luisa_volume_majorant_prepass_tests
-                PRIVATE Psycles::luisa)
+                PRIVATE Psycles::luisa_runtime)
+            target_include_directories(
+                psycles_luisa_volume_majorant_prepass_tests
+                PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
             target_compile_features(
                 psycles_luisa_volume_majorant_prepass_tests
                 PRIVATE cxx_std_20)
@@ -1045,6 +1048,8 @@ if(PSYCLES_ENABLE_LUISA)
             target_compile_features(
                 psycles_luisa_volume_point_tests
                 PRIVATE cxx_std_20)
+            target_compile_definitions(psycles_luisa_volume_point_tests PRIVATE
+                PSYCLES_VOLUME_STACK_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_svm_volume_stack.txt")
             set_target_properties(
                 psycles_luisa_volume_point_tests
                 PROPERTIES

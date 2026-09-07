@@ -59,6 +59,7 @@ struct VolumeMajorantSceneFlattened {
 };
 
 struct VolumeMajorantSceneBuildResult {
+    std::shared_ptr<VolumeMajorantRuntime> runtime;
     std::uint32_t root_count{};
     std::uint32_t node_count{};
     std::uint32_t range_count{};
@@ -94,15 +95,15 @@ class VolumeMajorantSceneComponent {
     build(
         const std::shared_ptr<LuisaSceneData> &scene,
         Stream &stream,
-        const VolumeMajorantScenePlan &plan) const;
+        const VolumeMajorantScenePlan &plan,
+        const RenderKernelParameters &parameters) const;
 
     // Production entry point. It derives root identities from the same
     // retained material bindings used by runtime VolumeStack entries, then
     // delegates to the independently testable plan/build stages above.
-    [[nodiscard]] VolumeMajorantSceneBuildResult
-    build(
+    [[nodiscard]] VolumeMajorantScenePlan
+    plan(
         const std::shared_ptr<LuisaSceneData> &scene,
-        Stream &stream,
         const SceneSnapshot &snapshot) const;
 };
 

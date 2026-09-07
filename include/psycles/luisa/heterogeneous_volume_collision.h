@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <memory>
 
-#include <psycles/luisa/stacked_volume.h>
+#include <psycles/luisa/volume_shader.h>
 
 namespace psycles::luisa_backend {
 
@@ -33,12 +33,8 @@ class HeterogeneousVolumeCollisionProvider {
 [[nodiscard]]
 std::unique_ptr<HeterogeneousVolumeCollisionProvider>
 make_stacked_heterogeneous_volume_collision_provider(
-    const SurfaceDispatch &surfaces,
-    std::shared_ptr<
-        const VolumeStackEntryPointProvider> points,
+    const VolumeShaderEvaluator &shader,
     const VolumeStack &stack,
-    const ShaderServices &services,
-    const VolumeShadingState &base_state,
     Float3 ray_origin,
     Float3 ray_direction);
 

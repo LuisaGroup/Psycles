@@ -525,6 +525,17 @@ struct CyclesSvmRuntime {
     std::unique_ptr<CyclesSvmObjectRuntime> objects;
 };
 
+struct VolumeMajorantScenePlan;
+struct VolumeMajorantRuntime {
+    Buffer<VolumeMajorantNodeGpu> node_buffer;
+    Buffer<VolumeMajorantRootGpu> root_buffer;
+    Buffer<VolumeMajorantRootRangeGpu> range_buffer;
+    std::uint32_t root_count{};
+    std::uint32_t node_count{};
+    std::uint32_t range_count{};
+    std::uint32_t world_range{~0u};
+};
+
 struct LuisaSceneData {
     luisa::compute::Device device;
     std::uint64_t revision{};
@@ -675,19 +686,7 @@ struct LuisaSceneData {
     Accel accel;
     CameraDesc camera;
     VolumeSceneMetadata volume_metadata;
-    Buffer<luisa::uint> volume_surface_flag_buffer;
-    std::uint32_t volume_surface_flag_count{};
-    Buffer<VolumeMajorantNodeGpu>
-        volume_majorant_node_buffer;
-    Buffer<VolumeMajorantRootGpu>
-        volume_majorant_root_buffer;
-    Buffer<VolumeMajorantRootRangeGpu>
-        volume_majorant_range_buffer;
-    std::uint32_t volume_majorant_root_count{};
-    std::uint32_t volume_majorant_node_count{};
-    std::uint32_t volume_majorant_range_count{};
-    std::uint32_t volume_majorant_world_range{
-        ~std::uint32_t{0u}};
+    std::shared_ptr<const VolumeMajorantScenePlan> volume_majorant_plan;
 };
 
 class LuisaCompiledScene final : public contract::CompiledScene {
@@ -758,6 +757,7 @@ private:
     Buffer<luisa::float4> _sobol_table;
     Buffer<float> _pixel_filter_table;
     std::shared_ptr<const BackgroundSamplingDistribution> _background_sampling;
+    std::shared_ptr<const VolumeMajorantRuntime> _volume_majorants;
     std::uint32_t _sobol_sequence_size{};
     std::uint32_t _total_aa_samples{};
     std::uint32_t _rendered_samples{};

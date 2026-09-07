@@ -10,8 +10,6 @@ class HomogeneousVolumeSegmentComponentImpl final
     : public HomogeneousVolumeSegmentComponent {
 
   private:
-    const SurfaceDispatch &_surfaces;
-    std::shared_ptr<const VolumeStackEntryPointProvider> _points;
     std::size_t _closure_allocation_budget;
     HomogeneousVolumeTransport _transport;
     HomogeneousVolumeScatterProbability
@@ -19,20 +17,17 @@ class HomogeneousVolumeSegmentComponentImpl final
 
   public:
     HomogeneousVolumeSegmentComponentImpl(
-        const SurfaceDispatch &surfaces,
-        std::shared_ptr<const VolumeStackEntryPointProvider> points,
         std::size_t closure_allocation_budget) noexcept
-        : _surfaces{surfaces},
-          _points{std::move(points)},
-          _closure_allocation_budget{
+        : _closure_allocation_budget{
               std::max(
                   closure_allocation_budget,
                   std::size_t{1u})} {}
 
     HomogeneousVolumeSegmentResult
-    emit(const VolumeStack &stack,
-         const ShaderServices &services,
-         const VolumeShadingState &state,
+    emit(const VolumeShaderEvaluator &shader,
+         const VolumeStack &stack,
+         Float3 position,
+         Float3 incoming,
          Float distance,
          Float3 throughput,
          Float scatter_random,
@@ -45,15 +40,8 @@ class HomogeneousVolumeSegmentComponentImpl final
              *direct_light) const noexcept override {
         VolumePhaseSet phases{
             _closure_allocation_budget};
-        const StackedVolumeEvaluator evaluator{
-            _surfaces, *_points};
         const auto coefficients =
-            evaluator.evaluate(
-                stack,
-                services,
-                state,
-                true,
-                &phases);
+            shader.evaluate(stack, position, &phases);
         const auto scatter_probability =
             _scatter_probability.evaluate(
                 coefficients,
@@ -85,8 +73,8 @@ class HomogeneousVolumeSegmentComponentImpl final
                 transport.scatter_random,
                 transport.reservoir_random,
                 direct_state,
-                state.position,
-                -state.incoming,
+                position,
+                -incoming,
                 {.light_position =
                      direct.light_position,
                  .interval =
@@ -106,7 +94,7 @@ class HomogeneousVolumeSegmentComponentImpl final
         }
         const auto direct_phase_raw =
             phases.evaluate(
-                -state.incoming,
+                -incoming,
                 direction_sample.direction);
         const VolumePhaseSetEvaluation
             direct_phase{
@@ -139,7 +127,7 @@ class HomogeneousVolumeSegmentComponentImpl final
         // direction rather than the viewer-facing incoming vector.
         const auto phase =
             phases.sample(
-                -state.incoming,
+                -incoming,
                 phase_random);
         const auto scattered =
             transport.scattered &
@@ -166,13 +154,9 @@ class HomogeneousVolumeSegmentComponentImpl final
 
 std::unique_ptr<HomogeneousVolumeSegmentComponent>
 make_homogeneous_volume_segment_component(
-    const SurfaceDispatch &surfaces,
-    std::shared_ptr<const VolumeStackEntryPointProvider> points,
     std::size_t closure_allocation_budget) {
     return std::make_unique<
         HomogeneousVolumeSegmentComponentImpl>(
-        surfaces,
-        std::move(points),
         closure_allocation_budget);
 }
 

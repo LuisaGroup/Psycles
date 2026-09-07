@@ -1,9 +1,7 @@
 #include "path_tracer_volume_majorant_scene.h"
 
 #include "cycles_shader_identity.h"
-#include "path_kernel_volume_point.h"
-#include "path_tracer_shader_services.h"
-#include "path_tracer_volume_capabilities.h"
+#include "path_tracer_cycles_svm_volume.h"
 
 #include <psycles/luisa/volume_majorant_prepass.h>
 
@@ -515,8 +513,11 @@ VolumeMajorantSceneBuildResult
 VolumeMajorantSceneComponent::build(
     const std::shared_ptr<LuisaSceneData> &scene,
     Stream &stream,
-    const VolumeMajorantScenePlan &plan) const {
+    const VolumeMajorantScenePlan &plan,
+    const RenderKernelParameters &parameters) const {
     VolumeMajorantSceneBuildResult result;
+    result.runtime = std::make_shared<VolumeMajorantRuntime>();
+    auto &runtime = *result.runtime;
     if (!scene) {
         result.diagnostic =
             "volume majorant scene resource is null";
@@ -526,11 +527,11 @@ VolumeMajorantSceneComponent::build(
         result.diagnostic = plan.diagnostic;
         return result;
     }
-    scene->volume_majorant_world_range =
+    runtime.world_range =
         plan.world_range;
-    scene->volume_majorant_root_count = 0u;
-    scene->volume_majorant_node_count = 0u;
-    scene->volume_majorant_range_count = 0u;
+    runtime.root_count = 0u;
+    runtime.node_count = 0u;
+    runtime.range_count = 0u;
     if (plan.roots.empty()) {
         return result;
     }
@@ -543,65 +544,22 @@ VolumeMajorantSceneComponent::build(
             extrema_count);
     luisa::vector<luisa::float2> readback(
         extrema_count);
-    auto points =
-        make_scene_volume_stack_entry_point_provider(
-            scene);
-    Kernel1D evaluate =
-        [scene, points](
-            luisa::compute::BufferVar<
-                luisa::float2> output,
-            UInt object,
-            UInt shader,
-            UInt surface_tag,
-            UInt parameter_block,
-            UInt instance_id,
-            Float3 grid_minimum,
-            Float3 grid_maximum,
-            luisa::compute::Float4x4
-                object_to_world,
-            UInt grid_resolution) noexcept {
-            set_block_size(64u, 1u, 1u);
-            BufferShaderServices services{
-                scene->scalar_parameter_buffer,
-                scene->vector_parameter_buffer,
-                scene->cycles_bsdf_table_buffer,
-                scene->texture_heap,
-                scene->heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space};
-            VolumeMajorantPrepass prepass{
-                scene->surfaces, *points};
-            const VolumeStackEntry entry{
-                .object = object,
-                .shader = shader,
-                .surface_tag = surface_tag,
-                .parameter_block =
-                    parameter_block,
-                .instance_id = instance_id,
-                .sample_method =
-                    volume_sample_distance,
-                .valid = true};
-            const VolumeMajorantGrid grid{
-                .minimum = grid_minimum,
-                .maximum = grid_maximum,
-                .object_to_world =
-                    object_to_world,
-                .resolution =
-                    grid_resolution};
-            const auto extrema =
-                prepass.evaluate_cell(
-                    entry,
-                    services,
-                    grid,
-                    dispatch_x());
-            output.write(
-                dispatch_x(),
-                make_float2(
-                    extrema.minimum,
-                    extrema.maximum));
-        };
+    Kernel1D evaluate = [scene](
+            luisa::compute::BufferVar<luisa::float2> output,
+            Var<RenderKernelParameters> parameters, UInt object, UInt shader,
+            Float3 grid_minimum, Float3 grid_maximum, UInt grid_resolution) noexcept {
+        set_block_size(64u, 1u, 1u);
+        const VolumeStackEntry entry{
+            .object = object, .shader = shader,
+            .surface_tag = ~0u, .parameter_block = 0u, .instance_id = ~0u,
+            .sample_method = volume_sample_distance, .valid = true};
+        const VolumeMajorantGrid grid{
+            .minimum = grid_minimum, .maximum = grid_maximum,
+            .object_to_world = make_float4x4(1.0f), .resolution = grid_resolution};
+        const auto extrema = evaluate_cycles_svm_volume_density_cell(
+            scene, parameters, entry, grid, dispatch_x());
+        output.write(dispatch_x(), make_float2(extrema.minimum, extrema.maximum));
+    };
     luisa::compute::ShaderOption shader_options;
     shader_options.enable_cache = true;
     // Cycles compiles its density bake with fast math too. Sixteen samples
@@ -630,14 +588,11 @@ VolumeMajorantSceneComponent::build(
         stream
             << shader(
                    extrema_buffer,
+                   parameters,
                    root.object,
                    root.shader,
-                   root.surface_tag,
-                   root.parameter_block,
-                   root.instance_id,
                    root.bounds.minimum,
                    root.bounds.maximum,
-                   root.object_to_world,
                    resolution)
                    .dispatch(root_extrema_count)
             << extrema_buffer
@@ -683,105 +638,74 @@ VolumeMajorantSceneComponent::build(
             std::move(flattened.diagnostic);
         return result;
     }
-    scene->volume_majorant_node_buffer =
+    runtime.node_buffer =
         scene->device.create_buffer<
             VolumeMajorantNodeGpu>(
             flattened.nodes.size());
-    scene->volume_majorant_root_buffer =
+    runtime.root_buffer =
         scene->device.create_buffer<
             VolumeMajorantRootGpu>(
             flattened.roots.size());
-    scene->volume_majorant_range_buffer =
+    runtime.range_buffer =
         scene->device.create_buffer<
             VolumeMajorantRootRangeGpu>(
             flattened.ranges.size());
     stream
-        << scene->volume_majorant_node_buffer
+        << runtime.node_buffer
                .copy_from(
                    luisa::span{
                        flattened.nodes})
-        << scene->volume_majorant_root_buffer
+        << runtime.root_buffer
                .copy_from(
                    luisa::span{
                        flattened.roots})
-        << scene->volume_majorant_range_buffer
+        << runtime.range_buffer
                .copy_from(
                    luisa::span{
                        flattened.ranges})
         << synchronize();
-    scene->volume_majorant_root_count =
+    runtime.root_count =
         static_cast<std::uint32_t>(
             flattened.roots.size());
-    scene->volume_majorant_node_count =
+    runtime.node_count =
         static_cast<std::uint32_t>(
             flattened.nodes.size());
-    scene->volume_majorant_range_count =
+    runtime.range_count =
         static_cast<std::uint32_t>(
             flattened.ranges.size());
     result.root_count =
-        scene->volume_majorant_root_count;
+        runtime.root_count;
     result.node_count =
-        scene->volume_majorant_node_count;
+        runtime.node_count;
     result.range_count =
-        scene->volume_majorant_range_count;
+        runtime.range_count;
     return result;
 }
 
-VolumeMajorantSceneBuildResult
-VolumeMajorantSceneComponent::build(
-    const std::shared_ptr<LuisaSceneData> &scene,
-    Stream &stream,
-    const SceneSnapshot &snapshot) const {
-    VolumeMajorantSceneBuildResult result;
-    if (!scene) {
-        result.diagnostic =
-            "volume majorant scene resource is null";
+VolumeMajorantScenePlan VolumeMajorantSceneComponent::plan(
+    const std::shared_ptr<LuisaSceneData> &scene, const SceneSnapshot &snapshot) const {
+    VolumeMajorantScenePlan result;
+    if (!scene || !scene->cycles_svm) {
+        result.diagnostic = "volume majorants require a native Cycles shader image";
         return result;
     }
-    std::map<
-        contract::MaterialId,
-        VolumeMajorantSceneMaterial>
-        materials;
-    const VolumeProgramCapabilityComponent
-        capabilities;
-    for (const auto &[id, binding] :
-         scene->material_bindings) {
-        const auto *material =
-            scene->materials.find(id);
-        if (material == nullptr) {
-            result.diagnostic =
-                "volume majorant material binding has "
-                "no retained program";
+    std::map<contract::MaterialId, VolumeMajorantSceneMaterial> materials;
+    const auto &shaders = scene->cycles_svm->compilation.kernel_shaders;
+    for (const auto &[id, binding] : scene->material_bindings) {
+        const auto index = binding.cycles_shader_index;
+        if (index >= shaders.size()) {
+            result.diagnostic = "volume majorant material has no native shader identity";
             return result;
         }
-        const auto base_shader =
-            binding.cycles_shader_index !=
-                    cycles_shader_identity::
-                        invalid_index
-                ? binding.cycles_shader_index
-                : binding.material_identity;
-        materials.emplace(
-            id,
-            VolumeMajorantSceneMaterial{
-                .surface_tag =
-                    binding.surface_tag,
-                .parameter_block =
-                    binding.parameter_block,
-                .shader = base_shader,
-                .has_volume =
-                    (binding.flags &
-                     material_flag_has_volume) !=
-                    0u,
-                .heterogeneous =
-                    !capabilities
-                         .analyze(
-                             *material
-                                  ->surface_program())
-                         .homogeneous});
+        const auto flags = shaders[index].flags;
+        materials.emplace(id, VolumeMajorantSceneMaterial{
+            .surface_tag = binding.surface_tag,
+            .parameter_block = binding.parameter_block,
+            .shader = index,
+            .has_volume = (flags & compiler::cycles_svm::SD_HAS_VOLUME) != 0,
+            .heterogeneous = (flags & compiler::cycles_svm::SD_HETEROGENEOUS_VOLUME) != 0});
     }
-    const auto planned =
-        plan(snapshot, materials);
-    return build(scene, stream, planned);
+    return plan(snapshot, materials);
 }
 
 }// namespace psycles::luisa_backend::detail

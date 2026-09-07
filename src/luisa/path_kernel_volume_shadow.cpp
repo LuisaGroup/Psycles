@@ -2,16 +2,15 @@
 
 #include "path_kernel_volume_boundary.h"
 #include "path_kernel_volume_majorant_provider.h"
-#include "path_kernel_volume_point.h"
 #include "path_kernel_volume_random.h"
-#include "path_tracer_shader_services.h"
-#include "path_tracer_volume_capabilities.h"
+#include "path_tracer_cycles_svm_volume.h"
+
+#include <psycles/luisa/cycles_noise.h>
 
 #include <psycles/luisa/cycles_path_state.h>
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/heterogeneous_volume_collision.h>
 #include <psycles/luisa/heterogeneous_volume_shadow.h>
-#include <psycles/luisa/stacked_volume.h>
 #include <psycles/luisa/surface_ray.h>
 #include <psycles/luisa/volume_majorant_overlap.h>
 #include <psycles/luisa/volume_shadow_interval.h>
@@ -27,10 +26,8 @@ class VolumeShadowComponentImpl final
 
   private:
     std::shared_ptr<LuisaSceneData> _scene;
+    std::shared_ptr<const VolumeMajorantRuntime> _majorants;
     std::size_t _stack_size;
-    std::shared_ptr<
-        const VolumeStackEntryPointProvider>
-        _points;
     std::shared_ptr<
         const TriangleVolumeBoundaryComponent>
         _boundary;
@@ -38,42 +35,24 @@ class VolumeShadowComponentImpl final
         HeterogeneousVolumeShadowComponent>
         _heterogeneous;
 
-    [[nodiscard]] UInt _surface_flags(
-        const VolumeStackEntry &entry)
-        const noexcept {
-        UInt flags = 0u;
-        $if(entry.surface_tag <
-            _scene->volume_surface_flag_count) {
-            flags =
-                _scene->volume_surface_flag_buffer
-                    ->read(entry.surface_tag);
-        };
-        return flags;
-    }
-
     [[nodiscard]] Bool _stack_is_heterogeneous(
         const VolumeStack &stack)
         const noexcept {
         return stack.any(
             [this](const VolumeStackEntry &entry) noexcept {
-                return (_surface_flags(entry) &
-                        volume_surface_flag_heterogeneous) !=
-                       0u;
+                return !cycles_svm_volume_is_homogeneous(_scene, entry);
             });
     }
 
   public:
     explicit VolumeShadowComponentImpl(
         const PathKernelConfig &config)
-        : _scene{config.scene},
+        : _scene{config.scene}, _majorants{config.volume_majorants},
           _stack_size{
               std::max(
                   std::size_t{
                       config.volume_stack_size},
                   std::size_t{1u})},
-          _points{
-              make_scene_volume_stack_entry_point_provider(
-                  _scene)},
           _boundary{
               make_triangle_volume_boundary_component()},
           _heterogeneous{
@@ -90,31 +69,9 @@ class VolumeShadowComponentImpl final
             _stack_size};
         // Cycles copies the complete path stack. Shadow-invisible objects
         // remain present for homogeneity selection, majorant traversal, and
-        // RNG consumption; SceneVolumeStackEntryPointProvider suppresses
+        // RNG consumption; native volume entry evaluation suppresses
         // only their raw closure evaluation.
         shadow_stack.copy_from(path_stack);
-        const StackedVolumeEvaluator evaluator{
-            _scene->surfaces,
-            *_points};
-        BufferShaderServices services{
-            _scene->scalar_parameter_buffer,
-            _scene->vector_parameter_buffer,
-            _scene->cycles_bsdf_table_buffer,
-            _scene->texture_heap,
-            _scene->heap,
-            _scene->attribute_binding_slot,
-            _scene->attribute_range_slot,
-            _scene->nishita_texture_bindings,
-            _scene->shader_color_space};
-        const auto shader_state =
-            cycles_path_state::
-                shadow_shader_state(
-                    sample.path_depth,
-                    sample.diffuse_depth,
-                    sample.glossy_depth,
-                    sample.transparent_depth,
-                    sample.transmission_depth);
-
         const auto ray_origin =
             shadow_ray->origin();
         const auto ray_direction =
@@ -156,37 +113,15 @@ class VolumeShadowComponentImpl final
                     segment_end -
                         interval.minimum(),
                     0.0f);
-            const VolumeShadingState state{
-                .position =
-                    ray_origin +
-                    ray_direction *
-                        interval.minimum(),
-                .incoming =
-                    -ray_direction,
-                .ray_visibility =
-                    shader_state
-                        .ray_visibility,
-                .ray_events =
-                    shader_state.ray_events,
-                .ray_depth =
-                    shader_state.ray_depth,
-                .diffuse_depth =
-                    shader_state.diffuse_depth,
-                .glossy_depth =
-                    shader_state.glossy_depth,
-                .transparent_depth =
-                    shader_state
-                        .transparent_depth,
-                .transmission_depth =
-                    shader_state
-                        .transmission_depth,
-                // shader_setup_from_volume() initializes ray_length for each
-                // transparent-shadow interval, independent of distance from
-                // the original light sample.
-                .ray_length =
-                    interval
-                        .shader_ray_length(),
-                .time = 0.0f};
+            const cycles_svm::PathState shader_state{
+                cycles_svm::path_ray_visibility_shadow, 0u,
+                sample.path_depth, sample.transparent_depth, sample.diffuse_depth,
+                sample.glossy_depth, sample.transmission_depth, 0u};
+            const PathCyclesSvmVolumeShader volume_shader{
+                _scene, sample.invocation.parameters, ray_origin, ray_direction,
+                interval.minimum(), 0.5f, shadow_stack.entry(0u).object, shader_state,
+                cycles_noise::hash_uint3(sample.rng_hash ^ 0xd9111870u,
+                                        shadow_rng_offset, sample.sample_index), true};
             const auto heterogeneous =
                 _stack_is_heterogeneous(
                     shadow_stack);
@@ -204,42 +139,31 @@ class VolumeShadowComponentImpl final
                     sample.rng_hash};
                 auto majorant_provider =
                     make_scene_volume_majorant_entry_provider(
-                        _scene,
-                        _points,
-                        services,
-                        state,
-                        false);
+                        volume_shader);
                 Expr<
                     Buffer<
                         VolumeMajorantNodeGpu>>
                     nodes{
-                        _scene
-                            ->volume_majorant_node_buffer};
+                        _majorants->node_buffer};
                 Expr<
                     Buffer<
                         VolumeMajorantRootGpu>>
                     roots{
-                        _scene
-                            ->volume_majorant_root_buffer};
+                        _majorants->root_buffer};
                 Expr<
                     Buffer<
                         VolumeMajorantRootRangeGpu>>
                     ranges{
-                        _scene
-                            ->volume_majorant_range_buffer};
+                        _majorants->range_buffer};
                 VolumeMajorantOverlapTraversal
                     traversal{
                         std::move(nodes),
                         std::move(roots),
                         std::move(ranges),
-                        _scene
-                            ->volume_majorant_node_count,
-                        _scene
-                            ->volume_majorant_root_count,
-                        _scene
-                            ->volume_majorant_range_count,
-                        _scene
-                            ->volume_majorant_world_range,
+                        _majorants->node_count,
+                        _majorants->root_count,
+                        _majorants->range_count,
+                        _majorants->world_range,
                         shadow_stack,
                         *majorant_provider,
                         ray_origin,
@@ -250,11 +174,8 @@ class VolumeShadowComponentImpl final
                             tracking_rng_offset)};
                 auto collisions =
                     make_stacked_heterogeneous_volume_collision_provider(
-                        _scene->surfaces,
-                        _points,
+                        volume_shader,
                         shadow_stack,
-                        services,
-                        state,
                         ray_origin,
                         ray_direction);
                 const auto estimate =
@@ -269,11 +190,8 @@ class VolumeShadowComponentImpl final
             }
             $else {
                 const auto coefficients =
-                    evaluator.evaluate(
-                        shadow_stack,
-                        services,
-                        state,
-                        false);
+                    volume_shader.evaluate(
+                        shadow_stack, ray_origin + ray_direction * interval.minimum());
                 transmittance *=
                     exp(
                         -coefficients.sigma_t *

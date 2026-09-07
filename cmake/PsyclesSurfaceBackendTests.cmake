@@ -1,6 +1,34 @@
 include_guard(GLOBAL)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_volume_density_tests
+    SOURCE tests/test_luisa_cycles_svm_volume_density.cpp
+    TEST_STEM luisa_cycles_svm_volume_density
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(psycles_luisa_cycles_svm_volume_density_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+target_compile_definitions(psycles_luisa_cycles_svm_volume_density_tests PRIVATE
+    PSYCLES_VOLUME_DENSITY_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_svm_volume_density.txt")
+if(TEST psycles.luisa_cycles_svm_volume_density_vk)
+    set_tests_properties(psycles.luisa_cycles_svm_volume_density_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_volume_stack_tests
+    SOURCE tests/test_luisa_cycles_svm_volume_stack.cpp
+    TEST_STEM luisa_cycles_svm_volume_stack
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(psycles_luisa_cycles_svm_volume_stack_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+target_compile_definitions(psycles_luisa_cycles_svm_volume_stack_tests PRIVATE
+    PSYCLES_VOLUME_STACK_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_svm_volume_stack.txt")
+if(TEST psycles.luisa_cycles_svm_volume_stack_vk)
+    set_tests_properties(psycles.luisa_cycles_svm_volume_stack_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_background_tests
     SOURCE tests/test_luisa_cycles_svm_background.cpp
     TEST_STEM luisa_cycles_svm_background

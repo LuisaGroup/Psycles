@@ -1,7 +1,6 @@
 #pragma once
 
-#include "path_kernel_volume_point.h"
-#include "path_tracer_shader_services.h"
+#include "path_tracer_cycles_svm_volume.h"
 
 #include <psycles/luisa/volume_majorant_overlap.h>
 
@@ -14,11 +13,6 @@ namespace psycles::luisa_backend::detail {
 // records the enclosing kernel AST; device execution remains fully fused.
 [[nodiscard]] std::unique_ptr<VolumeMajorantEntryProvider>
 make_scene_volume_majorant_entry_provider(
-    std::shared_ptr<LuisaSceneData> scene,
-    std::shared_ptr<
-        const VolumeStackEntryPointProvider> points,
-    const ShaderServices &services,
-    const VolumeShadingState &state,
-    bool evaluate_emission);
+    const PathCyclesSvmVolumeShader &shader);
 
 }// namespace psycles::luisa_backend::detail

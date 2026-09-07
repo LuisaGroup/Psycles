@@ -101,6 +101,7 @@ struct PathKernelConfig {
     LightTreeCallables light_tree;
     SurfaceCallables surfaces;
     std::shared_ptr<const BackgroundSamplingDistribution> background_sampling;
+    std::shared_ptr<const VolumeMajorantRuntime> volume_majorants;
     // Returns the bounded hit batch as a complete value. Split kernels retain
     // that value across INTERSECT_SHADOW -> SHADE_SHADOW; synchronous consumers
     // keep it local. Storage policy is selected while recording the DSL.

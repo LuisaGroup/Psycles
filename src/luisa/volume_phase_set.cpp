@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include <psycles/luisa/cycles_volume_phase.h>
+#include <psycles/luisa/cycles_svm.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -56,6 +57,28 @@ void VolumePhaseSet::add(
         _count += 1u;
         _allocated += 1u;
     };
+}
+
+void VolumePhaseSet::copy_from(const cycles_svm::ClosurePool &closures) noexcept {
+    namespace abi = compiler::cycles_svm;
+    _count = 0u;
+    const auto maximum = static_cast<unsigned>(
+        std::min(_capacity, std::size_t{maximum_volume_phase_closures}));
+    UInt i = 0u;
+    $while((i < closures.count()) & (_count < maximum)) {
+        const auto from = closures.volume_common(i);
+        const auto scatter =
+            (from.type >= static_cast<unsigned>(abi::CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID)) &
+            (from.type <= static_cast<unsigned>(abi::CLOSURE_VOLUME_DRAINE_ID));
+        $if(scatter) {
+            _types.write(_count, from.type);
+            _parameters.write(_count, make_float4(closures.volume_phase_parameters(i), 0.0f));
+            _weights.write(_count, make_float4(from.weight, from.sample_weight));
+            _count += 1u;
+        };
+        i += 1u;
+    };
+    _allocated = _count;
 }
 
 UInt VolumePhaseSet::count() const noexcept {

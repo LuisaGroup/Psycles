@@ -17,10 +17,11 @@ Blender/Cycles itself supplies the compiler and GPU-state oracles. There is
 no independent CPU reference renderer.
 
 The default switch is **not** completion of the legacy code removal:
-stacked-volume integration and the displacement prepass still have
-SurfaceProgram consumers. Background evaluation and importance-map baking
-now use native SVM. The scene loader also still builds transitional material
-resources for those consumers. These are
+the displacement prepass still has SurfaceProgram consumers, and the scene
+loader still compiles transitional material resources. Background, stacked
+volume, shadow-volume, collision and majorant evaluation now use native SVM.
+The remaining loader dependency currently rejects Classroom's Object Index
+output despite native SVM supporting it. These are
 removal work, not supported alternate SVM architectures. The
 [default-path checkpoint](validation/2026-09-07/native-default/README.md)
 records the actual deletions and remaining dependencies.
@@ -35,7 +36,7 @@ profiling, pre-rendering nor scene-name constants determine allocation sizes.
   consumers. This includes BSSRDF exit setup on scenes without subsurface.
 - Stack capacity comes from the native compiler's stack-address analysis.
   The recorded array extent is passed to main surface, light, background,
-  importance-bake and shadow SVM entries. The standalone diagnostic API
+  importance-bake, volume, density-bake and shadow SVM entries. The standalone diagnostic API
   retains a conservative default.
 - Closure capacity follows the finalized Cycles graph count and scene cap,
   not the old SurfaceProgram estimator.
@@ -78,12 +79,15 @@ Recent independently checked native families include:
 | ShaderData geometry, packed object/primitive identity, curve segments and lamp emission | [Default-path checkpoint](validation/2026-09-07/native-default/README.md) |
 | Background/NEE ShaderData, native world evaluation and camera-dependent importance baking | [Native background](validation/2026-09-08/native-background/README.md) |
 | Volume Absorption/Scatter, Volume Coefficients and Principled Volume node streams and allocation state | [Native volume SVM](validation/2026-09-07/native-volume-svm/README.md) |
+| Ordered volume stacks, main/shadow consumers, phase copy, runtime extrema and density baking | [Native volume consumers](validation/2026-09-08/native-volume-consumers/README.md) |
 | Map Range and analytic Sky node behavior | [Map Range](validation/2026-09-07/map-range/README.md), [analytic Sky](validation/2026-09-07/analytic-sky/README.md) |
 
-Volume opcode coverage does not imply that the renderer's stacked-volume
-consumer has migrated. It must retain one closure allocator across the whole
-ordered stack, Cycles' per-entry phase merging, and its final active-prefix
-copy. Resetting the allocator for each material is not equivalent.
+The native volume consumer retains one closure allocator across the whole
+ordered stack, Cycles' per-entry phase merging and its final eight-phase
+active-prefix copy. Sigma_s includes only successfully allocated closures.
+Majorant baking uses one/sixteen samples and session-owned resources built
+after camera parameters are finalized. This does not claim imported sparse
+volume grids or motion-object support.
 
 Geometry setup uses the native KernelObject, packed triangle data,
 KernelCurve and curve-key images. Curve acceleration segments map to
@@ -108,6 +112,19 @@ Single render-only canaries take 13.5612 s / 14.9770 s; the main application
 coroutine frames remain 220 B / 284 B. Background migration did not materially
 change the residuals or establish a speedup. These are dated measurements,
 not guarantees for subsequent changes.
+
+A fresh, profiler-free Cycles HIP check on 2026-09-08 ran each scene three
+times. Main-loop times were 13.4344/13.4429/13.4521 s for Monk and
+14.4242/14.4129/14.4294 s for Monster (medians 13.4429/14.4242 s).
+Evidence is in `/var/tmp/psycles-cycles-hip-check-9wipGw`; Blender build identity
+is `9e2066aef7ef`, with fixed 256 spp, seed 0, no adaptive sampling or denoise,
+on the same RX 9070 XT. These are main-loop wall times, not summed kernel
+timings or the Python render-call duration. Against the preceding single
+Psycles canaries this suggests approximately 0.9%/3.8% slower rendering, not a
+paired current-revision performance result. Psycles' corresponding main-path
+JIT times were 66.0925/71.9387 s; Cycles' precompiled/cache behavior is not
+equivalent to that cold main-path compilation. The older Monk reference was
+captured under rocprofv3 and is not the timing baseline for this comparison.
 
 The [same-sample Monk diagnosis](validation/2026-09-07/lone-monk-residual/README.md)
 identifies a concrete visibility divergence at coincident leaf geometry.

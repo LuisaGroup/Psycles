@@ -2,7 +2,6 @@
 
 #include "path_kernel_volume_majorant_provider.h"
 #include "path_kernel_volume_random.h"
-#include "path_tracer_volume_capabilities.h"
 
 #include <psycles/luisa/cycles_sampler.h>
 #include <psycles/luisa/volume_majorant_overlap.h>
@@ -17,49 +16,28 @@ class PathHeterogeneousVolumeComponentImpl final
 
   private:
     std::shared_ptr<LuisaSceneData> _scene;
-    std::shared_ptr<
-        const VolumeStackEntryPointProvider>
-        _points;
+    std::shared_ptr<const VolumeMajorantRuntime> _majorants;
     std::unique_ptr<
         HeterogeneousVolumeSegmentComponent>
         _segment;
     HeterogeneousVolumeScatterProbability
         _scatter_probability;
 
-    [[nodiscard]] UInt _surface_flags(
-        const VolumeStackEntry &entry)
-        const noexcept {
-        UInt flags = 0u;
-        $if(entry.surface_tag <
-            _scene->volume_surface_flag_count) {
-            flags =
-                _scene->volume_surface_flag_buffer
-                    ->read(entry.surface_tag);
-        };
-        return flags;
-    }
-
   public:
     PathHeterogeneousVolumeComponentImpl(
         std::shared_ptr<LuisaSceneData> scene,
-        std::shared_ptr<
-            const VolumeStackEntryPointProvider>
-            points,
-        std::size_t closure_allocation_budget)
-        : _scene{std::move(scene)},
-          _points{std::move(points)},
+        std::shared_ptr<const VolumeMajorantRuntime> majorants)
+        : _scene{std::move(scene)}, _majorants{std::move(majorants)},
           _segment{
               make_heterogeneous_volume_segment_component(
-                  closure_allocation_budget)} {}
+                  8u)} {}
 
     Bool stack_is_heterogeneous(
         const VolumeStack &stack)
         const noexcept override {
         return stack.any(
             [this](const VolumeStackEntry &entry) noexcept {
-                return (_surface_flags(entry) &
-                        volume_surface_flag_heterogeneous) !=
-                       0u;
+                return !cycles_svm_volume_is_homogeneous(_scene, entry);
             });
     }
 
@@ -90,33 +68,26 @@ class PathHeterogeneousVolumeComponentImpl final
 
         auto majorant_provider =
             make_scene_volume_majorant_entry_provider(
-                _scene,
-                _points,
-                input.services,
-                input.state,
-                true);
+                input.shader);
         Expr<Buffer<VolumeMajorantNodeGpu>>
             nodes{
-                _scene
-                    ->volume_majorant_node_buffer};
+                _majorants->node_buffer};
         Expr<Buffer<VolumeMajorantRootGpu>>
             roots{
-                _scene
-                    ->volume_majorant_root_buffer};
+                _majorants->root_buffer};
         Expr<
             Buffer<
                 VolumeMajorantRootRangeGpu>>
             ranges{
-                _scene
-                    ->volume_majorant_range_buffer};
+                _majorants->range_buffer};
         VolumeMajorantOverlapTraversal traversal{
             std::move(nodes),
             std::move(roots),
             std::move(ranges),
-            _scene->volume_majorant_node_count,
-            _scene->volume_majorant_root_count,
-            _scene->volume_majorant_range_count,
-            _scene->volume_majorant_world_range,
+            _majorants->node_count,
+            _majorants->root_count,
+            _majorants->range_count,
+            _majorants->world_range,
             input.stack,
             *majorant_provider,
             input.ray_origin,
@@ -126,11 +97,8 @@ class PathHeterogeneousVolumeComponentImpl final
             initial_shade_offset};
         auto collisions =
             make_stacked_heterogeneous_volume_collision_provider(
-                _scene->surfaces,
-                _points,
+                input.shader,
                 input.stack,
-                input.services,
-                input.state,
                 input.ray_origin,
                 input.ray_direction);
         return _segment->emit(
@@ -174,14 +142,10 @@ class PathHeterogeneousVolumeComponentImpl final
 std::unique_ptr<PathHeterogeneousVolumeComponent>
 make_path_heterogeneous_volume_component(
     std::shared_ptr<LuisaSceneData> scene,
-    std::shared_ptr<
-        const VolumeStackEntryPointProvider> points,
-    std::size_t closure_allocation_budget) {
+    std::shared_ptr<const VolumeMajorantRuntime> majorants) {
     return std::make_unique<
         PathHeterogeneousVolumeComponentImpl>(
-        std::move(scene),
-        std::move(points),
-        closure_allocation_budget);
+        std::move(scene), std::move(majorants));
 }
 
 }// namespace psycles::luisa_backend::detail
