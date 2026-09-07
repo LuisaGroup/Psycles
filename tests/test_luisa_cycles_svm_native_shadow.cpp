@@ -1,4 +1,5 @@
 #include "cycles_svm_native_shadow_fixture.h"
+#include "cycles_svm_stack_extent_test_support.h"
 #include "path_kernel_direct_light_task.h"
 #include "path_tracer_bsdf_tables.h"
 #include "path_tracer_cycles_svm_kernel_globals.h"
@@ -117,7 +118,15 @@ bool run(const char *program, const char *backend, bool no_cache) {
   }
   auto ray_buffer = upload(device, stream, std::span{rays});
   auto identity_buffer = upload(device, stream, std::span{identities});
+  for (const auto extent : {7u, 23u, unsigned(SVM_STACK_SIZE)}) {
+    runtime.compilation.table.peak_stack_usage = extent;
+    const auto sizing = make_cycles_svm_shadow_surface_callable(scene);
+    require_svm_stack_extent(sizing.function(), extent);
+  }
+  // make_native_shadow_image uses only lane zero, including Light Path.
+  runtime.compilation.table.peak_stack_usage = 1u;
   const auto evaluate = make_cycles_svm_shadow_surface_callable(scene);
+  require_svm_stack_extent(evaluate.function(), 1u);
   Kernel1D<Buffer<luisa::float4>, Buffer<luisa::uint4>, Buffer<luisa::float4>,
            Buffer<luisa::uint4>>
       single = [scene, evaluate](BufferFloat4 rays, BufferUInt4 ids,
