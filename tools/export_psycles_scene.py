@@ -18,10 +18,8 @@ Cycles remain the semantic source; node evaluation is lowered to Luisa DSL.
 from __future__ import annotations
 
 import array
-import hashlib
 import json
 import pathlib
-import shutil
 import struct
 import sys
 import traceback
@@ -33,6 +31,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import blender_scene_manifest as manifest  # noqa: E402
 import blender_build_identity  # noqa: E402
+from blender_image_export import export_images as _export_images  # noqa: E402
 from blender_cycles_object import (  # noqa: E402
     ParticleSourceRegistry as _ParticleSourceRegistry,
     light_group as _cycles_light_group,
@@ -184,14 +183,6 @@ def _cycles_uint_to_float(value: int) -> float:
 
 def _column_major(matrix: Any) -> list[float]:
     return [float(matrix[row][column]) for column in range(4) for row in range(4)]
-
-
-def _safe_name(name: str) -> str:
-    clean = "".join(
-        character if character.isalnum() or character in "._-" else "_"
-        for character in name
-    )
-    return clean[:120] or "unnamed"
 
 
 def _socket_links(tree: Any) -> dict[tuple[str, str], tuple[str, str]]:
@@ -967,107 +958,6 @@ def _particle_hair_geometry(
             for slot in obj.material_slots
         ],
     }
-
-
-def _image_extension(image: Any) -> str:
-    if image.source == "GENERATED":
-        return ".png"
-    suffix = pathlib.Path(image.filepath).suffix.lower()
-    if suffix in {
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".tga",
-        ".bmp",
-        ".hdr",
-        ".exr",
-    }:
-        return suffix
-    return {
-        "JPEG": ".jpg",
-        "PNG": ".png",
-        "TARGA": ".tga",
-        "BMP": ".bmp",
-        "HDR": ".hdr",
-        "OPEN_EXR": ".exr",
-        "OPEN_EXR_MULTILAYER": ".exr",
-    }.get(image.file_format, ".bin")
-
-
-def _external_image_path(image: Any) -> pathlib.Path:
-    # Linked image datablocks retain paths relative to the library .blend
-    # that owns them, not the currently open main file. This distinction is
-    # observable in Blender's official Classroom scene, whose linked assets
-    # use paths such as ``//../../textures/_baseTextures/...``. Delegate the
-    # base selection to Blender so export and Cycles resolve the same file.
-    return pathlib.Path(
-        bpy.path.abspath(
-            image.filepath,
-            library=image.library,
-        )
-    )
-
-
-def _save_generated_image(
-    image: Any,
-    destination: pathlib.Path,
-) -> None:
-    # GENERATED images have no backing file, but their pixel buffer is a real
-    # Cycles texture input. Save a temporary datablock copy through Blender's
-    # image codec so the original filepath/format and source scene remain
-    # untouched. ``Image.save`` applies the datablock color-space encoding;
-    # Psycles decodes that declared space when sampling the exported texture.
-    encoded = image.copy()
-    try:
-        pixels = array.array("f", [0.0]) * len(image.pixels)
-        image.pixels.foreach_get(pixels)
-        encoded.pixels.foreach_set(pixels)
-        encoded.update()
-        encoded.filepath_raw = str(destination)
-        encoded.file_format = "PNG"
-        encoded.save()
-    finally:
-        bpy.data.images.remove(encoded)
-
-
-def _export_images(output: pathlib.Path) -> list[dict[str, Any]]:
-    texture_directory = output / "textures"
-    texture_directory.mkdir(parents=True, exist_ok=True)
-    result: list[dict[str, Any]] = []
-    for index, image in enumerate(
-        sorted(bpy.data.images, key=lambda candidate: candidate.name)
-    ):
-        if image.type in {"RENDER_RESULT", "COMPOSITING"} or min(image.size) <= 0:
-            continue
-        extension = _image_extension(image)
-        destination = texture_directory / (
-            f"{index:03d}-{_safe_name(image.name)}{extension}"
-        )
-        if image.packed_file is not None:
-            destination.write_bytes(bytes(image.packed_file.data))
-        elif image.source == "GENERATED":
-            _save_generated_image(image, destination)
-        else:
-            source = _external_image_path(image)
-            if not source.is_file():
-                raise FileNotFoundError(
-                    f"external image is missing: {image.name}: {source}"
-                )
-            shutil.copyfile(source, destination)
-        digest = hashlib.sha256(destination.read_bytes()).hexdigest()
-        result.append(
-            {
-                "name": image.name,
-                "path": destination.relative_to(output).as_posix(),
-                "width": int(image.size[0]),
-                "height": int(image.size[1]),
-                "source": image.source,
-                "colorspace": image.colorspace_settings.name,
-                "alpha_mode": image.alpha_mode,
-                "sha256": digest,
-            }
-        )
-    return result
 
 
 def _original_id(value: Any) -> Any:

@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 
 namespace psycles::luisa_backend::cycles_svm::detail {
 
@@ -74,13 +75,9 @@ template<typename TextureHeap, typename ImageBindingBuffer>
   using compiler::cycles_svm::ImageInterpolation;
   namespace scene_detail = ::psycles::luisa_backend::detail;
 
-  const auto binding = bindings->read(image_id.cast<std::uint32_t>());
-  const luisa::compute::UInt interpolation =
-      binding.sampler & scene_detail::cycles_svm_image_interpolation_mask;
-  const luisa::compute::UInt extension =
-      (binding.sampler & scene_detail::cycles_svm_image_extension_mask) >>
-      scene_detail::cycles_svm_image_extension_shift;
-  luisa::compute::Float4 result = luisa::compute::make_float4(0.0f);
+  // Original kernel/device/gpu/image.h: both an absent image handle and a
+  // failed full-image load return before UV wrapping or any texture access.
+  luisa::compute::Float4 result = luisa::compute::make_float4(1.0f, 0.0f, 1.0f, 1.0f);
   constexpr std::array interpolation_domain{
       ImageInterpolation::closest,
       ImageInterpolation::linear,
@@ -90,20 +87,27 @@ template<typename TextureHeap, typename ImageBindingBuffer>
       ImageExtension::clip,
       ImageExtension::extend,
       ImageExtension::mirror};
-  for (const auto static_interpolation : interpolation_domain) {
-    for (const auto static_extension : extension_domain) {
-      const auto interpolation_code =
-          image_sampling_family(static_interpolation);
-      const auto extension_code =
-          image_sampling_extension(static_extension);
-      $if((interpolation == interpolation_code) &
-          (extension == extension_code)) {
-        result = sample_image_2d(
-            textures, binding.texture_slot, uv,
-            static_interpolation, static_extension);
-      };
-    }
-  }
+  $if(image_id != std::numeric_limits<std::int32_t>::max()) {
+    const auto binding = bindings->read(image_id.cast<std::uint32_t>());
+    $if((binding.sampler & scene_detail::cycles_svm_image_load_failed_flag) == 0u) {
+      const luisa::compute::UInt interpolation =
+          binding.sampler & scene_detail::cycles_svm_image_interpolation_mask;
+      const luisa::compute::UInt extension =
+          (binding.sampler & scene_detail::cycles_svm_image_extension_mask) >>
+          scene_detail::cycles_svm_image_extension_shift;
+      result = luisa::compute::make_float4(0.0f);
+      for (const auto static_interpolation : interpolation_domain) {
+        for (const auto static_extension : extension_domain) {
+          const auto interpolation_code = image_sampling_family(static_interpolation);
+          const auto extension_code = image_sampling_extension(static_extension);
+          $if((interpolation == interpolation_code) & (extension == extension_code)) {
+            result = sample_image_2d(textures, binding.texture_slot, uv,
+                                    static_interpolation, static_extension);
+          };
+        }
+      }
+    };
+  };
   return result;
 }
 

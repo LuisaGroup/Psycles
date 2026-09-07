@@ -964,6 +964,7 @@ if(PSYCLES_BUILD_TESTS)
         foreach(test IN ITEMS
                 linked_images
                 generated_images
+                missing_images
                 particle_hair
                 cycles_identity
                 cycles_output

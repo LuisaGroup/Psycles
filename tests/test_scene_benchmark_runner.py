@@ -452,6 +452,7 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                 "blender_scene_manifest.py",
                 "blender_build_identity.py",
                 "blender_particle_hair.py",
+                "blender_image_export.py",
                 "cycles_hash.py",
                 "exporter_identity.py",
             ):
@@ -518,6 +519,7 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                 "blender_scene_manifest.py",
                 "blender_build_identity.py",
                 "blender_particle_hair.py",
+                "blender_image_export.py",
                 "cycles_hash.py",
                 "exporter_identity.py",
             ):
@@ -547,6 +549,19 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             )
             (root / "blender_particle_hair.py").write_text(
                 "changed particle hair dependency", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(
+                RuntimeError, "different exporter implementation"
+            ):
+                self.runner.exporter_identity.require_current(
+                    document, root / "scene.json", export_script
+                )
+
+            (root / "blender_particle_hair.py").write_text(
+                "blender_particle_hair.py", encoding="utf-8"
+            )
+            (root / "blender_image_export.py").write_text(
+                "changed image dependency", encoding="utf-8"
             )
             with self.assertRaisesRegex(
                 RuntimeError, "different exporter implementation"

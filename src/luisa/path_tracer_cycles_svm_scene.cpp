@@ -393,7 +393,8 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
     }
     runtime->image_bindings.emplace_back(make_cycles_svm_image_binding(
         static_cast<std::uint32_t>(binding.resource_id),
-        binding.interpolation, binding.extension));
+        binding.interpolation, binding.extension,
+        snapshot.images.at(image_id).load_failed));
   }
   if (!runtime->image_bindings.empty()) {
     runtime->image_binding_buffer.emplace(

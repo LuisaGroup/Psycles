@@ -111,6 +111,9 @@ inline constexpr std::uint32_t cycles_svm_image_interpolation_mask = 0x3u;
 inline constexpr std::uint32_t cycles_svm_image_extension_shift = 2u;
 inline constexpr std::uint32_t cycles_svm_image_extension_mask =
     0x3u << cycles_svm_image_extension_shift;
+// Projection of full-image KernelImageTexture::image_info_id == KERNEL_IMAGE_NONE.
+// The low four bits remain the immutable sampler; no SVM word is rewritten.
+inline constexpr std::uint32_t cycles_svm_image_load_failed_flag = 1u << 4u;
 
 [[nodiscard]] constexpr std::uint32_t cycles_svm_image_sampling_family(
     compiler::cycles_svm::ImageInterpolation interpolation) noexcept {
@@ -154,9 +157,11 @@ inline constexpr std::uint32_t cycles_svm_image_extension_mask =
 [[nodiscard]] constexpr CyclesSvmImageBindingGpu make_cycles_svm_image_binding(
     std::uint32_t texture_slot,
     compiler::cycles_svm::ImageInterpolation interpolation,
-    compiler::cycles_svm::ImageExtension extension) noexcept {
+    compiler::cycles_svm::ImageExtension extension,
+    bool load_failed = false) noexcept {
   return {.texture_slot = texture_slot,
-          .sampler = cycles_svm_image_sampler(interpolation, extension)};
+          .sampler = cycles_svm_image_sampler(interpolation, extension) |
+                     (load_failed ? cycles_svm_image_load_failed_flag : 0u)};
 }
 
 [[nodiscard]] constexpr bool
