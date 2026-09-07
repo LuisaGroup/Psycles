@@ -257,6 +257,7 @@ def _main() -> None:
     )
     scene.cycles.sampling_pattern = "AUTOMATIC"
     scene.cycles.scrambling_distance = 0.25
+    scene.cycles.auto_scrambling_distance = True
     golden["_configure_sampler"](
         scene,
         "TABULATED_SOBOL",
@@ -265,13 +266,7 @@ def _main() -> None:
     if (
         scene.cycles.sampling_pattern != "TABULATED_SOBOL"
         or float(scene.cycles.scrambling_distance) != 1.0
-        or (
-            hasattr(
-                scene.cycles,
-                "use_auto_scrambling_distance",
-            )
-            and scene.cycles.use_auto_scrambling_distance
-        )
+        or scene.cycles.auto_scrambling_distance
     ):
         raise AssertionError(
             "Cycles golden did not pin the path-sampler contract"

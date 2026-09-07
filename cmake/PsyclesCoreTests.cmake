@@ -918,6 +918,9 @@ if(PSYCLES_BUILD_TESTS)
 
     find_program(PSYCLES_BLENDER_EXECUTABLE NAMES blender)
     if(PSYCLES_BLENDER_EXECUTABLE)
+        psycles_add_blender_test(
+            NAME psycles.blender_cycles_sampler
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_cycles_sampler.py")
         set(blender_exporter
             "${CMAKE_CURRENT_SOURCE_DIR}/tools/export_psycles_scene.py")
         set(blender_inspector

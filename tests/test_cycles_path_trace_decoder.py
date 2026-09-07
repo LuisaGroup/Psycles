@@ -79,6 +79,26 @@ class CyclesPathTraceRenderTests(unittest.TestCase):
 
         self.assertEqual(vars(cycles), {})
 
+    def test_sampler_disables_the_actual_cycles_auto_scrambling_property(self) -> None:
+        # Cycles 5.2 calls this auto_scrambling_distance, without "use_".
+        # Start enabled: a no-op setter must not accidentally pass the test
+        # merely because Blender's default happens to be False.
+        with mock.patch.dict(sys.modules, {"bpy": types.ModuleType("bpy")}):
+            import render_cycles_golden as golden
+        for renderer in (golden, self._renderer()):
+            with self.subTest(renderer=renderer.__name__):
+                cycles = types.SimpleNamespace(
+                    sampling_pattern="AUTOMATIC",
+                    scrambling_distance=0.25,
+                    auto_scrambling_distance=True,
+                )
+                renderer._configure_sampler(
+                    types.SimpleNamespace(cycles=cycles), "TABULATED_SOBOL", 1.0
+                )
+                self.assertFalse(cycles.auto_scrambling_distance)
+                self.assertEqual(cycles.sampling_pattern, "TABULATED_SOBOL")
+                self.assertEqual(cycles.scrambling_distance, 1.0)
+
     def test_cycles_patch_observes_the_scheduled_sample_randoms(self) -> None:
         patch = (
             ROOT
