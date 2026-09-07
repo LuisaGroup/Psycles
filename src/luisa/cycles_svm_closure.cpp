@@ -538,9 +538,11 @@ void node_mix_closure(Cursor &cursor, Stack &stack) noexcept {
   };
 }
 
-void node_closure_emission(Cursor &cursor, Stack &stack,
+void node_closure_emission(const KernelGlobals &kernel_globals,
+                           Cursor &cursor, Stack &stack,
                            Expr<luisa::float3> closure_weight,
-                           ShaderData &shader_data, Bool &supported) noexcept {
+                           ShaderData &shader_data,
+                           Bool &supported) noexcept {
   const auto packed = cursor.word();
   const auto mix_weight_offset = cursor.byte(packed, 0u);
   Float3 weight = closure_weight;
@@ -554,11 +556,17 @@ void node_closure_emission(Cursor &cursor, Stack &stack,
 
   $if(active) {
     $if((shader_data.flag & shader_data_is_volume_shader_eval) != 0u) {
-      /* Cycles multiplies by object_volume_density here. The object service
-       * is deliberately not guessed before that exact family is copied. */
-      supported = false;
-    }
-    $else {
+      if (const auto density =
+              kernel_globals.object_volume_density(shader_data.object)) {
+        weight *= *density;
+      } else {
+        $if(shader_data.object != object_none) {
+          active = false;
+          supported = false;
+        };
+      }
+    };
+    $if(active) {
       $if((shader_data.flag & shader_data_emission) != 0u) {
         shader_data.closure_emission_background += weight;
       }

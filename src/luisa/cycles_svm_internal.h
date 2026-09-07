@@ -318,7 +318,8 @@ void node_closure_weight(Cursor &cursor, Stack &stack,
 void node_emission_weight(Cursor &cursor, Stack &stack,
                           luisa::compute::Float3 &closure_weight) noexcept;
 void node_mix_closure(Cursor &cursor, Stack &stack) noexcept;
-void node_closure_emission(Cursor &cursor, Stack &stack,
+void node_closure_emission(const KernelGlobals &kernel_globals,
+                           Cursor &cursor, Stack &stack,
                            luisa::compute::Expr<luisa::float3> closure_weight,
                            ShaderData &shader_data,
                            luisa::compute::Bool &supported) noexcept;

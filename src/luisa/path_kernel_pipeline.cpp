@@ -5,6 +5,8 @@
 #include "path_kernel_transitions.h"
 
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/cycles_svm.h>
+#include <psycles/luisa/cycles_volume_boundary.h>
 
 #include <optional>
 #include <utility>
@@ -245,6 +247,33 @@ void PathKernelPipeline::emit(
         }
       }
       auto surface = _impl->surface_geometry->emit(bounce);
+      if (sample.invocation.config.scene->native_cycles_svm_surface &&
+          sample.invocation.config.volume_state) {
+        namespace abi = compiler::cycles_svm;
+        const auto &scene = sample.invocation.config.scene;
+        const Expr<Buffer<abi::KernelShader>> shaders{
+            *scene->cycles_svm->kernel_shader_buffer};
+        const auto shader_flags = shaders->read(
+            surface.cycles_surface_shader & cycles_svm::shader_mask).flags;
+        $if((shader_flags & static_cast<unsigned>(abi::SD_HAS_ONLY_VOLUME)) != 0u) {
+          const auto next = cycles_volume_boundary::advance(
+              sample.throughput, sample.volume_bounds_bounce,
+              sample.cycles_rng_offset, sample.ray->t_min(),
+              bounce.hit->committed_ray_t, sample.continuation_probability,
+              sample.path_flags);
+          sample.throughput = next.throughput;
+          sample.volume_bounds_bounce = next.bounds_bounce;
+          sample.cycles_rng_offset = next.rng_offset;
+          $if(!next.valid) { $break; };
+          sample.ray = make_ray(sample.ray->origin(), sample.ray->direction(),
+                                next.ray_tmin, sample.ray->t_max());
+          sample.invocation.config.volume_state->cross_surface(
+              sample.volume, surface.volume_stack_entry, surface.point.back_facing,
+              surface.surface_has_volume,
+              cycles_closure::label_transmit | cycles_closure::label_transparent);
+          $continue;
+        };
+      }
       std::optional<PathBounceRandomState> surface_random_state;
       if (random_plan.shade_surface) {
         surface_random_state.emplace(_impl->bounce_random->emit(sample));

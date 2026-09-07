@@ -1,0 +1,360 @@
+{
+  "schema": "psycles.blender-scene.v2",
+  "camera": {
+    "angle": 0.6911112070083618,
+    "angle_x": 0.6911112070083618,
+    "angle_y": 0.4710899591445923,
+    "clip_end": 1000.0,
+    "clip_start": 0.10000000149011612,
+    "dof": {
+      "blades": 0,
+      "enabled": false,
+      "focus_distance": 10.0,
+      "fstop": 2.799999952316284,
+      "ratio": 1.0,
+      "rotation": 0.0
+    },
+    "lens": 50.0,
+    "name": "Probe Camera",
+    "ortho_scale": 2.200000047683716,
+    "sensor_fit": "AUTO",
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "transform": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      3.0,
+      1.0
+    ],
+    "type": "ORTHO"
+  },
+  "images": [],
+  "node_groups": [],
+  "materials": [
+    {
+      "cycles_sync": {
+        "pass_id": 0,
+        "shader_index": 5
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "AUTO",
+      "name": "Volume Emission",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Volume Light Path",
+            "from_socket": "Is Camera Ray",
+            "to_node": "Camera Emission Strength",
+            "to_socket": "Value"
+          },
+          {
+            "from_node": "Volume Emission",
+            "from_socket": "Emission",
+            "to_node": "Material Output",
+            "to_socket": "Volume"
+          },
+          {
+            "from_node": "Camera Emission Strength",
+            "from_socket": "Value",
+            "to_node": "Volume Emission",
+            "to_socket": "Strength"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeMath",
+            "image": null,
+            "inputs": [
+              {
+                "default": 0.5,
+                "identifier": "Value",
+                "linked": true,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.699999988079071,
+                "identifier": "Value_001",
+                "linked": false,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.5,
+                "identifier": "Value_002",
+                "linked": false,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [
+              {
+                "from_socket": "Value",
+                "to_socket": "Value"
+              }
+            ],
+            "label": "",
+            "mute": false,
+            "name": "Camera Emission Strength",
+            "node_tree": null,
+            "outputs": [
+              {
+                "default": 0.0,
+                "identifier": "Value",
+                "linked": true,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "properties": {
+              "operation": "MULTIPLY",
+              "use_clamp": false
+            },
+            "special": {},
+            "type": "MATH"
+          },
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "identifier": "Surface",
+                "linked": false,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeEmission",
+            "image": null,
+            "inputs": [
+              {
+                "default": [
+                  0.10999999940395355,
+                  0.3700000047683716,
+                  0.8299999833106995,
+                  1.0
+                ],
+                "identifier": "Color",
+                "linked": false,
+                "name": "Color",
+                "type": "NodeSocketColor"
+              },
+              {
+                "default": 1.0,
+                "identifier": "Strength",
+                "linked": true,
+                "name": "Strength",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Emission",
+            "node_tree": null,
+            "outputs": [
+              {
+                "identifier": "Emission",
+                "linked": true,
+                "name": "Emission",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "EMISSION"
+          },
+          {
+            "bl_idname": "ShaderNodeLightPath",
+            "image": null,
+            "inputs": [],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Light Path",
+            "node_tree": null,
+            "outputs": [
+              {
+                "default": 0.0,
+                "identifier": "Is Camera Ray",
+                "linked": true,
+                "name": "Is Camera Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Shadow Ray",
+                "linked": false,
+                "name": "Is Shadow Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Diffuse Ray",
+                "linked": false,
+                "name": "Is Diffuse Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Glossy Ray",
+                "linked": false,
+                "name": "Is Glossy Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Singular Ray",
+                "linked": false,
+                "name": "Is Singular Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Reflection Ray",
+                "linked": false,
+                "name": "Is Reflection Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Transmission Ray",
+                "linked": false,
+                "name": "Is Transmission Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Volume Scatter Ray",
+                "linked": false,
+                "name": "Is Volume Scatter Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Ray Length",
+                "linked": false,
+                "name": "Ray Length",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Ray Depth",
+                "linked": false,
+                "name": "Ray Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Diffuse Depth",
+                "linked": false,
+                "name": "Diffuse Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Glossy Depth",
+                "linked": false,
+                "name": "Glossy Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Transparent Depth",
+                "linked": false,
+                "name": "Transparent Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Transmission Depth",
+                "linked": false,
+                "name": "Transmission Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Portal Depth",
+                "linked": false,
+                "name": "Portal Depth",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "LIGHT_PATH"
+          }
+        ],
+        "surface_root": null,
+        "volume_root": {
+          "node": "Volume Emission",
+          "socket": "Emission"
+        }
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_interpolation": "LINEAR",
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    }
+  ]
+}

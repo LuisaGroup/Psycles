@@ -1456,34 +1456,29 @@ public:
         auto *root = member(_tree, "surface_root");
         const auto node = text(member(root, "node"));
         const auto socket = text(member(root, "socket"));
-        if (node.empty() || socket.empty()) {
-            // A volume-only material uses its mesh as an invisible volume
-            // boundary in Cycles. A genuinely empty material surface remains
-            // an opaque black path terminator.
+        if ((node.empty() || socket.empty()) && has_volume_root) {
+            // Cycles leaves Output.Surface disconnected. Its volume boundary
+            // behavior comes from SD_HAS_ONLY_VOLUME, not an invented BSDF in
+            // the surface SVM stream. Preserve the absent closure explicitly.
+            _graph.set_root(ShaderDomain::surface,
+                            null_closure("Unconnected Volume Surface").ref);
+        } else if (node.empty() || socket.empty()) {
+            // A genuinely empty material surface is an opaque black path
+            // terminator in the contract's legacy surface evaluator.
             const auto closure = _graph.add_node(
-                has_volume_root
-                    ? compiler::node_type::transparent_bsdf
-                    : compiler::node_type::diffuse_bsdf,
-                has_volume_root
-                    ? "Transparent Volume Boundary"
-                    : "Unconnected Surface");
+                compiler::node_type::diffuse_bsdf, "Unconnected Surface");
             static_cast<void>(_graph.set_input(
                 closure,
                 "Color",
-                SocketValue::color(
-                    has_volume_root
-                        ? Vec3f{1.0f, 1.0f, 1.0f}
-                        : Vec3f{0.0f, 0.0f, 0.0f})));
-            if (!has_volume_root) {
-                static_cast<void>(_graph.set_input(
-                    closure,
-                    "Roughness",
-                    SocketValue::floating(0.0f)));
-                static_cast<void>(_graph.set_input(
-                    closure,
-                    "Normal",
-                    SocketValue::normal({0.0f, 0.0f, 0.0f})));
-            }
+                SocketValue::color(Vec3f{0.0f, 0.0f, 0.0f})));
+            static_cast<void>(_graph.set_input(
+                closure,
+                "Roughness",
+                SocketValue::floating(0.0f)));
+            static_cast<void>(_graph.set_input(
+                closure,
+                "Normal",
+                SocketValue::normal({0.0f, 0.0f, 0.0f})));
             _graph.set_root(
                 ShaderDomain::surface,
                 contract::OutputRef{

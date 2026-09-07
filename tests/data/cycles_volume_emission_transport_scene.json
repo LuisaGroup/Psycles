@@ -1,0 +1,774 @@
+{
+  "blender": "5.2.1 LTS",
+  "blender_build": {
+    "build_branch": "blender-v5.2-release (modified)",
+    "build_hash": "9e2066aef7ef",
+    "build_type": "Release",
+    "version": "5.2.1 LTS",
+    "version_cycle": "release",
+    "version_tuple": [
+      5,
+      2,
+      1
+    ]
+  },
+  "camera": {
+    "angle": 0.6911112070083618,
+    "angle_x": 0.6911112070083618,
+    "angle_y": 0.4710899591445923,
+    "clip_end": 1000.0,
+    "clip_start": 0.10000000149011612,
+    "dof": {
+      "blades": 0,
+      "enabled": false,
+      "focus_distance": 10.0,
+      "fstop": 2.799999952316284,
+      "ratio": 1.0,
+      "rotation": 0.0
+    },
+    "lens": 50.0,
+    "name": "Probe Camera",
+    "ortho_scale": 2.200000047683716,
+    "sensor_fit": "AUTO",
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "transform": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      3.0,
+      1.0
+    ],
+    "type": "ORTHO"
+  },
+  "curve_geometries": [],
+  "cycles_sync": {
+    "object_count": 2,
+    "uses_light_linking": false
+  },
+  "exporter": {
+    "schema": "psycles.exporter-identity.v1",
+    "sha256": "3b044d5213c12b0cca0a58f219feef66b8eb4e712d203d116660d2c945c8ce34",
+    "sources": {
+      "blender_build_identity.py": "283f74ac99771aeed906d76b2aed250fd1c77e632c0b26e3c74644676b0010be",
+      "blender_particle_hair.py": "49f56d0307455de169657909a2fe62079fbc78ef7f7e748d963c90439c24148a",
+      "blender_scene_manifest.py": "2f4f401ec42ef96d1842031b61a4a37660a0915b9ba63d388ac5acfee7643333",
+      "cycles_hash.py": "3b0e4b47fceaa83fe89043b28c8586997c559f03e2f9a8eb9b9c8bdd372a6680",
+      "export_psycles_scene.py": "3410a84c48d1c9c8a00feaa7a2f2042cc4f8d31789e8ccb57242fb4c5c52f914",
+      "exporter_identity.py": "5e8ab48b714eb187d502c3848acdb04caab48acc578b5ac752c66ea32f23a992"
+    }
+  },
+  "frame": 1,
+  "geometries": [
+    {
+      "color_attributes": [],
+      "corner_count": 36,
+      "cycles_sync": {
+        "primitive_offset": 0
+      },
+      "default_color_attribute": null,
+      "default_uv_available": true,
+      "generated": {
+        "bytes": 96,
+        "offset": 1936
+      },
+      "generated_domain": "POINT",
+      "generated_transform": [
+        0.6249999906867744,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.6249999906867744,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.6249999906867744,
+        0.0,
+        0.5,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "indices": {
+        "bytes": 144,
+        "offset": 2032
+      },
+      "material_slots": [
+        "Volume Emission"
+      ],
+      "name": "Closed Emission Volume",
+      "normal_domain": "POINT",
+      "normals": {
+        "bytes": 96,
+        "offset": 112
+      },
+      "point_count": 8,
+      "pointiness_source": null,
+      "positions": {
+        "bytes": 96,
+        "offset": 16
+      },
+      "triangle_count": 12,
+      "triangle_material_slots": {
+        "bytes": 48,
+        "offset": 2176
+      },
+      "triangle_random_per_island": {
+        "bytes": 48,
+        "offset": 2272
+      },
+      "triangle_smooth": {
+        "bytes": 48,
+        "offset": 2224
+      },
+      "uses_adaptive_subdivision": false,
+      "uv": {
+        "bytes": 288,
+        "offset": 208
+      },
+      "uv_domain": "CORNER",
+      "uv_layers": [
+        {
+          "domain": "CORNER",
+          "name": "UVMap",
+          "tangents": {
+            "bytes": 576,
+            "offset": 1360
+          },
+          "values": {
+            "bytes": 288,
+            "offset": 1072
+          }
+        }
+      ],
+      "uv_tangent_domain": "CORNER",
+      "uv_tangents": {
+        "bytes": 576,
+        "offset": 496
+      }
+    }
+  ],
+  "images": [],
+  "instances": [
+    {
+      "ambient_occlusion_distance": 0.0,
+      "asset_name": "Closed Emission Volume",
+      "cycles_particle_source": null,
+      "cycles_sync": {
+        "light_group": -1,
+        "object_index": 0
+      },
+      "dupli_generated": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dupli_uv": [
+        0.0,
+        0.0
+      ],
+      "geometry": 0,
+      "geometry_type": "MESH",
+      "is_caustics_caster": false,
+      "is_caustics_receiver": false,
+      "is_instance": false,
+      "is_shadow_catcher": false,
+      "name": "Closed Emission Volume",
+      "object_alpha": 1.0,
+      "object_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "object_pass_id": 0,
+      "particle_index": 0,
+      "persistent_id": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "random_id": 3490771230,
+      "shadow_terminator_geometry_offset": 0.10000000149011612,
+      "shadow_terminator_shading_offset": 0.0,
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.7200000286102295,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5799999833106995,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "use_holdout": false,
+      "visibility": {
+        "camera": true,
+        "diffuse": true,
+        "glossy": true,
+        "shadow": true,
+        "transmission": true,
+        "volume_scatter": true
+      }
+    }
+  ],
+  "lights": [],
+  "materials": [
+    {
+      "cycles_sync": {
+        "pass_id": 0,
+        "shader_index": 5
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "AUTO",
+      "name": "Volume Emission",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Volume Light Path",
+            "from_socket": "Is Camera Ray",
+            "to_node": "Camera Emission Strength",
+            "to_socket": "Value"
+          },
+          {
+            "from_node": "Volume Emission",
+            "from_socket": "Emission",
+            "to_node": "Material Output",
+            "to_socket": "Volume"
+          },
+          {
+            "from_node": "Camera Emission Strength",
+            "from_socket": "Value",
+            "to_node": "Volume Emission",
+            "to_socket": "Strength"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeMath",
+            "image": null,
+            "inputs": [
+              {
+                "default": 0.5,
+                "identifier": "Value",
+                "linked": true,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.699999988079071,
+                "identifier": "Value_001",
+                "linked": false,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.5,
+                "identifier": "Value_002",
+                "linked": false,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [
+              {
+                "from_socket": "Value",
+                "to_socket": "Value"
+              }
+            ],
+            "label": "",
+            "mute": false,
+            "name": "Camera Emission Strength",
+            "node_tree": null,
+            "outputs": [
+              {
+                "default": 0.0,
+                "identifier": "Value",
+                "linked": true,
+                "name": "Value",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "properties": {
+              "operation": "MULTIPLY",
+              "use_clamp": false
+            },
+            "special": {},
+            "type": "MATH"
+          },
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "identifier": "Surface",
+                "linked": false,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "identifier": "Volume",
+                "linked": true,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeEmission",
+            "image": null,
+            "inputs": [
+              {
+                "default": [
+                  0.10999999940395355,
+                  0.3700000047683716,
+                  0.8299999833106995,
+                  1.0
+                ],
+                "identifier": "Color",
+                "linked": false,
+                "name": "Color",
+                "type": "NodeSocketColor"
+              },
+              {
+                "default": 1.0,
+                "identifier": "Strength",
+                "linked": true,
+                "name": "Strength",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Emission",
+            "node_tree": null,
+            "outputs": [
+              {
+                "identifier": "Emission",
+                "linked": true,
+                "name": "Emission",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "EMISSION"
+          },
+          {
+            "bl_idname": "ShaderNodeLightPath",
+            "image": null,
+            "inputs": [],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Volume Light Path",
+            "node_tree": null,
+            "outputs": [
+              {
+                "default": 0.0,
+                "identifier": "Is Camera Ray",
+                "linked": true,
+                "name": "Is Camera Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Shadow Ray",
+                "linked": false,
+                "name": "Is Shadow Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Diffuse Ray",
+                "linked": false,
+                "name": "Is Diffuse Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Glossy Ray",
+                "linked": false,
+                "name": "Is Glossy Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Singular Ray",
+                "linked": false,
+                "name": "Is Singular Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Reflection Ray",
+                "linked": false,
+                "name": "Is Reflection Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Transmission Ray",
+                "linked": false,
+                "name": "Is Transmission Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Is Volume Scatter Ray",
+                "linked": false,
+                "name": "Is Volume Scatter Ray",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Ray Length",
+                "linked": false,
+                "name": "Ray Length",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Ray Depth",
+                "linked": false,
+                "name": "Ray Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Diffuse Depth",
+                "linked": false,
+                "name": "Diffuse Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Glossy Depth",
+                "linked": false,
+                "name": "Glossy Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Transparent Depth",
+                "linked": false,
+                "name": "Transparent Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Transmission Depth",
+                "linked": false,
+                "name": "Transmission Depth",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "default": 0.0,
+                "identifier": "Portal Depth",
+                "linked": false,
+                "name": "Portal Depth",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "LIGHT_PATH"
+          }
+        ],
+        "surface_root": null,
+        "volume_root": {
+          "node": "Volume Emission",
+          "socket": "Emission"
+        }
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_interpolation": "LINEAR",
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    }
+  ],
+  "node_groups": [],
+  "render": {
+    "color_management": {
+      "display_device": "sRGB",
+      "exposure": 0.0,
+      "gamma": 1.0,
+      "look": "None",
+      "sequencer_color_space": "sRGB",
+      "shader_transforms": {
+        "rec709_to_rgb": [
+          [
+            1.0001587867736816,
+            -0.000001341104507446289,
+            -7.450580596923828E-7
+          ],
+          [
+            -8.597271516919136E-8,
+            0.9999764561653137,
+            -3.427267074584961E-7
+          ],
+          [
+            1.30385160446167E-8,
+            1.9371509552001953E-7,
+            0.9997596144676208
+          ]
+        ],
+        "xyz_to_rgb": [
+          [
+            3.2409698963165283,
+            -1.5373847484588623,
+            -0.4986114501953125
+          ],
+          [
+            -0.9692434668540955,
+            1.8759669065475464,
+            0.04155469685792923
+          ],
+          [
+            0.055629879236221313,
+            -0.20397651195526123,
+            1.0569710731506348
+          ]
+        ]
+      },
+      "use_curve_mapping": false,
+      "view_transform": "AgX"
+    },
+    "cycles": {
+      "adaptive_min_samples": 0,
+      "adaptive_threshold": 0.009999999776482582,
+      "ao_bounces": 1,
+      "ao_bounces_render": 1,
+      "ao_distance": 10.0,
+      "ao_factor": 1.0,
+      "blur_glossy": 1.0,
+      "caustics_reflective": true,
+      "caustics_refractive": true,
+      "diffuse_bounces": 0,
+      "direct_light_sampling_type": "MULTIPLE_IMPORTANCE_SAMPLING",
+      "effective_seed": 20903,
+      "fast_gi_method": "REPLACE",
+      "film_exposure": 1.0,
+      "glossy_bounces": 0,
+      "light_sampling_threshold": 0.0,
+      "max_bounces": 2,
+      "min_light_bounces": 0,
+      "min_transparent_bounces": 0,
+      "sample_clamp_direct": 0.0,
+      "sample_clamp_indirect": 10.0,
+      "samples": 256,
+      "seed": 20903,
+      "seed_frame": 1,
+      "seed_subframe": 0.0,
+      "transmission_bounces": 0,
+      "transparent_max_bounces": 8,
+      "use_adaptive_sampling": false,
+      "use_animated_seed": false,
+      "use_denoising": false,
+      "use_fast_gi": false,
+      "use_light_tree": false,
+      "volume_bounces": 0
+    },
+    "filter_width": 1.0,
+    "height": 64,
+    "pass_alpha_threshold": 0.5,
+    "percentage": 100,
+    "pixel_filter_type": "BOX",
+    "transparent": false,
+    "width": 64
+  },
+  "schema": "psycles.blender-scene.v2",
+  "source": "/var/tmp/psycles-native-volume-emission-kxDuZG/oracle.blend",
+  "world": {
+    "color": [
+      0.05000000074505806,
+      0.05000000074505806,
+      0.05000000074505806
+    ],
+    "cycles_sync": {
+      "light_group": -1,
+      "object_index": 1,
+      "pass_id": 0,
+      "shader_index": 3
+    },
+    "max_bounces": 1024,
+    "name": "Probe World",
+    "node_tree": {
+      "displacement_root": null,
+      "links": [
+        {
+          "from_node": "Background",
+          "from_socket": "Background",
+          "to_node": "World Output",
+          "to_socket": "Surface"
+        }
+      ],
+      "name": "World Nodetree",
+      "nodes": [
+        {
+          "bl_idname": "ShaderNodeBackground",
+          "image": null,
+          "inputs": [
+            {
+              "default": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ],
+              "identifier": "Color",
+              "linked": false,
+              "name": "Color",
+              "type": "NodeSocketColor"
+            },
+            {
+              "default": 0.0,
+              "identifier": "Strength",
+              "linked": false,
+              "name": "Strength",
+              "type": "NodeSocketFloat"
+            },
+            {
+              "default": 0.0,
+              "identifier": "Weight",
+              "linked": false,
+              "name": "Weight",
+              "type": "NodeSocketFloat"
+            }
+          ],
+          "internal_links": [],
+          "label": "",
+          "mute": false,
+          "name": "Background",
+          "node_tree": null,
+          "outputs": [
+            {
+              "identifier": "Background",
+              "linked": true,
+              "name": "Background",
+              "type": "NodeSocketShader"
+            }
+          ],
+          "properties": {},
+          "special": {},
+          "type": "BACKGROUND"
+        },
+        {
+          "bl_idname": "ShaderNodeOutputWorld",
+          "image": null,
+          "inputs": [
+            {
+              "identifier": "Surface",
+              "linked": true,
+              "name": "Surface",
+              "type": "NodeSocketShader"
+            },
+            {
+              "identifier": "Volume",
+              "linked": false,
+              "name": "Volume",
+              "type": "NodeSocketShader"
+            }
+          ],
+          "internal_links": [],
+          "label": "",
+          "mute": false,
+          "name": "World Output",
+          "node_tree": null,
+          "outputs": [],
+          "properties": {
+            "is_active_output": true,
+            "target": "ALL"
+          },
+          "special": {},
+          "type": "OUTPUT_WORLD"
+        }
+      ],
+      "surface_root": {
+        "node": "Background",
+        "socket": "Background"
+      },
+      "volume_root": null
+    },
+    "sample_map_resolution": 1024,
+    "sampling_method": "AUTOMATIC",
+    "use_shadows": true,
+    "visibility": {
+      "camera": true,
+      "diffuse": true,
+      "glossy": true,
+      "shadow": true,
+      "transmission": true,
+      "volume_scatter": true
+    },
+    "volume_interpolation": "LINEAR",
+    "volume_sampling": "EQUIANGULAR"
+  },
+  "world_environment": null
+}

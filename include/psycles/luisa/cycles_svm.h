@@ -14,6 +14,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 #include <luisa/dsl/local.h>
 #include <luisa/luisa-compute.h>
@@ -322,6 +323,14 @@ public:
   object_shadow_terminator_shading_offset(
       luisa::compute::Expr<std::uint32_t>) const noexcept {
     return 1.0f;
+  }
+
+  // object_volume_density(kg, object). Absence means that this recording
+  // context has no object table, not that every object's density is one.
+  // The SVM handler can still evaluate OBJECT_NONE exactly without a table.
+  [[nodiscard]] virtual std::optional<luisa::compute::Float>
+  object_volume_density(luisa::compute::Expr<std::uint32_t>) const noexcept {
+    return std::nullopt;
   }
 
   // Packed scene-owned IES table from Cycles LightManager. The default is

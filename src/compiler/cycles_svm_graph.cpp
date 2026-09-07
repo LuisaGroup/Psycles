@@ -112,6 +112,12 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
 
 [[nodiscard]] std::string_view
 projected_node_type(std::string_view type) noexcept {
+  // The contract distinguishes surface and volume closure socket types.
+  // Cycles has one EmissionNode with both domain mix weights and one closure
+  // output. Recover that node before graph cleanup and SVM domain traversal.
+  if (type == node_type::volume_emission) {
+    return node_type::emission;
+  }
   // Psycles' canonical Multiply Color helper is exactly Cycles Mix Color in
   // MULTIPLY mode with clamped factor and unclamped result. Normalize it at
   // the graph boundary so the SVM graph, constant folding, and emitted node
@@ -217,7 +223,8 @@ projected_binary_math_operation(std::string_view type) noexcept {
       output == "Closure") {
     return "BSDF";
   }
-  if (node == node_type::emission && output == "Closure") {
+  if (node == node_type::emission &&
+      (output == "Closure" || output == "Volume")) {
     return "Emission";
   }
   if (node == node_type::geometry) {

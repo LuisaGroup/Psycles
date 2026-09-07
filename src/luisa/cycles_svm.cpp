@@ -134,8 +134,9 @@ void eval_nodes(const KernelGlobals &kernel_globals,
       if (node_types_used[NODE_CLOSURE_EMISSION]) {
         PSYCLES_SVM_CASE(NODE_CLOSURE_EMISSION) {
           if ((node_feature_mask & kernel_feature_node_emission) != 0u) {
-            detail::node_closure_emission(cursor, stack, closure_weight,
-                                          shader_data, transition_supported);
+            detail::node_closure_emission(kernel_globals, cursor, stack,
+                                          closure_weight, shader_data,
+                                          transition_supported);
           }
         };
       }
