@@ -543,7 +543,7 @@ projected_binary_math_operation(std::string_view type) noexcept {
   };
 }
 
-[[nodiscard]] std::vector<GraphInput> multiply_inputs() {
+[[nodiscard]] std::vector<GraphInput> closure_weight_add_inputs() {
   return {
       {.name = "Value1",
        .type = GraphSocketType::floating,
@@ -557,7 +557,7 @@ projected_binary_math_operation(std::string_view type) noexcept {
   };
 }
 
-[[nodiscard]] std::vector<GraphOutput> multiply_outputs() {
+[[nodiscard]] std::vector<GraphOutput> closure_weight_add_outputs() {
   return {{.name = "Value", .type = GraphSocketType::floating, .links = {}}};
 }
 
@@ -1824,24 +1824,27 @@ void CyclesGraph::transform_multi_closure(GraphNode *node,
     return;
   }
   if (weight->link != nullptr || *literal != 0.0f) {
-    auto *multiply = add_node(
-        cycles_synthetic_math, "Closure Weight Multiply", multiply_inputs(),
-        multiply_outputs(), GraphNodeSpecialType::none,
-        {{"Operation", contract::SocketValue::string("MULTIPLY")}});
+    // ShaderGraph::transform_multi_closure adds contributions from every
+    // incoming closure edge. Its default MathNode is NODE_MATH_ADD; branch
+    // attenuation was already applied by MixClosureWeightNode above.
+    auto *add = add_node(
+        cycles_synthetic_math, "Closure Weight Add", closure_weight_add_inputs(),
+        closure_weight_add_outputs(), GraphNodeSpecialType::none,
+        {{"Operation", contract::SocketValue::string("ADD")}});
     if (weight->link != nullptr) {
-      static_cast<void>(connect(weight->link, multiply->input("Value1")));
+      static_cast<void>(connect(weight->link, add->input("Value1")));
       disconnect(weight);
     } else {
-      multiply->input("Value1")->value =
+      add->input("Value1")->value =
           contract::SocketValue::floating(*literal);
     }
     if (weight_output != nullptr) {
-      static_cast<void>(connect(weight_output, multiply->input("Value2")));
+      static_cast<void>(connect(weight_output, add->input("Value2")));
     } else {
-      multiply->input("Value2")->value =
+      add->input("Value2")->value =
           contract::SocketValue::floating(1.0f);
     }
-    weight_output = multiply->output("Value");
+    weight_output = add->output("Value");
   }
 
   if (weight_output != nullptr) {
