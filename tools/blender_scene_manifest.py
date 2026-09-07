@@ -49,6 +49,9 @@ def _socket_manifest(socket: Any) -> dict[str, Any]:
         "name": socket.name,
         "type": socket.bl_rna.identifier,
         "linked": socket.is_linked,
+        # Cycles skips unavailable sockets when copying defaults, not only
+        # when connecting links. Keep the authored value as descriptive data.
+        "available": not bool(getattr(socket, "is_unavailable", False)),
     }
     if hasattr(socket, "default_value"):
         result["default"] = _json_value(socket.default_value)

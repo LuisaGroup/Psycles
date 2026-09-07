@@ -1,6 +1,20 @@
 include_guard(GLOBAL)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_svm_map_range_tests
+    SOURCE tests/test_luisa_cycles_svm_map_range.cpp
+    TEST_STEM luisa_cycles_svm_map_range
+    LIBRARIES Psycles::luisa_runtime)
+target_compile_definitions(psycles_luisa_cycles_svm_map_range_tests PRIVATE
+    PSYCLES_MAP_RANGE_WORDS="${PROJECT_SOURCE_DIR}/tests/data/cycles_map_range_words.txt"
+    PSYCLES_MAP_RANGE_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_map_range_runtime.txt"
+    PSYCLES_MAP_RANGE_ROUNDING="${PROJECT_SOURCE_DIR}/tests/data/cycles_map_range_rounding.txt")
+if(TEST psycles.luisa_cycles_svm_map_range_vk)
+    set_tests_properties(psycles.luisa_cycles_svm_map_range_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_svm_analytic_sky_tests
     SOURCE tests/test_luisa_cycles_svm_analytic_sky.cpp
     TEST_STEM luisa_cycles_svm_analytic_sky

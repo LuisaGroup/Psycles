@@ -212,6 +212,17 @@ private:
                 const auto from_socket = text(
                     member(link, "from_socket"));
                 auto source = _raw_nodes.find(from_node);
+                const auto to_node = text(member(link, "to_node"));
+                const auto to_socket = text(member(link, "to_socket"));
+                // Cycles excludes both unavailable endpoints from its socket
+                // maps. Old exports lack this optional descriptive field.
+                if ((source != _raw_nodes.end() &&
+                     !boolean(member(raw_output(source->second, from_socket),
+                                     "available"), true)) ||
+                    !boolean(member(raw_input(raw_node(to_node), to_socket),
+                                    "available"), true)) {
+                    continue;
+                }
                 if (source != _raw_nodes.end() &&
                     !muted_output_has_bypass(
                         source->second, from_socket)) {
@@ -223,10 +234,8 @@ private:
                 }
                 _links.insert_or_assign(
                     RawOutputKey{
-                        .node = text(
-                            member(link, "to_node")),
-                        .socket = text(
-                            member(link, "to_socket"))},
+                        .node = to_node,
+                        .socket = to_socket},
                     RawOutputKey{
                         .node = std::move(from_node),
                         .socket = std::move(from_socket)});
@@ -548,6 +557,13 @@ private:
         yyjson_val *raw_destination,
         std::string_view raw_input_name,
         contract::SocketType target_type) override {
+        // shader.cpp skips unavailable inputs before set_default_value().
+        // Do not replace the Cycles node prototype default with a hidden
+        // authored value (for example Map Range Steps outside STEPPED).
+        if (!boolean(member(raw_input(raw_destination, raw_input_name),
+                            "available"), true)) {
+            return true;
+        }
         if (auto source =
                 input_source(
                     raw_destination, raw_input_name)) {

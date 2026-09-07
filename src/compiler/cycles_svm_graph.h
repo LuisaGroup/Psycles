@@ -34,6 +34,8 @@ inline constexpr auto cycles_synthetic_float3_autoconvert =
     "cycles.synthetic.float3_autoconvert";
 inline constexpr auto cycles_synthetic_set_normal =
     "cycles.synthetic.set_normal";
+inline constexpr auto cycles_synthetic_vector_map_range =
+    "cycles.synthetic.vector_map_range";
 
 // This is the host graph consumed by the Cycles 5.2 SVM compiler. Its
 // topology and mutable compiler fields correspond to ShaderInput,
@@ -230,6 +232,8 @@ public:
   [[nodiscard]] bool connect(GraphOutput *output, GraphInput *input) noexcept;
   void disconnect(GraphInput *input) noexcept;
   void disconnect(GraphOutput *output) noexcept;
+  // Node expansion uses the same first-error diagnostic as graph projection.
+  void reject(std::string diagnostic);
 
   // Exact ShaderGraph::default_inputs and transform_multi_closure stages for
   // the SVM-visible graph. Unsupported source metadata fails projection.
@@ -258,7 +262,6 @@ private:
   void copy_nodes(
       GraphNodeSet &nodes,
       std::map<GraphNode *, GraphNode *, GraphNodeIdComparator> &node_map);
-  void reject(std::string diagnostic);
 };
 
 [[nodiscard]] std::optional<GraphSocketType>

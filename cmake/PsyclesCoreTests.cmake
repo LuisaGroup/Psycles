@@ -331,6 +331,14 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_wireframe_tests)
 
     if(TARGET psycles_luisa_runtime)
+        add_executable(psycles_cycles_svm_map_range_tests tests/test_cycles_svm_map_range.cpp)
+        target_link_libraries(psycles_cycles_svm_map_range_tests PRIVATE Psycles::luisa_runtime)
+        target_compile_definitions(psycles_cycles_svm_map_range_tests PRIVATE
+            PSYCLES_MAP_RANGE_SCENE="${CMAKE_CURRENT_LIST_DIR}/../tests/data/cycles_map_range_scene.json"
+            PSYCLES_MAP_RANGE_WORDS="${CMAKE_CURRENT_LIST_DIR}/../tests/data/cycles_map_range_words.txt"
+            PSYCLES_MONSTER_MAP_RANGE_SCENE="${CMAKE_CURRENT_LIST_DIR}/../tests/data/cycles_monster_map_range_scene.json"
+            PSYCLES_MONSTER_MAP_RANGE_WORDS="${CMAKE_CURRENT_LIST_DIR}/../tests/data/cycles_monster_map_range_words.txt")
+        add_test(NAME psycles.cycles_svm_map_range COMMAND psycles_cycles_svm_map_range_tests)
         add_executable(psycles_cycles_svm_analytic_sky_tests
             tests/test_cycles_svm_analytic_sky.cpp)
         target_link_libraries(psycles_cycles_svm_analytic_sky_tests PRIVATE Psycles::luisa_runtime)
@@ -946,6 +954,10 @@ if(PSYCLES_BUILD_TESTS)
             NAME psycles.blender_export_camera_data
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_camera_data.py"
             ARGUMENTS "${blender_exporter}")
+        psycles_add_blender_test(
+            NAME psycles.blender_socket_availability
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_socket_availability.py"
+            ARGUMENTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/blender_scene_manifest.py")
         psycles_add_blender_test(
             NAME psycles.blender_export_fresnel
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_export_fresnel.py"

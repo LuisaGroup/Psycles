@@ -198,6 +198,17 @@ projected_binary_math_operation(std::string_view type) noexcept {
   if (node == node_type::bump && input == "FilterWidth") {
     return "Filter Width";
   }
+  if (node == node_type::map_range) {
+    return input == "FromMin" ? "From Min" : input == "FromMax" ? "From Max"
+         : input == "ToMin" ? "To Min" : input == "ToMax" ? "To Max" : input;
+  }
+  if (node == cycles_synthetic_vector_map_range) {
+    return input == "FromMinVector" ? "From_Min_FLOAT3"
+         : input == "FromMaxVector" ? "From_Max_FLOAT3"
+         : input == "ToMinVector" ? "To_Min_FLOAT3"
+         : input == "ToMaxVector" ? "To_Max_FLOAT3"
+         : input == "StepsVector" ? "Steps_FLOAT3" : input;
+  }
   return input;
 }
 
@@ -815,11 +826,25 @@ CyclesGraph CyclesGraph::project(
       graph.reject("Cycles SVM graph has no schema for node: " + source.type);
       return graph;
     }
-    const auto target_type = projected_node_type(source.type);
+    auto target_type = projected_node_type(source.type);
+    if (source.type == node_type::map_range) {
+      const auto it = source.properties.find("DataType");
+      const auto *type = it != source.properties.end()
+          ? std::get_if<std::string>(&it->second.value) : nullptr;
+      if (!type || (*type != "FLOAT" && *type != "FLOAT_VECTOR")) {
+        graph.reject("Cycles Map Range data type is invalid"); return graph;
+      }
+      if (*type == "FLOAT_VECTOR") { target_type = cycles_synthetic_vector_map_range; }
+    }
+    const auto map_range = source.type == node_type::map_range;
+    const auto vector_range = target_type == cycles_synthetic_vector_map_range;
 
     std::vector<GraphInput> inputs;
     inputs.reserve(schema->inputs.size() + 2u);
     for (const auto &socket : schema->inputs) {
+      if (map_range && (socket.type == contract::SocketType::vector) != vector_range) {
+        continue;
+      }
       const auto type = graph_socket_type(socket.type);
       if (!type) {
         // Cycles properties do not occupy ShaderInput stack lanes. A source
@@ -910,6 +935,9 @@ CyclesGraph CyclesGraph::project(
     std::vector<GraphOutput> outputs;
     outputs.reserve(schema->outputs.size());
     for (const auto &socket : schema->outputs) {
+      if (map_range && (socket.type == contract::SocketType::vector) != vector_range) {
+        continue;
+      }
       const auto type = graph_socket_type(socket.type);
       if (!type) {
         graph.reject("Cycles SVM output type is not stack representable: " +

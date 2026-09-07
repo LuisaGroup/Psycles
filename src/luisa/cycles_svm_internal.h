@@ -306,6 +306,8 @@ void node_vector_displacement(Cursor &cursor, Stack &stack,
                               bool bump_feature_enabled,
                               bool object_motion_enabled) noexcept;
 void node_clamp(Cursor &cursor, Stack &stack) noexcept;
+void node_map_range(Cursor &cursor, Stack &stack) noexcept;
+void node_vector_map_range(Cursor &cursor, Stack &stack) noexcept;
 void node_blackbody(Cursor &cursor, Stack &stack,
                     const KernelGlobals &kernel_globals) noexcept;
 void node_wavelength(Cursor &cursor, Stack &stack,

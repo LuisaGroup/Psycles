@@ -38,6 +38,7 @@ from cycles_shader_probe import (  # noqa: E402
     ies_inputs,
     lights_camera,
     magic_inputs,
+    map_range,
     metallic_closures,
     normal_inputs,
     normal_maps,
@@ -62,6 +63,7 @@ from cycles_shader_probe import (  # noqa: E402
 
 
 _CANONICAL_PROBES: dict[str, Callable[[Any], None]] = {
+    "svm_map_range_matrix": map_range.matrix,
     "add_shader_emission": closures._add_shader_emission,
     "ambient_occlusion_matrix": values._ambient_occlusion_matrix,
     "area_light": lights_camera._area_light,
