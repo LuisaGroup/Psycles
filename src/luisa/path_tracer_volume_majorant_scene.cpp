@@ -604,12 +604,10 @@ VolumeMajorantSceneComponent::build(
         };
     luisa::compute::ShaderOption shader_options;
     shader_options.enable_cache = true;
-    // This is the sole production strict-FP exception. The sampled maximum
-    // becomes a Woodcock/delta-tracking majorant: underestimating it changes
-    // the probability measure and biases transport, rather than merely
-    // changing a last bit. Keep reassociation disabled until the prepass has
-    // a separately proven outward-error bound.
-    shader_options.enable_fast_math = false;
+    // Cycles compiles its density bake with fast math too. Sixteen samples
+    // estimate the extrema; strict FP does not make them a conservative
+    // bound. Keep the original estimator and runtime exceedance handling.
+    shader_options.enable_fast_math = true;
     auto shader =
         scene->device.compile(
             evaluate, shader_options);
