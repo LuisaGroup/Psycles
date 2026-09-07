@@ -790,6 +790,19 @@ BlenderSceneImport load_blender_scene_bundle(
                       : number(member(camera, "lens"), 50.0f) *
                             1.0e-3f / (2.0f * f_stop)
                 : 0.0f;
+        std::optional<contract::CameraSensor> camera_sensor;
+        if (member(camera, "sensor_width") != nullptr &&
+            member(camera, "sensor_height") != nullptr &&
+            member(camera, "lens") != nullptr) {
+            camera_sensor = contract::CameraSensor{
+                number(member(camera, "lens")),
+                number(member(camera, "sensor_width")),
+                number(member(camera, "sensor_height"))};
+            if (!(camera_sensor->lens_mm > 0.0f && camera_sensor->width_mm > 0.0f &&
+                  camera_sensor->height_mm > 0.0f)) {
+                throw std::runtime_error("invalid physical camera sensor/lens");
+            }
+        }
         scene.cameras.emplace(
             camera_id,
             CameraDesc{
@@ -832,7 +845,11 @@ BlenderSceneImport load_blender_scene_bundle(
                     number(
                         member(depth_of_field, "ratio"),
                         1.0f),
-                    1.0e-5f)});
+                    1.0e-5f),
+                .sensor = camera_sensor,
+                .pixel_aspect = {
+                    std::max(number(member(camera, "pixel_aspect_x"), 1.0f), 1.0e-5f),
+                    std::max(number(member(camera, "pixel_aspect_y"), 1.0f), 1.0e-5f)}});
         scene.active_camera = camera_id;
 
         std::ifstream geometry_stream{

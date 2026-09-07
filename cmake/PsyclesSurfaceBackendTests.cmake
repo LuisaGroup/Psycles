@@ -203,6 +203,20 @@ if(TEST psycles.luisa_cycles_camera_transform_vk)
 endif()
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_camera_ray_tests
+    SOURCE tests/test_luisa_cycles_camera_ray.cpp
+    TEST_STEM luisa_cycles_camera_ray
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(psycles_luisa_cycles_camera_ray_tests PRIVATE
+    "${PROJECT_SOURCE_DIR}/src/luisa")
+target_compile_definitions(psycles_luisa_cycles_camera_ray_tests PRIVATE
+    PSYCLES_CAMERA_RAY_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_camera_ray.txt")
+if(TEST psycles.luisa_cycles_camera_ray_vk)
+    set_tests_properties(psycles.luisa_cycles_camera_ray_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_surface_queue_tests
     SOURCE tests/test_luisa_cycles_surface_queue.cpp
     TEST_STEM luisa_cycles_surface_queue

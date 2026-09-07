@@ -8,6 +8,12 @@
 
 namespace psycles::luisa_backend::cycles_transform {
 
+// Native float projective transform with Cycles' zero-homogeneous-coordinate
+// branch. No software rounding, precision annotation or device inversion.
+[[nodiscard]] luisa::compute::Float3 perspective(
+    luisa::compute::Expr<luisa::float4x4> transform,
+    luisa::compute::Expr<luisa::float3> value) noexcept;
+
 // Cycles' affine transforms are part of the geometric predicate contract.
 // Keeping their fused operation tree explicit prevents a backend matrix
 // lowering from introducing an extra rounding step at a triangle surface.

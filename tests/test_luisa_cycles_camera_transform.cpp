@@ -96,6 +96,15 @@ bool run(const char *program, const char *backend) {
         psycles::compiler::cycles_inverse_affine_transform(input.camera_to_world));
     parameters.full_width = parameters.full_height = 1u;
     parameters.camera_ortho_vertical_span = 2.0f;
+    // The oracle supplies a unit-aspect orthographic worldtondc. Production
+    // now consumes that precomputed matrix instead of rebuilding it per node.
+    const auto &m = parameters.camera_inverse_transform;
+    for (auto c = 0u; c < 4u; ++c) {
+      parameters.camera_world_to_ndc[c] = luisa::make_float4(
+          0.5f * m[c].x, 0.5f * m[c].y, -m[c].z, c == 3u ? 1.0f : 0.0f);
+    }
+    parameters.camera_world_to_ndc[3].x += 0.5f;
+    parameters.camera_world_to_ndc[3].y += 0.5f;
     std::array<luisa::float4, 5u> actual{};
     stream << shader(parameters, to_luisa(input.position), output).dispatch(1u)
            << output.copy_to(actual.data()) << synchronize();

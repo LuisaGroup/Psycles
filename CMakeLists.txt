@@ -78,6 +78,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_vector_nodes.cpp
     src/compiler/cycles_nishita.cpp
     src/compiler/cycles_transform.cpp
+    src/compiler/cycles_camera.cpp
     src/compiler/cycles_emission_sampling.cpp
     src/compiler/hosek_sky.cpp
     src/compiler/material_library.cpp

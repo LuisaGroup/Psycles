@@ -367,30 +367,15 @@ Float PathCyclesSvmKernelGlobals::camera_height() const noexcept {
 Float3 PathCyclesSvmKernelGlobals::camera_world_to_ndc(
     const svm::ShaderData &shader_data,
     Expr<luisa::float3> position) const noexcept {
-  const auto camera = cycles_transform::point(_world_to_camera, position);
-  if (_camera_projection == CameraProjection::perspective) {
-    const auto screen_x = camera.x /
-                          (-camera.z * _parameters.camera_horizontal_tangent);
-    const auto screen_y = camera.y /
-                          (-camera.z * _parameters.camera_vertical_tangent);
-    return make_float3(
-        0.5f * (screen_x - 2.0f * _parameters.camera_shift_x + 1.0f),
-        0.5f * (screen_y - 2.0f * _parameters.camera_shift_y + 1.0f),
-        -camera.z);
-  }
-  if (_camera_projection == CameraProjection::orthographic) {
-    const auto aspect = camera_width() / camera_height();
-    const auto screen_x = 2.0f * camera.x /
-                          (_parameters.camera_ortho_vertical_span * aspect);
-    const auto screen_y =
-        2.0f * camera.y / _parameters.camera_ortho_vertical_span;
-    return make_float3(
-        0.5f * (screen_x - 2.0f * _parameters.camera_shift_x + 1.0f),
-        0.5f * (screen_y - 2.0f * _parameters.camera_shift_y + 1.0f),
-        -camera.z);
+  if (_camera_projection != CameraProjection::panorama) {
+    Float3 P = position;
+    if (_camera_projection == CameraProjection::perspective) {
+      $if(shader_data.object == svm::object_none) { P += _camera_to_world[3u].xyz(); };
+    }
+    return cycles_transform::perspective(_parameters.camera_world_to_ndc, P);
   }
 
-  Float3 direction = camera;
+  Float3 direction = cycles_transform::point(_world_to_camera, position);
   $if(shader_data.object == svm::object_none) {
     direction = cycles_transform::direction(_world_to_camera, position);
   };

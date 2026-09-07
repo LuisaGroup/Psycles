@@ -6,6 +6,7 @@
 #include "path_tracer_internal.h"
 
 #include <psycles/compiler/cycles_transform.h>
+#include <psycles/compiler/cycles_camera.h>
 #include <psycles/luisa/camera_sampling.h>
 #include <psycles/luisa/pixel_filter.h>
 #include <psycles/sampling/light_distribution.h>
@@ -165,40 +166,26 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
           : contract::DirectLightSampling::forward_path_tracing;
     const auto camera_transform = to_luisa(scene->camera.transform);
     const auto camera_projection = scene->camera.projection;
-    const auto camera_aspect =
-      static_cast<float>(std::max(render_settings.full_extent.width, 1u)) /
-      static_cast<float>(std::max(render_settings.full_extent.height, 1u));
-    const auto camera_horizontal_fit =
-      scene->camera.sensor_fit == CameraSensorFit::horizontal ||
-      (scene->camera.sensor_fit == CameraSensorFit::automatic &&
-         camera_aspect >= 1.0f);
-    const auto camera_vertical_tangent =
-        camera_horizontal_fit
-          ? std::tan(scene->camera.horizontal_field_of_view * 0.5f) /
-                  camera_aspect
-          : std::tan(scene->camera.field_of_view * 0.5f);
-    const auto camera_horizontal_tangent =
-        camera_vertical_tangent * camera_aspect;
-    const auto camera_ortho_viewplane =
-        camera_sampling::orthographic_viewplane_span(
-          scene->camera.orthographic_scale, camera_aspect,
-            camera_horizontal_fit);
-  const auto camera_ortho_vertical_span = camera_ortho_viewplane.vertical;
-    const auto camera_shift_x =
-        scene->camera.lens_shift_x *
-      (camera_horizontal_fit ? 1.0f : 1.0f / camera_aspect);
-  const auto camera_shift_y = scene->camera.lens_shift_y *
-                              (camera_horizontal_fit ? camera_aspect : 1.0f);
+    const auto camera_setup = compiler::make_cycles_camera_projection(
+        scene->camera, render_settings.full_extent.width,
+        render_settings.full_extent.height);
+    const auto camera_aspect = camera_setup.aspect;
+    const auto camera_vertical_tangent = camera_setup.vertical_tangent;
+    const auto camera_horizontal_tangent = camera_setup.horizontal_tangent;
+    const auto camera_ortho_vertical_span = camera_setup.orthographic_vertical_span;
+    const auto camera_shift_x = camera_setup.shift_x;
+    const auto camera_shift_y = camera_setup.shift_y;
     const auto camera_near = scene->camera.near_clip;
     const auto camera_far = scene->camera.far_clip;
   const auto camera_aperture_radius = scene->camera.aperture_radius;
   const auto camera_focal_distance = scene->camera.focal_distance;
   const auto camera_aperture_ratio = scene->camera.aperture_ratio;
-    const auto camera_aperture_blades = scene->camera.aperture_blades;
+    const auto camera_aperture_blades = scene->camera.aperture_blades < 3u
+        ? 0u : scene->camera.aperture_blades;
   const auto camera_aperture_rotation = scene->camera.aperture_rotation;
     const auto background = scene->background;
     const auto camera_depth_of_field =
-        camera_projection == CameraProjection::perspective &&
+        camera_projection != CameraProjection::panorama &&
       camera_aperture_radius > 0.0f && camera_focal_distance > 0.0f;
     const auto camera_may_be_inside_volume =
       VolumeSceneMetadataComponent{}.camera_may_be_inside_volume(
@@ -287,7 +274,12 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .background = background,
         .camera_transform = camera_transform,
         .camera_inverse_transform = to_luisa(
-            compiler::cycles_inverse_affine_transform(scene->camera.transform))};
+            compiler::cycles_inverse_affine_transform(scene->camera.transform)),
+        .camera_raster_to_camera = to_luisa(camera_setup.raster_to_camera),
+        .camera_world_to_ndc = to_luisa(camera_setup.world_to_ndc),
+        .camera_dx = to_luisa(camera_setup.dx),
+        .camera_dy = to_luisa(camera_setup.dy),
+        .camera_inv_aperture_ratio = 1.0f / camera_aperture_ratio};
   auto light_transport = make_light_transport_callables(direct_light_sampling);
     auto light_distribution_sample_callable =
         make_light_distribution_sample_callable(scene);

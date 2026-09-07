@@ -660,6 +660,10 @@ struct RenderKernelParameters {
     luisa::float4x4 camera_transform{};
     // Host-prepared inverse of the renderer camera pose; never invert per path.
     luisa::float4x4 camera_inverse_transform{};
+    luisa::float4x4 camera_raster_to_camera{};
+    luisa::float4x4 camera_world_to_ndc{};
+    luisa::float3 camera_dx{}, camera_dy{};
+    float camera_inv_aperture_ratio{1.0f};
 };
 
 }// namespace psycles::luisa_backend::detail
@@ -1035,4 +1039,9 @@ LUISA_STRUCT(
     pass_alpha_threshold,
     background,
     camera_transform,
-    camera_inverse_transform) {};
+    camera_inverse_transform,
+    camera_raster_to_camera,
+    camera_world_to_ndc,
+    camera_dx,
+    camera_dy,
+    camera_inv_aperture_ratio) {};
