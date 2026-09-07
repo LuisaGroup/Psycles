@@ -1,10 +1,9 @@
 #include "path_tracer_environment.h"
 
-#include "path_tracer_shader_services.h"
+#include "path_tracer_cycles_svm_emission.h"
 
 #include <psycles/luisa/background_sampling.h>
 #include <psycles/luisa/cycles_nishita.h>
-#include <psycles/luisa/native_vector_math.h>
 #include <psycles/sampling/background_distribution.h>
 
 namespace psycles::luisa_backend::detail {
@@ -31,281 +30,92 @@ namespace {
 
 }// namespace
 
-EnvironmentCallables make_environment_callables(
-    const std::shared_ptr<LuisaSceneData> &scene,
-    const SafeNormalizeCallable &safe_normalize,
-    const SurfaceConstantEmissionCallable
-        &surface_constant_emission,
-    const SurfaceEmissionCallable &surface_emission) {
-    EnvironmentConstantCallable constant =
-        [scene, surface_constant_emission](
-            Float3 background) noexcept {
-            Float3 world = background;
-            if (scene->world_surface) {
-                world += surface_constant_emission(
-                    scene->scalar_parameter_buffer,
-                    scene->vector_parameter_buffer,
-                    UInt{scene->world_surface->surface_tag},
-                    UInt{scene->world_surface->parameter_block});
-            }
-            return world;
-        };
-    EnvironmentBaseCallable base =
-        [scene, surface_emission](
-            Float3 direction,
-            Float3 background,
-            Var<ShaderEvaluationStateCall>
-                shader_state_call) noexcept {
-            const auto shader_state =
-                unpack_shader_evaluation_state(
-                    shader_state_call);
-            BufferShaderServices services{
-                scene->scalar_parameter_buffer,
-                scene->vector_parameter_buffer,
-                scene->cycles_bsdf_table_buffer,
-                scene->texture_heap,
-                scene->heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space};
-            auto evaluate_world_graph =
-                [&](Float3 world_direction) noexcept {
-                    Float3 world = background;
-                    if (scene->world_surface) {
-                        SurfacePoint world_point{
-                            // Cycles shader_setup_from_background stores the
-                            // ray direction in sd->P. This is also the
-                            // implicit coordinate of Environment Texture.
-                            .position = world_direction,
-                            .object_position =
-                                make_float3(0.0f),
-                            .object_location =
-                                make_float3(0.0f),
-                            .generated = world_direction,
-                            .geometric_normal =
-                                -world_direction,
-                            .shading_normal =
-                                -world_direction,
-                            .object_shading_normal =
-                                -world_direction,
-                            .object_tangent = make_float3(
-                                1.0f, 0.0f, 0.0f),
-                            .tangent_sign = 1.0f,
-                            .undisplaced_position =
-                                world_direction,
-                            .undisplaced_object_position =
-                                make_float3(0.0f),
-                            .undisplaced_shading_normal =
-                                -world_direction,
-                            .undisplaced_object_shading_normal =
-                                -world_direction,
-                            .undisplaced_object_tangent = make_float3(
-                                1.0f, 0.0f, 0.0f),
-                            .undisplaced_tangent_sign = 1.0f,
-                            .normal_to_world_x = make_float3(
-                                1.0f, 0.0f, 0.0f),
-                            .normal_to_world_y = make_float3(
-                                0.0f, 1.0f, 0.0f),
-                            .normal_to_world_z = make_float3(
-                                0.0f, 0.0f, 1.0f),
-                            .dpdu = make_float3(
-                                1.0f, 0.0f, 0.0f),
-                            .dpdv = make_float3(
-                                0.0f, 1.0f, 0.0f),
-                            .dPdx = make_float3(0.0f),
-                            .dPdy = make_float3(0.0f),
-                            .object_dPdx =
-                                make_float3(0.0f),
-                            .object_dPdy =
-                                make_float3(0.0f),
-                            .undisplaced_dPdx =
-                                make_float3(0.0f),
-                            .undisplaced_dPdy =
-                                make_float3(0.0f),
-                            .undisplaced_object_dPdx =
-                                make_float3(0.0f),
-                            .undisplaced_object_dPdy =
-                                make_float3(0.0f),
-                            .generated_dx =
-                                make_float3(0.0f),
-                            .generated_dy =
-                                make_float3(0.0f),
-                            .incoming = -world_direction,
-                            .uv = make_float2(0.0f),
-                            .uv_dx = make_float2(0.0f),
-                            .uv_dy = make_float2(0.0f),
-                            .geometry_index = ~0u,
-                            .barycentric =
-                                make_float2(0.0f),
-                            .barycentric_dx =
-                                make_float2(0.0f),
-                            .barycentric_dy =
-                                make_float2(0.0f),
-                            .instance_id = 0u,
-                            .primitive_id = 0u,
-                            .parameter_block =
-                                scene->world_surface
-                                    ->parameter_block,
-                            .object_random = 0.0f,
-                            .particle_index = 0u,
-                            .random_per_island = 0.0f,
-                            .triangle_smooth = false,
-                            .is_curve = false,
-                            .curve_intercept = 0.0f,
-                            .curve_length = 0.0f,
-                            .curve_thickness = 0.0f,
-                            .curve_tangent_normal =
-                                make_float3(0.0f),
-                            .curve_random = 0.0f,
-                            .ray_visibility = 0u,
-                            .ray_events = 0u,
-                            .ray_depth = 0u,
-                            .diffuse_depth = 0u,
-                            .glossy_depth = 0u,
-                            .transparent_depth = 0u,
-                            .transmission_depth = 0u,
-                            .ray_length =
-                                std::numeric_limits<
-                                    float>::max(),
-                            .time = 0.0f,
-                            .use_bump_map_correction = false,
-                            .back_facing = false};
-                        cycles_path_state::
-                            apply_shader_state(
-                                world_point,
-                                shader_state);
-                        world += surface_emission(
-                            scene->scalar_parameter_buffer,
-                            scene->vector_parameter_buffer,
-                            scene->cycles_bsdf_table_buffer,
-                            scene->texture_heap,
-                            scene->heap,
-                            UInt{
-                                scene->world_surface
-                                    ->surface_tag},
-                            pack_surface_point(world_point),
-                            -world_direction,
-                            true);
-                    }
-                    return world;
-                };
-            if (scene->environment_texture_slot) {
-                if (scene->nishita_environment) {
-                    const auto &sky =
-                        scene->nishita_environment
-                            ->parameters;
-                    return max(
-                               services.xyz_to_rgb(
-                                   cycles_nishita::
-                                       sky_radiance_xyz(
-                                           scene->texture_heap
-                                               ->tex2d(
-                                                   *scene
-                                                        ->environment_texture_slot),
-                                           direction,
-                                           sky.sun_rotation)),
-                               make_float3(0.0f)) *
-                           sky.background_strength;
-                }
-                auto u = fract(
-                    (pi - atan2(direction.y, direction.x)) /
-                    (2.0f * pi));
-                auto half_texel_y =
-                    0.5f /
-                    static_cast<float>(std::max(
-                        scene->environment_height, 1u));
-                auto v = clamp(
-                    acos(clamp(direction.z, -1.0f, 1.0f)) /
-                        pi,
-                    half_texel_y,
-                    1.0f - half_texel_y);
-                return scene->texture_heap
-                    ->tex2d(*scene->environment_texture_slot)
-                    .sample(make_float2(u, v))
-                    .xyz();
-            }
-            return evaluate_world_graph(direction);
-        };
+Float3 constant_environment_emission(
+    const LuisaSceneData &scene, Float3 background) noexcept {
+    Float3 emission = make_float3(0.0f);
+    if (scene.cycles_background_shader_id != ~0u) {
+        const auto constant = cycles_svm_constant_emission(
+            scene, scene.cycles_background_shader_id, emission);
+        assume(constant);
+    }
+    return background + emission;
+}
 
-    std::vector<EnvironmentSunCallable> suns;
-    suns.reserve(scene->environment_suns.size());
-    for (const auto &sun : scene->environment_suns) {
-        EnvironmentSunCallable evaluate =
-            [safe_normalize, sun](
-                Float3 direction) noexcept {
-                Float3 axis = safe_normalize(
-                    to_luisa(sun.direction),
-                    make_float3(0.0f, 0.0f, 1.0f));
-                auto cosine = clamp(
-                    dot(direction, axis), -1.0f, 1.0f);
-                auto radius = std::max(
-                    sun.angular_radius, 1.0e-7f);
-                auto radial_distance =
-                    acos(cosine) / radius;
-                auto limb =
-                    0.4f +
-                    0.6f *
-                        sqrt(max(
-                            1.0f -
-                                radial_distance *
-                                    radial_distance,
-                            0.0f));
-                auto inside =
-                    cosine >= std::cos(sun.angular_radius);
-                return select(
-                    make_float3(0.0f),
-                    to_luisa(sun.radiance) *
-                        (limb / 0.8f),
-                    inside);
-            };
-        suns.emplace_back(std::move(evaluate));
+Float3 evaluate_environment_emission(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const Var<RenderKernelParameters> &parameters,
+    Float3 origin, Float3 direction, Float differential, Float time,
+    const cycles_svm::PathState &state, UInt lcg_state,
+    CyclesSvmBackgroundEvaluation evaluation) noexcept {
+    if (scene->cycles_background_shader_id != ~0u) {
+        // The authored world graph is authoritative, including environment
+        // textures and Nishita solar discs. Sampling metadata must never
+        // replace it or add a second copy of its sun.
+        return parameters.background + evaluate_cycles_svm_background_emission(
+            scene, parameters, origin, direction, differential, time, state,
+            lcg_state, evaluation);
     }
 
-    EnvironmentSunCallable nishita_sun =
-        [scene](Float3 direction) noexcept {
-            if (!scene->nishita_environment ||
-                scene->nishita_environment
-                        ->angular_radius <=
-                    0.0f) {
-                return Float3{make_float3(0.0f)};
-            }
-            BufferShaderServices services{
-                scene->scalar_parameter_buffer,
-                scene->vector_parameter_buffer,
-                scene->cycles_bsdf_table_buffer,
-                scene->texture_heap,
-                scene->heap,
-                scene->attribute_binding_slot,
-                scene->attribute_range_slot,
-                scene->nishita_texture_bindings,
-                scene->shader_color_space};
-            const auto &sun =
-                *scene->nishita_environment;
+    // Standalone contract panoramas have no world shader graph. Retain this
+    // explicitly authored image input without a SurfaceProgram interpreter.
+    Float3 emission = parameters.background;
+    const auto xyz_to_rgb = [&](Float3 xyz) {
+        const auto &c = scene->shader_color_space;
+        return make_float3(dot(xyz, to_luisa(c.xyz_to_r)),
+                           dot(xyz, to_luisa(c.xyz_to_g)),
+                           dot(xyz, to_luisa(c.xyz_to_b)));
+    };
+    if (scene->environment_texture_slot) {
+        if (scene->nishita_environment) {
+            const auto &sky = scene->nishita_environment->parameters;
+            emission = max(xyz_to_rgb(cycles_nishita::sky_radiance_xyz(
+                scene->texture_heap->tex2d(*scene->environment_texture_slot),
+                direction, sky.sun_rotation)), make_float3(0.0f)) * sky.background_strength;
+        } else {
+            const auto u = fract((pi - atan2(direction.y, direction.x)) / (2.0f * pi));
+            const auto half_texel_y = 0.5f / std::max(scene->environment_height, 1u);
+            const auto v = clamp(acos(clamp(direction.z, -1.0f, 1.0f)) / pi,
+                                 half_texel_y, 1.0f - half_texel_y);
+            emission = scene->texture_heap->tex2d(*scene->environment_texture_slot)
+                           .sample(make_float2(u, v)).xyz();
+        }
+    }
+    const auto include_suns = evaluation != CyclesSvmBackgroundEvaluation::importance_bake ||
+                              scene->background_guided_sun_weight <= 0.0f;
+    if (include_suns) {
+        for (const auto &sun : scene->environment_suns) {
+            const auto axis = normalized_or_z(sun.direction);
+            const auto cosine = clamp(dot(direction, to_luisa(axis)), -1.0f, 1.0f);
+            const auto radial_distance = acos(cosine) / std::max(sun.angular_radius, 1.0e-7f);
+            const auto limb = 0.4f + 0.6f * sqrt(max(1.0f - radial_distance * radial_distance, 0.0f));
+            emission += select(make_float3(0.0f), to_luisa(sun.radiance) * (limb / 0.8f),
+                               cosine >= std::cos(sun.angular_radius));
+        }
+        if (scene->nishita_environment && scene->nishita_environment->angular_radius > 0.0f) {
+            const auto &sun = *scene->nishita_environment;
             const auto &sky = sun.parameters;
-            return max(
-                       services.xyz_to_rgb(
-                           cycles_nishita::
-                               sun_disc_radiance_xyz(
-                                   direction,
-                                   make_float3(
-                                       sun.sun_direction),
-                                   make_float3(
-                                       sun.pixel_bottom_xyz),
-                                   make_float3(
-                                       sun.pixel_top_xyz),
-                                   sky.sun_elevation,
-                                   sky.angular_diameter,
-                                   sky.sun_intensity)),
-                       make_float3(0.0f)) *
-                   sky.background_strength;
-        };
+            emission += max(xyz_to_rgb(cycles_nishita::sun_disc_radiance_xyz(
+                direction, make_float3(sun.sun_direction),
+                make_float3(sun.pixel_bottom_xyz), make_float3(sun.pixel_top_xyz),
+                sky.sun_elevation, sky.angular_diameter, sky.sun_intensity)),
+                make_float3(0.0f)) * sky.background_strength;
+        }
+    }
+    return emission;
+}
 
-    return {
-        std::move(constant),
-        std::move(base),
-        std::move(suns),
-        std::move(nishita_sun)};
+Float3 evaluate_background_importance(
+    const std::shared_ptr<LuisaSceneData> &scene,
+    const Var<RenderKernelParameters> &parameters, Float u, Float v) noexcept {
+    const auto ray = cycles_svm_background_bake_ray(
+        u, v, scene->background_map_width, scene->background_map_height);
+    const cycles_svm::PathState state{
+        0u, cycles_svm::path_ray_emission | cycles_svm::path_ray_importance_bake};
+    const auto value = evaluate_environment_emission(
+        scene, parameters, make_float3(0.0f), ray.direction, ray.differential,
+        0.5f, state, 0u, CyclesSvmBackgroundEvaluation::importance_bake);
+    const auto not_nan = select(value, make_float3(0.0f), luisa::compute::dsl::isnan(value));
+    return select(not_nan, make_float3(0.0f), luisa::compute::dsl::isinf(value));
 }
 
 void configure_background_sampling(
@@ -386,9 +196,10 @@ void configure_background_sampling(
     }
 }
 
-void build_background_sampling_distribution(
+std::shared_ptr<const BackgroundSamplingDistribution>
+build_background_sampling_distribution(
     const std::shared_ptr<LuisaSceneData> &data,
-    Stream &stream) {
+    Stream &stream, const RenderKernelParameters &parameters) {
     std::vector<Vec3f> radiance;
     if (data->background_map_weight > 0.0f) {
         const auto pixel_count =
@@ -402,80 +213,23 @@ void build_background_sampling_distribution(
         luisa::vector<luisa::float4> readback(
             pixel_count);
 
-        SafeNormalizeCallable safe_normalize =
-            [](Float3 value,
-               Float3 fallback) noexcept {
-                return native_vector_math::normalize_above_or(
-                    value, fallback, 1.0e-20f);
-            };
-        auto surface_callables =
-            make_surface_callables(data);
-        auto surface_emission =
-            surface_callables.emission;
-        auto environment_callables =
-            make_environment_callables(
-                data,
-                safe_normalize,
-                surface_callables
-                    .constant_emission,
-                surface_emission);
-        auto environment_base =
-            environment_callables.base;
-        auto environment_suns =
-            environment_callables.suns;
-        auto nishita_sun =
-            environment_callables.nishita_sun;
-        const auto width =
-            data->background_map_width;
-        const auto height =
-            data->background_map_height;
-        const auto include_discrete_suns =
-            data->background_guided_sun_weight <=
-            0.0f;
-        const auto background = data->background;
-
-        Kernel2D evaluate_importance = [
-            =,
-            &surface_emission](
-            BufferFloat4 output) noexcept {
+        const auto width = data->background_map_width;
+        const auto height = data->background_map_height;
+        Kernel2D evaluate_importance = [data, width, height](
+            BufferFloat4 output, Var<RenderKernelParameters> parameters) noexcept {
             set_block_size(8u, 8u, 1u);
-            const auto coordinate =
-                dispatch_id().xy();
-            const auto u =
-                (cast<float>(coordinate.x) + 0.5f) /
-                static_cast<float>(width);
-            const auto v =
-                (cast<float>(coordinate.y) + 0.5f) /
-                static_cast<float>(height);
-            const auto direction =
-                background_sampling::
-                    equirectangular_to_direction(
-                        u, v);
-            Float3 value = environment_base(
-                direction,
-                make_float3(background),
-                pack_shader_evaluation_state(
-                    cycles_path_state::
-                        light_emission_shader_state(
-                            0u, 0u, 0u, 0u, 0u)));
-            if (include_discrete_suns) {
-                for (const auto &sun :
-                     environment_suns) {
-                    value += sun(direction);
-                }
-                value += nishita_sun(direction);
-            }
-            output.write(
-                coordinate.y * width +
-                    coordinate.x,
-                make_float4(value, 1.0f));
+            const auto coordinate = dispatch_id().xy();
+            const auto u = (cast<float>(coordinate.x) + 0.5f) / float(width);
+            const auto v = (cast<float>(coordinate.y) + 0.5f) / float(height);
+            const auto value = evaluate_background_importance(data, parameters, u, v);
+            output.write(coordinate.y * width + coordinate.x, make_float4(value, 1.0f));
         };
         auto importance_shader =
             data->device.compile(
                 evaluate_importance);
         stream
             << importance_shader(
-                   radiance_buffer)
+                   radiance_buffer, parameters)
                    .dispatch(width, height)
             << radiance_buffer.copy_to(
                    luisa::span{readback})
@@ -502,8 +256,8 @@ void build_background_sampling_distribution(
         sampling::
             build_cycles_background_map_distribution(
                 radiance,
-                data->background_map_width,
-                data->background_map_height);
+                data->background_map_weight > 0.0f ? data->background_map_width : 1u,
+                data->background_map_weight > 0.0f ? data->background_map_height : 1u);
     luisa::vector<luisa::float2> conditional;
     conditional.reserve(
         distribution.conditional.size());
@@ -522,18 +276,20 @@ void build_background_sampling_distribution(
             entry.function,
             entry.cumulative);
     }
-    data->background_conditional_cdf =
+    auto result = std::make_shared<BackgroundSamplingDistribution>();
+    result->conditional =
         data->device.create_buffer<luisa::float2>(
             conditional.size());
-    data->background_marginal_cdf =
+    result->marginal =
         data->device.create_buffer<luisa::float2>(
             marginal.size());
     stream
-        << data->background_conditional_cdf
+        << result->conditional
                .copy_from(luisa::span{conditional})
-        << data->background_marginal_cdf
+        << result->marginal
                .copy_from(luisa::span{marginal})
         << synchronize();
+    return result;
 }
 
 }// namespace psycles::luisa_backend::detail

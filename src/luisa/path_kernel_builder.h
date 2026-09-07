@@ -100,7 +100,7 @@ struct PathKernelConfig {
     LightDistributionSampleCallable light_distribution_sample;
     LightTreeCallables light_tree;
     SurfaceCallables surfaces;
-    EnvironmentCallables environment;
+    std::shared_ptr<const BackgroundSamplingDistribution> background_sampling;
     // Returns the bounded hit batch as a complete value. Split kernels retain
     // that value across INTERSECT_SHADOW -> SHADE_SHADOW; synchronous consumers
     // keep it local. Storage policy is selected while recording the DSL.
@@ -282,10 +282,6 @@ struct PathKernelInvocation {
                           Bool reflective_caustics,
                           Bool refractive_caustics) const noexcept;
   [[nodiscard]] Float3 constant_environment() const noexcept;
-    [[nodiscard]] Float3
-    evaluate_environment(Float3 direction,
-                         const cycles_path_state::ShaderEvaluationState
-                             &shader_state) const noexcept;
 
     void write_film() noexcept;
 };

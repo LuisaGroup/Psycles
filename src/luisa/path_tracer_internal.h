@@ -599,8 +599,6 @@ struct LuisaSceneData {
     std::optional<NishitaEnvironmentRuntime>
         nishita_environment;
     bool environment_emission_is_constant{true};
-    Buffer<luisa::float2> background_conditional_cdf;
-    Buffer<luisa::float2> background_marginal_cdf;
     std::uint32_t background_map_width{1u};
     std::uint32_t background_map_height{1u};
     float background_portal_weight{};
@@ -738,6 +736,8 @@ inline constexpr auto light_pass_buffer_count =
     light_pass_index(LightPassBuffer::count);
 
 
+struct BackgroundSamplingDistribution;
+
 class LuisaRenderSession final : public contract::RenderSession {
 
 private:
@@ -757,6 +757,7 @@ private:
     Buffer<luisa::float4> _path_trace;
     Buffer<luisa::float4> _sobol_table;
     Buffer<float> _pixel_filter_table;
+    std::shared_ptr<const BackgroundSamplingDistribution> _background_sampling;
     std::uint32_t _sobol_sequence_size{};
     std::uint32_t _total_aa_samples{};
     std::uint32_t _rendered_samples{};

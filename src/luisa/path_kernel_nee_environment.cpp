@@ -42,6 +42,7 @@ class EnvironmentDirectLightProvider final : public DirectLightProvider {
                 _environment_light
                     ->from_position(
                         config.scene,
+                        *config.background_sampling,
                         surface.hit_position,
                         light_sample.xy(),
                         selected_light
@@ -147,13 +148,10 @@ class EnvironmentDirectLightProvider final : public DirectLightProvider {
                 _result.light_shader =
                     _environment_light->evaluate_emission(
                         sample,
+                        _context.surface.hit_position,
                         _result.direction,
-                        cycles_path_state::light_emission_shader_state(
-                            sample.path_depth,
-                            sample.diffuse_depth,
-                            sample.glossy_depth,
-                            sample.transparent_depth,
-                            sample.transmission_depth));
+                        sample.ray_dD,
+                        CyclesSvmBackgroundEvaluation::light);
             };
         }
     }

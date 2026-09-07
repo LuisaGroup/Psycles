@@ -17,9 +17,10 @@ Blender/Cycles itself supplies the compiler and GPU-state oracles. There is
 no independent CPU reference renderer.
 
 The default switch is **not** completion of the legacy code removal:
-background evaluation, stacked-volume integration and the displacement
-prepass still have SurfaceProgram consumers. The scene loader also still
-builds transitional material resources for those consumers. These are
+stacked-volume integration and the displacement prepass still have
+SurfaceProgram consumers. Background evaluation and importance-map baking
+now use native SVM. The scene loader also still builds transitional material
+resources for those consumers. These are
 removal work, not supported alternate SVM architectures. The
 [default-path checkpoint](validation/2026-09-07/native-default/README.md)
 records the actual deletions and remaining dependencies.
@@ -33,8 +34,9 @@ profiling, pre-rendering nor scene-name constants determine allocation sizes.
   node/scene feature masks also omit unreachable handler bodies and closure
   consumers. This includes BSSRDF exit setup on scenes without subsurface.
 - Stack capacity comes from the native compiler's stack-address analysis.
-  The recorded array extent is passed to main surface, light and shadow SVM
-  entries. The standalone diagnostic API retains a conservative default.
+  The recorded array extent is passed to main surface, light, background,
+  importance-bake and shadow SVM entries. The standalone diagnostic API
+  retains a conservative default.
 - Closure capacity follows the finalized Cycles graph count and scene cap,
   not the old SurfaceProgram estimator.
 - Local scratch is distinct from persistent coroutine frame storage. Generic
@@ -74,6 +76,7 @@ Recent independently checked native families include:
 | --- | --- |
 | Surface allocation, closure setup/evaluation/sampling, BSSRDF exit and state flags | [Surface state](validation/2026-09-07/native-surface-state/README.md), [zero-BSDF state](validation/2026-09-07/zero-bsdf/README.md) |
 | ShaderData geometry, packed object/primitive identity, curve segments and lamp emission | [Default-path checkpoint](validation/2026-09-07/native-default/README.md) |
+| Background/NEE ShaderData, native world evaluation and camera-dependent importance baking | [Native background](validation/2026-09-08/native-background/README.md) |
 | Volume Absorption/Scatter, Volume Coefficients and Principled Volume node streams and allocation state | [Native volume SVM](validation/2026-09-07/native-volume-svm/README.md) |
 | Map Range and analytic Sky node behavior | [Map Range](validation/2026-09-07/map-range/README.md), [analytic Sky](validation/2026-09-07/analytic-sky/README.md) |
 
@@ -98,10 +101,13 @@ under `docs/validation/`.
 
 Current large HIP checkpoints use fixed samples and native fast math.
 Lone Monk runs at 1440x1080 / 256 spp and Monster at 1080x1080 / 256 spp.
-The [scene-local extent checkpoint](validation/2026-09-07/scene-local-extents/README.md)
+The [native background checkpoint](validation/2026-09-08/native-background/README.md)
 records Combined / DiffInd relative RMSE of
-0.01240462 / 0.12881742 for Monk and 0.00547921 / 0.02552785 for Monster.
-These are dated measurements, not guarantees for subsequent changes.
+0.01240469 / 0.12881537 for Monk and 0.00547924 / 0.02552799 for Monster.
+Single render-only canaries take 13.5612 s / 14.9770 s; the main application
+coroutine frames remain 220 B / 284 B. Background migration did not materially
+change the residuals or establish a speedup. These are dated measurements,
+not guarantees for subsequent changes.
 
 The [same-sample Monk diagnosis](validation/2026-09-07/lone-monk-residual/README.md)
 identifies a concrete visibility divergence at coincident leaf geometry.

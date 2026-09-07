@@ -43,8 +43,9 @@ bool run(const char *program, const char *backend) {
     return buffer;
   };
   auto scene = std::make_shared<detail::LuisaSceneData>();
-  scene->background_conditional_cdf = upload(conditional);
-  scene->background_marginal_cdf = upload(marginal);
+  auto distribution = std::make_shared<detail::BackgroundSamplingDistribution>();
+  distribution->conditional = upload(conditional);
+  distribution->marginal = upload(marginal);
   scene->background_map_width = scene->background_map_height = 2u;
   scene->background_guided_sun_weight = 4.0f;
   scene->background_guided_sun_axis = luisa::make_float3(
@@ -62,7 +63,7 @@ bool run(const char *program, const char *backend) {
   std::ifstream oracle{PSYCLES_BACKGROUND_SUN_ORACLE};
   for (auto mixture = 0u; mixture < 2u; ++mixture) {
     scene->background_map_weight = float(mixture);
-    Kernel1D kernel = [mixture, scene, environment](
+    Kernel1D kernel = [mixture, scene, environment, distribution](
                           BufferFloat2 cdf, BufferFloat2 marginal,
                           BufferFloat2 rng, BufferFloat4 out) noexcept {
       const auto i = dispatch_x();
@@ -78,14 +79,14 @@ bool run(const char *program, const char *backend) {
                      background_sun_axis_radius[3], random);
       out.write(i, make_float4(sample.direction, sample.pdf));
       const auto portal_route = environment->from_position(
-          scene, make_float3(0.0f), random, 1.0f, 0u, 0u);
+          scene, *distribution, make_float3(0.0f), random, 1.0f, 0u, 0u);
       out.write(count + i,
                 make_float4(portal_route.direction, portal_route.pdf));
     };
     auto shader = device.compile(kernel);
     std::array<luisa::float4, 2u * count> values{};
-    stream << shader(scene->background_conditional_cdf,
-                     scene->background_marginal_cdf, rng, output)
+    stream << shader(distribution->conditional,
+                     distribution->marginal, rng, output)
                   .dispatch(count)
            << output.copy_to(values.data()) << synchronize();
     for (auto i = 0u; i < count; ++i) {

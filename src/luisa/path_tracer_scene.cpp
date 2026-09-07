@@ -669,10 +669,15 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             data->environment_width = environment.width;
             data->environment_height = environment.height;
         }
-        data->environment_texture_slot =
-            static_cast<std::uint32_t>(texture_slot_count);
         data->environment_suns = environment.suns;
-        ++texture_slot_count;
+        if (data->cycles_background_shader_id == ~0u) {
+            // Native world nodes own their image/SkyLoader resources.
+            // EnvironmentDesc contributes sampling metadata only; do not
+            // upload or precompute a second world texture or solar spectrum.
+            data->environment_texture_slot =
+                static_cast<std::uint32_t>(texture_slot_count);
+            ++texture_slot_count;
+        }
     }
     data->texture_heap =
         data->device.create_bindless_array(texture_slot_count);
@@ -1817,35 +1822,28 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     data->emissive_triangle_count =
         static_cast<std::uint32_t>(
             emissive_triangles.size());
-    const auto world_emission_is_constant =
-        !data->world_surface ||
-        (data->world_surface->flags &
-         material_flag_constant_emission) != 0u;
-    data->environment_emission_is_constant =
-        world_emission_is_constant &&
-        !data->environment_texture_slot &&
-        data->environment_suns.empty() &&
-        !data->nishita_environment;
+    if (data->cycles_background_shader_id != ~0u) {
+        const auto &shader = data->cycles_svm->compilation.kernel_shaders.at(
+            data->cycles_background_shader_id & cycles_svm::shader_mask);
+        data->environment_emission_is_constant =
+            (shader.flags & compiler::cycles_svm::SD_HAS_CONSTANT_EMISSION) != 0;
+    } else {
+        data->environment_emission_is_constant =
+            !data->environment_texture_slot && data->environment_suns.empty() &&
+            !data->nishita_environment;
+    }
 
     bool world_is_spatially_varying = false;
     if (snapshot.world_shader) {
-        if (data->native_cycles_svm_surface) {
-            world_is_spatially_varying =
-                cycles_svm_material_metadata(*data, *snapshot.world_shader)
-                    .has_surface_spatial_varying;
-        } else if (const auto *world_material =
-                data->materials.find(*snapshot.world_shader)) {
-            world_is_spatially_varying =
-                volume_capabilities
-                    .analyze(*world_material->surface_program())
-                    .has_spatial_values;
-        }
+        world_is_spatially_varying =
+            cycles_svm_material_metadata(*data, *snapshot.world_shader)
+                .has_surface_spatial_varying;
     }
     // Cycles LightManager::test_enabled_lights enables the background when a
     // portal exists, independently of the world's MIS policy. Without a
     // portal it requires both MIS and a spatially varying raw surface graph.
     const auto include_environment =
-        data->world_surface.has_value() &&
+        data->cycles_background_shader_id != ~0u &&
         (data->portal_count != 0u ||
          (snapshot.world_sampling != contract::WorldSampling::none &&
           world_is_spatially_varying));
@@ -1928,9 +1926,6 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         *data,
         snapshot,
         include_environment);
-    build_background_sampling_distribution(
-        data,
-        stream);
 
     result.scene =
         std::make_unique<LuisaCompiledScene>(

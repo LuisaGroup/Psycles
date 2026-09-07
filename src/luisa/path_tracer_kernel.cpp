@@ -280,15 +280,14 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
         .camera_dx = to_luisa(camera_setup.dx),
         .camera_dy = to_luisa(camera_setup.dy),
         .camera_inv_aperture_ratio = 1.0f / camera_aperture_ratio};
+  _background_sampling = build_background_sampling_distribution(
+      scene, _stream, _kernel_parameters);
   auto light_transport = make_light_transport_callables(direct_light_sampling);
     auto light_distribution_sample_callable =
         make_light_distribution_sample_callable(scene);
   auto light_tree_callables = make_light_tree_callables(scene);
 
   auto surface_callables = make_surface_callables(scene);
-  auto environment_callables = make_environment_callables(
-      scene, light_transport.safe_normalize,
-      surface_callables.constant_emission, surface_callables.emission);
     auto shadow_trace_callables =
         make_shadow_trace_callables(scene, light_transport.safe_normalize);
   const auto path_trace_enabled = _options.path_trace.has_value();
@@ -331,7 +330,7 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             std::move(light_distribution_sample_callable),
         .light_tree = std::move(light_tree_callables),
         .surfaces = std::move(surface_callables),
-        .environment = std::move(environment_callables),
+        .background_sampling = _background_sampling,
         .intersect_shadow = std::move(shadow_trace_callables.intersect),
         .shade_shadow_surface = std::move(shadow_trace_callables.shade_surface),
         .trace_shadow = std::move(shadow_trace_callables.trace)};

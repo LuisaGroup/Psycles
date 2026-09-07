@@ -75,6 +75,8 @@ inline constexpr std::uint32_t kernel_feature_transparent = 1u << 19u;
 inline constexpr std::uint32_t kernel_feature_node_mask_surface_light =
     kernel_feature_node_emission | kernel_feature_node_voronoi_extra |
     kernel_feature_node_light_path | kernel_feature_node_portal;
+inline constexpr std::uint32_t kernel_feature_node_mask_surface_background =
+    kernel_feature_node_mask_surface_light | kernel_feature_node_aov;
 inline constexpr std::uint32_t kernel_feature_node_mask_surface_shadow =
     kernel_feature_node_bsdf | kernel_feature_node_emission |
     kernel_feature_node_bump | kernel_feature_node_bump_state |

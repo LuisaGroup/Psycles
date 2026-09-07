@@ -38,6 +38,7 @@ class PathCyclesSvmKernelGlobals final
 
     [[nodiscard]] Bool caustics_reflective() const noexcept override;
     [[nodiscard]] Bool caustics_refractive() const noexcept override;
+    [[nodiscard]] Bool background_use_sun_guiding() const noexcept override;
     [[nodiscard]] Float object_shadow_terminator_shading_offset(
         Expr<std::uint32_t> object) const noexcept override;
     [[nodiscard]] std::optional<Float> object_volume_density(

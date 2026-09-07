@@ -28,6 +28,7 @@ class EnvironmentLightComponent {
     from_position(
         const std::shared_ptr<
             LuisaSceneData> &scene,
+        const BackgroundSamplingDistribution &distribution,
         Float3 reference,
         Float2 random,
         Float selection_pdf,
@@ -43,16 +44,15 @@ class EnvironmentLightComponent {
     [[nodiscard]] virtual Float3
     evaluate_emission(
         PathSampleContext &sample,
-        Float3 direction,
-        const cycles_path_state::
-            ShaderEvaluationState
-                &shader_state)
+        Float3 origin, Float3 direction, Float differential,
+        CyclesSvmBackgroundEvaluation evaluation)
         const noexcept = 0;
 
     [[nodiscard]] virtual Float
     from_direction(
         const std::shared_ptr<
             LuisaSceneData> &scene,
+        const BackgroundSamplingDistribution &distribution,
         Float3 reference,
         Float3 direction,
         Float selection_pdf,
