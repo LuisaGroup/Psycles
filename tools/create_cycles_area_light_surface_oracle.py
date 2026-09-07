@@ -232,7 +232,7 @@ def configure_scene(
     )
     set_if_present(
         scene.cycles,
-        "use_auto_scrambling_distance",
+        "auto_scrambling_distance",
         False,
     )
     scene.cycles.max_bounces = 1

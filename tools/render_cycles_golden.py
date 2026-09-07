@@ -249,7 +249,7 @@ def _configure_sampler(
     )
     _set_if_present(
         scene.cycles,
-        "use_auto_scrambling_distance",
+        "auto_scrambling_distance",
         False,
     )
 
@@ -344,6 +344,9 @@ def _main() -> None:
             scene.cycles,
             "scrambling_distance",
             None,
+        ),
+        "auto_scrambling_distance": getattr(
+            scene.cycles, "auto_scrambling_distance", None
         ),
         "adaptive_sampling": scene.cycles.use_adaptive_sampling,
         "denoising": scene.cycles.use_denoising,

@@ -27,6 +27,7 @@ if str(_TOOLS) not in sys.path:
     sys.path.insert(0, str(_TOOLS))
 
 import cycles_hash  # noqa: E402
+from render_cycles_golden import _configure_sampler  # noqa: E402
 from cycles_path_trace_schema import (  # noqa: E402
     AOV_COUNT,
     SCHEMA_VERSION,
@@ -196,11 +197,6 @@ def _configure_trace_aovs(view_layer: Any) -> None:
         )
 
 
-def _set_if_present(owner: Any, name: str, value: Any) -> None:
-    if hasattr(owner, name):
-        setattr(owner, name, value)
-
-
 def _configure_absolute_sample(
     cycles: Any,
     total_samples: int,
@@ -277,13 +273,9 @@ def _main() -> None:
     scene.cycles.seed = arguments.seed
     scene.cycles.use_adaptive_sampling = False
     scene.cycles.use_denoising = False
-    _set_if_present(scene.cycles, "sampling_pattern", arguments.sampling_pattern)
-    _set_if_present(
-        scene.cycles,
-        "scrambling_distance",
-        arguments.scrambling_distance,
+    _configure_sampler(
+        scene, arguments.sampling_pattern, arguments.scrambling_distance
     )
-    _set_if_present(scene.cycles, "use_auto_scrambling_distance", False)
 
     scene.render.resolution_x = width
     scene.render.resolution_y = height
@@ -353,6 +345,9 @@ def _main() -> None:
             scene.cycles,
             "scrambling_distance",
             None,
+        ),
+        "auto_scrambling_distance": getattr(
+            scene.cycles, "auto_scrambling_distance", None
         ),
         "elapsed_seconds": elapsed,
     }
