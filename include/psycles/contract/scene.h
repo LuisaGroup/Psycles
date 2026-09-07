@@ -427,6 +427,12 @@ enum class CameraSensorFit : std::uint8_t {
     automatic
 };
 
+struct CameraSensor {
+    float lens_mm{};
+    float width_mm{};
+    float height_mm{};
+};
+
 struct CameraDesc {
     std::string name;
     CameraProjection projection{CameraProjection::perspective};
@@ -447,6 +453,12 @@ struct CameraDesc {
     std::uint32_t aperture_blades{};
     float aperture_rotation{};
     float aperture_ratio{1.0f};
+    // Preserve Blender's physical projection inputs. Reconstructing them
+    // from angle_x/y loses the sensor-fit operation order (AUTO always uses
+    // sensor width, including portrait renders). Old bundles keep the angle
+    // representation by leaving this absent.
+    std::optional<CameraSensor> sensor;
+    Vec2f pixel_aspect{1.0f, 1.0f};
 };
 
 enum class LightType : std::uint8_t {

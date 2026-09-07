@@ -59,188 +59,94 @@ CameraRaySample construct_camera_ray(
     std::uint32_t aperture_blades,
     float aperture_rotation,
     const SafeNormalizeCallable &safe_normalize) noexcept {
-    const Float jitter_x =
-        pixel_filter::sample(
-            filter_table,
-            sample.filter_sample.x);
-    const Float jitter_y =
-        camera_sampling::output_filter_y(
-            pixel_filter::sample(
-                filter_table,
-                sample.filter_sample.y));
-    const Float width =
-        cast<float>(parameters.full_width);
-    const Float height =
-        cast<float>(parameters.full_height);
-    const Float screen_x =
-        2.0f *
-            (cast<float>(full_x) + jitter_x) /
-            width -
-        1.0f +
-        2.0f * parameters.camera_shift_x;
-    const Float screen_y =
-        1.0f -
-        2.0f *
-            (cast<float>(full_y) + jitter_y) /
-            height +
-        2.0f * parameters.camera_shift_y;
-    const Float aspect = width / height;
+    const Float jitter_x = pixel_filter::sample(filter_table, sample.filter_sample.x);
+    const Float jitter_y = pixel_filter::sample(filter_table, sample.filter_sample.y);
+    Float3 origin = make_float3(0.0f);
+    Float3 direction = make_float3(0.0f, 0.0f, 1.0f);
+    Float dP = 0.0f, dD = 0.0f;
+    Float tmax = parameters.camera_far - parameters.camera_near;
 
-    Float3 local_origin = make_float3(0.0f);
-    Float3 local_direction =
-        make_float3(0.0f, 0.0f, -1.0f);
-    Float camera_clip_cosine = 1.0f;
-    Float3 local_direction_dx = local_direction;
-    Float3 local_direction_dy = local_direction;
-    Float differential_position = 0.0f;
-    Float differential_direction = 0.0f;
-    if (projection == CameraProjection::perspective) {
-        local_direction = normalize(make_float3(
-            screen_x *
-                parameters.camera_horizontal_tangent,
-            screen_y *
-                parameters.camera_vertical_tangent,
-            -1.0f));
-        camera_clip_cosine = -local_direction.z;
-        local_direction_dx =
-            normalize(make_float3(
-                (screen_x + 2.0f / width) *
-                    parameters.camera_horizontal_tangent,
-                screen_y *
-                    parameters.camera_vertical_tangent,
-                -1.0f));
-        local_direction_dy =
-            normalize(make_float3(
-                screen_x *
-                    parameters.camera_horizontal_tangent,
-                (screen_y - 2.0f / height) *
-                    parameters.camera_vertical_tangent,
-                -1.0f));
-        differential_direction =
-            0.5f *
-            (length(
-                 local_direction_dx -
-                 local_direction) +
-             length(
-                 local_direction_dy -
-                 local_direction));
-    } else if (
-        projection == CameraProjection::orthographic) {
-        local_origin = make_float3(
-            screen_x *
-                parameters.camera_ortho_vertical_span *
-                aspect * 0.5f,
-            screen_y *
-                parameters.camera_ortho_vertical_span *
-                0.5f,
-            0.0f);
-        differential_position =
-            0.5f *
-            (parameters.camera_ortho_vertical_span *
-                 aspect / width +
-             parameters.camera_ortho_vertical_span /
-                 height);
+    if (projection != CameraProjection::panorama) {
+        // Cycles uses bottom-left raster coordinates directly, then the
+        // host-prepared projective transform. Keep Pcamera unnormalized for
+        // focus-plane construction and for the independent ray differentials.
+        const auto raster = make_float3(
+            cast<float>(full_x) + jitter_x,
+            cast<float>(sample.cycles_y) + jitter_y, 0.0f);
+        const auto Pcamera = cycles_transform::perspective(
+            parameters.camera_raster_to_camera, raster);
+        const auto t = parameters.camera_transform;
+        const auto camera_to_world = make_float4x4(t[0u], t[1u], -t[2u], t[3u]);
+        Float2 lens = make_float2(0.0f);
+        if (depth_of_field) {
+            lens = camera_sampling::sample_aperture(
+                sample.lens_time_sample.yz(), aperture_blades < 3u ? 0u : aperture_blades,
+                aperture_rotation);
+            lens.x *= parameters.camera_inv_aperture_ratio;
+            lens *= parameters.camera_aperture_radius;
+        }
+        if (projection == CameraProjection::perspective) {
+            direction = Pcamera;
+            if (depth_of_field) {
+                const auto focus = direction * (parameters.camera_focal_distance / direction.z);
+                origin = make_float3(lens, 0.0f);
+                direction = normalize(focus - origin);
+            }
+            origin = cycles_transform::point(camera_to_world, origin);
+            direction = normalize(cycles_transform::direction(camera_to_world, direction));
+            const auto center = cycles_transform::direction(camera_to_world, Pcamera);
+            const auto normalized_center = normalize(center);
+            dD = 0.5f * (length(normalize(center + parameters.camera_dx) - normalized_center) +
+                         length(normalize(center + parameters.camera_dy) - normalized_center));
+            const auto z_inv = 1.0f / normalize(Pcamera).z;
+            const auto near = parameters.camera_near * z_inv;
+            origin += near * direction;
+            dP += near * dD;
+            tmax *= z_inv;
+        } else {
+            if (depth_of_field) {
+                const auto focus = direction * parameters.camera_focal_distance;
+                const auto lens_position = make_float3(lens, 0.0f);
+                direction = normalize(focus - lens_position);
+                origin = Pcamera + lens_position +
+                         direction * (parameters.camera_near / direction.z);
+            } else {
+                origin = Pcamera + make_float3(0.0f, 0.0f, parameters.camera_near);
+            }
+            origin = cycles_transform::point(camera_to_world, origin);
+            direction = normalize(cycles_transform::direction(camera_to_world, direction));
+            dP = 0.5f * (length(parameters.camera_dx) + length(parameters.camera_dy));
+        }
     } else {
-        const Float longitude = screen_x * pi;
-        const Float latitude =
-            screen_y * pi * 0.5f;
-        const Float cosine_latitude =
-            cos(latitude);
-        local_direction = make_float3(
-            cosine_latitude * sin(longitude),
-            sin(latitude),
-            -cosine_latitude * cos(longitude));
-        const Float longitude_dx =
-            (screen_x + 2.0f / width) * pi;
-        const Float latitude_dy =
-            (screen_y - 2.0f / height) *
-            pi * 0.5f;
-        local_direction_dx = make_float3(
-            cosine_latitude * sin(longitude_dx),
-            sin(latitude),
-            -cosine_latitude * cos(longitude_dx));
-        const Float cosine_latitude_dy =
-            cos(latitude_dy);
-        local_direction_dy = make_float3(
-            cosine_latitude_dy * sin(longitude),
-            sin(latitude_dy),
-            -cosine_latitude_dy * cos(longitude));
-        differential_direction =
-            0.5f *
-            (length(
-                 local_direction_dx -
-                 local_direction) +
-             length(
-                 local_direction_dy -
-                 local_direction));
+        // Existing equirectangular path; stereo/motion/panorama variants are
+        // outside the static rectilinear projection contract above.
+        const Float width = cast<float>(parameters.full_width);
+        const Float height = cast<float>(parameters.full_height);
+        const Float screen_x = 2.0f * (cast<float>(full_x) + jitter_x) / width -
+                               1.0f + 2.0f * parameters.camera_shift_x;
+        const Float screen_y = 1.0f -
+            2.0f * (cast<float>(full_y) + camera_sampling::output_filter_y(jitter_y)) / height +
+            2.0f * parameters.camera_shift_y;
+        const auto longitude = screen_x * pi;
+        const auto latitude = screen_y * pi * 0.5f;
+        const auto cosine_latitude = cos(latitude);
+        const auto local = make_float3(cosine_latitude * sin(longitude), sin(latitude),
+                                       -cosine_latitude * cos(longitude));
+        const auto longitude_dx = (screen_x + 2.0f / width) * pi;
+        const auto latitude_dy = (screen_y - 2.0f / height) * pi * 0.5f;
+        const auto dx = make_float3(cosine_latitude * sin(longitude_dx), sin(latitude),
+                                    -cosine_latitude * cos(longitude_dx));
+        const auto dy = make_float3(cos(latitude_dy) * sin(longitude), sin(latitude_dy),
+                                    -cos(latitude_dy) * cos(longitude));
+        dD = 0.5f * (length(dx - local) + length(dy - local));
+        const auto ray = camera_sampling::camera_to_world_ray(
+            parameters.camera_transform, make_float3(0.0f), local);
+        direction = safe_normalize(ray.direction, make_float3(0.0f, 0.0f, -1.0f));
+        origin = ray.origin + parameters.camera_near * direction;
+        dP = parameters.camera_near * dD;
     }
-
-    if (depth_of_field) {
-        Float2 lens_position =
-            camera_sampling::sample_aperture(
-                sample.lens_time_sample.yz(),
-                aperture_blades,
-                aperture_rotation) *
-            parameters.camera_aperture_radius;
-        lens_position.x /=
-            max(
-                parameters.camera_aperture_ratio,
-                1.0e-5f);
-        const Float focus_scale =
-            parameters.camera_focal_distance /
-            max(-local_direction.z, 1.0e-6f);
-        const Float focus_scale_dx =
-            parameters.camera_focal_distance /
-            max(-local_direction_dx.z, 1.0e-6f);
-        const Float focus_scale_dy =
-            parameters.camera_focal_distance /
-            max(-local_direction_dy.z, 1.0e-6f);
-        const Float3 focus_position =
-            local_direction * focus_scale;
-        const Float3 focus_position_dx =
-            local_direction_dx * focus_scale_dx;
-        const Float3 focus_position_dy =
-            local_direction_dy * focus_scale_dy;
-        local_origin = make_float3(
-            lens_position.x,
-            lens_position.y,
-            0.0f);
-        local_direction = normalize(
-            focus_position - local_origin);
-        local_direction_dx = normalize(
-            focus_position_dx - local_origin);
-        local_direction_dy = normalize(
-            focus_position_dy - local_origin);
-    }
-
-    const auto world_ray = camera_sampling::camera_to_world_ray(
-        parameters.camera_transform, local_origin, local_direction);
-    Float3 ray_origin = world_ray.origin;
-    const Float3 ray_direction = safe_normalize(
-        world_ray.direction,
-        make_float3(0.0f, 0.0f, -1.0f));
-    const auto camera_clip =
-        camera_sampling::camera_clip_range(
-            parameters.camera_near,
-            parameters.camera_far,
-            camera_clip_cosine);
-    ray_origin += ray_direction * camera_clip.x;
-    differential_position =
-        camera_sampling::advance_compact_differential_position(
-            differential_position,
-            differential_direction,
-            camera_clip.x);
-    Var<luisa::compute::Ray> ray = make_ray(
-        ray_origin,
-        ray_direction,
-        0.0f,
-        camera_clip.y);
-    return {
-        .ray = std::move(ray),
-        .differential_position =
-            differential_position,
-        .differential_direction =
-            differential_direction};
+    auto ray = make_ray(origin, direction, 0.0f, tmax);
+    return {std::move(ray), dP, dD};
 }
 
 }// namespace psycles::luisa_backend::detail

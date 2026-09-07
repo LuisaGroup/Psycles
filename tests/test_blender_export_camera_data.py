@@ -30,6 +30,16 @@ def _main() -> None:
     _clear_scene()
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
+    camera_data = bpy.data.cameras.new("Physical Camera")
+    source_camera = bpy.data.objects.new("Physical Camera", camera_data)
+    scene.collection.objects.link(source_camera)
+    scene.camera = source_camera
+    camera_data.lens = 25.5
+    camera_data.sensor_width = 36.0
+    camera_data.sensor_height = 24.0
+    camera_data.sensor_fit = "AUTO"
+    scene.render.pixel_aspect_x = 1.5
+    scene.render.pixel_aspect_y = 1.0
     material = bpy.data.materials.new("Camera Data Export")
     material.use_nodes = True
     tree = material.node_tree
@@ -73,6 +83,18 @@ def _main() -> None:
         manifest = json.loads(
             (directory / "scene.json").read_text(encoding="utf-8")
         )
+
+    camera_payload = manifest["camera"]
+    for key, expected in {
+        "lens": 25.5,
+        "sensor_width": 36.0,
+        "sensor_height": 24.0,
+        "sensor_fit": "AUTO",
+        "pixel_aspect_x": 1.5,
+        "pixel_aspect_y": 1.0,
+    }.items():
+        if camera_payload[key] != expected:
+            raise AssertionError(f"Physical camera input lost: {key}: {camera_payload}")
 
     exported_material = next(
         item for item in manifest["materials"] if item["name"] == material.name

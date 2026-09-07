@@ -1,3 +1,10 @@
+add_executable(psycles_blender_camera_projection_import_tests
+    tests/test_blender_camera_projection_import.cpp)
+target_link_libraries(psycles_blender_camera_projection_import_tests PRIVATE Psycles::luisa_runtime)
+target_compile_features(psycles_blender_camera_projection_import_tests PRIVATE cxx_std_20)
+add_test(NAME psycles.blender_camera_projection_import
+    COMMAND psycles_blender_camera_projection_import_tests)
+
 add_executable(
     psycles_blender_import_tests
     tests/blender_texture_coordinate_import_expectations.cpp

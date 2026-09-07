@@ -26,6 +26,23 @@ namespace {
 
 } // namespace
 
+luisa::compute::Float3 perspective(
+    luisa::compute::Expr<luisa::float4x4> transform,
+    luisa::compute::Expr<luisa::float3> value) noexcept {
+  using namespace luisa::compute;
+  const auto b = make_float4(value, 1.0f);
+  const auto row = [&](unsigned i) {
+    return make_float4(transform[0u][i], transform[1u][i],
+                      transform[2u][i], transform[3u][i]);
+  };
+  const auto w = dot(row(3u), b);
+  Float3 result = make_float3(0.0f);
+  $if(w != 0.0f) {
+    result = make_float3(dot(row(0u), b), dot(row(1u), b), dot(row(2u), b)) / w;
+  };
+  return result;
+}
+
 luisa::compute::Float3 point(
     luisa::compute::Expr<luisa::float4x4> transform,
     luisa::compute::Expr<luisa::float3> value) noexcept {

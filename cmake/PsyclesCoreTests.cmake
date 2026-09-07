@@ -1,4 +1,12 @@
 if(PSYCLES_BUILD_TESTS)
+    add_executable(psycles_cycles_camera_projection_tests
+        tests/test_cycles_camera_projection.cpp)
+    target_link_libraries(psycles_cycles_camera_projection_tests PRIVATE Psycles::core)
+    target_compile_features(psycles_cycles_camera_projection_tests PRIVATE cxx_std_20)
+    target_compile_definitions(psycles_cycles_camera_projection_tests PRIVATE
+        PSYCLES_CAMERA_PROJECTION_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_camera_projection.txt")
+    add_test(NAME psycles.cycles_camera_projection COMMAND psycles_cycles_camera_projection_tests)
+
     add_executable(psycles_cycles_static_normal_tests
         tests/test_cycles_static_normal.cpp)
     target_link_libraries(psycles_cycles_static_normal_tests PRIVATE Psycles::core)
