@@ -30,6 +30,7 @@ inline constexpr auto ies_light = "psycles.texture.ies";
 inline constexpr auto nishita_sky = "psycles.texture.nishita_sky";
 inline constexpr auto hosek_wilkie_sky =
     "psycles.texture.hosek_wilkie_sky";
+inline constexpr auto preetham_sky = "psycles.texture.preetham_sky";
 inline constexpr auto math = "psycles.math.cycles";
 inline constexpr auto add_float = "psycles.math.add";
 inline constexpr auto subtract_float = "psycles.math.subtract";

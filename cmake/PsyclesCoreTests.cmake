@@ -331,6 +331,17 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_wireframe_tests)
 
     if(TARGET psycles_luisa_runtime)
+        add_executable(psycles_cycles_svm_analytic_sky_tests
+            tests/test_cycles_svm_analytic_sky.cpp)
+        target_link_libraries(psycles_cycles_svm_analytic_sky_tests PRIVATE Psycles::luisa_runtime)
+        target_compile_features(psycles_cycles_svm_analytic_sky_tests PRIVATE cxx_std_20)
+        target_compile_definitions(psycles_cycles_svm_analytic_sky_tests PRIVATE
+            PSYCLES_HOSEK_SCENE="${CMAKE_CURRENT_LIST_DIR}/../tests/data/cycles_hosek_sky_scene.json"
+            PSYCLES_HOSEK_WORDS="${CMAKE_CURRENT_LIST_DIR}/../tests/data/cycles_hosek_sky_words.txt"
+            PSYCLES_PREETHAM_SCENE="${CMAKE_CURRENT_LIST_DIR}/../tests/data/cycles_preetham_sky_scene.json"
+            PSYCLES_PREETHAM_WORDS="${CMAKE_CURRENT_LIST_DIR}/../tests/data/cycles_preetham_sky_words.txt")
+        add_test(NAME psycles.cycles_svm_analytic_sky
+            COMMAND psycles_cycles_svm_analytic_sky_tests)
         add_executable(psycles_cycles_svm_volume_emission_tests
             tests/test_cycles_svm_volume_emission.cpp)
         target_link_libraries(psycles_cycles_svm_volume_emission_tests PRIVATE Psycles::luisa_runtime)

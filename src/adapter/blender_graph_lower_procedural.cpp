@@ -715,9 +715,10 @@ public:
         if (type == "TEX_SKY") {
             const auto sky_type = context.node_property_text(
                 node, "sky_type", "NISHITA");
-            if (sky_type == "HOSEK_WILKIE") {
+            if (sky_type == "HOSEK_WILKIE" || sky_type == "PREETHAM") {
                 const auto id = context.graph().add_node(
-                    compiler::node_type::hosek_wilkie_sky,
+                    sky_type == "PREETHAM" ? compiler::node_type::preetham_sky
+                                           : compiler::node_type::hosek_wilkie_sky,
                     node_name);
                 bind_blender_texture_vector(
                     context,
@@ -752,12 +753,6 @@ public:
                 return finish({
                     .ref = {.node = id, .socket = "Color"},
                     .type = SocketType::color});
-            }
-            if (sky_type == "PREETHAM") {
-                context.warn_once(
-                    "unsupported:sky:preetham",
-                    "Blender PREETHAM Sky Texture is unsupported; "
-                    "using Nishita as a compatibility fallback.");
             }
             const auto id = context.graph().add_node(
                 compiler::node_type::nishita_sky,
