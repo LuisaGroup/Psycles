@@ -71,3 +71,13 @@ the inherited application/SDK edits and Luisa gitlink are not staged.
 The scene-level timing effect, if any, belongs to volume preprocessing, not
 the steady-state surface-render timings in the separate shadow-relocation
 report. No rendering speedup is claimed for this flag change.
+
+## Policy-test follow-up
+
+The broad host suite found that `test_luisa_shader_performance_policy.py`
+still required the removed strict-FP exception and repeated its obsolete
+conservative-bound claim. Its exact allowlist is now empty. The policy still
+rejects any unreviewed production `enable_fast_math = false`, software
+last-bit emulation, and scalar replacements for native normalization.
+This follow-up changes the policy regression and documentation only, not
+the renderer or its floating-point operations.

@@ -13,14 +13,12 @@ STRICT_FAST_MATH_PATTERN = re.compile(
     r"\.enable_fast_math\s*=\s*false\b"
 )
 
-# Strict arithmetic is admissible only when a proof obligation depends on a
-# directed bound, not when a regression merely prefers one floating-point bit
-# pattern. The volume maximum is consumed as a delta-tracking majorant, so an
-# underestimate biases the estimator. Keep this allowlist intentionally exact:
-# a second strict kernel, even in the same file, requires an explicit review.
-ALLOWED_STRICT_FAST_MATH = {
-    "src/luisa/path_tracer_volume_majorant_scene.cpp": 1,
-}
+# No production shader currently needs strict arithmetic. In particular, the
+# sampled volume-density maximum is not a proven conservative bound; strict
+# FP does not make it one. See validation/2026-09-07/volume-fast-math. Keep this
+# allowlist exact: any future exception requires an explicit proof obligation,
+# not a regression's preference for one floating-point bit pattern.
+ALLOWED_STRICT_FAST_MATH: dict[str, int] = {}
 
 # This old component re-ran a software Pluecker triangle test after native
 # traversal to reproduce one accelerator's coincident-hit bits. Native ray
@@ -141,8 +139,8 @@ def main() -> int:
             print(f"error: {violation}", file=sys.stderr)
         return 1
     print(
-        "production Luisa shader policy passed: fast math enabled except for "
-        "the proven volume-majorant bound; native reciprocal-square-root "
+        "production Luisa shader policy passed: fast math enabled; "
+        "native reciprocal-square-root "
         "normalization; no last-bit emulation paths"
     )
     return 0
