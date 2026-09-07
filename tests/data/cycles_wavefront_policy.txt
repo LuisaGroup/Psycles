@@ -1,0 +1,255 @@
+source cb168525138fecc792cc393f94afc39582b0103c 2e8d1c32186cfb832792cafb69d16257f72990791edc3762084d73bb7a92a075
+kernels 2 11 9 3 15 17
+compact 0 0 0 0 0 0 0 0
+compact 0 0 0 0 0 0 0 0
+compact 0 0 0 0 0 0 0 0
+compact 0 0 0 0 0 0 0 0
+compact 0 0 0 0 0 0 0 0
+compact 1 0 0 0 0 0 0 1
+compact 1 0 0 0 0 0 0 1
+compact 1 0 0 0 0 0 0 1
+compact 1 0 0 0 0 0 0 1
+compact 1 0 0 0 0 0 0 1
+compact 31 0 0 0 0 0 0 1
+compact 31 0 0 0 0 0 0 1
+compact 31 0 0 0 0 0 0 1
+compact 31 0 0 0 0 0 0 1
+compact 31 0 0 0 0 0 0 1
+compact 32 0 0 0 0 0 0 1
+compact 32 0 0 0 0 0 0 1
+compact 32 0 0 0 0 0 0 1
+compact 32 0 0 0 0 0 0 1
+compact 32 0 0 0 0 0 0 1
+compact 1048576 0 0 0 0 0 0 1
+compact 1048576 0 0 0 0 0 0 1
+compact 1048576 0 0 0 0 0 0 1
+compact 1048576 0 0 0 0 0 0 1
+compact 1048576 0 0 0 0 0 0 1
+compact 1 1 0 0 0 1 0 0
+compact 1 0 1 0 0 1 0 0
+compact 1 0 0 1 0 1 0 0
+compact 1 0 0 0 1 1 0 0
+compact 1 1 0 0 0 1 0 0
+compact 19 6 0 0 0 19 0 0
+compact 19 0 6 0 0 19 0 0
+compact 19 0 0 6 0 19 0 0
+compact 19 0 0 0 6 19 0 0
+compact 19 2 2 1 1 19 0 0
+compact 19 13 0 0 0 19 0 0
+compact 19 0 13 0 0 19 0 0
+compact 19 0 0 13 0 19 0 0
+compact 19 0 0 0 13 19 0 0
+compact 19 4 3 3 3 19 0 0
+compact 31 1 0 0 0 31 0 0
+compact 31 0 1 0 0 31 0 0
+compact 31 0 0 1 0 31 0 0
+compact 31 0 0 0 1 31 0 0
+compact 31 1 0 0 0 31 0 0
+compact 31 15 0 0 0 31 0 0
+compact 31 0 15 0 0 31 0 0
+compact 31 0 0 15 0 31 0 0
+compact 31 0 0 0 15 31 0 0
+compact 31 4 4 4 3 31 0 0
+compact 32 16 0 0 0 16 1 1
+compact 32 0 16 0 0 16 1 1
+compact 32 0 0 16 0 16 1 1
+compact 32 0 0 0 16 16 1 1
+compact 32 4 4 4 4 16 1 1
+compact 32 17 0 0 0 32 0 0
+compact 32 0 17 0 0 32 0 0
+compact 32 0 0 17 0 32 0 0
+compact 32 0 0 0 17 32 0 0
+compact 32 5 4 4 4 32 0 0
+compact 33 16 0 0 0 16 1 1
+compact 33 0 16 0 0 16 1 1
+compact 33 0 0 16 0 16 1 1
+compact 33 0 0 0 16 16 1 1
+compact 33 4 4 4 4 16 1 1
+compact 33 17 0 0 0 33 0 0
+compact 33 0 17 0 0 33 0 0
+compact 33 0 0 17 0 33 0 0
+compact 33 0 0 0 17 33 0 0
+compact 33 5 4 4 4 33 0 0
+compact 63 31 0 0 0 31 1 1
+compact 63 0 31 0 0 31 1 1
+compact 63 0 0 31 0 31 1 1
+compact 63 0 0 0 31 31 1 1
+compact 63 8 8 8 7 31 1 1
+compact 63 32 0 0 0 63 0 0
+compact 63 0 32 0 0 63 0 0
+compact 63 0 0 32 0 63 0 0
+compact 63 0 0 0 32 63 0 0
+compact 63 8 8 8 8 63 0 0
+compact 64 31 0 0 0 31 1 1
+compact 64 0 31 0 0 31 1 1
+compact 64 0 0 31 0 31 1 1
+compact 64 0 0 0 31 31 1 1
+compact 64 8 8 8 7 31 1 1
+compact 64 32 0 0 0 32 1 1
+compact 64 0 32 0 0 32 1 1
+compact 64 0 0 32 0 32 1 1
+compact 64 0 0 0 32 32 1 1
+compact 64 8 8 8 8 32 1 1
+compact 64 33 0 0 0 64 0 0
+compact 64 0 33 0 0 64 0 0
+compact 64 0 0 33 0 64 0 0
+compact 64 0 0 0 33 64 0 0
+compact 64 9 8 8 8 64 0 0
+compact 65 32 0 0 0 32 1 1
+compact 65 0 32 0 0 32 1 1
+compact 65 0 0 32 0 32 1 1
+compact 65 0 0 0 32 32 1 1
+compact 65 8 8 8 8 32 1 1
+compact 65 33 0 0 0 65 0 0
+compact 65 0 33 0 0 65 0 0
+compact 65 0 0 33 0 65 0 0
+compact 65 0 0 0 33 65 0 0
+compact 65 9 8 8 8 65 0 0
+compact 1048575 524287 0 0 0 524287 1 1
+compact 1048575 0 524287 0 0 524287 1 1
+compact 1048575 0 0 524287 0 524287 1 1
+compact 1048575 0 0 0 524287 524287 1 1
+compact 1048575 131072 131072 131072 131071 524287 1 1
+compact 1048575 524288 0 0 0 1048575 0 0
+compact 1048575 0 524288 0 0 1048575 0 0
+compact 1048575 0 0 524288 0 1048575 0 0
+compact 1048575 0 0 0 524288 1048575 0 0
+compact 1048575 131072 131072 131072 131072 1048575 0 0
+compact 1048576 524288 0 0 0 524288 1 1
+compact 1048576 0 524288 0 0 524288 1 1
+compact 1048576 0 0 524288 0 524288 1 1
+compact 1048576 0 0 0 524288 524288 1 1
+compact 1048576 131072 131072 131072 131072 524288 1 1
+compact 1048576 524289 0 0 0 1048576 0 0
+compact 1048576 0 524289 0 0 1048576 0 0
+compact 1048576 0 0 524289 0 1048576 0 0
+compact 1048576 0 0 0 524289 1048576 0 0
+compact 1048576 131073 131072 131072 131072 1048576 0 0
+compact 33554431 16777216 0 0 0 16777216 1 1
+compact 33554431 0 16777216 0 0 16777216 1 1
+compact 33554431 0 0 16777216 0 16777216 1 1
+compact 33554431 0 0 0 16777216 16777216 1 1
+compact 33554431 4194304 4194304 4194304 4194304 16777216 1 1
+compact 33554432 16777217 0 0 0 16777217 1 1
+compact 33554432 0 16777217 0 0 16777217 1 1
+compact 33554432 0 0 16777217 0 16777217 1 1
+compact 33554432 0 0 0 16777217 16777217 1 1
+compact 33554432 4194305 4194304 4194304 4194304 16777217 1 1
+compact 33554433 16777217 0 0 0 16777217 1 1
+compact 33554433 0 16777217 0 0 16777217 1 1
+compact 33554433 0 0 16777217 0 16777217 1 1
+compact 33554433 0 0 0 16777217 16777217 1 1
+compact 33554433 4194305 4194304 4194304 4194304 16777217 1 1
+compact 33554434 16777217 0 0 0 16777217 1 1
+compact 33554434 0 16777217 0 0 16777217 1 1
+compact 33554434 0 0 16777217 0 16777217 1 1
+compact 33554434 0 0 0 16777217 16777217 1 1
+compact 33554434 4194305 4194304 4194304 4194304 16777217 1 1
+select 2 7 2 7 2
+select 2 8 2 8 2
+select 2 9 2 9 2
+select 2 8 11 7 2
+select 2 8 11 8 2
+select 2 8 11 9 11
+select 2 8 9 7 2
+select 2 8 9 8 2
+select 2 8 9 9 9
+select 2 8 3 7 2
+select 2 8 3 8 2
+select 2 8 3 9 3
+select 2 8 15 7 2
+select 2 8 15 8 2
+select 2 8 15 9 15
+select 2 8 17 7 2
+select 2 8 17 8 2
+select 2 8 17 9 2
+select 11 8 2 7 11
+select 11 8 2 8 2
+select 11 8 2 9 2
+select 11 7 11 7 11
+select 11 8 11 8 11
+select 11 9 11 9 11
+select 11 8 9 7 11
+select 11 8 9 8 9
+select 11 8 9 9 9
+select 11 8 3 7 11
+select 11 8 3 8 3
+select 11 8 3 9 3
+select 11 8 15 7 11
+select 11 8 15 8 11
+select 11 8 15 9 15
+select 11 8 17 7 11
+select 11 8 17 8 11
+select 11 8 17 9 11
+select 9 8 2 7 9
+select 9 8 2 8 2
+select 9 8 2 9 2
+select 9 8 11 7 9
+select 9 8 11 8 9
+select 9 8 11 9 11
+select 9 7 9 7 9
+select 9 8 9 8 9
+select 9 9 9 9 9
+select 9 8 3 7 9
+select 9 8 3 8 3
+select 9 8 3 9 3
+select 9 8 15 7 9
+select 9 8 15 8 9
+select 9 8 15 9 15
+select 9 8 17 7 9
+select 9 8 17 8 9
+select 9 8 17 9 9
+select 3 8 2 7 3
+select 3 8 2 8 2
+select 3 8 2 9 2
+select 3 8 11 7 3
+select 3 8 11 8 3
+select 3 8 11 9 11
+select 3 8 9 7 3
+select 3 8 9 8 3
+select 3 8 9 9 9
+select 3 7 3 7 3
+select 3 8 3 8 3
+select 3 9 3 9 3
+select 3 8 15 7 3
+select 3 8 15 8 3
+select 3 8 15 9 15
+select 3 8 17 7 3
+select 3 8 17 8 3
+select 3 8 17 9 3
+select 15 8 2 7 15
+select 15 8 2 8 2
+select 15 8 2 9 2
+select 15 8 11 7 15
+select 15 8 11 8 11
+select 15 8 11 9 11
+select 15 8 9 7 15
+select 15 8 9 8 9
+select 15 8 9 9 9
+select 15 8 3 7 15
+select 15 8 3 8 3
+select 15 8 3 9 3
+select 15 7 15 7 15
+select 15 8 15 8 15
+select 15 9 15 9 15
+select 15 8 17 7 15
+select 15 8 17 8 15
+select 15 8 17 9 15
+select 17 8 2 7 2
+select 17 8 2 8 2
+select 17 8 2 9 2
+select 17 8 11 7 11
+select 17 8 11 8 11
+select 17 8 11 9 11
+select 17 8 9 7 9
+select 17 8 9 8 9
+select 17 8 9 9 9
+select 17 8 3 7 3
+select 17 8 3 8 3
+select 17 8 3 9 3
+select 17 8 15 7 15
+select 17 8 15 8 15
+select 17 8 15 9 15
+select 17 7 17 7 77
+select 17 8 17 8 77
+select 17 9 17 9 77
