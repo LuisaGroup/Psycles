@@ -158,6 +158,12 @@ Float PathCyclesSvmKernelGlobals::object_shadow_terminator_shading_offset(
                 object != svm::object_none);
 }
 
+std::optional<Float> PathCyclesSvmKernelGlobals::object_volume_density(
+    Expr<std::uint32_t> object) const noexcept {
+  const auto record = object_record(*_scene, object);
+  return select(1.0f, record.volume_density, object != svm::object_none);
+}
+
 Float PathCyclesSvmKernelGlobals::ies(
     Expr<std::uint32_t> offset) const noexcept {
   if (_scene->cycles_svm->ies_buffer) {

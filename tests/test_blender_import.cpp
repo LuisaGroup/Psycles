@@ -772,6 +772,7 @@ void test_integrator_settings_round_trip() {
   bool has_point_to_vector = false;
   bool has_vector_to_color = false;
   bool has_transparent_boundary = false;
+  bool has_null_surface = false;
   for (const auto &node : imported_material->second.shader.nodes()) {
     has_absorption |=
         node.type == psycles::compiler::node_type::volume_absorption;
@@ -786,6 +787,8 @@ void test_integrator_settings_round_trip() {
         node.type == psycles::compiler::node_type::vector_to_color;
     has_transparent_boundary |=
         node.type == psycles::compiler::node_type::transparent_bsdf;
+    has_null_surface |=
+        node.type == psycles::compiler::node_type::null_closure;
   }
   expect(has_absorption && has_scatter && has_volume_mix &&
              has_volume_emission && has_hair_info,
@@ -801,9 +804,8 @@ void test_integrator_settings_round_trip() {
     expect(diagnostic.message.find("Hair Info") == std::string::npos,
            "supported Hair Info emitted an importer warning");
   }
-  expect(has_transparent_boundary,
-         "volume-only Blender material did not receive a transparent "
-         "surface boundary");
+  expect(has_null_surface && !has_transparent_boundary,
+         "volume-only Blender material acquired a synthetic surface BSDF");
   const auto imported_light =
       imported.scene->lights.find(psycles::contract::LightId{1u});
   expect(imported_light != imported.scene->lights.end() &&
