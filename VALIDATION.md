@@ -50,23 +50,23 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Latest four-scene follow-up
 
-Psycles `9f4c63b9` / Luisa `72bc85d96` complete six further 256-spp renders,
+Psycles `6a20f08d` / Luisa `da8fff856` complete six further 256-spp renders,
 using fresh socket metadata with the exact earlier geometry/texture bytes.
 These use retained equal-pass Cycles references, **not fresh timing pairs**.
 All 46 channels are finite and all 15 pass comparisons complete. Exact six-run
 data, images' provenance and all implementation hashes are in the
-[latest report](docs/validation/2026-09-09/shared-switch-cases/README.md).
+[latest report](docs/validation/2026-09-09/closure-setup-dispatch/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 13.5134 | 29.1013 | 220 B |
-| Monster, one run | 14.8374 | 39.3481 | 280 B |
-| Classroom, one run | 18.3748 | 28.6316 | 260 B |
-| Barbershop, three-run median | 39.9860 | 18.2914 / 17.8437 / 18.3194 | 416 B |
+| Lone Monk, one run | 13.6233 | 43.4675 | 220 B |
+| Monster, one run | 14.9411 | 50.8580 | 280 B |
+| Classroom, one run | 18.2859 | 33.4346 | 260 B |
+| Barbershop, three-run median | 40.1981 | 17.4830 / 17.7756 / 17.9603 | 416 B |
 
-Barbershop's individual times are 39.9699 / 40.0083 / 39.9860 s. Its median
-is 0.57% below the preceding 40.2139 s, not an isolated causal change estimate,
-and 57.6% slower than the retained Cycles median. Initialization is JIT plus
+Barbershop's individual times are 40.2174 / 40.1981 / 40.1825 s. Its median
+is 0.53% above the preceding 39.9860 s, not an isolated causal change estimate,
+and 58.4% slower than the retained Cycles median. Initialization is JIT plus
 setup, not compiler-only. Main shader caching is disabled but downstream
 caches retain their ordinary policy; the profile already warmed Barbershop.
 These values are not matched cold/warm comparisons with the previous report.
@@ -76,8 +76,8 @@ in the table's scene order. The structural and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [shared-switch checkpoint](docs/validation/2026-09-09/shared-switch-cases/README.md)
-at Psycles `9f4c63b9` / Luisa `72bc85d96` supplies the current backend and
+The [closure-dispatch checkpoint](docs/validation/2026-09-09/closure-setup-dispatch/README.md)
+at Psycles `6a20f08d` / Luisa `da8fff856` supplies the current backend and
 four-scene campaign. The [group-context repair](docs/validation/2026-09-08/svm-group-contexts/README.md)
 at `239cade6` remains the latest host SVM-layout repair.
 The preceding lamp-routing report records Psycles `773f1aca` / Luisa
@@ -118,8 +118,14 @@ reduces main-function instructions from 184,759 to 159,801, but median surface
 time changes only 5.8602 to 5.8089 seconds and render wall 10.5091 to 10.4680.
 Final code still has four functions, 49 call sites and 256 VGPRs; frame size
 remains 416 B. Fixed private storage is 2,480 bytes. This is not a missing-inline
-fix or a substantial speedup. Remaining closure-setup dispatch and eager
-parameter evaluation require separate structural and final-code checks.
+fix or a substantial speedup. The following independent closure-setup
+intervention restores a single native switch with original shared groups;
+72 production-AST shapes pass, with 12 red before repair. Its full-scene
+A/B/B/A shows no speedup: median surface 5.8149 to 5.8621 s and render
+10.4698 to 10.5114 s. Main instructions are now 159,927; frame/register/private
+sizes and 49 calls are unchanged. Eager parameter evaluation relative to
+native guards remains separate work; initial reductions show premature
+normal/tangent selection, not its whole-scene contribution.
 The same validation exposed and repaired generic shared-target CFG proxying
 and narrow signed SPIR-V literal encoding, with independent permanent reds.
 
@@ -161,9 +167,9 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 182/182 | Complete registered suite, 470.20 s; correctness run, with cache misses and concurrent non-timed CPU checks/build |
-| Psycles fallback | 184/184 | Complete registered suite, 119.11 s |
-| Psycles host | 169/169 | Original-Cycles image regressions plus 35 shared-case shapes; source-size gate fully green |
+| Psycles HIP | 182/182 | Complete registered suite, 463.41 s; correctness run, with cache misses and concurrent non-timed CPU checks/build |
+| Psycles fallback | 184/184 | Complete registered suite, 114.64 s |
+| Psycles host | 170/170 | Original-Cycles image regressions, 35 shared-case and 72 closure-dispatch shapes; source-size gate fully green |
 | Luisa child | 133/133 | Complete `unit*` selection in the HIP configuration; exact `unit` label is 132/132 |
 | Strict native Vulkan | 3/3 | Lamp routing, bump state and BSDF dispatch; 33 native SPIR-V compilations, no DXC/DXIL load |
 | Shared-switch runtime | 211 assertions/backend | HIP, fallback and strict native Vulkan; exits, narrow/wide labels and both coroutine schedulers |
