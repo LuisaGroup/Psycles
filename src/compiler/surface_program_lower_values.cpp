@@ -107,19 +107,27 @@ namespace operand = value_operand;
         auto b = lower_value_input(node, "B");
         auto c = lower_value_input(node, "C");
         if (a && b && c) {
-            publish(
-                node.id,
-                "Value",
-                append(ValueInstruction{
-                    .operation = ValueOperation::math,
+            auto value = append(ValueInstruction{
+                .operation = ValueOperation::math,
+                .source_node = node.id,
+                .result_type = SocketType::floating,
+                .operands = make_value_operands<operand::ternary>({
+                    {operand::ternary::a, *a},
+                    {operand::ternary::b, *b},
+                    {operand::ternary::c, *c}}),
+                .static_u0 = static_cast<std::uint64_t>(
+                    math_operation(node))});
+            // Preserve the native Math property for the private displacement
+            // prepass that still consumes this representation.
+            if (property_bool(node, "Clamp")) {
+                value = append(ValueInstruction{
+                    .operation = ValueOperation::clamp01,
                     .source_node = node.id,
                     .result_type = SocketType::floating,
-                    .operands = make_value_operands<operand::ternary>({
-                        {operand::ternary::a, *a},
-                        {operand::ternary::b, *b},
-                        {operand::ternary::c, *c}}),
-                    .static_u0 = static_cast<std::uint64_t>(
-                        math_operation(node))}));
+                    .operands = make_value_operands<operand::unary>({
+                        {operand::unary::input, value}})});
+            }
+            publish(node.id, "Value", value);
         }
         return true;
     }

@@ -648,19 +648,15 @@ public:
                 id,
                 "Operation",
                 SocketValue::string(operation)));
-            TypedOutput result{
+            // Cycles MathNode::expand creates the Clamp only after all
+            // authored nodes and native conversion links exist. Expanding
+            // here changes the IDs used to break SVM scheduling ties.
+            static_cast<void>(context.graph().set_property(
+                id, "Clamp", SocketValue::boolean(
+                    context.node_property_bool(node, "use_clamp"))));
+            return finish(TypedOutput{
                 .ref = {.node = id, .socket = "Value"},
-                .type = SocketType::floating};
-            if (context.node_property_bool(node, "use_clamp")) {
-                const auto clamped = context.graph().add_node(
-                    compiler::node_type::clamp_float,
-                    node_name + " Clamp");
-                static_cast<void>(context.graph().connect(
-                    result.ref, clamped, "Value"));
-                result.ref = {
-                    .node = clamped, .socket = "Value"};
-            }
-            return finish(result);
+                .type = SocketType::floating});
         }
         if (type == "VALTORGB") {
             const auto id = context.graph().add_node(
