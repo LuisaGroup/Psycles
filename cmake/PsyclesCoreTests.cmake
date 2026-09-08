@@ -519,6 +519,16 @@ if(PSYCLES_BUILD_TESTS)
         add_test(NAME psycles.cycles_svm_closure_dispatch
             COMMAND psycles_cycles_svm_closure_dispatch_tests)
 
+        add_executable(psycles_cycles_svm_closure_guards_tests
+            tests/test_cycles_svm_closure_guards.cpp)
+        target_link_libraries(psycles_cycles_svm_closure_guards_tests
+            PRIVATE Psycles::luisa_runtime)
+        target_include_directories(psycles_cycles_svm_closure_guards_tests
+            PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+        target_compile_features(psycles_cycles_svm_closure_guards_tests PRIVATE cxx_std_20)
+        add_test(NAME psycles.cycles_svm_closure_guards
+            COMMAND psycles_cycles_svm_closure_guards_tests)
+
         add_executable(
             psycles_cycles_svm_vector_displacement_tests
             tests/test_cycles_svm_vector_displacement.cpp)

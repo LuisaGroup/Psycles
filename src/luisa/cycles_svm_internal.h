@@ -53,7 +53,11 @@ struct Differential3 {
 differential_from_compact(luisa::compute::Expr<luisa::float3> direction,
                           luisa::compute::Expr<float> differential) noexcept;
 
+template<typename Payload> class NodeDataView;
+
 class Cursor final {
+  template<typename Payload> friend class NodeDataView;
+
 private:
   luisa::compute::Expr<luisa::compute::Buffer<luisa::uint>> _words;
   luisa::compute::UInt &_offset;

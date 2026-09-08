@@ -687,40 +687,8 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
         };
         $case(static_cast<std::uint32_t>(CLOSURE_BSDF_PHYSICAL_CONDUCTOR),
               static_cast<std::uint32_t>(CLOSURE_BSDF_F82_CONDUCTOR)) {
-          const auto distribution = cursor.word();
-          const auto base_ior_x = cursor.word();
-          const auto base_ior_y = cursor.word();
-          const auto base_ior_z = cursor.word();
-          const auto edge_tint_k_x = cursor.word();
-          const auto edge_tint_k_y = cursor.word();
-          const auto edge_tint_k_z = cursor.word();
-          const auto roughness_input = cursor.word();
-          const auto anisotropy_input = cursor.word();
-          const auto rotation_input = cursor.word();
-          const auto thin_film_thickness_input = cursor.word();
-          const auto thin_film_ior_input = cursor.word();
-          const auto normal_tangent_packed = cursor.word();
-          const auto normal_offset = cursor.byte(normal_tangent_packed, 0u);
-          const auto tangent_offset = cursor.byte(normal_tangent_packed, 1u);
-          auto normal =
-              stack_load_float3_default(stack, normal_offset, shader_data.N);
-          normal = native_vector_math::safe_normalize_nonzero_or(normal,
-                                                                 shader_data.N);
-          detail::metallic_setup(
-              kernel_globals, shader_data, path_state, closure_type,
-              distribution, mix_weight, normal,
-              stack_load_input_float3(stack, base_ior_x, base_ior_y,
-                                      base_ior_z),
-              stack_load_input_float3(stack, edge_tint_k_x, edge_tint_k_y,
-                                      edge_tint_k_z),
-              stack_load_input_float(stack, roughness_input),
-              stack_load_input_float(stack, anisotropy_input),
-              stack_load_input_float(stack, rotation_input),
-              stack_load_input_float(stack, thin_film_thickness_input),
-              stack_load_input_float(stack, thin_film_ior_input),
-              stack_load_float3_default(stack, tangent_offset,
-                                        make_float3(0.0f)),
-              tangent_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID));
+          node_metallic_bsdf(kernel_globals, cursor, stack, closure_type,
+                             mix_weight, shader_data, path_state);
         };
         PSYCLES_SVM_CASE(CLOSURE_BSDF_RAY_PORTAL_ID) {
           node_ray_portal(cursor, stack, closure_weight, mix_weight,
@@ -731,73 +699,24 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
             static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_BECKMANN_ID),
             static_cast<std::uint32_t>(CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID),
             static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID)) {
-          const auto color_x = cursor.word();
-          const auto color_y = cursor.word();
-          const auto color_z = cursor.word();
-          const auto roughness_input = cursor.word();
-          const auto anisotropy_input = cursor.word();
-          const auto rotation_input = cursor.word();
-          const auto normal_tangent_packed = cursor.word();
-          const auto normal_offset = cursor.byte(normal_tangent_packed, 0u);
-          const auto tangent_offset = cursor.byte(normal_tangent_packed, 1u);
-          auto normal =
-              stack_load_float3_default(stack, normal_offset, shader_data.N);
-          normal = native_vector_math::safe_normalize_nonzero_or(normal,
-                                                                 shader_data.N);
-          detail::glossy_setup(
-              kernel_globals, shader_data, path_state, closure_type, mix_weight,
-              closure_weight, normal,
-              stack_load_input_float3(stack, color_x, color_y, color_z),
-              stack_load_input_float(stack, roughness_input),
-              stack_load_input_float(stack, anisotropy_input),
-              stack_load_input_float(stack, rotation_input),
-              stack_load_float3_default(stack, tangent_offset,
-                                        make_float3(0.0f)),
-              tangent_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID));
+          node_glossy_bsdf(kernel_globals, cursor, stack, closure_type,
+                           mix_weight, closure_weight, shader_data, path_state);
         };
         $case(static_cast<std::uint32_t>(
                   CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID),
               static_cast<std::uint32_t>(
                   CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID)) {
-          const auto roughness_input = cursor.word();
-          const auto ior_input = cursor.word();
-          const auto normal_packed = cursor.word();
-          const auto normal_offset = cursor.byte(normal_packed, 0u);
-          auto normal =
-              stack_load_float3_default(stack, normal_offset, shader_data.N);
-          normal = native_vector_math::safe_normalize_nonzero_or(normal,
-                                                                 shader_data.N);
-          detail::refraction_setup(
-              kernel_globals, shader_data, path_state, closure_type, mix_weight,
-              closure_weight, normal,
-              stack_load_input_float(stack, roughness_input),
-              stack_load_input_float(stack, ior_input));
+          node_refraction_bsdf(kernel_globals, cursor, stack, closure_type,
+                               mix_weight, closure_weight, shader_data,
+                               path_state);
         };
         $case(static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID),
               static_cast<std::uint32_t>(
                   CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID),
               static_cast<std::uint32_t>(
                   CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID)) {
-          const auto color_x = cursor.word();
-          const auto color_y = cursor.word();
-          const auto color_z = cursor.word();
-          const auto roughness_input = cursor.word();
-          const auto ior_input = cursor.word();
-          const auto thin_film_thickness_input = cursor.word();
-          const auto thin_film_ior_input = cursor.word();
-          const auto normal_packed = cursor.word();
-          const auto normal_offset = cursor.byte(normal_packed, 0u);
-          auto normal =
-              stack_load_float3_default(stack, normal_offset, shader_data.N);
-          normal = native_vector_math::safe_normalize_nonzero_or(normal,
-                                                                 shader_data.N);
-          detail::glass_setup(
-              kernel_globals, shader_data, path_state, closure_type, mix_weight,
-              normal, stack_load_input_float3(stack, color_x, color_y, color_z),
-              stack_load_input_float(stack, roughness_input),
-              stack_load_input_float(stack, ior_input),
-              stack_load_input_float(stack, thin_film_thickness_input),
-              stack_load_input_float(stack, thin_film_ior_input));
+          node_glass_bsdf(kernel_globals, cursor, stack, closure_type,
+                          mix_weight, shader_data, path_state);
         };
         PSYCLES_SVM_CASE(CLOSURE_BSDF_ASHIKHMIN_VELVET_ID) {
           node_sheen(
