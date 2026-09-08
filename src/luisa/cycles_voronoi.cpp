@@ -130,7 +130,9 @@ is_distance_feature(const Configuration &configuration) noexcept {
             return coordinate;
         case 3u:
         default:
-            return make_float4(coordinate.xyz(), 0.0f);
+            // Cycles' voronoi_position(float3) uses make_float4(float3),
+            // whose defined homogeneous W is 1, including the octave lerp.
+            return make_float4(coordinate.xyz(), 1.0f);
     }
 }
 
@@ -566,33 +568,23 @@ evaluate_octave(const Parameters<ConfigurationType> &parameters,
         }
     } else {
         Octave result;
-        $switch (parameters.configuration.feature) {
-            $case(static_cast<std::uint32_t>(
-                compiler::VoronoiFeature::f1)) {
-                const auto f1 = voronoi_f1(parameters, coordinate);
-                assign_octave(result, f1);
-            };
-            $case(static_cast<std::uint32_t>(
-                compiler::VoronoiFeature::f2)) {
-                const auto f2 = voronoi_f2(parameters, coordinate);
-                assign_octave(result, f2);
-            };
-            $case(static_cast<std::uint32_t>(
-                compiler::VoronoiFeature::smooth_f1)) {
-                $if (parameters.smoothness != 0.0f) {
-                    const auto smooth =
-                        voronoi_smooth_f1(parameters, coordinate);
-                    assign_octave(result, smooth);
-                }
-                $else {
-                    const auto f1 = voronoi_f1(parameters, coordinate);
-                    assign_octave(result, f1);
-                };
-            };
-            $default {
-                luisa::compute::dsl::unreachable(
-                    "invalid Cycles Voronoi distance feature");
-            };
+        // Cycles' fractal_voronoi_x_fx has one shared F1 fallback for
+        // ordinary F1 and zero-smoothness Smooth F1. Keep that same join
+        // before recording the complete neighborhood search.
+        $if (parameters.configuration.feature == static_cast<std::uint32_t>(
+                 compiler::VoronoiFeature::f2)) {
+            const auto f2 = voronoi_f2(parameters, coordinate);
+            assign_octave(result, f2);
+        }
+        $elif ((parameters.configuration.feature == static_cast<std::uint32_t>(
+                    compiler::VoronoiFeature::smooth_f1)) &
+               (parameters.smoothness != 0.0f)) {
+            const auto smooth = voronoi_smooth_f1(parameters, coordinate);
+            assign_octave(result, smooth);
+        }
+        $else {
+            const auto f1 = voronoi_f1(parameters, coordinate);
+            assign_octave(result, f1);
         };
         return result;
     }
