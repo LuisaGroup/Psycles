@@ -4,6 +4,9 @@
 
 namespace psycles::luisa_backend::cycles_svm::detail {
 
+class Cursor;
+class Stack;
+
 [[nodiscard]] ClosurePool::Allocation
 bsdf_allocate(ShaderData &shader_data,
               luisa::compute::Expr<luisa::float3> input_weight) noexcept;
@@ -119,54 +122,33 @@ void principled_thin_wall_setup(
     luisa::compute::Expr<float> thin_film_thickness,
     luisa::compute::Expr<float> thin_film_ior) noexcept;
 
-void glass_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
-                 const PathState &path_state,
-                 luisa::compute::Expr<std::uint32_t> input_type,
-                 luisa::compute::Expr<float> mix_weight,
-                 luisa::compute::Expr<luisa::float3> normal,
-                 luisa::compute::Expr<luisa::float3> color,
-                 luisa::compute::Expr<float> roughness,
-                 luisa::compute::Expr<float> ior,
-                 luisa::compute::Expr<float> thin_film_thickness,
-                 luisa::compute::Expr<float> thin_film_ior) noexcept;
+void node_glass_bsdf(const KernelGlobals& kernel_globals, Cursor& cursor,
+                     Stack& stack,
+                     luisa::compute::Expr<std::uint32_t> input_type,
+                     luisa::compute::Expr<float> mix_weight,
+                     ShaderData& shader_data,
+                     const PathState& path_state) noexcept;
 
-void glossy_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
-                  const PathState &path_state,
-                  luisa::compute::Expr<std::uint32_t> input_type,
-                  luisa::compute::Expr<float> mix_weight,
-                  luisa::compute::Expr<luisa::float3> closure_weight,
-                  luisa::compute::Expr<luisa::float3> normal,
-                  luisa::compute::Expr<luisa::float3> color,
-                  luisa::compute::Expr<float> roughness,
-                  luisa::compute::Expr<float> anisotropy,
-                  luisa::compute::Expr<float> rotation,
-                  luisa::compute::Expr<luisa::float3> tangent,
-                  luisa::compute::Expr<bool> tangent_valid) noexcept;
+void node_glossy_bsdf(const KernelGlobals& kernel_globals, Cursor& cursor,
+                      Stack& stack,
+                      luisa::compute::Expr<std::uint32_t> input_type,
+                      luisa::compute::Expr<float> mix_weight,
+                      luisa::compute::Expr<luisa::float3> closure_weight,
+                      ShaderData& shader_data,
+                      const PathState& path_state) noexcept;
 
-void refraction_setup(
-    const KernelGlobals &kernel_globals, ShaderData &shader_data,
-    const PathState &path_state,
-    luisa::compute::Expr<std::uint32_t> input_type,
-    luisa::compute::Expr<float> mix_weight,
-    luisa::compute::Expr<luisa::float3> closure_weight,
-    luisa::compute::Expr<luisa::float3> normal,
-    luisa::compute::Expr<float> roughness,
-    luisa::compute::Expr<float> ior) noexcept;
+void node_refraction_bsdf(const KernelGlobals& kernel_globals, Cursor& cursor,
+                          Stack& stack,
+                          luisa::compute::Expr<std::uint32_t> input_type,
+                          luisa::compute::Expr<float> mix_weight,
+                          luisa::compute::Expr<luisa::float3> closure_weight,
+                          ShaderData& shader_data,
+                          const PathState& path_state) noexcept;
 
-void metallic_setup(
-    const KernelGlobals &kernel_globals, ShaderData &shader_data,
-    const PathState &path_state, luisa::compute::Expr<std::uint32_t> input_type,
-    luisa::compute::Expr<std::uint32_t> distribution,
-    luisa::compute::Expr<float> mix_weight,
-    luisa::compute::Expr<luisa::float3> normal,
-    luisa::compute::Expr<luisa::float3> base_ior,
-    luisa::compute::Expr<luisa::float3> edge_tint_k,
-    luisa::compute::Expr<float> roughness,
-    luisa::compute::Expr<float> anisotropy,
-    luisa::compute::Expr<float> rotation,
-    luisa::compute::Expr<float> thin_film_thickness,
-    luisa::compute::Expr<float> thin_film_ior,
-    luisa::compute::Expr<luisa::float3> tangent,
-    luisa::compute::Expr<bool> tangent_valid) noexcept;
-
-}// namespace psycles::luisa_backend::cycles_svm::detail
+void node_metallic_bsdf(const KernelGlobals& kernel_globals, Cursor& cursor,
+                        Stack& stack,
+                        luisa::compute::Expr<std::uint32_t> input_type,
+                        luisa::compute::Expr<float> mix_weight,
+                        ShaderData& shader_data,
+                        const PathState& path_state) noexcept;
+}  // namespace psycles::luisa_backend::cycles_svm::detail

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0 */
 
 #include "cycles_svm_microfacet.h"
+#include "cycles_svm_node_data.h"
 
 #include "cycles_svm_microfacet_fresnel.h"
 #include "cycles_svm_simple_closure.h"
@@ -901,387 +902,420 @@ maybe_ensure_valid_specular_reflection(const ShaderData &shader_data,
     return result;
 }
 
-void glass_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
-                 const PathState &path_state, Expr<std::uint32_t> input_type,
-                 Expr<float> mix_weight, Expr<luisa::float3> normal,
-                 Expr<luisa::float3> color, Expr<float> roughness,
-                 Expr<float> ior, Expr<float> thin_film_thickness,
-                 Expr<float> thin_film_ior) noexcept {
-    if (shader_data.closure == nullptr) {
-        return;
-    }
-    const auto diffuse_visibility =
-        (path_state.visibility & path_ray_visibility_diffuse) != 0u;
-    const Bool reflective_caustics =
-        kernel_globals.caustics_reflective() | !diffuse_visibility;
-    const Bool refractive_caustics =
-        kernel_globals.caustics_refractive() | !diffuse_visibility;
+void node_glass_bsdf(const KernelGlobals& kernel_globals, Cursor& cursor,
+                     Stack& stack, Expr<std::uint32_t> input_type,
+                     Expr<float> mix_weight, ShaderData& shader_data,
+                     const PathState& path_state) noexcept {
+  using Data = SVMNodeGlassBsdfData;
+  const NodeDataView<Data> data{cursor};
+  if (shader_data.closure == nullptr) {
+    return;
+  }
+  const auto diffuse_visibility =
+      (path_state.visibility & path_ray_visibility_diffuse) != 0u;
+  const Bool reflective_caustics =
+      kernel_globals.caustics_reflective() | !diffuse_visibility;
+  const Bool refractive_caustics =
+      kernel_globals.caustics_refractive() | !diffuse_visibility;
 
-    $if (reflective_caustics | refractive_caustics) {
-        auto &pool = *shader_data.closure;
-        const auto allocated = bsdf_allocate(shader_data, make_float3(mix_weight));
-        const auto extra_allocated = pool.allocate_extra(allocated, 1u);
-        $if (extra_allocated) {
-            const auto original_ior = max(ior, 1.0e-5f);
-            const auto backfacing = (shader_data.flag & shader_data_backfacing) != 0u;
-            const auto adjusted_ior =
-                select(original_ior, 1.0f / original_ior, backfacing);
-            const auto alpha = square(clamp(roughness, 0.0f, 1.0f));
-            const auto output_type =
-                select(UInt{static_cast<std::uint32_t>(
-                           CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)},
-                       UInt{static_cast<std::uint32_t>(
-                           CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID)},
-                       input_type == static_cast<std::uint32_t>(
-                                         CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID));
-            const auto valid_normal =
-                maybe_ensure_valid_specular_reflection(shader_data, normal);
+  $if(reflective_caustics | refractive_caustics) {
+    const auto normal_offset =
+        data.stack_offset<offsetof(Data, normal_offset)>();
+    auto normal =
+        stack_load_float3_default(stack, normal_offset, shader_data.N);
+    normal =
+        native_vector_math::safe_normalize_nonzero_or(normal, shader_data.N);
+    const auto thin_film_thickness =
+        data.load_float<offsetof(Data, thin_film_thickness)>(stack);
+    const auto thin_film_ior =
+        max(data.load_float<offsetof(Data, thin_film_ior)>(stack), 1.0e-5f);
+    auto& pool = *shader_data.closure;
+    const auto allocated = bsdf_allocate(shader_data, make_float3(mix_weight));
+    const auto extra_allocated = pool.allocate_extra(allocated, 1u);
+    $if(extra_allocated) {
+      const auto original_ior =
+          max(data.load_float<offsetof(Data, ior)>(stack), 1.0e-5f);
+      const auto backfacing = (shader_data.flag & shader_data_backfacing) != 0u;
+      const auto adjusted_ior =
+          select(original_ior, 1.0f / original_ior, backfacing);
+      const auto alpha = square(
+          clamp(data.load_float<offsetof(Data, roughness)>(stack), 0.0f, 1.0f));
+      const auto output_type = select(
+          UInt{
+              static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)},
+          UInt{static_cast<std::uint32_t>(
+              CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID)},
+          input_type == static_cast<std::uint32_t>(
+                            CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID));
+      const auto valid_normal =
+          maybe_ensure_valid_specular_reflection(shader_data, normal);
 
-            FresnelGeneralizedSchlick fresnel{
-                .thin_film = {.thickness = thin_film_thickness,
-                              .ior =
-                                  select(max(thin_film_ior, 1.0e-5f),
-                                         max(thin_film_ior, 1.0e-5f) / original_ior,
-                                         backfacing)},
-                .reflection_tint =
-                    select(make_float3(0.0f), max(color, make_float3(0.0f)),
-                           reflective_caustics),
-                .transmission_tint =
-                    select(make_float3(0.0f), max(color, make_float3(0.0f)),
-                           refractive_caustics),
-                .f0 = clamp(make_float3(f0_from_ior(original_ior)), make_float3(0.0f),
-                            make_float3(1.0f)),
-                .f90 = make_float3(1.0f),
-                .exponent = -original_ior};
-            MicrofacetParam microfacet{.alpha_x = alpha,
-                                       .alpha_y = alpha,
-                                       .ior = adjusted_ior,
-                                       .energy_scale = 1.0f,
-                                       .fresnel_type = static_cast<std::uint32_t>(
-                                           MicrofacetFresnel::generalized_schlick),
-                                       .T = make_float3(0.0f)};
+      const auto color = data.load_float3<offsetof(Data, color)>(stack);
+      FresnelGeneralizedSchlick fresnel{
+          .thin_film = {.thickness = thin_film_thickness,
+                        .ior =
+                            select(thin_film_ior, thin_film_ior / original_ior,
+                                   backfacing)},
+          .reflection_tint =
+              select(make_float3(0.0f), max(color, make_float3(0.0f)),
+                     reflective_caustics),
+          .transmission_tint =
+              select(make_float3(0.0f), max(color, make_float3(0.0f)),
+                     refractive_caustics),
+          .f0 = clamp(make_float3(f0_from_ior(original_ior)), make_float3(0.0f),
+                      make_float3(1.0f)),
+          .f90 = make_float3(1.0f),
+          .exponent = -original_ior};
+      MicrofacetParam microfacet{.alpha_x = alpha,
+                                 .alpha_y = alpha,
+                                 .ior = adjusted_ior,
+                                 .energy_scale = 1.0f,
+                                 .fresnel_type = static_cast<std::uint32_t>(
+                                     MicrofacetFresnel::generalized_schlick),
+                                 .T = make_float3(0.0f)};
 
-            pool.set_normal(allocated.index, valid_normal);
-            pool.set_type(allocated.index, output_type);
-            pool.set_generalized_schlick(allocated.index, fresnel);
+      pool.set_normal(allocated.index, valid_normal);
+      pool.set_type(allocated.index, output_type);
+      pool.set_generalized_schlick(allocated.index, fresnel);
 
-            const auto albedo = generalized_schlick_albedo(
-                kernel_globals, shader_data.wi, valid_normal, microfacet,
-                fresnel, true, true);
-            const auto common = pool.common(allocated.index);
-            pool.set_sample_weight(allocated.index,
-                                   common.sample_weight * average(albedo));
+      const auto albedo = generalized_schlick_albedo(
+          kernel_globals, shader_data.wi, valid_normal, microfacet, fresnel,
+          true, true);
+      const auto common = pool.common(allocated.index);
+      pool.set_sample_weight(allocated.index,
+                             common.sample_weight * average(albedo));
 
-            $if (input_type == static_cast<std::uint32_t>(
-                                   CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID)) {
-                preserve_multi_ggx_glass_energy(
-                    kernel_globals, pool, allocated, shader_data.wi,
-                    valid_normal, microfacet, fresnel);
-            };
-            pool.set_microfacet_param(allocated.index, microfacet);
+      $if(input_type == static_cast<std::uint32_t>(
+                            CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID)) {
+        preserve_multi_ggx_glass_energy(kernel_globals, pool, allocated,
+                                        shader_data.wi, valid_normal,
+                                        microfacet, fresnel);
+      };
+      pool.set_microfacet_param(allocated.index, microfacet);
 
-            UInt flags = shader_data_bsdf | shader_data_bsdf_has_transmission;
-            $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
-                flags |= shader_data_bsdf_has_eval;
-            };
-            shader_data.flag |= flags;
-        };
+      UInt flags = shader_data_bsdf | shader_data_bsdf_has_transmission;
+      $if((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
+        flags |= shader_data_bsdf_has_eval;
+      };
+      shader_data.flag |= flags;
     };
+  };
 }
 
-void glossy_setup(const KernelGlobals &kernel_globals, ShaderData &shader_data,
-                  const PathState &path_state,
-                  Expr<std::uint32_t> input_type, Expr<float> mix_weight,
-                  Expr<luisa::float3> closure_weight,
-                  Expr<luisa::float3> normal, Expr<luisa::float3> color,
-                  Expr<float> roughness, Expr<float> anisotropy,
-                  Expr<float> rotation, Expr<luisa::float3> tangent,
-                  Expr<bool> tangent_valid) noexcept {
-    if (shader_data.closure == nullptr) {
-        return;
-    }
-    const auto diffuse_visibility =
-        (path_state.visibility & path_ray_visibility_diffuse) != 0u;
-    const Bool reflective_caustics =
-        kernel_globals.caustics_reflective() | !diffuse_visibility;
+void node_glossy_bsdf(const KernelGlobals& kernel_globals, Cursor& cursor,
+                      Stack& stack, Expr<std::uint32_t> input_type,
+                      Expr<float> mix_weight,
+                      Expr<luisa::float3> closure_weight,
+                      ShaderData& shader_data,
+                      const PathState& path_state) noexcept {
+  using Data = SVMNodeGlossyBsdfData;
+  const NodeDataView<Data> data{cursor};
+  if (shader_data.closure == nullptr) {
+    return;
+  }
+  const auto diffuse_visibility =
+      (path_state.visibility & path_ray_visibility_diffuse) != 0u;
+  const Bool reflective_caustics =
+      kernel_globals.caustics_reflective() | !diffuse_visibility;
 
-    $if (reflective_caustics) {
-        auto &pool = *shader_data.closure;
-        const auto allocated =
-            bsdf_allocate(shader_data, closure_weight * mix_weight);
-        $if (allocated.valid) {
-            const auto valid_normal =
-                maybe_ensure_valid_specular_reflection(shader_data, normal);
-            const auto alpha = square(clamp(roughness, 0.0f, 1.0f));
-            const auto clamped_anisotropy =
-                clamp(anisotropy, -0.99f, 0.99f);
+  $if(reflective_caustics) {
+    const auto normal_offset =
+        data.stack_offset<offsetof(Data, normal_offset)>();
+    auto normal =
+        stack_load_float3_default(stack, normal_offset, shader_data.N);
+    normal =
+        native_vector_math::safe_normalize_nonzero_or(normal, shader_data.N);
+    auto& pool = *shader_data.closure;
+    const auto allocated =
+        bsdf_allocate(shader_data, closure_weight * mix_weight);
+    $if(allocated.valid) {
+      const auto valid_normal =
+          maybe_ensure_valid_specular_reflection(shader_data, normal);
+      const auto alpha = square(
+          clamp(data.load_float<offsetof(Data, roughness)>(stack), 0.0f, 1.0f));
+      const auto clamped_anisotropy = clamp(
+          data.load_float<offsetof(Data, anisotropy)>(stack), -0.99f, 0.99f);
 
-            MicrofacetParam microfacet{
-                .alpha_x = alpha,
-                .alpha_y = alpha,
-                .ior = 1.0f,
-                .energy_scale = 1.0f,
-                .fresnel_type =
-                    static_cast<std::uint32_t>(MicrofacetFresnel::none),
-                .T = make_float3(0.0f)};
-            $if (tangent_valid & (abs(clamped_anisotropy) > 1.0e-4f)) {
-                microfacet.T = tangent;
-                $if (rotation != 0.0f) {
-                    microfacet.T = rotate_around_axis(
-                        microfacet.T, valid_normal, rotation * two_pi);
-                };
-                $if (clamped_anisotropy < 0.0f) {
-                    microfacet.alpha_x =
-                        alpha / (1.0f + clamped_anisotropy);
-                    microfacet.alpha_y =
-                        alpha * (1.0f + clamped_anisotropy);
-                }
-                $else {
-                    microfacet.alpha_x =
-                        alpha * (1.0f - clamped_anisotropy);
-                    microfacet.alpha_y =
-                        alpha / (1.0f - clamped_anisotropy);
-                };
-            };
-
-            UInt output_type = static_cast<std::uint32_t>(
-                CLOSURE_BSDF_MICROFACET_GGX_ID);
-            Bool always_has_eval = false;
-            $if (input_type == static_cast<std::uint32_t>(
-                                   CLOSURE_BSDF_MICROFACET_BECKMANN_ID)) {
-                microfacet.alpha_x = clamp(microfacet.alpha_x, 0.0f, 1.0f);
-                microfacet.alpha_y = clamp(microfacet.alpha_y, 0.0f, 1.0f);
-                output_type = static_cast<std::uint32_t>(
-                    CLOSURE_BSDF_MICROFACET_BECKMANN_ID);
-            }
-            $elif (input_type == static_cast<std::uint32_t>(
-                                      CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID)) {
-                microfacet.alpha_x =
-                    clamp(microfacet.alpha_x, 1.0e-4f, 1.0f);
-                microfacet.alpha_y =
-                    clamp(microfacet.alpha_y, 1.0e-4f, 1.0f);
-                output_type = static_cast<std::uint32_t>(
-                    CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID);
-                always_has_eval = true;
-            }
-            $else {
-                microfacet.alpha_x = clamp(microfacet.alpha_x, 0.0f, 1.0f);
-                microfacet.alpha_y = clamp(microfacet.alpha_y, 0.0f, 1.0f);
-            };
-
-            pool.set_normal(allocated.index, valid_normal);
-            pool.set_type(allocated.index, output_type);
-            $if (input_type == static_cast<std::uint32_t>(
-                                   CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID)) {
-                preserve_multi_ggx_reflection_energy(
-                    kernel_globals, pool, allocated, shader_data.wi,
-                    valid_normal, microfacet,
-                    max(color, make_float3(0.0f)));
-            };
-            pool.set_microfacet_param(allocated.index, microfacet);
-
-            UInt flags = shader_data_bsdf;
-            $if (always_has_eval |
-                 ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f)) {
-                flags |= shader_data_bsdf_has_eval;
-            };
-            shader_data.flag |= flags;
+      MicrofacetParam microfacet{
+          .alpha_x = alpha,
+          .alpha_y = alpha,
+          .ior = 1.0f,
+          .energy_scale = 1.0f,
+          .fresnel_type = static_cast<std::uint32_t>(MicrofacetFresnel::none),
+          .T = make_float3(0.0f)};
+      const auto tangent_offset =
+          data.stack_offset<offsetof(Data, tangent_offset)>();
+      $if((tangent_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID)) &
+          (abs(clamped_anisotropy) > 1.0e-4f)) {
+        microfacet.T = stack_load_float3(stack, tangent_offset);
+        const auto rotation = data.load_float<offsetof(Data, rotation)>(stack);
+        $if(rotation != 0.0f) {
+          microfacet.T =
+              rotate_around_axis(microfacet.T, valid_normal, rotation * two_pi);
         };
+        $if(clamped_anisotropy < 0.0f) {
+          microfacet.alpha_x = alpha / (1.0f + clamped_anisotropy);
+          microfacet.alpha_y = alpha * (1.0f + clamped_anisotropy);
+        }
+        $else {
+          microfacet.alpha_x = alpha * (1.0f - clamped_anisotropy);
+          microfacet.alpha_y = alpha / (1.0f - clamped_anisotropy);
+        };
+      };
+
+      UInt output_type =
+          static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID);
+      Bool always_has_eval = false;
+      $if(input_type ==
+          static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_BECKMANN_ID)) {
+        microfacet.alpha_x = clamp(microfacet.alpha_x, 0.0f, 1.0f);
+        microfacet.alpha_y = clamp(microfacet.alpha_y, 0.0f, 1.0f);
+        output_type =
+            static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_BECKMANN_ID);
+      }
+      $elif(input_type ==
+            static_cast<std::uint32_t>(CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID)) {
+        microfacet.alpha_x = clamp(microfacet.alpha_x, 1.0e-4f, 1.0f);
+        microfacet.alpha_y = clamp(microfacet.alpha_y, 1.0e-4f, 1.0f);
+        output_type =
+            static_cast<std::uint32_t>(CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID);
+        always_has_eval = true;
+      }
+      $else {
+        microfacet.alpha_x = clamp(microfacet.alpha_x, 0.0f, 1.0f);
+        microfacet.alpha_y = clamp(microfacet.alpha_y, 0.0f, 1.0f);
+      };
+
+      pool.set_normal(allocated.index, valid_normal);
+      pool.set_type(allocated.index, output_type);
+      $if(input_type ==
+          static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID)) {
+        preserve_multi_ggx_reflection_energy(
+            kernel_globals, pool, allocated, shader_data.wi, valid_normal,
+            microfacet,
+            max(data.load_float3<offsetof(Data, color)>(stack),
+                make_float3(0.0f)));
+      };
+      pool.set_microfacet_param(allocated.index, microfacet);
+
+      UInt flags = shader_data_bsdf;
+      $if(always_has_eval |
+          ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f)) {
+        flags |= shader_data_bsdf_has_eval;
+      };
+      shader_data.flag |= flags;
     };
+  };
 }
 
-void refraction_setup(
-    const KernelGlobals &kernel_globals, ShaderData &shader_data,
-    const PathState &path_state, Expr<std::uint32_t> input_type,
-    Expr<float> mix_weight, Expr<luisa::float3> closure_weight,
-    Expr<luisa::float3> normal, Expr<float> roughness,
-    Expr<float> ior) noexcept {
-    if (shader_data.closure == nullptr) {
-        return;
-    }
-    const auto diffuse_visibility =
-        (path_state.visibility & path_ray_visibility_diffuse) != 0u;
-    const Bool refractive_caustics =
-        kernel_globals.caustics_refractive() | !diffuse_visibility;
+void node_refraction_bsdf(const KernelGlobals& kernel_globals, Cursor& cursor,
+                          Stack& stack, Expr<std::uint32_t> input_type,
+                          Expr<float> mix_weight,
+                          Expr<luisa::float3> closure_weight,
+                          ShaderData& shader_data,
+                          const PathState& path_state) noexcept {
+  using Data = SVMNodeRefractionBsdfData;
+  const NodeDataView<Data> data{cursor};
+  if (shader_data.closure == nullptr) {
+    return;
+  }
+  const auto diffuse_visibility =
+      (path_state.visibility & path_ray_visibility_diffuse) != 0u;
+  const Bool refractive_caustics =
+      kernel_globals.caustics_refractive() | !diffuse_visibility;
 
-    $if (refractive_caustics) {
-        auto &pool = *shader_data.closure;
-        const auto allocated =
-            bsdf_allocate(shader_data, closure_weight * mix_weight);
-        $if (allocated.valid) {
-            const auto backfacing =
-                (shader_data.flag & shader_data_backfacing) != 0u;
-            const auto original_ior = max(ior, 1.0e-5f);
-            const auto adjusted_ior =
-                select(original_ior, 1.0f / original_ior, backfacing);
-            const auto alpha = clamp(square(roughness), 0.0f, 1.0f);
-            const auto beckmann =
-                input_type == static_cast<std::uint32_t>(
-                                  CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID);
-            const auto output_type =
-                select(UInt{static_cast<std::uint32_t>(
-                           CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID)},
-                       UInt{static_cast<std::uint32_t>(
-                           CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID)},
-                       beckmann);
-            const auto valid_normal =
-                maybe_ensure_valid_specular_reflection(shader_data, normal);
-            const MicrofacetParam microfacet{
-                .alpha_x = alpha,
-                .alpha_y = alpha,
-                .ior = adjusted_ior,
-                .energy_scale = 1.0f,
-                .fresnel_type =
-                    static_cast<std::uint32_t>(MicrofacetFresnel::none),
-                .T = make_float3(0.0f)};
-            pool.set_normal(allocated.index, valid_normal);
-            pool.set_type(allocated.index, output_type);
-            pool.set_microfacet_param(allocated.index, microfacet);
+  $if(refractive_caustics) {
+    const auto normal_offset =
+        data.stack_offset<offsetof(Data, normal_offset)>();
+    auto normal =
+        stack_load_float3_default(stack, normal_offset, shader_data.N);
+    normal =
+        native_vector_math::safe_normalize_nonzero_or(normal, shader_data.N);
+    auto& pool = *shader_data.closure;
+    const auto allocated =
+        bsdf_allocate(shader_data, closure_weight * mix_weight);
+    $if(allocated.valid) {
+      const auto backfacing = (shader_data.flag & shader_data_backfacing) != 0u;
+      const auto original_ior =
+          max(data.load_float<offsetof(Data, ior)>(stack), 1.0e-5f);
+      const auto adjusted_ior =
+          select(original_ior, 1.0f / original_ior, backfacing);
+      const auto alpha =
+          clamp(square(data.load_float<offsetof(Data, roughness)>(stack)), 0.0f,
+                1.0f);
+      const auto beckmann =
+          input_type == static_cast<std::uint32_t>(
+                            CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID);
+      const auto output_type =
+          select(UInt{static_cast<std::uint32_t>(
+                     CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID)},
+                 UInt{static_cast<std::uint32_t>(
+                     CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID)},
+                 beckmann);
+      const auto valid_normal =
+          maybe_ensure_valid_specular_reflection(shader_data, normal);
+      const MicrofacetParam microfacet{
+          .alpha_x = alpha,
+          .alpha_y = alpha,
+          .ior = adjusted_ior,
+          .energy_scale = 1.0f,
+          .fresnel_type = static_cast<std::uint32_t>(MicrofacetFresnel::none),
+          .T = make_float3(0.0f)};
+      pool.set_normal(allocated.index, valid_normal);
+      pool.set_type(allocated.index, output_type);
+      pool.set_microfacet_param(allocated.index, microfacet);
 
-            UInt flags = shader_data_bsdf | shader_data_bsdf_has_transmission;
-            $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
-                flags |= shader_data_bsdf_has_eval;
-            };
-            shader_data.flag |= flags;
-        };
+      UInt flags = shader_data_bsdf | shader_data_bsdf_has_transmission;
+      $if((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
+        flags |= shader_data_bsdf_has_eval;
+      };
+      shader_data.flag |= flags;
     };
+  };
 }
 
-void metallic_setup(
-    const KernelGlobals &kernel_globals, ShaderData &shader_data,
-    const PathState &path_state, Expr<std::uint32_t> input_type,
-    Expr<std::uint32_t> distribution, Expr<float> mix_weight,
-    Expr<luisa::float3> normal, Expr<luisa::float3> base_ior,
-    Expr<luisa::float3> edge_tint_k, Expr<float> roughness,
-    Expr<float> anisotropy, Expr<float> rotation,
-    Expr<float> thin_film_thickness, Expr<float> thin_film_ior,
-    Expr<luisa::float3> tangent, Expr<bool> tangent_valid) noexcept {
-    if (shader_data.closure == nullptr) {
-        return;
-    }
-    const auto diffuse_visibility =
-        (path_state.visibility & path_ray_visibility_diffuse) != 0u;
-    const Bool reflective_caustics =
-        kernel_globals.caustics_reflective() | !diffuse_visibility;
+void node_metallic_bsdf(const KernelGlobals& kernel_globals, Cursor& cursor,
+                        Stack& stack, Expr<std::uint32_t> input_type,
+                        Expr<float> mix_weight, ShaderData& shader_data,
+                        const PathState& path_state) noexcept {
+  using Data = SVMNodeMetallicBsdfData;
+  const NodeDataView<Data> data{cursor};
+  if (shader_data.closure == nullptr) {
+    return;
+  }
+  const auto diffuse_visibility =
+      (path_state.visibility & path_ray_visibility_diffuse) != 0u;
+  const Bool reflective_caustics =
+      kernel_globals.caustics_reflective() | !diffuse_visibility;
 
-    $if (reflective_caustics) {
-        auto &pool = *shader_data.closure;
-        const auto allocated =
-            bsdf_allocate(shader_data, make_float3(mix_weight));
-        $if (allocated.valid) {
-            const auto valid_normal =
-                maybe_ensure_valid_specular_reflection(shader_data, normal);
-            const auto saturated_anisotropy = clamp(anisotropy, 0.0f, 1.0f);
-            const auto alpha = square(clamp(roughness, 0.0f, 1.0f));
-            MicrofacetParam microfacet{
-                .alpha_x = alpha,
-                .alpha_y = alpha,
-                .ior = 1.0f,
-                .energy_scale = 1.0f,
-                .fresnel_type =
-                    static_cast<std::uint32_t>(MicrofacetFresnel::none),
-                .T = make_float3(0.0f)};
-            $if ((saturated_anisotropy > 0.0f) & tangent_valid) {
-                microfacet.T = tangent;
-                const auto aspect =
-                    sqrt(1.0f - saturated_anisotropy * 0.9f);
-                microfacet.alpha_x /= aspect;
-                microfacet.alpha_y *= aspect;
-                $if (rotation != 0.0f) {
-                    // Cycles rotates the standalone Metallic tangent around
-                    // the authored N, not the bump-corrected BSDF normal.
-                    microfacet.T = rotate_around_axis(
-                        microfacet.T, normal, rotation * two_pi);
-                };
-            };
-
-            microfacet.alpha_x = clamp(microfacet.alpha_x, 0.0f, 1.0f);
-            microfacet.alpha_y = clamp(microfacet.alpha_y, 0.0f, 1.0f);
-            const auto beckmann =
-                distribution == static_cast<std::uint32_t>(
-                                    CLOSURE_BSDF_MICROFACET_BECKMANN_ID);
-            const auto output_type =
-                select(UInt{static_cast<std::uint32_t>(
-                           CLOSURE_BSDF_MICROFACET_GGX_ID)},
-                       UInt{static_cast<std::uint32_t>(
-                           CLOSURE_BSDF_MICROFACET_BECKMANN_ID)},
-                       beckmann);
-            pool.set_normal(allocated.index, valid_normal);
-            pool.set_type(allocated.index, output_type);
-            pool.set_microfacet_param(allocated.index, microfacet);
-
-            // In Cycles the distribution setup precedes closure_alloc_extra.
-            // Consequently these flags survive an extra-allocation rollback.
-            UInt flags = shader_data_bsdf;
-            $if ((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
-                flags |= shader_data_bsdf_has_eval;
-            };
-            shader_data.flag |= flags;
-
-            const auto extra_allocated = pool.allocate_extra(allocated, 1u);
-            $if (extra_allocated) {
-                const FresnelThinFilm thin_film{
-                    .thickness = max(thin_film_thickness, 1.0e-5f),
-                    .ior = max(thin_film_ior, 1.0e-5f)};
-                const auto preserve_energy =
-                    distribution == static_cast<std::uint32_t>(
-                                        CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID);
-                const auto common = pool.common(allocated.index);
-                $if (input_type == static_cast<std::uint32_t>(
-                                       CLOSURE_BSDF_PHYSICAL_CONDUCTOR)) {
-                    const FresnelConductor fresnel{
-                        .thin_film = thin_film,
-                        .ior = max(base_ior, make_float3(0.0f)),
-                        .extinction =
-                            max(edge_tint_k, make_float3(0.0f))};
-                    microfacet.fresnel_type = static_cast<std::uint32_t>(
-                        MicrofacetFresnel::conductor);
-                    pool.set_fresnel_conductor(allocated.index, fresnel);
-                    const auto albedo = conductor_albedo(
-                        kernel_globals, shader_data.wi, valid_normal, fresnel);
-                    pool.set_sample_weight(
-                        allocated.index,
-                        common.sample_weight * average(albedo));
-                    $if (preserve_energy) {
-                        preserve_multi_ggx_reflection_energy(
-                            kernel_globals, pool, allocated, shader_data.wi,
-                            valid_normal, microfacet,
-                            fresnel_conductor_fss(fresnel.ior,
-                                                  fresnel.extinction));
-                    };
-                }
-                $else {
-                    const auto f0 = clamp(base_ior, make_float3(0.0f),
-                                          make_float3(1.0f));
-                    const auto tint = clamp(edge_tint_k, make_float3(0.0f),
-                                            make_float3(1.0f));
-                    Float3 b;
-                    $if (all(tint == make_float3(1.0f))) {
-                        b = make_float3(0.0f);
-                    }
-                    $else { b = fresnel_f82_tint_b(f0, tint); };
-                    const FresnelF82Tint fresnel{
-                        .thin_film = thin_film, .f0 = f0, .b = b};
-                    microfacet.fresnel_type = static_cast<std::uint32_t>(
-                        MicrofacetFresnel::f82_tint);
-                    pool.set_fresnel_f82_tint(allocated.index, fresnel);
-                    const auto albedo = f82_tint_albedo(
-                        kernel_globals, shader_data.wi, valid_normal,
-                        microfacet, fresnel);
-                    pool.set_sample_weight(
-                        allocated.index,
-                        common.sample_weight * average(albedo));
-                    $if (preserve_energy) {
-                        preserve_multi_ggx_reflection_energy(
-                            kernel_globals, pool, allocated, shader_data.wi,
-                            valid_normal, microfacet,
-                            fresnel_f82_fss(fresnel.f0, fresnel.b));
-                    };
-                };
-                pool.set_microfacet_param(allocated.index, microfacet);
-            };
+  $if(reflective_caustics) {
+    auto& pool = *shader_data.closure;
+    const auto allocated = bsdf_allocate(shader_data, make_float3(mix_weight));
+    $if(allocated.valid) {
+      const auto normal_offset =
+          data.stack_offset<offsetof(Data, normal_offset)>();
+      auto normal =
+          stack_load_float3_default(stack, normal_offset, shader_data.N);
+      normal =
+          native_vector_math::safe_normalize_nonzero_or(normal, shader_data.N);
+      const auto valid_normal =
+          maybe_ensure_valid_specular_reflection(shader_data, normal);
+      const auto saturated_anisotropy =
+          clamp(data.load_float<offsetof(Data, anisotropy)>(stack), 0.0f, 1.0f);
+      const auto alpha = square(
+          clamp(data.load_float<offsetof(Data, roughness)>(stack), 0.0f, 1.0f));
+      MicrofacetParam microfacet{
+          .alpha_x = alpha,
+          .alpha_y = alpha,
+          .ior = 1.0f,
+          .energy_scale = 1.0f,
+          .fresnel_type = static_cast<std::uint32_t>(MicrofacetFresnel::none),
+          .T = make_float3(0.0f)};
+      const auto tangent_offset =
+          data.stack_offset<offsetof(Data, tangent_offset)>();
+      $if((saturated_anisotropy > 0.0f) &
+          (tangent_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID))) {
+        microfacet.T = stack_load_float3(stack, tangent_offset);
+        const auto aspect = sqrt(1.0f - saturated_anisotropy * 0.9f);
+        microfacet.alpha_x /= aspect;
+        microfacet.alpha_y *= aspect;
+        const auto rotation = data.load_float<offsetof(Data, rotation)>(stack);
+        $if(rotation != 0.0f) {
+          // Cycles rotates the standalone Metallic tangent around
+          // the authored N, not the bump-corrected BSDF normal.
+          microfacet.T =
+              rotate_around_axis(microfacet.T, normal, rotation * two_pi);
         };
+      };
+
+      microfacet.alpha_x = clamp(microfacet.alpha_x, 0.0f, 1.0f);
+      microfacet.alpha_y = clamp(microfacet.alpha_y, 0.0f, 1.0f);
+      const auto thin_film_thickness =
+          data.load_float<offsetof(Data, thin_film_thickness)>(stack);
+      const auto thin_film_ior =
+          data.load_float<offsetof(Data, thin_film_ior)>(stack);
+      const auto distribution = data.word<offsetof(Data, distribution)>();
+      const auto beckmann =
+          distribution ==
+          static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_BECKMANN_ID);
+      const auto output_type = select(
+          UInt{static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID)},
+          UInt{static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_BECKMANN_ID)},
+          beckmann);
+      pool.set_normal(allocated.index, valid_normal);
+      pool.set_type(allocated.index, output_type);
+      pool.set_microfacet_param(allocated.index, microfacet);
+
+      // In Cycles the distribution setup precedes closure_alloc_extra.
+      // Consequently these flags survive an extra-allocation rollback.
+      UInt flags = shader_data_bsdf;
+      $if((microfacet.alpha_x * microfacet.alpha_y) > 2.0e-10f) {
+        flags |= shader_data_bsdf_has_eval;
+      };
+      shader_data.flag |= flags;
+
+      const auto extra_allocated = pool.allocate_extra(allocated, 1u);
+      $if(extra_allocated) {
+        const FresnelThinFilm thin_film{
+            .thickness = max(thin_film_thickness, 1.0e-5f),
+            .ior = max(thin_film_ior, 1.0e-5f)};
+        const auto preserve_energy =
+            distribution ==
+            static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID);
+        const auto common = pool.common(allocated.index);
+        $if(input_type ==
+            static_cast<std::uint32_t>(CLOSURE_BSDF_PHYSICAL_CONDUCTOR)) {
+          const FresnelConductor fresnel{
+              .thin_film = thin_film,
+              .ior = max(data.load_float3<offsetof(Data, base_ior)>(stack),
+                         make_float3(0.0f)),
+              .extinction =
+                  max(data.load_float3<offsetof(Data, edge_tint_k)>(stack),
+                      make_float3(0.0f))};
+          microfacet.fresnel_type =
+              static_cast<std::uint32_t>(MicrofacetFresnel::conductor);
+          pool.set_fresnel_conductor(allocated.index, fresnel);
+          const auto albedo = conductor_albedo(kernel_globals, shader_data.wi,
+                                               valid_normal, fresnel);
+          pool.set_sample_weight(allocated.index,
+                                 common.sample_weight * average(albedo));
+          $if(preserve_energy) {
+            preserve_multi_ggx_reflection_energy(
+                kernel_globals, pool, allocated, shader_data.wi, valid_normal,
+                microfacet,
+                fresnel_conductor_fss(fresnel.ior, fresnel.extinction));
+          };
+        }
+        $else {
+          const auto f0 =
+              clamp(data.load_float3<offsetof(Data, base_ior)>(stack),
+                    make_float3(0.0f), make_float3(1.0f));
+          const auto tint =
+              clamp(data.load_float3<offsetof(Data, edge_tint_k)>(stack),
+                    make_float3(0.0f), make_float3(1.0f));
+          Float3 b;
+          $if(all(tint == make_float3(1.0f))) { b = make_float3(0.0f); }
+          $else { b = fresnel_f82_tint_b(f0, tint); };
+          const FresnelF82Tint fresnel{
+              .thin_film = thin_film, .f0 = f0, .b = b};
+          microfacet.fresnel_type =
+              static_cast<std::uint32_t>(MicrofacetFresnel::f82_tint);
+          pool.set_fresnel_f82_tint(allocated.index, fresnel);
+          const auto albedo =
+              f82_tint_albedo(kernel_globals, shader_data.wi, valid_normal,
+                              microfacet, fresnel);
+          pool.set_sample_weight(allocated.index,
+                                 common.sample_weight * average(albedo));
+          $if(preserve_energy) {
+            preserve_multi_ggx_reflection_energy(
+                kernel_globals, pool, allocated, shader_data.wi, valid_normal,
+                microfacet, fresnel_f82_fss(fresnel.f0, fresnel.b));
+          };
+        };
+        pool.set_microfacet_param(allocated.index, microfacet);
+      };
     };
+  };
 }
 
-}// namespace psycles::luisa_backend::cycles_svm::detail
+}  // namespace psycles::luisa_backend::cycles_svm::detail
