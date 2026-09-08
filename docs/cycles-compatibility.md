@@ -230,44 +230,54 @@ one native closure-setup switch with the original case groups and feature
 guards. Its 72-shape production-AST regression fails 12 shapes before repair.
 Full-scene A/B/B/A establishes no speedup: surface medians 5.8149 / 5.8621 s,
 render medians 10.4698 / 10.5114 s. Main instructions become 159,927 while
-register/frame/private sizes and 49 calls are unchanged. Parameter evaluation
-relative to caustic/allocation guards remains under audit; reductions show
-premature normal/tangent selection but do not attribute whole-scene cost.
+register/frame/private sizes and 49 calls are unchanged.
 
-Current suites pass HIP 182/182 and fallback 184/184; the complete `unit*`
-selection in the Luisa HIP build passes 133/133 (132 have the exact `unit`
+Psycles `e79644af` restores original caustic/allocation input-evaluation
+boundaries for standalone Glossy, Refraction, Glass and Metallic. Eight
+production-AST configurations fail before repair and pass afterwards;
+128 runtime states cover original GPU observations, rejected/no-storage
+paths and full END/PC behavior. Full-scene A/B/B/A shows no speedup: median
+surface 5.8641 to 5.8773 s and render 10.5145 to 10.5309 s. Main instructions
+become 159,972, with unchanged frame/register/private sizes and 49 calls.
+The typed scene census counts 237 Diffuse, 191 Glossy and one Principled
+producer, not dynamic evaluation frequencies. Independent surface launch
+geometry and remaining input/resource/code-generation differences remain
+under audit; they are not established causes of the performance gap.
+
+Current suites pass HIP 183/183 and fallback 185/185; the prior complete `unit*`
+selection in the unchanged Luisa HIP build passes 133/133 (132 have the exact `unit`
 label). This is a different configuration from the earlier 155-test gate.
 The parallel fallback run exposed a separate production-queue lost-wakeup
 race, repaired generically in child `85e5300f1`, with two minimal failures
 and 100 green repetitions each. Strict native Vulkan lamp-routing,
-bump-state and BSDF-dispatch tests pass 3/3 with 33 native SPIR-V compilations
+bump-state, BSDF-dispatch and closure-guard tests pass 4/4 with 49 native SPIR-V compilations
 and no DXC/DXIL load. Shared-switch runtime checks add 211 passing assertions
 on each of HIP, fallback and strict native Vulkan, including both coroutine
-schedulers. Current host results are 170/170, including the unwaived source-size
+schedulers. Current host results are 171/171, including the unwaived source-size
 gate. Existing oversized tests are separated into cohesive modules without
 removing assertions; ConvertNode now has its own ordinary translation unit.
 
 Additional native Vulkan remainder coverage is not fully green: the new
 default all-type test retains 1,076 failures in existing f16/f64 `OpFRem`
 lowering. Its isolated float32 run passes 1,744 assertions; HIP and fallback
-pass all 5,232. This gap is separate from the passing three-test Vulkan canary
+pass all 5,232. This gap is separate from the passing four-test Vulkan canary
 and is not introduced by the HIP-only change.
 
-At Psycles `6a20f08d` / Luisa `da8fff856`, six new full-resolution 256-spp
+At Psycles `e79644af` / Luisa `da8fff856`, six new full-resolution 256-spp
 follow-ups complete against retained Cycles references, with exact prior
 geometry/images and new source socket metadata. Current render times are
-13.6233 / 14.9411 / 18.2859 s for Monk/Monster/Classroom (one each), and
-40.1981 s for Barbershop (three-run median; 40.2174 / 40.1981 / 40.1825 s).
+13.6060 / 14.8859 / 18.2708 s for Monk/Monster/Classroom (one each), and
+40.2134 s for Barbershop (three-run median; 40.2134 / 40.1447 / 40.2137 s).
 Current frames are 220 / 280 / 260 / 416 B. These temporal follow-up
-times are not an isolated causal change estimate; Barbershop remains 58.4%
+times are not an isolated causal change estimate; Barbershop remains 58.5%
 slower than the retained Cycles median.
-Initialization is reported separately: 43.4675 / 50.8580 / 33.4346 seconds for
-Monk/Monster/Classroom, versus 17.4830 / 17.7756 / 17.9603 for Barbershop.
+Initialization is reported separately: 43.3679 / 49.8781 / 36.9795 seconds for
+Monk/Monster/Classroom, versus 17.7810 / 17.7165 / 18.3975 for Barbershop.
 Main shader caching is disabled, but downstream cache policy is unchanged;
 the profile has already warmed Barbershop. These are
 JIT plus setup/baking, not compiler-only or matched cold/warm comparisons,
 and are excluded from render time. These are not new paired Cycles timings.
-The [latest report](validation/2026-09-09/closure-setup-dispatch/README.md)
+The [latest report](validation/2026-09-09/closure-input-guards/README.md)
 retains the exact six-run metrics and source hashes.
 
 All 46 Psycles channels are finite in every run. The revision-pinned paired

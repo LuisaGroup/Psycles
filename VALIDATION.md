@@ -50,23 +50,23 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Latest four-scene follow-up
 
-Psycles `6a20f08d` / Luisa `da8fff856` complete six further 256-spp renders,
+Psycles `e79644af` / Luisa `da8fff856` complete six further 256-spp renders,
 using fresh socket metadata with the exact earlier geometry/texture bytes.
 These use retained equal-pass Cycles references, **not fresh timing pairs**.
 All 46 channels are finite and all 15 pass comparisons complete. Exact six-run
 data, images' provenance and all implementation hashes are in the
-[latest report](docs/validation/2026-09-09/closure-setup-dispatch/README.md).
+[latest report](docs/validation/2026-09-09/closure-input-guards/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 13.6233 | 43.4675 | 220 B |
-| Monster, one run | 14.9411 | 50.8580 | 280 B |
-| Classroom, one run | 18.2859 | 33.4346 | 260 B |
-| Barbershop, three-run median | 40.1981 | 17.4830 / 17.7756 / 17.9603 | 416 B |
+| Lone Monk, one run | 13.6060 | 43.3679 | 220 B |
+| Monster, one run | 14.8859 | 49.8781 | 280 B |
+| Classroom, one run | 18.2708 | 36.9795 | 260 B |
+| Barbershop, three-run median | 40.2134 | 17.7810 / 17.7165 / 18.3975 | 416 B |
 
-Barbershop's individual times are 40.2174 / 40.1981 / 40.1825 s. Its median
-is 0.53% above the preceding 39.9860 s, not an isolated causal change estimate,
-and 58.4% slower than the retained Cycles median. Initialization is JIT plus
+Barbershop's individual times are 40.2134 / 40.1447 / 40.2137 s. Its median
+is 0.04% above the preceding 40.1981 s, not an isolated causal change estimate,
+and 58.5% slower than the retained Cycles median. Initialization is JIT plus
 setup, not compiler-only. Main shader caching is disabled but downstream
 caches retain their ordinary policy; the profile already warmed Barbershop.
 These values are not matched cold/warm comparisons with the previous report.
@@ -76,8 +76,8 @@ in the table's scene order. The structural and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [closure-dispatch checkpoint](docs/validation/2026-09-09/closure-setup-dispatch/README.md)
-at Psycles `6a20f08d` / Luisa `da8fff856` supplies the current backend and
+The [closure-input-guard checkpoint](docs/validation/2026-09-09/closure-input-guards/README.md)
+at Psycles `e79644af` / Luisa `da8fff856` supplies the current backend and
 four-scene campaign. The [group-context repair](docs/validation/2026-09-08/svm-group-contexts/README.md)
 at `239cade6` remains the latest host SVM-layout repair.
 The preceding lamp-routing report records Psycles `773f1aca` / Luisa
@@ -122,12 +122,22 @@ fix or a substantial speedup. The following independent closure-setup
 intervention restores a single native switch with original shared groups;
 72 production-AST shapes pass, with 12 red before repair. Its full-scene
 A/B/B/A shows no speedup: median surface 5.8149 to 5.8621 s and render
-10.4698 to 10.5114 s. Main instructions are now 159,927; frame/register/private
-sizes and 49 calls are unchanged. Eager parameter evaluation relative to
-native guards remains separate work; initial reductions show premature
-normal/tangent selection, not its whole-scene contribution.
+10.4698 to 10.5114 s. Main instructions at that checkpoint are 159,927;
+frame/register/private sizes and 49 calls are unchanged.
 The same validation exposed and repaired generic shared-target CFG proxying
 and narrow signed SPIR-V literal encoding, with independent permanent reds.
+
+The latest independent repair restores native caustic/allocation input
+boundaries for standalone Glossy, Refraction, Glass and Metallic. Eight
+production-AST configurations fail before repair and pass afterwards; 128
+runtime states cover original GPU observations, rejected/no-storage paths
+and full END/PC behavior. Its A/B/B/A also shows no speedup: median surface
+5.8641 to 5.8773 s and render 10.5145 to 10.5309 s. Main instructions become
+159,972, with unchanged frame/register/private sizes and 49 calls. The typed
+Barbershop census finds 237 Diffuse, 191 Glossy and one Principled producer;
+these are static nodes, not dynamic shading frequencies. Remaining resource
+identity/input/code-generation work and the independent 512-versus-1024
+surface launch-policy control remain open, not established slowdown causes.
 
 The earlier hidden-input, Vector Math, bump-edge/domain and procedural-output
 repairs have 105 original-Cycles material images. Fifty-three additional
@@ -167,11 +177,11 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 182/182 | Complete registered suite, 463.41 s; correctness run, with cache misses and concurrent non-timed CPU checks/build |
-| Psycles fallback | 184/184 | Complete registered suite, 114.64 s |
-| Psycles host | 170/170 | Original-Cycles image regressions, 35 shared-case and 72 closure-dispatch shapes; source-size gate fully green |
-| Luisa child | 133/133 | Complete `unit*` selection in the HIP configuration; exact `unit` label is 132/132 |
-| Strict native Vulkan | 3/3 | Lamp routing, bump state and BSDF dispatch; 33 native SPIR-V compilations, no DXC/DXIL load |
+| Psycles HIP | 183/183 | Complete registered suite, 474.99 s; correctness run, with cache misses and concurrent non-timed CPU checks |
+| Psycles fallback | 185/185 | Complete registered suite, 113.94 s |
+| Psycles host | 171/171 | Original-Cycles image regressions, 35 shared-case, 72 closure-dispatch and eight closure-guard configurations; source-size gate fully green |
+| Luisa child | 133/133 | Prior complete `unit*` selection in the unchanged HIP configuration; exact `unit` label is 132/132 |
+| Strict native Vulkan | 4/4 | Lamp routing, bump state, BSDF dispatch and closure guards; 49 native SPIR-V compilations, no DXC/DXIL load |
 | Shared-switch runtime | 211 assertions/backend | HIP, fallback and strict native Vulkan; exits, narrow/wide labels and both coroutine schedulers |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
 
