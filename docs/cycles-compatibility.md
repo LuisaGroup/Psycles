@@ -134,20 +134,13 @@ shader_jit_seconds, including JIT plus setup/baking, not compiler-only.
 Cycles loads precompiled GPU kernels. Smaller IR, local arrays and frames
 do not independently establish end-to-end speedup.
 
-The subsequent [native descriptor sampler correction](validation/2026-09-08/bound-image-sampler/README.md)
-passes six full-resolution 256-spp canaries against the retained Cycles images.
-Its new Barbershop median is 38.8902 s (1.0% lower Psycles time, still 1.5325x
-the retained Cycles median). Other scenes have one follow-up each, not a new
-paired benchmark. Frame sizes and the error profile remain essentially
-unchanged. First-use downstream link cost and warm initialization are reported
-separately; the old paired table above remains revision-pinned.
-
-The [HIP descriptor investigation](validation/2026-09-08/hip-texture-descriptors/README.md)
-confirms image/sampler SRDs are already device-resident and sampled directly.
+The [native descriptor sampler correction](validation/2026-09-08/bound-image-sampler/README.md)
+and [HIP descriptor investigation](validation/2026-09-08/hip-texture-descriptors/README.md)
+confirm image/sampler SRDs are already device-resident and sampled directly.
 Neither more aggressive descriptor inlining nor explicit index grouping is
-adopted after the GPU controls. The follow-up original-scene profile still
-locates the large Barbershop gap in surface shading; a smaller pointer chain
-or synthetic sampling speed is not reported as an end-to-end renderer gain.
+adopted after GPU controls. A smaller pointer chain or synthetic sampling
+speed is not reported as an end-to-end renderer gain. Their dated follow-up
+timings remain in those reports, not mixed with current measurements below.
 
 The earlier [light-endpoint correction](validation/2026-09-08/light-endpoints/README.md)
 separates geometric lamp hits from spot/spread evaluation and indirect shader
@@ -158,11 +151,8 @@ and 70 volume visits out of 332.3M / 85.1M. This repairs a real structural
 error, but surface visits were already within 0.04%; it does not explain away
 the remaining surface cost per path. Subsequent lamp-routing work below fixes
 post-lamp closest scheduling; shadow surplus and residual DiffInd remain.
-Six subsequent 256-spp canaries retain finite channels in every scene.
-Barbershop's median is 39.2464 s (0.92% longer than the preceding checkpoint),
-and its DiffInd relative RMSE improves from 7.45% to 7.13%. Other scene render
-times and the separate Monster link-time repeat are retained in that report;
-these follow-ups are not substituted for fresh paired Cycles measurements.
+Its original-GPU tests and dated canaries remain in that report; they are not
+substituted for fresh paired Cycles measurements.
 
 The [scheduler trace comparison regression](validation/2026-09-08/dispatch-trace-comparison/README.md)
 also resolves the former fallback test failure: it passed 182/182 at that
@@ -172,39 +162,51 @@ The [lamp-routing / CFG / surface investigation](validation/2026-09-08/lamp-rout
 adds the original transparent-lamp traversal boundary, native miss-distance
 normalization and loop-epoch CFG repair. The full original native module now
 restructures. Hidden input default provenance and Vector Math host folding
-have 81 original-Cycles word-image regressions. The subsequent
+have 81 original-Cycles word-image regressions. The
 [graph-boundary repair](validation/2026-09-08/svm-graph-boundaries/README.md)
 adds 24 exact images for bump edge ownership, retained BUMP displacement
-entries and procedural Color/Factor sharing. Entire raw Barbershop used-shader
-images matching the oracle increase from 100 to 112; only 5 retain different
-lengths. Resource-ID payload mapping is not yet fully audited. The static
-stack bound falls from 36 to 33 floats, but the complete surface machine-code
+entries and procedural Color/Factor sharing. The latest
+[native socket/declaration repair](validation/2026-09-08/svm-socket-declarations/README.md)
+adds 53 exact images for native texture POINT inputs, conversion type-pair
+identity, closure declaration order and unavailable Voronoi defaults.
+Entire raw Barbershop used-shader images matching the oracle increase from
+112 to 115; only `bricks` retains a different length (+6 words). Equal-length
+differences and resource-ID payload mapping are not claimed fully aligned.
+The static stack bound remains 33 floats; the complete surface machine-code
 text and its register/private-memory requirements remain unchanged.
 
 Main SVM dispatch and most handlers are already inlined. Keeping more HIP
 function boundaries in a controlled A/B/A experiment slows surface time by
 35.5%; that intervention is reverted. No inlining policy or device arithmetic
-is changed. The new report records code-object identities and actual outlined
-callees rather than equating static spill sites with dynamic memory traffic.
+is changed. The current 64-spp surface GPU total is 5.871504 s against the
+retained original Cycles 2.962829 s. Surface visits remain effectively
+unchanged at 332.3 million. Final machine code retains only three outlined
+noise/math helpers, 256 VGPRs and 2496 fixed private bytes. The report records
+actual code-object identities and callees rather than equating static spill
+sites with dynamic memory traffic or mistaking pre-HIPRTC LLVM definitions
+for final out-of-line functions. Per-invocation surface cost remains open.
 
 Current suites pass HIP 182/182 and fallback 184/184; Luisa 155/155 is the
 retained validation of the unchanged child checkpoint.
 The parallel fallback run exposed a separate production-queue lost-wakeup
 race, repaired generically in child `85e5300f1`, with two minimal failures
 and 100 green repetitions each. Strict native Vulkan lamp-routing and
-bump-state tests pass 2/2 without loading DXC/DXIL. Current host results are 160/161:
-the same four existing source-size violations remain and are not waived.
+bump-state tests pass 2/2 with 31 native SPIR-V compilations and no DXC/DXIL
+load. Current host results are 164/164, including the unwaived source-size
+gate. Existing oversized tests are separated into cohesive modules without
+removing assertions; ConvertNode now has its own ordinary translation unit.
 
-At Psycles `5096a41f` / Luisa `85e5300f1`, six new full-resolution 256-spp
+At Psycles `33c7b335` / Luisa `85e5300f1`, six new full-resolution 256-spp
 follow-ups complete against retained Cycles references, with exact prior
 geometry/images and new source socket metadata. Current render times are
-13.6448 / 15.0251 / 18.5797 s for Monk/Monster/Classroom (one each), and
-40.8982 s for Barbershop (three-run median; 40.8982 / 41.0184 / 40.2199 s).
-Current frames are 220 / 280 / 260 / 416 B. There is no demonstrated speedup;
-Barbershop remains about 61% slower than the retained Cycles median.
+13.4347 / 14.7923 / 18.2949 s for Monk/Monster/Classroom (one each), and
+40.2231 s for Barbershop (three-run median; 40.2231 / 40.2419 / 40.1987 s).
+Current frames are 220 / 280 / 260 / 416 B. The smaller temporal follow-up
+times are not an isolated causal speedup estimate; Barbershop remains 58.5%
+slower than the retained Cycles median.
 Initialization is reported separately for every run, and is not cold JIT:
 the earlier profiler run had already warmed downstream caches. These are
-not new paired Cycles timings. The [latest report](validation/2026-09-08/svm-graph-boundaries/README.md)
+not new paired Cycles timings. The [latest report](validation/2026-09-08/svm-socket-declarations/README.md)
 retains the exact six-run metrics and source hashes.
 
 All 46 Psycles channels are finite in every run. The revision-pinned paired
