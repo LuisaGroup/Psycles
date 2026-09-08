@@ -74,8 +74,9 @@ in the table's scene order. The structural and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [native Math expansion investigation](docs/validation/2026-09-08/svm-math-expansion/README.md)
-at Psycles `cbb73185` / Luisa `85e5300f1` is the latest structural checkpoint.
+The [native Mapping declaration investigation](docs/validation/2026-09-08/svm-mapping-declarations/README.md)
+at Psycles `61443f70` / Luisa `85e5300f1` is the latest structural checkpoint.
+The latest complete 256-spp four-scene campaign remains the `cbb73185` run above.
 The preceding lamp-routing report records Psycles `773f1aca` / Luisa
 `4284e8cb9`, which publish the
 post-lamp closest-intersection boundary, native miss-distance normalization
@@ -108,13 +109,16 @@ reroutes and muted links, plus separate Blender luma/Gamma folding. Of these,
 33 are raw-exact and one differs only in three-ULP typed float literals; no
 device arithmetic or expected words change. Eighteen further exact original
 images constrain Math clamp expansion after native conversion links;
-fifteen fail before the repair. All 279 Barbershop used-shader images have
+fifteen fail before the repair. Another eighteen exact images constrain
+Mapping's native POINT declarations and shared conversions; five fail before
+that repair, including a five-authored-node 47-versus-44-word reduction.
+All 279 Barbershop used-shader images have
 equal lengths: 115 raw-exact, 158 with identical layouts and differences
 only in declared resource-ID fields, and six still with different schedules.
 Resource binding equivalence is unresolved; no words are normalized away.
 Static stack capacity remains 33 floats; the surface ELF `.text` remains
 byte-identical and resources stay at 256 VGPRs / 2496 private bytes.
-The new 64-spp surface GPU total is 5.915631 s, versus the
+The new 64-spp surface GPU total is 5.904182 s, versus the
 retained original Cycles 2.962829 s, with essentially unchanged surface visits.
 These structural counts are not a measured speedup or complete shader parity.
 Host-only Blender folding domains remain separate from later Cycles folding;
@@ -130,9 +134,9 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 182/182 | Complete registered suite, 136.42 s |
-| Psycles fallback | 184/184 | Complete parallel suite, 200.10 s |
-| Psycles host | 166/166 | 210 original-Cycles images across the new families; source-size gate fully green |
+| Psycles HIP | 182/182 | Complete registered suite, 139.58 s |
+| Psycles fallback | 184/184 | Complete parallel suite, 89.49 s |
+| Psycles host | 167/167 | 228 original-Cycles images across the new families; source-size gate fully green |
 | Luisa child | 155/155 | Retained unchanged child checkpoint; both queue races also repeated 100 times |
 | Strict native Vulkan | 2/2 | Lamp routing and bump state; 31 native SPIR-V compilations, no DXC/DXIL load |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
