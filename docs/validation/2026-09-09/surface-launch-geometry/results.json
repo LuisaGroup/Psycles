@@ -1,0 +1,1318 @@
+{
+  "schema": "psycles.surface-launch-geometry.v1",
+  "implementation": {
+    "parent": "e79644af",
+    "child": "da8fff856",
+    "scope": "only temporary surface continuation block size changed; production restored"
+  },
+  "scope": "sequential full Barbershop 2048x858/64 spp/seed 0 A/B/B/A; no overlapping heavy work launched by the agent; not fresh Cycles pairs",
+  "intervention": "surface execution_block_size 512 to 1024 in the generic continuation configuration",
+  "unchanged": "inlining policy, fast math, register limits, RNG identity, frame, sorting Handler, SVM images and static allocation analysis",
+  "isa_scope": "ELF STT_FUNC extents, excluding padding; static sites, not executed instruction/spill counts",
+  "image_scope": "15-pass/46-channel intervention controls, not a CPU shader oracle or original-Cycles parity proof",
+  "jit_scope": "main shader cache disabled, downstream caches not cleared; initialization includes setup/baking, not matched cold-JIT trials",
+  "evidence": [
+    {
+      "path": "/var/tmp/psycles-surface-launch-vUy8LQ/formal-analysis.md",
+      "sha256": "2f0af37ae8a2a3b1eee121523365bc82927c2f4084f6a4d8b40b901183a3ff2f",
+      "bytes": 3215
+    },
+    {
+      "path": "/var/tmp/psycles-surface-launch-vUy8LQ/run_profile.py",
+      "sha256": "caf6185735ad061177d656c43fcb25f507431fc80d74c9af4c841244c409985b",
+      "bytes": 2704
+    },
+    {
+      "path": "/var/tmp/psycles-surface-launch-vUy8LQ/before_path_kernel_executor.cpp",
+      "sha256": "01ccc0be3d5bda574e8f4b346b047cfd35e3025cbe5e18910d4e690846e27896",
+      "bytes": 22987
+    },
+    {
+      "path": "/var/tmp/psycles-surface-launch-vUy8LQ/build-1024.log",
+      "sha256": "49b0f45c1e76e9cef1da6931d5dd89cb375041e1a8edd5e9e1456cacf61a00f0",
+      "bytes": 512621
+    },
+    {
+      "path": "/var/tmp/psycles-surface-launch-vUy8LQ/build-restored.log",
+      "sha256": "49b0f45c1e76e9cef1da6931d5dd89cb375041e1a8edd5e9e1456cacf61a00f0",
+      "bytes": 512621
+    }
+  ],
+  "runs": {
+    "before": {
+      "directory": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44",
+      "render_wall_seconds": 10.5276,
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "work": {
+        "<entry>": 112459776,
+        "intersect_closest": 444264137,
+        "shade_volume": 85076975,
+        "shade_light_forward": 12869353,
+        "shade_background": 376903,
+        "shade_surface": 332307892,
+        "shade_light_nee": 138960440,
+        "intersect_shadow": 45987295,
+        "shade_shadow": 20800272
+      },
+      "profile": {
+        "shade_surface": {
+          "kernel": "kernel_088f86adee59b7ab",
+          "launches": 1062,
+          "gpu_seconds": 5.868351072,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            2480
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_99d8901f913e2573",
+          "launches": 1048,
+          "gpu_seconds": 1.672795409,
+          "vgpr_counts": [
+            152
+          ],
+          "scratch_bytes": [
+            240
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_a55a169108e658b3",
+          "launches": 425,
+          "gpu_seconds": 0.413244261,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            324
+          ]
+        }
+      },
+      "resources": {
+        "private_segment_fixed_size": 2480,
+        "sgpr_count": 107,
+        "vgpr_count": 256,
+        "sgpr_spill_count": 65,
+        "vgpr_spill_count": 504
+      },
+      "functions": {
+        "callable.20": {
+          "address": 5632,
+          "bytes": 10404,
+          "static_instructions": 1939,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_4d": {
+          "address": 16036,
+          "bytes": 6312,
+          "static_instructions": 1275,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "__ocml_tan_f32": {
+          "address": 22348,
+          "bytes": 972,
+          "static_instructions": 164,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "kernel_088f86adee59b7ab": {
+          "address": 23552,
+          "bytes": 852836,
+          "static_instructions": 159972,
+          "scratch_load_instructions": 1274,
+          "scratch_store_instructions": 622,
+          "call_sites": 49,
+          "image_sample_instructions": 20
+        }
+      },
+      "code_object_sha256": "40bf43db34853346698a658e4a2e9ad786af616f679dfa0113253864763c548b",
+      "stage_artifacts": {
+        "before": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/hip_kernel_before_opt_12.ll",
+        "final": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/hip_kernel_final_12.ll",
+        "code_object": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/hip_isa_12.co"
+      },
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/render.log",
+          "sha256": "560448a5263480de31327ef5337481ca9518bd81ccdf50c27653e7ee230a9870",
+          "bytes": 218081
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/psycles.exr",
+          "sha256": "14d50834d77c76b8b2ca1aeaef7de57e66f09da491527ee4ff55a972d5d9454a",
+          "bytes": 153081510
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/psycles_kernel_stats.csv",
+          "sha256": "b47ab758c31d1b4c9adaf5995f27bd2caf5593e0d7156ee443e88c664f475d93",
+          "bytes": 5841
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/psycles_kernel_trace.csv",
+          "sha256": "93e88a68a558f0492836b2ecf9c9140cdea544535fe2baa6be75a0bf16948630",
+          "bytes": 41126951
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/surface-code-object.txt",
+          "sha256": "6b0ec246990897e6d7e74898a824b1c36244bd331741acf18b805b031fdbda5f",
+          "bytes": 3301
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/surface-isa.txt",
+          "sha256": "149df8b270c53da77cf091f883f2f47d5d5def3ee58727d0e607ace48a21191e",
+          "bytes": 15007510
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/hip_kernel_before_opt_12.ll",
+          "sha256": "536a1e2ef37739a66b39c33d11d823f8b671ca2d7a9e61b31519b99d4deb5e02",
+          "bytes": 16754298
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/hip_kernel_final_12.ll",
+          "sha256": "daeeef5e7fe90e1072679413fbc192ee36cbb0bd7b0d603f6fc51360d72eb17d",
+          "bytes": 6425543
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/hip_isa_12.co",
+          "sha256": "40bf43db34853346698a658e4a2e9ad786af616f679dfa0113253864763c548b",
+          "bytes": 874680
+        }
+      ],
+      "surface_text": {
+        "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/surface.text",
+        "sha256": "431b702c763b641fcc499690078472dc428fe62f7cc33297a4fab44c59e1e9fe",
+        "bytes": 871168
+      },
+      "command": {
+        "command": [
+          "/opt/rocm/bin/rocprofv3",
+          "--kernel-trace",
+          "--stats",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44",
+          "--output-file",
+          "psycles",
+          "--",
+          "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+          "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop",
+          "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44/psycles.ppm",
+          "hip",
+          "2048",
+          "858",
+          "64",
+          "64",
+          "-",
+          "1024",
+          "429",
+          "0",
+          "0",
+          "64",
+          "-",
+          "1",
+          "0",
+          "wavefront-staged",
+          "32",
+          "32768",
+          "32",
+          "1",
+          "1",
+          "1",
+          "4",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0",
+          "1",
+          "1048576"
+        ],
+        "cwd": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44",
+        "environment_overrides": {
+          "PSYCLES_DISABLE_SHADER_CACHE": "1",
+          "LUISA_DUMP_LLVM_IR": "1",
+          "LUISA_DUMP_HIP_ISA": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-before-ecp8sq44",
+          "LUISA_CORO_SHADER_MAP": "1",
+          "LUISA_CORO_WAVEFRONT_STATS": "1"
+        },
+        "implementation_sha256": {
+          "build/bin/psycles_render_blender_scene": "d22d47d63758ca20dacba56b12222613b990f8e851cedf9163fcf887155e61d0",
+          "build/libpsycles_core.so": "a1b98a746ac670df24df08ed39fd8306abc287d57e85fa34ce5a839ed605a2ec",
+          "build/libpsycles_luisa_runtime.so": "a55554c87c423099c70600153726e21157d420268113d0b03b91ee8a4341b359",
+          "build/bin/libluisa-coro.so": "50493a131f2d515432e921762f291e5188e2ff02c6202fb5be6a55359e4ac225",
+          "build/bin/libluisa-xir.so": "fbda70f93b78cb82e6af3bdd34abb8ad8b805687347e9c295dc6964f9e05e0c4",
+          "build/bin/libluisa-backend-hip.so": "31c7665da651e21b088d4645f2634ad5d81212f2c035afbd1a41ffe273ede5df"
+        },
+        "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/benchmark.json",
+        "manifest_sha256": "7405c10f9ea1d09929cb8f4cea8eb68fe720b136759bac039eef20a5c10c7e31",
+        "executor_sha256": "01ccc0be3d5bda574e8f4b346b047cfd35e3025cbe5e18910d4e690846e27896"
+      },
+      "session_init_seconds": 18.6945,
+      "surface_workgroup_sizes": [
+        [
+          512,
+          1,
+          1
+        ]
+      ],
+      "image_control": {
+        "shape": [
+          858,
+          2048,
+          46
+        ],
+        "all_channels_finite": true,
+        "passes_vs_before": {
+          "Combined": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Normal": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "DiffCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "GlossCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "TransCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "DiffDir": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "DiffInd": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "GlossDir": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "GlossInd": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "TransDir": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "TransInd": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Emit": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Env": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Volume Direct": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Volume Indirect": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          }
+        }
+      }
+    },
+    "block_1024": {
+      "directory": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3",
+      "render_wall_seconds": 10.8629,
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "work": {
+        "<entry>": 112459776,
+        "intersect_closest": 444264135,
+        "shade_volume": 85076979,
+        "shade_light_forward": 12869352,
+        "shade_background": 376903,
+        "shade_surface": 332307892,
+        "shade_light_nee": 138960438,
+        "intersect_shadow": 45987293,
+        "shade_shadow": 20800272
+      },
+      "profile": {
+        "shade_surface": {
+          "kernel": "kernel_13202129bb5d8bb3",
+          "launches": 1062,
+          "gpu_seconds": 6.213613617,
+          "vgpr_counts": [
+            192
+          ],
+          "scratch_bytes": [
+            2816
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_99d8901f913e2573",
+          "launches": 1048,
+          "gpu_seconds": 1.667372955,
+          "vgpr_counts": [
+            152
+          ],
+          "scratch_bytes": [
+            240
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_a55a169108e658b3",
+          "launches": 425,
+          "gpu_seconds": 0.41190993,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            324
+          ]
+        }
+      },
+      "resources": {
+        "private_segment_fixed_size": 2816,
+        "sgpr_count": 107,
+        "vgpr_count": 192,
+        "sgpr_spill_count": 65,
+        "vgpr_spill_count": 672
+      },
+      "functions": {
+        "callable.20": {
+          "address": 5632,
+          "bytes": 10404,
+          "static_instructions": 1939,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_4d": {
+          "address": 16036,
+          "bytes": 6276,
+          "static_instructions": 1274,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "__ocml_tan_f32": {
+          "address": 22312,
+          "bytes": 972,
+          "static_instructions": 164,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "kernel_13202129bb5d8bb3": {
+          "address": 23296,
+          "bytes": 860096,
+          "static_instructions": 160873,
+          "scratch_load_instructions": 1704,
+          "scratch_store_instructions": 727,
+          "call_sites": 49,
+          "image_sample_instructions": 20
+        }
+      },
+      "code_object_sha256": "5d34f84201ff11ed626209a89e76321e14cddaca267162c604c5bb28fb965a6f",
+      "stage_artifacts": {
+        "before": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/hip_kernel_before_opt_12.ll",
+        "final": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/hip_kernel_final_12.ll",
+        "code_object": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/hip_isa_12.co"
+      },
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/render.log",
+          "sha256": "90d1ea827297c242c4845ce1b8d627c30d5cfb92a10bac74ec86a1c795a7624e",
+          "bytes": 217927
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/psycles.exr",
+          "sha256": "967964294904bf2b17a5cbce2600d7ac474be5d525d2587eced66e518ad33ca7",
+          "bytes": 153080830
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/psycles_kernel_stats.csv",
+          "sha256": "194dd260d2396eecb404354dba9bc9ea614a24b1d848d3ca827569216307e835",
+          "bytes": 5836
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/psycles_kernel_trace.csv",
+          "sha256": "3851f8ebd7fcaeb2175519d25406518e67429e326b6d93308111fcf493f0eae1",
+          "bytes": 41260352
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/surface-code-object.txt",
+          "sha256": "8bfbe835fa2f78721967692ed8d26680c63d76eac4915e99bfdc6dc8ba80e0df",
+          "bytes": 3299
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/surface-isa.txt",
+          "sha256": "763beb8166b8f371202fa1cf728beddf6c4102e82a0db185fc2f8365360e0414",
+          "bytes": 15088083
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/hip_kernel_before_opt_12.ll",
+          "sha256": "6d989d68ed78ae16eb27ef66404b1ba165d62b3d44415352eb740560cb3df07b",
+          "bytes": 16754302
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/hip_kernel_final_12.ll",
+          "sha256": "13373ffb761a288501f7a52abe9bcb32da4d5f3387d4ae03d80e01b97dd8dc40",
+          "bytes": 6425554
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/hip_isa_12.co",
+          "sha256": "5d34f84201ff11ed626209a89e76321e14cddaca267162c604c5bb28fb965a6f",
+          "bytes": 881720
+        }
+      ],
+      "surface_text": {
+        "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/surface.text",
+        "sha256": "b6abe439670d704aadae181daa76d54439315760e28f95781653e1c9ff0d72c3",
+        "bytes": 878208
+      },
+      "command": {
+        "command": [
+          "/opt/rocm/bin/rocprofv3",
+          "--kernel-trace",
+          "--stats",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3",
+          "--output-file",
+          "psycles",
+          "--",
+          "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+          "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop",
+          "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3/psycles.ppm",
+          "hip",
+          "2048",
+          "858",
+          "64",
+          "64",
+          "-",
+          "1024",
+          "429",
+          "0",
+          "0",
+          "64",
+          "-",
+          "1",
+          "0",
+          "wavefront-staged",
+          "32",
+          "32768",
+          "32",
+          "1",
+          "1",
+          "1",
+          "4",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0",
+          "1",
+          "1048576"
+        ],
+        "cwd": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3",
+        "environment_overrides": {
+          "PSYCLES_DISABLE_SHADER_CACHE": "1",
+          "LUISA_DUMP_LLVM_IR": "1",
+          "LUISA_DUMP_HIP_ISA": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-xekojyx3",
+          "LUISA_CORO_SHADER_MAP": "1",
+          "LUISA_CORO_WAVEFRONT_STATS": "1"
+        },
+        "implementation_sha256": {
+          "build/bin/psycles_render_blender_scene": "d22d47d63758ca20dacba56b12222613b990f8e851cedf9163fcf887155e61d0",
+          "build/libpsycles_core.so": "a1b98a746ac670df24df08ed39fd8306abc287d57e85fa34ce5a839ed605a2ec",
+          "build/libpsycles_luisa_runtime.so": "fa76ad776d38321094e358e04d74ae449445f5e68832fe590c71f440fda2c105",
+          "build/bin/libluisa-coro.so": "50493a131f2d515432e921762f291e5188e2ff02c6202fb5be6a55359e4ac225",
+          "build/bin/libluisa-xir.so": "fbda70f93b78cb82e6af3bdd34abb8ad8b805687347e9c295dc6964f9e05e0c4",
+          "build/bin/libluisa-backend-hip.so": "31c7665da651e21b088d4645f2634ad5d81212f2c035afbd1a41ffe273ede5df"
+        },
+        "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/benchmark.json",
+        "manifest_sha256": "7405c10f9ea1d09929cb8f4cea8eb68fe720b136759bac039eef20a5c10c7e31",
+        "executor_sha256": "30dbb217596e110fda10fa2ee01a5eae0bd247624f006b594860a3666148bcee"
+      },
+      "session_init_seconds": 45.7246,
+      "surface_workgroup_sizes": [
+        [
+          1024,
+          1,
+          1
+        ]
+      ],
+      "image_control": {
+        "shape": [
+          858,
+          2048,
+          46
+        ],
+        "all_channels_finite": true,
+        "passes_vs_before": {
+          "Combined": {
+            "relative_rmse": 1.194202147458906e-05,
+            "maximum_absolute_error": 0.005198247730731964,
+            "different_pixels": 19620
+          },
+          "Normal": {
+            "relative_rmse": 1.7454592902958676e-05,
+            "maximum_absolute_error": 0.01613306999206543,
+            "different_pixels": 33
+          },
+          "DiffCol": {
+            "relative_rmse": 6.012651889056022e-05,
+            "maximum_absolute_error": 0.007589429616928101,
+            "different_pixels": 46
+          },
+          "GlossCol": {
+            "relative_rmse": 3.975164366520817e-05,
+            "maximum_absolute_error": 0.010510288178920746,
+            "different_pixels": 41
+          },
+          "TransCol": {
+            "relative_rmse": 3.993246545193116e-10,
+            "maximum_absolute_error": 5.960464477539063e-08,
+            "different_pixels": 1
+          },
+          "DiffDir": {
+            "relative_rmse": 4.6215125418276785e-06,
+            "maximum_absolute_error": 0.0028361231088638306,
+            "different_pixels": 261
+          },
+          "DiffInd": {
+            "relative_rmse": 4.69597234842316e-05,
+            "maximum_absolute_error": 0.013214737176895142,
+            "different_pixels": 4171
+          },
+          "GlossDir": {
+            "relative_rmse": 9.125513245077021e-09,
+            "maximum_absolute_error": 2.7514994144439697e-05,
+            "different_pixels": 151
+          },
+          "GlossInd": {
+            "relative_rmse": 3.192507512724359e-05,
+            "maximum_absolute_error": 0.01878177560865879,
+            "different_pixels": 2890
+          },
+          "TransDir": {
+            "relative_rmse": 1.2796770530372264e-08,
+            "maximum_absolute_error": 9.235621156733487e-09,
+            "different_pixels": 1
+          },
+          "TransInd": {
+            "relative_rmse": 9.062118798827617e-10,
+            "maximum_absolute_error": 1.4901161193847656e-08,
+            "different_pixels": 44
+          },
+          "Emit": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Env": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Volume Direct": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Volume Indirect": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          }
+        }
+      }
+    },
+    "repeat_1024": {
+      "directory": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe",
+      "render_wall_seconds": 10.8723,
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "work": {
+        "<entry>": 112459776,
+        "intersect_closest": 444264140,
+        "shade_volume": 85076973,
+        "shade_light_forward": 12869353,
+        "shade_background": 376903,
+        "shade_surface": 332307898,
+        "shade_light_nee": 138960435,
+        "intersect_shadow": 45987295,
+        "shade_shadow": 20800274
+      },
+      "profile": {
+        "shade_surface": {
+          "kernel": "kernel_13202129bb5d8bb3",
+          "launches": 1062,
+          "gpu_seconds": 6.212749755,
+          "vgpr_counts": [
+            192
+          ],
+          "scratch_bytes": [
+            2816
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_99d8901f913e2573",
+          "launches": 1048,
+          "gpu_seconds": 1.672413377,
+          "vgpr_counts": [
+            152
+          ],
+          "scratch_bytes": [
+            240
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_a55a169108e658b3",
+          "launches": 425,
+          "gpu_seconds": 0.412625803,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            324
+          ]
+        }
+      },
+      "resources": {
+        "private_segment_fixed_size": 2816,
+        "sgpr_count": 107,
+        "vgpr_count": 192,
+        "sgpr_spill_count": 65,
+        "vgpr_spill_count": 672
+      },
+      "functions": {
+        "callable.20": {
+          "address": 5632,
+          "bytes": 10404,
+          "static_instructions": 1939,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_4d": {
+          "address": 16036,
+          "bytes": 6276,
+          "static_instructions": 1274,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "__ocml_tan_f32": {
+          "address": 22312,
+          "bytes": 972,
+          "static_instructions": 164,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "kernel_13202129bb5d8bb3": {
+          "address": 23296,
+          "bytes": 860096,
+          "static_instructions": 160873,
+          "scratch_load_instructions": 1704,
+          "scratch_store_instructions": 727,
+          "call_sites": 49,
+          "image_sample_instructions": 20
+        }
+      },
+      "code_object_sha256": "5d34f84201ff11ed626209a89e76321e14cddaca267162c604c5bb28fb965a6f",
+      "stage_artifacts": {
+        "before": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/hip_kernel_before_opt_12.ll",
+        "final": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/hip_kernel_final_12.ll",
+        "code_object": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/hip_isa_12.co"
+      },
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/render.log",
+          "sha256": "5ccb6a6f3aa60f610010a3b1c67b9706fb555b5217668b47edab41caa5c17ff2",
+          "bytes": 218332
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/psycles.exr",
+          "sha256": "4b7fe4b5f089b96b6da2174e84e1f74737fb5056ed7f274c20493d8131484b06",
+          "bytes": 153073091
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/psycles_kernel_stats.csv",
+          "sha256": "2e538214ed2ff1076de5c3306c767428ce9fee00ccbc6b153a32d2594acda8f5",
+          "bytes": 5839
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/psycles_kernel_trace.csv",
+          "sha256": "9e87f68954f75cb5ab382ed18ef66eeea35945c61e5dc914520225eb566d2d74",
+          "bytes": 41139149
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/surface-code-object.txt",
+          "sha256": "e23c529b57e051c06e70bcf6f1122c3497533942055deafc8c6f0a477ec362e9",
+          "bytes": 3306
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/surface-isa.txt",
+          "sha256": "5d4e846d4981d3cde517813ffeb5d747d2b0f8cbfcfd7129e3d3a6501aad278f",
+          "bytes": 15088090
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/hip_kernel_before_opt_12.ll",
+          "sha256": "6d989d68ed78ae16eb27ef66404b1ba165d62b3d44415352eb740560cb3df07b",
+          "bytes": 16754302
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/hip_kernel_final_12.ll",
+          "sha256": "13373ffb761a288501f7a52abe9bcb32da4d5f3387d4ae03d80e01b97dd8dc40",
+          "bytes": 6425554
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/hip_isa_12.co",
+          "sha256": "5d34f84201ff11ed626209a89e76321e14cddaca267162c604c5bb28fb965a6f",
+          "bytes": 881720
+        }
+      ],
+      "surface_text": {
+        "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/surface.text",
+        "sha256": "b6abe439670d704aadae181daa76d54439315760e28f95781653e1c9ff0d72c3",
+        "bytes": 878208
+      },
+      "command": {
+        "command": [
+          "/opt/rocm/bin/rocprofv3",
+          "--kernel-trace",
+          "--stats",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe",
+          "--output-file",
+          "psycles",
+          "--",
+          "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+          "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop",
+          "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe/psycles.ppm",
+          "hip",
+          "2048",
+          "858",
+          "64",
+          "64",
+          "-",
+          "1024",
+          "429",
+          "0",
+          "0",
+          "64",
+          "-",
+          "1",
+          "0",
+          "wavefront-staged",
+          "32",
+          "32768",
+          "32",
+          "1",
+          "1",
+          "1",
+          "4",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0",
+          "1",
+          "1048576"
+        ],
+        "cwd": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe",
+        "environment_overrides": {
+          "PSYCLES_DISABLE_SHADER_CACHE": "1",
+          "LUISA_DUMP_LLVM_IR": "1",
+          "LUISA_DUMP_HIP_ISA": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-1024-repeat-tz0c_4fe",
+          "LUISA_CORO_SHADER_MAP": "1",
+          "LUISA_CORO_WAVEFRONT_STATS": "1"
+        },
+        "implementation_sha256": {
+          "build/bin/psycles_render_blender_scene": "d22d47d63758ca20dacba56b12222613b990f8e851cedf9163fcf887155e61d0",
+          "build/libpsycles_core.so": "a1b98a746ac670df24df08ed39fd8306abc287d57e85fa34ce5a839ed605a2ec",
+          "build/libpsycles_luisa_runtime.so": "fa76ad776d38321094e358e04d74ae449445f5e68832fe590c71f440fda2c105",
+          "build/bin/libluisa-coro.so": "50493a131f2d515432e921762f291e5188e2ff02c6202fb5be6a55359e4ac225",
+          "build/bin/libluisa-xir.so": "fbda70f93b78cb82e6af3bdd34abb8ad8b805687347e9c295dc6964f9e05e0c4",
+          "build/bin/libluisa-backend-hip.so": "31c7665da651e21b088d4645f2634ad5d81212f2c035afbd1a41ffe273ede5df"
+        },
+        "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/benchmark.json",
+        "manifest_sha256": "7405c10f9ea1d09929cb8f4cea8eb68fe720b136759bac039eef20a5c10c7e31",
+        "executor_sha256": "30dbb217596e110fda10fa2ee01a5eae0bd247624f006b594860a3666148bcee"
+      },
+      "session_init_seconds": 18.7604,
+      "surface_workgroup_sizes": [
+        [
+          1024,
+          1,
+          1
+        ]
+      ],
+      "image_control": {
+        "shape": [
+          858,
+          2048,
+          46
+        ],
+        "all_channels_finite": true,
+        "passes_vs_before": {
+          "Combined": {
+            "relative_rmse": 1.501376003017719e-05,
+            "maximum_absolute_error": 0.005061604082584381,
+            "different_pixels": 19761
+          },
+          "Normal": {
+            "relative_rmse": 7.208044287189483e-07,
+            "maximum_absolute_error": 0.0006073117256164551,
+            "different_pixels": 40
+          },
+          "DiffCol": {
+            "relative_rmse": 7.575240875813838e-05,
+            "maximum_absolute_error": 0.007892504334449768,
+            "different_pixels": 71
+          },
+          "GlossCol": {
+            "relative_rmse": 4.906705597418289e-07,
+            "maximum_absolute_error": 8.729100227355957e-05,
+            "different_pixels": 54
+          },
+          "TransCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "DiffDir": {
+            "relative_rmse": 4.797654519256898e-05,
+            "maximum_absolute_error": 0.04848536103963852,
+            "different_pixels": 292
+          },
+          "DiffInd": {
+            "relative_rmse": 3.6906992891898896e-05,
+            "maximum_absolute_error": 0.009298114106059074,
+            "different_pixels": 4208
+          },
+          "GlossDir": {
+            "relative_rmse": 2.2638312269287178e-07,
+            "maximum_absolute_error": 0.0011603347957134247,
+            "different_pixels": 156
+          },
+          "GlossInd": {
+            "relative_rmse": 1.4181701932625242e-05,
+            "maximum_absolute_error": 0.00787079706788063,
+            "different_pixels": 2955
+          },
+          "TransDir": {
+            "relative_rmse": 2.2342489777191712e-08,
+            "maximum_absolute_error": 1.4510710855120124e-08,
+            "different_pixels": 4
+          },
+          "TransInd": {
+            "relative_rmse": 1.0517946614506744e-09,
+            "maximum_absolute_error": 1.4901161193847656e-08,
+            "different_pixels": 42
+          },
+          "Emit": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Env": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Volume Direct": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Volume Indirect": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          }
+        }
+      }
+    },
+    "restored": {
+      "directory": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5",
+      "render_wall_seconds": 10.5628,
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "work": {
+        "<entry>": 112459776,
+        "intersect_closest": 444264137,
+        "shade_volume": 85076975,
+        "shade_light_forward": 12869353,
+        "shade_background": 376903,
+        "shade_surface": 332307895,
+        "shade_light_nee": 138960437,
+        "intersect_shadow": 45987295,
+        "shade_shadow": 20800272
+      },
+      "profile": {
+        "shade_surface": {
+          "kernel": "kernel_088f86adee59b7ab",
+          "launches": 1062,
+          "gpu_seconds": 5.885351919,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            2480
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_99d8901f913e2573",
+          "launches": 1048,
+          "gpu_seconds": 1.67062768,
+          "vgpr_counts": [
+            152
+          ],
+          "scratch_bytes": [
+            240
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_a55a169108e658b3",
+          "launches": 425,
+          "gpu_seconds": 0.412674208,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            324
+          ]
+        }
+      },
+      "resources": {
+        "private_segment_fixed_size": 2480,
+        "sgpr_count": 107,
+        "vgpr_count": 256,
+        "sgpr_spill_count": 65,
+        "vgpr_spill_count": 504
+      },
+      "functions": {
+        "callable.20": {
+          "address": 5632,
+          "bytes": 10404,
+          "static_instructions": 1939,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_4d": {
+          "address": 16036,
+          "bytes": 6312,
+          "static_instructions": 1275,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "__ocml_tan_f32": {
+          "address": 22348,
+          "bytes": 972,
+          "static_instructions": 164,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "kernel_088f86adee59b7ab": {
+          "address": 23552,
+          "bytes": 852836,
+          "static_instructions": 159972,
+          "scratch_load_instructions": 1274,
+          "scratch_store_instructions": 622,
+          "call_sites": 49,
+          "image_sample_instructions": 20
+        }
+      },
+      "code_object_sha256": "40bf43db34853346698a658e4a2e9ad786af616f679dfa0113253864763c548b",
+      "stage_artifacts": {
+        "before": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/hip_kernel_before_opt_12.ll",
+        "final": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/hip_kernel_final_12.ll",
+        "code_object": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/hip_isa_12.co"
+      },
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/render.log",
+          "sha256": "3da6f6d7f5df6cf1f40b7aa7d828cb9fd5faa48ffa12f304d0b5f69bb0f09c5d",
+          "bytes": 218164
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/psycles.exr",
+          "sha256": "d5b73f97d3297d8481836ca3db6569248dff678472464bb77c9c5cbbc3bffba7",
+          "bytes": 153082976
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/psycles_kernel_stats.csv",
+          "sha256": "d731b35333394bcdf452f728b70e04252f66e7223dcbbdb299ec75c0f06e9890",
+          "bytes": 5840
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/psycles_kernel_trace.csv",
+          "sha256": "0a39b8aaf254a82b8c7c3fe6b78d2e8e39f82d6e2d54e28d1b358b05a2521e1b",
+          "bytes": 41121795
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/surface-code-object.txt",
+          "sha256": "f4bcd92fc9c811d1c95a4f3f6a4fa13416571fafe1dd83be02543ae4f6d84b52",
+          "bytes": 3303
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/surface-isa.txt",
+          "sha256": "3bd144c15c123a1b647cfb825b2a0676cd1470f6ee1a4b6390f85fe60064f1fe",
+          "bytes": 15007512
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/hip_kernel_before_opt_12.ll",
+          "sha256": "536a1e2ef37739a66b39c33d11d823f8b671ca2d7a9e61b31519b99d4deb5e02",
+          "bytes": 16754298
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/hip_kernel_final_12.ll",
+          "sha256": "daeeef5e7fe90e1072679413fbc192ee36cbb0bd7b0d603f6fc51360d72eb17d",
+          "bytes": 6425543
+        },
+        {
+          "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/hip_isa_12.co",
+          "sha256": "40bf43db34853346698a658e4a2e9ad786af616f679dfa0113253864763c548b",
+          "bytes": 874680
+        }
+      ],
+      "surface_text": {
+        "path": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/surface.text",
+        "sha256": "431b702c763b641fcc499690078472dc428fe62f7cc33297a4fab44c59e1e9fe",
+        "bytes": 871168
+      },
+      "command": {
+        "command": [
+          "/opt/rocm/bin/rocprofv3",
+          "--kernel-trace",
+          "--stats",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5",
+          "--output-file",
+          "psycles",
+          "--",
+          "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+          "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop",
+          "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5/psycles.ppm",
+          "hip",
+          "2048",
+          "858",
+          "64",
+          "64",
+          "-",
+          "1024",
+          "429",
+          "0",
+          "0",
+          "64",
+          "-",
+          "1",
+          "0",
+          "wavefront-staged",
+          "32",
+          "32768",
+          "32",
+          "1",
+          "1",
+          "1",
+          "4",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0",
+          "1",
+          "1048576"
+        ],
+        "cwd": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5",
+        "environment_overrides": {
+          "PSYCLES_DISABLE_SHADER_CACHE": "1",
+          "LUISA_DUMP_LLVM_IR": "1",
+          "LUISA_DUMP_HIP_ISA": "/var/tmp/psycles-surface-launch-vUy8LQ/profile-restored-y63_73p5",
+          "LUISA_CORO_SHADER_MAP": "1",
+          "LUISA_CORO_WAVEFRONT_STATS": "1"
+        },
+        "implementation_sha256": {
+          "build/bin/psycles_render_blender_scene": "d22d47d63758ca20dacba56b12222613b990f8e851cedf9163fcf887155e61d0",
+          "build/libpsycles_core.so": "a1b98a746ac670df24df08ed39fd8306abc287d57e85fa34ce5a839ed605a2ec",
+          "build/libpsycles_luisa_runtime.so": "a55554c87c423099c70600153726e21157d420268113d0b03b91ee8a4341b359",
+          "build/bin/libluisa-coro.so": "50493a131f2d515432e921762f291e5188e2ff02c6202fb5be6a55359e4ac225",
+          "build/bin/libluisa-xir.so": "fbda70f93b78cb82e6af3bdd34abb8ad8b805687347e9c295dc6964f9e05e0c4",
+          "build/bin/libluisa-backend-hip.so": "31c7665da651e21b088d4645f2634ad5d81212f2c035afbd1a41ffe273ede5df"
+        },
+        "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/benchmark.json",
+        "manifest_sha256": "7405c10f9ea1d09929cb8f4cea8eb68fe720b136759bac039eef20a5c10c7e31",
+        "executor_sha256": "01ccc0be3d5bda574e8f4b346b047cfd35e3025cbe5e18910d4e690846e27896"
+      },
+      "session_init_seconds": 19.0069,
+      "surface_workgroup_sizes": [
+        [
+          512,
+          1,
+          1
+        ]
+      ],
+      "image_control": {
+        "shape": [
+          858,
+          2048,
+          46
+        ],
+        "all_channels_finite": true,
+        "passes_vs_before": {
+          "Combined": {
+            "relative_rmse": 2.0134938318409293e-06,
+            "maximum_absolute_error": 0.0008022822439670563,
+            "different_pixels": 19140
+          },
+          "Normal": {
+            "relative_rmse": 8.78803295391486e-08,
+            "maximum_absolute_error": 5.6356191635131836e-05,
+            "different_pixels": 33
+          },
+          "DiffCol": {
+            "relative_rmse": 4.1341106971869286e-05,
+            "maximum_absolute_error": 0.007682085037231445,
+            "different_pixels": 19
+          },
+          "GlossCol": {
+            "relative_rmse": 2.764315863632383e-07,
+            "maximum_absolute_error": 6.917119026184082e-05,
+            "different_pixels": 40
+          },
+          "TransCol": {
+            "relative_rmse": 3.993246545193116e-10,
+            "maximum_absolute_error": 5.960464477539063e-08,
+            "different_pixels": 1
+          },
+          "DiffDir": {
+            "relative_rmse": 2.5666278344519896e-06,
+            "maximum_absolute_error": 0.0014197900891304016,
+            "different_pixels": 244
+          },
+          "DiffInd": {
+            "relative_rmse": 2.8937622111797844e-06,
+            "maximum_absolute_error": 0.0006200708448886871,
+            "different_pixels": 4052
+          },
+          "GlossDir": {
+            "relative_rmse": 9.003608904009477e-09,
+            "maximum_absolute_error": 2.752244472503662e-05,
+            "different_pixels": 157
+          },
+          "GlossInd": {
+            "relative_rmse": 9.066737320717461e-07,
+            "maximum_absolute_error": 0.0006014201790094376,
+            "different_pixels": 2913
+          },
+          "TransDir": {
+            "relative_rmse": 1.9047159554349417e-08,
+            "maximum_absolute_error": 1.1290534729369028e-08,
+            "different_pixels": 2
+          },
+          "TransInd": {
+            "relative_rmse": 7.90643169277555e-10,
+            "maximum_absolute_error": 7.450580596923828e-09,
+            "different_pixels": 38
+          },
+          "Emit": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Env": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Volume Direct": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          },
+          "Volume Indirect": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0,
+            "different_pixels": 0
+          }
+        }
+      }
+    }
+  },
+  "medians": {
+    "block_512": {
+      "render_seconds": 10.5452,
+      "surface_seconds": 5.8768514955
+    },
+    "block_1024": {
+      "render_seconds": 10.8676,
+      "surface_seconds": 6.213181686
+    }
+  },
+  "decision": "reject 1024 for production; matching original register counts did not improve performance"
+}

@@ -136,8 +136,13 @@ and full END/PC behavior. Its A/B/B/A also shows no speedup: median surface
 159,972, with unchanged frame/register/private sizes and 49 calls. The typed
 Barbershop census finds 237 Diffuse, 191 Glossy and one Principled producer;
 these are static nodes, not dynamic shading frequencies. Remaining resource
-identity/input/code-generation work and the independent 512-versus-1024
-surface launch-policy control remain open, not established slowdown causes.
+identity/input/code-generation work remains open. The independent
+[512-versus-1024 surface control](docs/validation/2026-09-09/surface-launch-geometry/README.md)
+is complete and fully reverted: 1024 lowers VGPRs from 256 to 192 but increases
+private bytes from 2480 to 2816 and median surface/render time by 5.72% / 3.06%.
+Restored A has identical `.text`, with all 46 channels finite and all 15 pass
+controls complete. Production stays at 512; no register cap or inline policy
+changed. Matching Cycles' launch/register count does not close the gap.
 
 The earlier hidden-input, Vector Math, bump-edge/domain and procedural-output
 repairs have 105 original-Cycles material images. Fifty-three additional

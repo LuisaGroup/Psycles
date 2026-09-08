@@ -240,9 +240,14 @@ paths and full END/PC behavior. Full-scene A/B/B/A shows no speedup: median
 surface 5.8641 to 5.8773 s and render 10.5145 to 10.5309 s. Main instructions
 become 159,972, with unchanged frame/register/private sizes and 49 calls.
 The typed scene census counts 237 Diffuse, 191 Glossy and one Principled
-producer, not dynamic evaluation frequencies. Independent surface launch
-geometry and remaining input/resource/code-generation differences remain
-under audit; they are not established causes of the performance gap.
+producer, not dynamic evaluation frequencies. An independent
+[surface launch A/B/B/A](validation/2026-09-09/surface-launch-geometry/README.md)
+finds 1024 threads slower than 512: VGPRs fall 256 to 192 but private bytes rise
+2480 to 2816, with median surface/render time 5.72% / 3.06% higher. This
+experiment is fully reverted, restoring identical A `.text`; all 46 channels
+are finite and all 15 pass controls complete. No register cap or inline policy
+changes. Remaining input/resource/code-generation differences are under audit,
+not established causes of the performance gap.
 
 Current suites pass HIP 183/183 and fallback 185/185; the prior complete `unit*`
 selection in the unchanged Luisa HIP build passes 133/133 (132 have the exact `unit`
