@@ -97,7 +97,8 @@ the identical command and append:
 - every command, log and its SHA-256, process wall time, EXR path, and EXR hash;
 - Cycles' selected device inventory, main-loop wall time (`render_seconds`),
   and enclosing Python render-call time (`render_call_seconds`);
-- Psycles scene compilation, shader JIT, render-only, and process wall times;
+- Psycles scene compilation, session initialization (`shader_jit_seconds`),
+  render-only, and process wall times;
 - render-only speedup and slowdown ratios against the selected Cycles GPU and,
   when enabled, Cycles CPU;
 - differential-report paths for every Psycles backend against each selected
@@ -115,6 +116,13 @@ requires exactly one `Rendering in main loop is done in ... seconds.` record;
 missing, ambiguous, or non-finite intervals fail the benchmark. This is not a
 sum of GPU kernel durations. Process wall time, Cycles' enclosing render call,
 and Psycles compilation/JIT phases remain visible separately.
+
+The CLI's `Luisa shader JIT completed` label and `shader_jit_seconds` field
+measure the entire `renderer.create_session` interval. This includes shader
+compilation plus session resource initialization and setup/baking; it is not
+an isolated kernel-compiler timer. Disabling the main shader cache does not
+disable every auxiliary or downstream compiler/OS cache. Report first-run
+and repeated initialization observations explicitly when they differ.
 
 The v1 runner incorrectly used Cycles' whole Python render-call time as
 `render_seconds`, including scene synchronization/setup. Its ratios are not

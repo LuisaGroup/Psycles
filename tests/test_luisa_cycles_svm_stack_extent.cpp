@@ -89,7 +89,8 @@ std::size_t verify(LuisaPathTracerBackend &renderer, bool second_shader) {
           "scene compilation did not produce a native SVM image");
   const auto &scene = compiled->data();
   const auto &table = scene->cycles_svm->compilation.table;
-  const auto extent = std::max<std::size_t>(1u, table.peak_stack_usage);
+  const auto extent = std::max<std::size_t>(
+      1u, table.usage_for(abi::SHADER_TYPE_SURFACE).peak_stack_usage);
   require(extent < SVM_STACK_SIZE, "fixture should not require the full stack");
   if (second_shader) {
     require(scene->cycles_svm->material_shader_indices.contains(MaterialId{2u}) &&

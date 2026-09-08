@@ -254,14 +254,16 @@ public:
                                task.transmission_depth,
                                0u};
     svm::EvaluationResult result;
+    const auto usage = _scene->cycles_svm->compilation.table.usage_for(
+        abi::SHADER_TYPE_SURFACE);
     svm::eval_nodes(kg, *_scene->cycles_svm->word_buffer,
                     abi::SHADER_TYPE_SURFACE,
                     _scene->cycles_svm->kernel_features,
                     svm::kernel_feature_node_mask_surface_light,
-                    _scene->cycles_svm->compilation.table.node_types_used,
+                    usage.node_types_used,
                     transforms, sd, state, result,
                     std::max<std::size_t>(
-                        1u, _scene->cycles_svm->compilation.table.peak_stack_usage));
+                        1u, usage.peak_stack_usage));
     $if(result.status !=
         static_cast<unsigned>(svm::EvaluationStatus::ended)) {
       dsl::unreachable("native Cycles light SVM did not reach NODE_END");

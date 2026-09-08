@@ -145,6 +145,18 @@ struct ShaderCompileMetadata {
   Vec3f emission_estimate{};
 };
 
+// Static emission facts for one ShaderJump entry. Bump has no independent
+// runtime entry: its prefix falls through into the surface program.
+struct ShaderEntryUsage {
+  std::array<bool, NODE_NUM> node_types_used{};
+  std::uint32_t peak_stack_usage{};
+
+  bool operator==(const ShaderEntryUsage &) const = default;
+};
+using ShaderEntryUsageTable = std::array<ShaderEntryUsage, 3u>;
+static_assert(SHADER_TYPE_SURFACE == 0 && SHADER_TYPE_VOLUME == 1 &&
+              SHADER_TYPE_DISPLACEMENT == 2);
+
 struct ShaderImage {
   bool valid{};
   std::string diagnostic;
@@ -155,7 +167,18 @@ struct ShaderImage {
   // cannot perturb the named IDs allocated by SVM bytecode compilation.
   std::vector<AttributeRequest> attribute_requests;
   std::uint32_t peak_stack_usage{};
+  // Missing for imported/hand-authored images without an emission proof.
+  // Such images retain the conservative whole-image specialization.
+  std::optional<ShaderEntryUsageTable> entry_usage;
   ShaderCompileMetadata metadata;
+
+  [[nodiscard]] ShaderEntryUsage usage_for(ShaderType type) const noexcept {
+    const auto index = static_cast<std::size_t>(type);
+    if (entry_usage && index < entry_usage->size()) {
+      return (*entry_usage)[index];
+    }
+    return {node_types_used, peak_stack_usage};
+  }
 };
 
 // Exact scene-owned SVMCompiler mode which Cycles sets from Shader::is_background.

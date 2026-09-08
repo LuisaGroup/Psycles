@@ -93,12 +93,14 @@ Float3 evaluate_cycles_svm_background_emission(
     const svm::TransformState transforms{parameters.camera_transform,
                                          parameters.camera_inverse_transform,
                                          identity, identity};
+    const auto usage = scene->cycles_svm->compilation.table.usage_for(
+        abi::SHADER_TYPE_SURFACE);
     svm::eval_nodes_assume_valid(
         kg, *scene->cycles_svm->word_buffer, abi::SHADER_TYPE_SURFACE,
         scene->cycles_svm->kernel_features, cycles_svm_background_feature_mask(evaluation),
-        scene->cycles_svm->compilation.table.node_types_used,
+        usage.node_types_used,
         transforms, sd, state,
-        std::max<std::size_t>(1u, scene->cycles_svm->compilation.table.peak_stack_usage));
+        std::max<std::size_t>(1u, usage.peak_stack_usage));
     $if((sd.flag & svm::shader_data_emission) != 0u) {
       emission = sd.closure_emission_background;
     };

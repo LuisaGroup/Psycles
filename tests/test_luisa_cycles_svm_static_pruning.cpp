@@ -1,4 +1,8 @@
 #include "luisa_cycles_svm_test_kernel_globals.h"
+#include "cycles_svm_shared_closure_test_support.h"
+#include "cycles_svm_stack_extent_test_support.h"
+
+#include <psycles/compiler/cycles_svm_scene.h>
 
 #include <algorithm>
 #include <array>
@@ -93,7 +97,8 @@ void find_dispatch(const ScopeStmt *scope, unsigned loop_depth, Dispatch &out) {
   }
 }
 
-Dispatch record(Usage used, ShaderType domain, std::uint32_t node_features) {
+Dispatch record(Usage used, ShaderType domain, std::uint32_t node_features,
+                std::size_t stack_size = SVM_STACK_SIZE) {
   const Kernel1D<Buffer<std::uint32_t>, Buffer<luisa::float4>, Buffer<luisa::uint4>>
       kernel = [=](BufferUInt words, BufferFloat4 values, BufferUInt4 status) {
         const auto identity = make_float4x4(1.0f);
@@ -112,14 +117,52 @@ Dispatch record(Usage used, ShaderType domain, std::uint32_t node_features) {
         // All scene features are enabled to isolate opcode-usage and node
         // feature-mask pruning from geometry/SSS service specialization.
         svm::eval_nodes(kg, words, domain, ~0u, node_features, used,
-                        transforms, sd, path, result);
+                        transforms, sd, path, result, stack_size);
         values.write(0u, make_float4(sd.closure_emission_background, 1.0f));
         status.write(0u, make_uint4(result.status, result.final_offset, sd.flag, 0u));
       };
   Dispatch result;
+  if (stack_size != SVM_STACK_SIZE) {
+    psycles::test_support::require_svm_stack_extent(
+        kernel.function()->function(), stack_size);
+  }
   find_dispatch(kernel.function()->function().body(), 0u, result);
   require(result.count == 1u, "SVM must retain exactly one PC-loop opcode dispatcher");
   return result;
+}
+
+void test_compiled_entry_specialization() {
+  std::array<ShaderImage, 4u> images;
+  for (auto i = 0u; i < images.size(); ++i) {
+    images[i] = psycles::test_support::shared_closure::compile(i);
+  }
+  const auto table = link_shader_table(images);
+  require(table.valid, table.diagnostic);
+  // Original kernel/features.h KERNEL_FEATURE_NODE_MASK_DISPLACEMENT.
+  constexpr auto displacement_mask =
+      svm::kernel_feature_node_voronoi_extra | svm::kernel_feature_node_bump |
+      svm::kernel_feature_node_bump_state | svm::kernel_feature_node_portal;
+  for (const auto type : {SHADER_TYPE_SURFACE, SHADER_TYPE_VOLUME,
+                          SHADER_TYPE_DISPLACEMENT}) {
+    const auto usage = table.usage_for(type);
+    const auto mask = type == SHADER_TYPE_SURFACE
+                          ? svm::kernel_feature_node_mask_surface
+                      : type == SHADER_TYPE_VOLUME
+                          ? svm::kernel_feature_node_mask_volume
+                          : displacement_mask;
+    const auto dispatch = record(usage.node_types_used, type, mask,
+                                  std::max(1u, usage.peak_stack_usage));
+    require(dispatch.cases == usage.node_types_used,
+            "entry-specialized AST has the wrong opcode cases");
+    require(dispatch.cases[NODE_CLOSURE_BSDF] == (type == SHADER_TYPE_SURFACE) &&
+                dispatch.cases[NODE_CLOSURE_VOLUME] == (type == SHADER_TYPE_VOLUME),
+            "another entry's closure case was generated before backend optimization");
+    if (type == SHADER_TYPE_DISPLACEMENT) {
+      require(std::ranges::count(dispatch.cases, true) == 2u,
+              "END-only entry must only generate ShaderJump/End cases");
+    }
+  }
+  std::cout << "Compiled entry cases and static stack extents verified before optimization\n";
 }
 
 void test_every_opcode_usage_bit() {
@@ -205,6 +248,7 @@ int main() {
   try {
     test_every_opcode_usage_bit();
     test_cycles_feature_guards();
+    test_compiled_entry_specialization();
     return 0;
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

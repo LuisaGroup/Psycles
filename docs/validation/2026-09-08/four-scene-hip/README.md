@@ -33,8 +33,8 @@ scope and are not interchangeable with this campaign.
 Psycles uses `wavefront-staged`, surface sorting, the separate direct-light
 queue, fast math, a 1,048,576-frame pool, and at most 64 samples per dispatch.
 `PSYCLES_DISABLE_SHADER_CACHE=1` disables the main shader cache; auxiliary
-caches and the OS file cache retain their normal policy. “Main JIT” below
-is therefore not a cold-machine or uncached-all-components measurement.
+caches and the OS file cache retain their normal policy. Session initialization
+below is therefore not a cold-machine or uncached-all-components measurement.
 
 ## Render times remain stable across repeats
 
@@ -56,12 +56,15 @@ Monk/Monster gaps are also larger than the observed repeat spread.
 
 ## Compilation remains a distinct first-render cost
 
-These are medians in seconds, except frame size. Main JIT is not compared
+These are medians in seconds, except frame size. The CLI's
+`shader_jit_seconds` measures the entire `create_session` span, including JIT
+and session initialization/setup/baking, not an isolated kernel compiler.
+It is not compared
 with a fictitious Cycles JIT phase: this Cycles build loads precompiled GPU
 kernels. Coroutine sizes are static compilation results, not profiled array
 sizes. They remain identical across all three runs of each scene.
 
-| Scene | Scene compile | Main JIT | Cycles whole render call | Frame / fields / stages |
+| Scene | Scene compile | Session init | Cycles whole render call | Frame / fields / stages |
 | --- | ---: | ---: | ---: | --- |
 | Lone Monk | 4.98274 | 18.8151 | 16.05099 | 220 B / 55 / 4 |
 | Monster | 1.49867 | 22.3434 | 15.41285 | 284 B / 71 / 6 |

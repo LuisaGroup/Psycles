@@ -68,13 +68,22 @@ int main(int argc, char **argv) {
     stream << words.copy_from(table.table.words.data());
     const auto oracle = read_oracle();
     constexpr std::array capacities{0u, 1u, 64u};
-    for (auto capacity_index = 0u; capacity_index < capacities.size();
-         ++capacity_index) {
+    // Both specializations execute the unchanged original table. Compare
+    // each one directly against Cycles GPU state, not against each other.
+    for (auto run = 0u; run < 2u * capacities.size(); ++run) {
+      const auto capacity_index = run % capacities.size();
+      const auto specialized = run >= capacities.size();
       const auto capacity = capacities[capacity_index];
+      const abi::ShaderEntryUsage whole{table.table.node_types_used,
+                                         table.table.peak_stack_usage};
+      const auto surface = specialized
+                               ? table.table.usage_for(abi::SHADER_TYPE_SURFACE)
+                               : whole;
+      const auto volume = specialized
+                              ? table.table.usage_for(abi::SHADER_TYPE_VOLUME)
+                              : whole;
       Kernel1D<Buffer<unsigned>, Buffer<float>, Buffer<unsigned>> kernel =
-          [=, used = table.table.node_types_used,
-           features = table.kernel_features,
-           stack_size = table.table.peak_stack_usage](
+          [=, features = table.kernel_features](
               BufferUInt words, BufferFloat values, BufferUInt metadata) {
             const UInt i = dispatch_x();
             const auto identity = make_float4x4(1.0f);
@@ -121,12 +130,14 @@ int main(int argc, char **argv) {
             $if(i < 8u) {
               svm::eval_nodes(globals, words, abi::SHADER_TYPE_SURFACE,
                               features, svm::kernel_feature_node_mask_surface,
-                              used, transforms, sd, path, result, stack_size);
+                              surface.node_types_used, transforms, sd, path,
+                              result, std::max(1u, surface.peak_stack_usage));
             }
             $else {
               svm::eval_nodes(globals, words, abi::SHADER_TYPE_VOLUME, features,
-                              svm::kernel_feature_node_mask_volume, used,
-                              transforms, sd, path, result, stack_size);
+                              svm::kernel_feature_node_mask_volume,
+                              volume.node_types_used, transforms, sd, path,
+                              result, std::max(1u, volume.peak_stack_usage));
             };
             const auto put = [&](unsigned offset, Expr<luisa::float3> value) {
               values.write(i * 10u + offset, value.x);

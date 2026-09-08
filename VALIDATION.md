@@ -25,7 +25,8 @@ or summed profiled kernel times.
 | Classroom | 1920x1080 / 1 | 20.7624 | 18.8207 | 0.9065 |
 | Barbershop | 2048x858 / 0 | 28.7312 | 41.0285 | 1.4280 |
 
-Only Classroom is faster in this campaign. Main JIT medians are
+Only Classroom is faster in this campaign. Session-initialization medians
+(the CLI's `shader_jit_seconds`, including JIT and setup/baking) are
 18.8151 / 22.3434 / 18.1598 / 27.4798 s respectively, with main shader
 caching disabled and auxiliary/OS caches retaining normal policy.
 Coroutine frames are 220 / 284 / 264 / 416 B. Cycles loads precompiled
@@ -47,6 +48,17 @@ performance runs. Use the [schema-v2 runner](docs/scene-benchmark.md);
 schema-v1 Cycles whole-call ratios are not comparable.
 
 ## Published compiler and backend gate
+
+The later [entry-specific specialization](docs/validation/2026-09-08/svm-entry-usage/README.md)
+adds independent original-word, AST and GPU regressions. Its completed
+gates are full 32-thread build, host 153/154, HIP 177/177, fallback 178/179
+and strict native Vulkan 5/5; only the same source-size and fallback-film
+failures remain. Twelve subsequent Psycles canaries use the unchanged
+original Cycles reference images, not new paired reference renders.
+Render medians are 13.9472 / 15.2102 / 18.9568 / 39.5579 s, with unchanged
+frames and residual image differences. First-run session initialization
+and later repetitions are reported separately, including final-link delays.
+The complete paired baseline above retains its original revision and scope.
 
 The [read-only-reference checkpoint](docs/validation/2026-09-08/coro-readonly-forwarding/README.md)
 records the complete suites for Psycles 2d89cf1d / Luisa 9ea3b720f. The later
@@ -83,7 +95,7 @@ These are scoped checkpoints, not interchangeable full-render certificates.
 | Contract | Original-source / regression evidence |
 | --- | --- |
 | Default native SVM, geometry, curve and light state | [Native default](docs/validation/2026-09-07/native-default/README.md), [surface state](docs/validation/2026-09-07/native-surface-state/README.md) |
-| Omitted node cases, feature guards and static array bounds | [Static pruning](docs/validation/2026-09-07/native-static-pruning/README.md), [scene-local extents](docs/validation/2026-09-07/scene-local-extents/README.md), [closure budget](docs/validation/2026-09-07/native-closure-budget/README.md) |
+| Omitted node cases, feature guards and static array bounds | [Static pruning](docs/validation/2026-09-07/native-static-pruning/README.md), [scene-local extents](docs/validation/2026-09-07/scene-local-extents/README.md), [entry usage](docs/validation/2026-09-08/svm-entry-usage/README.md), [closure budget](docs/validation/2026-09-07/native-closure-budget/README.md) |
 | Native volume words, ordered stack and consumers | [Volume SVM](docs/validation/2026-09-07/native-volume-svm/README.md), [volume consumers](docs/validation/2026-09-08/native-volume-consumers/README.md) |
 | World/background and camera-dependent baking | [Native background](docs/validation/2026-09-08/native-background/README.md) |
 | Scene admission, attribute residency and deferred volume emission | [Native admission](docs/validation/2026-09-08/native-scene-admission/README.md) |

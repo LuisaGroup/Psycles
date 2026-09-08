@@ -66,13 +66,15 @@ Float3 evaluate_cycles_svm_lamp_emission(
     $if(primitive != svm::primitive_none) {
       cycles_svm_shader_setup_backfacing(sd);
     };
+    const auto usage = scene->cycles_svm->compilation.table.usage_for(
+        abi::SHADER_TYPE_SURFACE);
     svm::eval_nodes_assume_valid(
         kg, *scene->cycles_svm->word_buffer, abi::SHADER_TYPE_SURFACE,
         scene->cycles_svm->kernel_features,
         svm::kernel_feature_node_mask_surface_light,
-        scene->cycles_svm->compilation.table.node_types_used,
+        usage.node_types_used,
         transforms, sd, state,
-        std::max<std::size_t>(1u, scene->cycles_svm->compilation.table.peak_stack_usage));
+        std::max<std::size_t>(1u, usage.peak_stack_usage));
     $if(((sd.flag & svm::shader_data_emission) != 0u) &
         (abs(dot(sd.Ng, sd.wi)) > 0.0f)) {
       emission = sd.closure_emission_background;
