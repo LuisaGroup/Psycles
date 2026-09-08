@@ -1,1 +1,2 @@
 tools/cycles_path_trace/*.patch -whitespace
+tools/cycles_binding_oracle.patch -whitespace

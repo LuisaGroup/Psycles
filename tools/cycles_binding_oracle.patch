@@ -1,0 +1,40 @@
+diff --git a/intern/cycles/scene/image.cpp b/intern/cycles/scene/image.cpp
+index b779c3fc5..c7abd88ef 100644
+--- a/intern/cycles/scene/image.cpp
++++ b/intern/cycles/scene/image.cpp
+@@ -10,6 +10,7 @@
+ #include "scene/image_loader.h"
+ #include "scene/image_oiio.h"
+ #include "scene/image_vdb.h"
++#include "scene/psycles_binding_oracle.h"
+ #include "scene/scene.h"
+ #include "scene/stats.h"
+ 
+@@ -681,6 +682,8 @@ void ImageManager::device_update(Device *device, Scene *scene, Progress &progres
+   /* Copy device arrays. */
+   device_copy_image_textures(device, scene);
+ 
++  psycles_binding_oracle::images(images, image_udims);
++
+   need_update_ = false;
+ }
+ 
+diff --git a/intern/cycles/scene/shader.cpp b/intern/cycles/scene/shader.cpp
+index 0337776eb..d3bda4367 100644
+--- a/intern/cycles/scene/shader.cpp
++++ b/intern/cycles/scene/shader.cpp
+@@ -12,6 +12,7 @@
+ #include "scene/object.h"
+ #include "scene/osl.h"
+ #include "scene/procedural.h"
++#include "scene/psycles_binding_oracle.h"
+ #include "scene/scene.h"
+ #include "scene/shader.h"
+ #include "scene/shader_graph.h"
+@@ -493,5 +494,6 @@ uint64_t ShaderManager::get_attribute_id(ustring name)
+ 
+   const uint64_t id = ATTR_STD_NUM + unique_attribute_id.size();
+   unique_attribute_id[name] = id;
++  psycles_binding_oracle::attributes(unique_attribute_id);
+   return id;
+ }
