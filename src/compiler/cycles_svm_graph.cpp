@@ -361,6 +361,10 @@ projected_binary_math_operation(std::string_view type) noexcept {
 [[nodiscard]] GraphSocketType projected_input_type(
     std::string_view node, std::string_view input,
     GraphSocketType contract_type) noexcept {
+  if (node == node_type::mapping) {
+    // MappingNode declares Vector, Location, Rotation and Scale as POINT.
+    return GraphSocketType::point;
+  }
   if (input == "Vector" &&
       (node == node_type::ies_light || node == node_type::wave_texture ||
        node == node_type::noise_texture ||
@@ -1122,6 +1126,14 @@ void CyclesGraph::project_socket_types() {
   // after those steps: a new ConvertNode must neither block Blender folding
   // nor masquerade as the consumer of a per-texture mapping property.
   const auto count = _nodes.size();
+  // Restore producer declarations before reconnecting any consumer. Mapping
+  // is also POINT on output, including its vector/normal operation modes.
+  for (auto index = std::size_t{}; index < count; ++index) {
+    auto *node = _nodes[index].get();
+    if (node->type == node_type::mapping) {
+      node->output("Vector")->type = GraphSocketType::point;
+    }
+  }
   for (auto index = std::size_t{}; index < count; ++index) {
     auto *node = _nodes[index].get();
     for (auto &input : node->inputs) {
