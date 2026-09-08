@@ -135,10 +135,12 @@ void test_object_displacement_import() {
   require(material->shader
                   .root(psycles::contract::ShaderDomain::surface_normal)
                   .has_value() &&
-              !material->shader
+              material->shader
                    .root(psycles::contract::ShaderDomain::displacement)
                    .has_value(),
-          "BUMP displacement did not become a surface-normal program");
+          "BUMP must add surface Normal while retaining Output.Displacement");
+  require(!psycles::contract::uses_true_displacement(material->displacement_method),
+          "retained BUMP displacement entry must not enable mesh displacement");
 
   const psycles::contract::ShaderNode *displacement = nullptr;
   auto displacement_count = 0u;

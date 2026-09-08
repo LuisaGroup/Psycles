@@ -1188,12 +1188,12 @@ void test_integrator_settings_round_trip() {
              bump_material->second.shader
                  .root(psycles::contract::ShaderDomain::surface_normal)
                  .has_value() &&
-             !bump_material->second.shader
+             bump_material->second.shader
                   .root(psycles::contract::ShaderDomain::displacement)
                   .has_value() &&
              bump_material->second.displacement_method ==
                  psycles::contract::DisplacementMethod::bump,
-         "automatic bump was not retained as a surface-normal root");
+         "BUMP must retain displacement and add the surface-normal root");
   bool has_automatic_bump = false;
   bool has_texture_mapping_node = false;
   for (const auto &node : bump_material->second.shader.nodes()) {

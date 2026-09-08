@@ -77,7 +77,10 @@ void check_imported_words(std::string_view stem, unsigned expected_count,
     const auto shader = compiler.compile(material->second.shader);
     require(shader.ok(), "invalid normalized graph");
     AttributeIDMap attributes;
-    const auto image = compile_shader(*shader.program, attributes, {});
+    ImageIDMap images;
+    const auto image = compile_shader(
+        *shader.program, attributes, images,
+        ShaderCompileContext{.displacement_method = material->second.displacement_method});
     require(image.valid, image.diagnostic);
     auto comparable = image.words;
     // Only the three typed NODE_CLOSURE_SET_WEIGHT float literals in constant

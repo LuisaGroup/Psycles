@@ -1183,11 +1183,10 @@ private:
 
         const auto displacement = lower_output(
             node, socket, SocketType::vector);
-        if (_true_displacement) {
-            _graph.set_root(
-                ShaderDomain::displacement,
-                displacement.ref);
-        }
+        // Cycles retains Output.Displacement and compiles its entry even for
+        // BUMP-only materials. The material policy controls mesh evaluation;
+        // it does not erase this graph domain before SVM finalization.
+        _graph.set_root(ShaderDomain::displacement, displacement.ref);
         if (!_automatic_bump_from_displacement) {
             return;
         }

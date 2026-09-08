@@ -382,6 +382,18 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_wireframe_tests)
 
     if(TARGET psycles_luisa_runtime)
+        add_executable(psycles_cycles_svm_texture_outputs_tests tests/test_cycles_svm_texture_outputs.cpp)
+        target_link_libraries(psycles_cycles_svm_texture_outputs_tests PRIVATE Psycles::luisa_runtime)
+        target_compile_features(psycles_cycles_svm_texture_outputs_tests PRIVATE cxx_std_20)
+        target_compile_definitions(psycles_cycles_svm_texture_outputs_tests PRIVATE
+            PSYCLES_SVM_IMPORT_FIXTURE_DIR="${CMAKE_CURRENT_LIST_DIR}/../tests/data")
+        add_test(NAME psycles.cycles_svm_texture_outputs COMMAND psycles_cycles_svm_texture_outputs_tests)
+        add_executable(psycles_cycles_svm_bump_alias_tests tests/test_cycles_svm_bump_alias.cpp)
+        target_link_libraries(psycles_cycles_svm_bump_alias_tests PRIVATE Psycles::luisa_runtime)
+        target_compile_features(psycles_cycles_svm_bump_alias_tests PRIVATE cxx_std_20)
+        target_compile_definitions(psycles_cycles_svm_bump_alias_tests PRIVATE
+            PSYCLES_SVM_IMPORT_FIXTURE_DIR="${CMAKE_CURRENT_LIST_DIR}/../tests/data")
+        add_test(NAME psycles.cycles_svm_bump_alias COMMAND psycles_cycles_svm_bump_alias_tests)
         add_executable(psycles_cycles_svm_hidden_socket_tests
             tests/test_cycles_svm_hidden_socket.cpp)
         target_link_libraries(psycles_cycles_svm_hidden_socket_tests PRIVATE Psycles::luisa_runtime)

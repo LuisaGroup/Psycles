@@ -974,6 +974,11 @@ CyclesGraph CyclesGraph::project(
     // NormalLinked belongs to the legacy surface-program representation.
     // Cycles encodes this fact solely as the ShaderInput edge itself.
     properties.erase("NormalLinked");
+    // Likewise, NeedsColor is a legacy per-output evaluation hint, not a
+    // Cycles node property. Keeping it would prevent ShaderNode::equals from
+    // merging the Color and Factor projections of one procedural texture.
+    // The original SVM compiler determines live outputs from their links.
+    properties.erase("NeedsColor");
     auto *node = graph.add_node(std::string{target_type}, source.label,
                                 std::move(inputs), std::move(outputs),
                                 special_type(target_type),
@@ -1383,14 +1388,26 @@ void CyclesGraph::refine_bump_nodes() {
       }
       auto *bump_geometry = shared_normal_copy.at(shared_normal->parent);
       auto *bump_geometry_normal = bump_geometry->output(shared_normal->name);
-      disconnect(dot_normal_input);
+      // clean() may have deduplicated the provisional NORMAL -> VECTOR
+      // conversion with surface consumers. Its input is outside the bump
+      // reconstruction boundary: redirecting it also changes those consumers.
+      // Reconnect the three dot operand edges, exactly as the three connect()
+      // calls in ShaderGraph::bump_from_displacement do, and leave every
+      // pre-existing alias (and its other users) attached to the original N.
+      for (auto *sample_dot : {dot, dot_dx, dot_dy}) {
+        auto *sample_normal = sample_dot->input("Vector2");
+        disconnect(sample_normal);
+        if (!connect_with_autoconvert(bump_geometry_normal, sample_normal)) {
+          reject("Cycles automatic displacement normal connection failed");
+          return;
+        }
+      }
       disconnect(bump_normal);
       disconnect(dot_vector1);
       auto *center_displacement =
           nodes_center.at(displacement_output->parent)
               ->output(displacement_output->name);
-      if (!connect(bump_geometry_normal, dot_normal_input) ||
-          !connect(bump_geometry_normal, bump_normal) ||
+      if (!connect(bump_geometry_normal, bump_normal) ||
           !connect(center_displacement, dot_vector1) ||
           !connect(dot_dx->output(height->link->name),
                    node->input("SampleX")) ||
