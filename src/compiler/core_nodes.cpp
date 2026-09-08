@@ -623,7 +623,9 @@ NodeRegistry make_core_node_registry() {
                  input("C", SocketType::floating, SocketValue::floating(0.0f))},
       .outputs = {output("Value", SocketType::floating)},
       .properties = {property("Operation", SocketType::string,
-                              SocketValue::string("ADD"))},
+                              SocketValue::string("ADD")),
+                     property("Clamp", SocketType::boolean,
+                              SocketValue::boolean(false))},
       .required_features = {}}));
 
   static_cast<void>(registry.register_schema(NodeSchema{

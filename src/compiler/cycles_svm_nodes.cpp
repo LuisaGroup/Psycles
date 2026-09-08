@@ -956,6 +956,38 @@ public:
 
 class MathNode final : public GraphNode {
 public:
+  void expand(CyclesGraph &graph) override {
+    auto *result = output("Value");
+    if (!boolean_property(this, "Clamp").value_or(false) ||
+        result == nullptr || result->links.empty()) {
+      return;
+    }
+    // Original MathNode::expand: append one ClampNode and relink every
+    // consumer before connecting the unclamped result to its Value input.
+    auto *clamp = graph.add_node(
+        node_type::clamp_range, label + " Clamp",
+        {{.name = "Value", .type = GraphSocketType::floating,
+          .value = contract::SocketValue::floating(1.0f)},
+         {.name = "Min", .type = GraphSocketType::floating,
+          .value = contract::SocketValue::floating(0.0f)},
+         {.name = "Max", .type = GraphSocketType::floating,
+          .value = contract::SocketValue::floating(1.0f)}},
+        {{.name = "Result", .type = GraphSocketType::floating, .links = {}}},
+        GraphNodeSpecialType::none,
+        {{"Mode", contract::SocketValue::string("MINMAX")}});
+    const auto users = result->links;
+    for (auto *input : users) {
+      graph.disconnect(input);
+      if (!graph.connect(clamp->output("Result"), input)) {
+        graph.reject("Cycles Math Clamp output relink failed");
+        return;
+      }
+    }
+    if (!graph.connect(result, clamp->input("Value"))) {
+      graph.reject("Cycles Math Clamp input connection failed");
+    }
+  }
+
   void compile(SVMCompiler &compiler) override {
     const auto operation = math_type(this);
     if (!operation) {
