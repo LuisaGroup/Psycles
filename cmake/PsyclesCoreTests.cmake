@@ -499,6 +499,16 @@ if(PSYCLES_BUILD_TESTS)
             NAME psycles.cycles_svm_bump_state
             COMMAND psycles_cycles_svm_bump_state_tests)
 
+        add_executable(psycles_cycles_svm_bsdf_case_groups_tests
+            tests/test_cycles_svm_bsdf_case_groups.cpp)
+        target_link_libraries(psycles_cycles_svm_bsdf_case_groups_tests
+            PRIVATE Psycles::luisa_runtime)
+        target_include_directories(psycles_cycles_svm_bsdf_case_groups_tests
+            PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+        target_compile_features(psycles_cycles_svm_bsdf_case_groups_tests PRIVATE cxx_std_20)
+        add_test(NAME psycles.cycles_svm_bsdf_case_groups
+            COMMAND psycles_cycles_svm_bsdf_case_groups_tests)
+
         add_executable(
             psycles_cycles_svm_vector_displacement_tests
             tests/test_cycles_svm_vector_displacement.cpp)
