@@ -41,8 +41,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &cycles_primitive_index =
             surface.cycles_primitive_index;
         auto &path_step = bounce.path_step;
-        auto &light_sample = bounce.random().light_sample;
-        auto &light_terminate_sample = bounce.random().light_terminate_sample;
         auto &throughput = sample.throughput;
         auto &path_depth = sample.path_depth;
         const auto mis_competition_skipped =
@@ -393,6 +391,19 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                     cycles_rng_offset,
                     tabulated_sobol::surface_bsdf_dimension));
         if (path_trace_enabled) {
+            // Cycles' diagnostic trace observes PRNG_LIGHT even when NEE
+            // will be rejected. Record only the pure tuple here, never an
+            // emitter-distribution lookup or a light-tree walk for tracing.
+            const auto light_sample = cycles_sampler::sample_3d(
+                invocation.sobol_table, kernel_parameters.sobol_sequence_size,
+                sample.sample_index, sample.rng_hash,
+                cycles_sampler::path_state_dimension(
+                    cycles_rng_offset, tabulated_sobol::light_dimension));
+            const auto light_terminate_sample = cycles_sampler::sample_1d(
+                invocation.sobol_table, kernel_parameters.sobol_sequence_size,
+                sample.sample_index, sample.rng_hash,
+                cycles_sampler::path_state_dimension(
+                    cycles_rng_offset, tabulated_sobol::light_terminate_dimension));
             const auto terminate_sample =
                 sample.continuation_terminate_sample();
             auto closure_summary = trace_surface_closure(
