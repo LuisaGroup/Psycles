@@ -128,8 +128,8 @@ and no concurrent build/render or GPU profiler overlaps these pairs.
 | Classroom / 1920x1080 / 1 | 18.0319 | 18.7626 | 1.0405 | 18.1196 | 264 B |
 | Barbershop / 2048x858 / 0 | 25.3775 | 39.2753 | 1.5476 | 25.6044 | 416 B |
 
-The efficiency goal is not complete: Barbershop is 54.8% slower, compared
-with 3.3%–5.9% for the other scenes. Session init is the CLI's
+At that paired checkpoint the efficiency goal is not complete: Barbershop is
+54.8% slower, compared with 3.3%–5.9% for the other scenes. Session init is the CLI's
 shader_jit_seconds, including JIT plus setup/baking, not compiler-only.
 Cycles loads precompiled GPU kernels. Smaller IR, local arrays and frames
 do not independently establish end-to-end speedup.
@@ -149,10 +149,29 @@ adopted after the GPU controls. The follow-up original-scene profile still
 locates the large Barbershop gap in surface shading; a smaller pointer chain
 or synthetic sampling speed is not reported as an end-to-end renderer gain.
 
+The latest [light-endpoint correction](validation/2026-09-08/light-endpoints/README.md)
+separates geometric lamp hits from spot/spread evaluation and indirect shader
+visibility, matching original Cycles' empty-emission state transition. The
+permanent original-GPU regression has 240 endpoint and 2048 visibility checks.
+Fresh 64-spp Barbershop work counts now differ from Cycles by only 196 surface
+and 70 volume visits out of 332.3M / 85.1M. This repairs a real structural
+error, but surface visits were already within 0.04%; it does not explain away
+the remaining surface cost per path. Post-lamp closest scheduling, shadow
+work surplus and residual DiffInd differences remain explicitly unresolved.
+Six subsequent 256-spp canaries retain finite channels in every scene.
+Barbershop's median is 39.2464 s (0.92% longer than the preceding checkpoint),
+and its DiffInd relative RMSE improves from 7.45% to 7.13%. Other scene render
+times and the separate Monster link-time repeat are retained in that report;
+these follow-ups are not substituted for fresh paired Cycles measurements.
+
 The [scheduler trace comparison regression](validation/2026-09-08/dispatch-trace-comparison/README.md)
-also resolves the former fallback test failure: the complete suite is now
-182/182, with exact RNG/discrete state checks and unchanged film tolerances.
+also resolves the former fallback test failure: it passed 182/182 at that
+checkpoint, with exact RNG/discrete state checks and unchanged film tolerances.
 No renderer binaries or captured trace bits change with that test-only fix.
+With the new endpoint regression, the current registered suites pass HIP
+181/181 and fallback 183/183; strict native Vulkan passes all 2288 endpoint
+and visibility checks without loading DXC/DXIL. The same four existing host
+source-size violations remain, and their limits are not waived.
 
 All 46 Psycles channels are finite in every run. First-pair relative RMSE is:
 
