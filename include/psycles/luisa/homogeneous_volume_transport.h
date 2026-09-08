@@ -134,7 +134,8 @@ class HomogeneousVolumeTransport {
     // technique-rescaled PRNG_VOLUME_SCATTER_DISTANCE value saved before
     // indirect free-flight sampling; `scatter_random` and `reservoir_random`
     // are the values left after that sampling. This distinction is required
-    // by Cycles' coupled random-number measure.
+    // by Cycles' coupled random-number measure. The equiangular sample is
+    // prepared before coefficient evaluation, like volume_integrate_result_init.
     [[nodiscard]] HomogeneousVolumeDirectSample
     sample_direct(
         const VolumeCoefficients &coefficients,
@@ -146,7 +147,8 @@ class HomogeneousVolumeTransport {
         Float3 ray_origin,
         Float3 ray_direction,
         const VolumeEquiangularCoefficients
-            &equiangular) const noexcept;
+            &equiangular,
+        const VolumeEquiangularSample &equiangular_sample) const noexcept;
 };
 
 }// namespace psycles::luisa_backend

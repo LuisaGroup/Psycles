@@ -38,16 +38,6 @@ class HomogeneousVolumeSegmentComponentImpl final
          const HomogeneousVolumeDirectInput &direct,
          const VolumeDirectLightProvider
              *direct_light) const noexcept override {
-        VolumePhaseSet phases{
-            _closure_allocation_budget};
-        const auto coefficients =
-            shader.evaluate(stack, position, &phases);
-        const auto scatter_probability =
-            _scatter_probability.evaluate(
-                coefficients,
-                distance,
-                terminate,
-                guiding);
         const VolumeDirectSampling
             direct_sampling;
         const auto direct_state =
@@ -56,6 +46,25 @@ class HomogeneousVolumeSegmentComponentImpl final
                 scatter_random,
                 direct.enabled &
                     !terminate);
+        const VolumeEquiangularCoefficients equiangular{
+            .light_position = direct.light_position, .interval = direct.interval};
+        VolumeEquiangularSample equiangular_sample{
+            .distance = 0.0f, .pdf = 0.0f, .valid = false};
+        // Original volume_integrate_result_init precedes coefficient shading,
+        // including on an emission-only segment. Do not prune this based on
+        // sigma_s; only the chosen direct-sampling technique controls it.
+        $if(direct_state.method == volume_sample_equiangular) {
+            equiangular_sample = direct_sampling.sample_equiangular(
+                position, -incoming, equiangular, direct_state.random);
+        };
+        VolumePhaseSet phases{_closure_allocation_budget};
+        const auto coefficients = shader.evaluate(stack, position, &phases);
+        Float3 scatter_probability = make_float3(0.0f);
+        $if(!terminate & coefficients.has_scatter &
+            any(coefficients.sigma_s != make_float3(0.0f)) & (distance > 0.0f)) {
+            scatter_probability = _scatter_probability.evaluate(
+                coefficients, distance, terminate, guiding);
+        };
         const auto transport =
             _transport.sample_with_probability(
                 coefficients,
@@ -75,60 +84,36 @@ class HomogeneousVolumeSegmentComponentImpl final
                 direct_state,
                 position,
                 -incoming,
-                {.light_position =
-                     direct.light_position,
-                 .interval =
-                     direct.interval});
-        VolumeDirectDirectionSample
-            direction_sample{
-                .direction =
-                    make_float3(0.0f),
-                .valid = false};
+                equiangular,
+                equiangular_sample);
+        VolumePhaseSetEvaluation direct_phase{
+            .value = 0.0f, .pdf = 0.0f, .sample_weight = 0.0f, .valid = false};
         if (direct_light != nullptr) {
-            direction_sample =
-                direct_light->sample_direction(
-                    direct_transport
-                        .distance);
-            direct_light
-                ->evaluate_constant_emission();
-        }
-        const auto direct_phase_raw =
-            phases.evaluate(
-                -incoming,
-                direction_sample.direction);
-        const VolumePhaseSetEvaluation
-            direct_phase{
-                .value = select(
-                    0.0f,
-                    direct_phase_raw.value,
-                    direction_sample.valid),
-                .pdf = select(
-                    0.0f,
-                    direct_phase_raw.pdf,
-                    direction_sample.valid),
-                .sample_weight = select(
-                    0.0f,
-                    direct_phase_raw
-                        .sample_weight,
-                    direction_sample.valid),
-                .valid =
-                    direct_phase_raw.valid &
-                    direction_sample.valid};
-        if (direct_light != nullptr) {
-            direct_light
-                ->evaluate_deferred_emission(
-                    direct_phase.valid &
-                    (direct_phase.value !=
-                     0.0f));
+            // Cycles volume_integrate_event calls direct lighting only for
+            // result.direct_scatter. Its light resample may itself fail before
+            // constant emission or phase evaluation is reached.
+            $if(direct_transport.scattered) {
+                const auto direction_sample =
+                    direct_light->sample_direction(direct_transport.distance);
+                $if(direction_sample.valid) {
+                    direct_light->evaluate_constant_emission();
+                    direct_phase = phases.evaluate(-incoming, direction_sample.direction);
+                    direct_light->evaluate_deferred_emission(
+                        direct_phase.valid & (direct_phase.value != 0.0f));
+                };
+            };
         }
 
         // Cycles phase functions use -sd->wi as their axis. Volume ShaderData
         // stores sd->wi = -ray.D, so the sampling axis here is the propagation
         // direction rather than the viewer-facing incoming vector.
-        const auto phase =
-            phases.sample(
-                -incoming,
-                phase_random);
+        VolumePhaseSetSample phase{
+            .direction = -incoming, .pdf = 0.0f, .sampled_roughness = 1.0f,
+            .selection_rescaled = phase_random.x, .closure_index = 0u,
+            .closure_type = 0u, .valid = false};
+        $if(transport.scattered) {
+            phase = phases.sample(-incoming, phase_random);
+        };
         const auto scattered =
             transport.scattered &
             phase.valid;
