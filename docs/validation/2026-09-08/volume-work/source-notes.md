@@ -75,7 +75,7 @@ unchanged. After durations are respectively 5688461864, 1554720358 and
 measurable gain. Both commands use rocprofv3 `--kernel-trace --stats`,
 PSYCLES_DISABLE_SHADER_CACHE=1, LUISA_CORO_SHADER_MAP=1, the same export,
 HIP 2048x858 / 64 samples / 64 max samples per dispatch, wavefront-staged,
-32 block threads, 32768 global-memory batch, native fast math and a
+32 execution-block threads, persistent-worker setting 32768, native fast math and a
 1048576-entry frame pool. Full renderer argument vectors for the 256-spp
 canaries are archived separately; do not substitute their sample count.
 

@@ -928,6 +928,10 @@ if(PSYCLES_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_scene_benchmark_runner.py"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/run_scene_benchmark.py")
         add_test(
+            NAME psycles.render_pass_contract
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_render_pass_contract.py")
+        add_test(
             NAME psycles.compare_cycles_contract
             COMMAND
                 "${Python3_EXECUTABLE}"
@@ -1046,6 +1050,10 @@ if(PSYCLES_BUILD_TESTS)
             ARGUMENTS
                 "${blender_exporter}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/create_cycles_shader_probe.py")
+        psycles_add_blender_test(
+            NAME psycles.blender_golden_pass_contract
+            SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_golden_pass_contract.py"
+            ARGUMENTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/render_cycles_golden.py")
         psycles_add_blender_test(
             NAME psycles.blender_diagnostic_probes
             SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_blender_diagnostic_probes.py"
