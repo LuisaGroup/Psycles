@@ -99,8 +99,10 @@ class ClosestEventStageImpl final
                     (light.visibility_mask &
                      ray_visibility) != 0u;
                 const auto eligible =
-                    visible &
-                    (camera_path | use_mis) &
+                    // Cycles lights_intersect_impl checks camera exclusion
+                    // here, but indirect shader visibility in shade_light.
+                    // Even an excluded diffuse/glossy lamp is an endpoint.
+                    select(use_mis, visible, camera_path) &
                     (light_index !=
                      excluded_analytic_light);
                 $if(eligible &
