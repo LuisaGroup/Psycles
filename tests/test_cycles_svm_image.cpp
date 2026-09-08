@@ -70,6 +70,19 @@ void require_words(std::span<const std::uint32_t> actual,
   return image;
 }
 
+[[nodiscard]] bool link_constant_coordinate(ShaderGraph &graph, NodeId image,
+                                            Vec3f coordinate) {
+  // The original probe supplies a linked constant coordinate. A bare value
+  // on Cycles' hidden POINT input is not that graph: default_inputs replaces
+  // an unlinked Image/Environment coordinate with UV/Position, respectively.
+  // Keep the original expected words; express its primitive producer here.
+  const auto vector = graph.add_node(node_type::combine_xyz, "Constant Coordinate");
+  return graph.set_input(vector, "X", SocketValue::floating(coordinate.x)) &&
+         graph.set_input(vector, "Y", SocketValue::floating(coordinate.y)) &&
+         graph.set_input(vector, "Z", SocketValue::floating(coordinate.z)) &&
+         graph.connect({vector, "Vector"}, image, "Vector");
+}
+
 [[nodiscard]] ShaderGraph make_image_graph(
     Vec3f coordinate, std::uint64_t resource_id,
     std::string_view interpolation, std::string_view extension,
@@ -84,7 +97,7 @@ void require_words(std::span<const std::uint32_t> actual,
       graph.add_node(node_type::combine_color, "RGB Alpha");
   const auto emission = graph.add_node(node_type::emission, "Emission");
   require(
-      graph.set_input(image, "Vector", SocketValue::vector(coordinate)) &&
+      link_constant_coordinate(graph, image, coordinate) &&
           graph.set_property(image, "Image",
                              SocketValue::unsigned_integer(resource_id)) &&
           graph.set_property(image, "Interpolation",
@@ -120,7 +133,7 @@ void require_words(std::span<const std::uint32_t> actual,
       graph.add_node(node_type::environment_texture, "Environment Texture");
   const auto emission = graph.add_node(node_type::emission, "Emission");
   require(
-      graph.set_input(image, "Vector", SocketValue::vector(direction)) &&
+      link_constant_coordinate(graph, image, direction) &&
           graph.set_property(image, "Image",
                              SocketValue::unsigned_integer(resource_id)) &&
           graph.set_property(image, "Interpolation",

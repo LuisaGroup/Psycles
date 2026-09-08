@@ -253,6 +253,7 @@ private:
   [[nodiscard]] bool connect_with_autoconvert(GraphOutput *output,
                                               GraphInput *input);
   void compose_float3_autoconverts();
+  void project_socket_types();
   void inline_blender_functions();
   void collect_attribute_requests();
   void constant_fold();

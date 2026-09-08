@@ -521,7 +521,7 @@ NodeRegistry make_core_node_registry() {
            input("Lacunarity", SocketType::floating,
                  SocketValue::floating(2.0f)),
            input("Smoothness", SocketType::floating,
-                 SocketValue::floating(1.0f)),
+                 SocketValue::floating(5.0f)),
            input("Exponent", SocketType::floating, SocketValue::floating(0.5f)),
            input("Randomness", SocketType::floating,
                  SocketValue::floating(1.0f))},
