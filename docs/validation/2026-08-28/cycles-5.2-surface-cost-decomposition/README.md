@@ -1,5 +1,11 @@
 # Cycles 5.2 surface cost decomposition
 
+Historical checkpoint: this measured the retired compact value/closure
+executor, not the current Cycles 5.2.1 native word-stream interpreter.
+Its conclusions about that representation must not be applied to today's
+SVM. See the [current surface audit](../../2026-09-08/lamp-routing-and-surface/README.md)
+and [validation index](../../../../VALIDATION.md) for current evidence.
+
 ## Outcome
 
 Fresh same-device probes isolate the remaining Barbershop surface gap to the
@@ -9,7 +15,7 @@ single constant Glossy closure. Keeping the original closure topology while
 disconnecting every non-shader input makes Psycles 1.692x slower; the complete
 authored graph is 1.991x slower.
 
-This rejects the hypothesis that the current twofold surface gap is a uniform
+At that revision this rejected the hypothesis that its twofold surface gap was a uniform
 HIP, scheduler, or elementary BSDF cost. The next work should change the
 representation and traversal of complex closure/value programs, not force a
 backend resource number or perturb already competitive simple closures.

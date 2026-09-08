@@ -149,15 +149,15 @@ adopted after the GPU controls. The follow-up original-scene profile still
 locates the large Barbershop gap in surface shading; a smaller pointer chain
 or synthetic sampling speed is not reported as an end-to-end renderer gain.
 
-The latest [light-endpoint correction](validation/2026-09-08/light-endpoints/README.md)
+The earlier [light-endpoint correction](validation/2026-09-08/light-endpoints/README.md)
 separates geometric lamp hits from spot/spread evaluation and indirect shader
 visibility, matching original Cycles' empty-emission state transition. The
 permanent original-GPU regression has 240 endpoint and 2048 visibility checks.
 Fresh 64-spp Barbershop work counts now differ from Cycles by only 196 surface
 and 70 volume visits out of 332.3M / 85.1M. This repairs a real structural
 error, but surface visits were already within 0.04%; it does not explain away
-the remaining surface cost per path. Post-lamp closest scheduling, shadow
-work surplus and residual DiffInd differences remain explicitly unresolved.
+the remaining surface cost per path. Subsequent lamp-routing work below fixes
+post-lamp closest scheduling; shadow surplus and residual DiffInd remain.
 Six subsequent 256-spp canaries retain finite channels in every scene.
 Barbershop's median is 39.2464 s (0.92% longer than the preceding checkpoint),
 and its DiffInd relative RMSE improves from 7.45% to 7.13%. Other scene render
@@ -168,12 +168,39 @@ The [scheduler trace comparison regression](validation/2026-09-08/dispatch-trace
 also resolves the former fallback test failure: it passed 182/182 at that
 checkpoint, with exact RNG/discrete state checks and unchanged film tolerances.
 No renderer binaries or captured trace bits change with that test-only fix.
-With the new endpoint regression, the current registered suites pass HIP
-181/181 and fallback 183/183; strict native Vulkan passes all 2288 endpoint
-and visibility checks without loading DXC/DXIL. The same four existing host
-source-size violations remain, and their limits are not waived.
+The latest [lamp-routing / CFG / surface investigation](validation/2026-09-08/lamp-routing-and-surface/README.md)
+adds the original transparent-lamp traversal boundary, native miss-distance
+normalization and loop-epoch CFG repair. The full original native module now
+restructures. Hidden input default provenance and Vector Math host folding
+have 81 new original-Cycles word-image regressions. Entire raw Barbershop
+used-shader images matching the oracle increase from 80 to 100; 64 still have
+different lengths, and resource-ID payload mapping is not yet fully audited.
 
-All 46 Psycles channels are finite in every run. First-pair relative RMSE is:
+Main SVM dispatch and most handlers are already inlined. Keeping more HIP
+function boundaries in a controlled A/B/A experiment slows surface time by
+35.5%; that intervention is reverted. No inlining policy or device arithmetic
+is changed. The new report records code-object identities and actual outlined
+callees rather than equating static spill sites with dynamic memory traffic.
+
+Current suites pass HIP 182/182, fallback 184/184 and Luisa 155/155.
+The parallel fallback run exposed a separate production-queue lost-wakeup
+race, repaired generically in child `85e5300f1`, with two minimal failures
+and 100 green repetitions each. Strict native Vulkan lamp-routing and
+bump-state tests pass 2/2 without loading DXC/DXIL. Host results are 158/159:
+the same four existing source-size violations remain and are not waived.
+
+At Psycles `cf59ab5b` / Luisa `85e5300f1`, six new full-resolution 256-spp
+follow-ups complete against retained Cycles references, with exact prior
+geometry/images and new source socket metadata. Current render times are
+13.4514 / 14.8482 / 18.3248 s for Monk/Monster/Classroom (one each), and
+40.2962 s for Barbershop (three-run median). Current frames are
+220 / 280 / 260 / 416 B. Barbershop's 0.18% reduction from 40.3670 s is not
+a meaningful measured speedup; it remains about 59% slower than the retained
+Cycles median. Its first 79.0785 s session initialization and 23.3234 /
+24.6326 s repeats are all retained. These are not new paired Cycles timings.
+
+All 46 Psycles channels are finite in every run. The revision-pinned paired
+baseline's first-pair relative RMSE is:
 
 | Scene | Combined | DiffCol | DiffInd |
 | --- | ---: | ---: | ---: |

@@ -1,0 +1,680 @@
+{
+  "schema": "psycles.surface-inline-experiment.v1",
+  "scope": "same full Barbershop 2048x858/64-spp scene and fixed seed; A/B/A profiler runs, not a fresh Cycles pair; image comparisons are intervention controls, not renderer oracles",
+  "intervention": "B skips only inline_unique_oversized_generated_callables after IPO; ABI projection/demotion and downstream HIPRTC stay enabled; no noinline marker, arithmetic or register cap added",
+  "decision": "reject B and restore the existing policy; this is not a compiler repair",
+  "runs": {
+    "baseline": {
+      "directory": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-baseline-2r4G1T",
+      "render_wall_seconds": 10.5397,
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "work": {
+        "<entry>": 112459776,
+        "intersect_closest": 444264177,
+        "shade_volume": 85076974,
+        "shade_light_forward": 12869349,
+        "shade_background": 376900,
+        "shade_surface": 332307917,
+        "shade_light_nee": 138960468,
+        "intersect_shadow": 45987302,
+        "shade_shadow": 20800284
+      },
+      "profile": {
+        "shade_surface": {
+          "kernel": "kernel_96eb3744a6e940ba",
+          "launches": 1062,
+          "gpu_seconds": 5.865505303,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            2496
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_99d8901f913e2573",
+          "launches": 1048,
+          "gpu_seconds": 1.668429098,
+          "vgpr_counts": [
+            152
+          ],
+          "scratch_bytes": [
+            240
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_d70ee7214c833b99",
+          "launches": 425,
+          "gpu_seconds": 0.417569517,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            324
+          ]
+        }
+      },
+      "resources": {
+        "private_segment_fixed_size": 2496,
+        "sgpr_count": 107,
+        "vgpr_count": 256,
+        "sgpr_spill_count": 65,
+        "vgpr_spill_count": 500
+      },
+      "functions": {
+        "callable.20": {
+          "address": 5632,
+          "bytes": 10928,
+          "static_instructions": 2020,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_4d": {
+          "address": 16560,
+          "bytes": 6448,
+          "static_instructions": 1303,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "__ocml_tan_f32": {
+          "address": 23008,
+          "bytes": 972,
+          "static_instructions": 185,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "kernel_96eb3744a6e940ba": {
+          "address": 24064,
+          "bytes": 996532,
+          "static_instructions": 185686,
+          "scratch_load_instructions": 1489,
+          "scratch_store_instructions": 617,
+          "call_sites": 49,
+          "image_sample_instructions": 20
+        }
+      },
+      "code_object_sha256": "996fc472b22aeabc8af91ef2f8b19264b769557f087b68ec0900996006882703",
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-baseline-2r4G1T/render.log",
+          "sha256": "e4eddc41a91a8fa02a099dd2198802d1db44f21a1daa914272cae6c3c2445a0a",
+          "bytes": 218327
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-baseline-2r4G1T/psycles.exr",
+          "sha256": "ec6109d9dd6e15b6554c16fcb7061d295106058b80ce1b75e9586c308f9e2472",
+          "bytes": 153098260
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-baseline-2r4G1T/psycles_kernel_stats.csv",
+          "sha256": "5170069ef9cf611ae80e48882b683505924a7d27fd772eae6b3a3cdfe793ec68",
+          "bytes": 5842
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-baseline-2r4G1T/psycles_kernel_trace.csv",
+          "sha256": "261333346b8e870f3e3f7da3170d2b28748bb6a16929e83d2a8af90da598d963",
+          "bytes": 40841641
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-baseline-2r4G1T/hip_kernel_before_opt_12.ll",
+          "sha256": "1120e209e1ec668c4dde6aa58ca533664d75efc6870b6bbcaea9aee98e3ac09c",
+          "bytes": 22654849
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-baseline-2r4G1T/hip_kernel_final_12.ll",
+          "sha256": "de353e3264372b18c41748cb0db6f2cde237d99e517b6ada94e134b71bd1bc48",
+          "bytes": 8062508
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-baseline-2r4G1T/hip_isa_12.co",
+          "sha256": "996fc472b22aeabc8af91ef2f8b19264b769557f087b68ec0900996006882703",
+          "bytes": 1018944
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-baseline-2r4G1T/surface-code-object.txt",
+          "sha256": "9e4ebae569aff67924b95287719a41fc07b7eee047e56e5823372bedce515683",
+          "bytes": 3305
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-baseline-2r4G1T/surface-isa.txt",
+          "sha256": "fecb456851a767b524da63198dd6194b66ead5dabc514a4407393fef58d79f2e",
+          "bytes": 17385283
+        }
+      ],
+      "image": {
+        "shape": [
+          858,
+          2048,
+          46
+        ],
+        "all_channels_finite": true,
+        "passes_vs_baseline_control": {
+          "Combined": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Normal": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "DiffCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "GlossCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "TransCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "DiffDir": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "DiffInd": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "GlossDir": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "GlossInd": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "TransDir": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "TransInd": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Emit": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Env": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Direct": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Indirect": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          }
+        }
+      }
+    },
+    "keep_boundaries": {
+      "directory": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-keep-TlzyGR",
+      "render_wall_seconds": 12.6654,
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "work": {
+        "<entry>": 112459776,
+        "intersect_closest": 444264151,
+        "shade_volume": 85076940,
+        "shade_light_forward": 12869390,
+        "shade_background": 376901,
+        "shade_surface": 332307834,
+        "shade_light_nee": 138960549,
+        "intersect_shadow": 45987327,
+        "shade_shadow": 20800317
+      },
+      "profile": {
+        "shade_surface": {
+          "kernel": "kernel_96eb3744a6e940ba",
+          "launches": 1062,
+          "gpu_seconds": 7.961984584,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            5040
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_99d8901f913e2573",
+          "launches": 1048,
+          "gpu_seconds": 1.674922841,
+          "vgpr_counts": [
+            152
+          ],
+          "scratch_bytes": [
+            240
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_d70ee7214c833b99",
+          "launches": 425,
+          "gpu_seconds": 0.415758014,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            324
+          ]
+        }
+      },
+      "resources": {
+        "private_segment_fixed_size": 5040,
+        "sgpr_count": 108,
+        "vgpr_count": 256,
+        "sgpr_spill_count": 6,
+        "vgpr_spill_count": 107
+      },
+      "functions": {
+        "callable.20": {
+          "address": 5632,
+          "bytes": 10928,
+          "static_instructions": 2020,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_4d": {
+          "address": 16560,
+          "bytes": 6448,
+          "static_instructions": 1303,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "svm_eval_nodes": {
+          "address": 23008,
+          "bytes": 553224,
+          "static_instructions": 105616,
+          "scratch_load_instructions": 502,
+          "scratch_store_instructions": 201,
+          "call_sites": 40,
+          "image_sample_instructions": 20
+        },
+        "__ocml_tan_f32": {
+          "address": 576232,
+          "bytes": 972,
+          "static_instructions": 164,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "callable.3": {
+          "address": 577204,
+          "bytes": 486768,
+          "static_instructions": 83906,
+          "scratch_load_instructions": 2234,
+          "scratch_store_instructions": 176,
+          "call_sites": 10,
+          "image_sample_instructions": 0
+        },
+        "kernel_96eb3744a6e940ba": {
+          "address": 1064192,
+          "bytes": 11592,
+          "static_instructions": 1544,
+          "scratch_load_instructions": 211,
+          "scratch_store_instructions": 133,
+          "call_sites": 1,
+          "image_sample_instructions": 0
+        }
+      },
+      "code_object_sha256": "83e5fa4041f7bca99fb455e0be58a427f3b48a20da39a7dd01c24ab23b4ec481",
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-keep-TlzyGR/render.log",
+          "sha256": "332aa43b1356e2a0231b0bb592993d738ea4d58a6c4b22d2df2423878a6e36dc",
+          "bytes": 218109
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-keep-TlzyGR/psycles.exr",
+          "sha256": "5c665d0ee1ab17b5a90c7d9ba70db02b920e4a6c650ff99229aa1da828eb51f7",
+          "bytes": 153094799
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-keep-TlzyGR/psycles_kernel_stats.csv",
+          "sha256": "f8a5ec458e917568f7b148980d4824a97001967c9f3f07fd44f2c360b6c45e81",
+          "bytes": 5840
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-keep-TlzyGR/psycles_kernel_trace.csv",
+          "sha256": "4b501688f2e66c5fe2131be9544291029cf2e416688b4bb4ef9be41d877b72c7",
+          "bytes": 40916540
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-keep-TlzyGR/hip_kernel_before_opt_12.ll",
+          "sha256": "1120e209e1ec668c4dde6aa58ca533664d75efc6870b6bbcaea9aee98e3ac09c",
+          "bytes": 22654849
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-keep-TlzyGR/hip_kernel_final_12.ll",
+          "sha256": "bd9543daa0cc585126e4b43f5816c2c6bbaf1017a1c57d00e084cfaa38d2e643",
+          "bytes": 8126112
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-keep-TlzyGR/hip_isa_12.co",
+          "sha256": "83e5fa4041f7bca99fb455e0be58a427f3b48a20da39a7dd01c24ab23b4ec481",
+          "bytes": 1074184
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-keep-TlzyGR/surface-code-object.txt",
+          "sha256": "1abce82afe126f57e4133f74c18d4e195446d30a72e0454db71a41c312aed0f9",
+          "bytes": 3638
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-keep-TlzyGR/surface-isa.txt",
+          "sha256": "e8f10de7b55fffe29f118b5370bcfdd232c93f40505bf153a9efdf116cfe2967",
+          "bytes": 17861162
+        }
+      ],
+      "image": {
+        "shape": [
+          858,
+          2048,
+          46
+        ],
+        "all_channels_finite": true,
+        "passes_vs_baseline_control": {
+          "Combined": {
+            "relative_rmse": 0.0011616518483967854,
+            "maximum_absolute_error": 0.24477839469909668
+          },
+          "Normal": {
+            "relative_rmse": 1.8659227060332117e-05,
+            "maximum_absolute_error": 0.01613306999206543
+          },
+          "DiffCol": {
+            "relative_rmse": 6.855087733293347e-05,
+            "maximum_absolute_error": 0.007682085037231445
+          },
+          "GlossCol": {
+            "relative_rmse": 3.9756241201581945e-05,
+            "maximum_absolute_error": 0.010510288178920746
+          },
+          "TransCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "DiffDir": {
+            "relative_rmse": 5.0226771979103096e-05,
+            "maximum_absolute_error": 0.048030927777290344
+          },
+          "DiffInd": {
+            "relative_rmse": 0.0039595186845121965,
+            "maximum_absolute_error": 0.49554821848869324
+          },
+          "GlossDir": {
+            "relative_rmse": 1.662855541084095e-05,
+            "maximum_absolute_error": 0.05779552459716797
+          },
+          "GlossInd": {
+            "relative_rmse": 0.00692908555184412,
+            "maximum_absolute_error": 4.253411799669266
+          },
+          "TransDir": {
+            "relative_rmse": 1.8659574533633813e-06,
+            "maximum_absolute_error": 1.1615000090614558e-06
+          },
+          "TransInd": {
+            "relative_rmse": 0.00046011059495698446,
+            "maximum_absolute_error": 0.010625189170241356
+          },
+          "Emit": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Env": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Direct": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Indirect": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          }
+        }
+      }
+    },
+    "restored": {
+      "directory": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-restored-0DXEZi",
+      "render_wall_seconds": 10.5676,
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "work": {
+        "<entry>": 112459776,
+        "intersect_closest": 444264183,
+        "shade_volume": 85076975,
+        "shade_light_forward": 12869350,
+        "shade_background": 376900,
+        "shade_surface": 332307922,
+        "shade_light_nee": 138960463,
+        "intersect_shadow": 45987301,
+        "shade_shadow": 20800285
+      },
+      "profile": {
+        "shade_surface": {
+          "kernel": "kernel_96eb3744a6e940ba",
+          "launches": 1062,
+          "gpu_seconds": 5.883198114,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            2496
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_99d8901f913e2573",
+          "launches": 1048,
+          "gpu_seconds": 1.666123809,
+          "vgpr_counts": [
+            152
+          ],
+          "scratch_bytes": [
+            240
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_d70ee7214c833b99",
+          "launches": 425,
+          "gpu_seconds": 0.419830597,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            324
+          ]
+        }
+      },
+      "resources": {
+        "private_segment_fixed_size": 2496,
+        "sgpr_count": 107,
+        "vgpr_count": 256,
+        "sgpr_spill_count": 65,
+        "vgpr_spill_count": 500
+      },
+      "functions": {
+        "callable.20": {
+          "address": 5632,
+          "bytes": 10928,
+          "static_instructions": 2020,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_4d": {
+          "address": 16560,
+          "bytes": 6448,
+          "static_instructions": 1303,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "__ocml_tan_f32": {
+          "address": 23008,
+          "bytes": 972,
+          "static_instructions": 185,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "kernel_96eb3744a6e940ba": {
+          "address": 24064,
+          "bytes": 996532,
+          "static_instructions": 185686,
+          "scratch_load_instructions": 1489,
+          "scratch_store_instructions": 617,
+          "call_sites": 49,
+          "image_sample_instructions": 20
+        }
+      },
+      "code_object_sha256": "996fc472b22aeabc8af91ef2f8b19264b769557f087b68ec0900996006882703",
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-restored-0DXEZi/render.log",
+          "sha256": "4cf9372ac8e445cb31fe26fdc785067163947420535157950787be6e2ac4de4d",
+          "bytes": 218247
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-restored-0DXEZi/psycles.exr",
+          "sha256": "0d4dcb4b77d4107b042a2a2f9e4d6ed2d59da99207ad3916183029bcbe5e8f70",
+          "bytes": 153088808
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-restored-0DXEZi/psycles_kernel_stats.csv",
+          "sha256": "45e56855733a2fd30ba9705e7279e42e8f2267523d5cacd981475fb7e7e2c445",
+          "bytes": 5838
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-restored-0DXEZi/psycles_kernel_trace.csv",
+          "sha256": "129e1dd89c1261de7c0a634892d39e9f56b61997a4ae17a9e046c31fcc54ebfd",
+          "bytes": 40854750
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-restored-0DXEZi/hip_kernel_before_opt_12.ll",
+          "sha256": "1120e209e1ec668c4dde6aa58ca533664d75efc6870b6bbcaea9aee98e3ac09c",
+          "bytes": 22654849
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-restored-0DXEZi/hip_kernel_final_12.ll",
+          "sha256": "de353e3264372b18c41748cb0db6f2cde237d99e517b6ada94e134b71bd1bc48",
+          "bytes": 8062508
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-restored-0DXEZi/hip_isa_12.co",
+          "sha256": "996fc472b22aeabc8af91ef2f8b19264b769557f087b68ec0900996006882703",
+          "bytes": 1018944
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-restored-0DXEZi/surface-code-object.txt",
+          "sha256": "ac2f3435da4cb6d7320ae248ffc8fea87608659a60612353f171df3af7c60ed9",
+          "bytes": 3305
+        },
+        {
+          "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-inline-restored-0DXEZi/surface-isa.txt",
+          "sha256": "7201ef51cd9cdc76be93f633c5964572b4335507f36e5a63b61b9236d474b1aa",
+          "bytes": 17385283
+        }
+      ],
+      "image": {
+        "shape": [
+          858,
+          2048,
+          46
+        ],
+        "all_channels_finite": true,
+        "passes_vs_baseline_control": {
+          "Combined": {
+            "relative_rmse": 1.8825354685118143e-05,
+            "maximum_absolute_error": 0.00518479198217392
+          },
+          "Normal": {
+            "relative_rmse": 3.7987001136309133e-07,
+            "maximum_absolute_error": 0.00039105117321014404
+          },
+          "DiffCol": {
+            "relative_rmse": 4.5973528118535986e-05,
+            "maximum_absolute_error": 0.007892504334449768
+          },
+          "GlossCol": {
+            "relative_rmse": 3.7530799901221944e-07,
+            "maximum_absolute_error": 7.265806198120117e-05
+          },
+          "TransCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "DiffDir": {
+            "relative_rmse": 4.764173317075387e-05,
+            "maximum_absolute_error": 0.04848536103963852
+          },
+          "DiffInd": {
+            "relative_rmse": 5.8243813981561114e-05,
+            "maximum_absolute_error": 0.013214737176895142
+          },
+          "GlossDir": {
+            "relative_rmse": 2.2638172637495595e-07,
+            "maximum_absolute_error": 0.0011603347957134247
+          },
+          "GlossInd": {
+            "relative_rmse": 3.4755976668750034e-05,
+            "maximum_absolute_error": 0.01878177560865879
+          },
+          "TransDir": {
+            "relative_rmse": 1.820337540175336e-08,
+            "maximum_absolute_error": 1.4510710855120124e-08
+          },
+          "TransInd": {
+            "relative_rmse": 1.1435223213194252e-09,
+            "maximum_absolute_error": 1.4901161193847656e-08
+          },
+          "Emit": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Env": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Direct": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Indirect": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          }
+        }
+      }
+    }
+  }
+}

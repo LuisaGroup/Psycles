@@ -21,6 +21,9 @@ import run_scene_benchmark as benchmark
 parser = argparse.ArgumentParser()
 parser.add_argument('baseline', type=Path)
 parser.add_argument('output', type=Path)
+parser.add_argument('--actual-label', default='Psycles light endpoint fix HIP')
+parser.add_argument('--socket-control-root', type=Path,
+                    help='validated new socket metadata with the baseline geometry/images')
 args = parser.parse_args()
 args.output.mkdir(parents=True, exist_ok=True)
 files = ['build/bin/psycles_render_blender_scene', 'build/libpsycles_core.so',
@@ -40,10 +43,22 @@ for scene, repeat in [('barbershop', 1), ('monk', 1), ('monster', 1),
     bundle = Path(manifest['scene']['bundle'])
     assert benchmark._bundle_matches_manifest(manifest, bundle)
     assert benchmark._sha256(Path(manifest['scene']['blend'])) == manifest['scene']['sha256']
+    socket_control = None
+    if args.socket_control_root:
+        controlled = args.socket_control_root / scene
+        socket_control = json.loads((args.socket_control_root / f'{scene}-control.json').read_text())
+        assert socket_control['schema'] == 'psycles.socket-metadata-control.v1'
+        assert Path(socket_control['old_bundle']).resolve() == bundle.resolve()
+        assert Path(socket_control['control_bundle']).resolve() == controlled.resolve()
+        assert benchmark._sha256(bundle / 'scene.json') == socket_control['old_scene']['sha256']
+        assert benchmark._sha256(controlled / 'scene.json') == socket_control['control_scene']['sha256']
+        assert benchmark._sha256(controlled / 'geometry.bin') == socket_control['old_geometry']['sha256']
+        bundle = controlled
     prefix = args.output / f'{scene}-fixed-{repeat}'
     actual = prefix.with_suffix('.exr')
     assert not actual.exists() and not prefix.with_suffix('.log').exists()
     command = list(manifest['commands']['psycles_hip-wavefront-staged']['command'])
+    command[1] = str(bundle)
     command[2] = str(prefix.with_suffix('.ppm'))
     assert command[6] == command[13] == '256'
     render = benchmark._run_logged(command, prefix.with_suffix('.log'),
@@ -64,12 +79,13 @@ for scene, repeat in [('barbershop', 1), ('monk', 1), ('monster', 1),
     comparison = benchmark._run_logged(benchmark._comparison_command(
         Path(sys.executable), ROOT / 'tools/compare_cycles.py', reference, actual,
         report_path, args.output / f'{prefix.name}-triptychs', metadata, bundle / 'scene.json',
-        reference_label='Cycles 5.2.1 HIP', actual_label='Psycles light endpoint fix HIP'),
+        reference_label='Cycles 5.2.1 HIP', actual_label=args.actual_label),
         args.output / f'{prefix.name}-compare.log', echo_output=False)
     report = json.loads(report_path.read_text())
     assert set(report['passes']) == set(render_pass_contract.PASSES)
     assert all(p['actual_invalid_pixels'] == 0 for p in report['passes'].values())
     records.append({'scene': scene, 'repeat': repeat,
+                    'socket_metadata_control': socket_control,
                     'timings': benchmark._parse_psycles_timings(render['output']),
                     'render': benchmark._public_process_record(render),
                     'comparison': benchmark._public_process_record(comparison),
@@ -84,6 +100,7 @@ for scene, repeat in [('barbershop', 1), ('monk', 1), ('monster', 1),
         assert benchmark._sha256(ROOT / name) == expected, name
     (args.output / 'canaries.json').write_text(json.dumps({
         'schema': 'psycles.light-endpoint-canaries.v1',
+        'actual_label': args.actual_label,
         'main_shader_cache': 'disabled', 'implementation_sha256': identity,
         'reference_scope': 'retained equal-pass Cycles run-1 images; not fresh timing pairs',
         'records': records}, indent=2) + '\n')

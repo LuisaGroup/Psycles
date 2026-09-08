@@ -1,5 +1,10 @@
 # HIP surface register cap audit
 
+Historical checkpoint: the numbers below belong to the retired compact
+material executor and Blender 5.2.0, not the current Cycles 5.2.1 native SVM.
+They document a rejected experiment, not a measured resource policy for the
+current renderer. See the [current surface audit](../../2026-09-08/lamp-routing-and-surface/README.md).
+
 ## Outcome
 
 Hard-capping the Psycles HIP surface continuation to the register count reported

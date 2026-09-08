@@ -1,5 +1,12 @@
 # Cycles 5.2 surface/SVM gap audit
 
+Historical checkpoint: "SVM" in this report referred to the retired Psycles
+typed-DAG/compact-value executor. It was not an isomorphic implementation of
+Cycles' native SVM. That route is no longer the ordinary surface renderer;
+the representation, coverage and timing claims below are revision-specific.
+See the [current native surface audit](../../2026-09-08/lamp-routing-and-surface/README.md)
+and [compatibility status](../../../cycles-compatibility.md).
+
 ## Outcome
 
 Psycles already has a real, data-driven surface SVM. It is not a material

@@ -1,0 +1,1902 @@
+{
+  "schema": "psycles.surface-codegen-inspection.v1",
+  "surface_kernel": "kernel_96eb3744a6e940ba",
+  "scope": {
+    "profile": "one instrumented Psycles 2048x858/64-spp run; not an unprofiled benchmark or a fresh Cycles pair",
+    "isa": "static emitted instruction sites, not dynamic spill traffic; Cycles rows are selected functions, not the complete transitive call graph",
+    "llvm": "textual body lines are not an instruction-count or performance metric"
+  },
+  "stages": {
+    "shade_surface": {
+      "kernel": "kernel_96eb3744a6e940ba",
+      "launches": 1062,
+      "gpu_seconds": 5.894388356,
+      "vgpr_counts": [
+        256
+      ],
+      "scratch_bytes": [
+        2496
+      ]
+    },
+    "intersect_closest": {
+      "kernel": "kernel_47407a45c9514370",
+      "launches": 1048,
+      "gpu_seconds": 1.659303517,
+      "vgpr_counts": [
+        152
+      ],
+      "scratch_bytes": [
+        240
+      ]
+    },
+    "shade_volume": {
+      "kernel": "kernel_d70ee7214c833b99",
+      "launches": 425,
+      "gpu_seconds": 0.417347749,
+      "vgpr_counts": [
+        256
+      ],
+      "scratch_bytes": [
+        324
+      ]
+    }
+  },
+  "llvm": {
+    "before": {
+      "__ocmlpriv_lnep_f64": {
+        "body_lines": 115,
+        "calls": {
+          "llvm.frexp.f64.i32": 1,
+          "llvm.ldexp.f64.i32": 4,
+          "llvm.amdgcn.rcp.f64": 1,
+          "llvm.fma.f64": 16
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_lnep_f32": {
+        "body_lines": 244,
+        "calls": {
+          "llvm.frexp.f32.i32": 1,
+          "llvm.frexp.f64.i32": 1,
+          "llvm.ldexp.f32.i32": 4,
+          "llvm.amdgcn.rcp.f32": 1,
+          "llvm.fma.f32": 6,
+          "llvm.fmuladd.f32": 15,
+          "__ocml_fmuladd_f32": 2
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_atanred_f64": {
+        "body_lines": 23,
+        "calls": {
+          "llvm.fma.f64": 20
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_atanred_f32": {
+        "body_lines": 11,
+        "calls": {
+          "__ocml_fmuladd_f32": 8
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_atanred_f16": {
+        "body_lines": 7,
+        "calls": {
+          "llvm.fma.f16": 4
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_atanpired_f64": {
+        "body_lines": 23,
+        "calls": {
+          "llvm.fma.f64": 20
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_atanpired_f32": {
+        "body_lines": 11,
+        "calls": {
+          "__ocml_fmuladd_f32": 8
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_atanpired_f16": {
+        "body_lines": 11,
+        "calls": {
+          "llvm.fma.f16": 6
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_ba0_f64": {
+        "body_lines": 9,
+        "calls": {
+          "llvm.fma.f64": 8
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_ba0_f32": {
+        "body_lines": 3,
+        "calls": {
+          "__ocml_fmuladd_f32": 2
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_ba1_f64": {
+        "body_lines": 9,
+        "calls": {
+          "llvm.fma.f64": 8
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_ba1_f32": {
+        "body_lines": 3,
+        "calls": {
+          "__ocml_fmuladd_f32": 2
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_bp0_f64": {
+        "body_lines": 10,
+        "calls": {
+          "llvm.fma.f64": 9
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_bp0_f32": {
+        "body_lines": 4,
+        "calls": {
+          "__ocml_fmuladd_f32": 3
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_bp1_f64": {
+        "body_lines": 10,
+        "calls": {
+          "llvm.fma.f64": 9
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_bp1_f32": {
+        "body_lines": 4,
+        "calls": {
+          "__ocml_fmuladd_f32": 3
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_epcsqrtep_f64": {
+        "body_lines": 185,
+        "calls": {
+          "llvm.fma.f64": 34,
+          "llvm.amdgcn.rsq.f64": 2,
+          "llvm.amdgcn.rcp.f64": 3
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_epcsqrtep_f32": {
+        "body_lines": 331,
+        "calls": {
+          "llvm.fma.f32": 8,
+          "llvm.fmuladd.f32": 19,
+          "llvm.amdgcn.sqrt.f32": 2,
+          "llvm.amdgcn.rcp.f32": 3
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_epexpep_f64": {
+        "body_lines": 69,
+        "calls": {
+          "llvm.rint.f64": 1,
+          "llvm.fma.f64": 14,
+          "llvm.ldexp.f64.i32": 2
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_trigred_f64": {
+        "body_lines": 14,
+        "calls": {
+          "__ocmlpriv_trigredsmall_f64": 1,
+          "__ocmlpriv_trigredlarge_f64": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_sincosred2_f64": {
+        "body_lines": 29,
+        "calls": {
+          "llvm.fma.f64": 14
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_trigredsmall_f64": {
+        "body_lines": 23,
+        "calls": {
+          "llvm.rint.f64": 1,
+          "llvm.fma.f64": 4
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_trigredlarge_f64": {
+        "body_lines": 87,
+        "calls": {
+          "llvm.amdgcn.trig.preop.f64": 3,
+          "llvm.ldexp.f64.i32": 3,
+          "llvm.fma.f64": 6,
+          "llvm.floor.f64": 1,
+          "llvm.minnum.f64": 1,
+          "llvm.fabs.f64": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_epexpep_f32": {
+        "body_lines": 155,
+        "calls": {
+          "llvm.rint.f32": 1,
+          "__ocml_fmuladd_f32": 5,
+          "llvm.fma.f32": 4,
+          "llvm.fmuladd.f32": 9,
+          "llvm.ldexp.f32.i32": 2
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_trigred_f32": {
+        "body_lines": 14,
+        "calls": {
+          "__ocmlpriv_trigredsmall_f32": 1,
+          "__ocmlpriv_trigredlarge_f32": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_sincosred_f32": {
+        "body_lines": 14,
+        "calls": {
+          "__ocml_fmuladd_f32": 7
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_trigredsmall_f32": {
+        "body_lines": 59,
+        "calls": {
+          "llvm.rint.f32": 2,
+          "llvm.fma.f32": 3,
+          "__ocml_fmuladd_f32": 9
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_trigredlarge_f32": {
+        "body_lines": 146,
+        "calls": {
+          "llvm.fshr.i32": 6,
+          "llvm.fshl.i32": 4,
+          "llvm.ctlz.i32": 2,
+          "llvm.canonicalize.f32": 1,
+          "llvm.is.fpclass.f32": 1,
+          "llvm.fma.f32": 3,
+          "__ocml_fmuladd_f32": 5
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_trigred_f16": {
+        "body_lines": 14,
+        "calls": {
+          "llvm.rint.f32": 1,
+          "__ocml_fmuladd_f32": 3
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_sincosred_f16": {
+        "body_lines": 13,
+        "calls": {
+          "llvm.fma.f16": 4
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_cosb_f64": {
+        "body_lines": 45,
+        "calls": {
+          "__ocmlpriv_trigred_f64": 1,
+          "__ocmlpriv_sincosred2_f64": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_cosb_f32": {
+        "body_lines": 25,
+        "calls": {
+          "__ocmlpriv_trigred_f32": 1,
+          "__ocmlpriv_sincosred_f32": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_trigpired_f64": {
+        "body_lines": 22,
+        "calls": {
+          "llvm.floor.f64": 1,
+          "llvm.minnum.f64": 1,
+          "llvm.fabs.f64": 1,
+          "llvm.rint.f64": 1,
+          "llvm.fma.f64": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_sincospired_f64": {
+        "body_lines": 19,
+        "calls": {
+          "llvm.fma.f64": 13
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_trigpired_f32": {
+        "body_lines": 23,
+        "calls": {
+          "llvm.floor.f32": 1,
+          "llvm.minnum.f32": 1,
+          "llvm.fabs.f32": 1,
+          "llvm.rint.f32": 1,
+          "__ocml_fmuladd_f32": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_sincospired_f32": {
+        "body_lines": 17,
+        "calls": {
+          "__ocml_fmuladd_f32": 9
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_trigpired_f16": {
+        "body_lines": 25,
+        "calls": {
+          "llvm.floor.f16": 1,
+          "llvm.minnum.f16": 1,
+          "llvm.fabs.f16": 1,
+          "llvm.rint.f16": 1,
+          "llvm.fma.f16": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_sincospired_f16": {
+        "body_lines": 14,
+        "calls": {
+          "llvm.fma.f16": 4
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_epln_f64": {
+        "body_lines": 123,
+        "calls": {
+          "llvm.frexp.f64.i32": 1,
+          "llvm.amdgcn.rcp.f64": 1,
+          "llvm.fma.f64": 26,
+          "llvm.ldexp.f64.i32": 2
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_epln_f32": {
+        "body_lines": 389,
+        "calls": {
+          "llvm.frexp.f32.i32": 1,
+          "llvm.frexp.f64.i32": 1,
+          "llvm.amdgcn.rcp.f32": 1,
+          "llvm.fma.f32": 14,
+          "llvm.fmuladd.f32": 29,
+          "__ocml_fmuladd_f32": 2,
+          "llvm.ldexp.f32.i32": 2
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_erfcx_f64": {
+        "body_lines": 50,
+        "calls": {
+          "llvm.amdgcn.rcp.f64": 2,
+          "llvm.fma.f64": 35
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_erfcx_f32": {
+        "body_lines": 28,
+        "calls": {
+          "llvm.amdgcn.rcp.f32": 2,
+          "llvm.fma.f32": 6,
+          "__ocml_fmuladd_f32": 9
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_expep_f64": {
+        "body_lines": 8,
+        "calls": {
+          "__ocml_exp_f64": 1,
+          "llvm.fma.f64": 1,
+          "llvm.fabs.f64": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_expep_f32": {
+        "body_lines": 12,
+        "calls": {
+          "__ocml_exp_f32": 1,
+          "llvm.fma.f32": 1,
+          "llvm.fabs.f32": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_sinb_f64": {
+        "body_lines": 44,
+        "calls": {
+          "__ocmlpriv_trigred_f64": 1,
+          "__ocmlpriv_sincosred2_f64": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_sinb_f32": {
+        "body_lines": 22,
+        "calls": {
+          "__ocmlpriv_trigred_f32": 1,
+          "__ocmlpriv_sincosred_f32": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_sincosred2_f32": {
+        "body_lines": 27,
+        "calls": {
+          "__ocml_fmuladd_f32": 10
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_sincosred_f64": {
+        "body_lines": 23,
+        "calls": {
+          "llvm.fma.f64": 12
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_tanred2_f64": {
+        "body_lines": 55,
+        "calls": {
+          "llvm.fma.f64": 22,
+          "llvm.amdgcn.rcp.f64": 1
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_tanred_f32": {
+        "body_lines": 19,
+        "calls": {
+          "__ocml_fmuladd_f32": 3,
+          "llvm.amdgcn.rcp.f32": 2,
+          "llvm.fma.f32": 5
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_tanred_f16": {
+        "body_lines": 9,
+        "calls": {
+          "llvm.fma.f16": 3
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_tanpired_f64": {
+        "body_lines": 21,
+        "calls": {
+          "llvm.fma.f64": 14
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_tanpired_f32": {
+        "body_lines": 14,
+        "calls": {
+          "__ocml_fmuladd_f32": 7
+        },
+        "allocas": []
+      },
+      "__ocmlpriv_tanpired_f16": {
+        "body_lines": 10,
+        "calls": {
+          "llvm.fma.f16": 3
+        },
+        "allocas": []
+      },
+      "kernel_96eb3744a6e940ba": {
+        "body_lines": 3173,
+        "calls": {
+          "llvm.assume": 3,
+          "llvm.amdgcn.workitem.id.x": 2,
+          "llvm.amdgcn.workitem.id.y": 2,
+          "llvm.amdgcn.workitem.id.z": 2,
+          "llvm.amdgcn.workgroup.id.x": 2,
+          "llvm.amdgcn.workgroup.id.y": 2,
+          "llvm.amdgcn.workgroup.id.z": 2,
+          "llvm.vector.reduce.and.v3i1": 1,
+          "callable": 1,
+          "llvm.amdgcn.raw.buffer.atomic.sub.i32": 1,
+          "callable.1": 1,
+          "callable.2": 1,
+          "llvm.amdgcn.raw.buffer.atomic.add.i32": 2
+        },
+        "allocas": [
+          "%_reg_37 = alloca { i32, i32, i32, i32, i32, i32, i32, float, [3 x [4 x i32]], float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, float, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32 }, align 16, addrspace(5)"
+        ]
+      },
+      "callable": {
+        "body_lines": 17,
+        "calls": {},
+        "allocas": []
+      },
+      "callable.1": {
+        "body_lines": 9,
+        "calls": {
+          "callable.3": 1
+        },
+        "allocas": []
+      },
+      "callable.2": {
+        "body_lines": 39,
+        "calls": {},
+        "allocas": []
+      },
+      "callable.3": {
+        "body_lines": 309384,
+        "calls": {
+          "llvm.assume": 4,
+          "llvm.smax.i32": 1,
+          "llvm.smin.i32": 1,
+          "llvm.sqrt.f32": 2610,
+          "llvm.fabs.f32": 577,
+          "llvm.maxnum.f32": 8117,
+          "llvm.umin.i32": 5960,
+          "llvm.fma.f32": 3877,
+          "llvm.copysign.f32": 42,
+          "llvm.vector.reduce.and.v3i1": 73,
+          "llvm.fabs.v3f32": 9,
+          "llvm.umax.i32": 1,
+          "svm_eval_nodes": 1,
+          "llvm.minnum.f32": 4027,
+          "llvm.fma.v3f32": 333,
+          "llvm.maxnum.v3f32": 156,
+          "llvm.minnum.v3f32": 156,
+          "llvm.pow.f32": 35,
+          "callable.5": 1,
+          "__ocml_atan2_f32": 3,
+          "callable.4": 1,
+          "callable.6": 1,
+          "llvm.amdgcn.raw.buffer.atomic.add.i32": 5,
+          "callable.7": 1,
+          "luisa.inverse.float.4x4": 1,
+          "llvm.fma.v4f32": 64,
+          "__ocml_acos_f32": 16,
+          "llvm.cos.f32": 42,
+          "llvm.sin.f32": 34,
+          "__ocml_tan_f32": 10,
+          "__ocml_asin_f32": 5,
+          "llvm.exp.f32": 30,
+          "callable.8": 1,
+          "llvm.vector.reduce.or.v3i1": 5,
+          "callable.9": 1,
+          "callable.10": 4,
+          "llvm.log.f32": 12,
+          "__ocml_atan_f32": 4
+        },
+        "allocas": [
+          "%_reg_189 = alloca [3 x [4 x i32]], align 16, addrspace(5)",
+          "%_reg_190 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_191 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_192 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_193 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_194 = alloca { [3 x float], float, [3 x float], float }, align 16, addrspace(5)",
+          "%_reg_199 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_201 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_353 = alloca [3 x float], align 4, addrspace(5)",
+          "%_reg_361 = alloca [3 x float], align 4, addrspace(5)",
+          "%_reg_1864 = alloca [3 x float], align 4, addrspace(5)",
+          "%_reg_1874 = alloca [3 x float], align 4, addrspace(5)",
+          "%_reg_1936 = alloca [2 x float], align 8, addrspace(5)",
+          "%_reg_2018 = alloca [60 x [4 x i32]], align 16, addrspace(5)",
+          "%_reg_2019 = alloca i32, align 4, addrspace(5)",
+          "%_reg_2020 = alloca i32, align 4, addrspace(5)",
+          "%_reg_2107 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_2109 = alloca i32, align 4, addrspace(5)",
+          "%_reg_2113 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_2114 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_7408 = alloca [3 x float], align 4, addrspace(5)",
+          "%_reg_7419 = alloca [3 x float], align 4, addrspace(5)",
+          "%_reg_177518 = alloca { i32, i32, i32, i32, i32, i32 }, align 4, addrspace(5)",
+          "%_reg_177705 = alloca { i32, i32, i32, i32, float, i32, float, i32, i32, i32, i32, i32, [4 x [4 x float]] }, align 16, addrspace(5)",
+          "%_reg_177922 = alloca { [3 x float], float, [3 x float], float }, align 16, addrspace(5)",
+          "%_reg_231941 = alloca { float, float, i32, i32, i32, i32, i32, i32 }, align 4, addrspace(5)",
+          "%_reg_233908 = alloca { i32, [12 x i8], [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], float, float, float, float, float, float, float, float, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, [8 x i8] }, align 16, addrspace(5)",
+          "%_reg_237278 = alloca { i32, [12 x i8], [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], float, float, float, float, float, float, float, float, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, [8 x i8] }, align 16, addrspace(5)",
+          "%_reg_301877 = alloca { [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], float, float, float, float, float, float, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32 }, align 16, addrspace(5)",
+          "%_reg_301912 = alloca { [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], float, float, float, float, float, float, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32 }, align 16, addrspace(5)",
+          "%_reg_434405 = alloca { [3 x float], float, [3 x float], float }, align 16, addrspace(5)",
+          "%40 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%41 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%42 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%43 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%44 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%45 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%46 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%47 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%48 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%49 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%50 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%51 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%52 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%53 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%54 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%55 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%56 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%57 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%58 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%59 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%60 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%61 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%62 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%63 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%64 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%65 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%66 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%67 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%68 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%69 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%70 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%71 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%72 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%73 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%74 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%75 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%76 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%77 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%78 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%79 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%80 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%81 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%82 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%83 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%84 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%85 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%86 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%87 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%88 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%89 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%90 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%91 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%92 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%93 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%94 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%95 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%96 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%97 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%98 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%99 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%100 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%101 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%102 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%103 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%104 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%105 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%106 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%107 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%108 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%109 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%110 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%111 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%112 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%113 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%114 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%115 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%116 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%117 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%118 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%119 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%120 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%121 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%122 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%123 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%124 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%125 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%126 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%127 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%128 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%129 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%130 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%131 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%132 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%133 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%134 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%135 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%136 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%137 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%138 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%139 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%140 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%141 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%142 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%143 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%144 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%145 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%146 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%147 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%148 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%149 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%150 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%151 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%152 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%153 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%154 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%155 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%156 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%157 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%158 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%159 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%160 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%161 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%162 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%163 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%164 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%165 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%166 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%167 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%168 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%169 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%170 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%171 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%172 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%173 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%174 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%175 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%176 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%177 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%178 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%179 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%180 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%181 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%182 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%183 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%184 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%185 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%186 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%187 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%188 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%189 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%190 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%191 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%192 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%193 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%194 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%195 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%196 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%197 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%198 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%199 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%200 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%201 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%202 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%203 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%204 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%205 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%206 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%207 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%208 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%209 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%210 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%211 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%212 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%213 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%214 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%215 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%216 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%217 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%218 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%219 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%220 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%221 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%222 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%223 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%224 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%225 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%226 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%227 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%228 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%229 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%230 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%231 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%232 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%233 = alloca [4 x [4 x float]], align 16, addrspace(5)",
+          "%234 = alloca [4 x [4 x float]], align 16, addrspace(5)"
+        ]
+      },
+      "svm_eval_nodes": {
+        "body_lines": 71204,
+        "calls": {
+          "llvm.maxnum.f32": 1093,
+          "llvm.minnum.f32": 584,
+          "llvm.sqrt.f32": 398,
+          "llvm.fabs.f32": 229,
+          "llvm.maxnum.v3f32": 57,
+          "llvm.fma.v3f32": 27,
+          "llvm.umin.i32": 800,
+          "llvm.fma.f32": 761,
+          "llvm.vector.reduce.and.v3i1": 27,
+          "llvm.vector.reduce.or.v3i1": 8,
+          "llvm.pow.f32": 82,
+          "llvm.minnum.v3f32": 21,
+          "llvm.cos.f32": 19,
+          "llvm.sin.f32": 20,
+          "__ocml_acos_f32": 4,
+          "llvm.copysign.f32": 138,
+          "llvm.smin.i32": 5,
+          "__ocml_atan2_f32": 4,
+          "llvm.floor.f32": 107,
+          "llvm.fabs.v3f32": 3,
+          "callable.19": 1,
+          "callable.18": 1,
+          "callable.17": 1,
+          "callable.16": 1,
+          "callable.15": 1,
+          "callable.14": 1,
+          "callable.13": 1,
+          "callable.12": 1,
+          "callable.11": 1,
+          "llvm.smax.i32": 4,
+          "llvm.floor.v3f32": 4,
+          "llvm.ceil.v3f32": 1,
+          "__ocml_tan_f32": 4,
+          "llvm.trunc.f32": 3,
+          "__ocml_asin_f32": 1,
+          "__ocml_atan_f32": 1,
+          "llvm.log.f32": 2,
+          "llvm.ceil.f32": 2,
+          "llvm.exp.f32": 1,
+          "__ocml_sinh_f32": 1,
+          "__ocml_cosh_f32": 1,
+          "__ocml_tanh_f32": 1,
+          "llvm.amdgcn.image.sample.l.2d.v4f32.f32.v8i32.v4i32": 20,
+          "llvm.amdgcn.image.load.2d.v4f32.i32.v8i32": 100
+        },
+        "allocas": [
+          "%_reg_96 = alloca [36 x float], align 4, addrspace(5)",
+          "%_reg_1876 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_17255 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_18191 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_23888 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%_reg_23889 = alloca { i64, i32, i16, i8, i8 }, align 8, addrspace(5)",
+          "%_reg_24427 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%_reg_24428 = alloca { i64, i32, i16, i8, i8 }, align 8, addrspace(5)",
+          "%_reg_25201 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_25465 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_25834 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%_reg_25962 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%_reg_26672 = alloca [2 x float], align 8, addrspace(5)",
+          "%_reg_26897 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_27024 = alloca [2 x float], align 8, addrspace(5)",
+          "%_reg_27213 = alloca [2 x float], align 8, addrspace(5)",
+          "%_reg_27402 = alloca [2 x float], align 8, addrspace(5)",
+          "%_reg_27887 = alloca { [4 x float], [4 x float], float, [12 x i8] }, align 16, addrspace(5)",
+          "%_reg_28765 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%_reg_28766 = alloca { i64, i32, i16, i8, i8 }, align 8, addrspace(5)",
+          "%_reg_30091 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%_reg_30092 = alloca { i64, i32, i16, i8, i8 }, align 8, addrspace(5)",
+          "%_reg_33459 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_33789 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_33852 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_34122 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_34152 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%_reg_34153 = alloca { i64, i32, i16, i8, i8 }, align 8, addrspace(5)",
+          "%_reg_34190 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%_reg_34191 = alloca { i64, i32, i16, i8, i8 }, align 8, addrspace(5)",
+          "%_reg_34730 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%_reg_34731 = alloca { i64, i32, i16, i8, i8 }, align 8, addrspace(5)",
+          "%_reg_35865 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_35911 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_36102 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_36166 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_36255 = alloca [4 x float], align 16, addrspace(5)",
+          "%_reg_36370 = alloca [4 x float], align 16, addrspace(5)",
+          "%59 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%60 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%61 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%62 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%63 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%64 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%65 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%66 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%67 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%68 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%69 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%70 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%71 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%72 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%73 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%74 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%75 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%76 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%77 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%78 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%79 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%80 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%81 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%82 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%83 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%84 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%85 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%86 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%87 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%88 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%89 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%90 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%91 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%92 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%93 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%94 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%95 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%96 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%97 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%98 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%99 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%100 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%101 = alloca { { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, float, float, float, { float, float, float }, float, i32, { float, float, float }, { float, float }, i16, i16, i32, i32, i32, i32, i32, i32, float, float, float, float, float, i32, i32, i32, float, i32, i64, i32, i32, i64, i32, [3 x i32] }, align 16, addrspace(5)",
+          "%102 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%103 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%104 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%105 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%106 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%107 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%108 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%109 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%110 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%111 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%112 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%113 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%114 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%115 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%116 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%117 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%118 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%119 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%120 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%121 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%122 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%123 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%124 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%125 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%126 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%127 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%128 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%129 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%130 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%131 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%132 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%133 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%134 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%135 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%136 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)",
+          "%137 = alloca { { float, float, float, float }, { float, float, float, float }, { float, float, float, float } }, align 4, addrspace(5)"
+        ]
+      },
+      "callable.4": {
+        "body_lines": 11,
+        "calls": {
+          "callable.24": 1
+        },
+        "allocas": []
+      },
+      "callable.5": {
+        "body_lines": 73,
+        "calls": {
+          "llvm.fabs.f32": 3,
+          "llvm.maxnum.f32": 1
+        },
+        "allocas": []
+      },
+      "callable.6": {
+        "body_lines": 146,
+        "calls": {},
+        "allocas": [
+          "%_reg_12 = alloca { [4 x float], [4 x float], [4 x float], [4 x float], [4 x float], [4 x float] }, align 16, addrspace(5)"
+        ]
+      },
+      "callable.7": {
+        "body_lines": 70,
+        "calls": {
+          "llvm.umin.i32": 1
+        },
+        "allocas": []
+      },
+      "luisa.inverse.float.4x4": {
+        "body_lines": 161,
+        "calls": {
+          "llvm.vector.reduce.fadd.v4f32": 1
+        },
+        "allocas": []
+      },
+      "callable.8": {
+        "body_lines": 9,
+        "calls": {
+          "callable.24": 1
+        },
+        "allocas": []
+      },
+      "callable.9": {
+        "body_lines": 27,
+        "calls": {
+          "llvm.fabs.f32": 3,
+          "llvm.maxnum.f32": 3
+        },
+        "allocas": []
+      },
+      "callable.10": {
+        "body_lines": 32,
+        "calls": {
+          "llvm.fabs.f32": 3
+        },
+        "allocas": []
+      },
+      "callable.11": {
+        "body_lines": 73,
+        "calls": {
+          "llvm.smax.i32": 1,
+          "llvm.floor.f32": 1,
+          "cycles_signed_noise_3d": 2,
+          "llvm.fma.f32": 1
+        },
+        "allocas": []
+      },
+      "callable.12": {
+        "body_lines": 5539,
+        "calls": {
+          "llvm.maxnum.f32": 26,
+          "llvm.minnum.f32": 9,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.v4f32": 6,
+          "llvm.sqrt.f32": 9,
+          "llvm.fma.f32": 10,
+          "llvm.floor.f32": 2,
+          "llvm.fabs.v4f32": 9,
+          "llvm.pow.f32": 43,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": [
+          "%_reg_52 = alloca { [4 x float], [4 x float], float, [12 x i8] }, align 16, addrspace(5)",
+          "%_reg_126 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_216 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_354 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_456 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_632 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_782 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_880 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_973 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_1070 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_1173 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_1277 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_1427 = alloca [4 x i32], align 16, addrspace(5)"
+        ]
+      },
+      "callable.13": {
+        "body_lines": 4744,
+        "calls": {
+          "llvm.maxnum.f32": 19,
+          "llvm.minnum.f32": 9,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.v4f32": 6,
+          "llvm.sqrt.f32": 9,
+          "llvm.fma.f32": 10,
+          "llvm.floor.f32": 2,
+          "llvm.fabs.v4f32": 9,
+          "llvm.pow.f32": 43,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": [
+          "%_reg_52 = alloca { [4 x float], [4 x float], float, [12 x i8] }, align 16, addrspace(5)",
+          "%_reg_120 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_197 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_321 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_408 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_566 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_700 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_788 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_871 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_958 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_1051 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_1145 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_1279 = alloca [4 x i32], align 16, addrspace(5)"
+        ]
+      },
+      "callable.14": {
+        "body_lines": 4088,
+        "calls": {
+          "llvm.maxnum.f32": 12,
+          "llvm.minnum.f32": 9,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.v4f32": 6,
+          "llvm.sqrt.f32": 9,
+          "llvm.fma.f32": 10,
+          "llvm.floor.f32": 2,
+          "llvm.fabs.v4f32": 9,
+          "llvm.pow.f32": 43,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": [
+          "%_reg_52 = alloca { [4 x float], [4 x float], float, [12 x i8] }, align 16, addrspace(5)",
+          "%_reg_114 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_178 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_288 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_360 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_500 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_618 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_699 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_772 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_852 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_935 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_1022 = alloca [4 x i32], align 16, addrspace(5)",
+          "%_reg_1140 = alloca [4 x i32], align 16, addrspace(5)"
+        ]
+      },
+      "callable.15": {
+        "body_lines": 1786,
+        "calls": {
+          "llvm.maxnum.f32": 5,
+          "llvm.minnum.f32": 9,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.v4f32": 6,
+          "llvm.fabs.f32": 7,
+          "llvm.fma.f32": 10,
+          "llvm.floor.f32": 2,
+          "llvm.fabs.v4f32": 4,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": [
+          "%_reg_52 = alloca { [4 x float], [4 x float], float, [12 x i8] }, align 16, addrspace(5)"
+        ]
+      },
+      "callable.16": {
+        "body_lines": 80,
+        "calls": {
+          "callable.23": 3,
+          "cycles_signed_noise_4d": 4
+        },
+        "allocas": [
+          "%_reg_957 = alloca [4 x float], align 16, addrspace(5)"
+        ]
+      },
+      "callable.17": {
+        "body_lines": 76,
+        "calls": {
+          "callable.22": 3,
+          "cycles_signed_noise_3d": 3
+        },
+        "allocas": [
+          "%_reg_553 = alloca [4 x float], align 16, addrspace(5)"
+        ]
+      },
+      "callable.18": {
+        "body_lines": 72,
+        "calls": {
+          "callable.21": 3,
+          "cycles_signed_noise_2d": 2
+        },
+        "allocas": [
+          "%_reg_263 = alloca [4 x float], align 16, addrspace(5)"
+        ]
+      },
+      "callable.19": {
+        "body_lines": 66,
+        "calls": {
+          "callable.20": 3,
+          "cycles_signed_noise_1d": 1
+        },
+        "allocas": [
+          "%_reg_81 = alloca [4 x float], align 16, addrspace(5)"
+        ]
+      },
+      "cycles_signed_noise_1d": {
+        "body_lines": 102,
+        "calls": {
+          "llvm.fabs.f32": 1,
+          "llvm.floor.f32": 1,
+          "llvm.fma.f32": 1
+        },
+        "allocas": []
+      },
+      "callable.20": {
+        "body_lines": 298,
+        "calls": {
+          "llvm.smax.i32": 4,
+          "llvm.floor.f32": 4,
+          "cycles_signed_noise_1d": 11,
+          "llvm.fma.f32": 1,
+          "llvm.minnum.f32": 3,
+          "llvm.fabs.f32": 2,
+          "llvm.maxnum.f32": 1
+        },
+        "allocas": []
+      },
+      "cycles_signed_noise_2d": {
+        "body_lines": 270,
+        "calls": {
+          "llvm.fabs.f32": 2,
+          "llvm.floor.f32": 2
+        },
+        "allocas": []
+      },
+      "callable.21": {
+        "body_lines": 312,
+        "calls": {
+          "llvm.smax.i32": 4,
+          "llvm.floor.f32": 4,
+          "cycles_signed_noise_2d": 11,
+          "llvm.fma.f32": 1,
+          "llvm.minnum.f32": 3,
+          "llvm.fabs.f32": 2,
+          "llvm.maxnum.f32": 1
+        },
+        "allocas": []
+      },
+      "cycles_signed_noise_3d": {
+        "body_lines": 549,
+        "calls": {
+          "llvm.fabs.f32": 3,
+          "llvm.floor.f32": 3
+        },
+        "allocas": []
+      },
+      "callable.22": {
+        "body_lines": 319,
+        "calls": {
+          "llvm.smax.i32": 4,
+          "llvm.floor.f32": 4,
+          "cycles_signed_noise_3d": 11,
+          "llvm.fma.f32": 1,
+          "llvm.minnum.f32": 3,
+          "llvm.fabs.f32": 2,
+          "llvm.maxnum.f32": 1
+        },
+        "allocas": []
+      },
+      "cycles_signed_noise_4d": {
+        "body_lines": 1701,
+        "calls": {
+          "llvm.fabs.f32": 4,
+          "llvm.floor.f32": 4,
+          "llvm.fma.f32": 1
+        },
+        "allocas": []
+      },
+      "callable.23": {
+        "body_lines": 326,
+        "calls": {
+          "llvm.smax.i32": 4,
+          "llvm.floor.f32": 4,
+          "cycles_signed_noise_4d": 11,
+          "llvm.fma.f32": 1,
+          "llvm.minnum.f32": 3,
+          "llvm.fabs.f32": 2,
+          "llvm.maxnum.f32": 1
+        },
+        "allocas": []
+      },
+      "callable.24": {
+        "body_lines": 13,
+        "calls": {
+          "llvm.maxnum.f32": 1
+        },
+        "allocas": []
+      }
+    },
+    "after": {
+      "kernel_96eb3744a6e940ba": {
+        "body_lines": 118619,
+        "calls": {
+          "llvm.assume": 8,
+          "llvm.amdgcn.workitem.id.x": 1,
+          "llvm.amdgcn.workitem.id.y": 1,
+          "llvm.amdgcn.workitem.id.z": 1,
+          "llvm.amdgcn.workgroup.id.x": 1,
+          "llvm.amdgcn.workgroup.id.y": 1,
+          "llvm.amdgcn.workgroup.id.z": 1,
+          "llvm.umin.i64": 7,
+          "llvm.amdgcn.raw.buffer.atomic.sub.i32": 1,
+          "llvm.amdgcn.raw.buffer.atomic.add.i32": 7,
+          "llvm.lifetime.start.p5": 3,
+          "llvm.smax.i32": 5,
+          "llvm.smin.i32": 126,
+          "llvm.sqrt.f32": 2101,
+          "llvm.fabs.f32": 490,
+          "llvm.maxnum.f32": 4060,
+          "llvm.umin.i32": 1408,
+          "llvm.fma.f32": 2029,
+          "llvm.copysign.f32": 160,
+          "llvm.fabs.v3f32": 8,
+          "llvm.usub.sat.i32": 1,
+          "llvm.minnum.f32": 1468,
+          "llvm.maxnum.v3f32": 89,
+          "llvm.fma.v3f32": 133,
+          "llvm.pow.f32": 116,
+          "llvm.minnum.v3f32": 61,
+          "llvm.cos.f32": 61,
+          "llvm.sin.f32": 54,
+          "llvm.fmuladd.f32": 258,
+          "llvm.amdgcn.sqrt.f32": 26,
+          "__ocml_atan2_f32": 6,
+          "llvm.umax.i32": 16,
+          "llvm.floor.f32": 107,
+          "callable.19": 1,
+          "callable.18": 1,
+          "callable.17": 1,
+          "callable.16": 1,
+          "callable.15": 1,
+          "callable.14": 1,
+          "callable.13": 1,
+          "callable.12": 1,
+          "callable.11": 1,
+          "llvm.floor.v3f32": 4,
+          "llvm.ceil.v3f32": 1,
+          "__ocml_tan_f32": 13,
+          "llvm.trunc.f32": 3,
+          "llvm.amdgcn.rcp.f32": 7,
+          "llvm.log.f32": 14,
+          "llvm.ceil.f32": 2,
+          "llvm.exp.f32": 29,
+          "llvm.rint.f32": 2,
+          "llvm.ldexp.f32.i32": 2,
+          "__ocml_tanh_f32": 1,
+          "llvm.amdgcn.image.sample.lz.2d.v4f32.f32.v8i32.v4i32": 20,
+          "llvm.amdgcn.image.load.2d.f32.i32.v8i32": 100,
+          "llvm.lifetime.end.p5": 3,
+          "llvm.bitreverse.i32": 4,
+          "callable.7": 1,
+          "llvm.vector.reduce.fadd.v4f32": 1,
+          "llvm.fma.v4f32": 2,
+          "callable.9": 1,
+          "llvm.bitreverse.i5": 1
+        },
+        "allocas": [
+          "%_reg_96.i = alloca [36 x float], align 4, addrspace(5)",
+          "%_reg_189.i = alloca [3 x [4 x i32]], align 16, addrspace(5)",
+          "%_reg_2018.i = alloca [60 x [4 x i32]], align 16, addrspace(5)"
+        ]
+      },
+      "callable.9": {
+        "body_lines": 19,
+        "calls": {
+          "llvm.fabs.f32": 3,
+          "llvm.maxnum.f32": 3
+        },
+        "allocas": []
+      },
+      "callable.11": {
+        "body_lines": 791,
+        "calls": {
+          "llvm.smax.i32": 1,
+          "llvm.floor.f32": 7,
+          "llvm.fabs.f32": 6,
+          "llvm.fshl.i32": 60,
+          "llvm.fma.f32": 1
+        },
+        "allocas": []
+      },
+      "callable.12": {
+        "body_lines": 3065,
+        "calls": {
+          "llvm.maxnum.f32": 41,
+          "llvm.minnum.f32": 29,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.f32": 2,
+          "llvm.floor.v4f32": 3,
+          "llvm.sqrt.f32": 10,
+          "llvm.fma.f32": 10,
+          "llvm.fabs.f32": 1,
+          "llvm.pow.f32": 56,
+          "llvm.fabs.v4f32": 18,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": []
+      },
+      "callable.13": {
+        "body_lines": 3022,
+        "calls": {
+          "llvm.maxnum.f32": 29,
+          "llvm.minnum.f32": 35,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.f32": 2,
+          "llvm.floor.v4f32": 3,
+          "llvm.sqrt.f32": 16,
+          "llvm.fma.f32": 10,
+          "llvm.fabs.f32": 1,
+          "llvm.pow.f32": 44,
+          "llvm.fabs.v4f32": 18,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": []
+      },
+      "callable.14": {
+        "body_lines": 2803,
+        "calls": {
+          "llvm.maxnum.f32": 17,
+          "llvm.minnum.f32": 37,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.f32": 2,
+          "llvm.floor.v4f32": 3,
+          "llvm.sqrt.f32": 16,
+          "llvm.fma.f32": 10,
+          "llvm.fabs.f32": 1,
+          "llvm.pow.f32": 32,
+          "llvm.fabs.v4f32": 18,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": []
+      },
+      "callable.15": {
+        "body_lines": 1152,
+        "calls": {
+          "llvm.maxnum.f32": 5,
+          "llvm.minnum.f32": 14,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.f32": 2,
+          "llvm.floor.v4f32": 3,
+          "llvm.fshl.i32": 145,
+          "llvm.fabs.f32": 14,
+          "llvm.fma.f32": 10,
+          "llvm.fabs.v4f32": 6,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": []
+      },
+      "callable.16": {
+        "body_lines": 777,
+        "calls": {
+          "llvm.smax.i32": 6,
+          "llvm.floor.f32": 12,
+          "cycles_signed_noise_4d": 37,
+          "llvm.fma.f32": 3,
+          "llvm.minnum.f32": 9,
+          "llvm.fabs.f32": 6,
+          "llvm.maxnum.f32": 3
+        },
+        "allocas": []
+      },
+      "callable.17": {
+        "body_lines": 14022,
+        "calls": {
+          "llvm.smax.i32": 6,
+          "llvm.floor.f32": 120,
+          "llvm.fabs.f32": 114,
+          "llvm.fshl.i32": 1080,
+          "llvm.fma.f32": 3,
+          "llvm.minnum.f32": 9,
+          "llvm.maxnum.f32": 3
+        },
+        "allocas": []
+      },
+      "callable.18": {
+        "body_lines": 7141,
+        "calls": {
+          "llvm.smax.i32": 6,
+          "llvm.floor.f32": 82,
+          "llvm.fabs.f32": 76,
+          "llvm.fshl.i32": 560,
+          "llvm.fma.f32": 3,
+          "llvm.minnum.f32": 9,
+          "llvm.maxnum.f32": 3
+        },
+        "allocas": []
+      },
+      "callable.19": {
+        "body_lines": 101,
+        "calls": {
+          "callable.20": 3,
+          "llvm.fabs.f32": 1,
+          "llvm.floor.f32": 1,
+          "llvm.fshl.i32": 6,
+          "llvm.fma.f32": 1
+        },
+        "allocas": []
+      },
+      "callable.20": {
+        "body_lines": 1001,
+        "calls": {
+          "llvm.smax.i32": 2,
+          "llvm.floor.f32": 15,
+          "llvm.fabs.f32": 13,
+          "llvm.fshl.i32": 66,
+          "llvm.fma.f32": 12,
+          "llvm.minnum.f32": 3,
+          "llvm.maxnum.f32": 1
+        },
+        "allocas": []
+      },
+      "cycles_signed_noise_4d": {
+        "body_lines": 951,
+        "calls": {
+          "llvm.fabs.f32": 4,
+          "llvm.floor.f32": 4,
+          "llvm.fshl.i32": 102,
+          "llvm.fma.f32": 1
+        },
+        "allocas": []
+      },
+      "callable.7": {
+        "body_lines": 37,
+        "calls": {
+          "llvm.usub.sat.i32": 1,
+          "llvm.umin.i32": 1
+        },
+        "allocas": []
+      }
+    },
+    "final": {
+      "kernel_96eb3744a6e940ba": {
+        "body_lines": 118619,
+        "calls": {
+          "llvm.assume": 8,
+          "llvm.amdgcn.workitem.id.x": 1,
+          "llvm.amdgcn.workitem.id.y": 1,
+          "llvm.amdgcn.workitem.id.z": 1,
+          "llvm.amdgcn.workgroup.id.x": 1,
+          "llvm.amdgcn.workgroup.id.y": 1,
+          "llvm.amdgcn.workgroup.id.z": 1,
+          "llvm.umin.i64": 7,
+          "llvm.amdgcn.raw.buffer.atomic.sub.i32": 1,
+          "llvm.amdgcn.raw.buffer.atomic.add.i32": 7,
+          "llvm.lifetime.start.p5": 3,
+          "llvm.smax.i32": 5,
+          "llvm.smin.i32": 126,
+          "llvm.sqrt.f32": 2101,
+          "llvm.fabs.f32": 490,
+          "llvm.maxnum.f32": 4060,
+          "llvm.umin.i32": 1408,
+          "llvm.fma.f32": 2029,
+          "llvm.copysign.f32": 160,
+          "llvm.fabs.v3f32": 8,
+          "llvm.usub.sat.i32": 1,
+          "llvm.minnum.f32": 1468,
+          "llvm.maxnum.v3f32": 89,
+          "llvm.fma.v3f32": 133,
+          "llvm.pow.f32": 116,
+          "llvm.minnum.v3f32": 61,
+          "llvm.cos.f32": 61,
+          "llvm.sin.f32": 54,
+          "llvm.fmuladd.f32": 258,
+          "llvm.amdgcn.sqrt.f32": 26,
+          "__ocml_atan2_f32": 6,
+          "llvm.umax.i32": 16,
+          "llvm.floor.f32": 107,
+          "callable.19": 1,
+          "callable.18": 1,
+          "callable.17": 1,
+          "callable.16": 1,
+          "callable.15": 1,
+          "callable.14": 1,
+          "callable.13": 1,
+          "callable.12": 1,
+          "callable.11": 1,
+          "llvm.floor.v3f32": 4,
+          "llvm.ceil.v3f32": 1,
+          "__ocml_tan_f32": 13,
+          "llvm.trunc.f32": 3,
+          "llvm.amdgcn.rcp.f32": 7,
+          "llvm.log.f32": 14,
+          "llvm.ceil.f32": 2,
+          "llvm.exp.f32": 29,
+          "llvm.rint.f32": 2,
+          "llvm.ldexp.f32.i32": 2,
+          "__ocml_tanh_f32": 1,
+          "llvm.amdgcn.image.sample.lz.2d.v4f32.f32.v8i32.v4i32": 20,
+          "llvm.amdgcn.image.load.2d.f32.i32.v8i32": 100,
+          "llvm.lifetime.end.p5": 3,
+          "llvm.bitreverse.i32": 4,
+          "callable.7": 1,
+          "llvm.vector.reduce.fadd.v4f32": 1,
+          "llvm.fma.v4f32": 2,
+          "callable.9": 1,
+          "llvm.bitreverse.i5": 1
+        },
+        "allocas": [
+          "%_reg_96.i = alloca [36 x float], align 4, addrspace(5)",
+          "%_reg_189.i = alloca [3 x [4 x i32]], align 16, addrspace(5)",
+          "%_reg_2018.i = alloca [60 x [4 x i32]], align 16, addrspace(5)"
+        ]
+      },
+      "callable.9": {
+        "body_lines": 19,
+        "calls": {
+          "llvm.fabs.f32": 3,
+          "llvm.maxnum.f32": 3
+        },
+        "allocas": []
+      },
+      "callable.11": {
+        "body_lines": 791,
+        "calls": {
+          "llvm.smax.i32": 1,
+          "llvm.floor.f32": 7,
+          "llvm.fabs.f32": 6,
+          "llvm.fshl.i32": 60,
+          "llvm.fma.f32": 1
+        },
+        "allocas": []
+      },
+      "callable.12": {
+        "body_lines": 3065,
+        "calls": {
+          "llvm.maxnum.f32": 41,
+          "llvm.minnum.f32": 29,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.f32": 2,
+          "llvm.floor.v4f32": 3,
+          "llvm.sqrt.f32": 10,
+          "llvm.fma.f32": 10,
+          "llvm.fabs.f32": 1,
+          "llvm.pow.f32": 56,
+          "llvm.fabs.v4f32": 18,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": []
+      },
+      "callable.13": {
+        "body_lines": 3022,
+        "calls": {
+          "llvm.maxnum.f32": 29,
+          "llvm.minnum.f32": 35,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.f32": 2,
+          "llvm.floor.v4f32": 3,
+          "llvm.sqrt.f32": 16,
+          "llvm.fma.f32": 10,
+          "llvm.fabs.f32": 1,
+          "llvm.pow.f32": 44,
+          "llvm.fabs.v4f32": 18,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": []
+      },
+      "callable.14": {
+        "body_lines": 2803,
+        "calls": {
+          "llvm.maxnum.f32": 17,
+          "llvm.minnum.f32": 37,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.f32": 2,
+          "llvm.floor.v4f32": 3,
+          "llvm.sqrt.f32": 16,
+          "llvm.fma.f32": 10,
+          "llvm.fabs.f32": 1,
+          "llvm.pow.f32": 32,
+          "llvm.fabs.v4f32": 18,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": []
+      },
+      "callable.15": {
+        "body_lines": 1152,
+        "calls": {
+          "llvm.maxnum.f32": 5,
+          "llvm.minnum.f32": 14,
+          "llvm.ceil.f32": 2,
+          "llvm.floor.f32": 2,
+          "llvm.floor.v4f32": 3,
+          "llvm.fshl.i32": 145,
+          "llvm.fabs.f32": 14,
+          "llvm.fma.f32": 10,
+          "llvm.fabs.v4f32": 6,
+          "llvm.fma.v3f32": 2,
+          "llvm.fma.v4f32": 4
+        },
+        "allocas": []
+      },
+      "callable.16": {
+        "body_lines": 777,
+        "calls": {
+          "llvm.smax.i32": 6,
+          "llvm.floor.f32": 12,
+          "cycles_signed_noise_4d": 37,
+          "llvm.fma.f32": 3,
+          "llvm.minnum.f32": 9,
+          "llvm.fabs.f32": 6,
+          "llvm.maxnum.f32": 3
+        },
+        "allocas": []
+      },
+      "callable.17": {
+        "body_lines": 14022,
+        "calls": {
+          "llvm.smax.i32": 6,
+          "llvm.floor.f32": 120,
+          "llvm.fabs.f32": 114,
+          "llvm.fshl.i32": 1080,
+          "llvm.fma.f32": 3,
+          "llvm.minnum.f32": 9,
+          "llvm.maxnum.f32": 3
+        },
+        "allocas": []
+      },
+      "callable.18": {
+        "body_lines": 7141,
+        "calls": {
+          "llvm.smax.i32": 6,
+          "llvm.floor.f32": 82,
+          "llvm.fabs.f32": 76,
+          "llvm.fshl.i32": 560,
+          "llvm.fma.f32": 3,
+          "llvm.minnum.f32": 9,
+          "llvm.maxnum.f32": 3
+        },
+        "allocas": []
+      },
+      "callable.19": {
+        "body_lines": 101,
+        "calls": {
+          "callable.20": 3,
+          "llvm.fabs.f32": 1,
+          "llvm.floor.f32": 1,
+          "llvm.fshl.i32": 6,
+          "llvm.fma.f32": 1
+        },
+        "allocas": []
+      },
+      "callable.20": {
+        "body_lines": 1001,
+        "calls": {
+          "llvm.smax.i32": 2,
+          "llvm.floor.f32": 15,
+          "llvm.fabs.f32": 13,
+          "llvm.fshl.i32": 66,
+          "llvm.fma.f32": 12,
+          "llvm.minnum.f32": 3,
+          "llvm.maxnum.f32": 1
+        },
+        "allocas": []
+      },
+      "cycles_signed_noise_4d": {
+        "body_lines": 951,
+        "calls": {
+          "llvm.fabs.f32": 4,
+          "llvm.floor.f32": 4,
+          "llvm.fshl.i32": 102,
+          "llvm.fma.f32": 1
+        },
+        "allocas": []
+      },
+      "callable.7": {
+        "body_lines": 37,
+        "calls": {
+          "llvm.usub.sat.i32": 1,
+          "llvm.umin.i32": 1
+        },
+        "allocas": []
+      }
+    }
+  },
+  "psycles_isa": {
+    "callable.20": {
+      "address": 5632,
+      "static_instructions": 2020,
+      "scratch_load_instructions": 0,
+      "scratch_store_instructions": 0,
+      "call_sites": 0,
+      "image_sample_instructions": 0
+    },
+    "cycles_signed_noise_4d": {
+      "address": 16560,
+      "static_instructions": 1303,
+      "scratch_load_instructions": 0,
+      "scratch_store_instructions": 0,
+      "call_sites": 0,
+      "image_sample_instructions": 0
+    },
+    "__ocml_tan_f32": {
+      "address": 23008,
+      "static_instructions": 185,
+      "scratch_load_instructions": 0,
+      "scratch_store_instructions": 0,
+      "call_sites": 0,
+      "image_sample_instructions": 0
+    },
+    "kernel_96eb3744a6e940ba": {
+      "address": 24064,
+      "static_instructions": 185686,
+      "scratch_load_instructions": 1489,
+      "scratch_store_instructions": 617,
+      "call_sites": 49,
+      "image_sample_instructions": 20
+    }
+  },
+  "cycles_selected_isa": {
+    "_Z18svm_node_tex_noisePfRK15SVMNodeTexNoise": {
+      "address": 860472,
+      "static_instructions": 4313,
+      "scratch_load_instructions": 1,
+      "scratch_store_instructions": 1,
+      "call_sites": 64,
+      "image_sample_instructions": 0
+    },
+    "_Z21svm_node_closure_bsdfILj1979EL10ShaderType0EEiPK16KernelGlobalsGPUP10ShaderDataPf15HIP_vector_typeIfLj3EERK18SVMNodeClosureBsdfjji": {
+      "address": 3699748,
+      "static_instructions": 10684,
+      "scratch_load_instructions": 1,
+      "scratch_store_instructions": 1,
+      "call_sites": 25,
+      "image_sample_instructions": 0
+    },
+    "_Z17integrate_surfaceILj1979EEiPK16KernelGlobalsGPUiPf": {
+      "address": 4142860,
+      "static_instructions": 82634,
+      "scratch_load_instructions": 570,
+      "scratch_store_instructions": 164,
+      "call_sites": 90,
+      "image_sample_instructions": 0
+    },
+    "kernel_gpu_integrator_shade_surface": {
+      "address": 4584448,
+      "static_instructions": 462,
+      "scratch_load_instructions": 1,
+      "scratch_store_instructions": 1,
+      "call_sites": 1,
+      "image_sample_instructions": 0
+    }
+  },
+  "sources": [
+    {
+      "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-surface-codegen-QKzr83/hip_kernel_before_opt_12.ll",
+      "sha256": "1120e209e1ec668c4dde6aa58ca533664d75efc6870b6bbcaea9aee98e3ac09c",
+      "bytes": 22654849
+    },
+    {
+      "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-surface-codegen-QKzr83/hip_kernel_after_opt_12.ll",
+      "sha256": "e97e6022783dcc286607159a4497790096b96222cb56dbfef3da20981422c4b1",
+      "bytes": 8062289
+    },
+    {
+      "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-surface-codegen-QKzr83/hip_kernel_final_12.ll",
+      "sha256": "de353e3264372b18c41748cb0db6f2cde237d99e517b6ada94e134b71bd1bc48",
+      "bytes": 8062508
+    },
+    {
+      "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-surface-codegen-QKzr83/render.log",
+      "sha256": "240028246ca4e587f0d1fdc0184f0494a8f52fe714709509ff51fed2e6912743",
+      "bytes": 3039768
+    },
+    {
+      "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-isa-47Dvhd/render.log",
+      "sha256": "3031422e08178f6db38e4dcbf4b08d8b35971e6f68d34ac2599813b27fdadd62",
+      "bytes": 210844
+    },
+    {
+      "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-isa-47Dvhd/surface-isa.txt",
+      "sha256": "f150583a6d7abc6d41f47d395e27891a85c49d2ca383e84ec9440ca62dafc46b",
+      "bytes": 17385271
+    },
+    {
+      "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-isa-47Dvhd/cycles-compute-isa.txt",
+      "sha256": "5290ed6cacf599efb5da2f5b8470f3f55c26bedfbc7a9edce58e350e58729abc",
+      "bytes": 119770530
+    },
+    {
+      "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-isa-47Dvhd/surface-code-object.txt",
+      "sha256": "4c659f77fce68438ca849977ef76fff68461581bfd575b41f428a8a9634a985d",
+      "bytes": 3293
+    },
+    {
+      "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-isa-47Dvhd/cycles-compute-object.txt",
+      "sha256": "215e57136e5b69b8e6b4de01449fc3ba51e5f81022fd600b6b1d18bb07677845",
+      "bytes": 368007
+    },
+    {
+      "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-isa-47Dvhd/psycles_kernel_stats.csv",
+      "sha256": "291d2a63529a1426fd387bd5d81ab07450551b76c000b35f97b19aa340948f25",
+      "bytes": 5841
+    },
+    {
+      "path": "/var/tmp/psycles-lamp-routing-sCLxKs/barber-isa-47Dvhd/psycles_kernel_trace.csv",
+      "sha256": "5f72c1ca56ca3801c84fd2671ad773d4c6ba6a07b992894f44db1c8525d1f55f",
+      "bytes": 40908438
+    }
+  ]
+}
