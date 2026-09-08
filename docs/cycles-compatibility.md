@@ -108,6 +108,14 @@ claim motion geometry, other curve shapes or point-cloud rendering.
 
 ## Image parity and performance
 
+The prior campaign's Cycles script left source-only passes enabled. Actual
+Classroom and Barbershop EXRs include AO, which adds an original-Cycles shadow
+path absent from Psycles' requested pass set. All four also contain extra
+Depth/sample-count output; Monk has Mist and Classroom has Object Index.
+The old ratios below are therefore unequal-pass observations, not verified
+same-workload performance comparisons. In particular, the earlier Classroom
+speed-lead interpretation is withdrawn pending a corrected matched campaign.
+
 A focused oracle pass establishes that tested node/state behavior agrees
 with Cycles; it does not establish every scene's image parity or speed.
 Historical custom-executor performance gains and five-way promotions have
@@ -146,8 +154,9 @@ Barbershop improves locally by 3.58% but remains 37.68% above the preceding
 Cycles median; the small changes in other scenes do not establish a gain.
 Those canaries do not replace the revision-pinned paired baseline above.
 
-The performance goal is not complete. Only Classroom is faster in this
-campaign; Barbershop still takes 42.8% more rendering time. Old schema-v1
+The performance goal is not complete. Classroom's lower observed time cannot
+establish a speedup with the unequal AO workload; Barbershop takes 42.8% more
+time even against this reference with extra passes. Old schema-v1
 benchmark ratios used Cycles' enclosing render-call duration and are not
 comparable main-loop baselines. Smaller IR, local arrays or frames are not
 standalone evidence of a renderer speedup.
