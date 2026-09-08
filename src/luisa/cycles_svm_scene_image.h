@@ -14,6 +14,7 @@
 
 #include <luisa/core/basic_types.h>
 #include <luisa/dsl/struct.h>
+#include <luisa/runtime/rhi/sampler.h>
 
 namespace psycles::luisa_backend::detail {
 
@@ -67,9 +68,9 @@ struct CyclesSvmObjectSceneImage {
 // Device projection of one Cycles ImageManager handle. The source texture
 // identity and its immutable sampler are deliberately separate: equal source
 // images may occupy several SVM handles without duplicating image storage.
-// Packing the two two-bit sampler coordinates keeps the table at eight bytes
-// per handle and, unlike a scene-sized shader switch, bounds generated code by
-// the fixed Cycles sampler algebra.
+// Each handle addresses its own texture/sampler descriptor while source image
+// storage can be shared. The packed metadata retains bicubic and load-failure
+// selection; the filter and extension live in the backend descriptor.
 struct CyclesSvmImageBindingGpu {
   luisa::uint texture_slot{};
   luisa::uint sampler{};
@@ -152,6 +153,26 @@ inline constexpr std::uint32_t cycles_svm_image_load_failed_flag = 1u << 4u;
   return cycles_svm_image_sampling_family(interpolation) |
          (cycles_svm_image_sampling_extension(extension)
           << cycles_svm_image_extension_shift);
+}
+
+// Cycles device/{hip,cuda}/device_impl.cpp binds point filtering for CLOSEST
+// and bilinear filtering for LINEAR/CUBIC/SMART. The latter two reconstruct
+// a cubic B-spline from four ordinary bilinear texture-object samples.
+[[nodiscard]] constexpr luisa::compute::Sampler cycles_svm_texture_sampler(
+    compiler::cycles_svm::ImageInterpolation interpolation,
+    compiler::cycles_svm::ImageExtension extension) noexcept {
+  using luisa::compute::Sampler;
+  using compiler::cycles_svm::ImageExtension;
+  const auto filter = interpolation == compiler::cycles_svm::ImageInterpolation::closest
+                          ? Sampler::Filter::POINT
+                          : Sampler::Filter::LINEAR_POINT;
+  switch (extension) {
+  case ImageExtension::repeat: return {filter, Sampler::Address::REPEAT};
+  case ImageExtension::extend: return {filter, Sampler::Address::EDGE};
+  case ImageExtension::clip: return {filter, Sampler::Address::ZERO};
+  case ImageExtension::mirror: return {filter, Sampler::Address::MIRROR};
+  }
+  return {filter, Sampler::Address::REPEAT};
 }
 
 [[nodiscard]] constexpr CyclesSvmImageBindingGpu make_cycles_svm_image_binding(

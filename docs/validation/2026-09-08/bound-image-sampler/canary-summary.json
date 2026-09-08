@@ -1,0 +1,1213 @@
+{
+  "schema": "psycles.bound-sampler-canaries.v1",
+  "baseline": "c5bf9247",
+  "main_shader_cache": "disabled",
+  "implementation_sha256": {
+    "build/bin/psycles_render_blender_scene": "93762422611e2065ab6254a4be3444d4038e6682a91b3bdc72f3aac14c944cb3",
+    "build/libpsycles_core.so": "1aec6bf57b77a247b93df104702792f69a375bd8cbfc49ba62537b582d92096a",
+    "build/libpsycles_luisa_runtime.so": "db445b9cb470f8b90176f5ba29165010a1cc660166e2e0c6c648746a63de04c1",
+    "build/bin/libluisa-coro.so": "8b5843d6fa282e2b9c3beeb0056d9c59ff921d7047d79e4ae751099c6819b781",
+    "build/bin/libluisa-xir.so": "74e4e18852ebbba122dee27fbf279be9215383a1816b4b302d08dcf1fb9254b5",
+    "build/bin/libluisa-backend-hip.so": "c9e982f9882bcbad86ebfff19c687d6aa7e0175be7bcdd3256c8e656ede37b80"
+  },
+  "reference_scope": "unchanged original equal-pass Cycles run-1 images, not fresh pairs",
+  "archive_schema": "psycles.bound-sampler-canary-summary.v1",
+  "raw_source": "/var/tmp/psycles-native-volume-svm-06XnDX/bound-sampler-canaries.json",
+  "raw_source_sha256": "c06c0fa16dd9e30445943d7d8a70fb6e2ec2ade23c5238cef356ebfe9f2e2b54",
+  "summary": {
+    "monk": {
+      "old_equal_pass_psycles_median_seconds": 13.6826,
+      "new_psycles_seconds": [
+        13.4104
+      ],
+      "new_median_seconds": 13.4104,
+      "change_fraction": -0.019893879818163374
+    },
+    "monster": {
+      "old_equal_pass_psycles_median_seconds": 15.1328,
+      "new_psycles_seconds": [
+        14.8652
+      ],
+      "new_median_seconds": 14.8652,
+      "change_fraction": -0.017683442588285025
+    },
+    "classroom": {
+      "old_equal_pass_psycles_median_seconds": 18.7626,
+      "new_psycles_seconds": [
+        17.9502
+      ],
+      "new_median_seconds": 17.9502,
+      "change_fraction": -0.04329890313709184
+    },
+    "barbershop": {
+      "old_equal_pass_psycles_median_seconds": 39.2753,
+      "new_psycles_seconds": [
+        38.6666,
+        38.8902,
+        38.9089
+      ],
+      "new_median_seconds": 38.8902,
+      "change_fraction": -0.009805144709270186
+    }
+  },
+  "records": [
+    {
+      "scene": "barbershop",
+      "repeat": 1,
+      "timings": {
+        "scene_compile_seconds": 15.0388,
+        "shader_jit_seconds": 78.1307,
+        "render_seconds": 38.6666
+      },
+      "render": {
+        "command": [
+          "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.ppm",
+          "hip",
+          "2048",
+          "858",
+          "256",
+          "64",
+          "-",
+          "1024",
+          "429",
+          "0",
+          "0",
+          "256",
+          "-",
+          "1",
+          "0",
+          "wavefront-staged",
+          "32",
+          "32768",
+          "32",
+          "1",
+          "1",
+          "1",
+          "4",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0",
+          "1",
+          "1048576"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.log",
+        "log_sha256": "937b5ad1591b27cca612ba67cedd4e654c5285915e8a664dfd5b7b3780d68935",
+        "returncode": 0,
+        "wall_seconds": 134.26591385400025
+      },
+      "comparison": {
+        "command": [
+          "/usr/bin/python3",
+          "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.exr",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1-report.json",
+          "--triptych-dir",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1-triptychs",
+          "--reference-label",
+          "Cycles 5.2.1 HIP",
+          "--actual-label",
+          "Psycles bound sampler HIP",
+          "--reference-metadata",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.json",
+          "--actual-metadata",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export/scene.json",
+          "Combined=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "Normal=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "DiffCol=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "GlossCol=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "TransCol=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "DiffDir=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "DiffInd=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "GlossDir=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "GlossInd=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "TransDir=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "TransInd=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "Emit=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "Env=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "Volume Direct=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr",
+          "Volume Indirect=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1.exr"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-1-compare.log",
+        "log_sha256": "68c6c1dc1d6c6735d899733c2ab7d3d35c34bb0d586d4b93bbd9c5504cc91431",
+        "returncode": 0,
+        "wall_seconds": 12.788795987999947
+      },
+      "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/benchmark.json",
+      "source_manifest_sha256": "7405c10f9ea1d09929cb8f4cea8eb68fe720b136759bac039eef20a5c10c7e31",
+      "output_sha256": "8d0bbf8c5a827cf88d767f2302d6d1dadc992f9f71caf28a0da3e233732adab8",
+      "reference_sha256": "6172978af5505604b4d018aa3a74cb86fee5038bc5aa87275c0078f0d6c03d3a",
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "actual_all_finite": true,
+      "extent": [
+        2048,
+        858
+      ],
+      "channel_count": 46,
+      "passes": {
+        "Combined": {
+          "relative_rmse": 0.010798457391432863,
+          "rmse": 0.0023713035043329,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffCol": {
+          "relative_rmse": 0.0015972767391174273,
+          "rmse": 0.0003973912098444998,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffDir": {
+          "relative_rmse": 0.00985383839911153,
+          "rmse": 0.005852791015058756,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffInd": {
+          "relative_rmse": 0.07454037702605254,
+          "rmse": 0.008919082581996918,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Emit": {
+          "relative_rmse": 0.0002119692471380918,
+          "rmse": 1.685227471170947e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Env": {
+          "relative_rmse": 0.00045627798673005546,
+          "rmse": 5.8762325352290645e-06,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossCol": {
+          "relative_rmse": 0.0019358409455885854,
+          "rmse": 0.00038607255555689335,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossDir": {
+          "relative_rmse": 0.008179755084887781,
+          "rmse": 0.01845679245889187,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossInd": {
+          "relative_rmse": 0.12879621787759232,
+          "rmse": 0.028133679181337357,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Normal": {
+          "relative_rmse": 0.0009165363025969467,
+          "rmse": 0.0005052110645920038,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransCol": {
+          "relative_rmse": 0.0002701361292099856,
+          "rmse": 1.755613266141154e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransDir": {
+          "relative_rmse": 0.028148851589640624,
+          "rmse": 9.330463399237487e-06,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransInd": {
+          "relative_rmse": 0.02999426346972627,
+          "rmse": 0.0004108867433387786,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Direct": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Indirect": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        }
+      }
+    },
+    {
+      "scene": "monk",
+      "repeat": 1,
+      "timings": {
+        "scene_compile_seconds": 4.96921,
+        "shader_jit_seconds": 62.2088,
+        "render_seconds": 13.4104
+      },
+      "render": {
+        "command": [
+          "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/monk/export",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.ppm",
+          "hip",
+          "1440",
+          "1080",
+          "256",
+          "64",
+          "-",
+          "720",
+          "540",
+          "0",
+          "0",
+          "256",
+          "-",
+          "1",
+          "0",
+          "wavefront-staged",
+          "32",
+          "32768",
+          "32",
+          "1",
+          "1",
+          "1",
+          "4",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0",
+          "1",
+          "1048576"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.log",
+        "log_sha256": "b032c6d6618f9de1249fca3cafa28d532bd133d3ad24edbdbcea9f083368a3ee",
+        "returncode": 0,
+        "wall_seconds": 82.21383856400007
+      },
+      "comparison": {
+        "command": [
+          "/usr/bin/python3",
+          "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/monk/run-1/cycles/hip.exr",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1-report.json",
+          "--triptych-dir",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1-triptychs",
+          "--reference-label",
+          "Cycles 5.2.1 HIP",
+          "--actual-label",
+          "Psycles bound sampler HIP",
+          "--reference-metadata",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/monk/run-1/cycles/hip.json",
+          "--actual-metadata",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/monk/export/scene.json",
+          "Combined=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "Normal=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "DiffCol=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "GlossCol=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "TransCol=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "DiffDir=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "DiffInd=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "GlossDir=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "GlossInd=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "TransDir=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "TransInd=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "Emit=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "Env=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "Volume Direct=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr",
+          "Volume Indirect=/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1.exr"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/monk-bound-sampler-1-compare.log",
+        "log_sha256": "3594beebc0d5e513a5f29866a8b3ffdcd61ff1bb6642dba6ed9744224c78c104",
+        "returncode": 0,
+        "wall_seconds": 11.572137763000228
+      },
+      "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/monk/run-1/benchmark.json",
+      "source_manifest_sha256": "484502e39214430eac732c846bbd7d7f9d752d0308a1cd256ecc057c43980993",
+      "output_sha256": "3753782485b17796eea2650591363602c5424e39bd9d064bbff0ce2392c1a44b",
+      "reference_sha256": "b54ce5297200259ec21809ec7dd93231537e6c3b165f6934b7bd6462cc5398a6",
+      "frame": {
+        "stages": 4,
+        "fields": 55,
+        "bytes": 220
+      },
+      "actual_all_finite": true,
+      "extent": [
+        1440,
+        1080
+      ],
+      "channel_count": 46,
+      "passes": {
+        "Combined": {
+          "relative_rmse": 0.01240781236341228,
+          "rmse": 0.01986468955874443,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffCol": {
+          "relative_rmse": 0.0005459376612437575,
+          "rmse": 0.00010382908658357337,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffDir": {
+          "relative_rmse": 0.013660605241770983,
+          "rmse": 0.12514759600162506,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffInd": {
+          "relative_rmse": 0.12881523052328825,
+          "rmse": 0.05210627615451813,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Emit": {
+          "relative_rmse": 0.00021499477380357803,
+          "rmse": 0.0001574619673192501,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Env": {
+          "relative_rmse": 5.976877795634076e-07,
+          "rmse": 9.253035004874732e-10,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossCol": {
+          "relative_rmse": 0.0007617921695729356,
+          "rmse": 5.3957366617396474e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossDir": {
+          "relative_rmse": 0.030595661693794678,
+          "rmse": 0.13244400918483734,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossInd": {
+          "relative_rmse": 0.13596195256180751,
+          "rmse": 0.051768433302640915,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Normal": {
+          "relative_rmse": 0.0019218138891295732,
+          "rmse": 0.00106819998472929,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransCol": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransDir": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransInd": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Direct": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Indirect": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        }
+      }
+    },
+    {
+      "scene": "monster",
+      "repeat": 1,
+      "timings": {
+        "scene_compile_seconds": 1.48235,
+        "shader_jit_seconds": 73.1555,
+        "render_seconds": 14.8652
+      },
+      "render": {
+        "command": [
+          "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/monster/export",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.ppm",
+          "hip",
+          "1080",
+          "1080",
+          "256",
+          "64",
+          "-",
+          "540",
+          "540",
+          "0",
+          "0",
+          "256",
+          "-",
+          "1",
+          "0",
+          "wavefront-staged",
+          "32",
+          "32768",
+          "32",
+          "1",
+          "1",
+          "1",
+          "4",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0",
+          "1",
+          "1048576"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.log",
+        "log_sha256": "df5996edf1b2cbe7eacf5f645926e6033125aa9c6a600590120f11b9fec37460",
+        "returncode": 0,
+        "wall_seconds": 90.72492892900027
+      },
+      "comparison": {
+        "command": [
+          "/usr/bin/python3",
+          "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/monster/run-1/cycles/hip.exr",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1-report.json",
+          "--triptych-dir",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1-triptychs",
+          "--reference-label",
+          "Cycles 5.2.1 HIP",
+          "--actual-label",
+          "Psycles bound sampler HIP",
+          "--reference-metadata",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/monster/run-1/cycles/hip.json",
+          "--actual-metadata",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/monster/export/scene.json",
+          "Combined=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "Normal=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "DiffCol=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "GlossCol=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "TransCol=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "DiffDir=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "DiffInd=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "GlossDir=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "GlossInd=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "TransDir=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "TransInd=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "Emit=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "Env=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "Volume Direct=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr",
+          "Volume Indirect=/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1.exr"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/monster-bound-sampler-1-compare.log",
+        "log_sha256": "02932aa2cf81a1d856c6688b313054c2ed3b026a5f58298da6c767805afcb8e5",
+        "returncode": 0,
+        "wall_seconds": 8.087186481000117
+      },
+      "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/monster/run-1/benchmark.json",
+      "source_manifest_sha256": "9eba8d60c6377866050560ae2c4470bb883670d2704c01b8f61a4fe5606f6d55",
+      "output_sha256": "f42005ddf40b44d9f9e1b728f670f08d1c46783a454ac3181fcbb783863719da",
+      "reference_sha256": "abac5958d05e07b399ebb6099578df32173be57e1db0aa364a65a86fd0614001",
+      "frame": {
+        "stages": 6,
+        "fields": 71,
+        "bytes": 284
+      },
+      "actual_all_finite": true,
+      "extent": [
+        1080,
+        1080
+      ],
+      "channel_count": 46,
+      "passes": {
+        "Combined": {
+          "relative_rmse": 0.00547872263907259,
+          "rmse": 0.0007778485887683928,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffCol": {
+          "relative_rmse": 0.00010991639465077175,
+          "rmse": 3.8640169805148616e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffDir": {
+          "relative_rmse": 0.0023335430368114913,
+          "rmse": 0.0007270681671798229,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffInd": {
+          "relative_rmse": 0.02552496775370287,
+          "rmse": 0.0021791639737784863,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Emit": {
+          "relative_rmse": 0.0001347357086454389,
+          "rmse": 4.263103221546771e-07,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Env": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossCol": {
+          "relative_rmse": 0.00022797147374176824,
+          "rmse": 1.627332494535949e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossDir": {
+          "relative_rmse": 0.004396789521544459,
+          "rmse": 0.0015441876603290439,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossInd": {
+          "relative_rmse": 0.04220312263582757,
+          "rmse": 0.00373026798479259,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Normal": {
+          "relative_rmse": 8.407577971231741e-05,
+          "rmse": 4.818736488232389e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransCol": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransDir": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransInd": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Direct": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Indirect": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        }
+      }
+    },
+    {
+      "scene": "classroom",
+      "repeat": 1,
+      "timings": {
+        "scene_compile_seconds": 2.08387,
+        "shader_jit_seconds": 55.8885,
+        "render_seconds": 17.9502
+      },
+      "render": {
+        "command": [
+          "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/classroom/export",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.ppm",
+          "hip",
+          "1920",
+          "1080",
+          "256",
+          "64",
+          "-",
+          "960",
+          "540",
+          "0",
+          "0",
+          "256",
+          "-",
+          "1",
+          "0",
+          "wavefront-staged",
+          "32",
+          "32768",
+          "32",
+          "1",
+          "1",
+          "1",
+          "4",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0",
+          "1",
+          "1048576"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.log",
+        "log_sha256": "59a4d349923db9a94512dd9cae8785822dbaa5cf7e000252e999f2db5b6e804a",
+        "returncode": 0,
+        "wall_seconds": 77.63809105799965
+      },
+      "comparison": {
+        "command": [
+          "/usr/bin/python3",
+          "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/cycles/hip.exr",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1-report.json",
+          "--triptych-dir",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1-triptychs",
+          "--reference-label",
+          "Cycles 5.2.1 HIP",
+          "--actual-label",
+          "Psycles bound sampler HIP",
+          "--reference-metadata",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/cycles/hip.json",
+          "--actual-metadata",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/classroom/export/scene.json",
+          "Combined=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "Normal=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "DiffCol=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "GlossCol=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "TransCol=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "DiffDir=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "DiffInd=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "GlossDir=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "GlossInd=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "TransDir=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "TransInd=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "Emit=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "Env=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "Volume Direct=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr",
+          "Volume Indirect=/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1.exr"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/classroom-bound-sampler-1-compare.log",
+        "log_sha256": "c3604fc31d4162e88fbbb320eeb13d515384c41943ecfb40612ffde1f2fcfd2f",
+        "returncode": 0,
+        "wall_seconds": 14.625015855999663
+      },
+      "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/benchmark.json",
+      "source_manifest_sha256": "13a1ea5fe2ebac91eac04bda443a1def559c9202f2adaae91156a6a2bb029c86",
+      "output_sha256": "d0083f808a8e1d3c2c78f4f8ff5079924ead3818a4dea9be5e39941239f54ac4",
+      "reference_sha256": "94dbbc51b63958e1def2feba5c8645b89cadc8172cb7aaeda90ebcd996bf5108",
+      "frame": {
+        "stages": 5,
+        "fields": 66,
+        "bytes": 264
+      },
+      "actual_all_finite": true,
+      "extent": [
+        1920,
+        1080
+      ],
+      "channel_count": 46,
+      "passes": {
+        "Combined": {
+          "relative_rmse": 0.0035332016042348593,
+          "rmse": 0.001520572928711772,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffCol": {
+          "relative_rmse": 0.00010232396370682254,
+          "rmse": 3.340398325235583e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffDir": {
+          "relative_rmse": 0.00265637661455722,
+          "rmse": 0.002316368743777275,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 25
+        },
+        "DiffInd": {
+          "relative_rmse": 0.17820332693924645,
+          "rmse": 0.03805907815694809,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Emit": {
+          "relative_rmse": 0.00018370088856576412,
+          "rmse": 3.9428552554454654e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Env": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossCol": {
+          "relative_rmse": 0.0002984108674346397,
+          "rmse": 2.793656130961608e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossDir": {
+          "relative_rmse": 0.012267080723098438,
+          "rmse": 0.005742370150983334,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 27
+        },
+        "GlossInd": {
+          "relative_rmse": 0.15040438561329772,
+          "rmse": 0.02418215572834015,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Normal": {
+          "relative_rmse": 0.00021520023281535963,
+          "rmse": 0.00012060406152158976,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransCol": {
+          "relative_rmse": 0.000153829320603823,
+          "rmse": 8.861038622853812e-06,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransDir": {
+          "relative_rmse": 0.5358200988084147,
+          "rmse": 2.1780379722002863e-09,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransInd": {
+          "relative_rmse": 0.08735138342194243,
+          "rmse": 0.0012093717232346535,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Direct": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Indirect": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        }
+      }
+    },
+    {
+      "scene": "barbershop",
+      "repeat": 2,
+      "timings": {
+        "scene_compile_seconds": 14.8855,
+        "shader_jit_seconds": 25.4336,
+        "render_seconds": 38.8902
+      },
+      "render": {
+        "command": [
+          "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.ppm",
+          "hip",
+          "2048",
+          "858",
+          "256",
+          "64",
+          "-",
+          "1024",
+          "429",
+          "0",
+          "0",
+          "256",
+          "-",
+          "1",
+          "0",
+          "wavefront-staged",
+          "32",
+          "32768",
+          "32",
+          "1",
+          "1",
+          "1",
+          "4",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0",
+          "1",
+          "1048576"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.log",
+        "log_sha256": "ead14120fe5ec44e4e058a809d163726dbe989da78b65c05dd254a46fbfb74f1",
+        "returncode": 0,
+        "wall_seconds": 81.31865919499978
+      },
+      "comparison": {
+        "command": [
+          "/usr/bin/python3",
+          "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.exr",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2-report.json",
+          "--triptych-dir",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2-triptychs",
+          "--reference-label",
+          "Cycles 5.2.1 HIP",
+          "--actual-label",
+          "Psycles bound sampler HIP",
+          "--reference-metadata",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.json",
+          "--actual-metadata",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export/scene.json",
+          "Combined=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "Normal=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "DiffCol=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "GlossCol=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "TransCol=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "DiffDir=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "DiffInd=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "GlossDir=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "GlossInd=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "TransDir=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "TransInd=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "Emit=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "Env=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "Volume Direct=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr",
+          "Volume Indirect=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2.exr"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-2-compare.log",
+        "log_sha256": "315501a8ff9de5dc9eeade0fb418e03ebd9eb7201f00c3d9debc9774376228f4",
+        "returncode": 0,
+        "wall_seconds": 12.748346901999867
+      },
+      "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/benchmark.json",
+      "source_manifest_sha256": "7405c10f9ea1d09929cb8f4cea8eb68fe720b136759bac039eef20a5c10c7e31",
+      "output_sha256": "5cf7471d66bc952964fa3991c7066ff75242a4affa9d841188464a762cf3f366",
+      "reference_sha256": "6172978af5505604b4d018aa3a74cb86fee5038bc5aa87275c0078f0d6c03d3a",
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "actual_all_finite": true,
+      "extent": [
+        2048,
+        858
+      ],
+      "channel_count": 46,
+      "passes": {
+        "Combined": {
+          "relative_rmse": 0.01079845845169857,
+          "rmse": 0.0023713037371635437,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffCol": {
+          "relative_rmse": 0.0015977143617462834,
+          "rmse": 0.00039750008727423847,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffDir": {
+          "relative_rmse": 0.00985383447914321,
+          "rmse": 0.005852788686752319,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffInd": {
+          "relative_rmse": 0.0745404159432479,
+          "rmse": 0.00891908723860979,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Emit": {
+          "relative_rmse": 0.0002119692471380918,
+          "rmse": 1.685227471170947e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Env": {
+          "relative_rmse": 0.00045627798673005546,
+          "rmse": 5.8762325352290645e-06,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossCol": {
+          "relative_rmse": 0.0019358409455885854,
+          "rmse": 0.00038607255555689335,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossDir": {
+          "relative_rmse": 0.008179755084887781,
+          "rmse": 0.01845679245889187,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossInd": {
+          "relative_rmse": 0.12879621787759232,
+          "rmse": 0.028133679181337357,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Normal": {
+          "relative_rmse": 0.0009165363025969467,
+          "rmse": 0.0005052110645920038,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransCol": {
+          "relative_rmse": 0.0002701361292099856,
+          "rmse": 1.755613266141154e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransDir": {
+          "relative_rmse": 0.028148851589640624,
+          "rmse": 9.330463399237487e-06,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransInd": {
+          "relative_rmse": 0.02999426346972627,
+          "rmse": 0.0004108867433387786,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Direct": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Indirect": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        }
+      }
+    },
+    {
+      "scene": "barbershop",
+      "repeat": 3,
+      "timings": {
+        "scene_compile_seconds": 14.918,
+        "shader_jit_seconds": 25.5426,
+        "render_seconds": 38.9089
+      },
+      "render": {
+        "command": [
+          "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.ppm",
+          "hip",
+          "2048",
+          "858",
+          "256",
+          "64",
+          "-",
+          "1024",
+          "429",
+          "0",
+          "0",
+          "256",
+          "-",
+          "1",
+          "0",
+          "wavefront-staged",
+          "32",
+          "32768",
+          "32",
+          "1",
+          "1",
+          "1",
+          "4",
+          "2",
+          "0",
+          "0",
+          "0",
+          "0",
+          "1",
+          "1048576"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.log",
+        "log_sha256": "aa2beb7049048fa4462f2267c87e8aa8d43a9baab7d9b3d6fc2ed10a6c31c890",
+        "returncode": 0,
+        "wall_seconds": 81.47588872999995
+      },
+      "comparison": {
+        "command": [
+          "/usr/bin/python3",
+          "/home/mike/Projects/Psycles-surface-svm/tools/compare_cycles.py",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.exr",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3-report.json",
+          "--triptych-dir",
+          "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3-triptychs",
+          "--reference-label",
+          "Cycles 5.2.1 HIP",
+          "--actual-label",
+          "Psycles bound sampler HIP",
+          "--reference-metadata",
+          "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.json",
+          "--actual-metadata",
+          "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export/scene.json",
+          "Combined=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "Normal=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "DiffCol=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "GlossCol=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "TransCol=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "DiffDir=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "DiffInd=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "GlossDir=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "GlossInd=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "TransDir=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "TransInd=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "Emit=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "Env=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "Volume Direct=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr",
+          "Volume Indirect=/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3.exr"
+        ],
+        "log": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-bound-sampler-3-compare.log",
+        "log_sha256": "c1b2392f6b6b40c71c940cbaea9c931e079600ab2ee9c8330f18337b29a443b3",
+        "returncode": 0,
+        "wall_seconds": 12.646185521000007
+      },
+      "source_manifest": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/benchmark.json",
+      "source_manifest_sha256": "7405c10f9ea1d09929cb8f4cea8eb68fe720b136759bac039eef20a5c10c7e31",
+      "output_sha256": "8b87d09f1156cd61829b8f245d34dc53455e0039543700a9565b1ba131c42e77",
+      "reference_sha256": "6172978af5505604b4d018aa3a74cb86fee5038bc5aa87275c0078f0d6c03d3a",
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "actual_all_finite": true,
+      "extent": [
+        2048,
+        858
+      ],
+      "channel_count": 46,
+      "passes": {
+        "Combined": {
+          "relative_rmse": 0.010798502982858236,
+          "rmse": 0.002371313516050577,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffCol": {
+          "relative_rmse": 0.00159732727452926,
+          "rmse": 0.00039740378269925714,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffDir": {
+          "relative_rmse": 0.009853822719238247,
+          "rmse": 0.00585278170183301,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "DiffInd": {
+          "relative_rmse": 0.0745404159432479,
+          "rmse": 0.00891908723860979,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Emit": {
+          "relative_rmse": 0.0002119692471380918,
+          "rmse": 1.685227471170947e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Env": {
+          "relative_rmse": 0.00045627798673005546,
+          "rmse": 5.8762325352290645e-06,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossCol": {
+          "relative_rmse": 0.0019358409455885854,
+          "rmse": 0.00038607255555689335,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossDir": {
+          "relative_rmse": 0.008179755084887781,
+          "rmse": 0.01845679245889187,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "GlossInd": {
+          "relative_rmse": 0.1287962434592074,
+          "rmse": 0.028133684769272804,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Normal": {
+          "relative_rmse": 0.0009165363025969467,
+          "rmse": 0.0005052110645920038,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransCol": {
+          "relative_rmse": 0.0002701361292099856,
+          "rmse": 1.755613266141154e-05,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransDir": {
+          "relative_rmse": 0.028148851589640624,
+          "rmse": 9.330463399237487e-06,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "TransInd": {
+          "relative_rmse": 0.02999426346972627,
+          "rmse": 0.0004108867433387786,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Direct": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        },
+        "Volume Indirect": {
+          "relative_rmse": 0.0,
+          "rmse": 0.0,
+          "actual_invalid_pixels": 0,
+          "reference_invalid_pixels": 0
+        }
+      }
+    }
+  ]
+}

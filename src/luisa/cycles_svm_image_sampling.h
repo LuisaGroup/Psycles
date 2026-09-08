@@ -6,7 +6,6 @@
 #include <psycles/compiler/cycles_svm_compiler.h>
 #include <psycles/luisa/cycles_svm.h>
 
-#include <array>
 #include <cstdint>
 #include <limits>
 
@@ -61,51 +60,37 @@ template<typename TextureHeap>
       image_sampling_extension(extension));
 }
 
-// Resolve a runtime Cycles ImageManager handle without generating one shader
-// branch per scene image. The device table selects texture storage and the
-// two finite sampler coordinates; the host loop below emits exactly the fixed
-// 3 x 4 Cycles sampler product for every scene size.
+// Cycles kernel/device/gpu/image.h: the ImageManager handle selects a texture
+// object with an immutable sampler. Only ordinary versus bicubic sampling
+// changes the device algebra; filter/extension do not clone shader branches.
 template<typename TextureHeap, typename ImageBindingBuffer>
 [[nodiscard]] luisa::compute::Float4 sample_scene_image_2d(
     const TextureHeap &textures,
     const ImageBindingBuffer &bindings,
     luisa::compute::Expr<std::int32_t> image_id,
     const Dual2 &uv) noexcept {
-  using compiler::cycles_svm::ImageExtension;
-  using compiler::cycles_svm::ImageInterpolation;
   namespace scene_detail = ::psycles::luisa_backend::detail;
 
   // Original kernel/device/gpu/image.h: both an absent image handle and a
   // failed full-image load return before UV wrapping or any texture access.
   luisa::compute::Float4 result = luisa::compute::make_float4(1.0f, 0.0f, 1.0f, 1.0f);
-  constexpr std::array interpolation_domain{
-      ImageInterpolation::closest,
-      ImageInterpolation::linear,
-      ImageInterpolation::cubic};
-  constexpr std::array extension_domain{
-      ImageExtension::repeat,
-      ImageExtension::clip,
-      ImageExtension::extend,
-      ImageExtension::mirror};
   $if(image_id != std::numeric_limits<std::int32_t>::max()) {
     const auto binding = bindings->read(image_id.cast<std::uint32_t>());
     $if((binding.sampler & scene_detail::cycles_svm_image_load_failed_flag) == 0u) {
       const luisa::compute::UInt interpolation =
           binding.sampler & scene_detail::cycles_svm_image_interpolation_mask;
-      const luisa::compute::UInt extension =
-          (binding.sampler & scene_detail::cycles_svm_image_extension_mask) >>
-          scene_detail::cycles_svm_image_extension_shift;
-      result = luisa::compute::make_float4(0.0f);
-      for (const auto static_interpolation : interpolation_domain) {
-        for (const auto static_extension : extension_domain) {
-          const auto interpolation_code = image_sampling_family(static_interpolation);
-          const auto extension_code = image_sampling_extension(static_extension);
-          $if((interpolation == interpolation_code) & (extension == extension_code)) {
-            result = sample_image_2d(textures, binding.texture_slot, uv,
-                                    static_interpolation, static_extension);
-          };
-        }
-      }
+      auto texture = textures->tex2d(binding.texture_slot);
+      auto sample_uv = uv.val;
+      sample_uv.y = 1.0f - sample_uv.y;
+      $if(interpolation == 2u) {
+        result = scene_detail::sample_cycles_texture_2d_bicubic(
+            texture, sample_uv,
+            [&](luisa::compute::Float u, luisa::compute::Float v) noexcept {
+              return texture.sample(luisa::compute::make_float2(u, v));
+            });
+      } $else {
+        result = texture.sample(sample_uv);
+      };
     };
   };
   return result;
