@@ -1,0 +1,326 @@
+{
+  "commands": {
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "/home/mike/Projects/Psycles/assets/official-blender-scenes/classroom/classroom.blend",
+        "--background",
+        "--debug-cycles",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/cycles/hip.exr",
+        "1920",
+        "1080",
+        "256",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "Radeon RX 9070 XT"
+      ],
+      "log": "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/logs/cycles-hip.log",
+      "log_sha256": "a82f7b9741505265801f345e72ac735d8043f8a7bfa67ec293c52775fd3da656",
+      "returncode": 0,
+      "wall_seconds": 20.61299557099119
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_hip-wavefront-staged": {
+      "command": [
+        "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-four-scene-hip-0PRq34/classroom/export",
+        "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/psycles/hip-wavefront-staged.ppm",
+        "hip",
+        "1920",
+        "1080",
+        "256",
+        "64",
+        "-",
+        "960",
+        "540",
+        "0",
+        "0",
+        "256",
+        "-",
+        "1",
+        "0",
+        "wavefront-staged",
+        "32",
+        "32768",
+        "32",
+        "1",
+        "1",
+        "1",
+        "4",
+        "2",
+        "0",
+        "0",
+        "0",
+        "0",
+        "1",
+        "1048576"
+      ],
+      "log": "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/logs/psycles-hip-wavefront-staged.log",
+      "log_sha256": "acada54ec2dd13ef6b6cb15a92bf7da3ea3ca8ad0fe5a5acfb6867e941a12005",
+      "returncode": 0,
+      "wall_seconds": 40.43840491503943
+    }
+  },
+  "comparisons": {
+    "psycles-hip-wavefront-staged-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/psycles/hip-wavefront-staged.exr",
+      "process_wall_seconds": 14.386096174013801,
+      "reference": "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/cycles/hip.exr",
+      "report": "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/report.json"
+    }
+  },
+  "matrix": {
+    "cycles": [
+      "hip"
+    ],
+    "psycles": [
+      "hip-wavefront-staged"
+    ]
+  },
+  "relative_performance": {
+    "hip-wavefront-staged": {
+      "slowdown_vs_cycles_hip": 1.0405226293402248,
+      "speedup_over_cycles_hip": 0.9610555040346221
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/cycles/hip.json",
+        "metadata_sha256": "f24782340c43ff463e7013c439d0d123d9a05883181f344999edd9278a932d61",
+        "output": "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/cycles/hip.exr",
+        "pass_contract": {
+          "channels": [
+            "interior.Combined.R",
+            "interior.Combined.G",
+            "interior.Combined.B",
+            "interior.Combined.A",
+            "interior.Diffuse Color.R",
+            "interior.Diffuse Color.G",
+            "interior.Diffuse Color.B",
+            "interior.Diffuse Direct.R",
+            "interior.Diffuse Direct.G",
+            "interior.Diffuse Direct.B",
+            "interior.Diffuse Indirect.R",
+            "interior.Diffuse Indirect.G",
+            "interior.Diffuse Indirect.B",
+            "interior.Emission.R",
+            "interior.Emission.G",
+            "interior.Emission.B",
+            "interior.Environment.R",
+            "interior.Environment.G",
+            "interior.Environment.B",
+            "interior.Glossy Color.R",
+            "interior.Glossy Color.G",
+            "interior.Glossy Color.B",
+            "interior.Glossy Direct.R",
+            "interior.Glossy Direct.G",
+            "interior.Glossy Direct.B",
+            "interior.Glossy Indirect.R",
+            "interior.Glossy Indirect.G",
+            "interior.Glossy Indirect.B",
+            "interior.Normal.X",
+            "interior.Normal.Y",
+            "interior.Normal.Z",
+            "interior.Transmission Color.R",
+            "interior.Transmission Color.G",
+            "interior.Transmission Color.B",
+            "interior.Transmission Direct.R",
+            "interior.Transmission Direct.G",
+            "interior.Transmission Direct.B",
+            "interior.Transmission Indirect.R",
+            "interior.Transmission Indirect.G",
+            "interior.Transmission Indirect.B",
+            "interior.Volume Direct.R",
+            "interior.Volume Direct.G",
+            "interior.Volume Direct.B",
+            "interior.Volume Indirect.R",
+            "interior.Volume Indirect.G",
+            "interior.Volume Indirect.B"
+          ],
+          "height": 1080,
+          "passes": [
+            "Combined",
+            "Normal",
+            "DiffCol",
+            "GlossCol",
+            "TransCol",
+            "DiffDir",
+            "DiffInd",
+            "GlossDir",
+            "GlossInd",
+            "TransDir",
+            "TransInd",
+            "Emit",
+            "Env",
+            "Volume Direct",
+            "Volume Indirect"
+          ],
+          "schema": "psycles.linear-pass-contract.v1",
+          "width": 1920
+        },
+        "process_wall_seconds": 20.61299557099119,
+        "render_call_seconds": 19.478555939043872,
+        "render_seconds": 18.0319,
+        "sha256": "94dbbc51b63958e1def2feba5c8645b89cadc8172cb7aaeda90ebcd996bf5108",
+        "timing_scope": "cycles_main_loop_wall"
+      }
+    },
+    "psycles": {
+      "hip-wavefront-staged": {
+        "backend": "hip",
+        "output": "/var/tmp/psycles-matched-pass-hip-2c98Q0/classroom/run-1/psycles/hip-wavefront-staged.exr",
+        "pass_contract": {
+          "channels": [
+            "ViewLayer.Combined.R",
+            "ViewLayer.Combined.G",
+            "ViewLayer.Combined.B",
+            "ViewLayer.Combined.A",
+            "ViewLayer.DiffCol.R",
+            "ViewLayer.DiffCol.G",
+            "ViewLayer.DiffCol.B",
+            "ViewLayer.DiffDir.R",
+            "ViewLayer.DiffDir.G",
+            "ViewLayer.DiffDir.B",
+            "ViewLayer.DiffInd.R",
+            "ViewLayer.DiffInd.G",
+            "ViewLayer.DiffInd.B",
+            "ViewLayer.Emit.R",
+            "ViewLayer.Emit.G",
+            "ViewLayer.Emit.B",
+            "ViewLayer.Env.R",
+            "ViewLayer.Env.G",
+            "ViewLayer.Env.B",
+            "ViewLayer.GlossCol.R",
+            "ViewLayer.GlossCol.G",
+            "ViewLayer.GlossCol.B",
+            "ViewLayer.GlossDir.R",
+            "ViewLayer.GlossDir.G",
+            "ViewLayer.GlossDir.B",
+            "ViewLayer.GlossInd.R",
+            "ViewLayer.GlossInd.G",
+            "ViewLayer.GlossInd.B",
+            "ViewLayer.Normal.X",
+            "ViewLayer.Normal.Y",
+            "ViewLayer.Normal.Z",
+            "ViewLayer.TransCol.R",
+            "ViewLayer.TransCol.G",
+            "ViewLayer.TransCol.B",
+            "ViewLayer.TransDir.R",
+            "ViewLayer.TransDir.G",
+            "ViewLayer.TransDir.B",
+            "ViewLayer.TransInd.R",
+            "ViewLayer.TransInd.G",
+            "ViewLayer.TransInd.B",
+            "ViewLayer.VolumeDir.R",
+            "ViewLayer.VolumeDir.G",
+            "ViewLayer.VolumeDir.B",
+            "ViewLayer.VolumeInd.R",
+            "ViewLayer.VolumeInd.G",
+            "ViewLayer.VolumeInd.B"
+          ],
+          "height": 1080,
+          "passes": [
+            "Combined",
+            "Normal",
+            "DiffCol",
+            "GlossCol",
+            "TransCol",
+            "DiffDir",
+            "DiffInd",
+            "GlossDir",
+            "GlossInd",
+            "TransDir",
+            "TransInd",
+            "Emit",
+            "Env",
+            "Volume Direct",
+            "Volume Indirect"
+          ],
+          "schema": "psycles.linear-pass-contract.v1",
+          "width": 1920
+        },
+        "process_wall_seconds": 40.43840491503943,
+        "render_seconds": 18.7626,
+        "scene_compile_seconds": 2.1166,
+        "scheduler": "wavefront-staged",
+        "sha256": "9f409c5b890ae85606b6f0ffd58c0b060ec7fe06541511b34cd547f6e8319a98",
+        "shader_jit_seconds": 18.1196
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": false,
+    "requested": false,
+    "reused_stages": []
+  },
+  "scene": {
+    "blend": "/home/mike/Projects/Psycles/assets/official-blender-scenes/classroom/classroom.blend",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "bundle": "/var/tmp/psycles-four-scene-hip-0PRq34/classroom/export",
+    "geometry_bin_sha256": "97efedc93fbda033861a3faa21a2c3d307d18e89114b1ebaf26ef1aa22cb9a60",
+    "scene_json_sha256": "b94d259b820527c946be9e527c2f261842c3fdc9004d16914665a2fb10c0d7f2",
+    "sha256": "5c526ea3f280566e80253673c9955640527cd0f247ea41b1742620b5bc39f7a4"
+  },
+  "schema": "psycles.scene-benchmark.v3",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "Radeon RX 9070 XT",
+    "height": 1080,
+    "max_samples_per_dispatch": 64,
+    "pass_contract": "psycles.linear-pass-contract.v1",
+    "psycles_environment": {
+      "PSYCLES_COMPACT_SURFACE_VALUES": null,
+      "PSYCLES_DISABLE_SHADER_CACHE": "1",
+      "PSYCLES_POPULATE_SURFACE_ONCE": null
+    },
+    "psycles_scheduler_config": {
+      "fast_math": true,
+      "persistent_block_size": 32,
+      "persistent_fetch_size": 1,
+      "persistent_worker_count": 32768,
+      "staged_direct_light_queue": true,
+      "staged_surface_sorting": true,
+      "wavefront_counter_readback_batch_size": 4,
+      "wavefront_counter_readback_pipeline_depth": 2,
+      "wavefront_execution_block_size": 32,
+      "wavefront_frame_capacity": 1048576,
+      "wavefront_graph_refill_threshold": 0,
+      "wavefront_graph_selective": false,
+      "wavefront_graph_worker_count": 0,
+      "wavefront_tail_megakernel_threshold": 0
+    },
+    "psycles_schedulers": [
+      "wavefront-staged"
+    ],
+    "samples": 256,
+    "width": 1920
+  },
+  "status": "complete"
+}

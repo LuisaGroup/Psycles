@@ -1,0 +1,63 @@
+{
+  "adaptive_sampling": false,
+  "auto_scrambling_distance": false,
+  "blender": "5.2.1 LTS",
+  "blender_build": {
+    "build_branch": "blender-v5.2-release (modified)",
+    "build_hash": "9e2066aef7ef",
+    "build_type": "Release",
+    "version": "5.2.1 LTS",
+    "version_cycle": "release",
+    "version_tuple": [
+      5,
+      2,
+      1
+    ]
+  },
+  "camera": "Camera",
+  "cycles_compute_device_type": "HIP",
+  "cycles_device": "GPU",
+  "cycles_enabled_devices": [
+    {
+      "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+      "name": "AMD Radeon RX 9070 XT",
+      "type": "HIP"
+    }
+  ],
+  "denoising": false,
+  "effective_seed": 1267069554,
+  "elapsed_seconds": 35.90766280202661,
+  "frame": 1,
+  "height": 858,
+  "output": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.exr",
+  "pass_contract": "psycles.linear-pass-contract.v1",
+  "passes": [
+    "Combined",
+    "Normal",
+    "DiffCol",
+    "GlossCol",
+    "TransCol",
+    "DiffDir",
+    "DiffInd",
+    "GlossDir",
+    "GlossInd",
+    "TransDir",
+    "TransInd",
+    "Emit",
+    "Env",
+    "Volume Direct",
+    "Volume Indirect"
+  ],
+  "samples": 256,
+  "sampling_pattern": "TABULATED_SOBOL",
+  "schema": "psycles.cycles-golden.v2",
+  "scrambling_distance": 1.0,
+  "seed": 0,
+  "source": "/var/tmp/psycles-official-redownload-20260814/barbershop_interior.blend",
+  "transparent": false,
+  "use_animated_seed": true,
+  "view_layers": [
+    "RenderLayer"
+  ],
+  "width": 2048
+}

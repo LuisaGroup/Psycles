@@ -1,0 +1,267 @@
+{
+  "schema": "psycles.matched-stage-profile.v1",
+  "extent": [
+    2048,
+    858
+  ],
+  "samples": 64,
+  "engines": {
+    "cycles": {
+      "pass_contract": {
+        "schema": "psycles.linear-pass-contract.v1",
+        "passes": [
+          "Combined",
+          "Normal",
+          "DiffCol",
+          "GlossCol",
+          "TransCol",
+          "DiffDir",
+          "DiffInd",
+          "GlossDir",
+          "GlossInd",
+          "TransDir",
+          "TransInd",
+          "Emit",
+          "Env",
+          "Volume Direct",
+          "Volume Indirect"
+        ],
+        "channels": [
+          "RenderLayer.Combined.R",
+          "RenderLayer.Combined.G",
+          "RenderLayer.Combined.B",
+          "RenderLayer.Combined.A",
+          "RenderLayer.Diffuse Color.R",
+          "RenderLayer.Diffuse Color.G",
+          "RenderLayer.Diffuse Color.B",
+          "RenderLayer.Diffuse Direct.R",
+          "RenderLayer.Diffuse Direct.G",
+          "RenderLayer.Diffuse Direct.B",
+          "RenderLayer.Diffuse Indirect.R",
+          "RenderLayer.Diffuse Indirect.G",
+          "RenderLayer.Diffuse Indirect.B",
+          "RenderLayer.Emission.R",
+          "RenderLayer.Emission.G",
+          "RenderLayer.Emission.B",
+          "RenderLayer.Environment.R",
+          "RenderLayer.Environment.G",
+          "RenderLayer.Environment.B",
+          "RenderLayer.Glossy Color.R",
+          "RenderLayer.Glossy Color.G",
+          "RenderLayer.Glossy Color.B",
+          "RenderLayer.Glossy Direct.R",
+          "RenderLayer.Glossy Direct.G",
+          "RenderLayer.Glossy Direct.B",
+          "RenderLayer.Glossy Indirect.R",
+          "RenderLayer.Glossy Indirect.G",
+          "RenderLayer.Glossy Indirect.B",
+          "RenderLayer.Normal.X",
+          "RenderLayer.Normal.Y",
+          "RenderLayer.Normal.Z",
+          "RenderLayer.Transmission Color.R",
+          "RenderLayer.Transmission Color.G",
+          "RenderLayer.Transmission Color.B",
+          "RenderLayer.Transmission Direct.R",
+          "RenderLayer.Transmission Direct.G",
+          "RenderLayer.Transmission Direct.B",
+          "RenderLayer.Transmission Indirect.R",
+          "RenderLayer.Transmission Indirect.G",
+          "RenderLayer.Transmission Indirect.B",
+          "RenderLayer.Volume Direct.R",
+          "RenderLayer.Volume Direct.G",
+          "RenderLayer.Volume Direct.B",
+          "RenderLayer.Volume Indirect.R",
+          "RenderLayer.Volume Indirect.G",
+          "RenderLayer.Volume Indirect.B"
+        ],
+        "width": 2048,
+        "height": 858
+      },
+      "stages": {
+        "shade_surface": {
+          "kernel": "kernel_gpu_integrator_shade_surface",
+          "calls": 797,
+          "duration_ns": 2962828646,
+          "duration_seconds": 2.962828646,
+          "vgpr_counts": [
+            192
+          ],
+          "scratch_bytes": [
+            6976
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_gpu_integrator_shade_volume",
+          "calls": 381,
+          "duration_ns": 353595503,
+          "duration_seconds": 0.353595503,
+          "vgpr_counts": [
+            192
+          ],
+          "scratch_bytes": [
+            10560
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_gpu_integrator_intersect_closest",
+          "calls": 910,
+          "duration_ns": 1366894088,
+          "duration_seconds": 1.366894088,
+          "vgpr_counts": [
+            184
+          ],
+          "scratch_bytes": [
+            64
+          ]
+        }
+      },
+      "sources": {
+        "stats": {
+          "path": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-matched-kernel-profile-cycles/cycles_kernel_stats.csv",
+          "sha256": "3150aceac208fb59cbddfbc5baec5f8f1eb8dcb709da82658d36e2e62338d085"
+        },
+        "trace": {
+          "path": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-matched-kernel-profile-cycles/cycles_kernel_trace.csv",
+          "sha256": "7829ea5fd9ce65584e409773d7603ef357b3164d9f83d39c396c46f8d83367a1"
+        },
+        "log": {
+          "path": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-matched-kernel-profile-cycles.log",
+          "sha256": "4affa859c9274a7168a96f1ca1e9a5562efe69d92979bb6dc4c738dabfa6d4bb"
+        },
+        "image": {
+          "path": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-matched-kernel-profile-cycles.exr",
+          "sha256": "0e79444470ab8ccf51482ed02de3ec29ebac27ae58be8b223fade482f6b00366"
+        }
+      }
+    },
+    "psycles": {
+      "pass_contract": {
+        "schema": "psycles.linear-pass-contract.v1",
+        "passes": [
+          "Combined",
+          "Normal",
+          "DiffCol",
+          "GlossCol",
+          "TransCol",
+          "DiffDir",
+          "DiffInd",
+          "GlossDir",
+          "GlossInd",
+          "TransDir",
+          "TransInd",
+          "Emit",
+          "Env",
+          "Volume Direct",
+          "Volume Indirect"
+        ],
+        "channels": [
+          "ViewLayer.Combined.R",
+          "ViewLayer.Combined.G",
+          "ViewLayer.Combined.B",
+          "ViewLayer.Combined.A",
+          "ViewLayer.DiffCol.R",
+          "ViewLayer.DiffCol.G",
+          "ViewLayer.DiffCol.B",
+          "ViewLayer.DiffDir.R",
+          "ViewLayer.DiffDir.G",
+          "ViewLayer.DiffDir.B",
+          "ViewLayer.DiffInd.R",
+          "ViewLayer.DiffInd.G",
+          "ViewLayer.DiffInd.B",
+          "ViewLayer.Emit.R",
+          "ViewLayer.Emit.G",
+          "ViewLayer.Emit.B",
+          "ViewLayer.Env.R",
+          "ViewLayer.Env.G",
+          "ViewLayer.Env.B",
+          "ViewLayer.GlossCol.R",
+          "ViewLayer.GlossCol.G",
+          "ViewLayer.GlossCol.B",
+          "ViewLayer.GlossDir.R",
+          "ViewLayer.GlossDir.G",
+          "ViewLayer.GlossDir.B",
+          "ViewLayer.GlossInd.R",
+          "ViewLayer.GlossInd.G",
+          "ViewLayer.GlossInd.B",
+          "ViewLayer.Normal.X",
+          "ViewLayer.Normal.Y",
+          "ViewLayer.Normal.Z",
+          "ViewLayer.TransCol.R",
+          "ViewLayer.TransCol.G",
+          "ViewLayer.TransCol.B",
+          "ViewLayer.TransDir.R",
+          "ViewLayer.TransDir.G",
+          "ViewLayer.TransDir.B",
+          "ViewLayer.TransInd.R",
+          "ViewLayer.TransInd.G",
+          "ViewLayer.TransInd.B",
+          "ViewLayer.VolumeDir.R",
+          "ViewLayer.VolumeDir.G",
+          "ViewLayer.VolumeDir.B",
+          "ViewLayer.VolumeInd.R",
+          "ViewLayer.VolumeInd.G",
+          "ViewLayer.VolumeInd.B"
+        ],
+        "width": 2048,
+        "height": 858
+      },
+      "stages": {
+        "shade_surface": {
+          "kernel": "kernel_7c5a18556bfbdef7",
+          "calls": 1120,
+          "duration_ns": 5726934066,
+          "duration_seconds": 5.726934066,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            2432
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_859d7ba000078b22",
+          "calls": 429,
+          "duration_ns": 433407027,
+          "duration_seconds": 0.433407027,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            452
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_b717de734733be83",
+          "calls": 992,
+          "duration_ns": 1546774233,
+          "duration_seconds": 1.546774233,
+          "vgpr_counts": [
+            144
+          ],
+          "scratch_bytes": [
+            240
+          ]
+        }
+      },
+      "sources": {
+        "stats": {
+          "path": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-matched-kernel-profile-psycles-valid/psycles_kernel_stats.csv",
+          "sha256": "8ca5b1d6ecb4f9e9fd600a5840e242fc47071ff618e91bc6505fdefe146a2e94"
+        },
+        "trace": {
+          "path": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-matched-kernel-profile-psycles-valid/psycles_kernel_trace.csv",
+          "sha256": "66e9d1ff10c99920e471d950fb6ec40ce81cd7f272914a2e30e6cfb9e0d468f3"
+        },
+        "log": {
+          "path": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-matched-kernel-profile-psycles-valid.log",
+          "sha256": "e81e78198fc3e77a70c02183f88aee42f6b710099d1ade589be6bd19db069c47"
+        },
+        "image": {
+          "path": "/var/tmp/psycles-native-volume-svm-06XnDX/barbershop-matched-kernel-profile-psycles-valid.exr",
+          "sha256": "c37c966d270e03e9338337bab5fa9991ae892bfa4e908189ebd5fcf07a29bc48"
+        }
+      }
+    }
+  },
+  "scope": "single-run instrumented kernel durations; not active-path counts or render-wall time"
+}

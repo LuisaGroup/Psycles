@@ -1,0 +1,867 @@
+{
+  "actual_label": "Psycles hip (wavefront-staged)",
+  "build_identity": {
+    "actual_metadata": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export/scene.json",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "reference_metadata": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.json",
+    "verified": true
+  },
+  "cycles_channels": [
+    "RenderLayer.Combined.R",
+    "RenderLayer.Combined.G",
+    "RenderLayer.Combined.B",
+    "RenderLayer.Combined.A",
+    "RenderLayer.Diffuse Color.R",
+    "RenderLayer.Diffuse Color.G",
+    "RenderLayer.Diffuse Color.B",
+    "RenderLayer.Diffuse Direct.R",
+    "RenderLayer.Diffuse Direct.G",
+    "RenderLayer.Diffuse Direct.B",
+    "RenderLayer.Diffuse Indirect.R",
+    "RenderLayer.Diffuse Indirect.G",
+    "RenderLayer.Diffuse Indirect.B",
+    "RenderLayer.Emission.R",
+    "RenderLayer.Emission.G",
+    "RenderLayer.Emission.B",
+    "RenderLayer.Environment.R",
+    "RenderLayer.Environment.G",
+    "RenderLayer.Environment.B",
+    "RenderLayer.Glossy Color.R",
+    "RenderLayer.Glossy Color.G",
+    "RenderLayer.Glossy Color.B",
+    "RenderLayer.Glossy Direct.R",
+    "RenderLayer.Glossy Direct.G",
+    "RenderLayer.Glossy Direct.B",
+    "RenderLayer.Glossy Indirect.R",
+    "RenderLayer.Glossy Indirect.G",
+    "RenderLayer.Glossy Indirect.B",
+    "RenderLayer.Normal.X",
+    "RenderLayer.Normal.Y",
+    "RenderLayer.Normal.Z",
+    "RenderLayer.Transmission Color.R",
+    "RenderLayer.Transmission Color.G",
+    "RenderLayer.Transmission Color.B",
+    "RenderLayer.Transmission Direct.R",
+    "RenderLayer.Transmission Direct.G",
+    "RenderLayer.Transmission Direct.B",
+    "RenderLayer.Transmission Indirect.R",
+    "RenderLayer.Transmission Indirect.G",
+    "RenderLayer.Transmission Indirect.B",
+    "RenderLayer.Volume Direct.R",
+    "RenderLayer.Volume Direct.G",
+    "RenderLayer.Volume Direct.B",
+    "RenderLayer.Volume Indirect.R",
+    "RenderLayer.Volume Indirect.G",
+    "RenderLayer.Volume Indirect.B"
+  ],
+  "passes": {
+    "Combined": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999381303787231,
+        0.9999681115150452,
+        0.9999707937240601
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.12356771528720856,
+        0.08800815790891647,
+        0.0683847963809967
+      ],
+      "cycles_luminance_mean": 0.09429974108934402,
+      "cycles_rms": 0.2195965051651001,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999530683242239,
+      "maximum_absolute_error": 1.0283515453338623,
+      "mean_absolute_error": 0.0006529968231916428,
+      "orientation_rmse": {
+        "flip_x": 0.25848159193992615,
+        "flip_xy": 0.27060550451278687,
+        "flip_y": 0.26032084226608276,
+        "identity": 0.0023712748661637306
+      },
+      "p95_pixel_rmse": 0.0029832981526851654,
+      "p99_pixel_rmse": 0.009005044586956501,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.12356007099151611,
+        0.08800534904003143,
+        0.06838279962539673
+      ],
+      "psycles_luminance_mean": 0.09429531544446945,
+      "psycles_rms": 0.21959506020427202,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.010798326978750985,
+      "rmse": 0.0023712748661637306,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 70.69296285195963,
+        "display_scale": 0.887289139840158,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/combined.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "DiffCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999985694885254,
+        0.9999979734420776,
+        1.0000040531158447
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.2100493609905243,
+        0.18572862446308136,
+        0.1613839566707611
+      ],
+      "cycles_luminance_mean": 0.1891309767961502,
+      "cycles_rms": 0.24879297614097595,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999970060741241,
+      "maximum_absolute_error": 0.14437970519065857,
+      "mean_absolute_error": 1.808084562071599e-05,
+      "orientation_rmse": {
+        "flip_x": 0.22623443603515625,
+        "flip_xy": 0.23804402351379395,
+        "flip_y": 0.2243490368127823,
+        "identity": 0.0003894060500897467
+      },
+      "p95_pixel_rmse": 2.3965769287315197e-05,
+      "p99_pixel_rmse": 0.00024367417790926993,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.21004906296730042,
+        0.1857282519340515,
+        0.16138461232185364
+      ],
+      "psycles_luminance_mean": 0.18913041055202484,
+      "psycles_rms": 0.24879191238416953,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.001565181043813286,
+      "rmse": 0.0003894060500897467,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1359.8172495828921,
+        "display_scale": 1.107465557951396,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/diffcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "DiffDir": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999297857284546,
+        0.999980092048645,
+        0.9999655485153198
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.3353821933269501,
+        0.2841201722621918,
+        0.27673447132110596
+      ],
+      "cycles_luminance_mean": 0.29474449157714844,
+      "cycles_rms": 0.5939605236053467,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999522749480687,
+      "maximum_absolute_error": 2.4588613510131836,
+      "mean_absolute_error": 0.0015322904800996184,
+      "orientation_rmse": {
+        "flip_x": 0.6048364043235779,
+        "flip_xy": 0.6088279485702515,
+        "flip_y": 0.5939795970916748,
+        "identity": 0.005852516274899244
+      },
+      "p95_pixel_rmse": 0.0075411866419017315,
+      "p99_pixel_rmse": 0.018571456894278526,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.3353586494922638,
+        0.2841145098209381,
+        0.2767249345779419
+      ],
+      "psycles_luminance_mean": 0.29473042488098145,
+      "psycles_rms": 0.5939483311334012,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.009853375842849637,
+      "rmse": 0.005852516274899244,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 34.6864956399582,
+        "display_scale": 0.2981630016533396,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/diffdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "DiffInd": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999233484268188,
+        0.9999316930770874,
+        0.9999890923500061
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.09857618808746338,
+        0.07101693749427795,
+        0.05727697163820267
+      ],
+      "cycles_luminance_mean": 0.07588963210582733,
+      "cycles_rms": 0.11965712159872055,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.999946591968728,
+      "maximum_absolute_error": 3.1758127212524414,
+      "mean_absolute_error": 0.002148489700630307,
+      "orientation_rmse": {
+        "flip_x": 0.11527707427740097,
+        "flip_xy": 0.12043735384941101,
+        "flip_y": 0.10832962393760681,
+        "identity": 0.008915773592889309
+      },
+      "p95_pixel_rmse": 0.010668620467185974,
+      "p99_pixel_rmse": 0.03342780843377113,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.0985686331987381,
+        0.07101208716630936,
+        0.057276345789432526
+      ],
+      "psycles_luminance_mean": 0.0758855789899826,
+      "psycles_rms": 0.11962051362162102,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0745110150885047,
+      "rmse": 0.008915773592889309,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 19.062966265310457,
+        "display_scale": 1.8436546120991748,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/diffind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "Emit": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0,
+        1.0000003576278687,
+        1.0000009536743164
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.01985825225710869,
+        0.012479076161980629,
+        0.006417496129870415
+      ],
+      "cycles_luminance_mean": 0.01361460704356432,
+      "cycles_rms": 0.07950339466333389,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.000000205218389,
+      "maximum_absolute_error": 0.005866773426532745,
+      "mean_absolute_error": 1.0408726325294992e-07,
+      "orientation_rmse": {
+        "flip_x": 0.108688123524189,
+        "flip_xy": 0.11110856384038925,
+        "flip_y": 0.10736040771007538,
+        "identity": 1.6852287444635294e-05
+      },
+      "p95_pixel_rmse": 9.618657870191782e-09,
+      "p99_pixel_rmse": 2.1628082436109253e-07,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.01985825225710869,
+        0.012479080818593502,
+        0.00641750218346715
+      ],
+      "psycles_luminance_mean": 0.013614609837532043,
+      "psycles_rms": 0.07950347180609316,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0002119694072938421,
+      "rmse": 1.6852287444635294e-05,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1529062.724050633,
+        "display_scale": 1.2581970449211384,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/emit.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "Env": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999998807907104,
+        0.9999998807907104,
+        0.9999998807907104
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.0002807137498166412,
+        0.0002807137498166412,
+        0.0002807137498166412
+      ],
+      "cycles_luminance_mean": 0.0002807134296745062,
+      "cycles_rms": 0.01287862379103899,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999998963219163,
+      "maximum_absolute_error": 0.00390625,
+      "mean_absolute_error": 8.866605227808577e-09,
+      "orientation_rmse": {
+        "flip_x": 0.01821315661072731,
+        "flip_xy": 0.01821315661072731,
+        "flip_y": 0.01821315661072731,
+        "identity": 5.8762325352290645e-06
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.00028071372071281075,
+        0.00028071372071281075,
+        0.00028071372071281075
+      ],
+      "psycles_luminance_mean": 0.00028071340057067573,
+      "psycles_rms": 0.012878669379252637,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.00045627798673005546,
+      "rmse": 5.8762325352290645e-06,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/env.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "GlossCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999512434005737,
+        0.9999502897262573,
+        0.999950647354126
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.08707127720117569,
+        0.08285737037658691,
+        0.07951174676418304
+      ],
+      "cycles_luminance_mean": 0.08361723273992538,
+      "cycles_rms": 0.19943402707576752,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999534880198238,
+      "maximum_absolute_error": 0.09696037322282791,
+      "mean_absolute_error": 1.406278806825867e-05,
+      "orientation_rmse": {
+        "flip_x": 0.2499132603406906,
+        "flip_xy": 0.26067623496055603,
+        "flip_y": 0.257079541683197,
+        "identity": 0.00038115636561997235
+      },
+      "p95_pixel_rmse": 1.5029334463179111e-05,
+      "p99_pixel_rmse": 0.00010065903188660741,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.08706703037023544,
+        0.08285325020551682,
+        0.07950782030820847
+      ],
+      "psycles_luminance_mean": 0.08361334353685379,
+      "psycles_rms": 0.19943208117999994,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0019111902377379473,
+      "rmse": 0.00038115636561997235,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 3979.631775884952,
+        "display_scale": 0.9002448449866578,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/glosscol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "GlossDir": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9999963641166687,
+        1.0000224113464355,
+        1.0000290870666504
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.1963256448507309,
+        0.2141840159893036,
+        0.24513962864875793
+      ],
+      "cycles_luminance_mean": 0.21318531036376953,
+      "cycles_rms": 2.256399154663086,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0000189422745716,
+      "maximum_absolute_error": 16.8869686126709,
+      "mean_absolute_error": 0.000642191618680954,
+      "orientation_rmse": {
+        "flip_x": 3.152111768722534,
+        "flip_xy": 3.1661429405212402,
+        "flip_y": 3.162599563598633,
+        "identity": 0.018456758931279182
+      },
+      "p95_pixel_rmse": 0.0021011282224208117,
+      "p99_pixel_rmse": 0.008856170810759068,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.1963249295949936,
+        0.214188814163208,
+        0.2451467663049698
+      ],
+      "psycles_luminance_mean": 0.21318934857845306,
+      "psycles_rms": 2.2564666855337316,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.008179740225986325,
+      "rmse": 0.018456758931279182,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 59.6885751537616,
+        "display_scale": 0.2827608813026702,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/glossdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "GlossInd": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0003588199615479,
+        1.0001354217529297,
+        0.9998540282249451
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.1005270704627037,
+        0.07308655232191086,
+        0.05878492444753647
+      ],
+      "cycles_luminance_mean": 0.07792853564023972,
+      "cycles_rms": 0.2184356153011322,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0001825154064898,
+      "maximum_absolute_error": 11.26154613494873,
+      "mean_absolute_error": 0.003602794837206602,
+      "orientation_rmse": {
+        "flip_x": 0.2802373468875885,
+        "flip_xy": 0.2839702069759369,
+        "flip_y": 0.2827915847301483,
+        "identity": 0.02813085727393627
+      },
+      "p95_pixel_rmse": 0.014883061870932579,
+      "p99_pixel_rmse": 0.06206255406141281,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.10056314617395401,
+        0.07309644669294357,
+        0.05877634510397911
+      ],
+      "psycles_luminance_mean": 0.07794275879859924,
+      "psycles_rms": 0.21823729307996353,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.12878329037668823,
+      "rmse": 0.02813085727393627,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 9.23504403726832,
+        "display_scale": 1.0430549796110462,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/glossind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "Normal": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0000180006027222,
+        0.9999656081199646,
+        0.999974250793457
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.16679127514362335,
+        0.3255428075790405,
+        0.037898916751146317
+      ],
+      "cycles_luminance_mean": 0.2708580791950226,
+      "cycles_rms": 0.5512177348136902,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9999790944347294,
+      "maximum_absolute_error": 0.059086017310619354,
+      "mean_absolute_error": 5.262057311483659e-05,
+      "orientation_rmse": {
+        "flip_x": 0.7562892436981201,
+        "flip_xy": 0.8481528162956238,
+        "flip_y": 0.6636713147163391,
+        "identity": 0.0005051103653386235
+      },
+      "p95_pixel_rmse": 0.00014170992653816938,
+      "p99_pixel_rmse": 0.0013645674334838986,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.1667942851781845,
+        0.32553160190582275,
+        0.03789794072508812
+      ],
+      "psycles_luminance_mean": 0.2708524167537689,
+      "psycles_rms": 0.5512182787982884,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0009163536175216662,
+      "rmse": 0.0005051103653386235,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 398.9720023252127,
+        "display_scale": 1.0,
+        "mapping": "normal_xyz_to_rgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/normal.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "TransCol": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0000004768371582,
+        1.0000003576278687,
+        1.0000007152557373
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.009091043844819069,
+        0.00941960234194994,
+        0.008794760331511497
+      ],
+      "cycles_luminance_mean": 0.00930459052324295,
+      "cycles_rms": 0.06498994678258896,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.000000200185612,
+      "maximum_absolute_error": 0.003855764865875244,
+      "mean_absolute_error": 1.8306722893157712e-07,
+      "orientation_rmse": {
+        "flip_x": 0.09190967679023743,
+        "flip_xy": 0.08564931899309158,
+        "flip_y": 0.09190967679023743,
+        "identity": 1.7556121747475117e-05
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 7.694926296153426e-08,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.009091048501431942,
+        0.009419606067240238,
+        0.00879476685076952
+      ],
+      "psycles_luminance_mean": 0.0093045923858881,
+      "psycles_rms": 0.06498995737178705,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0002701359612772981,
+      "rmse": 1.7556121747475117e-05,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 7549747.2,
+        "display_scale": 2.5038625694917678,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/transcol.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "TransDir": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.9993183016777039,
+        0.9991260766983032,
+        0.9989492297172546
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        9.951446372724604e-06,
+        9.682476047601085e-06,
+        8.061050721153151e-06
+      ],
+      "cycles_luminance_mean": 9.622687684895936e-06,
+      "cycles_rms": 0.00033146870555356145,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.9991589051192235,
+      "maximum_absolute_error": 0.0037662084214389324,
+      "mean_absolute_error": 2.2893111406574462e-07,
+      "orientation_rmse": {
+        "flip_x": 0.0004690073837991804,
+        "flip_xy": 0.0004690073255915195,
+        "flip_y": 0.00046900741290301085,
+        "identity": 9.330461580248084e-06
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 6.598343538222196e-10,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        9.94466245174408e-06,
+        9.67401410889579e-06,
+        8.05258059699554e-06
+      ],
+      "psycles_luminance_mean": 9.614594091544859e-06,
+      "psycles_rms": 0.000331807841922909,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.02814884610197505,
+      "rmse": 9.330461580248084e-06,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 574701684.9522839,
+        "display_scale": 593446727.4158514,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/transdir.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "TransInd": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        1.0008207559585571,
+        1.0006345510482788,
+        1.0005559921264648
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.0008166537154465914,
+        0.0006245543481782079,
+        0.0005217433208599687
+      ],
+      "cycles_luminance_mean": 0.0006579696200788021,
+      "cycles_rms": 0.013698844239115715,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 1.0006799464110931,
+      "maximum_absolute_error": 0.25063833594322205,
+      "mean_absolute_error": 1.6963782400125638e-05,
+      "orientation_rmse": {
+        "flip_x": 0.019379204139113426,
+        "flip_xy": 0.01937289535999298,
+        "flip_y": 0.019379204139113426,
+        "identity": 0.0004108868888579309
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.00043060671305283904,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.0008173240348696709,
+        0.0006249506259337068,
+        0.0005220334278419614
+      ],
+      "psycles_luminance_mean": 0.000658417004160583,
+      "psycles_rms": 0.013707488159667217,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.029994274092458355,
+      "rmse": 0.0004108868888579309,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1049.040703632007,
+        "display_scale": 29.02547435893123,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/transind.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "Volume Direct": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/volume-direct.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    },
+    "Volume Indirect": {
+      "actual_invalid_pixels": 0,
+      "channel_mean_ratio": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/cycles/hip.exr",
+      "cycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "cycles_luminance_mean": 0.0,
+      "cycles_rms": 0.0,
+      "invalid_pixels": 0,
+      "luminance_mean_ratio": 0.0,
+      "maximum_absolute_error": 0.0,
+      "mean_absolute_error": 0.0,
+      "orientation_rmse": {
+        "flip_x": 0.0,
+        "flip_xy": 0.0,
+        "flip_y": 0.0,
+        "identity": 0.0
+      },
+      "p95_pixel_rmse": 0.0,
+      "p99_pixel_rmse": 0.0,
+      "psycles": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/psycles/hip-wavefront-staged.exr",
+      "psycles_channel_mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "psycles_luminance_mean": 0.0,
+      "psycles_rms": 0.0,
+      "reference_invalid_pixels": 0,
+      "relative_rmse": 0.0,
+      "rmse": 0.0,
+      "shape": [
+        858,
+        2048,
+        3
+      ],
+      "triptych": {
+        "difference_percentile": 99.5,
+        "difference_scale": 1.0,
+        "display_scale": 1.0,
+        "mapping": "shared_linear_srgb",
+        "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-2/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/triptychs/volume-indirect.png",
+        "pixel_scale": 1
+      },
+      "valid_pixels": 1757184
+    }
+  },
+  "reference_label": "Cycles HIP",
+  "schema": "psycles.cycles-differential.v2"
+}

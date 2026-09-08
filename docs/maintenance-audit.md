@@ -1,485 +1,76 @@
 # Maintainability audit
 
-The [HIP synchronous RayQuery pipeline checkpoint](validation/2026-08-14/hip-ray-query-pipeline/README.md)
-records the formal bounded-stack continuation, reentrant-handler guard,
-interprocedural callback-environment projection, regression coverage, kernel
-resource deltas, and the resulting HIP microbenchmark improvement.
-
-This audit tracks source structure independently from Cycles feature coverage.
-Line count is only a screening signal: a large table or a collection of small
-probe builders is less risky than one function that records an entire path
-integrator.
-
-The baseline below was measured on `main` at `4e022f4`, excluding
-`third_party`, build outputs, assets, and generated validation images.
-
-The working target is at most 2,000 lines per hand-written source file.
-Generated sources, imported third-party code, and declarative data tables are
-reported separately rather than split mechanically. Exceeding the target
-requires a documented reason and a semantic decomposition plan.
-
-## Baseline
-
-The screened C++, headers, and Python sources contain 57,613 lines. The main
-concentration points are:
-
-| File | Lines | Concentration | Risk |
-|---|---:|---|---|
-| `tools/create_cycles_shader_probe.py` | 5,518 | More than 100 independent probe builders; largest builders are feature matrices | Medium |
-| `include/psycles/luisa/graph_surface.h` | 4,882 | One class; `trace_values()` spans about 2,350 lines | Critical |
-| `src/adapter/blender_scene.cpp` | 4,440 | Graph normalization and scene decoding share one file; `lower_natural_output()` spans about 1,900 lines | Critical |
-| `src/luisa/path_tracer_kernel.cpp` | 3,978 | Almost the whole file is one `LuisaRenderSession::initialize()` function | Critical |
-| `src/compiler/surface_program.cpp` | 2,416 | `SurfaceProgramBuilder::lower_node()` spans about 1,540 lines | Critical |
-| `src/luisa/path_tracer_scene.cpp` | 1,865 | `compile_scene()` owns most scene validation, material compilation, uploads, and acceleration setup | High |
-| `include/psycles/luisa/cycles_noise.h` | 1,386 | One mathematical feature family split into many helpers | Medium |
-| `tests/test_main.cpp` | 1,226 | Independent contract cases in one executable | Medium |
-
-The first five critical entries combine size with a single dispatch function
-or class. They make reviews harder, increase recompilation fan-out, and tempt
-new features to cross semantic boundaries.
-
-## Complete first-party scan
-
-The 2026-07-31 scan covered every first-party C/C++ source and header, Python
-module, CMake source, and `.inl` file: 143 files and 59,835 lines. It excluded
-only `third_party`, build trees, and generated validation artifacts. The
-initial scan found exactly five hand-written files over 2,000 lines:
-
-| File | Baseline lines | Planned semantic modules |
-|---|---:|---|
-| `tools/create_cycles_shader_probe.py` | 5,518 | camera/light, closure, texture, color/value, and graph-composition probe families |
-| `include/psycles/luisa/graph_surface.h` | 4,882 | value evaluation, closure construction, closure sampling, and trace ABI |
-| `src/adapter/blender_scene.cpp` | 4,440 | scene decoding, graph normalization, and natural-output lowering by node family |
-| `src/luisa/path_tracer_kernel.cpp` | 3,789 | path state/RNG, traversal, shading, direct lighting, volume, and film |
-| `src/compiler/surface_program.cpp` | 2,416 | typed node lowering split by value, texture, and closure families |
-
-The next largest hand-written source is
-`src/luisa/path_tracer_scene.cpp` at 1,865 lines, so it is below the hard
-screening threshold but remains on the high-risk watch list.
-
-`docs/cycles-shader-nodes-4.5.10.json` is 7,691 lines. It is a generated,
-declarative Cycles node inventory rather than hand-written executable code and
-is intentionally kept as one versioned compatibility contract.
-
-## Progress
-
-The first path-kernel slice moved Cycles camera dimensions and primary-ray
-construction into `path_tracer_camera.{h,cpp}`. The kernel decreased from 3,978
-to 3,789 lines, the new implementation file is 244 lines, and old/new
-differential renders are byte-identical. The extraction added fallback, HIP,
-and Vulkan camera tests and is documented under
-`validation/2026-07-31/camera-vulkan`.
-
-The first `GraphSurface` size-control checkpoint partitioned the implementation
-along renderer semantics: state and value access, Cycles scattering, value
-evaluation by node family, raw closure traversal, and the public surface/
-volume API. It reduced the 4,882-line header to a small facade, but retained
-the implementation as textual `.inl` fragments in one class scope. That was
-an intentionally conservative equivalence checkpoint, not the target
-architecture. Every extracted source range was checked byte-for-byte against
-the original header before compilation.
-
-After this checkpoint the complete scan covered 153 source files and 60,008
-lines, with four remaining files over 2,000 lines. The
-`psycles.source_size` CTest contract rejects every new over-limit first-party
-source and rejects growth in the explicitly budgeted debt files. A debt entry
-is removed as soon as its semantic decomposition reaches the target.
-
-The split passed the 32-worker full build and all 42 CTest contracts. A
-64×64, 256 spp material fixture was then rendered through fallback, HIP, and
-Vulkan. All 13 linear passes from each backend (39 PFM files total) are
-byte-identical to their pre-split baselines; all three Combined outputs have
-SHA-256
-`4ac47cfe7d528e14da89e116f1dffd3b8dbf6536f8ff0817d87ef66a4f3409b0`.
-The existing Cycles/Psycles triptych below remains the visual record for this
-fixture because the current Psycles panel is byte-identical:
-
-![Cycles, Psycles, and absolute difference for the material fixture](validation/2026-07-31/camera-vulkan/blackman-harris-vk-vs-cycles.png)
-
-`GraphSurface` is now a real compiled host-stage surface compiler. Its public
-91-line header contains only the stable `Surface` override ABI and a private
-implementation pointer. State/color helpers, scattering, closure traversal,
-value-graph tracing, and the surface API are ordinary functions in separate
-translation units; the largest implementation file is 999 lines.
-
-The value graph uses an explicit host-side `ValueNode` interface. At
-`GraphSurfaceImplementation` construction, every immutable compiler IR
-instruction is bound once to a math, context, image, or procedural node
-object. Calling the virtual `evaluate()` method while a Luisa kernel is being
-recorded emits DSL expressions into the current AST. The virtual dispatch is
-therefore C++ metaprogramming at JIT/trace time: it does not add device-side
-virtual calls or split the fused shader into Luisa `Callable` kernels. Closure
-visitors and the traced/untraced sampling choice use the same host-stage
-boundary.
-
-All nine non-generated `GraphSurface` `.inl` files have been deleted. The
-source-size regression rejects every new hand-written `.inl`. At this
-checkpoint the eight path-kernel fragments remained an explicit shrinking
-debt list; they were deleted by the typed path-pipeline checkpoint below. The
-versioned Cycles BSDF table remains classified as generated declarative data.
-
-The compiled architecture passed the 32-worker full build and all 42 tests.
-The 64×64, 256 spp fixture was rerun through fallback, HIP, and Vulkan; all 13
-linear passes on every backend (39 files total) remain byte-identical to the
-pre-refactor baseline. The HIP output was also opened and inspected at native
-resolution. The complete source gate now covers 183 first-party files and
-61,298 lines, with no file over 2,000 lines.
-
-The surface-program compiler is now a second semantic checkpoint. Its public
-implementation decreased from 2,416 to 135 lines. Builder state and
-diagnostics, graph-context nodes, typed value nodes, texture/procedural nodes,
-and raw surface/volume closure nodes live in separate translation units; the
-largest is 731 lines. The old 1,540-line `lower_node()` chain is now a family
-dispatcher. Each family returns `true` when it recognizes a node even if
-invalid inputs prevent emission, preserving the distinction between an input
-diagnostic and an unsupported-node diagnostic.
-
-The split passed the 32-worker full build and all 42 CTest contracts. The same
-fallback/HIP/Vulkan fixture again produced 39 linear pass files that are
-byte-identical to the pre-split baselines, including the Combined hash above.
-At that checkpoint the scan covered 159 files and 60,210 lines, with three
-remaining
-over-limit debt files. `surface_program.cpp` has therefore been removed from
-the size-gate allowlist.
-
-The first stateful path-kernel checkpoint partitioned the source without
-introducing new Luisa `Callable` boundaries.
-`path_tracer_kernel.cpp` decreased from 3,789 to 341 lines. Eight included
-implementation phases covered sample setup, closest-event and forward-light
-handling, shading-point reconstruction, surface emission/data passes,
-environment NEE, emissive-mesh NEE, analytic-light NEE, and BSDF
-continuation/film writes. The largest phase was 595 lines. This preserved the
-original lexical scopes and established an equivalence baseline, but textual
-inclusion was not the target component architecture.
-
-Every phase body compares byte-for-byte with its pre-split source range. The
-32-worker full build and all 42 tests pass, and another three-backend render
-made all 39 linear passes byte-identical to the preceding baseline. Moving
-source locations invalidated the shader cache key once; cold JIT timings were
-0.203 s for fallback, 0.388 s for HIP, and 0.799 s for Vulkan, consistent with
-the earlier cold Vulkan trace. The current scan covers 167 files and 60,239
-lines, leaving only two over-limit files. `path_tracer_kernel.cpp` is no
-longer allowlisted by the size gate.
-
-The path kernel is now a real host-stage component pipeline in ordinary
-headers and translation units. `PathKernelPipeline` owns the Luisa path-loop
-scope and invokes virtual closest-event, geometry, shading, and scattering
-stages while the kernel AST is recorded. Its direct-light stage owns an
-ordered registry of environment, emissive-mesh, and analytic-light
-components. Typed invocation, sample, bounce, geometry, and shading contexts
-make cross-stage lifetime explicit. Sample setup, path execution, per-sample
-accumulation, and final film writes each own their balanced lexical scope.
-There are no new device `Callable` boundaries and no device-side virtual
-dispatch.
-
-The closest-event stage has subsequently been split at its semantic
-boundaries. `PathBounceSetupStage` owns one RNG-dimension set and one mesh
-trace, `ClosestEventStage` selects a typed analytic-light/surface/background
-event, and dedicated forward-light and background stages resolve it. A lamp
-remains a transparent event inside the same bounce. This exposes the exact
-segment distance needed by volume transport without duplicating sampling or
-retracing the mesh, while keeping every implementation in a real `.cpp`
-component.
-
-`PathVolumeSegmentStage` now consumes that boundary through another real
-`.h + .cpp` host-stage interface. It composes the stacked raw-closure
-evaluator, homogeneous estimator, phase sampler, roulette policy, film routing,
-and total path-state transition without moving device logic back into the
-pipeline coordinator. `VolumeProgramCapabilityComponent` keeps the
-homogeneous/heterogeneous scene gate structural and independently testable.
-
-All eight path-kernel `.inl` files have been deleted. The only remaining
-first-party `.inl` is the generated Cycles 4.5.10 BSDF table. The session
-initializer is 300 lines, the internal interface is 341 lines, and the largest
-implementation is the 620-line setup/film module. The complete source gate
-now covers 187 first-party files and 61,412 lines; every hand-written file is
-below 2,000 lines and the hand-written `.inl` debt set is empty.
-
-The checkpoint passed the 32-worker full build and all 42 CTest contracts.
-The 64×64, 256 spp camera/material fixture was rendered through fallback,
-HIP, and Vulkan. All 13 linear passes on all three backends (39 PFM files)
-are byte-identical to the pre-component baseline, including Combined
-SHA-256
-`4ac47cfe7d528e14da89e116f1dffd3b8dbf6536f8ff0817d87ef66a4f3409b0`.
-Observed JIT times after the source move were 0.199 s for fallback, 0.571 s
-for HIP, and 1.166 s for Vulkan; render times were 0.0176 s, 0.00668 s, and
-0.0178 s respectively. A trace-enabled 32×32 point-light render also produced
-a raw indexed path-trace JSON file byte-identical to the pre-component
-baseline, covering the diagnostic-only closure, light, state, and
-post-scatter records that the ordinary image fixture does not enable.
-
-The exact historical Lone Monk bundle was then rerendered at 640×480 and
-64 spp through fallback. It compiled 348 geometries, 87,541 instances, and all
-37 raw material graphs; all 13 linear passes are byte-identical to the
-pre-component baseline. Scene compilation took 1.176 s, cold JIT compilation
-took 17.610 s, and rendering took 5.721 s. The Combined image was opened at
-native resolution and checked across the grass band, courtyard architecture,
-roof highlights, dark foreground arches, and cast-shadow structure. No visual
-change is present, as required by the byte comparison. Because the current
-Psycles panel is identical, the existing Cycles-HIP/Psycles-fallback/absolute
-difference triptych remains the visual record:
-
-![Lone Monk Cycles HIP, Psycles fallback, and absolute difference](validation/2026-07-30/lone-monk-five-way/triptychs/psycles-fallback-vs-cycles-hip-combined.png)
-
-The first Blender-adapter checkpoint separated the pipeline stages. Binary
-geometry and public scene assembly remain in `blender_scene.cpp`, which
-decreased from 4,440 to 1,184 lines, and JSON decoding is a 348-line
-translation unit. The natural-output dispatcher was initially partitioned as
-four textual family fragments in its original lexical context. As with the
-first `GraphSurface` split, this established a low-risk equivalence baseline
-but was not the final component boundary.
-
-All four family bodies compare byte-for-byte with their pre-split source
-ranges. The split passed the 32-worker full build and all 42 tests. The
-64×64, 256 spp fallback/HIP/Vulkan material fixture again produced 39 linear
-pass files byte-identical to the preceding baseline. The complete scan now
-covers 174 files and 60,394 lines, and only the probe generator remains in the
-temporary debt budget. `blender_scene.cpp` is no longer allowlisted by the
-size gate.
-
-The normalizer now delegates to real `BlenderNodeLoweringComponent` host
-objects for input/context, color/value, procedural, and closure nodes. A typed
-context interface owns graph mutation, socket binding, images, properties,
-tables, and diagnostics. The normalizer retains only recursion, memoization,
-group-context restoration, and ordered component dispatch. Its `finish`
-callback still removes the active recursion marker at exactly the original
-successful-lowering points. Components translate the exported raw Cycles
-graph; they do not bake values, materials, or closures through Blender or
-Cycles.
-
-All four old adapter `.inl` files have been deleted. The largest family
-translation unit is 702 lines and the central normalizer is 1,182 lines. The
-32-worker build and all 42 tests pass. Re-rendering the 64×64, 256 spp fixture
-through fallback, HIP, and Vulkan again made all 39 linear pass files
-byte-identical to the immediately preceding compiled-`GraphSurface` baseline.
-The complete gate now covers 185 first-party files and 61,639 lines with no
-file over the limit.
-
-The component path also normalized and compiled all 37 raw material graphs in
-the current Lone Monk bundle; its only diagnostics were the already-known
-adaptive-sampling and denoising configuration notices. The first render check
-used a newer exported scene whose JSON differs from the historical smoke
-baseline, so it was not treated as a source-regression comparison. Repeating
-with the exact baseline bundle
-`psycles-lone-monk-five-way-20260730/export` produced all 13 fallback passes
-byte-for-byte unchanged at 640×480 and 64 spp. Scene compilation took 1.184 s,
-warm JIT loading 0.274 s, and rendering 5.438 s. The Combined image was opened
-at full resolution; camera, architecture, foliage/grass, material regions,
-and shadow structure are unchanged, as required by the byte comparison.
-
-The same binary also completed a 640×480, 64 spp Lone Monk smoke test on all
-three Luisa backends, loading 348 geometries, 87,541 instances, and 37 raw
-material graphs. The images were inspected at full resolution and the HIP/
-Vulkan structure remains visually consistent; their Combined relative RMSE
-is 0.0201 at this low sample count. The old five-way images are not a valid
-byte baseline for this refactor because they predate the intervening RNG,
-Light Path, transparent-shadow, and volume-closure fixes.
-
-An immediate same-binary repeat was byte-identical for all 13 fallback passes
-and all 13 Vulkan passes. HIP repeated exactly for five passes; eight passes
-contained sparse differences (99% of Combined pixels were identical),
-with Combined RMSE 0.000565 and relative RMSE 0.000363. Because this occurs
-between two executions of the same binary, it is recorded as a separate
-HIP/HIPRT determinism finding rather than attributed to the source split.
-
-This cold run also isolated complex-shader compilation costs. Fallback JIT
-took 18.4 s. HIP JIT took 217.0 s: AMDGPU code generation took 19.1 s, while
-linking the HIP LLVM bitcode into the code object took 194.3 s. Vulkan JIT
-took 135.7 s. Warm-cache JIT times were 0.278 s, 0.273 s, and 1.157 s for
-fallback, HIP, and Vulkan respectively. Render-only times were 5.43 s,
-2.37 s, and 2.08 s.
-
-The Cycles probe generator is the final completed decomposition.
-`create_cycles_shader_probe.py` decreased from 5,518 to 189 lines and is now
-only the stable Blender CLI, canonical registry, and shared scene setup.
-Builders live in modules for common construction, camera/lights, closures,
-texture inputs, procedural textures, and color/value operations. The largest
-module is `texture_inputs.py` at 1,868 lines.
-
-All 111 moved function bodies compare exactly with their original source, and
-all 89 probe-name/function mappings retain their original order and targets.
-The Blender regression now also requires the creator registry to equal the
-canonical runner inventory. Representative probes from every module family
-were created through the real Blender CLI. Re-exporting the camera/filter
-probe produced an identical `geometry.bin` and an identical `scene.json`
-after removing only the expected absolute source-`.blend` path.
-
-The final 32-worker build and all 42 tests pass. The complete source gate now
-covers 181 first-party files and 60,499 lines with no exceptions: every
-hand-written first-party source file is at most 2,000 lines, and the temporary
-debt budget is empty.
-
-## Cycles-domain geometry component
-
-The next component checkpoint replaced the flattened scene geometry contract
-with explicit point, corner, and face attributes. Blender schema v2 now
-preserves shared triangle indices and the same normal/UV/Generated
-cardinalities used by current Cycles. Historical v1 bundles remain readable
-for isolated same-binary regression comparisons.
-
-Repeated bindless triangle reads from closest-hit, emissive-light, and
-transparent-shadow code are now generated by a real
-`TriangleGeometryComponent` host object in its own header and translation
-unit. Generic named attributes select point, corner, or face indices in one
-shader-service implementation. The full-path regression combines all three
-domains in one raw shader graph and passes on fallback, HIP, and Vulkan.
-
-The 32-worker build and all 47 tests pass. `path_tracer_scene.cpp` remains the
-largest hand-written implementation at 1,972 lines, still below the enforced
-2,000-line ceiling but close enough to require the next scene-upload
-component split rather than further growth.
-
-Unmodified exports reduced `geometry.bin` by 25.66% for Lone Monk, 28.76% for
-Classroom, and 20.30% for the 28,089,460-triangle Blender 4.1 Splash. A
-same-current-binary Lone Monk v1/v2 comparison has Combined relative RMSE
-`0.0001702`; visual structure is unchanged, and Normal RMSE is
-`5.42e-8`. The v2 export follows Cycles' point-versus-corner normal decision,
-so byte identity with the old unconditional loop-normal representation is not
-the semantic target.
-
-The complex v2 scene also completed 640x480/64 spp renders on all three Luisa
-backends. Cold JIT was 19.10 s on fallback, 222.14 s on HIP, and 137.13 s on
-Vulkan. HIP spent 199.98 s in final device-bitcode linking; Vulkan optimized
-1,606,220 SPIR-V words to 1,349,527. Warm JIT was 0.266 s and 1.133 s for HIP
-and Vulkan. Their render-only times were 2.244 s and 2.213 s, versus 1.926 s
-for official Cycles HIP on the same RX 9070 XT.
-
-The complete numerical reports and the inspected triptychs are in
-[`validation/2026-07-31/compact-geometry`](validation/2026-07-31/compact-geometry/README.md).
-
-## HIP callable boundary and complex-shader scaling
-
-Luisa `next@2e179e5f3` replaces the HIP backend's unconditional expansion of
-every generated DSL callable with a two-stage policy: LLVM O3 owns the normal
-whole-module inlining decision, and any generated callable that survives O3
-is emitted as a preserved `noinline` boundary for HIPRTC. A negative-control
-regression expands from 14,611 to 140,435 bytes under the old policy and fails;
-the fixed sixteen-use artifact is 14,643 bytes and all values pass.
-
-On the current 37-material Lone Monk AST, optimized bitcode decreased from
-8,691,124 to 3,420,380 bytes. The previously non-terminating downstream link
-now completes, and the production 640x480/64 spp HIP render succeeds. The
-32-worker project build and all 129 tests pass. Luisa's new callable-boundary
-test and existing HIP shader-cache test also pass.
-
-The complete five-way run records Cycles CPU/HIP and Psycles
-fallback/HIP/Vulkan. Render-only times are 5.029 s, 1.848 s, 21.709 s, 3.537 s,
-and 8.311 s respectively. Warm HIP JIT is 0.665 s; cold JIT is 34.266 s. The
-Vulkan cold path is now the compile bottleneck at 215.332 s, including about
-120.2 s to optimize/translate 3,642,422 SPIR-V words to 3,204,480 words.
-
-All Combined and Normal triptychs were inspected at original resolution. The
-grass and foliage silhouettes align with Cycles across the three Luisa
-backends; the remaining amplified error is predominantly high-frequency
-sampling residual rather than a displaced or missing grass band. Combined
-relative RMSE against Cycles HIP is 0.04219-0.04265, so this checkpoint is not
-claimed as final 1:1 parity. Reports, timings, compiler logs, and the six
-triptychs are in
-[`validation/2026-08-03/hip-callable-boundary`](validation/2026-08-03/hip-callable-boundary/README.md).
-
-The path kernel now also treats spatial BSSRDF transport as a scene capability
-instead of recording it unconditionally. The capability is computed from the
-exact primitive/instance material-resolution image, including overrides and
-last-slot clamping. On a non-BSSRDF production fixture this removes 9.39% of
-optimized SPIR-V, reduces cold Vulkan wall time by 20.50%, and lowers peak RSS
-by 15.73%. The formal reachability rule, control measurement, and regressions
-are in
-[`validation/2026-08-09/reachable-subsurface-specialization`](validation/2026-08-09/reachable-subsurface-specialization/README.md).
-
-## GPU coroutine schedule baseline
-
-The path program now has one host-side construction route with an explicit
-`is_coro` boundary. The same program can execute directly as the megakernel
-baseline or suspend at the surface-shading and path-bounce boundaries under
-Luisa's wavefront and persistent schedulers. Fallback is deliberately allowed
-to exercise both schedulers; it is not rewritten into a scalar special case.
-
-On the 37-material Lone Monk export, fallback megakernel, wavefront, and
-persistent output is byte-identical for the display image and linear Combined,
-Normal, and Albedo passes at 640x480x1. Multilayer EXR pixel comparison also
-passes exactly; only capture-time metadata differs. All three panels were
-opened and inspected at original resolution. The CLI sentinel fix, scheduler
-configuration, timings, exact hashes, and triptych are recorded in
-[`validation/2026-08-11/coroutine-schedulers`](validation/2026-08-11/coroutine-schedulers/README.md).
-
-The result establishes schedule equivalence, not scheduler performance parity.
-Fallback render-only time was 0.160 s for megakernel, 0.435 s for wavefront,
-and 0.221 s for persistent. More importantly, wavefront session creation/JIT
-grew from 14.506 s with 256 frames to 48.178 s with 307,200 frames. The logical
-capacity must not scale shader structure; generation, cache identity, and final
-compilation remain an explicit profiling target.
-
-## Source-size boundary closure
-
-The remaining three over-limit files were decomposed without adding a debt
-allowlist. The versioned Cycles BSDF payload and its exact contiguous device
-ABI assembly now live in `path_tracer_bsdf_tables.{h,cpp}`; scene orchestration
-no longer owns generated table symbols. Graph/material/scene contracts moved
-from the monolithic core-test driver into an independently linked test target,
-and the Normal Map Blender probe family moved into its own Python module. The
-former concentration points are now 1,995, 1,939, and 1,941 lines respectively.
-The source gate checks 548 first-party files and 165,137 lines with no file over
-the 2,000-line ceiling and no exemption.
-
-The all-thread build and complete CTest matrix pass all 265 contracts. A strict
-native-XIR Vulkan Lone Monk compile/render canary retained its four pre-split
-hashes. A separate HIP wavefront replay at 640x480x1 also retained the exact
-display, Combined, Normal, and Albedo bytes:
-
-- display: `16be3dbb588bdd6af6ff1ff008c42c6cd96da7cfb51415bda00072cb63d3df73`;
-- Combined: `f7c449e5da434ba8100fda06f4ae75fc4e1f79704de24780dfbb5486c85dc474`;
-- Normal: `0d8fa6771670ca441738a31c5b9c5af01d503e88f0ce1a5a1f81743f82103432`;
-- Albedo: `57e456f4242da17aff42f7160ca66497d5796d7de2de378f9ed56d44716f4ec0`.
-
-The 640x480 display was opened at native resolution after the comparison. Its
-grass distribution, building silhouette, windows, and material regions have no
-new structural displacement. The one-sample image is intentionally noisy and
-is a structural refactor check, not a new Cycles-parity quality claim. The
-commands, hashes, and before/after/difference triptych are recorded in
-[`validation/2026-08-11/source-size-boundaries`](validation/2026-08-11/source-size-boundaries/README.md).
-
-## Target boundaries
-
-The path tracer is split by renderer semantics:
-
-- session resource allocation and immutable kernel parameters;
-- camera sample and primary-ray construction;
-- path state and Cycles RNG dimensions;
-- closest-event traversal and self-intersection policy;
-- surface shading and data-pass extraction;
-- direct-light and forward-light estimators;
-- volume stack, free-flight, phase sampling, and volume direct lighting;
-- film/pass accumulation and diagnostic path tracing.
-
-The material stack is split by compilation stage:
-
-- Blender JSON and binary scene decoding;
-- Blender node-tree normalization by node family;
-- typed value-program lowering by node family;
-- surface closure evaluation/sampling;
-- volume closure coefficients and phase functions;
-- textures, procedural nodes, and color operations.
-
-Probe-generation modules are grouped by feature family. Their functions
-remain independent, the canonical registry is checked against the runner, and
-representative generated `.blend` files are re-exported to verify the raw
-Cycles graph contract.
-
-## Refactoring rules
-
-Structural commits must not change renderer semantics. Each slice therefore:
-
-1. moves one named responsibility behind an explicit internal interface;
-2. keeps runtime kernel arguments, material parameter binding, and RNG
-   dimension consumption unchanged;
-3. uses the 32-thread full build and complete CTest suite;
-4. runs focused fallback, HIP, and Vulkan device fixtures for touched DSL
-   code;
-5. runs the relevant Cycles/Psycles differential probe when a refactor can
-   affect emitted AST control flow or numerical ordering;
-6. records compile-stage or render-performance changes when a callable
-   boundary changes generated code.
-
-Feature work must use the new boundary instead of appending code back to a
-known concentration point. File size is re-measured after each structural
-checkpoint.
+Updated 2026-09-08. This page describes current source debt and mandatory
+boundaries. Historical GraphSurface decomposition, old custom-executor
+performance, forced HIP noinline and coroutine-baseline claims have been
+removed from current guidance; their dated validation reports and Git history
+retain the original evidence.
+
+## Four source-size violations remain
+
+The first-party budget is 2000 lines per hand-written source file.
+The current checker has no grandfathered debt entries or hand-written .inl
+allowlist. Generated tables and third-party sources remain separate.
+
+| File | Current lines | Required semantic decomposition |
+| --- | ---: | --- |
+| src/compiler/cycles_svm_nodes.cpp | 2026 | Native node compiler families with shared stack/payload contracts |
+| tests/test_cycles_svm_compiler.cpp | 2088 | Independent compiler family regressions |
+| tests/test_luisa_compact_surface_preparation.cpp | 2114 | Separate preparation/state GPU fixtures |
+| tests/test_luisa_cycles_svm.cpp | 2038 | Independent runtime opcode/state families |
+
+These are actual failures, not exemptions. Run
+`python3 tools/check_source_size.py` after each change. Splitting must preserve
+oracle inputs and coverage; moving code into textual includes or raising
+the limit is not a fix.
+
+## Native Cycles SVM owns material execution
+
+Surface, volume, shadow, world and light consumers use the Cycles 5.2.1 SVM
+word stream, typed payloads, stack addresses, PC loop, dispatch, closure state
+and feature masks. Static scene/entry analysis omits unreachable node cases
+and bounds local arrays. Profiles and scene names must never supply bounds.
+
+The private displacement prepass still consumes the legacy evaluator.
+Legacy GraphSurface/SurfaceProgram translation units and related helpers
+remain removal debt, not a second endorsed architecture or evidence that
+default-path cleanup is finished. See
+[compatibility status](cycles-compatibility.md) for remaining native opcodes
+and unsupported geometry/motion configurations.
+
+The renderer is divided by Cycles responsibilities: immutable scene setup,
+camera/path state, traversal, surface shading, direct/forward lighting,
+volume transport, film and observational tracing. Compiler changes retain
+normalization, graph compilation, serialization and runtime boundaries.
+Preserve natural shared contracts when extracting a family.
+
+## Coroutine facilities stay generic
+
+Psycles policies belong in Coro Ext/Handler clients. Luisa lifetime analysis,
+frame projection and scheduler facilities must remain reusable. Normal
+scalar/vector initialization retains zero semantics. Lifetime-only scratch
+declarations do not authorize arbitrary uninitialized reads.
+
+Use stream insertion for scheduler dispatch commands. Frame storage belongs
+to reusable scheduler/worker pools, without per-thread/per-resume malloc.
+Leave inlining decisions to the compiler. Do not reintroduce forced noinline
+or software floating-point paths to reproduce harmless last-bit differences.
+
+## Verification and publication remain semantic gates
+
+Every compiler/backend correction requires a formal root cause, minimal
+failing example, permanent regression, generic fix and full original-module
+verification. Build with all 32 hardware threads. Validate HIP first, then
+fallback and strict native XIR -> SPIR-V Vulkan without DXC. Structural
+refactors preserve Cycles state, sampler dimensions and observable control
+flow; exercise the affected original-Cycles word/GPU fixtures and full scenes.
+
+The [current validation index](../VALIDATION.md) distinguishes complete suites,
+focused gates and known failures. The
+[equal-pass benchmark](validation/2026-09-08/matched-pass-hip/README.md)
+separates render time, session initialization, host compilation and frame
+size. Reduced IR or storage is not independently a performance result.
+
+Inspect both designated worktrees, preserve unrelated changes, and stage
+exact files. Publish validated generic Luisa changes to origin/next before
+advancing the parent gitlink; publish Psycles checkpoints to origin/main.

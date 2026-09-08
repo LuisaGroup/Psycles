@@ -4,8 +4,9 @@ The runner now requires equal output work, not merely a common subset of
 channels to compare. Schema v3 replaces the v2 benchmark protocol; the
 renderer itself remains Psycles 3a5cc005 / Luisa 9ea3b720f at this checkpoint.
 The first original-scene HIP pair validates the complete new protocol.
-The four-scene, three-repeat campaign is still running and is not declared
-complete here.
+At this checkpoint the four-scene, three-repeat campaign was still running.
+It has since completed; the [equal-pass report](../matched-pass-hip/README.md)
+supersedes this first pair as the current performance baseline.
 
 ## Cause and correction
 
@@ -82,7 +83,7 @@ pass-contract or golden-pass prefixes under
 `/var/tmp/psycles-native-volume-svm-06XnDX`.
 
 Technical-report QA keeps protocol correction, first-pair observations,
-kernel diagnosis and the still-running campaign separate. In particular,
+kernel diagnosis and the then-running campaign separate. In particular,
 the [volume-work result](../volume-work/README.md) demonstrates a structural
 fix but no measurable Barbershop volume-kernel speedup; surface remains the
 larger unresolved kernel difference.

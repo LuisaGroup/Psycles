@@ -1,0 +1,326 @@
+{
+  "commands": {
+    "cycles_hip": {
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "/var/tmp/psycles-official-redownload-20260814/barbershop_interior.blend",
+        "--background",
+        "--debug-cycles",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.exr",
+        "2048",
+        "858",
+        "256",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "Radeon RX 9070 XT"
+      ],
+      "log": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/logs/cycles-hip.log",
+      "log_sha256": "b0f9b2c804ebb646e188cbbbbbf85de605aa35c633c417ede817d054affbe132",
+      "returncode": 0,
+      "wall_seconds": 36.9554269410437
+    },
+    "export": {
+      "reused": true
+    },
+    "psycles_hip-wavefront-staged": {
+      "command": [
+        "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export",
+        "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/psycles/hip-wavefront-staged.ppm",
+        "hip",
+        "2048",
+        "858",
+        "256",
+        "64",
+        "-",
+        "1024",
+        "429",
+        "0",
+        "0",
+        "256",
+        "-",
+        "1",
+        "0",
+        "wavefront-staged",
+        "32",
+        "32768",
+        "32",
+        "1",
+        "1",
+        "1",
+        "4",
+        "2",
+        "0",
+        "0",
+        "0",
+        "0",
+        "1",
+        "1048576"
+      ],
+      "log": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/logs/psycles-hip-wavefront-staged.log",
+      "log_sha256": "82dcff3c5ac4be90edc9ec410ce56ac46bac66e73ac48eed244a508b41c3d0c3",
+      "returncode": 0,
+      "wall_seconds": 82.51529986807145
+    }
+  },
+  "comparisons": {
+    "psycles-hip-wavefront-staged-vs-cycles-hip": {
+      "actual": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/psycles/hip-wavefront-staged.exr",
+      "process_wall_seconds": 12.665834865998477,
+      "reference": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.exr",
+      "report": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/comparisons/psycles-hip-wavefront-staged-vs-cycles-hip/report.json"
+    }
+  },
+  "matrix": {
+    "cycles": [
+      "hip"
+    ],
+    "psycles": [
+      "hip-wavefront-staged"
+    ]
+  },
+  "relative_performance": {
+    "hip-wavefront-staged": {
+      "slowdown_vs_cycles_hip": 1.5469534927806388,
+      "speedup_over_cycles_hip": 0.6464318446978691
+    }
+  },
+  "renderers": {
+    "cycles": {
+      "hip": {
+        "device": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "metadata": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.json",
+        "metadata_sha256": "cd59234634a73fbc67c42413747f6a60b3e6c3a8976c485ad9fdf6f2d3420cd8",
+        "output": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/cycles/hip.exr",
+        "pass_contract": {
+          "channels": [
+            "RenderLayer.Combined.R",
+            "RenderLayer.Combined.G",
+            "RenderLayer.Combined.B",
+            "RenderLayer.Combined.A",
+            "RenderLayer.Diffuse Color.R",
+            "RenderLayer.Diffuse Color.G",
+            "RenderLayer.Diffuse Color.B",
+            "RenderLayer.Diffuse Direct.R",
+            "RenderLayer.Diffuse Direct.G",
+            "RenderLayer.Diffuse Direct.B",
+            "RenderLayer.Diffuse Indirect.R",
+            "RenderLayer.Diffuse Indirect.G",
+            "RenderLayer.Diffuse Indirect.B",
+            "RenderLayer.Emission.R",
+            "RenderLayer.Emission.G",
+            "RenderLayer.Emission.B",
+            "RenderLayer.Environment.R",
+            "RenderLayer.Environment.G",
+            "RenderLayer.Environment.B",
+            "RenderLayer.Glossy Color.R",
+            "RenderLayer.Glossy Color.G",
+            "RenderLayer.Glossy Color.B",
+            "RenderLayer.Glossy Direct.R",
+            "RenderLayer.Glossy Direct.G",
+            "RenderLayer.Glossy Direct.B",
+            "RenderLayer.Glossy Indirect.R",
+            "RenderLayer.Glossy Indirect.G",
+            "RenderLayer.Glossy Indirect.B",
+            "RenderLayer.Normal.X",
+            "RenderLayer.Normal.Y",
+            "RenderLayer.Normal.Z",
+            "RenderLayer.Transmission Color.R",
+            "RenderLayer.Transmission Color.G",
+            "RenderLayer.Transmission Color.B",
+            "RenderLayer.Transmission Direct.R",
+            "RenderLayer.Transmission Direct.G",
+            "RenderLayer.Transmission Direct.B",
+            "RenderLayer.Transmission Indirect.R",
+            "RenderLayer.Transmission Indirect.G",
+            "RenderLayer.Transmission Indirect.B",
+            "RenderLayer.Volume Direct.R",
+            "RenderLayer.Volume Direct.G",
+            "RenderLayer.Volume Direct.B",
+            "RenderLayer.Volume Indirect.R",
+            "RenderLayer.Volume Indirect.G",
+            "RenderLayer.Volume Indirect.B"
+          ],
+          "height": 858,
+          "passes": [
+            "Combined",
+            "Normal",
+            "DiffCol",
+            "GlossCol",
+            "TransCol",
+            "DiffDir",
+            "DiffInd",
+            "GlossDir",
+            "GlossInd",
+            "TransDir",
+            "TransInd",
+            "Emit",
+            "Env",
+            "Volume Direct",
+            "Volume Indirect"
+          ],
+          "schema": "psycles.linear-pass-contract.v1",
+          "width": 2048
+        },
+        "process_wall_seconds": 36.9554269410437,
+        "render_call_seconds": 35.90766280202661,
+        "render_seconds": 25.3208,
+        "sha256": "6172978af5505604b4d018aa3a74cb86fee5038bc5aa87275c0078f0d6c03d3a",
+        "timing_scope": "cycles_main_loop_wall"
+      }
+    },
+    "psycles": {
+      "hip-wavefront-staged": {
+        "backend": "hip",
+        "output": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/psycles/hip-wavefront-staged.exr",
+        "pass_contract": {
+          "channels": [
+            "ViewLayer.Combined.R",
+            "ViewLayer.Combined.G",
+            "ViewLayer.Combined.B",
+            "ViewLayer.Combined.A",
+            "ViewLayer.DiffCol.R",
+            "ViewLayer.DiffCol.G",
+            "ViewLayer.DiffCol.B",
+            "ViewLayer.DiffDir.R",
+            "ViewLayer.DiffDir.G",
+            "ViewLayer.DiffDir.B",
+            "ViewLayer.DiffInd.R",
+            "ViewLayer.DiffInd.G",
+            "ViewLayer.DiffInd.B",
+            "ViewLayer.Emit.R",
+            "ViewLayer.Emit.G",
+            "ViewLayer.Emit.B",
+            "ViewLayer.Env.R",
+            "ViewLayer.Env.G",
+            "ViewLayer.Env.B",
+            "ViewLayer.GlossCol.R",
+            "ViewLayer.GlossCol.G",
+            "ViewLayer.GlossCol.B",
+            "ViewLayer.GlossDir.R",
+            "ViewLayer.GlossDir.G",
+            "ViewLayer.GlossDir.B",
+            "ViewLayer.GlossInd.R",
+            "ViewLayer.GlossInd.G",
+            "ViewLayer.GlossInd.B",
+            "ViewLayer.Normal.X",
+            "ViewLayer.Normal.Y",
+            "ViewLayer.Normal.Z",
+            "ViewLayer.TransCol.R",
+            "ViewLayer.TransCol.G",
+            "ViewLayer.TransCol.B",
+            "ViewLayer.TransDir.R",
+            "ViewLayer.TransDir.G",
+            "ViewLayer.TransDir.B",
+            "ViewLayer.TransInd.R",
+            "ViewLayer.TransInd.G",
+            "ViewLayer.TransInd.B",
+            "ViewLayer.VolumeDir.R",
+            "ViewLayer.VolumeDir.G",
+            "ViewLayer.VolumeDir.B",
+            "ViewLayer.VolumeInd.R",
+            "ViewLayer.VolumeInd.G",
+            "ViewLayer.VolumeInd.B"
+          ],
+          "height": 858,
+          "passes": [
+            "Combined",
+            "Normal",
+            "DiffCol",
+            "GlossCol",
+            "TransCol",
+            "DiffDir",
+            "DiffInd",
+            "GlossDir",
+            "GlossInd",
+            "TransDir",
+            "TransInd",
+            "Emit",
+            "Env",
+            "Volume Direct",
+            "Volume Indirect"
+          ],
+          "schema": "psycles.linear-pass-contract.v1",
+          "width": 2048
+        },
+        "process_wall_seconds": 82.51529986807145,
+        "render_seconds": 39.1701,
+        "scene_compile_seconds": 15.4706,
+        "scheduler": "wavefront-staged",
+        "sha256": "6453e9039c8ff1900cc367ba83ffef614b969e86b299e8842cb2dd067df3734e",
+        "shader_jit_seconds": 25.5929
+      }
+    }
+  },
+  "resume": {
+    "existing_manifest": false,
+    "requested": false,
+    "reused_stages": []
+  },
+  "scene": {
+    "blend": "/var/tmp/psycles-official-redownload-20260814/barbershop_interior.blend",
+    "blender_build": {
+      "build_branch": "blender-v5.2-release (modified)",
+      "build_hash": "9e2066aef7ef",
+      "build_type": "Release",
+      "version": "5.2.1 LTS",
+      "version_cycle": "release",
+      "version_tuple": [
+        5,
+        2,
+        1
+      ]
+    },
+    "bundle": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export",
+    "geometry_bin_sha256": "17e7d73b058c04127cab5aa14d374eca732701cdf192160b52f3df95135f7478",
+    "scene_json_sha256": "69478daa3cc0efc2a6d38ac1d5de89df120fe2acd1e50ca4490621bbd1c72893",
+    "sha256": "95972b56180462cac47ec82f3a755bd9111ec18ca37a6196a319c013db994130"
+  },
+  "schema": "psycles.scene-benchmark.v3",
+  "settings": {
+    "cycles_gpu_device": "HIP",
+    "cycles_gpu_device_name": "Radeon RX 9070 XT",
+    "height": 858,
+    "max_samples_per_dispatch": 64,
+    "pass_contract": "psycles.linear-pass-contract.v1",
+    "psycles_environment": {
+      "PSYCLES_COMPACT_SURFACE_VALUES": null,
+      "PSYCLES_DISABLE_SHADER_CACHE": "1",
+      "PSYCLES_POPULATE_SURFACE_ONCE": null
+    },
+    "psycles_scheduler_config": {
+      "fast_math": true,
+      "persistent_block_size": 32,
+      "persistent_fetch_size": 1,
+      "persistent_worker_count": 32768,
+      "staged_direct_light_queue": true,
+      "staged_surface_sorting": true,
+      "wavefront_counter_readback_batch_size": 4,
+      "wavefront_counter_readback_pipeline_depth": 2,
+      "wavefront_execution_block_size": 32,
+      "wavefront_frame_capacity": 1048576,
+      "wavefront_graph_refill_threshold": 0,
+      "wavefront_graph_selective": false,
+      "wavefront_graph_worker_count": 0,
+      "wavefront_tail_megakernel_threshold": 0
+    },
+    "psycles_schedulers": [
+      "wavefront-staged"
+    ],
+    "samples": 256,
+    "width": 2048
+  },
+  "status": "complete"
+}
