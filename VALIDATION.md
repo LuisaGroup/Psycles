@@ -50,34 +50,34 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Latest four-scene follow-up
 
-Psycles `e79644af` / Luisa `da8fff856` complete six further 256-spp renders,
+Psycles `ffb3f7f2` / Luisa `da8fff856` complete six further 256-spp renders,
 using fresh socket metadata with the exact earlier geometry/texture bytes.
 These use retained equal-pass Cycles references, **not fresh timing pairs**.
 All 46 channels are finite and all 15 pass comparisons complete. Exact six-run
 data, images' provenance and all implementation hashes are in the
-[latest report](docs/validation/2026-09-09/closure-input-guards/README.md).
+[latest report](docs/validation/2026-09-09/voronoi-octave/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 13.6060 | 43.3679 | 220 B |
-| Monster, one run | 14.8859 | 49.8781 | 280 B |
-| Classroom, one run | 18.2708 | 36.9795 | 260 B |
-| Barbershop, three-run median | 40.2134 | 17.7810 / 17.7165 / 18.3975 | 416 B |
+| Lone Monk, one run | 13.6398 | 11.4797 | 220 B |
+| Monster, one run | 14.9535 | 52.6430 | 280 B |
+| Classroom, one run | 18.2805 | 11.0960 | 260 B |
+| Barbershop, three-run median | 39.9800 | 17.9685 / 17.5688 / 17.5393 | 416 B |
 
-Barbershop's individual times are 40.2134 / 40.1447 / 40.2137 s. Its median
-is 0.04% above the preceding 40.1981 s, not an isolated causal change estimate,
-and 58.5% slower than the retained Cycles median. Initialization is JIT plus
+Barbershop's individual times are 40.0252 / 39.9800 / 39.9197 s. Its median
+is 0.58% below the preceding 40.2134 s, not an isolated causal change estimate,
+and 57.5% slower than the retained Cycles median. Initialization is JIT plus
 setup, not compiler-only. Main shader caching is disabled but downstream
 caches retain their ordinary policy; the profile already warmed Barbershop.
 These values are not matched cold/warm comparisons with the previous report.
 Initialization is never included in render time.
-Current first-run DiffInd relative RMSE is 12.882% / 2.552% / 17.820% / 7.126%
+Current first-run DiffInd relative RMSE is 12.881% / 2.553% / 17.820% / 7.126%
 in the table's scene order. The structural and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [closure-input-guard checkpoint](docs/validation/2026-09-09/closure-input-guards/README.md)
-at Psycles `e79644af` / Luisa `da8fff856` supplies the current backend and
+The [Voronoi checkpoint](docs/validation/2026-09-09/voronoi-octave/README.md)
+at Psycles `ffb3f7f2` / Luisa `da8fff856` supplies the current backend and
 four-scene campaign. The [group-context repair](docs/validation/2026-09-08/svm-group-contexts/README.md)
 at `239cade6` remains the latest host SVM-layout repair.
 The preceding lamp-routing report records Psycles `773f1aca` / Luisa
@@ -127,7 +127,7 @@ frame/register/private sizes and 49 calls are unchanged.
 The same validation exposed and repaired generic shared-target CFG proxying
 and narrow signed SPIR-V literal encoding, with independent permanent reds.
 
-The latest independent repair restores native caustic/allocation input
+The preceding closure-input repair restores native caustic/allocation input
 boundaries for standalone Glossy, Refraction, Glass and Metallic. Eight
 production-AST configurations fail before repair and pass afterwards; 128
 runtime states cover original GPU observations, rejected/no-storage paths
@@ -143,6 +143,19 @@ private bytes from 2480 to 2816 and median surface/render time by 5.72% / 3.06%.
 Restored A has identical `.text`, with all 46 channels finite and all 15 pass
 controls complete. Production stays at 512; no register cap or inline policy
 changed. Matching Cycles' launch/register count does not close the gap.
+
+The [Noise controls](docs/validation/2026-09-09/noise-codegen/README.md) find no
+missing 3D inline boundary or twofold primitive-cost gap. The full dynamic
+handler emits about 32% more static code but uses fewer registers; synthetic
+run medians are about 5.6% slower with strongly overlapping dispatch ranges.
+They do not establish Noise's share of Barbershop. The following native
+Voronoi review removes a duplicated F1 octave body and corrects defined 3D
+homogeneous W. The production-AST test changes 3/8 to 8/8, and fresh original
+HIP state comparison changes 168/192 to 192/192 with the fixture unchanged.
+An isolated shared-F1 A/B/B/A improves median surface/render time by
+1.17% / 0.66%; it is not a major missing-inline fix. The final combined
+version records 5.798762 surface seconds / 10.4441 render seconds at 64 spp,
+158,118 main instructions, 2,464 private bytes, 49 calls and a 416-byte frame.
 
 The earlier hidden-input, Vector Math, bump-edge/domain and procedural-output
 repairs have 105 original-Cycles material images. Fifty-three additional
@@ -182,11 +195,11 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 183/183 | Complete registered suite, 474.99 s; correctness run, with cache misses and concurrent non-timed CPU checks |
-| Psycles fallback | 185/185 | Complete registered suite, 113.94 s |
-| Psycles host | 171/171 | Original-Cycles image regressions, 35 shared-case, 72 closure-dispatch and eight closure-guard configurations; source-size gate fully green |
+| Psycles HIP | 184/184 | Complete registered suite, 109.64 s; correctness elapsed time, not a performance benchmark |
+| Psycles fallback | 186/186 | Complete registered suite, 126.80 s |
+| Psycles host | 172/172 | Original-Cycles images, shared-case/closure guards and eight Voronoi loop shapes; source-size gate fully green |
 | Luisa child | 133/133 | Prior complete `unit*` selection in the unchanged HIP configuration; exact `unit` label is 132/132 |
-| Strict native Vulkan | 4/4 | Lamp routing, bump state, BSDF dispatch and closure guards; 49 native SPIR-V compilations, no DXC/DXIL load |
+| Strict native Vulkan | 5/5 | Lamp routing, bump state, BSDF dispatch, closure guards and Voronoi states; 51 native SPIR-V compilations, no DXC/DXIL load |
 | Shared-switch runtime | 211 assertions/backend | HIP, fallback and strict native Vulkan; exits, narrow/wide labels and both coroutine schedulers |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
 

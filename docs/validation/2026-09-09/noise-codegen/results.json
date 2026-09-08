@@ -1,0 +1,1839 @@
+{
+  "schema": "psycles.noise-codegen.v1",
+  "implementation": {
+    "parent": "e79644af",
+    "documentation_head": "5c3746b2",
+    "child": "da8fff856",
+    "no_production_source_or_inline_policy_changes": true
+  },
+  "original": {
+    "revision": "cb168525138fecc792cc393f94afc39582b0103c",
+    "sources": [
+      {
+        "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/noise.h",
+        "sha256": "465a600a17434b610d563eb26013b876629ff9b48b8015c6479418b3e7674732",
+        "bytes": 25585
+      },
+      {
+        "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/fractal_noise.h",
+        "sha256": "430f0ed87be7db13442e85bf2b406e48c62657436b1a160bf4ecb8d7af8c838c",
+        "bytes": 16525
+      },
+      {
+        "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/noisetex.h",
+        "sha256": "966308bf72ea56dda1f651ac5be26160fb21dd7a38896eef562a61e2216b44a1",
+        "bytes": 13245
+      }
+    ]
+  },
+  "scope": "bottom-up 3D signed noise, FBM and dynamic full Noise handler controls; original GPU routines included directly; no CPU shader evaluator",
+  "compilation": "fast math, native original HIP O3, 256 threads/group, 32-thread builds and hipcc -parallel-jobs=32; ordinary Luisa inlining decisions",
+  "isa_scope": "ELF STT_FUNC extents, not dynamic instructions; original saved .bc is pre-optimization and is not presented as final IR",
+  "leaf_code_original": {
+    "functions": {
+      "_Z9noise_fbm15HIP_vector_typeIfLj3EEfffb": {
+        "address": 16428,
+        "bytes": 6772,
+        "static_instructions": 1305,
+        "scratch_load_instructions": 0,
+        "scratch_store_instructions": 0,
+        "call_sites": 0,
+        "image_sample_instructions": 0
+      },
+      "_Z11noise_probePK15HIP_vector_typeIfLj4EES2_Pfj": {
+        "address": 13312,
+        "bytes": 3116,
+        "static_instructions": 608,
+        "scratch_load_instructions": 0,
+        "scratch_store_instructions": 0,
+        "call_sites": 0,
+        "image_sample_instructions": 0
+      },
+      "_Z9fbm_probePK15HIP_vector_typeIfLj4EES2_Pfj": {
+        "address": 23296,
+        "bytes": 264,
+        "static_instructions": 44,
+        "scratch_load_instructions": 0,
+        "scratch_store_instructions": 0,
+        "call_sites": 1,
+        "image_sample_instructions": 0
+      }
+    },
+    "kernel_resources": {
+      "_Z11noise_probePK15HIP_vector_typeIfLj4EES2_Pfj": {
+        "private_segment_fixed_size": 0,
+        "sgpr_count": 7,
+        "vgpr_count": 35,
+        "sgpr_spill_count": 0,
+        "vgpr_spill_count": 0
+      },
+      "_Z9fbm_probePK15HIP_vector_typeIfLj4EES2_Pfj": {
+        "private_segment_fixed_size": 0,
+        "sgpr_count": 35,
+        "vgpr_count": 52,
+        "sgpr_spill_count": 0,
+        "vgpr_spill_count": 0
+      }
+    },
+    "sources": [
+      {
+        "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-notes.txt",
+        "sha256": "29a5fe959d59d0d15b051cc38178bd3cec0b52150d1cbe4bb18f857a3fe8bcd9",
+        "bytes": 11790
+      },
+      {
+        "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-isa.txt",
+        "sha256": "0253e733e5d03ea5d3869f6b942ba37501573693a712fec60d95f8c84fccc255",
+        "bytes": 191283
+      }
+    ]
+  },
+  "leaf_controls": {
+    "noise": {
+      "agreement": {
+        "observed_floats": 32,
+        "exact_floats": 32,
+        "maximum_absolute_error": 0.0,
+        "all_finite": true,
+        "comparison": "finite absolute-relative tolerance 2e-5; no math changes for last bits"
+      },
+      "logs": [
+        {
+          "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-noise.log",
+          "sha256": "23ab0680e5d73768a8167524b532920a45517fb4e596c2a8ed640eac81a5099c",
+          "bytes": 711
+        },
+        {
+          "path": "/var/tmp/psycles-noise-codegen-bFjlyl/noise/render.log",
+          "sha256": "0e3f316c6af0d1b1d323d072cb84caeebf10bc9c68a14a74e4bbecf90575845e",
+          "bytes": 2432
+        }
+      ],
+      "actual_code": {
+        "functions": {
+          "kernel_7ba67e6e8457588a": {
+            "address": 5376,
+            "bytes": 3156,
+            "static_instructions": 634,
+            "scratch_load_instructions": 0,
+            "scratch_store_instructions": 0,
+            "call_sites": 0,
+            "image_sample_instructions": 0
+          }
+        },
+        "kernel_resources": {
+          "kernel_7ba67e6e8457588a": {
+            "private_segment_fixed_size": 8,
+            "sgpr_count": 7,
+            "vgpr_count": 37,
+            "sgpr_spill_count": 0,
+            "vgpr_spill_count": 0
+          }
+        },
+        "sources": [
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/noise/notes.txt",
+            "sha256": "8f5047b0eea985aebfab0ea4950fbeb96c0b00b703abc012174da1fbf2077c37",
+            "bytes": 2720
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/noise/isa.txt",
+            "sha256": "7a79fcef11660de85aed56920ca08f8adb9f0f5555019fb4a39076979e3b2f3d",
+            "bytes": 66426
+          }
+        ]
+      }
+    },
+    "fbm": {
+      "agreement": {
+        "observed_floats": 32,
+        "exact_floats": 31,
+        "maximum_absolute_error": 7.400000001656082e-09,
+        "all_finite": true,
+        "comparison": "finite absolute-relative tolerance 2e-5; no math changes for last bits"
+      },
+      "logs": [
+        {
+          "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-fbm.log",
+          "sha256": "a04dbdbc27c3060cf6e0f5e08e864c5262d18728622e59ee1f76a00c2bdf96dc",
+          "bytes": 702
+        },
+        {
+          "path": "/var/tmp/psycles-noise-codegen-bFjlyl/fbm/render.log",
+          "sha256": "17a7c58cfd696397e8d5a6b8050aa119ca1e6185499aad73f6b59c7b4da06915",
+          "bytes": 2415
+        }
+      ],
+      "actual_code": {
+        "functions": {
+          "kernel_e288a8a9cdfdc3ed": {
+            "address": 5376,
+            "bytes": 6776,
+            "static_instructions": 1293,
+            "scratch_load_instructions": 0,
+            "scratch_store_instructions": 0,
+            "call_sites": 0,
+            "image_sample_instructions": 0
+          }
+        },
+        "kernel_resources": {
+          "kernel_e288a8a9cdfdc3ed": {
+            "private_segment_fixed_size": 8,
+            "sgpr_count": 11,
+            "vgpr_count": 49,
+            "sgpr_spill_count": 0,
+            "vgpr_spill_count": 0
+          }
+        },
+        "sources": [
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/fbm/notes.txt",
+            "sha256": "60e16f927eb81421a0cea52559c3d9de42505e92e005ffd95e358e12add63061",
+            "bytes": 2719
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/fbm/isa.txt",
+            "sha256": "cf4e0fbd58a389899b4aedcc62308c78a4c50c53821b76a2b060f03c825ffa22",
+            "bytes": 125950
+          }
+        ]
+      }
+    }
+  },
+  "initial_handler_control": {
+    "agreement": {
+      "observed_floats": 128,
+      "exact_floats": 123,
+      "maximum_absolute_error": 5.899999999670058e-08,
+      "all_finite": true,
+      "comparison": "finite absolute-relative tolerance 2e-5; no math changes for last bits"
+    },
+    "scope": "32 invocations before the ring-input benchmark edit; live outputs agree and Luisa checks 12-word PC; initial notes are not mixed with benchmark code metrics",
+    "logs": [
+      {
+        "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-node.log",
+        "sha256": "f13f2cc6915fd38219727f839c659cfc6108ef40dcf775f07bbf6ff0a3e1d8dc",
+        "bytes": 1385
+      },
+      {
+        "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node/render.log",
+        "sha256": "74dbb8aeb90b20b9f3947f15e8f855f1f7817d53e50e530bda181bf2ec943a93",
+        "bytes": 3096
+      }
+    ]
+  },
+  "handler_throughput": {
+    "schema": "psycles.noise-handler-throughput.v1",
+    "scope": "synthetic dynamic SVM Noise handler, not a scene timing; 32 input records repeated across 1048576 invocations; 18 sequential 256-thread dispatches per run, first two excluded from reported median; original/Luisa/Luisa/original order; no overlapping heavy task launched by the agent",
+    "runs": [
+      {
+        "engine": "cycles",
+        "label": "original",
+        "directory": "/var/tmp/psycles-noise-codegen-bFjlyl/original-di_fne6q",
+        "command": [
+          "/opt/rocm/bin/rocprofv3",
+          "--kernel-trace",
+          "--stats",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/var/tmp/psycles-noise-codegen-bFjlyl/original-di_fne6q",
+          "--output-file",
+          "run",
+          "--",
+          "/var/tmp/psycles-noise-codegen-bFjlyl/build/cycles-node/original-node-probe",
+          "bench"
+        ],
+        "cwd": "/var/tmp/psycles-noise-codegen-bFjlyl/original-di_fne6q",
+        "environment_overrides": {},
+        "sources": [
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/build/cycles-node/original-node-probe",
+            "sha256": "81b8e123d0d13b34b5d52f7fefb35236ef68b8bc0468974daf2b848e7d8e3a64"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_inputs.h",
+            "sha256": "bfad9a644d63d9c5da1d35fd22e7d016deb9155b8866510408cc28f9f47d5c9f"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/inputs.h",
+            "sha256": "c4b9799f90f52bedecf95e3f5409cae6730e4ef3f81592c63b78871b4d0d10c0"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_probe.cpp",
+            "sha256": "313b7e6ad24e337fbc0372594fd41e393f5f2a1960a75f01a4cc18176d80709a"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_oracle.hip",
+            "sha256": "2008cf71f33e294ac15f43a8d83b222f228927057964271f73e39835598aca6f"
+          }
+        ],
+        "kernel": "node_probe(HIP_vector_type<float, 4u> const*, SVMNodeTexNoise const*, HIP_vector_type<float, 4u>*, unsigned int*, unsigned int)",
+        "dispatch_seconds": [
+          0.001542891,
+          0.001717173,
+          0.001467051,
+          0.001457251,
+          0.001444731,
+          0.001437011,
+          0.001410131,
+          0.001370775,
+          0.001301813,
+          0.001248573,
+          0.001213492,
+          0.001211373,
+          0.001208333,
+          0.001208252,
+          0.001206248,
+          0.001209008,
+          0.001208409,
+          0.001214609
+        ],
+        "after_two_warmups_median_seconds": 0.001231591,
+        "vgprs": [
+          168
+        ],
+        "scratch_bytes": [
+          176
+        ],
+        "outputs": {
+          "0": [
+            -0.0868711323,
+            0.116784208,
+            0.304843038,
+            -0.0868711323
+          ],
+          "1": [
+            0.493055046,
+            0.552846193,
+            0.507904649,
+            0.493055046
+          ],
+          "2": [
+            0.247216299,
+            0.296434045,
+            0.138606206,
+            0.247216299
+          ],
+          "3": [
+            0.411333978,
+            0.556251943,
+            0.537750423,
+            0.411333978
+          ],
+          "4": [
+            -0.218850523,
+            -0.613522649,
+            -0.227590337,
+            -0.218850523
+          ],
+          "5": [
+            0.476054639,
+            0.493342638,
+            0.489511847,
+            0.476054639
+          ],
+          "6": [
+            -0.802251279,
+            0.153005078,
+            -0.230907261,
+            -0.802251279
+          ],
+          "7": [
+            0.472889334,
+            0.630956888,
+            0.466858745,
+            0.472889334
+          ],
+          "8": [
+            -0.257540792,
+            -0.30616653,
+            -0.00384733244,
+            -0.257540792
+          ],
+          "9": [
+            0.55870688,
+            0.536917031,
+            0.548199177,
+            0.55870688
+          ],
+          "10": [
+            -0.14634259,
+            0.547155976,
+            0.113535106,
+            -0.14634259
+          ],
+          "11": [
+            0.492866725,
+            0.520854533,
+            0.506665945,
+            0.492866725
+          ],
+          "12": [
+            -0.268447101,
+            -0.0348442718,
+            0.113919266,
+            -0.268447101
+          ],
+          "13": [
+            0.559262633,
+            0.599601805,
+            0.510515928,
+            0.559262633
+          ],
+          "14": [
+            -0.146380916,
+            0.338324368,
+            0.229514539,
+            -0.146380916
+          ],
+          "15": [
+            0.42757836,
+            0.610931814,
+            0.498731524,
+            0.42757836
+          ],
+          "16": [
+            0.0,
+            0.0,
+            0.0,
+            0.404132962
+          ],
+          "17": [
+            0.0,
+            0.0,
+            0.0,
+            0.47852084
+          ],
+          "18": [
+            0.0,
+            0.0,
+            0.0,
+            0.195923075
+          ],
+          "19": [
+            0.0,
+            0.0,
+            0.0,
+            0.519290447
+          ],
+          "20": [
+            0.0,
+            0.0,
+            0.0,
+            -0.11332456
+          ],
+          "21": [
+            0.0,
+            0.0,
+            0.0,
+            0.34916535
+          ],
+          "22": [
+            0.0,
+            0.0,
+            0.0,
+            -0.125322685
+          ],
+          "23": [
+            0.0,
+            0.0,
+            0.0,
+            0.510613143
+          ],
+          "24": [
+            0.0,
+            0.0,
+            0.0,
+            0.426499784
+          ],
+          "25": [
+            0.0,
+            0.0,
+            0.0,
+            0.608551025
+          ],
+          "26": [
+            0.0,
+            0.0,
+            0.0,
+            -0.232645005
+          ],
+          "27": [
+            0.0,
+            0.0,
+            0.0,
+            0.376704603
+          ],
+          "28": [
+            0.0,
+            0.0,
+            0.0,
+            0.243657976
+          ],
+          "29": [
+            0.0,
+            0.0,
+            0.0,
+            0.487335324
+          ],
+          "30": [
+            0.0,
+            0.0,
+            0.0,
+            -0.032043919
+          ],
+          "31": [
+            0.0,
+            0.0,
+            0.0,
+            0.473316818
+          ]
+        },
+        "after_two_warmups_range_seconds": [
+          0.001206248,
+          0.001467051
+        ],
+        "agreement": {
+          "observed_floats": 128,
+          "exact_floats": 128,
+          "maximum_absolute_error": 0.0,
+          "all_finite": true,
+          "comparison": "finite absolute-relative tolerance 2e-5; no math changes for last bits"
+        },
+        "artifacts": [
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-di_fne6q/command.json",
+            "sha256": "e63eed7fc251926e2d58cadd629034383cd705b0ae4270181b0ec0169f6e3c51",
+            "bytes": 1435
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-di_fne6q/run.log",
+            "sha256": "0612ac2b475fd3fe7888c8c87647cb330425dffb6e803c40098e38fae6f9a81b",
+            "bytes": 2831
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-di_fne6q/run_kernel_trace.csv",
+            "sha256": "938e8761da470b18fea6a8b7b9fa8534af1435d03afde0ba39d70aecf981624e",
+            "bytes": 5111
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-di_fne6q/run_kernel_stats.csv",
+            "sha256": "3fd3e5f5d1aadb4ac0a9f17026401c9739842b1b37ceb18a27dd6d757cf8e7ac",
+            "bytes": 352
+          }
+        ]
+      },
+      {
+        "engine": "luisa",
+        "label": "actual",
+        "directory": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-f0cyxx61",
+        "command": [
+          "/opt/rocm/bin/rocprofv3",
+          "--kernel-trace",
+          "--stats",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/var/tmp/psycles-noise-codegen-bFjlyl/actual-f0cyxx61",
+          "--output-file",
+          "run",
+          "--",
+          "/var/tmp/psycles-noise-codegen-bFjlyl/build/node-codegen-probe",
+          "bench"
+        ],
+        "cwd": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-f0cyxx61",
+        "environment_overrides": {
+          "LUISA_DUMP_LLVM_IR": "1",
+          "LUISA_DUMP_HIP_ISA": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-f0cyxx61"
+        },
+        "sources": [
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/build/node-codegen-probe",
+            "sha256": "a26d36a1de8b346af15392d40d43fd9b0a94f0b696a580ba24eb1b6e2c475076"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_inputs.h",
+            "sha256": "bfad9a644d63d9c5da1d35fd22e7d016deb9155b8866510408cc28f9f47d5c9f"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/inputs.h",
+            "sha256": "c4b9799f90f52bedecf95e3f5409cae6730e4ef3f81592c63b78871b4d0d10c0"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_probe.cpp",
+            "sha256": "313b7e6ad24e337fbc0372594fd41e393f5f2a1960a75f01a4cc18176d80709a"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_oracle.hip",
+            "sha256": "2008cf71f33e294ac15f43a8d83b222f228927057964271f73e39835598aca6f"
+          },
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/build/libpsycles_luisa_runtime.so",
+            "sha256": "a55554c87c423099c70600153726e21157d420268113d0b03b91ee8a4341b359"
+          },
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-backend-hip.so",
+            "sha256": "31c7665da651e21b088d4645f2634ad5d81212f2c035afbd1a41ffe273ede5df"
+          },
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-xir.so",
+            "sha256": "fbda70f93b78cb82e6af3bdd34abb8ad8b805687347e9c295dc6964f9e05e0c4"
+          }
+        ],
+        "kernel": "kernel_e175b883baf43eee",
+        "dispatch_seconds": [
+          0.001460492,
+          0.001697655,
+          0.001466332,
+          0.001432172,
+          0.001423292,
+          0.001416332,
+          0.001409292,
+          0.001391532,
+          0.001364652,
+          0.001337091,
+          0.00128481,
+          0.00125681,
+          0.00121749,
+          0.00120141,
+          0.00119025,
+          0.00118753,
+          0.00118493,
+          0.00118641
+        ],
+        "after_two_warmups_median_seconds": 0.0013109505000000001,
+        "vgprs": [
+          104
+        ],
+        "scratch_bytes": [
+          144
+        ],
+        "outputs": {
+          "0": [
+            -0.0868711323,
+            0.116784208,
+            0.304843009,
+            -0.0868711323
+          ],
+          "1": [
+            0.493055046,
+            0.552846193,
+            0.507904649,
+            0.493055046
+          ],
+          "2": [
+            0.247216299,
+            0.296434045,
+            0.138606206,
+            0.247216299
+          ],
+          "3": [
+            0.411333978,
+            0.556251884,
+            0.537750423,
+            0.411333978
+          ],
+          "4": [
+            -0.218850523,
+            -0.613522649,
+            -0.227590337,
+            -0.218850523
+          ],
+          "5": [
+            0.476054639,
+            0.493342638,
+            0.489511847,
+            0.476054639
+          ],
+          "6": [
+            -0.802251279,
+            0.153005078,
+            -0.230907261,
+            -0.802251279
+          ],
+          "7": [
+            0.472889334,
+            0.630956888,
+            0.466858745,
+            0.472889334
+          ],
+          "8": [
+            -0.257540792,
+            -0.30616653,
+            -0.00384733244,
+            -0.257540792
+          ],
+          "9": [
+            0.55870688,
+            0.536917031,
+            0.548199177,
+            0.55870688
+          ],
+          "10": [
+            -0.14634259,
+            0.547155976,
+            0.113535106,
+            -0.14634259
+          ],
+          "11": [
+            0.492866725,
+            0.520854533,
+            0.506665945,
+            0.492866725
+          ],
+          "12": [
+            -0.268447101,
+            -0.0348442718,
+            0.113919266,
+            -0.268447101
+          ],
+          "13": [
+            0.559262633,
+            0.599601805,
+            0.510515928,
+            0.559262633
+          ],
+          "14": [
+            -0.146380916,
+            0.338324368,
+            0.229514539,
+            -0.146380916
+          ],
+          "15": [
+            0.42757833,
+            0.610931814,
+            0.498731494,
+            0.42757833
+          ],
+          "16": [
+            0.0,
+            0.0,
+            0.0,
+            0.404132962
+          ],
+          "17": [
+            0.0,
+            0.0,
+            0.0,
+            0.47852084
+          ],
+          "18": [
+            0.0,
+            0.0,
+            0.0,
+            0.195923075
+          ],
+          "19": [
+            0.0,
+            0.0,
+            0.0,
+            0.519290447
+          ],
+          "20": [
+            0.0,
+            0.0,
+            0.0,
+            -0.11332456
+          ],
+          "21": [
+            0.0,
+            0.0,
+            0.0,
+            0.34916535
+          ],
+          "22": [
+            0.0,
+            0.0,
+            0.0,
+            -0.125322685
+          ],
+          "23": [
+            0.0,
+            0.0,
+            0.0,
+            0.510613143
+          ],
+          "24": [
+            0.0,
+            0.0,
+            0.0,
+            0.426499784
+          ],
+          "25": [
+            0.0,
+            0.0,
+            0.0,
+            0.608551025
+          ],
+          "26": [
+            0.0,
+            0.0,
+            0.0,
+            -0.232645005
+          ],
+          "27": [
+            0.0,
+            0.0,
+            0.0,
+            0.376704603
+          ],
+          "28": [
+            0.0,
+            0.0,
+            0.0,
+            0.243657976
+          ],
+          "29": [
+            0.0,
+            0.0,
+            0.0,
+            0.487335324
+          ],
+          "30": [
+            0.0,
+            0.0,
+            0.0,
+            -0.032043919
+          ],
+          "31": [
+            0.0,
+            0.0,
+            0.0,
+            0.473316818
+          ]
+        },
+        "after_two_warmups_range_seconds": [
+          0.00118493,
+          0.001466332
+        ],
+        "agreement": {
+          "observed_floats": 128,
+          "exact_floats": 123,
+          "maximum_absolute_error": 5.899999999670058e-08,
+          "all_finite": true,
+          "comparison": "finite absolute-relative tolerance 2e-5; no math changes for last bits"
+        },
+        "artifacts": [
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-f0cyxx61/command.json",
+            "sha256": "880996d90cbcfb717544628f53eabb9428559cc8f8baae0c696cf052c208619d",
+            "bytes": 2069
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-f0cyxx61/run.log",
+            "sha256": "ada558690bff29306b504825bb8dd3cd379cca181d05211a07dcf7d9085ba58e",
+            "bytes": 4518
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-f0cyxx61/run_kernel_trace.csv",
+            "sha256": "52dcc3bef204a5380560873bb2ee86641816e74bebfa6213adfb06336e3d9106",
+            "bytes": 3638
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-f0cyxx61/run_kernel_stats.csv",
+            "sha256": "1c6fdcd9d54b8dc63318a306335264887c9160ddf005547d5775b1c7af1fe277",
+            "bytes": 326
+          }
+        ]
+      },
+      {
+        "engine": "luisa",
+        "label": "actual-repeat",
+        "directory": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-repeat-ukp407f3",
+        "command": [
+          "/opt/rocm/bin/rocprofv3",
+          "--kernel-trace",
+          "--stats",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/var/tmp/psycles-noise-codegen-bFjlyl/actual-repeat-ukp407f3",
+          "--output-file",
+          "run",
+          "--",
+          "/var/tmp/psycles-noise-codegen-bFjlyl/build/node-codegen-probe",
+          "bench"
+        ],
+        "cwd": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-repeat-ukp407f3",
+        "environment_overrides": {
+          "LUISA_DUMP_LLVM_IR": "1",
+          "LUISA_DUMP_HIP_ISA": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-repeat-ukp407f3"
+        },
+        "sources": [
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/build/node-codegen-probe",
+            "sha256": "a26d36a1de8b346af15392d40d43fd9b0a94f0b696a580ba24eb1b6e2c475076"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_inputs.h",
+            "sha256": "bfad9a644d63d9c5da1d35fd22e7d016deb9155b8866510408cc28f9f47d5c9f"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/inputs.h",
+            "sha256": "c4b9799f90f52bedecf95e3f5409cae6730e4ef3f81592c63b78871b4d0d10c0"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_probe.cpp",
+            "sha256": "313b7e6ad24e337fbc0372594fd41e393f5f2a1960a75f01a4cc18176d80709a"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_oracle.hip",
+            "sha256": "2008cf71f33e294ac15f43a8d83b222f228927057964271f73e39835598aca6f"
+          },
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/build/libpsycles_luisa_runtime.so",
+            "sha256": "a55554c87c423099c70600153726e21157d420268113d0b03b91ee8a4341b359"
+          },
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-backend-hip.so",
+            "sha256": "31c7665da651e21b088d4645f2634ad5d81212f2c035afbd1a41ffe273ede5df"
+          },
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-xir.so",
+            "sha256": "fbda70f93b78cb82e6af3bdd34abb8ad8b805687347e9c295dc6964f9e05e0c4"
+          }
+        ],
+        "kernel": "kernel_e175b883baf43eee",
+        "dispatch_seconds": [
+          0.001458612,
+          0.001454932,
+          0.001574893,
+          0.001434893,
+          0.001420132,
+          0.001410132,
+          0.001398652,
+          0.001365491,
+          0.001342971,
+          0.001299291,
+          0.001271251,
+          0.001234451,
+          0.001196891,
+          0.00119165,
+          0.00118889,
+          0.001186531,
+          0.00118517,
+          0.00118453
+        ],
+        "after_two_warmups_median_seconds": 0.001285271,
+        "vgprs": [
+          104
+        ],
+        "scratch_bytes": [
+          144
+        ],
+        "outputs": {
+          "0": [
+            -0.0868711323,
+            0.116784208,
+            0.304843009,
+            -0.0868711323
+          ],
+          "1": [
+            0.493055046,
+            0.552846193,
+            0.507904649,
+            0.493055046
+          ],
+          "2": [
+            0.247216299,
+            0.296434045,
+            0.138606206,
+            0.247216299
+          ],
+          "3": [
+            0.411333978,
+            0.556251884,
+            0.537750423,
+            0.411333978
+          ],
+          "4": [
+            -0.218850523,
+            -0.613522649,
+            -0.227590337,
+            -0.218850523
+          ],
+          "5": [
+            0.476054639,
+            0.493342638,
+            0.489511847,
+            0.476054639
+          ],
+          "6": [
+            -0.802251279,
+            0.153005078,
+            -0.230907261,
+            -0.802251279
+          ],
+          "7": [
+            0.472889334,
+            0.630956888,
+            0.466858745,
+            0.472889334
+          ],
+          "8": [
+            -0.257540792,
+            -0.30616653,
+            -0.00384733244,
+            -0.257540792
+          ],
+          "9": [
+            0.55870688,
+            0.536917031,
+            0.548199177,
+            0.55870688
+          ],
+          "10": [
+            -0.14634259,
+            0.547155976,
+            0.113535106,
+            -0.14634259
+          ],
+          "11": [
+            0.492866725,
+            0.520854533,
+            0.506665945,
+            0.492866725
+          ],
+          "12": [
+            -0.268447101,
+            -0.0348442718,
+            0.113919266,
+            -0.268447101
+          ],
+          "13": [
+            0.559262633,
+            0.599601805,
+            0.510515928,
+            0.559262633
+          ],
+          "14": [
+            -0.146380916,
+            0.338324368,
+            0.229514539,
+            -0.146380916
+          ],
+          "15": [
+            0.42757833,
+            0.610931814,
+            0.498731494,
+            0.42757833
+          ],
+          "16": [
+            0.0,
+            0.0,
+            0.0,
+            0.404132962
+          ],
+          "17": [
+            0.0,
+            0.0,
+            0.0,
+            0.47852084
+          ],
+          "18": [
+            0.0,
+            0.0,
+            0.0,
+            0.195923075
+          ],
+          "19": [
+            0.0,
+            0.0,
+            0.0,
+            0.519290447
+          ],
+          "20": [
+            0.0,
+            0.0,
+            0.0,
+            -0.11332456
+          ],
+          "21": [
+            0.0,
+            0.0,
+            0.0,
+            0.34916535
+          ],
+          "22": [
+            0.0,
+            0.0,
+            0.0,
+            -0.125322685
+          ],
+          "23": [
+            0.0,
+            0.0,
+            0.0,
+            0.510613143
+          ],
+          "24": [
+            0.0,
+            0.0,
+            0.0,
+            0.426499784
+          ],
+          "25": [
+            0.0,
+            0.0,
+            0.0,
+            0.608551025
+          ],
+          "26": [
+            0.0,
+            0.0,
+            0.0,
+            -0.232645005
+          ],
+          "27": [
+            0.0,
+            0.0,
+            0.0,
+            0.376704603
+          ],
+          "28": [
+            0.0,
+            0.0,
+            0.0,
+            0.243657976
+          ],
+          "29": [
+            0.0,
+            0.0,
+            0.0,
+            0.487335324
+          ],
+          "30": [
+            0.0,
+            0.0,
+            0.0,
+            -0.032043919
+          ],
+          "31": [
+            0.0,
+            0.0,
+            0.0,
+            0.473316818
+          ]
+        },
+        "after_two_warmups_range_seconds": [
+          0.00118453,
+          0.001574893
+        ],
+        "agreement": {
+          "observed_floats": 128,
+          "exact_floats": 123,
+          "maximum_absolute_error": 5.899999999670058e-08,
+          "all_finite": true,
+          "comparison": "finite absolute-relative tolerance 2e-5; no math changes for last bits"
+        },
+        "artifacts": [
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-repeat-ukp407f3/command.json",
+            "sha256": "ed5dab5291de9944992b5dba15cc6acb0d86d01c075b0480f0a02c36c8f45877",
+            "bytes": 2104
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-repeat-ukp407f3/run.log",
+            "sha256": "3a3441b4640235669e1afc59c87c44dc5bec916a7655ca330fe1a7bcb925e7fa",
+            "bytes": 4566
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-repeat-ukp407f3/run_kernel_trace.csv",
+            "sha256": "6333e9931bfedef3a10c862d38bd2bda167d3dad722dde2ff29ecf3b3ecd2726",
+            "bytes": 3636
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/actual-repeat-ukp407f3/run_kernel_stats.csv",
+            "sha256": "248d019229ec8e9a7ad4a5edf7c71df7c39ec3d1cefca6e3a765fc31176f7f83",
+            "bytes": 327
+          }
+        ]
+      },
+      {
+        "engine": "cycles",
+        "label": "original-repeat",
+        "directory": "/var/tmp/psycles-noise-codegen-bFjlyl/original-repeat-7pg2gxom",
+        "command": [
+          "/opt/rocm/bin/rocprofv3",
+          "--kernel-trace",
+          "--stats",
+          "--output-format",
+          "csv",
+          "--output-directory",
+          "/var/tmp/psycles-noise-codegen-bFjlyl/original-repeat-7pg2gxom",
+          "--output-file",
+          "run",
+          "--",
+          "/var/tmp/psycles-noise-codegen-bFjlyl/build/cycles-node/original-node-probe",
+          "bench"
+        ],
+        "cwd": "/var/tmp/psycles-noise-codegen-bFjlyl/original-repeat-7pg2gxom",
+        "environment_overrides": {},
+        "sources": [
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/build/cycles-node/original-node-probe",
+            "sha256": "81b8e123d0d13b34b5d52f7fefb35236ef68b8bc0468974daf2b848e7d8e3a64"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_inputs.h",
+            "sha256": "bfad9a644d63d9c5da1d35fd22e7d016deb9155b8866510408cc28f9f47d5c9f"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/inputs.h",
+            "sha256": "c4b9799f90f52bedecf95e3f5409cae6730e4ef3f81592c63b78871b4d0d10c0"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_probe.cpp",
+            "sha256": "313b7e6ad24e337fbc0372594fd41e393f5f2a1960a75f01a4cc18176d80709a"
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_oracle.hip",
+            "sha256": "2008cf71f33e294ac15f43a8d83b222f228927057964271f73e39835598aca6f"
+          }
+        ],
+        "kernel": "node_probe(HIP_vector_type<float, 4u> const*, SVMNodeTexNoise const*, HIP_vector_type<float, 4u>*, unsigned int*, unsigned int)",
+        "dispatch_seconds": [
+          0.001537207,
+          0.001473086,
+          0.001610165,
+          0.001454885,
+          0.001439245,
+          0.001422845,
+          0.001392685,
+          0.001339807,
+          0.001283166,
+          0.001231887,
+          0.001213606,
+          0.001209606,
+          0.001208526,
+          0.001210326,
+          0.001220247,
+          0.001219206,
+          0.001213726,
+          0.001209646
+        ],
+        "after_two_warmups_median_seconds": 0.001226067,
+        "vgprs": [
+          168
+        ],
+        "scratch_bytes": [
+          176
+        ],
+        "outputs": {
+          "0": [
+            -0.0868711323,
+            0.116784208,
+            0.304843038,
+            -0.0868711323
+          ],
+          "1": [
+            0.493055046,
+            0.552846193,
+            0.507904649,
+            0.493055046
+          ],
+          "2": [
+            0.247216299,
+            0.296434045,
+            0.138606206,
+            0.247216299
+          ],
+          "3": [
+            0.411333978,
+            0.556251943,
+            0.537750423,
+            0.411333978
+          ],
+          "4": [
+            -0.218850523,
+            -0.613522649,
+            -0.227590337,
+            -0.218850523
+          ],
+          "5": [
+            0.476054639,
+            0.493342638,
+            0.489511847,
+            0.476054639
+          ],
+          "6": [
+            -0.802251279,
+            0.153005078,
+            -0.230907261,
+            -0.802251279
+          ],
+          "7": [
+            0.472889334,
+            0.630956888,
+            0.466858745,
+            0.472889334
+          ],
+          "8": [
+            -0.257540792,
+            -0.30616653,
+            -0.00384733244,
+            -0.257540792
+          ],
+          "9": [
+            0.55870688,
+            0.536917031,
+            0.548199177,
+            0.55870688
+          ],
+          "10": [
+            -0.14634259,
+            0.547155976,
+            0.113535106,
+            -0.14634259
+          ],
+          "11": [
+            0.492866725,
+            0.520854533,
+            0.506665945,
+            0.492866725
+          ],
+          "12": [
+            -0.268447101,
+            -0.0348442718,
+            0.113919266,
+            -0.268447101
+          ],
+          "13": [
+            0.559262633,
+            0.599601805,
+            0.510515928,
+            0.559262633
+          ],
+          "14": [
+            -0.146380916,
+            0.338324368,
+            0.229514539,
+            -0.146380916
+          ],
+          "15": [
+            0.42757836,
+            0.610931814,
+            0.498731524,
+            0.42757836
+          ],
+          "16": [
+            0.0,
+            0.0,
+            0.0,
+            0.404132962
+          ],
+          "17": [
+            0.0,
+            0.0,
+            0.0,
+            0.47852084
+          ],
+          "18": [
+            0.0,
+            0.0,
+            0.0,
+            0.195923075
+          ],
+          "19": [
+            0.0,
+            0.0,
+            0.0,
+            0.519290447
+          ],
+          "20": [
+            0.0,
+            0.0,
+            0.0,
+            -0.11332456
+          ],
+          "21": [
+            0.0,
+            0.0,
+            0.0,
+            0.34916535
+          ],
+          "22": [
+            0.0,
+            0.0,
+            0.0,
+            -0.125322685
+          ],
+          "23": [
+            0.0,
+            0.0,
+            0.0,
+            0.510613143
+          ],
+          "24": [
+            0.0,
+            0.0,
+            0.0,
+            0.426499784
+          ],
+          "25": [
+            0.0,
+            0.0,
+            0.0,
+            0.608551025
+          ],
+          "26": [
+            0.0,
+            0.0,
+            0.0,
+            -0.232645005
+          ],
+          "27": [
+            0.0,
+            0.0,
+            0.0,
+            0.376704603
+          ],
+          "28": [
+            0.0,
+            0.0,
+            0.0,
+            0.243657976
+          ],
+          "29": [
+            0.0,
+            0.0,
+            0.0,
+            0.487335324
+          ],
+          "30": [
+            0.0,
+            0.0,
+            0.0,
+            -0.032043919
+          ],
+          "31": [
+            0.0,
+            0.0,
+            0.0,
+            0.473316818
+          ]
+        },
+        "after_two_warmups_range_seconds": [
+          0.001208526,
+          0.001610165
+        ],
+        "agreement": {
+          "observed_floats": 128,
+          "exact_floats": 128,
+          "maximum_absolute_error": 0.0,
+          "all_finite": true,
+          "comparison": "finite absolute-relative tolerance 2e-5; no math changes for last bits"
+        },
+        "artifacts": [
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-repeat-7pg2gxom/command.json",
+            "sha256": "525e36230328b05f7bf72b23df7101993a328f6271f7ed1318209f1962a1469b",
+            "bytes": 1463
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-repeat-7pg2gxom/run.log",
+            "sha256": "5532f9ba79f576f39216c8e6e967e4ec5591413d918919759883b01812aef9b5",
+            "bytes": 2859
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-repeat-7pg2gxom/run_kernel_trace.csv",
+            "sha256": "276e4fa3bc005c8034aa2dea231db80f64b911911c5b064d3b80fb8cf11a117a",
+            "bytes": 5111
+          },
+          {
+            "path": "/var/tmp/psycles-noise-codegen-bFjlyl/original-repeat-7pg2gxom/run_kernel_stats.csv",
+            "sha256": "1fa59bf8ef706d790fac8845211b075e725d1249a84f7a322fdc65df9e612daf",
+            "bytes": 351
+          }
+        ]
+      }
+    ]
+  },
+  "handler_throughput_code": {
+    "original": {
+      "functions": {
+        "_Z19noise_multi_fractalffff": {
+          "address": 12032,
+          "bytes": 1784,
+          "static_instructions": 342,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z9noise_fbmffffb": {
+          "address": 13816,
+          "bytes": 2044,
+          "static_instructions": 392,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z26noise_hybrid_multi_fractalffffff": {
+          "address": 15860,
+          "bytes": 1900,
+          "static_instructions": 363,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z26noise_ridged_multi_fractalffffff": {
+          "address": 17760,
+          "bytes": 1760,
+          "static_instructions": 336,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z20noise_hetero_terrainfffff": {
+          "address": 19520,
+          "bytes": 2560,
+          "static_instructions": 487,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z19noise_multi_fractal15HIP_vector_typeIfLj2EEfff": {
+          "address": 22080,
+          "bytes": 3496,
+          "static_instructions": 666,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z9noise_fbm15HIP_vector_typeIfLj2EEfffb": {
+          "address": 25576,
+          "bytes": 3836,
+          "static_instructions": 728,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z26noise_hybrid_multi_fractal15HIP_vector_typeIfLj2EEfffff": {
+          "address": 29412,
+          "bytes": 3572,
+          "static_instructions": 682,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z26noise_ridged_multi_fractal15HIP_vector_typeIfLj2EEfffff": {
+          "address": 32984,
+          "bytes": 3484,
+          "static_instructions": 667,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z20noise_hetero_terrain15HIP_vector_typeIfLj2EEffff": {
+          "address": 36468,
+          "bytes": 5116,
+          "static_instructions": 976,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z19noise_multi_fractal15HIP_vector_typeIfLj3EEfff": {
+          "address": 41584,
+          "bytes": 6136,
+          "static_instructions": 1233,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z9noise_fbm15HIP_vector_typeIfLj3EEfffb": {
+          "address": 47720,
+          "bytes": 6772,
+          "static_instructions": 1305,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z26noise_hybrid_multi_fractal15HIP_vector_typeIfLj3EEfffff": {
+          "address": 54492,
+          "bytes": 6208,
+          "static_instructions": 1237,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z26noise_ridged_multi_fractal15HIP_vector_typeIfLj3EEfffff": {
+          "address": 60700,
+          "bytes": 6140,
+          "static_instructions": 1229,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z20noise_hetero_terrain15HIP_vector_typeIfLj3EEffff": {
+          "address": 66840,
+          "bytes": 9096,
+          "static_instructions": 1823,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z9snoise_4d15HIP_vector_typeIfLj4EE": {
+          "address": 75936,
+          "bytes": 6244,
+          "static_instructions": 1265,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "_Z19noise_multi_fractal15HIP_vector_typeIfLj4EEfff": {
+          "address": 82180,
+          "bytes": 440,
+          "static_instructions": 86,
+          "scratch_load_instructions": 1,
+          "scratch_store_instructions": 1,
+          "call_sites": 2,
+          "image_sample_instructions": 0
+        },
+        "_Z9noise_fbm15HIP_vector_typeIfLj4EEfffb": {
+          "address": 82620,
+          "bytes": 600,
+          "static_instructions": 123,
+          "scratch_load_instructions": 1,
+          "scratch_store_instructions": 1,
+          "call_sites": 2,
+          "image_sample_instructions": 0
+        },
+        "_Z26noise_hybrid_multi_fractal15HIP_vector_typeIfLj4EEfffff": {
+          "address": 83220,
+          "bytes": 564,
+          "static_instructions": 112,
+          "scratch_load_instructions": 1,
+          "scratch_store_instructions": 1,
+          "call_sites": 2,
+          "image_sample_instructions": 0
+        },
+        "_Z26noise_ridged_multi_fractal15HIP_vector_typeIfLj4EEfffff": {
+          "address": 83784,
+          "bytes": 416,
+          "static_instructions": 82,
+          "scratch_load_instructions": 1,
+          "scratch_store_instructions": 1,
+          "call_sites": 2,
+          "image_sample_instructions": 0
+        },
+        "_Z20noise_hetero_terrain15HIP_vector_typeIfLj4EEffff": {
+          "address": 84200,
+          "bytes": 500,
+          "static_instructions": 99,
+          "scratch_load_instructions": 1,
+          "scratch_store_instructions": 1,
+          "call_sites": 3,
+          "image_sample_instructions": 0
+        },
+        "_Z18svm_node_tex_noisePfRK15SVMNodeTexNoise": {
+          "address": 84700,
+          "bytes": 21780,
+          "static_instructions": 4330,
+          "scratch_load_instructions": 1,
+          "scratch_store_instructions": 1,
+          "call_sites": 64,
+          "image_sample_instructions": 0
+        },
+        "_Z10node_probePK15HIP_vector_typeIfLj4EEPK15SVMNodeTexNoisePS0_Pjj": {
+          "address": 106496,
+          "bytes": 392,
+          "static_instructions": 64,
+          "scratch_load_instructions": 2,
+          "scratch_store_instructions": 1,
+          "call_sites": 1,
+          "image_sample_instructions": 0
+        }
+      },
+      "kernel_resources": {
+        "_Z10node_probePK15HIP_vector_typeIfLj4EEPK15SVMNodeTexNoisePS0_Pjj": {
+          "private_segment_fixed_size": 176,
+          "sgpr_count": 36,
+          "vgpr_count": 162,
+          "sgpr_spill_count": 0,
+          "vgpr_spill_count": 0
+        }
+      },
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-noise-codegen-bFjlyl/throughput-original-notes.txt",
+          "sha256": "51fe94f11e90a7c7b8c1b01907f5eb420ee2ad528c8626b54b65457d0b8d58a5",
+          "bytes": 11504
+        },
+        {
+          "path": "/var/tmp/psycles-noise-codegen-bFjlyl/throughput-original-isa.txt",
+          "sha256": "c3541d524cc09608a29e13013a994b6a8dbee2b01e20cf70e54df5aa6452cedd",
+          "bytes": 1710424
+        }
+      ]
+    },
+    "actual": {
+      "functions": {
+        "callable.4": {
+          "address": 5376,
+          "bytes": 10404,
+          "static_instructions": 1939,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_2d": {
+          "address": 15780,
+          "bytes": 1672,
+          "static_instructions": 320,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_3d": {
+          "address": 17452,
+          "bytes": 2976,
+          "static_instructions": 596,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_4d": {
+          "address": 20428,
+          "bytes": 6312,
+          "static_instructions": 1275,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "kernel_e175b883baf43eee": {
+          "address": 26880,
+          "bytes": 102716,
+          "static_instructions": 20457,
+          "scratch_load_instructions": 10,
+          "scratch_store_instructions": 3,
+          "call_sites": 74,
+          "image_sample_instructions": 0
+        }
+      },
+      "kernel_resources": {
+        "kernel_e175b883baf43eee": {
+          "private_segment_fixed_size": 144,
+          "sgpr_count": 35,
+          "vgpr_count": 99,
+          "sgpr_spill_count": 0,
+          "vgpr_spill_count": 0
+        }
+      },
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-noise-codegen-bFjlyl/throughput-actual-notes.txt",
+          "sha256": "c361a275d150cfeb7c91b20e473d1e4e07fb7ebcaab9566805fe1a4d605ac398",
+          "bytes": 3462
+        },
+        {
+          "path": "/var/tmp/psycles-noise-codegen-bFjlyl/throughput-actual-isa.txt",
+          "sha256": "4295f7581cf6df50cceed5c05a803df50a710e3414c87bc768041fa65cc79bcd",
+          "bytes": 2238344
+        }
+      ]
+    }
+  },
+  "throughput_limitations": "32 input records repeated over 1048576 invocations; first 32 output records observed, not a million-record image comparison; four runs and overlapping per-dispatch ranges do not establish statistical significance or Noise share of Barbershop",
+  "decision": "does not reproduce the roughly twofold full-surface gap; retain no inline-policy or math intervention from this audit",
+  "retained_harness_failure": {
+    "source": {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/throughput-run.log",
+      "sha256": "ec78667f57a86a2f9f72c9f74dd9d771723440bf110c03400a6380eb8cb32dc1",
+      "bytes": 285
+    },
+    "cause": "rocprof demangled original kernel name; parser now accepts original mangled/demangled prefixes; failed parsing run retained, not included in four-run table"
+  },
+  "evidence": [
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/CMakeLists.txt",
+      "sha256": "40ee93adf4552a567a3811f48dfa08adf5b5d651ee3a85717120daaaad431d29",
+      "bytes": 3067
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/inputs.h",
+      "sha256": "c4b9799f90f52bedecf95e3f5409cae6730e4ef3f81592c63b78871b4d0d10c0",
+      "bytes": 901
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_inputs.h",
+      "sha256": "bfad9a644d63d9c5da1d35fd22e7d016deb9155b8866510408cc28f9f47d5c9f",
+      "bytes": 1131
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/probe.cpp",
+      "sha256": "fd832612ae8162293a63b1e7e5e5fcc334b6be6d173b8df29e8a3f04d3bdfdd4",
+      "bytes": 2257
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/oracle.hip",
+      "sha256": "58a80c0e6c6b615fb8f25e9a8cb8e027efa9d846a3635917b7344596ebd54dff",
+      "bytes": 2690
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_probe.cpp",
+      "sha256": "313b7e6ad24e337fbc0372594fd41e393f5f2a1960a75f01a4cc18176d80709a",
+      "bytes": 3418
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/node_oracle.hip",
+      "sha256": "2008cf71f33e294ac15f43a8d83b222f228927057964271f73e39835598aca6f",
+      "bytes": 2996
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/run_throughput.py",
+      "sha256": "34c7584b9ad477ef3b7fbaf9fb8d69d87e67209e711d94008d127cd380e163f1",
+      "bytes": 3703
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/formal-analysis.md",
+      "sha256": "0d8243f6e398eaadf18100d587897f26198ca2a5aa9ac2b438f1d9510d6c9115",
+      "bytes": 2894
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/build.log",
+      "sha256": "26d3e90e845fa03b7178bd2e0f7f92191f93ad58c9ceea924ec996e27a7fade1",
+      "bytes": 3940
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/build-node.log",
+      "sha256": "7112d01b391fcec2e56bc2c8ae44d9d83e9770aebd6a770527c6b9014fc83160",
+      "bytes": 3957
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/build-node-throughput.log",
+      "sha256": "7112d01b391fcec2e56bc2c8ae44d9d83e9770aebd6a770527c6b9014fc83160",
+      "bytes": 3957
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/throughput.json",
+      "sha256": "95a66776fa16aef895e5dc7471e8c330108bfd3009756ddc914f1f535fe48475",
+      "bytes": 24551
+    },
+    {
+      "path": "/var/tmp/psycles-noise-codegen-bFjlyl/throughput-run-final.log",
+      "sha256": "37dbfa3b6f27adf911c1ac66424804eff8441d6c3f858b3f00bb7246d1e5e09d",
+      "bytes": 186
+    }
+  ]
+}

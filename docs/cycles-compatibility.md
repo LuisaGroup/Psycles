@@ -249,40 +249,54 @@ are finite and all 15 pass controls complete. No register cap or inline policy
 changes. Remaining input/resource/code-generation differences are under audit,
 not established causes of the performance gap.
 
-Current suites pass HIP 183/183 and fallback 185/185; the prior complete `unit*`
+The [Noise code-generation controls](validation/2026-09-09/noise-codegen/README.md)
+do not reproduce a twofold primitive-cost gap or a missing 3D inline boundary.
+Synthetic full-handler run medians are about 5.6% slower with strongly
+overlapping dispatch ranges, despite roughly 32% more static code and fewer
+registers. They are not an estimate of Noise's share of the full scene.
+Psycles `ffb3f7f2` then restores the original shared F1 Voronoi octave fallback
+and 3D homogeneous position W. Structural configurations change 3/8 to 8/8;
+original HIP output states change 168/192 to 192/192 without editing the
+fixture. Shared-F1 A/B/B/A improves median surface/render time by 1.17% / 0.66%.
+The final combined version has 158,118 main instructions, 2,464 private bytes,
+49 calls and the unchanged Barbershop 416-byte frame. Its final 64-spp profile
+records 5.798762 surface seconds and 10.4441 render seconds; it is separate
+from the isolated shared-F1 medians. No inline or launch policy changes.
+
+Current suites pass HIP 184/184 and fallback 186/186; the prior complete `unit*`
 selection in the unchanged Luisa HIP build passes 133/133 (132 have the exact `unit`
 label). This is a different configuration from the earlier 155-test gate.
 The parallel fallback run exposed a separate production-queue lost-wakeup
 race, repaired generically in child `85e5300f1`, with two minimal failures
 and 100 green repetitions each. Strict native Vulkan lamp-routing,
-bump-state, BSDF-dispatch and closure-guard tests pass 4/4 with 49 native SPIR-V compilations
+bump-state, BSDF-dispatch, closure-guard and Voronoi tests pass 5/5 with 51 native SPIR-V compilations
 and no DXC/DXIL load. Shared-switch runtime checks add 211 passing assertions
 on each of HIP, fallback and strict native Vulkan, including both coroutine
-schedulers. Current host results are 171/171, including the unwaived source-size
+schedulers. Current host results are 172/172, including the unwaived source-size
 gate. Existing oversized tests are separated into cohesive modules without
 removing assertions; ConvertNode now has its own ordinary translation unit.
 
 Additional native Vulkan remainder coverage is not fully green: the new
 default all-type test retains 1,076 failures in existing f16/f64 `OpFRem`
 lowering. Its isolated float32 run passes 1,744 assertions; HIP and fallback
-pass all 5,232. This gap is separate from the passing four-test Vulkan canary
+pass all 5,232. This gap is separate from the passing five-test Vulkan canary
 and is not introduced by the HIP-only change.
 
-At Psycles `e79644af` / Luisa `da8fff856`, six new full-resolution 256-spp
+At Psycles `ffb3f7f2` / Luisa `da8fff856`, six new full-resolution 256-spp
 follow-ups complete against retained Cycles references, with exact prior
 geometry/images and new source socket metadata. Current render times are
-13.6060 / 14.8859 / 18.2708 s for Monk/Monster/Classroom (one each), and
-40.2134 s for Barbershop (three-run median; 40.2134 / 40.1447 / 40.2137 s).
+13.6398 / 14.9535 / 18.2805 s for Monk/Monster/Classroom (one each), and
+39.9800 s for Barbershop (three-run median; 40.0252 / 39.9800 / 39.9197 s).
 Current frames are 220 / 280 / 260 / 416 B. These temporal follow-up
-times are not an isolated causal change estimate; Barbershop remains 58.5%
+times are not an isolated causal change estimate; Barbershop remains 57.5%
 slower than the retained Cycles median.
-Initialization is reported separately: 43.3679 / 49.8781 / 36.9795 seconds for
-Monk/Monster/Classroom, versus 17.7810 / 17.7165 / 18.3975 for Barbershop.
+Initialization is reported separately: 11.4797 / 52.6430 / 11.0960 seconds for
+Monk/Monster/Classroom, versus 17.9685 / 17.5688 / 17.5393 for Barbershop.
 Main shader caching is disabled, but downstream cache policy is unchanged;
 the profile has already warmed Barbershop. These are
 JIT plus setup/baking, not compiler-only or matched cold/warm comparisons,
 and are excluded from render time. These are not new paired Cycles timings.
-The [latest report](validation/2026-09-09/closure-input-guards/README.md)
+The [latest report](validation/2026-09-09/voronoi-octave/README.md)
 retains the exact six-run metrics and source hashes.
 
 All 46 Psycles channels are finite in every run. The revision-pinned paired
