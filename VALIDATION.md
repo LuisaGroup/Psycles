@@ -50,23 +50,23 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Latest four-scene follow-up
 
-Psycles `6f743862` / Luisa `85e5300f1` complete six further 256-spp renders,
+Psycles `cbb73185` / Luisa `85e5300f1` complete six further 256-spp renders,
 using fresh socket metadata with the exact earlier geometry/texture bytes.
 These use retained equal-pass Cycles references, **not fresh timing pairs**.
 All 46 channels are finite and all 15 pass comparisons complete. Exact six-run
 data, images' provenance and all implementation hashes are in the
-[latest report](docs/validation/2026-09-08/svm-group-forwarding/README.md).
+[latest report](docs/validation/2026-09-08/svm-math-expansion/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 13.3832 | 23.4175 | 220 B |
-| Monster, one run | 14.8542 | 24.0953 | 280 B |
-| Classroom, one run | 18.7549 | 21.3365 | 260 B |
-| Barbershop, three-run median | 41.4192 | 31.8932 / 28.7845 / 28.4156 | 416 B |
+| Lone Monk, one run | 13.3807 | 19.8795 | 220 B |
+| Monster, one run | 14.8904 | 23.6108 | 280 B |
+| Classroom, one run | 18.3319 | 18.7251 | 260 B |
+| Barbershop, three-run median | 40.2529 | 26.5348 / 25.5005 / 26.9425 | 416 B |
 
-Barbershop's individual times are 41.1692 / 41.4192 / 41.4301 s. Its median
-is 2.97% above the preceding 40.2231 s, not an isolated causal regression
-estimate, and 63.2% slower than the retained Cycles median. Initialization is
+Barbershop's individual times are 40.2016 / 40.6183 / 40.2529 s. Its median
+is 2.82% below the preceding 41.4192 s, not an isolated causal improvement
+estimate, and 58.6% slower than the retained Cycles median. Initialization is
 JIT plus setup, not compiler-only or cold JIT: the separate profile had warmed
 downstream caches before these six runs. It is never included in render time.
 Current first-run DiffInd relative RMSE is 12.882% / 2.552% / 17.820% / 7.126%
@@ -74,8 +74,8 @@ in the table's scene order. The structural and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [Blender socket-forwarding investigation](docs/validation/2026-09-08/svm-group-forwarding/README.md)
-at Psycles `6f743862` / Luisa `85e5300f1` is the latest structural checkpoint.
+The [native Math expansion investigation](docs/validation/2026-09-08/svm-math-expansion/README.md)
+at Psycles `cbb73185` / Luisa `85e5300f1` is the latest structural checkpoint.
 The preceding lamp-routing report records Psycles `773f1aca` / Luisa
 `4284e8cb9`, which publish the
 post-lamp closest-intersection boundary, native miss-distance normalization
@@ -92,6 +92,13 @@ is completely reverted. Static spill counts are not dynamic spill traffic;
 the report identifies actual stage symbols and outlined Cycles callees.
 No inlining policy, register limit or shader-specific backend option changed.
 
+A separate [ordinary microfacet callable A/B/A control](docs/validation/2026-09-08/microfacet-boundaries/README.md)
+confirms that the current microfacet bodies are already inlined in final ISA.
+Adding source callable boundaries grows fixed private storage from 2,496 to
+94,896 bytes and surface time from 5.90 to 38.30 seconds; restored A returns
+to 5.896 seconds with an identical code object. This experiment is also
+fully reverted and does not change the production benchmark checkpoint.
+
 The earlier hidden-input, Vector Math, bump-edge/domain and procedural-output
 repairs have 105 original-Cycles material images. Fifty-three additional
 exact images now constrain native texture socket types, conversion identity,
@@ -99,12 +106,15 @@ closure input declaration order and unavailable Voronoi defaults. Another
 34 original images constrain linked/primitive forwarding through groups,
 reroutes and muted links, plus separate Blender luma/Gamma folding. Of these,
 33 are raw-exact and one differs only in three-ULP typed float literals; no
-device arithmetic or expected words change. All 279 Barbershop used-shader
-images now have equal lengths; 115 are raw-exact. Remaining raw differences
-include opcode scheduling, not just resource IDs, and are not normalized away
-or claimed aligned. Static stack capacity remains 33 floats; the surface
-ELF `.text` remains byte-identical and resources stay at 256 VGPRs / 2496
-private bytes. The new 64-spp surface GPU total is 6.093110 s, versus the
+device arithmetic or expected words change. Eighteen further exact original
+images constrain Math clamp expansion after native conversion links;
+fifteen fail before the repair. All 279 Barbershop used-shader images have
+equal lengths: 115 raw-exact, 158 with identical layouts and differences
+only in declared resource-ID fields, and six still with different schedules.
+Resource binding equivalence is unresolved; no words are normalized away.
+Static stack capacity remains 33 floats; the surface ELF `.text` remains
+byte-identical and resources stay at 256 VGPRs / 2496 private bytes.
+The new 64-spp surface GPU total is 5.915631 s, versus the
 retained original Cycles 2.962829 s, with essentially unchanged surface visits.
 These structural counts are not a measured speedup or complete shader parity.
 Host-only Blender folding domains remain separate from later Cycles folding;
@@ -120,9 +130,9 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 182/182 | Complete registered suite, 143.91 s |
-| Psycles fallback | 184/184 | Complete parallel suite, 88.41 s |
-| Psycles host | 165/165 | 192 original-Cycles images across the new families; source-size gate fully green |
+| Psycles HIP | 182/182 | Complete registered suite, 136.42 s |
+| Psycles fallback | 184/184 | Complete parallel suite, 200.10 s |
+| Psycles host | 166/166 | 210 original-Cycles images across the new families; source-size gate fully green |
 | Luisa child | 155/155 | Retained unchanged child checkpoint; both queue races also repeated 100 times |
 | Strict native Vulkan | 2/2 | Lamp routing and bump state; 31 native SPIR-V compilations, no DXC/DXIL load |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
