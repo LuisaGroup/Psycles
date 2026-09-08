@@ -1,0 +1,756 @@
+{
+  "schema": "psycles.surface-microfacet-boundary-experiment.v1",
+  "scope": "same full Barbershop 2048x858/64-spp scene and fixed seed; A/B/A profiler runs, not a fresh Cycles pair; image comparisons are intervention controls, not renderer oracles",
+  "intervention": "B adds ordinary outline_with_name boundaries to the existing anonymous microfacet_eval and microfacet_sample host helpers before pool.microfacet; no noinline/inline override, arithmetic, register limit or compiler policy changes",
+  "decision": "reject and fully restore B; no production implementation change retained",
+  "runs": {
+    "baseline": {
+      "directory": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/baseline-XKWwaL",
+      "render_wall_seconds": 10.5028,
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "work": {
+        "<entry>": 112459776,
+        "intersect_closest": 444264133,
+        "shade_volume": 85076977,
+        "shade_light_forward": 12869351,
+        "shade_background": 376903,
+        "shade_surface": 332307893,
+        "shade_light_nee": 138960433,
+        "intersect_shadow": 45987294,
+        "shade_shadow": 20800273
+      },
+      "profile": {
+        "shade_surface": {
+          "kernel": "kernel_9bbb1beb16d04044",
+          "launches": 1062,
+          "gpu_seconds": 5.904293758,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            2496
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_99d8901f913e2573",
+          "launches": 1048,
+          "gpu_seconds": 1.68001041,
+          "vgpr_counts": [
+            152
+          ],
+          "scratch_bytes": [
+            240
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_89f543aaa5c27704",
+          "launches": 425,
+          "gpu_seconds": 0.423473104,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            324
+          ]
+        }
+      },
+      "resources": {
+        "private_segment_fixed_size": 2496,
+        "sgpr_count": 107,
+        "vgpr_count": 256,
+        "sgpr_spill_count": 65,
+        "vgpr_spill_count": 494
+      },
+      "functions": {
+        "callable.20": {
+          "address": 5632,
+          "bytes": 10928,
+          "static_instructions": 2020,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_4d": {
+          "address": 16560,
+          "bytes": 6448,
+          "static_instructions": 1303,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "__ocml_tan_f32": {
+          "address": 23008,
+          "bytes": 972,
+          "static_instructions": 185,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "kernel_9bbb1beb16d04044": {
+          "address": 24064,
+          "bytes": 995980,
+          "static_instructions": 185614,
+          "scratch_load_instructions": 1469,
+          "scratch_store_instructions": 610,
+          "call_sites": 49,
+          "image_sample_instructions": 20
+        }
+      },
+      "code_object_sha256": "c32767d4981d0621072e85fe3c1d13ba464397c02805b5b34bac3e5d246dee76",
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/baseline-XKWwaL/render.log",
+          "sha256": "9d9837f4241bfcb8f7f95266e7b3197dae599f40af5ca8b2d0487dadbff3dad1",
+          "bytes": 217827
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/baseline-XKWwaL/psycles.exr",
+          "sha256": "b166c3ee8b175460bdd4b4d23da6a4122f37582757aac393b3dc0c04cd3fe748",
+          "bytes": 153087615
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/baseline-XKWwaL/psycles_kernel_stats.csv",
+          "sha256": "11d89da9730362a4a7aee6b06eae9329266b03087085e1e1241c9e8f786e34c9",
+          "bytes": 5849
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/baseline-XKWwaL/psycles_kernel_trace.csv",
+          "sha256": "f0080a46d54d8c0fa6841038e2cc2e081814028a6102affb5c2e2fe3bc0986cf",
+          "bytes": 40943888
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/baseline-XKWwaL/hip_kernel_before_opt_12.ll",
+          "sha256": "1cb23be713bdf0c16fbc36dd664db18b1d25a5dec3151eccce37d9fd8ba025b8",
+          "bytes": 22652327
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/baseline-XKWwaL/hip_kernel_final_12.ll",
+          "sha256": "a4d6ccaf4d34af11db8a35f62d64b4159abe7a5b964307e311d3f59f0a98bed2",
+          "bytes": 8060663
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/baseline-XKWwaL/hip_isa_12.co",
+          "sha256": "c32767d4981d0621072e85fe3c1d13ba464397c02805b5b34bac3e5d246dee76",
+          "bytes": 1018432
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/baseline-XKWwaL/surface-code-object.txt",
+          "sha256": "86dce73329f6d84a36765b90ed26d14b48461bb69281d318993271f6325feef5",
+          "bytes": 3298
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/baseline-XKWwaL/surface-isa.txt",
+          "sha256": "ffc749a77d88afe96b39c8e98d9714df7ffcd4297dcba715d092a77272b020fe",
+          "bytes": 17378133
+        }
+      ],
+      "image": {
+        "shape": [
+          858,
+          2048,
+          46
+        ],
+        "all_channels_finite": true,
+        "passes_vs_baseline_control": {
+          "Combined": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Normal": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "DiffCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "GlossCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "TransCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "DiffDir": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "DiffInd": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "GlossDir": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "GlossInd": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "TransDir": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "TransInd": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Emit": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Env": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Direct": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Indirect": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          }
+        }
+      }
+    },
+    "restored": {
+      "directory": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/restored-lYIxeE",
+      "render_wall_seconds": 10.4971,
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "work": {
+        "<entry>": 112459776,
+        "intersect_closest": 444264137,
+        "shade_volume": 85076973,
+        "shade_light_forward": 12869352,
+        "shade_background": 376903,
+        "shade_surface": 332307895,
+        "shade_light_nee": 138960435,
+        "intersect_shadow": 45987296,
+        "shade_shadow": 20800275
+      },
+      "profile": {
+        "shade_surface": {
+          "kernel": "kernel_9bbb1beb16d04044",
+          "launches": 1062,
+          "gpu_seconds": 5.89557217,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            2496
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_99d8901f913e2573",
+          "launches": 1048,
+          "gpu_seconds": 1.681304056,
+          "vgpr_counts": [
+            152
+          ],
+          "scratch_bytes": [
+            240
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_89f543aaa5c27704",
+          "launches": 425,
+          "gpu_seconds": 0.420247384,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            324
+          ]
+        }
+      },
+      "resources": {
+        "private_segment_fixed_size": 2496,
+        "sgpr_count": 107,
+        "vgpr_count": 256,
+        "sgpr_spill_count": 65,
+        "vgpr_spill_count": 494
+      },
+      "functions": {
+        "callable.20": {
+          "address": 5632,
+          "bytes": 10928,
+          "static_instructions": 2020,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_4d": {
+          "address": 16560,
+          "bytes": 6448,
+          "static_instructions": 1303,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "__ocml_tan_f32": {
+          "address": 23008,
+          "bytes": 972,
+          "static_instructions": 185,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "kernel_9bbb1beb16d04044": {
+          "address": 24064,
+          "bytes": 995980,
+          "static_instructions": 185614,
+          "scratch_load_instructions": 1469,
+          "scratch_store_instructions": 610,
+          "call_sites": 49,
+          "image_sample_instructions": 20
+        }
+      },
+      "code_object_sha256": "c32767d4981d0621072e85fe3c1d13ba464397c02805b5b34bac3e5d246dee76",
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/restored-lYIxeE/render.log",
+          "sha256": "dbafdeaae7d50770311a416f0ab83955878cd2dd132714065c4ab52845769b5a",
+          "bytes": 217885
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/restored-lYIxeE/psycles.exr",
+          "sha256": "5e80abe90b2be4e1334a1e27f369d101fe5126889c3bcdf35d7b55e489d16848",
+          "bytes": 153087280
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/restored-lYIxeE/psycles_kernel_stats.csv",
+          "sha256": "2bfe2f20d3874ff4ae0b0d42897998c60a72f91128b08eb9c5aa1b1913880fb9",
+          "bytes": 5844
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/restored-lYIxeE/psycles_kernel_trace.csv",
+          "sha256": "743dc11c592a932a35f0cf2f6824a5b7c42de81cba1dd57b7f71820b1ce9ba04",
+          "bytes": 40851434
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/restored-lYIxeE/hip_kernel_before_opt_12.ll",
+          "sha256": "1cb23be713bdf0c16fbc36dd664db18b1d25a5dec3151eccce37d9fd8ba025b8",
+          "bytes": 22652327
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/restored-lYIxeE/hip_kernel_final_12.ll",
+          "sha256": "a4d6ccaf4d34af11db8a35f62d64b4159abe7a5b964307e311d3f59f0a98bed2",
+          "bytes": 8060663
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/restored-lYIxeE/hip_isa_12.co",
+          "sha256": "c32767d4981d0621072e85fe3c1d13ba464397c02805b5b34bac3e5d246dee76",
+          "bytes": 1018432
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/restored-lYIxeE/surface-code-object.txt",
+          "sha256": "8cf9aed58ce114e6337354bbdbbc66847f0f917798383309e40eca7822f21d23",
+          "bytes": 3298
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/restored-lYIxeE/surface-isa.txt",
+          "sha256": "9ca20521bc063bfdaf9e0f22cd974332874319e4ad1a243d129e8f1419cce6fa",
+          "bytes": 17378133
+        }
+      ],
+      "image": {
+        "shape": [
+          858,
+          2048,
+          46
+        ],
+        "all_channels_finite": true,
+        "passes_vs_baseline_control": {
+          "Combined": {
+            "relative_rmse": 1.3362013653440102e-05,
+            "maximum_absolute_error": 0.005061604082584381
+          },
+          "Normal": {
+            "relative_rmse": 1.7457167902791008e-05,
+            "maximum_absolute_error": 0.01613306999206543
+          },
+          "DiffCol": {
+            "relative_rmse": 6.909227229566058e-05,
+            "maximum_absolute_error": 0.007892504334449768
+          },
+          "GlossCol": {
+            "relative_rmse": 3.975137372578084e-05,
+            "maximum_absolute_error": 0.010510288178920746
+          },
+          "TransCol": {
+            "relative_rmse": 3.993246545193116e-10,
+            "maximum_absolute_error": 5.960464477539063e-08
+          },
+          "DiffDir": {
+            "relative_rmse": 4.7853011813484826e-05,
+            "maximum_absolute_error": 0.04848536103963852
+          },
+          "DiffInd": {
+            "relative_rmse": 1.1743819267394894e-05,
+            "maximum_absolute_error": 0.003286326304078102
+          },
+          "GlossDir": {
+            "relative_rmse": 2.263596713545575e-07,
+            "maximum_absolute_error": 0.0011603347957134247
+          },
+          "GlossInd": {
+            "relative_rmse": 2.970199204076005e-05,
+            "maximum_absolute_error": 0.01878177560865879
+          },
+          "TransDir": {
+            "relative_rmse": 2.2342489777194157e-08,
+            "maximum_absolute_error": 1.4510710855120124e-08
+          },
+          "TransInd": {
+            "relative_rmse": 1.8177596095214384e-09,
+            "maximum_absolute_error": 2.9802322387695312e-08
+          },
+          "Emit": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Env": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Direct": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Indirect": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          }
+        }
+      }
+    },
+    "ordinary_microfacet_callables": {
+      "directory": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-DuLKRk",
+      "render_wall_seconds": 52.1585,
+      "frame": {
+        "stages": 6,
+        "fields": 93,
+        "bytes": 416
+      },
+      "work": {
+        "<entry>": 112459776,
+        "intersect_closest": 444264146,
+        "shade_volume": 85076978,
+        "shade_light_forward": 12869352,
+        "shade_background": 376903,
+        "shade_surface": 332307903,
+        "shade_light_nee": 138960435,
+        "intersect_shadow": 45987293,
+        "shade_shadow": 20800270
+      },
+      "profile": {
+        "shade_surface": {
+          "kernel": "kernel_b0154ec50a2a9db0",
+          "launches": 1062,
+          "gpu_seconds": 38.297915033,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            94896
+          ]
+        },
+        "intersect_closest": {
+          "kernel": "kernel_99d8901f913e2573",
+          "launches": 1048,
+          "gpu_seconds": 1.774238361,
+          "vgpr_counts": [
+            152
+          ],
+          "scratch_bytes": [
+            240
+          ]
+        },
+        "shade_volume": {
+          "kernel": "kernel_89f543aaa5c27704",
+          "launches": 425,
+          "gpu_seconds": 0.461571476,
+          "vgpr_counts": [
+            256
+          ],
+          "scratch_bytes": [
+            324
+          ]
+        }
+      },
+      "resources": {
+        "private_segment_fixed_size": 94896,
+        "sgpr_count": 108,
+        "vgpr_count": 256,
+        "sgpr_spill_count": 63,
+        "vgpr_spill_count": 1692
+      },
+      "functions": {
+        "callable.20": {
+          "address": 5632,
+          "bytes": 10928,
+          "static_instructions": 2020,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "cycles_signed_noise_4d": {
+          "address": 16560,
+          "bytes": 6448,
+          "static_instructions": 1303,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "__ocml_tan_f32": {
+          "address": 23008,
+          "bytes": 972,
+          "static_instructions": 164,
+          "scratch_load_instructions": 0,
+          "scratch_store_instructions": 0,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "bsdf_microfacet_ggx_eval": {
+          "address": 23980,
+          "bytes": 60280,
+          "static_instructions": 7094,
+          "scratch_load_instructions": 352,
+          "scratch_store_instructions": 2838,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "bsdf_microfacet_beckmann_eval": {
+          "address": 84260,
+          "bytes": 55880,
+          "static_instructions": 6590,
+          "scratch_load_instructions": 269,
+          "scratch_store_instructions": 2759,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "bsdf_microfacet_ggx_sample": {
+          "address": 140140,
+          "bytes": 58460,
+          "static_instructions": 6920,
+          "scratch_load_instructions": 331,
+          "scratch_store_instructions": 2838,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "bsdf_microfacet_beckmann_sample": {
+          "address": 198600,
+          "bytes": 57644,
+          "static_instructions": 6947,
+          "scratch_load_instructions": 229,
+          "scratch_store_instructions": 2741,
+          "call_sites": 0,
+          "image_sample_instructions": 0
+        },
+        "kernel_b0154ec50a2a9db0": {
+          "address": 256256,
+          "bytes": 943148,
+          "static_instructions": 164884,
+          "scratch_load_instructions": 4532,
+          "scratch_store_instructions": 7731,
+          "call_sites": 65,
+          "image_sample_instructions": 20
+        }
+      },
+      "code_object_sha256": "3b5c99a2edc1e905875d92c24d057189ff5f957631cef2da234d926301b542b0",
+      "sources": [
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-DuLKRk/render.log",
+          "sha256": "4fafa86fc82c46aee44f317b4bc4776990b2587c4a887a6d07a92968b327fae4",
+          "bytes": 218197
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-DuLKRk/psycles.exr",
+          "sha256": "1e17204a04d3009381db1ee01c695de670ea5a7c2914422198ab7028cffbf6ff",
+          "bytes": 153086825
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-DuLKRk/psycles_kernel_stats.csv",
+          "sha256": "8edc0185dd4e7502c42cb0344871cfc93b03547845370d70bb99ac1567fc9d54",
+          "bytes": 5891
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-DuLKRk/psycles_kernel_trace.csv",
+          "sha256": "e3bba609867e5614f86decc1ff30ec948ca775b5d11444357f1762ed1217eb34",
+          "bytes": 40839519
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-DuLKRk/hip_kernel_before_opt_12.ll",
+          "sha256": "8cb2f5bf2d6927bbe5e9d9362a5611b77f4b634b96034fe13945c17c5405d130",
+          "bytes": 21698164
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-DuLKRk/hip_kernel_final_12.ll",
+          "sha256": "06cfe3ad97ba49058a3f1d1a6c8775f34e35b2502f45684ccb966c57b78b9a36",
+          "bytes": 17225738
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-DuLKRk/hip_isa_12.co",
+          "sha256": "3b5c99a2edc1e905875d92c24d057189ff5f957631cef2da234d926301b542b0",
+          "bytes": 1197968
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-DuLKRk/surface-code-object.txt",
+          "sha256": "1c09567fbf956cea49d371f6b254d0cf23cf40c4f6da2c945b69edb4e8cb6a1e",
+          "bytes": 4037
+        },
+        {
+          "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-DuLKRk/surface-isa.txt",
+          "sha256": "374cad73f165fa3bd61ed9c35adff2f9175c036ec4c4e957b94a6d94aae38517",
+          "bytes": 18230811
+        }
+      ],
+      "image": {
+        "shape": [
+          858,
+          2048,
+          46
+        ],
+        "all_channels_finite": true,
+        "passes_vs_baseline_control": {
+          "Combined": {
+            "relative_rmse": 1.592562723672306e-05,
+            "maximum_absolute_error": 0.005171336233615875
+          },
+          "Normal": {
+            "relative_rmse": 1.7462172029095162e-05,
+            "maximum_absolute_error": 0.01613306999206543
+          },
+          "DiffCol": {
+            "relative_rmse": 7.833191705504757e-05,
+            "maximum_absolute_error": 0.007892504334449768
+          },
+          "GlossCol": {
+            "relative_rmse": 3.975260728269902e-05,
+            "maximum_absolute_error": 0.010510288178920746
+          },
+          "TransCol": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "DiffDir": {
+            "relative_rmse": 9.182651498378218e-06,
+            "maximum_absolute_error": 0.0050513893365859985
+          },
+          "DiffInd": {
+            "relative_rmse": 4.698427288557949e-05,
+            "maximum_absolute_error": 0.013214737176895142
+          },
+          "GlossDir": {
+            "relative_rmse": 8.619307762978931e-09,
+            "maximum_absolute_error": 2.7507543563842773e-05
+          },
+          "GlossInd": {
+            "relative_rmse": 1.225694292087121e-05,
+            "maximum_absolute_error": 0.00783536583185196
+          },
+          "TransDir": {
+            "relative_rmse": 1.4867725724208734e-06,
+            "maximum_absolute_error": 4.571710832124154e-07
+          },
+          "TransInd": {
+            "relative_rmse": 0.0005298476053661378,
+            "maximum_absolute_error": 0.011003542691469193
+          },
+          "Emit": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Env": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Direct": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          },
+          "Volume Indirect": {
+            "relative_rmse": 0.0,
+            "maximum_absolute_error": 0.0
+          }
+        }
+      }
+    }
+  },
+  "implementation": {
+    "parent": "6f743862",
+    "documentation_checkpoint": "0086bcae",
+    "child": "85e5300f1d85c66cfad7c2962dfe5028d9358980",
+    "baseline_and_restored_runtime_sha256": "0a98cba57b82cff4b4466ef91bae5aae62bcba8d4fdeda793d5b65b309fdbef9",
+    "intervention_runtime_sha256": "aa4ece4531f9d683c376ed6dc893b446887257b669d3adb497a82905b98d8408",
+    "renderer_executable_sha256": "d22d47d63758ca20dacba56b12222613b990f8e851cedf9163fcf887155e61d0"
+  },
+  "sources": [
+    {
+      "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/formal-analysis.md",
+      "sha256": "36cae49be0b07f094545f5a741a9ffff9322d69babe4483607f2f362dce35bb4",
+      "bytes": 2594
+    },
+    {
+      "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention.patch",
+      "sha256": "510e5f4986e5d106b57df1a22ccdd99b1ebfdf2956c02c7df4a5c468efc30889",
+      "bytes": 2624
+    },
+    {
+      "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-build.log",
+      "sha256": "293f65c4e1498d3ff8f7c24a428aca732953ba969d0eb1d032165aa1216a6648",
+      "bytes": 287736
+    },
+    {
+      "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/restored-build.log",
+      "sha256": "ad0d8f33d618cdedc7331c9cd0aab2ee37d6c7ae6739ecf271be3802ac85eb2d",
+      "bytes": 287735
+    },
+    {
+      "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/audit-unscoped.json",
+      "sha256": "f1cbae2e6008697ace22f63f06f58fb805e2ed269b329913b12486918077f1f1",
+      "bytes": 23317
+    }
+  ],
+  "intervention_gates": {
+    "host": {
+      "source": {
+        "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-host.log",
+        "sha256": "c9ead7771e4edf92bf8515a0924880bf80704fbfa5586c83e49197ab54fc143b",
+        "bytes": 25313
+      },
+      "tests": 165,
+      "failed": 0,
+      "elapsed_seconds": 1.35
+    },
+    "focused_hip": {
+      "source": {
+        "path": "/var/tmp/psycles-microfacet-boundary-bWpsKZ/intervention-focused-hip.log",
+        "sha256": "8ce3f999f55e22f1a57bce7a22641f5fd8078516963915c111fc2423da2b4ba8",
+        "bytes": 1654
+      },
+      "tests": 10,
+      "failed": 0,
+      "elapsed_seconds": 50.57
+    },
+    "scope": "10 focused HIP tests and host gate before B; no full backend gate claimed for the rejected experiment"
+  }
+}
