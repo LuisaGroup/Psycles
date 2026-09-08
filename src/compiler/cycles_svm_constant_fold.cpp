@@ -171,6 +171,48 @@ bool ConstantFolder::all_inputs_constant() const noexcept {
                       [](const auto &input) { return input.link != nullptr; });
 }
 
+void ConstantFolder::fold_vector_math(NodeVectorMathType type) const {
+  // Exact rule set from Cycles scene/constant_fold.cpp. Do not apply the
+  // Cycles algebraic identities in Blender's all-primitive inlining stage.
+  auto *a = node->input("Vector1");
+  auto *b = node->input("Vector2");
+  auto *scale = node->input("Scale");
+  const auto bypass_input = [&](GraphInput *socket) {
+    static_cast<void>(try_bypass_or_make_constant(socket));
+  };
+  switch (type) {
+  case NODE_VECTOR_MATH_ADD:
+    if (is_zero(a)) { bypass_input(b); }
+    else if (is_zero(b)) { bypass_input(a); }
+    break;
+  case NODE_VECTOR_MATH_SUBTRACT:
+    if (is_zero(b)) { bypass_input(a); }
+    break;
+  case NODE_VECTOR_MATH_MULTIPLY:
+    if (is_zero(a) || is_zero(b)) { make_zero(); }
+    else if (is_one(a)) { bypass_input(b); }
+    else if (is_one(b)) { bypass_input(a); }
+    break;
+  case NODE_VECTOR_MATH_DIVIDE:
+    if (is_zero(a) || is_zero(b)) { make_zero(); }
+    else if (is_one(b)) { bypass_input(a); }
+    break;
+  case NODE_VECTOR_MATH_DOT_PRODUCT:
+  case NODE_VECTOR_MATH_CROSS_PRODUCT:
+    if (is_zero(a) || is_zero(b)) { make_zero(); }
+    break;
+  case NODE_VECTOR_MATH_LENGTH:
+  case NODE_VECTOR_MATH_ABSOLUTE:
+    if (is_zero(a)) { make_zero(); }
+    break;
+  case NODE_VECTOR_MATH_SCALE:
+    if (is_zero(a) || is_zero(scale)) { make_zero(); }
+    else if (is_one(scale)) { bypass_input(a); }
+    break;
+  default: break;
+  }
+}
+
 void ConstantFolder::make_constant(float value) const {
   for (auto *socket : output->links) {
     set_constant(socket, value);

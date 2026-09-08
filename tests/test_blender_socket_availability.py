@@ -40,4 +40,20 @@ tree.links.new(vector, emission.inputs[0])
 assert vector.is_unavailable
 assert manifest._socket_manifest(vector)["available"] is False
 assert len(manifest._node_tree_manifest(tree)["links"]) == 1
+
+# SOCK_HIDE_VALUE participates in ShaderNodesInliner::set_input_socket_value:
+# it is not just presentation metadata. An unlinked hidden group input must
+# remain distinguishable from a linked, explicitly authored zero vector.
+group = bpy.data.node_groups.new("Hidden Input Contract", "ShaderNodeTree")
+interface = group.interface.new_socket(
+    name="Normal", in_out="INPUT", socket_type="NodeSocketVector")
+interface.hide_value = True
+instance = tree.nodes.new("ShaderNodeGroup")
+instance.node_tree = group
+normal = instance.inputs["Normal"]
+assert normal.hide_value and not normal.is_linked
+record = manifest._socket_manifest(normal)
+assert record["hide_value"] is True and record["linked"] is False
+interface.hide_value = False
+assert manifest._socket_manifest(normal)["hide_value"] is False
 print("Unavailable socket defaults and links retain Cycles source semantics")
