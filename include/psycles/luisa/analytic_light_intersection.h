@@ -11,6 +11,8 @@
 namespace psycles::luisa_backend::analytic_light_intersection {
 
 struct AreaIntersection {
+    // Geometric hit only. A zero spread/spot evaluation remains a transparent
+    // lamp endpoint in Cycles and must still split volume transport.
     luisa::compute::Bool valid;
     luisa::compute::Float distance;
     luisa::compute::Float3 position;
@@ -171,8 +173,6 @@ intersect_point(
         sampling::point_eval_factor(
             radius,
             normalize_power);
-    result.valid &=
-        result.evaluation_factor > 0.0f;
     return result;
 }
 
@@ -263,8 +263,7 @@ intersect_spot(
         (dot(
              ray_direction,
              ray_origin - center) <
-         0.0f) &
-        (result.evaluation_factor > 0.0f);
+         0.0f);
     return result;
 }
 
@@ -338,7 +337,7 @@ intersect_area(
         (distance > ray_minimum) &
         (distance < ray_maximum) &
         inside_shape &
-        evaluation.valid;
+        (length_u > 0.0f) & (length_v > 0.0f);
     return {
         .valid = valid,
         .distance = distance,
