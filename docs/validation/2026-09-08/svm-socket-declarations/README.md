@@ -1,5 +1,9 @@
 # Native socket declarations and closure dependency order
 
+Frozen `33c7b335` checkpoint. The [subsequent Blender forwarding repair](../svm-group-forwarding/README.md)
+removes the remaining `bricks` length mismatch and records newer complete
+gates and four-scene measurements. The results below remain revision-pinned.
+
 ## Technical summary
 
 Psycles `33c7b335995e3e39abc21f4010c50b5f01a06eb1`, with unchanged published
