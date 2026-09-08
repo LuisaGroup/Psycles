@@ -51,6 +51,7 @@ add_library(psycles_core
     src/compiler/cycles_svm_bytecode.cpp
     src/compiler/cycles_svm_camera_nodes.cpp
     src/compiler/cycles_svm_closure_nodes.cpp
+    src/compiler/cycles_svm_convert_nodes.cpp
     src/compiler/cycles_svm_constant_fold.cpp
     src/compiler/cycles_svm_compiler.cpp
     src/compiler/cycles_svm_scene.cpp

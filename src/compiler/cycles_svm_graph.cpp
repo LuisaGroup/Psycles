@@ -4,6 +4,7 @@
 
 #include "cycles_svm_graph.h"
 #include "cycles_svm_constant_fold.h"
+#include "cycles_svm_closure_inputs.h"
 #include "cycles_svm_mapping_nodes.h"
 
 #include <psycles/compiler/core_nodes.h>
@@ -311,7 +312,7 @@ projected_binary_math_operation(std::string_view type) noexcept {
          type == GraphSocketType::normal || type == GraphSocketType::point;
 }
 
-[[nodiscard]] std::string_view float3_socket_name(
+[[nodiscard]] std::string_view conversion_socket_name(
     GraphSocketType type) noexcept {
   switch (type) {
     case GraphSocketType::color:
@@ -323,6 +324,7 @@ projected_binary_math_operation(std::string_view type) noexcept {
     case GraphSocketType::point:
       return "point";
     case GraphSocketType::floating:
+      return "float";
     case GraphSocketType::integer:
     case GraphSocketType::closure:
       return {};
@@ -330,7 +332,7 @@ projected_binary_math_operation(std::string_view type) noexcept {
   return {};
 }
 
-[[nodiscard]] contract::SocketValue zero_float3_value(
+[[nodiscard]] contract::SocketValue zero_conversion_value(
     GraphSocketType type) {
   switch (type) {
     case GraphSocketType::color:
@@ -342,6 +344,7 @@ projected_binary_math_operation(std::string_view type) noexcept {
     case GraphSocketType::point:
       return contract::SocketValue::point({0.0f, 0.0f, 0.0f});
     case GraphSocketType::floating:
+      return contract::SocketValue::floating(0.0f);
     case GraphSocketType::integer:
     case GraphSocketType::closure:
       break;
@@ -357,6 +360,13 @@ projected_binary_math_operation(std::string_view type) noexcept {
     GraphSocketType contract_type) noexcept {
   if (input == "Vector" &&
       (node == node_type::ies_light || node == node_type::wave_texture ||
+       node == node_type::noise_texture ||
+       node == node_type::white_noise_texture ||
+       node == node_type::gradient_texture ||
+       node == node_type::gabor_texture ||
+       node == node_type::voronoi_texture ||
+       node == node_type::image_texture ||
+       node == node_type::environment_texture ||
        node == node_type::magic_texture ||
        node == node_type::checker_texture ||
        node == node_type::brick_texture)) {
@@ -709,14 +719,14 @@ bool CyclesGraph::connect_with_autoconvert(GraphOutput *output,
   if (!is_float3_socket(output->type) || !is_float3_socket(input->type)) {
     return false;
   }
-  const auto from_name = float3_socket_name(output->type);
-  const auto to_name = float3_socket_name(input->type);
+  const auto from_name = conversion_socket_name(output->type);
+  const auto to_name = conversion_socket_name(input->type);
   auto *convert = add_node(
       cycles_synthetic_float3_autoconvert,
       "Convert " + std::string{from_name} + " to " + std::string{to_name},
       {{.name = "value_" + std::string{from_name},
         .type = output->type,
-        .value = zero_float3_value(output->type)}},
+        .value = zero_conversion_value(output->type)}},
       {{.name = "value_" + std::string{to_name},
         .type = input->type,
         .links = {}}},
@@ -735,6 +745,10 @@ void CyclesGraph::compose_float3_autoconverts() {
   // form is A -> B (or no Convert when A == B). Restrict composition to the
   // AUTOCONVERT introduced by precise projection, so authored contract nodes
   // keep their own source-level identity.
+  // The contract also expresses FLOAT -> VECTOR as replication into COLOR
+  // followed by an identity. Restore FLOAT -> B when the terminal projection
+  // needs B; retaining the intermediate COLOR would incorrectly share its
+  // replication with unrelated Color consumers before bump cloning.
   for (const auto &node_owner : _nodes) {
     auto *node = node_owner.get();
     if (node->special_type != GraphNodeSpecialType::autoconvert ||
@@ -749,7 +763,8 @@ void CyclesGraph::compose_float3_autoconverts() {
           previous->shader_node_type() != NODE_CONVERT ||
           previous->inputs.size() != 1u || previous->outputs.size() != 1u ||
           previous->inputs.front().link == nullptr ||
-          !is_float3_socket(previous->inputs.front().type) ||
+          (!is_float3_socket(previous->inputs.front().type) &&
+           previous->inputs.front().type != GraphSocketType::floating) ||
           !is_float3_socket(previous->outputs.front().type) ||
           previous->outputs.front().type != input->type) {
         break;
@@ -763,11 +778,11 @@ void CyclesGraph::compose_float3_autoconverts() {
         break;
       }
 
-      const auto source_name = float3_socket_name(source_type);
-      const auto target_name = float3_socket_name(output->type);
+      const auto source_name = conversion_socket_name(source_type);
+      const auto target_name = conversion_socket_name(output->type);
       input->name = "value_" + std::string{source_name};
       input->type = source_type;
-      input->value = zero_float3_value(source_type);
+      input->value = zero_conversion_value(source_type);
       node->label = "Convert " + std::string{source_name} + " to " +
                     std::string{target_name};
       if (!connect(source, input)) {
@@ -854,15 +869,13 @@ CyclesGraph CyclesGraph::project(
         return graph;
       }
       const auto binding = source.inputs.find(socket.name);
-      const auto projected_type =
-          projected_input_type(target_type, socket.name, *type);
       auto value = binding == source.inputs.end() ? std::nullopt
                                                   : binding->second.value;
       inputs.emplace_back(GraphInput{
           .name = std::string{projected_input_name(target_type, socket.name)},
-          .type = projected_type,
+          .type = *type,
           .flags = socket_flags(target_type, socket.name),
-          .value = projected_input_value(std::move(value), projected_type),
+          .value = std::move(value),
       });
     }
     if (!projected_binary_math_operation(source.type).empty()) {
@@ -930,6 +943,12 @@ CyclesGraph CyclesGraph::project(
           .type = GraphSocketType::floating,
           .value = contract::SocketValue::floating(0.0f),
       });
+    }
+    if (is_surface_closure(target_type) &&
+        !project_closure_input_order(target_type, inputs)) {
+      graph.reject("Cycles closure input declaration is not isomorphic: " +
+                   std::string{target_type});
+      return graph;
     }
 
     std::vector<GraphOutput> outputs;
@@ -1066,6 +1085,10 @@ CyclesGraph CyclesGraph::project(
   if (!graph.valid()) {
     return graph;
   }
+  graph.project_socket_types();
+  if (!graph.valid()) {
+    return graph;
+  }
   graph.collect_attribute_requests();
   graph.expand();
   graph.default_inputs();
@@ -1082,6 +1105,30 @@ CyclesGraph CyclesGraph::project(
     graph.transform_multi_closure(volume->parent, nullptr, true);
   }
   return graph;
+}
+
+void CyclesGraph::project_socket_types() {
+  // Blender primitive propagation and the contract's TextureMapping helper
+  // belong to the import boundary. Restore Cycles-only POINT declarations
+  // after those steps: a new ConvertNode must neither block Blender folding
+  // nor masquerade as the consumer of a per-texture mapping property.
+  const auto count = _nodes.size();
+  for (auto index = std::size_t{}; index < count; ++index) {
+    auto *node = _nodes[index].get();
+    for (auto &input : node->inputs) {
+      const auto type = projected_input_type(node->type, input.name, input.type);
+      if (type == input.type) { continue; }
+      auto *source = input.link;
+      disconnect(&input);
+      input.type = type;
+      input.value = projected_input_value(std::move(input.value), type);
+      if (source != nullptr && !connect_with_autoconvert(source, &input)) {
+        reject("Cycles native socket type could not be restored: " +
+               node->type + "." + input.name);
+        return;
+      }
+    }
+  }
 }
 
 Vec3f CyclesGraph::rec709_to_scene_linear(Vec3f value) const noexcept {
