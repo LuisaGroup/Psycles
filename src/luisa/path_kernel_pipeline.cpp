@@ -110,30 +110,29 @@ void PathKernelPipeline::emit(
     PathSampleContext &sample,
     PathCoroutineCutPolicy cut_policy) const noexcept {
   $for(path_step, sample.invocation.parameters.max_path_steps) {
-    // This ordinary C++ branch executes while recording the Luisa AST.
-    // The suspension is therefore absent from the megakernel rather than
-    // guarded by a device-side predicate. At this boundary only canonical
-    // per-path state is live; no hit shading or closure temporaries have
-    // been populated yet.
-    suspend_before_closest_intersection(
-        cut_policy, static_cast<bool>(_impl->subsurface_transport),
-        sample.pending_subsurface_exit);
-    auto bounce = _impl->bounce_setup->emit(sample, path_step);
-
-    // A Cycles lamp is a transparent closest event. Resolve every lamp
-    // before the already-known mesh/background event without consuming
-    // another path bounce or another set of Sobol dimensions. Keeping
-    // the event distance explicit also establishes the segment boundary
-    // at which volume transport is inserted.
+    PathBounceContext bounce{.sample = sample,
+                             .path_step = path_step,
+                             .random_state = nullptr,
+                             .hit = Var<luisa::compute::CommittedHit>{},
+                             .subsurface_exit = false};
+    // Lamps do not consume a surface path step or another Sobol dimension,
+    // but each surviving lamp returns to Cycles' INTERSECT_CLOSEST. Do not
+    // cache the old mesh hit across lamp/volume state transitions.
     UInt previous_analytic_light = surface_ray::invalid_primitive;
-    // A successful spatial BSSRDF query already selected an exact
-    // same-object surface hit.  Cycles shades that stored hit directly;
-    // tracing the synthetic exit ray again would make the result depend
-    // on an epsilon and on backend-specific BVH traversal.
-    Bool search_events = !bounce.subsurface_exit;
+    Bool search_events = true;
     Bool path_terminated = false;
     Bool volume_scattered = false;
     $while(search_events & !path_terminated) {
+      suspend_before_closest_intersection(
+          cut_policy, static_cast<bool>(_impl->subsurface_transport),
+          sample.pending_subsurface_exit);
+      const auto next = _impl->bounce_setup->emit(sample, path_step);
+      bounce.hit = next.hit;
+      bounce.subsurface_exit = next.subsurface_exit;
+      // A successful BSSRDF query already committed the exact same-object
+      // hit. The cut policy and bounce setup both bypass traversal; shade
+      // that stored hit directly without entering lamp/volume resolution.
+      $if(bounce.subsurface_exit) { $break; };
       auto event = _impl->closest_event->emit(bounce, previous_analytic_light);
       path_terminated = path_terminated | event.terminated;
       if (_impl->volume_segment) {
