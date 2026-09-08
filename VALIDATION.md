@@ -24,8 +24,9 @@ sum of profiled kernels.
 | Classroom | 1920x1080 / 1 | 18.0319 | 18.7626 | 1.0405 |
 | Barbershop | 2048x858 / 0 | 25.3775 | 39.2753 | 1.5476 |
 
-The performance goal is not complete. Barbershop is 54.8% slower; the other
-three are 3.3%–5.9% slower. The previous script left source-only outputs,
+The performance goal is not complete. At this paired checkpoint Barbershop
+is 54.8% slower; the other three are 3.3%–5.9% slower. The previous script left
+source-only outputs,
 including Cycles AO shadow work, enabled. Its unequal-pass timing ratios and
 Classroom speed-lead interpretation are superseded, not carried into this
 baseline. The [pass-contract regression](docs/validation/2026-09-08/pass-contract/README.md)
@@ -49,7 +50,7 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Published compiler and backend gate
 
-The latest renderer change is the
+The earlier
 [native descriptor sampler correction](docs/validation/2026-09-08/bound-image-sampler/README.md)
 at e2d38fc0. Its six follow-up 256-spp canaries retain finite outputs and the
 same frame sizes; Barbershop's new Psycles median is 38.8902 s, 1.0% below
@@ -65,6 +66,24 @@ still places the main gap in surface shading (5.6336 s versus retained Cycles
 2.9628 s), not volume (0.4289 s versus 0.3536 s). This is instrumented GPU
 stage time, not a new paired 256-spp render benchmark.
 
+The latest [light-endpoint correction](docs/validation/2026-09-08/light-endpoints/README.md)
+fixes a structural error found using exact queue counts: a geometrically hit
+lamp remains a transparent endpoint even when spot/spread evaluation is zero
+or its shader excludes an indirect ray class. Original Cycles GPU functions
+provide the permanent regression (240 endpoint components and 2048 visibility
+predicates). At 64 spp, corrected Barbershop surface/volume visit totals differ
+from Cycles by only 196 / 70 out of 332.3M / 85.1M. Surface was already within
+0.04% before this fix; an excess of stage visits did not explain the large
+surface GPU-time gap. Post-lamp closest routing and a 1.49% shadow-intersection
+surplus remain open. These are work-count results, not a new speedup claim.
+Its six completed 256-spp canaries retain finite output in all four scenes.
+Barbershop's median is 39.2464 s, 0.92% longer than the preceding sampler
+checkpoint, with DiffInd relative RMSE improved from 7.45% to 7.13%. Lone
+Monk, Monster and Classroom render in 13.4148 / 14.8794 / 18.0993 s. These are
+follow-ups against retained references, not fresh paired Cycles timings.
+The report retains Monster's first 62.649 s session initialization and its
+separate 22.159 s repeat; link-time variation is not a rendering speedup.
+
 The [scheduler trace comparison correction](docs/validation/2026-09-08/dispatch-trace-comparison/README.md)
 fixes the outstanding fallback assertion without changing renderer binaries
 or any captured trace bits. Continuous intermediate values have a separate
@@ -77,10 +96,10 @@ remain covered by the complete suites.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 180/180 | Plus the complete standalone dispatch film test on HIP |
-| Psycles fallback | 182/182 | Includes repaired semantic dispatch trace comparison |
+| Psycles HIP | 181/181 | Registered suite, including new endpoint/visibility regression |
+| Psycles fallback | 183/183 | Includes repaired semantic dispatch trace comparison |
 | Psycles host | 156/157 | Existing four source-size violations; comparator has 11,016 checks |
-| Strict native Vulkan image gate | 5/5 | Bound sampler, image modes, missing image, sky and texture callable |
+| Strict native Vulkan endpoint gate | 2288 checks | Two native SPIR-V modules; no DXC/DXIL load |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
 
 The former fallback mismatch was expected 0xbf1f8bfd versus actual 0xbf1f8a50
@@ -90,6 +109,8 @@ or renderer fix was introduced. The remaining source-size failures are
 cycles_svm_nodes.cpp, test_cycles_svm_compiler.cpp,
 test_luisa_compact_surface_preparation.cpp and test_luisa_cycles_svm.cpp.
 Do not call these full suites entirely green or relax their limits.
+The earlier five-test native Vulkan image gate remains revision-pinned in the
+descriptor audit; it is not represented as a newly rerun image suite here.
 
 At the published Luisa 9ea3b720f checkpoint, 140/140 registered
 non-device-specialized tests passed, including 69 XIR/coroutine tests.

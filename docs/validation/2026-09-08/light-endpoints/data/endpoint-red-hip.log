@@ -1,0 +1,56 @@
+[2026-09-08 12:45:44.128] [console] [info] Created context for program 'psycles_luisa_light_endpoints_tests'.
+[2026-09-08 12:45:44.128] [console] [info] Runtime directory: /home/mike/Projects/Psycles-surface-svm/build/bin.
+[2026-09-08 12:45:44.146] [console] [info] Loaded dynamic module '/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-backend-hip.so' in 17.328476 ms.
+[2026-09-08 12:45:44.156] [console] [info] Created HIP device 0: AMD Radeon RX 9070 XT (arch = gfx1201, cc = 12.0, driver = 7.2.53211, runtime = 7.2.53211, build = 7.2.53211).
+[2026-09-08 12:45:44.232] [console] [info] HIP LLVM codegen completed in 44.486897 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm_impl.cpp:1572]
+[2026-09-08 12:45:44.233] [console] [info] Generated AMDGPU code with HIP LLVM CodeGen in 50.011434 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm.cpp:54]
+[2026-09-08 12:45:44.233] [console] [info] Generated AMDGPU code (13764 bytes)
+[2026-09-08 12:45:44.272] [console] [info] Linked HIP LLVM bitcode to AMDGPU code object (11456 bytes) in 39.369976 ms.
+[2026-09-08 12:45:44.273] [console] [info] Loaded HIP code object in 0.631784 ms.
+case=2 lane=0 expected=1 actual=0
+case=2 lane=1 expected=2.5 actual=100
+case=2 lane=2 expected=0.101321 actual=0
+case=2 lane=3 expected=11.379 actual=0
+case=7 lane=0 expected=1 actual=0
+case=7 lane=1 expected=3 actual=100
+case=7 lane=2 expected=0.101321 actual=0
+case=7 lane=3 expected=11.4592 actual=0
+case=12 lane=0 expected=1 actual=0
+case=12 lane=1 expected=2.5 actual=100
+case=12 lane=2 expected=0.101321 actual=0
+case=12 lane=3 expected=11.379 actual=0
+case=15 lane=0 expected=1 actual=0
+case=15 lane=1 expected=2.5 actual=100
+case=15 lane=3 expected=11.379 actual=0
+case=16 lane=0 expected=1 actual=0
+case=16 lane=1 expected=2.5 actual=100
+case=16 lane=3 expected=11.379 actual=0
+case=17 lane=0 expected=1 actual=0
+case=17 lane=1 expected=2.5 actual=100
+case=17 lane=3 expected=11.379 actual=0
+case=20 lane=0 expected=1 actual=0
+case=20 lane=1 expected=3 actual=100
+case=20 lane=3 expected=11.4592 actual=0
+case=21 lane=0 expected=1 actual=0
+case=21 lane=1 expected=3 actual=100
+case=21 lane=3 expected=11.4592 actual=0
+case=22 lane=0 expected=1 actual=0
+case=22 lane=1 expected=3 actual=100
+case=22 lane=3 expected=11.4592 actual=0
+case=27 lane=0 expected=1 actual=0
+case=27 lane=1 expected=3 actual=100
+case=27 lane=2 expected=5.95239 actual=0
+case=27 lane=3 expected=6.33236 actual=0
+case=30 lane=0 expected=1 actual=0
+case=30 lane=1 expected=3.75 actual=100
+case=31 lane=0 expected=1 actual=0
+case=31 lane=1 expected=3.75 actual=100
+case=32 lane=0 expected=1 actual=0
+case=32 lane=1 expected=3.75 actual=100
+case=35 lane=0 expected=1 actual=0
+case=35 lane=1 expected=3.75 actual=100
+case=36 lane=0 expected=1 actual=0
+case=36 lane=1 expected=3.75 actual=100
+case=37 lane=0 expected=1 actual=0
+case=37 lane=1 expected=3.75 actual=100
+240 Cycles GPU endpoint checks; failures=46

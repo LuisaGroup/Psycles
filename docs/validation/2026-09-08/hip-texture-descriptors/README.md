@@ -14,6 +14,10 @@ adopted: both regress divergent sampling.
 The new original-scene profile still places the large Barbershop gap in surface
 shading. This investigation changes no production renderer, Luisa ABI, SVM
 semantics, frame layout, fast-math setting or inlining policy.
+This is the `d9146fef` audit checkpoint. The subsequent
+[light-endpoint investigation](../light-endpoints/README.md) measures actual
+stage visits and fixes a separate transport error; its later canaries are
+not substituted for the kernel timings recorded here.
 
 ## Original HIP objects and device-resident SRDs are different
 
@@ -141,8 +145,9 @@ Cycles [image-binding regression](../bound-image-sampler/README.md) remains the
 separate SVM/upload/filter correctness evidence. A successful linear microbench
 is not proof of whole-scene texture parity.
 
-The unresolved work is to measure surface **active work**, material/texture
-divergence and whole-kernel register/code pressure. In particular, the generic
+The subsequent active-work audit finds surface visits already within 0.04%
+of Cycles before the endpoint correction. Material/texture divergence and
+whole-kernel register/code pressure remain unresolved. In particular, the generic
 packed-format branch appears in generated code but these scenes do not execute
 that format; its whole-kernel cost is not yet established. These experiments
 do not prove that texture-related code is irrelevant, only that the proposed
