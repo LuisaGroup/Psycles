@@ -48,13 +48,17 @@ materialize that aggregate. The generic XIR read-only-reference promotion
 replaces a reference by a call-site snapshot and a callee-local store;
 legality of that transformation is separate from its profitability.
 
-The main function shrinks from 185,614 to 164,884 static instructions, but B
-adds four microfacet functions with 7,094 / 6,590 / 6,920 / 6,947 instructions.
+The main function shrinks from 995,980 to 943,148 bytes, but B adds four
+microfacet functions of 60,280 / 55,880 / 58,460 / 57,644 bytes.
 Its main scratch-load/store sites grow from 1,469/610 to 4,532/7,731, with
 thousands more stores in the outlined callees. These are static sites and
 resource metadata, not measured dynamic scratch traffic or stall counters.
 Do not attribute the entire measured slowdown to any one static counter.
-Do not compare only main-function sizes when the callee set changes.
+Do not compare only main-function sizes when the callee set changes. Archived
+textual instruction counts included alignment padding; the
+[current bounded auditor](../../2026-09-09/hip-native-remainder/README.md)
+uses ELF function extents. Timings, resource metadata and function byte sizes
+are unaffected by this counting correction.
 
 ## Controls and reproduction
 

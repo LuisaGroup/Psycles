@@ -50,33 +50,36 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Latest four-scene follow-up
 
-Psycles `239cade6` / Luisa `85e5300f1` complete six further 256-spp renders,
+Psycles `cc4d9974` / Luisa `d51a33d48` complete six further 256-spp renders,
 using fresh socket metadata with the exact earlier geometry/texture bytes.
 These use retained equal-pass Cycles references, **not fresh timing pairs**.
 All 46 channels are finite and all 15 pass comparisons complete. Exact six-run
 data, images' provenance and all implementation hashes are in the
-[latest report](docs/validation/2026-09-08/svm-group-contexts/README.md).
+[latest report](docs/validation/2026-09-09/hip-native-remainder/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 13.3748 | 19.2910 | 220 B |
-| Monster, one run | 14.7691 | 22.4903 | 280 B |
-| Classroom, one run | 18.2831 | 19.4370 | 260 B |
-| Barbershop, three-run median | 40.1352 | 25.9988 / 26.5395 / 25.9027 | 416 B |
+| Lone Monk, one run | 13.4562 | 60.2862 | 220 B |
+| Monster, one run | 14.8523 | 69.2298 | 280 B |
+| Classroom, one run | 18.3115 | 51.1574 | 260 B |
+| Barbershop, three-run median | 40.2139 | 24.8495 / 24.5166 / 24.6063 | 416 B |
 
-Barbershop's individual times are 40.1352 / 40.0687 / 40.9465 s. Its median
-is 0.29% below the preceding 40.2529 s, not an isolated causal improvement
-estimate, and 58.2% slower than the retained Cycles median. Initialization is
-JIT plus setup, not compiler-only or cold JIT: the separate profile had warmed
-downstream caches before these six runs. It is never included in render time.
+Barbershop's individual times are 40.2139 / 40.2494 / 40.1534 s. Its median
+is 0.20% above the preceding 40.1352 s, not an isolated causal change estimate,
+and 58.5% slower than the retained Cycles median. Initialization is JIT plus
+setup, not compiler-only: Barbershop's profile had warmed downstream caches,
+whereas the other scenes compile their changed native code for the first
+time. These initialization values are not matched cold/warm comparisons with
+the previous report. Initialization is never included in render time.
 Current first-run DiffInd relative RMSE is 12.882% / 2.552% / 17.820% / 7.126%
 in the table's scene order. The structural and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [group-context repair](docs/validation/2026-09-08/svm-group-contexts/README.md)
-at Psycles `239cade6` / Luisa `85e5300f1` is the latest structural checkpoint
-and the source of the complete 256-spp four-scene campaign above.
+The [native HIP remainder checkpoint](docs/validation/2026-09-09/hip-native-remainder/README.md)
+at Psycles `cc4d9974` / Luisa `d51a33d48` supplies the current backend and
+four-scene campaign. The [group-context repair](docs/validation/2026-09-08/svm-group-contexts/README.md)
+at `239cade6` remains the latest host SVM-layout repair.
 The preceding lamp-routing report records Psycles `773f1aca` / Luisa
 `4284e8cb9`, which publish the
 post-lamp closest-intersection boundary, native miss-distance normalization
@@ -100,6 +103,14 @@ Adding source callable boundaries grows fixed private storage from 2,496 to
 to 5.896 seconds with an identical code object. This experiment is also
 fully reverted and does not change the production benchmark checkpoint.
 
+Native HIP remainder now exposes OCML range reduction before IPO instead of
+late generic `frem` expansion. Original GPU operands, 396 IR/ABI checks and
+5,232 runtime assertions constrain the change; no quotient approximation or
+forced inlining is used. A full Barbershop A/B/B/A control restores identical
+baseline machine code. Effective static instruction sites fall by 0.44%, but
+frame/register/private-storage metadata do not change and no substantial
+end-to-end speedup is established. ISA counts now exclude alignment padding.
+
 The earlier hidden-input, Vector Math, bump-edge/domain and procedural-output
 repairs have 105 original-Cycles material images. Fifty-three additional
 exact images now constrain native texture socket types, conversion identity,
@@ -120,9 +131,9 @@ all 279 used-shader images have identical node/payload layouts, stack
 addresses and jump/domain structure; 115 are raw-exact and 164 differ only
 in declared resource-ID fields.
 Resource binding equivalence is unresolved; no words are normalized away.
-Static stack capacity remains 33 floats; the surface ELF `.text` remains
-byte-identical and resources stay at 256 VGPRs / 2496 private bytes.
-The new 64-spp surface GPU total is 5.872749 s, versus the
+At that host-only checkpoint, stack capacity remains 33 floats and surface
+ELF `.text` is byte-identical; its 64-spp surface GPU total is 5.872749 s,
+versus the
 retained original Cycles 2.962829 s, with essentially unchanged surface visits.
 These structural counts are not a measured speedup or complete shader parity.
 Host-only Blender folding domains remain separate from later Cycles folding;
@@ -138,12 +149,18 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 182/182 | Complete registered suite, 145.30 s |
-| Psycles fallback | 184/184 | Complete parallel suite, 91.40 s |
+| Psycles HIP | 182/182 | Complete registered suite, 480.28 s; cache misses and overlapping non-timed CPU build |
+| Psycles fallback | 184/184 | Complete registered suite, 198.57 s |
 | Psycles host | 168/168 | 258 original-Cycles images across the new families; source-size gate fully green |
-| Luisa child | 155/155 | Retained unchanged child checkpoint; both queue races also repeated 100 times |
+| Luisa child | 131/131 | Complete unit selection in the HIP build configuration; not the earlier 155-test configuration |
 | Strict native Vulkan | 2/2 | Lamp routing and bump state; 31 native SPIR-V compilations, no DXC/DXIL load |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
+
+The additional all-type native Vulkan remainder diagnostic is **not green**:
+1,076 assertions fail in existing f16/f64 `OpFRem` lowering. Its isolated
+float32 run passes 1,744 assertions; HIP and fallback pass all 5,232. This
+coverage gap is retained separately from the passing native lamp/bump canary
+and is not a change introduced by the HIP-only lowering.
 
 The prior [dispatch-trace comparator fix](docs/validation/2026-09-08/dispatch-trace-comparison/README.md)
 remains test-only: discrete/RNG state is exact, continuous intermediates have

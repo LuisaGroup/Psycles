@@ -66,9 +66,12 @@ The main interpreter and most node handlers are **already inlined**.
 | VGPR spill metadata | 500 | 2 |
 | SGPR spill metadata | 65 | 0 |
 | Selected main function bytes | 996,532 | 441,580 |
-| Selected main static instruction sites | 185,686 | 82,634 |
 
 These are static code-generation facts, **not dynamic spill traffic**.
+The original textual instruction counts included alignment padding and have
+been removed from this table; the
+[current auditor](../../2026-09-09/hip-native-remainder/README.md) bounds counts
+by ELF function extents. Archived JSON retains its historical counting scope.
 Cycles' row selects `integrate_surface<1979>` and excludes outlined callees;
 it is not the total transitive shader size. Cycles outlines noise and BSDF
 setup, whereas Psycles' object contains only the main kernel, a 1-D noise
@@ -267,8 +270,8 @@ not the earlier control's `kernel_96eb3744a6e940ba`.
 Surface launches remain 1062; visits are 332,307,922 versus 332,307,894.
 Current surface resources remain 256 VGPRs / 107 SGPRs / 2496 private bytes.
 VGPR spill metadata falls from 500 to 494, but measured surface time changes
-by only -0.26%. Its main function is 995,980 bytes / 185,614 static instruction
-sites, with the same three outlined noise/math helpers. This does not
+by only -0.26%. Its main function is 995,980 bytes, with the same three
+outlined noise/math helpers. This does not
 support missed SVM inlining as the remaining explanation. The retained
 original Cycles ordinary-surface GPU sum is 2.962829 s; the gap is still
 about 1.98x at this stage, not attributable to a large excess of stage visits.
