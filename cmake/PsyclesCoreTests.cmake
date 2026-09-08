@@ -1066,6 +1066,10 @@ if(PSYCLES_BUILD_TESTS)
             COMMAND
                 "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cycles_path_trace_decoder.py")
+        add_test(
+            NAME psycles.cycles_binding_oracle
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cycles_binding_oracle.py")
     endif()
 
     find_program(PSYCLES_BLENDER_EXECUTABLE NAMES blender)

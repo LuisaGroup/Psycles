@@ -135,8 +135,8 @@ and full END/PC behavior. Its A/B/B/A also shows no speedup: median surface
 5.8641 to 5.8773 s and render 10.5145 to 10.5309 s. Main instructions become
 159,972, with unchanged frame/register/private sizes and 49 calls. The typed
 Barbershop census finds 237 Diffuse, 191 Glossy and one Principled producer;
-these are static nodes, not dynamic shading frequencies. Remaining resource
-identity/input/code-generation work remains open. The independent
+these are static nodes, not dynamic shading frequencies. Remaining runtime
+input/code-generation work remains open. The independent
 [512-versus-1024 surface control](docs/validation/2026-09-09/surface-launch-geometry/README.md)
 is complete and fully reverted: 1024 lowers VGPRs from 256 to 192 but increases
 private bytes from 2480 to 2816 and median surface/render time by 5.72% / 3.06%.
@@ -176,7 +176,12 @@ collapsed to 22 words. This removes the last six known Barbershop schedules:
 all 279 used-shader images have identical node/payload layouts, stack
 addresses and jump/domain structure; 115 are raw-exact and 164 differ only
 in declared resource-ID fields.
-Resource binding equivalence is unresolved; no words are normalized away.
+The subsequent [observed binding audit](docs/validation/2026-09-09/resource-identities/README.md)
+resolves all 164: fresh same-session original registries and actual compiler
+tables agree on all 174 images and 21 named attributes. Every one of 600 image
+and 795 attribute references resolves correctly, including equal numeric IDs;
+all other words remain exact. No words are normalized away. This proves
+binding identity, not decoded texel/attribute values or complete shader parity.
 At that host-only checkpoint, stack capacity remains 33 floats and surface
 ELF `.text` is byte-identical; its 64-spp surface GPU total is 5.872749 s,
 versus the
@@ -197,9 +202,10 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Full build | Passed | All 32 hardware threads |
 | Psycles HIP | 184/184 | Complete registered suite, 109.64 s; correctness elapsed time, not a performance benchmark |
 | Psycles fallback | 186/186 | Complete registered suite, 126.80 s |
-| Psycles host | 172/172 | Original-Cycles images, shared-case/closure guards and eight Voronoi loop shapes; source-size gate fully green |
+| Psycles host | 173/173 | Includes captured resource-registry decoder/identity regression; source-size gate fully green |
 | Luisa child | 133/133 | Prior complete `unit*` selection in the unchanged HIP configuration; exact `unit` label is 132/132 |
 | Strict native Vulkan | 5/5 | Lamp routing, bump state, BSDF dispatch, closure guards and Voronoi states; 51 native SPIR-V compilations, no DXC/DXIL load |
+| Binding follow-up | 2/2 on each backend | HIP then fallback then strict native Vulkan; Vulkan has two native SPIR-V compilations and no DXC/DXIL load; metadata-only tools do not replace the preceding full renderer gates |
 | Shared-switch runtime | 211 assertions/backend | HIP, fallback and strict native Vulkan; exits, narrow/wide labels and both coroutine schedulers |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
 

@@ -186,8 +186,12 @@ caches persist per instance, and sibling instances of one definition are
 not mistaken for recursive nesting. All 279 Barbershop used-shader images
 now have identical node/typed-payload layouts, stack addresses and jump/domain
 structure: 115 raw-equal and 164 different only in declared resource-ID fields.
-The six remaining schedule differences are resolved. Resource binding equivalence
-is still unresolved; no word normalization or complete parity is claimed.
+The six remaining schedule differences are resolved. A fresh
+[same-session resource audit](validation/2026-09-09/resource-identities/README.md)
+also resolves all 164 payload differences: 174 images, 21 named attributes,
+600 image references and 795 attribute references agree in binding identity.
+Numerically equal IDs are checked as well; no words are normalized. This
+does not establish decoded texture/attribute values or complete shader parity.
 At that host-only checkpoint the static stack bound is 33 floats and surface
 machine code and register/private-memory requirements are unchanged.
 
@@ -272,7 +276,8 @@ and 100 green repetitions each. Strict native Vulkan lamp-routing,
 bump-state, BSDF-dispatch, closure-guard and Voronoi tests pass 5/5 with 51 native SPIR-V compilations
 and no DXC/DXIL load. Shared-switch runtime checks add 211 passing assertions
 on each of HIP, fallback and strict native Vulkan, including both coroutine
-schedulers. Current host results are 172/172, including the unwaived source-size
+schedulers. Current host results are 173/173, including the observed resource
+identity regression and unwaived source-size
 gate. Existing oversized tests are separated into cohesive modules without
 removing assertions; ConvertNode now has its own ordinary translation unit.
 
