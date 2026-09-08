@@ -9,7 +9,24 @@ import sys
 import tempfile
 
 import bpy
+import PyOpenColorIO as ocio
 from mathutils import Vector
+
+
+def _check_blender_luma_export(exporter: pathlib.Path) -> None:
+    # Process-local OCIO control; restore it before any normal scene export.
+    # Blender primitive luma is independent of Cycles' RGB/XYZ matrix row.
+    module = runpy.run_path(str(exporter))
+    previous = ocio.GetCurrentConfig()
+    controlled = ocio.Config.CreateFromStream(previous.serialize())
+    controlled.setDefaultLumaCoefs([0.5, 0.25, 0.25])
+    try:
+        ocio.SetCurrentConfig(controlled)
+        transforms = module["_cycles_shader_color_space"]()
+        if transforms["blender_luma"] != [0.5, 0.25, 0.25]:
+            raise AssertionError("exporter did not preserve the active OCIO luma coefficients")
+    finally:
+        ocio.SetCurrentConfig(previous)
 
 
 def _export(
@@ -37,6 +54,7 @@ def _main() -> None:
         lambda value: pathlib.Path(value).resolve(),
         args,
     )
+    _check_blender_luma_export(exporter)
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
 

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0 */
 
 #include "cycles_svm_graph.h"
+#include "cycles_svm_blender_values.h"
 #include "cycles_svm_constant_fold.h"
 #include "cycles_svm_closure_inputs.h"
 #include "cycles_svm_mapping_nodes.h"
@@ -70,7 +71,7 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
       }
       const ConstantFolder folder{&graph, node, &output_socket};
       if (stage == ConstantFoldStage::blender_inline) {
-        node->inline_blender_constant_fold(folder);
+        inline_blender_socket_value(folder);
       } else {
         node->constant_fold(folder);
       }
@@ -326,6 +327,7 @@ projected_binary_math_operation(std::string_view type) noexcept {
     case GraphSocketType::floating:
       return "float";
     case GraphSocketType::integer:
+      return "int";
     case GraphSocketType::closure:
       return {};
   }
@@ -346,6 +348,7 @@ projected_binary_math_operation(std::string_view type) noexcept {
     case GraphSocketType::floating:
       return contract::SocketValue::floating(0.0f);
     case GraphSocketType::integer:
+      return contract::SocketValue::integer(0);
     case GraphSocketType::closure:
       break;
   }
@@ -710,13 +713,14 @@ bool CyclesGraph::connect_with_autoconvert(GraphOutput *output,
   if (output->type == input->type) {
     return connect(output, input);
   }
-  // ShaderGraph::connect inserts a ConvertNode for every non-closure type
-  // mismatch. Only use that source-level operation where projection has
-  // restored exact Cycles socket types; canonical contract sockets elsewhere
-  // must first be migrated explicitly instead of changing them by accident.
-  // The currently reachable mismatch is the float3 family, whose Cycles SVM
-  // conversion is a pure stack alias and emits no NODE_CONVERT.
-  if (!is_float3_socket(output->type) || !is_float3_socket(input->type)) {
+  // ShaderGraph::connect inserts a ConvertNode for every numeric mismatch.
+  // Blender's forwarded links are resolved before this native operation;
+  // only the actual producer/consumer pair determines the conversion.
+  const auto convertible = [](GraphSocketType type) {
+    return is_float3_socket(type) || type == GraphSocketType::floating ||
+           type == GraphSocketType::integer;
+  };
+  if (!convertible(output->type) || !convertible(input->type)) {
     return false;
   }
   const auto from_name = conversion_socket_name(output->type);
@@ -1002,6 +1006,10 @@ CyclesGraph CyclesGraph::project(
                                 std::move(inputs), std::move(outputs),
                                 special_type(target_type),
                                 std::move(properties));
+    if (!set_blender_value_origin(*node, source.origin)) {
+      graph.reject("Invalid Blender source value category: " + source.type);
+      return graph;
+    }
     nodes.emplace(source.id.value, node);
   }
 
@@ -1089,6 +1097,7 @@ CyclesGraph CyclesGraph::project(
   if (!graph.valid()) {
     return graph;
   }
+  finish_blender_socket_values(graph);
   graph.collect_attribute_requests();
   graph.expand();
   graph.default_inputs();
@@ -1117,8 +1126,12 @@ void CyclesGraph::project_socket_types() {
     auto *node = _nodes[index].get();
     for (auto &input : node->inputs) {
       const auto type = projected_input_type(node->type, input.name, input.type);
-      if (type == input.type) { continue; }
       auto *source = input.link;
+      while (source != nullptr && source->blender_source != nullptr) {
+        source = source->blender_source;
+      }
+      if (type == input.type && source == input.link &&
+          (source == nullptr || source->type == type)) { continue; }
       disconnect(&input);
       input.type = type;
       input.value = projected_input_value(std::move(input.value), type);

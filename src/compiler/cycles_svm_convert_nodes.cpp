@@ -200,6 +200,30 @@ public:
     }
   }
 
+  void inline_blender_constant_fold(const ConstantFolder &folder) override {
+    if (origin != contract::ShaderNodeOrigin::blender_implicit_conversion ||
+        !folder.all_inputs_constant() || inputs.size() != 1u || outputs.size() != 1u) {
+      return;
+    }
+    const auto &in = inputs.front();
+    const auto &out = outputs.front();
+    if (in.type == GraphSocketType::color &&
+        (out.type == GraphSocketType::floating || out.type == GraphSocketType::integer)) {
+      const auto value = literal<Vec3f>(&in, contract::SocketType::color);
+      if (!value) { return; }
+      const auto gray = folder.graph->blender_rgb_to_gray(*value);
+      if (out.type == GraphSocketType::integer) {
+        folder.make_constant(static_cast<std::int32_t>(gray));
+      } else {
+        folder.make_constant(gray);
+      }
+    } else {
+      // All inputs are primitive: no inverse/identity rewrite on live links
+      // is allowed to run in the earlier Blender phase.
+      constant_fold(folder);
+    }
+  }
+
   [[nodiscard]] ShaderNodeType shader_node_type() const noexcept override {
     return NODE_CONVERT;
   }

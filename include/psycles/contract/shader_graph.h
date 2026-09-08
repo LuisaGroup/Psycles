@@ -154,12 +154,23 @@ struct InputBinding {
     std::optional<SocketValue> value;
 };
 
+// Import-stage value categories, not runtime node operations. Blender forwards
+// linked implicit conversions but converts primitive input values before the
+// native Cycles graph is constructed. Numeric constancy alone is insufficient:
+// authored RGB/Value nodes still represent links at that earlier stage.
+enum class ShaderNodeOrigin : std::uint8_t {
+    authored,
+    blender_implicit_conversion,
+    blender_input_value
+};
+
 struct ShaderNode {
     NodeId id;
     std::string type;
     std::string label;
     std::map<std::string, InputBinding, std::less<>> inputs;
     std::map<std::string, SocketValue, std::less<>> properties;
+    ShaderNodeOrigin origin{ShaderNodeOrigin::authored};
 };
 
 enum class ShaderDomain : std::uint8_t {

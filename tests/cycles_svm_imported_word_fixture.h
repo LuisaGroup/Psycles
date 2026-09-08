@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
+#include <span>
 #include <vector>
 
 namespace psycles::test_support {
@@ -46,7 +47,9 @@ struct Bundle {
 };
 
 void check_imported_words(std::string_view stem, unsigned expected_count,
-                          bool allow_constant_emission_roundoff = false) {
+                          bool allow_constant_emission_roundoff = false,
+                          bool (*accept_literals)(std::span<const std::uint32_t>,
+                                                  std::span<const std::uint32_t>) = nullptr) {
   Bundle bundle{stem};
   const auto imported = psycles::adapter::load_blender_scene_bundle(bundle.path);
   require(imported.ok(), "hidden socket fixture import failed");
@@ -80,7 +83,8 @@ void check_imported_words(std::string_view stem, unsigned expected_count,
     ImageIDMap images;
     const auto image = compile_shader(
         *shader.program, attributes, images,
-        ShaderCompileContext{.displacement_method = material->second.displacement_method});
+        ShaderCompileContext{.displacement_method = material->second.displacement_method,
+                             .color_space = imported.scene->shader_color_space});
     require(image.valid, image.diagnostic);
     auto comparable = image.words;
     // Only the three typed NODE_CLOSURE_SET_WEIGHT float literals in constant
@@ -103,13 +107,19 @@ void check_imported_words(std::string_view stem, unsigned expected_count,
         }
       }
     }
-    if (comparable != expected) {
+    if (comparable != expected &&
+        !(accept_literals != nullptr && accept_literals(comparable, expected))) {
       ++failures;
       const auto mismatch = std::mismatch(image.words.begin(), image.words.end(),
                                           expected.begin(), expected.end());
       std::cerr << name << ": Psycles=" << image.words.size()
                 << " Cycles=" << expected.size() << " words, first difference="
-                << std::distance(image.words.begin(), mismatch.first) << '\n';
+                << std::distance(image.words.begin(), mismatch.first);
+      if (mismatch.first != image.words.end() && mismatch.second != expected.end()) {
+        std::cerr << " (0x" << std::hex << *mismatch.first << " vs 0x"
+                  << *mismatch.second << std::dec << ')';
+      }
+      std::cerr << '\n';
     }
   }
   oracle >> std::ws;

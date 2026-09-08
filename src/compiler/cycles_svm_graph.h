@@ -123,6 +123,9 @@ struct GraphOutput {
   GraphSocketType type{};
   std::vector<GraphInput *> links;
   SVMStackOffset stack_offset{SVM_STACK_INVALID};
+  // Temporary Blender LinkedSocketValue forwarding. Consumed when native
+  // socket links are reconstructed, before Cycles cleanup or SVM compilation.
+  GraphOutput *blender_source{};
 };
 
 struct GraphNode {
@@ -139,6 +142,7 @@ struct GraphNode {
   float bump_filter_width{};
   bool added_to_svm{};
   bool need_derivatives{};
+  contract::ShaderNodeOrigin origin{contract::ShaderNodeOrigin::authored};
 
   virtual void compile(SVMCompiler &compiler) = 0;
   virtual void attributes(const GraphAttributeContext &context,
@@ -222,6 +226,10 @@ public:
   [[nodiscard]] Vec3f
   rec709_to_scene_linear(Vec3f value) const noexcept;
   [[nodiscard]] float linear_rgb_to_gray(Vec3f value) const noexcept;
+  [[nodiscard]] float blender_rgb_to_gray(Vec3f value) const noexcept {
+    const auto weights = _color_space.blender_luma;
+    return weights.x * value.x + weights.y * value.y + weights.z * value.z;
+  }
   [[nodiscard]] GraphOutput *root(GraphDomain domain) const noexcept;
   [[nodiscard]] GraphNode *output_node() const noexcept {
     return _nodes.empty() ? nullptr : _nodes.front().get();

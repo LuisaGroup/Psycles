@@ -60,7 +60,7 @@ _CYCLES_BACKGROUND_SHADER_INDEX = 3
 _EXPORTER_IDENTITY = exporter_identity.current(pathlib.Path(__file__))
 
 
-def _cycles_shader_color_space() -> dict[str, list[list[float]]]:
+def _cycles_shader_color_space() -> dict[str, Any]:
     """Reproduce Cycles ShaderManager::init_xyz_transforms from OCIO."""
     xyz_to_rec709 = np.asarray(
         (
@@ -71,10 +71,12 @@ def _cycles_shader_color_space() -> dict[str, list[list[float]]]:
         dtype=np.float32,
     )
     xyz_to_rgb = xyz_to_rec709.copy()
+    blender_luma = [0.2126, 0.7152, 0.0722]
     try:
         import PyOpenColorIO as ocio
 
         config = ocio.GetCurrentConfig()
+        blender_luma = list(config.getDefaultLumaCoefs())
         roles = dict(config.getRoles())
         if "aces_interchange" in roles:
             processor = config.getProcessor(
@@ -126,6 +128,7 @@ def _cycles_shader_color_space() -> dict[str, list[list[float]]]:
         xyz_to_rgb @ np.linalg.inv(xyz_to_rec709)
     ).astype(np.float32)
     return {
+        "blender_luma": [float(value) for value in blender_luma],
         "xyz_to_rgb": [
             [float(component) for component in row]
             for row in xyz_to_rgb
