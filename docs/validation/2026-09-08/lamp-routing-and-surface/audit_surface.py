@@ -33,16 +33,32 @@ def llvm_functions(path):
     return result
 
 
-def isa_functions(path):
+def function_symbols(path):
+    return {name: {'address': int(address, 16), 'bytes': int(size)}
+            for name, address, size in re.findall(
+                r'Name: ([^\n]+?) \(\d+\)\n    Value: (0x[0-9A-Fa-f]+)\n    Size: (\d+)\n'
+                r'    Binding: [^\n]+\n    Type: Function', path.read_text())}
+
+
+def isa_functions(path, symbols):
     result = {}
     current = None
     for line in path.read_text().splitlines():
         if match := re.match(r'([0-9a-f]+) <(.+)>:$', line):
             current = match[2]
+            assert current in symbols, current
+            assert int(match[1], 16) == symbols[current]['address'], current
+            assert symbols[current]['bytes'] > 0, current
             result[current] = {'address': int(match[1], 16), 'opcodes': Counter()}
         elif current is not None:
-            if match := re.match(r'\s+(\w+).*?// [0-9A-Fa-f]+:', line):
-                result[current]['opcodes'][match[1]] += 1
+            if match := re.match(r'\s+(\w+).*?// ([0-9A-Fa-f]+):', line):
+                start = symbols[current]['address']
+                address = int(match[2], 16)
+                assert address >= start, (current, address, start)
+                # llvm-objdump also decodes alignment/code-object padding
+                # after a function. Count only its ELF STT_FUNC extent.
+                if address < start + symbols[current]['bytes']:
+                    result[current]['opcodes'][match[1]] += 1
     for row in result.values():
         ops = row.pop('opcodes')
         row.update({
@@ -97,8 +113,10 @@ def main():
     final = final_candidates[0]
     before = final.with_name(final.name.replace('final', 'before_opt'))
     after = final.with_name(final.name.replace('final', 'after_opt'))
-    psycles_isa = isa_functions(isa_dir / 'surface-isa.txt')
-    cycles_isa = isa_functions(isa_dir / 'cycles-compute-isa.txt')
+    psycles_isa = isa_functions(isa_dir / 'surface-isa.txt',
+                               function_symbols(isa_dir / 'surface-code-object.txt'))
+    cycles_isa = isa_functions(isa_dir / 'cycles-compute-isa.txt',
+                              function_symbols(isa_dir / 'cycles-compute-object.txt'))
     assert surface in psycles_isa
     selected_cycles = {
         name: row for name, row in cycles_isa.items()

@@ -4,6 +4,7 @@ import tempfile
 import unittest
 
 from audit_inline_experiment import identify_stage_artifacts
+from audit_surface import isa_functions
 
 
 class ProfileArtifacts(unittest.TestCase):
@@ -41,6 +42,27 @@ class ProfileArtifacts(unittest.TestCase):
         (self.directory / "hip_isa_92.co").write_bytes(b"\0kernel_deadbeef\0")
         with self.assertRaises(AssertionError):
             identify_stage_artifacts(self.directory, self.kernel)
+
+    def test_instruction_counts_exclude_alignment_padding(self):
+        path = self.directory / "isa.txt"
+        path.write_text("""00000100 <first>:
+  s_nop 0 // 00000100: BF800000
+  s_endpgm // 00000104: BFB00000
+  s_code_end // 00000108: BF9F0000
+  s_code_end // 0000010C: BF9F0000
+00000110 <second>:
+  s_endpgm // 00000110: BFB00000
+  s_code_end // 00000114: BF9F0000
+""")
+        bounds = {"first": {"address": 0x100, "bytes": 8},
+                  "second": {"address": 0x110, "bytes": 4}}
+        rows = isa_functions(path, bounds)
+        self.assertEqual(rows["first"]["static_instructions"], 2)
+        self.assertEqual(rows["second"]["static_instructions"], 1)
+        with self.assertRaises(AssertionError):
+            isa_functions(path, {"first": bounds["first"]})
+        with self.assertRaises(AssertionError):
+            isa_functions(path, {**bounds, "first": {"address": 0x104, "bytes": 8}})
 
 
 if __name__ == "__main__":

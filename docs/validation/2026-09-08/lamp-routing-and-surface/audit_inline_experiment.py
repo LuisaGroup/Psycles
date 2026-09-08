@@ -8,7 +8,7 @@ import sys
 
 import numpy as np
 
-from audit_surface import isa_functions, profile, source
+from audit_surface import function_symbols, isa_functions, profile, source
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -55,11 +55,8 @@ def inspect(directory):
     resources = {key: int(re.search(r'\.' + key + r':\s*(\d+)', notes)[1])
                  for key in ['private_segment_fixed_size', 'sgpr_count', 'vgpr_count',
                              'sgpr_spill_count', 'vgpr_spill_count']}
-    symbols = {name: {'address': int(address, 16), 'bytes': int(size)}
-               for name, address, size in re.findall(
-                   r'Name: ([^\n]+?) \(\d+\)\n    Value: (0x[0-9A-Fa-f]+)\n    Size: (\d+)\n'
-                   r'    Binding: [^\n]+\n    Type: Function', notes)}
-    isa = isa_functions(directory / 'surface-isa.txt')
+    symbols = function_symbols(directory / 'surface-code-object.txt')
+    isa = isa_functions(directory / 'surface-isa.txt', symbols)
     assert set(isa) == set(symbols), (set(isa), set(symbols))
     assert names['shade_surface'] in symbols
     assert re.search(r'\.name:\s*' + re.escape(names['shade_surface']) + r'\s*$', notes, re.MULTILINE)
