@@ -109,8 +109,6 @@ PathKernelPipeline::operator=(PathKernelPipeline &&) noexcept = default;
 void PathKernelPipeline::emit(
     PathSampleContext &sample,
     PathCoroutineCutPolicy cut_policy) const noexcept {
-  const auto random_plan = make_path_bounce_random_plan(
-      cut_policy, static_cast<bool>(_impl->volume_segment));
   $for(path_step, sample.invocation.parameters.max_path_steps) {
     // This ordinary C++ branch executes while recording the Luisa AST.
     // The suspension is therefore absent from the megakernel rather than
@@ -121,11 +119,6 @@ void PathKernelPipeline::emit(
         cut_policy, static_cast<bool>(_impl->subsurface_transport),
         sample.pending_subsurface_exit);
     auto bounce = _impl->bounce_setup->emit(sample, path_step);
-    std::optional<PathBounceRandomState> dominating_random_state;
-    if (random_plan.before_event_resolution) {
-      dominating_random_state.emplace(_impl->bounce_random->emit(sample));
-      bounce.random_state = &*dominating_random_state;
-    }
 
     // A Cycles lamp is a transparent closest event. Resolve every lamp
     // before the already-known mesh/background event without consuming
@@ -158,26 +151,16 @@ void PathKernelPipeline::emit(
           if (cut_policy == PathCoroutineCutPolicy::cycles_wavefront) {
             $suspend(path_transition::shade_volume);
           }
-          std::optional<PathBounceRandomState> volume_random_state;
-          if (random_plan.shade_volume) {
-            // This local binding cannot escape the shade_volume
-            // continuation. Later event stages have no random
-            // consumer; the surface continuation binds its own
-            // equal sampler expression at its first use.
-            volume_random_state.emplace(_impl->bounce_random->emit(sample));
-            bounce.random_state = &*volume_random_state;
-          }
+          // Volume proposals must precede distance tracking (equiangular
+          // sampling consumes them). Keep this state local to the nonempty
+          // volume segment in both megakernel and coroutine recording.
+          auto volume_random_state = _impl->bounce_random->emit(sample);
+          bounce.random_state = &volume_random_state;
           $outline_with_name("path_volume_segment") {
             volume = _impl->volume_segment->emit(event);
           };
-        };
-        if (random_plan.shade_volume) {
-          // Make the host/JIT lifetime invariant executable: a new
-          // consumer inserted between volume and surface must bind
-          // an explicit state instead of retaining a dangling C++
-          // expression handle.
           bounce.random_state = nullptr;
-        }
+        };
         path_terminated = path_terminated | volume.terminated;
         volume_scattered = volume_scattered | volume.scattered;
         search_events = search_events & !volume.scattered & !volume.terminated;
@@ -273,20 +256,7 @@ void PathKernelPipeline::emit(
           $continue;
         };
       }
-      std::optional<PathBounceRandomState> surface_random_state;
-      if (random_plan.shade_surface) {
-        surface_random_state.emplace(_impl->bounce_random->emit(sample));
-        bounce.random_state = &*surface_random_state;
-      }
       auto shading = _impl->surface_shading->emit(surface);
-      if (sample.invocation.config.use_light_tree) {
-        bounce.random().selected_light =
-            sample.invocation.config.light_tree.surface_sample(
-                bounce.random().light_sample.z, surface.hit_position,
-                shading.shading_normal, 0.0f,
-                (shading.cycles_surface_runtime_flags &
-                 cycles_closure::runtime_bsdf_has_transmission) != 0u);
-      }
       DirectLightingContext lighting{
           .bounce = bounce, .surface = surface, .shading = shading};
       std::optional<DirectLightTransportPreparation> direct_light_preparation;
@@ -299,7 +269,20 @@ void PathKernelPipeline::emit(
         const auto has_evaluable_bsdf =
             (shading.cycles_surface_runtime_flags &
              cycles_closure::runtime_bsdf_has_eval) != 0u;
-        $if(has_evaluable_bsdf) {
+        // The host stage plan already proves use_direct_light. Cycles tests
+        // SD_BSDF_HAS_EVAL before PRNG_LIGHT and either emitter-selection
+        // algorithm; no random/CDF/tree work belongs to the rejected path.
+        _impl->bounce_random->with_active_state(
+            sample, has_evaluable_bsdf, [&](PathBounceRandomState &random) {
+          bounce.random_state = &random;
+          if (sample.invocation.config.use_light_tree) {
+            random.selected_light =
+                sample.invocation.config.light_tree.surface_sample(
+                    random.light_sample.z, surface.hit_position,
+                    shading.shading_normal, 0.0f,
+                    (shading.cycles_surface_runtime_flags &
+                     cycles_closure::runtime_bsdf_has_transmission) != 0u);
+          }
           auto direct_light = DirectLightSampleState::empty();
           std::vector<std::unique_ptr<DirectLightProvider>> light_providers;
           light_providers.reserve(_impl->direct_lighting.size());
@@ -378,7 +361,8 @@ void PathKernelPipeline::emit(
           };
           *direct_light_preparation =
               _impl->direct_light_transport->prepare(lighting, transport);
-        };
+          bounce.random_state = nullptr;
+        });
         if (!defer_direct_light) {
           _impl->direct_light_transport->emit(
               bounce, std::move(*direct_light_preparation), cut_policy);

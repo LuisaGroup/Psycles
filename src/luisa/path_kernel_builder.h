@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 namespace luisa::compute {
 template <typename T> class Coroutine;
@@ -456,14 +457,15 @@ struct PathBounceRandomState {
 struct PathBounceContext {
     PathSampleContext &sample;
     const UInt &path_step;
-    // Host/JIT link to state emitted at its first dominating use. Volume
-    // pipelines bind it before segment transport; surface-only pipelines bind
-    // it after the surface coroutine boundary. This is not a device ABI field.
+    // Host/JIT link scoped to its consuming volume segment or active surface
+    // NEE branch. It never crosses a coroutine boundary or becomes a device
+    // ABI field. Surface tracing records pure random tuples independently.
     PathBounceRandomState *random_state;
     Var<luisa::compute::CommittedHit> hit;
     Bool subsurface_exit;
 
     [[nodiscard]] PathBounceRandomState &random() const noexcept {
+        LUISA_ASSERT(random_state != nullptr, "Path random state has no active consumer.");
         return *random_state;
     }
 };
@@ -675,6 +677,17 @@ class PathBounceRandomStage {
     virtual ~PathBounceRandomStage() noexcept = default;
     [[nodiscard]] virtual PathBounceRandomState
     emit(PathSampleContext &sample) const noexcept = 0;
+
+    // Host recording helper: the callback and its random state share the
+    // lifetime of one consumer. No device call boundary is introduced.
+    template<typename F>
+    void with_active_state(PathSampleContext &sample, Bool active,
+                           F &&consume) const noexcept {
+        $if(active) {
+            auto state = emit(sample);
+            std::forward<F>(consume)(state);
+        };
+    }
 };
 
 class ClosestEventStage {

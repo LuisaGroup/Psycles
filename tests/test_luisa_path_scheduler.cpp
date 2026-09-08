@@ -1,5 +1,3 @@
-#include "path_kernel_stage_policy.h"
-
 #include <psycles/luisa/path_tracer.h>
 
 #include <array>
@@ -17,26 +15,6 @@ int main() {
   using psycles::luisa_backend::parse_luisa_path_scheduler;
   using psycles::luisa_backend::valid_luisa_persistent_scheduler_shape;
   using psycles::luisa_backend::valid_luisa_wavefront_execution_block_size;
-  using psycles::luisa_backend::detail::make_path_bounce_random_plan;
-  using psycles::luisa_backend::detail::PathCoroutineCutPolicy;
-
-  constexpr auto serial_surface =
-      make_path_bounce_random_plan(PathCoroutineCutPolicy::none, false);
-  static_assert(!serial_surface.before_event_resolution &&
-                !serial_surface.shade_volume && serial_surface.shade_surface);
-  constexpr auto serial_volume =
-      make_path_bounce_random_plan(PathCoroutineCutPolicy::none, true);
-  static_assert(serial_volume.before_event_resolution &&
-                !serial_volume.shade_volume && !serial_volume.shade_surface);
-  constexpr auto staged_surface = make_path_bounce_random_plan(
-      PathCoroutineCutPolicy::cycles_wavefront, false);
-  static_assert(!staged_surface.before_event_resolution &&
-                !staged_surface.shade_volume && staged_surface.shade_surface);
-  constexpr auto staged_volume = make_path_bounce_random_plan(
-      PathCoroutineCutPolicy::cycles_wavefront, true);
-  static_assert(!staged_volume.before_event_resolution &&
-                staged_volume.shade_volume && staged_volume.shade_surface);
-
   constexpr std::array schedulers{LuisaPathScheduler::megakernel,
                                   LuisaPathScheduler::megakernel_per_sample,
                                   LuisaPathScheduler::wavefront,
