@@ -1,0 +1,19 @@
+device=AMD Radeon RX 9070 XT arch=gfx1201 lanes=1048576 samples_per_lane=16 descriptors=4096 actual_images=256 repeats=9
+validated pattern=0 layout=0 rgba_lanes=4194304 max_abs=0
+validated pattern=0 layout=1 rgba_lanes=4194304 max_abs=0
+validated pattern=0 layout=2 rgba_lanes=4194304 max_abs=0
+validated pattern=0 layout=4 rgba_lanes=4194304 max_abs=0
+validated pattern=0 layout=5 rgba_lanes=4194304 max_abs=0
+validated pattern=0 layout=6 rgba_lanes=4194304 max_abs=0
+validated pattern=1 layout=0 rgba_lanes=4194304 max_abs=0
+validated pattern=1 layout=1 rgba_lanes=4194304 max_abs=0
+validated pattern=1 layout=2 rgba_lanes=4194304 max_abs=0
+validated pattern=1 layout=4 rgba_lanes=4194304 max_abs=0
+validated pattern=1 layout=5 rgba_lanes=4194304 max_abs=0
+validated pattern=1 layout=6 rgba_lanes=4194304 max_abs=0
+validated pattern=2 layout=0 rgba_lanes=4194304 max_abs=0
+validated pattern=2 layout=1 rgba_lanes=4194304 max_abs=0
+validated pattern=2 layout=2 rgba_lanes=4194304 max_abs=0
+validated pattern=2 layout=4 rgba_lanes=4194304 max_abs=0
+validated pattern=2 layout=5 rgba_lanes=4194304 max_abs=0
+validated pattern=2 layout=6 rgba_lanes=4194304 max_abs=0

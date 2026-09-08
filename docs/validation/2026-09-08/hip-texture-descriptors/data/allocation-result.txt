@@ -1,0 +1,2 @@
+native_hip_texture hip_type=1 managed=0 hip_flags=0 hsa_type=1 owner=AMD Ryzen 9 9950X3D 16-Core Processor owner_device=0 hsa_flags=4 fine=0 coarse=1 pool_allocation_bytes=272
+hip_malloc_descriptor hip_type=2 managed=0 hip_flags=0 hsa_type=1 owner=gfx1201 owner_device=1 hsa_flags=4 fine=0 coarse=1 pool_allocation_bytes=32
