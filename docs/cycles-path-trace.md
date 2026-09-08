@@ -104,7 +104,7 @@ that crop-only conversion. Consequently cropped Combined or light-pass values
 must never be used to infer a transport, MIS, clamp, or material difference.
 
 ```bash
-TRACE_BLENDER=/home/mike/Projects/blender-install-psycles-trace/blender
+TRACE_BLENDER=/home/mike/Projects/blender-install-psycles-trace-5.2/blender
 SCENE=build/diagnostics/minimal-point/point_light.blend
 
 "$TRACE_BLENDER" "$SCENE" --background --python-exit-code 1 \
@@ -136,8 +136,8 @@ TMPDIR=/var/tmp/psycles-compiler-tmp \
   build/bin/psycles_render_blender_scene \
   build/diagnostics/minimal-point/export \
   /var/tmp/psycles-trace/fallback.ppm \
-  fallback 32 32 1 1 \
-  /var/tmp/psycles-trace/fallback.raw.json 17 16 0
+  fallback 32 32 128 1 \
+  /var/tmp/psycles-trace/fallback.raw.json 17 16 6 6 1
 
 python tools/compare_cycles_path_traces.py \
   /var/tmp/psycles-trace/cpu.exr \
@@ -205,235 +205,52 @@ decoder enumerates every subimage and also accepts older single-part,
 multi-channel files. `tests/test_cycles_path_trace_decoder.py` locks the
 multipart behavior.
 
-## Current oracle build
+## Current Cycles 5.2.1 oracle
 
-The current diagnostic branch is
-`82186b01ad2e79435e67a02de93b178bfbe0f6c4`, refreshed onto official Blender
-main commit `29ccd5e2e824128c86fc6174c9c502c02212434a` on 2026-08-06. Its dedicated
-worktree is `/home/mike/Projects/blender-cycles-trace`; the unmodified reference
-checkout remains `/home/mike/Projects/blender-cycles`. The installed oracle is
-`/home/mike/Projects/blender-install-psycles-trace/blender` and reports Blender
-5.3 Alpha with build hash `82186b01`.
+The authoritative checkout is
+`/home/mike/Projects/blender-cycles-trace-5.2`, branch
+psycles-path-trace-5.2, revision
+cb168525138fecc792cc393f94afc39582b0103c. The installed trace binary is
+`/home/mike/Projects/blender-install-psycles-trace-5.2/blender`, reporting
+Blender 5.2.1 LTS / cb168525138f. The checkout retains diagnostic edits in
+scene/light.cpp and scene/svm.cpp; preserve and review them rather than
+assuming every local source byte is represented by the installed build hash.
 
-The original version-1 instrumentation was committed as
-`7fa06e0a26f9b20b91005705a2ef8cef3df52562` against official commit
-`ff404d072bb4bae52c578d2be3aeeea2a057ab63` and is retained as the historical
-standalone patch
-[`tools/cycles_path_trace/0001-Cycles-add-Psycles-per-path-trace-oracle.patch`](../tools/cycles_path_trace/0001-Cycles-add-Psycles-per-path-trace-oracle.patch).
+The production performance reference is a different binary:
+`/home/mike/Projects/blender-install-5.2-hiprt/blender`,
+5.2.1 LTS / 9e2066aef7ef. Never benchmark the instrumented trace build as if
+it were the production Cycles baseline. Verify source, build, schema and
+device identities before generating an oracle. Rebuild with all 32 threads
+when instrumentation changes; keep toolchains and temporary files local.
 
-Both the CPU kernels and the `gfx1201` HIP fatbin compile the same schema.
-Build and install use all 32 hardware threads:
+Current surface trace records come from the native SVM closure allocator
+and its production sampling consumers in path_tracer_cycles_svm_surface.cpp.
+They do not use a separate GraphSurface reference sampler or CPU renderer.
+The original Cycles CPU and HIP kernels can both supply observational traces,
+but the current large-scene performance target is HIP.
 
-```bash
-TMPDIR=/var/tmp/psycles-compiler-tmp \
-  cmake --build /home/mike/Projects/blender-build-psycles-trace \
-  --target blender --parallel 32
-TMPDIR=/var/tmp/psycles-compiler-tmp \
-  cmake --build /home/mike/Projects/blender-build-psycles-trace \
-  --target install --parallel 32
-```
+## Current evidence and unresolved path differences
 
-The point-light CPU/HIP checkpoint is recorded under
-`docs/validation/2026-07-30/cycles-path-trace/`. All 43 discrete fields and 16
-random fields match exactly. The 84 continuous fields pass their float32
-bounds; maximum absolute error is `4.76837158203125e-7`.
+The [sampler contract](validation/2026-09-07/sampler-contract/README.md)
+pins Cycles' actual automatic-scrambling property. Scene frame, authored seed,
+animated-seed behavior, effective seed and full-sequence sample count must
+match. Do not force an obsolete diagnostic sampler setting into every scene.
 
-The first Luisa checkpoint is recorded under
-`docs/validation/2026-07-30/luisa-path-trace/`. The initial differential run
-found that Psycles represented camera clipping as nonzero ray `tmin/tmax`,
-while Cycles advances `ray.P` to the near plane, starts at zero, and stores
-`far - near` (with perspective direction-cosine scaling). After correcting
-that contract, every currently populated continuous field passes with maximum
-absolute error `4.76837158203125e-7`, and all 13 currently populated random
-fields are exact. The remaining failures are deliberately visible unpopulated
-light, raw-closure, BSDF, and post-bounce records plus the Cycles shader ID;
-they are the next implementation gates, not tolerated differences.
+The [Monk residual](validation/2026-09-07/lone-monk-residual/README.md)
+identifies a visibility divergence at coincident original leaf geometry.
+Keep duplicate primitives; this is not permission for deduplication or
+slower bit-matching intersections.
 
-The following light checkpoint found a second representation mismatch:
-Psycles had folded delta-point inverse-square falloff into radiance while
-using a conditional light PDF of one. Cycles instead stores `distance²` in
-`LightSample.pdf` and keeps the normalized point `eval_fac` at `1 / (4π)`.
-Psycles now uses that same Luisa DSL contract, including the formal rule that
-a zero-radius point has no competing forward-BSDF measure. The fallback, HIP,
-and Vulkan device regression passes, the three Luisa path traces agree, and
-all newly populated point-light trace fields pass against Cycles CPU. The
-strict comparison now reports 24 rather than 30 outstanding gates.
+The [Barbershop shared-closure correction](validation/2026-09-08/shared-closure-weights/README.md)
+restores additive contributions from shared graph branches. At the diagnosed
+pixel, the first four surface events and all 45 sampled random fields match;
+a later NEE event still selects an adjacent emitter triangle. This is local
+evidence, not proof of global RNG, visibility or path parity.
 
-The next gate identified a deterministic BSDF sample-mapping mismatch.
-Psycles used a polar disk map and an arbitrary valid frame around the shading
-normal. Those choices preserve cosine-weighted density, but they do not
-preserve the mapping from a Cycles RNG pair to its world-space direction.
-Camera aperture and diffuse closure sampling now share one Luisa DSL
-implementation of the Cycles concentric disk map and fixed algebraic
-orthonormal basis. The equality branch, disk-boundary branch, and absence of a
-final direction renormalization are treated as part of the definition rather
-than implementation details.
-
-The device regression locks the first-bounce oracle sample
-`random=(0.82080835, 0.67639267)` to
-`wo=(0.601930976, -0.222150967, 0.767025411)` and
-`pdf=0.244151756`; it passes on fallback, HIP, and Vulkan. The three fresh
-Luisa path records still compare with zero failures. The strict Cycles
-comparison remains at 24 outstanding gates because closure/BSDF output slots
-are intentionally not marked written until the raw closure inventory and
-lobe-selection trace are connected.
-
-That closure gate is now connected through a trace-only surface ABI. The
-ordinary renderer keeps its compact `SurfaceSample`; an oracle build requests
-the post-shader closure array and the selected-closure record from the same
-GraphSurface implementation that performs sampling. No closure selection is
-reimplemented in the integrator.
-
-For the point-path diffuse closure, all newly written fields pass against
-Cycles CPU: closure count/index/type/sample weight, raw weight and normal,
-rescaled selection dimension, BSDF label, `wo`, weighted evaluation, PDF,
-unguided PDF, sampled roughness, and eta. In particular, Cycles reports
-Diffuse sampled roughness as `(1, 1)`, independently of the Diffuse node's
-model-selection Roughness input. The strict failure count falls from 24 to 12
-with no comparator changes or waivers.
-
-The device regression executes the entire raw-closure and sample path on
-fallback, HIP, and Vulkan. All 32 project tests pass. Aggregated Principled is
-intentionally exposed with the Cycles virtual closure identity until it is
-expanded into the same physical closure list as Cycles; complex materials
-therefore cannot falsely pass this gate.
-
-The post-bounce gate is now driven by a single Cycles path-state transition,
-not by independent trace-field assignments. Given the previous flags,
-visibility, counters, closure label, runtime flags, and scene-synchronized
-bounce limits, the Luisa DSL transition advances:
-
-- regular and transparent bounce counters;
-- the absolute Sobol RNG offset;
-- Cycles `PathRayFlag` and `PathRayVisibilityFlag` bit layouts;
-- diffuse, glossy, singular, transmission, and transparent termination
-  semantics.
-
-The production path consumes the same transition to derive its object
-visibility mask. Secondary BSDF directions are normalized at the same point
-as Cycles, before the conditional triangle-origin construction. Surface
-runtime flags are accumulated from the actual post-shader closure inventory.
-Closure allocation now also uses Cycles' exact `1e-5` cutoff and
-`fabs(average(weight))` sample weight; the device regression covers values
-below and at the allocation boundary.
-
-On the point-path oracle, `post_depth`, throughput, ray origin/direction,
-flags, MIS state, runtime flags, and post visibility all pass against Cycles
-CPU. In particular:
-
-```text
-post bounce / transparent / rng = (1, 0, 32)
-post path flag                 = 266513
-post visibility                = 4
-surface runtime flag           = 12
-mis ray / minimum pdf          = (0.244151756, 0.244151756)
-```
-
-The strict failure count falls from 12 to 4. The only remaining point-probe
-gates are Blender/Cycles synchronization identities: surface shader ID,
-light object/group ID, and light shader ID. Fallback versus HIP and fallback
-versus Vulkan both pass with zero failures, and all 33 project tests pass.
-
-## Explicit synchronization identity and shadow-origin checkpoint
-
-The four remaining identity gates are now populated from explicit Blender
-synchronization metadata. They are not reconstructed later from Psycles array
-indices. The exporter mirrors the relevant `BlenderSync` ordering:
-
-- the five Cycles default shaders retain their fixed leading slots, including
-  the world shader at index 3;
-- light shaders are assigned in dependency-graph object order;
-- material shaders follow in dependency-graph material order;
-- object, light-group, and full 64-bit shader identities travel through the
-  scene contract and GPU records without truncation.
-
-This also removes the former lexical sort of analytic lights. That sort was
-visually harmless in a one-light probe but changes which physical emitter is
-selected for a fixed random number in a multi-light scene. The exporter
-regression deliberately names two lights in reverse lexical order and locks
-the dependency-graph order, shader IDs, object IDs, and light-group IDs.
-Cycles' shader flags are represented by a formal source-identity composition
-function with a host regression for the exact ABI values.
-
-The resulting fallback, HIP, and Vulkan point-path records each pass the
-official Cycles CPU oracle with zero failures:
-
-```text
-exact fields        = 43 / 43
-random exact fields = 16 / 16
-float32 fields      = 84 / 84
-topology checks     = 3 / 3
-maximum abs error   = 4.76837158203125e-7 (fallback)
-                      7.152557373046875e-7 (HIP, Vulkan)
-```
-
-Visual inspection then exposed a separate backend-dependent self-shadow that
-the single-pixel trace did not cover: fallback showed a diagonal dotted band
-and Vulkan showed a dark corner, while HIP was clean. The missing operation
-was Cycles' second surface-ray offset stage, not a tunable epsilon. Psycles now
-composes the same two predicates:
-
-1. construct the light shadow origin with the shadow-terminator offset;
-2. while the source primitive exclusion is active, transform the ray to object
-   space and run the source-triangle self-intersection certificate;
-3. retain the exact origin when the certificate succeeds, otherwise apply the
-   robust ULP offset while retaining explicit source exclusion.
-
-The shared-edge regression proves that an interior origin remains exact while
-an ambiguous edge origin takes the robust branch. It runs on fallback, HIP,
-and Vulkan. Fresh EXRs are pixel-identical between all three Luisa backends
-under `oiiotool --diff`, and the post-fix triptych was also inspected
-visually. The complete project suite passes 35/35 with 32-way scheduling.
-
-The committed reports and triptych are under
-[`docs/validation/2026-07-30/luisa-path-trace/`](validation/2026-07-30/luisa-path-trace/).
-
-## Multi-emitter and spherical-rectangle light contract
-
-The analytic-light trace is no longer restricted to a zero-radius point
-light. A two-point scene locks both halves of a flat, non-light-tree
-distribution: selection random `0.1931770742` selects dependency-graph emitter
-zero and `0.8768947124` selects emitter one, each with selection PDF `0.5`.
-Both complete paths pass Cycles CPU on fallback, HIP, and Vulkan with all
-`43 + 16 + 84 + 3` comparison gates.
-
-Full-spread rectangle lights now lower Cycles'
-`area_light_rect_sample` measure contract directly into Luisa DSL. This is the
-Ureña spherical-rectangle parametrization, including the
-cancellation-resistant four-`asin` solid-angle expression and Cycles' planar
-fallback at tiny solid angles and grazing normalized edges. Rectangle
-sampling produces a solid-angle PDF directly; it is never subjected to a
-second area Jacobian. Ellipse lights use Cycles' concentric disk mapping.
-
-Center and grazing complete-path oracles pass on all three Luisa backends. The
-grazing case also produced a backend-level regression: strict Vulkan float32
-`asin` was not reproducible through either native SPIR-V or the HLSL fallback.
-Luisa `next` commit `0d2ea3f6e` implements one no-contraction, range-reduced
-strict contract, exercises both code-generation routes, and bumps the native
-Vulkan shader-cache tag so stale SPIR-V cannot survive the semantic change.
-No application-side trigonometric approximation was retained.
-
-Full-frame comparison revealed and corrected a separate oracle configuration
-bug. `render_cycles_golden.py` now pins Tabulated Sobol, scrambling distance
-one, and disabled automatic scrambling, matching both the path oracle and
-Psycles. A Blender regression locks this configuration. On the one-sample
-rectangle diagnostic, this reduces Combined RMSE from `0.01826` under
-Blender's unrelated `AUTOMATIC` sampler to `0.002610`.
-
-The remaining sparse image residual is expected but not waived. At the
-maximum-error pixel, all sampled NEE and BSDF fields pass; the BSDF secondary
-ray intersects the rectangle inside its extents. Cycles therefore evaluates a
-forward analytic-light hit, while Psycles currently cannot intersect analytic
-lights. Production NEE must remain full-weight until that complementary
-technique exists. Consequently:
-
-1. sampled rectangle position, direction, identity, PDF, evaluation factor,
-   and theoretical MIS inputs are aligned;
-2. actual analytic-light MIS is not aligned until forward light
-   intersection/evaluation is implemented;
-3. narrow-spread area lights still require the formal Cycles spread-clamping
-   construction before sampling.
-
-The reports, image metrics, and inspected reference/actual/difference
-triptych are in the
-[`luisa-path-trace` validation record](validation/2026-07-30/luisa-path-trace/README.md).
+Forward analytic-light and volume consumers are part of the native runtime;
+old progress claims that those paths do not yet exist are not current
+guidance. Consult [compatibility status](cycles-compatibility.md) for actual
+remaining features. The [equal-pass full-scene campaign](validation/2026-09-08/matched-pass-hip/README.md)
+records unresolved image errors and performance gaps independently of focused
+trace passes. Historical gate counts and custom-executor trace checkpoints
+remain in dated reports/Git history, not as present completion claims.

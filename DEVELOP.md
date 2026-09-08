@@ -94,8 +94,9 @@ it is removal work, not an approved alternate architecture.
 
 Use [the compatibility status](docs/cycles-compatibility.md) for current
 coverage and [the validation index](VALIDATION.md) for completed gates.
-The [four-scene HIP campaign](docs/validation/2026-09-08/four-scene-hip/README.md)
-records 12 paired 256 spp runs at Psycles eaa7c72e / Luisa 9ea3b720f.
+The [equal-pass HIP campaign](docs/validation/2026-09-08/matched-pass-hip/README.md)
+records 12 paired 256 spp runs at Psycles c5bf9247 / Luisa 9ea3b720f,
+with both engines' EXRs validated against the same 15-pass contract.
 Historical progress notes and old performance results are not current gates;
 their dated reports remain under docs/validation and in Git history.
 

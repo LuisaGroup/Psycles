@@ -140,9 +140,10 @@ sampling dimensions must align; a harmless last-bit difference does not
 justify slow software math, texture filtering or intersections. Inlining is
 left to the compiler rather than manually forced noinline boundaries.
 
-The [four-scene HIP baseline](validation/2026-09-08/four-scene-hip/README.md)
-separates render wall time, scene compilation, main JIT and coroutine frame
-size. It does not establish complete performance or path parity. Remaining
+The [equal-pass HIP baseline](validation/2026-09-08/matched-pass-hip/README.md)
+separates render wall time, scene compilation, session initialization
+(JIT plus setup/baking) and coroutine frame size. It does not establish
+complete performance or path parity. Remaining
 native opcodes, legacy displacement removal, unsupported geometry/motion
 configurations and indirect-light differences are listed in the compatibility
 status. OSL and unadmitted features are not silently approximated.
