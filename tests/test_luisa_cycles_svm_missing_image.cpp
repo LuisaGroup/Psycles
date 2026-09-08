@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
         0u, abi::ImageInterpolation::linear, abi::ImageExtension::clip));
     auto textures = device.create_bindless_array(1u);
     auto image = device.create_image<float>(PixelStorage::FLOAT4, 1u, 1u);
-    textures.emplace_on_update(0u, image, Sampler::linear_point_repeat());
+    textures.emplace_on_update(0u, image, Sampler::linear_point_zero());
     const std::array pixel{luisa::float4{1.0f, 0.0f, 1.0f, 1.0f}};
     auto binding_buffer = device.create_buffer<Binding>(bindings.size());
     auto words = device.create_buffer<unsigned>(table.table.words.size());

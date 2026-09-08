@@ -40,6 +40,7 @@ constexpr auto node_word_count = std::uint32_t{3u};
 
 struct TextureSamplingShape {
   std::size_t native_samples{};
+  std::size_t explicit_samplers{};
   std::size_t texel_reads{};
 };
 
@@ -56,9 +57,12 @@ template<typename... Args>
             if (instruction->isa<xir::ResourceQueryInst>()) {
               const auto *query =
                   static_cast<const xir::ResourceQueryInst *>(instruction);
-              result.native_samples +=
+              result.explicit_samplers +=
                   query->op() ==
                   xir::ResourceQueryOp::BINDLESS_TEXTURE2D_SAMPLE_SAMPLER;
+              result.native_samples +=
+                  query->op() == xir::ResourceQueryOp::BINDLESS_TEXTURE2D_SAMPLE ||
+                  query->op() == xir::ResourceQueryOp::BINDLESS_TEXTURE2D_SAMPLE_SAMPLER;
             }
             if (instruction->isa<xir::ResourceReadInst>()) {
               const auto *read =
@@ -117,7 +121,7 @@ template<std::size_t Count>
   std::array<SceneImageBinding, Count> result{};
   for (auto index = std::size_t{}; index < Count; ++index) {
     result[index] = surface_detail::make_cycles_svm_image_binding(
-        static_cast<std::uint32_t>(bindings[index].resource_id),
+        static_cast<std::uint32_t>(index),
         bindings[index].interpolation, bindings[index].extension);
   }
   return result;
@@ -532,13 +536,14 @@ make_dual_pole_kernel() {
       return false;
     }
   }
-  // The runtime table emits the Cartesian product of three canonical
-  // interpolation families and four extension modes exactly once. Its shape
-  // is therefore 4 * (1 + 1 + 4) native samples for every scene size.
-  constexpr auto expected_scene_table_samples = std::size_t{24u};
+  // Original kernel/device/gpu/image.h stores the sampler in the texture
+  // object: one ordinary native sample or four bilinear bicubic samples.
+  // Extension/filter selection must not clone that algebra at runtime.
+  constexpr auto expected_scene_table_samples = std::size_t{5u};
   const auto scene_table_shape =
       texture_sampling_shape(make_scene_table_shape_kernel());
   if (scene_table_shape.native_samples != expected_scene_table_samples ||
+      scene_table_shape.explicit_samplers != 0u ||
       scene_table_shape.texel_reads != 0u) {
     std::cerr << "Cycles SVM scene image table lowered to "
               << scene_table_shape.native_samples << " native samples and "
@@ -580,8 +585,13 @@ make_dual_pole_kernel() {
       luisa::float4{0.20f, 0.30f, 0.40f, 0.50f},
   };
   auto image = device.create_image<float>(PixelStorage::FLOAT4, width, height);
-  auto textures = device.create_bindless_array(1u);
-  textures.emplace_on_update(0u, image, Sampler::linear_point_repeat());
+  auto textures = device.create_bindless_array(sampling_case_count);
+  for (auto i = std::size_t{}; i < sampling_bindings.size(); ++i) {
+    textures.emplace_on_update(
+        i, image, surface_detail::cycles_svm_texture_sampler(
+                      sampling_bindings[i].interpolation,
+                      sampling_bindings[i].extension));
+  }
   auto image_binding_buffer =
       device.create_buffer<SceneImageBinding>(sampling_scene_bindings.size());
   auto word_buffer = device.create_buffer<std::uint32_t>(words.size());

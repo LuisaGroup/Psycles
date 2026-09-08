@@ -23,28 +23,10 @@ cycles_texture_sampler_address(std::uint32_t extension) noexcept {
     }
 }
 
-// Canonical Cycles TextureInterpolator transfer function. Interpolation and
-// extension are immutable shader-graph metadata, so host specialization keeps
-// device control flow out of the recorded shader. Texture handles and UVs
-// remain Luisa expressions.
-template<typename TextureHeap>
-[[nodiscard]] Float4 sample_cycles_texture_2d(
-    const TextureHeap &textures,
-    Expr<std::uint32_t> handle,
-    Expr<luisa::float2> uv,
-    std::uint32_t interpolation,
-    std::uint32_t extension) noexcept {
-    auto texture = textures->tex2d(handle);
-    const auto address = cycles_texture_sampler_address(extension);
-    if (interpolation == 0u) {
-        return texture.sample(
-            uv, luisa::compute::SamplerFilter::POINT, address);
-    }
-    if (interpolation == 1u) {
-        return texture.sample(
-            uv, luisa::compute::SamplerFilter::LINEAR_POINT, address);
-    }
-
+template<typename Texture, typename Sample>
+[[nodiscard]] Float4 sample_cycles_texture_2d_bicubic(
+    const Texture &texture, Expr<luisa::float2> uv,
+    const Sample &sample) noexcept {
     // Cycles' fast bicubic reconstruction is a separable cubic B-spline
     // factored into four native bilinear samples. The factorization is exact:
     // g0=w0+w1, g1=w2+w3 and h selects the bilinear coordinate whose two
@@ -85,16 +67,38 @@ template<typename TextureHeap>
     const auto size = texture.size();
     const auto x = cubic_axis(uv.x, cast<float>(size.x));
     const auto y = cubic_axis(uv.y, cast<float>(size.y));
-    const auto sample = [&](Float u, Float v) noexcept {
-        return texture.sample(
-            make_float2(u, v),
-            luisa::compute::SamplerFilter::LINEAR_POINT,
-            address);
-    };
     return y.z * (x.z * sample(x.x, y.x) +
                   x.w * sample(x.y, y.x)) +
            y.w * (x.z * sample(x.x, y.y) +
                   x.w * sample(x.y, y.y));
+}
+
+// Explicit sampler specialization remains useful for independent API tests
+// and the private legacy displacement consumer. Native SVM uses the sampler
+// already bound to the ImageManager handle, like Cycles' GPU texture object.
+template<typename TextureHeap>
+[[nodiscard]] Float4 sample_cycles_texture_2d(
+    const TextureHeap &textures,
+    Expr<std::uint32_t> handle,
+    Expr<luisa::float2> uv,
+    std::uint32_t interpolation,
+    std::uint32_t extension) noexcept {
+    auto texture = textures->tex2d(handle);
+    const auto address = cycles_texture_sampler_address(extension);
+    if (interpolation == 0u) {
+        return texture.sample(
+            uv, luisa::compute::SamplerFilter::POINT, address);
+    }
+    if (interpolation == 1u) {
+        return texture.sample(
+            uv, luisa::compute::SamplerFilter::LINEAR_POINT, address);
+    }
+    return sample_cycles_texture_2d_bicubic(
+        texture, uv, [&](Float u, Float v) noexcept {
+            return texture.sample(make_float2(u, v),
+                                  luisa::compute::SamplerFilter::LINEAR_POINT,
+                                  address);
+        });
 }
 
 }// namespace psycles::luisa_backend::detail

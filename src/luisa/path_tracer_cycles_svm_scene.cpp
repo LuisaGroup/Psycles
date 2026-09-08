@@ -351,7 +351,7 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
         scene->device.create_buffer<float>(runtime->compilation.ies.size()));
   }
   runtime->image_bindings.reserve(runtime->compilation.images.size());
-  auto next_generated_texture_slot = std::uint64_t{1u};
+  auto next_native_texture_slot = std::uint64_t{1u};
   for (const auto &[image_id, image] : snapshot.images) {
     static_cast<void>(image);
     if (image_id.value > std::numeric_limits<std::uint32_t>::max()) {
@@ -359,19 +359,19 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
                    "address space";
       return nullptr;
     }
-    next_generated_texture_slot =
-        std::max(next_generated_texture_slot, image_id.value + 1u);
+    next_native_texture_slot =
+        std::max(next_native_texture_slot, image_id.value + 1u);
   }
   for (const auto &binding : runtime->compilation.images) {
+    if (next_native_texture_slot >
+        std::numeric_limits<std::uint32_t>::max()) {
+      diagnostic = "Cycles image descriptors exhaust the 32-bit Luisa "
+                   "bindless address space";
+      return nullptr;
+    }
+    const auto texture_slot =
+        static_cast<std::uint32_t>(next_native_texture_slot++);
     if (binding.nishita) {
-      if (next_generated_texture_slot >
-          std::numeric_limits<std::uint32_t>::max()) {
-        diagnostic = "Cycles generated sky image exhausts the 32-bit Luisa "
-                     "bindless address space";
-        return nullptr;
-      }
-      const auto texture_slot =
-          static_cast<std::uint32_t>(next_generated_texture_slot++);
       runtime->nishita_images.emplace_back(
           CyclesSvmNishitaImageRuntime{.parameters = *binding.nishita,
                                       .texture_slot = texture_slot});
@@ -392,8 +392,7 @@ build_cycles_svm_runtime(const std::shared_ptr<LuisaSceneData> &scene,
       return nullptr;
     }
     runtime->image_bindings.emplace_back(make_cycles_svm_image_binding(
-        static_cast<std::uint32_t>(binding.resource_id),
-        binding.interpolation, binding.extension,
+        texture_slot, binding.interpolation, binding.extension,
         snapshot.images.at(image_id).load_failed));
   }
   if (!runtime->image_bindings.empty()) {

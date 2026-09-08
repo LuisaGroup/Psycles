@@ -181,7 +181,7 @@ make_payload(const NishitaImageBinding &binding) {
   auto image = device.create_image<float>(
       PixelStorage::FLOAT4, nishita_texture_width, nishita_texture_height);
   auto textures = device.create_bindless_array(1u);
-  textures.emplace_on_update(0u, image, Sampler::linear_point_repeat());
+  textures.emplace_on_update(0u, image, Sampler::linear_point_edge());
   auto binding_buffer =
       device.create_buffer<SceneImageBinding>(scene_bindings.size());
   auto word_buffer = device.create_buffer<std::uint32_t>(payload.size());

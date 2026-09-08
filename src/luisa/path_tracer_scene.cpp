@@ -571,7 +571,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
             texture_slot_count,
             static_cast<std::size_t>(image_id.value) + 1u);
     }
-    for (const auto &image : data->cycles_svm->nishita_images) {
+    for (const auto &image : data->cycles_svm->image_bindings) {
         texture_slot_count = std::max(
             texture_slot_count,
             static_cast<std::size_t>(image.texture_slot) + 1u);
@@ -665,6 +665,25 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
     stream << dummy_image.copy_from(
         luisa::span{dummy_pixels});
 
+    const auto bind_scene_image = [&](contract::ImageId image_id,
+                                       const Image<float> &resource) {
+        // Retained only for the private displacement bridge. Native handles
+        // have separate immutable sampler descriptors sharing this storage.
+        data->texture_heap.emplace_on_update(
+            static_cast<std::uint32_t>(image_id.value), resource,
+            luisa::compute::Sampler::linear_point_repeat());
+        const auto &handles = data->cycles_svm->compilation.images;
+        for (auto i = std::size_t{}; i < handles.size(); ++i) {
+            const auto &handle = handles[i];
+            if (!handle.nishita && handle.resource_id == image_id.value) {
+                data->texture_heap.emplace_on_update(
+                    data->cycles_svm->image_bindings[i].texture_slot, resource,
+                    cycles_svm_texture_sampler(handle.interpolation,
+                                               handle.extension));
+            }
+        }
+    };
+
     for (const auto &[image_id, image] : snapshot.images) {
         if (image.load_failed) {
             // The native binding carries failed-image state; no GPU texture
@@ -708,10 +727,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     luisa::compute::PixelStorage::BYTE4,
                     decoded->width,
                     decoded->height));
-            data->texture_heap.emplace_on_update(
-                static_cast<std::uint32_t>(image_id.value),
-                resource,
-                luisa::compute::Sampler::linear_point_repeat());
+            bind_scene_image(image_id, resource);
             stream << resource.copy_from(
                 luisa::span{pixels});
         } else {
@@ -736,10 +752,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
                     luisa::compute::PixelStorage::FLOAT4,
                     decoded->width,
                     decoded->height));
-            data->texture_heap.emplace_on_update(
-                static_cast<std::uint32_t>(image_id.value),
-                resource,
-                luisa::compute::Sampler::linear_point_repeat());
+            bind_scene_image(image_id, resource);
             stream << resource.copy_from(
                 luisa::span{pixels});
         }
