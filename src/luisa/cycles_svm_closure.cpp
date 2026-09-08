@@ -628,279 +628,223 @@ void node_closure_bsdf(const KernelGlobals &kernel_globals, Cursor &cursor,
   if ((node_feature_mask & kernel_feature_node_bsdf) != 0u) {
     $if(mix_weight == 0.0f) { node_closure_bsdf_skip(cursor, closure_type); }
     $else {
-      // TinyStorage has no physical pool, but failed allocation does not
-      // suppress transparent, portal, or Principled shader-state effects.
-      {
-        $if(closure_type ==
-            static_cast<std::uint32_t>(CLOSURE_BSDF_PRINCIPLED_ID)) {
+      // Cycles dispatches the payload type once, preserving shared case bodies.
+      // A missing physical pool still permits transparent/portal/Principled
+      // shader-state effects; each native setup owns its allocation guard.
+      $switch(closure_type) {
+        PSYCLES_SVM_CASE(CLOSURE_BSDF_PRINCIPLED_ID) {
           node_principled_bsdf(kernel_globals, cursor, stack, mix_weight, true,
                                (kernel_features & kernel_feature_subsurface) !=
                                    0u,
                                shader_data, path_state, transition);
-        }
-        $else {
-          const auto subsurface_enabled =
-              (kernel_features & kernel_feature_subsurface) != 0u;
-          const auto hair_enabled =
-              (kernel_features & kernel_feature_hair) != 0u;
-          const auto principled_hair_enabled =
-              hair_enabled &&
-              (kernel_features & kernel_feature_node_principled_hair) != 0u;
-          const Bool is_bssrdf = subsurface_enabled
-                                      ? (closure_type == static_cast<std::uint32_t>(
-                                                             CLOSURE_BSSRDF_BURLEY_ID)) |
-                                            (closure_type == static_cast<std::uint32_t>(
-                                                                 CLOSURE_BSSRDF_RANDOM_WALK_ID)) |
-                                            (closure_type == static_cast<std::uint32_t>(
-                                                                 CLOSURE_BSSRDF_RANDOM_WALK_LEGACY_ID)) |
-                                            (closure_type == static_cast<std::uint32_t>(
-                                                                 CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID))
-                                      : Bool{false};
-          const Bool is_sheen =
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID)) |
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_ASHIKHMIN_VELVET_ID));
-          const Bool is_toon =
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_DIFFUSE_TOON_ID)) |
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_GLOSSY_TOON_ID));
-          const Bool is_ray_portal =
-              closure_type ==
-              static_cast<std::uint32_t>(CLOSURE_BSDF_RAY_PORTAL_ID);
-          const Bool is_hair = hair_enabled
-                                   ? (closure_type == static_cast<std::uint32_t>(
-                                                          CLOSURE_BSDF_HAIR_REFLECTION_ID)) |
-                                         (closure_type == static_cast<std::uint32_t>(
-                                                              CLOSURE_BSDF_HAIR_TRANSMISSION_ID))
-                                   : Bool{false};
-          const Bool is_principled_hair =
-              principled_hair_enabled
-                  ? (closure_type == static_cast<std::uint32_t>(
-                                         CLOSURE_BSDF_HAIR_CHIANG_ID)) |
-                        (closure_type == static_cast<std::uint32_t>(
-                                             CLOSURE_BSDF_HAIR_HUANG_ID))
-                  : Bool{false};
-          const Bool is_glass =
-              (closure_type == static_cast<std::uint32_t>(
-                                   CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID)) |
-              (closure_type == static_cast<std::uint32_t>(
-                                   CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID)) |
-              (closure_type == static_cast<std::uint32_t>(
-                                   CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID));
-          const Bool is_glossy =
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID)) |
-              (closure_type == static_cast<std::uint32_t>(
-                                   CLOSURE_BSDF_MICROFACET_BECKMANN_ID)) |
-              (closure_type == static_cast<std::uint32_t>(
-                                   CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID)) |
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID));
-          const Bool is_refraction =
-              (closure_type == static_cast<std::uint32_t>(
-                                   CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID)) |
-              (closure_type ==
-               static_cast<std::uint32_t>(
-                   CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID));
-          const Bool is_metallic =
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_PHYSICAL_CONDUCTOR)) |
-              (closure_type ==
-               static_cast<std::uint32_t>(CLOSURE_BSDF_F82_CONDUCTOR));
-          $if(is_bssrdf) {
-            if (subsurface_enabled) {
-              node_bssrdf(cursor, stack, closure_type, closure_weight,
-                          mix_weight, shader_data, path_state);
-            }
+        };
+        PSYCLES_SVM_CASE(CLOSURE_BSDF_DIFFUSE_ID) {
+          const auto color_x = cursor.word();
+          const auto color_y = cursor.word();
+          const auto color_z = cursor.word();
+          const auto roughness_input = cursor.word();
+          const auto normal_packed = cursor.word();
+          const auto normal_offset = cursor.byte(normal_packed, 0u);
+          auto normal =
+              stack_load_float3_default(stack, normal_offset, shader_data.N);
+          normal = native_vector_math::safe_normalize_nonzero_or(normal,
+                                                                 shader_data.N);
+
+          const auto weight = closure_weight * mix_weight;
+          const auto roughness = stack_load_input_float(stack, roughness_input);
+          $if(roughness < 1.0e-5f) {
+            diffuse_setup(shader_data, normal, weight);
           }
-          $elif(is_sheen) {
-            node_sheen(kernel_globals, cursor, stack, closure_type,
-                       closure_weight, mix_weight, shader_data);
-          }
-          $elif(is_toon) {
-            node_toon(kernel_globals, cursor, stack, closure_type,
-                      closure_weight, mix_weight, shader_data, path_state);
-          }
-          $elif(is_ray_portal) {
-            node_ray_portal(cursor, stack, closure_weight, mix_weight,
-                            shader_data);
-          }
-          $elif(is_hair) {
-            if (hair_enabled) {
-              node_hair(cursor, stack, closure_type, closure_weight, mix_weight,
-                        shader_data);
-            }
-          }
-          $elif(is_principled_hair) {
-            if (principled_hair_enabled) {
+          $else {
+            const auto color =
+                clamp(stack_load_input_float3(stack, color_x, color_y, color_z),
+                      0.0f, 1.0f);
+            oren_nayar_setup(shader_data, normal, weight, roughness, color);
+          };
+        };
+        PSYCLES_SVM_CASE(CLOSURE_BSDF_TRANSLUCENT_ID) {
+          const auto unused_param = cursor.word();
+          const auto normal_packed = cursor.word();
+          static_cast<void>(unused_param);
+          const auto normal_offset = cursor.byte(normal_packed, 0u);
+          auto normal =
+              stack_load_float3_default(stack, normal_offset, shader_data.N);
+          normal = native_vector_math::safe_normalize_nonzero_or(normal,
+                                                                 shader_data.N);
+          const auto weight = closure_weight * mix_weight;
+          translucent_setup(shader_data,
+                            detail::maybe_ensure_valid_specular_reflection(
+                                shader_data, normal),
+                            weight);
+        };
+        PSYCLES_SVM_CASE(CLOSURE_BSDF_TRANSPARENT_ID) {
+          const auto unused_param = cursor.word();
+          const auto unused_normal = cursor.word();
+          static_cast<void>(unused_param);
+          static_cast<void>(unused_normal);
+          transparent_setup(shader_data, path_state,
+                            closure_weight * mix_weight);
+        };
+        $case(static_cast<std::uint32_t>(CLOSURE_BSDF_PHYSICAL_CONDUCTOR),
+              static_cast<std::uint32_t>(CLOSURE_BSDF_F82_CONDUCTOR)) {
+          const auto distribution = cursor.word();
+          const auto base_ior_x = cursor.word();
+          const auto base_ior_y = cursor.word();
+          const auto base_ior_z = cursor.word();
+          const auto edge_tint_k_x = cursor.word();
+          const auto edge_tint_k_y = cursor.word();
+          const auto edge_tint_k_z = cursor.word();
+          const auto roughness_input = cursor.word();
+          const auto anisotropy_input = cursor.word();
+          const auto rotation_input = cursor.word();
+          const auto thin_film_thickness_input = cursor.word();
+          const auto thin_film_ior_input = cursor.word();
+          const auto normal_tangent_packed = cursor.word();
+          const auto normal_offset = cursor.byte(normal_tangent_packed, 0u);
+          const auto tangent_offset = cursor.byte(normal_tangent_packed, 1u);
+          auto normal =
+              stack_load_float3_default(stack, normal_offset, shader_data.N);
+          normal = native_vector_math::safe_normalize_nonzero_or(normal,
+                                                                 shader_data.N);
+          detail::metallic_setup(
+              kernel_globals, shader_data, path_state, closure_type,
+              distribution, mix_weight, normal,
+              stack_load_input_float3(stack, base_ior_x, base_ior_y,
+                                      base_ior_z),
+              stack_load_input_float3(stack, edge_tint_k_x, edge_tint_k_y,
+                                      edge_tint_k_z),
+              stack_load_input_float(stack, roughness_input),
+              stack_load_input_float(stack, anisotropy_input),
+              stack_load_input_float(stack, rotation_input),
+              stack_load_input_float(stack, thin_film_thickness_input),
+              stack_load_input_float(stack, thin_film_ior_input),
+              stack_load_float3_default(stack, tangent_offset,
+                                        make_float3(0.0f)),
+              tangent_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID));
+        };
+        PSYCLES_SVM_CASE(CLOSURE_BSDF_RAY_PORTAL_ID) {
+          node_ray_portal(cursor, stack, closure_weight, mix_weight,
+                          shader_data);
+        };
+        $case(
+            static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_ID),
+            static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_BECKMANN_ID),
+            static_cast<std::uint32_t>(CLOSURE_BSDF_ASHIKHMIN_SHIRLEY_ID),
+            static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_MULTI_GGX_ID)) {
+          const auto color_x = cursor.word();
+          const auto color_y = cursor.word();
+          const auto color_z = cursor.word();
+          const auto roughness_input = cursor.word();
+          const auto anisotropy_input = cursor.word();
+          const auto rotation_input = cursor.word();
+          const auto normal_tangent_packed = cursor.word();
+          const auto normal_offset = cursor.byte(normal_tangent_packed, 0u);
+          const auto tangent_offset = cursor.byte(normal_tangent_packed, 1u);
+          auto normal =
+              stack_load_float3_default(stack, normal_offset, shader_data.N);
+          normal = native_vector_math::safe_normalize_nonzero_or(normal,
+                                                                 shader_data.N);
+          detail::glossy_setup(
+              kernel_globals, shader_data, path_state, closure_type, mix_weight,
+              closure_weight, normal,
+              stack_load_input_float3(stack, color_x, color_y, color_z),
+              stack_load_input_float(stack, roughness_input),
+              stack_load_input_float(stack, anisotropy_input),
+              stack_load_input_float(stack, rotation_input),
+              stack_load_float3_default(stack, tangent_offset,
+                                        make_float3(0.0f)),
+              tangent_offset != static_cast<std::uint32_t>(SVM_STACK_INVALID));
+        };
+        $case(static_cast<std::uint32_t>(
+                  CLOSURE_BSDF_MICROFACET_GGX_REFRACTION_ID),
+              static_cast<std::uint32_t>(
+                  CLOSURE_BSDF_MICROFACET_BECKMANN_REFRACTION_ID)) {
+          const auto roughness_input = cursor.word();
+          const auto ior_input = cursor.word();
+          const auto normal_packed = cursor.word();
+          const auto normal_offset = cursor.byte(normal_packed, 0u);
+          auto normal =
+              stack_load_float3_default(stack, normal_offset, shader_data.N);
+          normal = native_vector_math::safe_normalize_nonzero_or(normal,
+                                                                 shader_data.N);
+          detail::refraction_setup(
+              kernel_globals, shader_data, path_state, closure_type, mix_weight,
+              closure_weight, normal,
+              stack_load_input_float(stack, roughness_input),
+              stack_load_input_float(stack, ior_input));
+        };
+        $case(static_cast<std::uint32_t>(CLOSURE_BSDF_MICROFACET_GGX_GLASS_ID),
+              static_cast<std::uint32_t>(
+                  CLOSURE_BSDF_MICROFACET_BECKMANN_GLASS_ID),
+              static_cast<std::uint32_t>(
+                  CLOSURE_BSDF_MICROFACET_MULTI_GGX_GLASS_ID)) {
+          const auto color_x = cursor.word();
+          const auto color_y = cursor.word();
+          const auto color_z = cursor.word();
+          const auto roughness_input = cursor.word();
+          const auto ior_input = cursor.word();
+          const auto thin_film_thickness_input = cursor.word();
+          const auto thin_film_ior_input = cursor.word();
+          const auto normal_packed = cursor.word();
+          const auto normal_offset = cursor.byte(normal_packed, 0u);
+          auto normal =
+              stack_load_float3_default(stack, normal_offset, shader_data.N);
+          normal = native_vector_math::safe_normalize_nonzero_or(normal,
+                                                                 shader_data.N);
+          detail::glass_setup(
+              kernel_globals, shader_data, path_state, closure_type, mix_weight,
+              normal, stack_load_input_float3(stack, color_x, color_y, color_z),
+              stack_load_input_float(stack, roughness_input),
+              stack_load_input_float(stack, ior_input),
+              stack_load_input_float(stack, thin_film_thickness_input),
+              stack_load_input_float(stack, thin_film_ior_input));
+        };
+        PSYCLES_SVM_CASE(CLOSURE_BSDF_ASHIKHMIN_VELVET_ID) {
+          node_sheen(
+              kernel_globals, cursor, stack,
+              static_cast<std::uint32_t>(CLOSURE_BSDF_ASHIKHMIN_VELVET_ID),
+              closure_weight, mix_weight, shader_data);
+        };
+        PSYCLES_SVM_CASE(CLOSURE_BSDF_SHEEN_ID) {
+          node_sheen(kernel_globals, cursor, stack,
+                     static_cast<std::uint32_t>(CLOSURE_BSDF_SHEEN_ID),
+                     closure_weight, mix_weight, shader_data);
+        };
+        $case(static_cast<std::uint32_t>(CLOSURE_BSDF_GLOSSY_TOON_ID),
+              static_cast<std::uint32_t>(CLOSURE_BSDF_DIFFUSE_TOON_ID)) {
+          node_toon(kernel_globals, cursor, stack, closure_type, closure_weight,
+                    mix_weight, shader_data, path_state);
+        };
+        if ((kernel_features & kernel_feature_hair) != 0u) {
+          if ((kernel_features & kernel_feature_node_principled_hair) != 0u) {
+            $case(static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_CHIANG_ID),
+                  static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_HUANG_ID)) {
               node_principled_hair(kernel_globals, cursor, stack, closure_type,
                                    closure_weight, mix_weight, shader_data,
                                    path_state);
-            }
-          }
-          $elif(is_glass) {
-            const auto color_x = cursor.word();
-            const auto color_y = cursor.word();
-            const auto color_z = cursor.word();
-            const auto roughness_input = cursor.word();
-            const auto ior_input = cursor.word();
-            const auto thin_film_thickness_input = cursor.word();
-            const auto thin_film_ior_input = cursor.word();
-            const auto normal_packed = cursor.word();
-            const auto normal_offset = cursor.byte(normal_packed, 0u);
-            auto normal =
-                stack_load_float3_default(stack, normal_offset, shader_data.N);
-            normal = native_vector_math::safe_normalize_nonzero_or(
-                normal, shader_data.N);
-            detail::glass_setup(
-                kernel_globals, shader_data, path_state, closure_type,
-                mix_weight, normal,
-                stack_load_input_float3(stack, color_x, color_y, color_z),
-                stack_load_input_float(stack, roughness_input),
-                stack_load_input_float(stack, ior_input),
-                stack_load_input_float(stack, thin_film_thickness_input),
-                stack_load_input_float(stack, thin_film_ior_input));
-          }
-          $elif(is_glossy) {
-            const auto color_x = cursor.word();
-            const auto color_y = cursor.word();
-            const auto color_z = cursor.word();
-            const auto roughness_input = cursor.word();
-            const auto anisotropy_input = cursor.word();
-            const auto rotation_input = cursor.word();
-            const auto normal_tangent_packed = cursor.word();
-            const auto normal_offset = cursor.byte(normal_tangent_packed, 0u);
-            const auto tangent_offset = cursor.byte(normal_tangent_packed, 1u);
-            auto normal =
-                stack_load_float3_default(stack, normal_offset, shader_data.N);
-            normal = native_vector_math::safe_normalize_nonzero_or(
-                normal, shader_data.N);
-            detail::glossy_setup(
-                kernel_globals, shader_data, path_state, closure_type,
-                mix_weight, closure_weight, normal,
-                stack_load_input_float3(stack, color_x, color_y, color_z),
-                stack_load_input_float(stack, roughness_input),
-                stack_load_input_float(stack, anisotropy_input),
-                stack_load_input_float(stack, rotation_input),
-                stack_load_float3_default(stack, tangent_offset,
-                                          make_float3(0.0f)),
-                tangent_offset !=
-                    static_cast<std::uint32_t>(SVM_STACK_INVALID));
-          }
-          $elif(is_refraction) {
-            const auto roughness_input = cursor.word();
-            const auto ior_input = cursor.word();
-            const auto normal_packed = cursor.word();
-            const auto normal_offset = cursor.byte(normal_packed, 0u);
-            auto normal =
-                stack_load_float3_default(stack, normal_offset, shader_data.N);
-            normal = native_vector_math::safe_normalize_nonzero_or(
-                normal, shader_data.N);
-            detail::refraction_setup(
-                kernel_globals, shader_data, path_state, closure_type,
-                mix_weight, closure_weight, normal,
-                stack_load_input_float(stack, roughness_input),
-                stack_load_input_float(stack, ior_input));
-          }
-          $elif(is_metallic) {
-            const auto distribution = cursor.word();
-            const auto base_ior_x = cursor.word();
-            const auto base_ior_y = cursor.word();
-            const auto base_ior_z = cursor.word();
-            const auto edge_tint_k_x = cursor.word();
-            const auto edge_tint_k_y = cursor.word();
-            const auto edge_tint_k_z = cursor.word();
-            const auto roughness_input = cursor.word();
-            const auto anisotropy_input = cursor.word();
-            const auto rotation_input = cursor.word();
-            const auto thin_film_thickness_input = cursor.word();
-            const auto thin_film_ior_input = cursor.word();
-            const auto normal_tangent_packed = cursor.word();
-            const auto normal_offset = cursor.byte(normal_tangent_packed, 0u);
-            const auto tangent_offset = cursor.byte(normal_tangent_packed, 1u);
-            auto normal =
-                stack_load_float3_default(stack, normal_offset, shader_data.N);
-            normal = native_vector_math::safe_normalize_nonzero_or(
-                normal, shader_data.N);
-            detail::metallic_setup(
-                kernel_globals, shader_data, path_state, closure_type,
-                distribution, mix_weight, normal,
-                stack_load_input_float3(stack, base_ior_x, base_ior_y,
-                                        base_ior_z),
-                stack_load_input_float3(stack, edge_tint_k_x, edge_tint_k_y,
-                                        edge_tint_k_z),
-                stack_load_input_float(stack, roughness_input),
-                stack_load_input_float(stack, anisotropy_input),
-                stack_load_input_float(stack, rotation_input),
-                stack_load_input_float(stack, thin_film_thickness_input),
-                stack_load_input_float(stack, thin_film_ior_input),
-                stack_load_float3_default(stack, tangent_offset,
-                                          make_float3(0.0f)),
-                tangent_offset !=
-                    static_cast<std::uint32_t>(SVM_STACK_INVALID));
-          }
-          $else {
-            $switch(closure_type) {
-              PSYCLES_SVM_CASE(CLOSURE_BSDF_DIFFUSE_ID) {
-                const auto color_x = cursor.word();
-                const auto color_y = cursor.word();
-                const auto color_z = cursor.word();
-                const auto roughness_input = cursor.word();
-                const auto normal_packed = cursor.word();
-                const auto normal_offset = cursor.byte(normal_packed, 0u);
-                auto normal = stack_load_float3_default(stack, normal_offset,
-                                                        shader_data.N);
-                normal = native_vector_math::safe_normalize_nonzero_or(
-                    normal, shader_data.N);
-
-                const auto weight = closure_weight * mix_weight;
-                const auto roughness =
-                    stack_load_input_float(stack, roughness_input);
-                $if(roughness < 1.0e-5f) {
-                  diffuse_setup(shader_data, normal, weight);
-                }
-                $else {
-                  const auto color = clamp(
-                      stack_load_input_float3(stack, color_x, color_y, color_z),
-                      0.0f, 1.0f);
-                  oren_nayar_setup(shader_data, normal, weight, roughness,
-                                   color);
-                };
-              };
-              PSYCLES_SVM_CASE(CLOSURE_BSDF_TRANSLUCENT_ID) {
-                const auto unused_param = cursor.word();
-                const auto normal_packed = cursor.word();
-                static_cast<void>(unused_param);
-                const auto normal_offset = cursor.byte(normal_packed, 0u);
-                auto normal = stack_load_float3_default(stack, normal_offset,
-                                                        shader_data.N);
-                normal = native_vector_math::safe_normalize_nonzero_or(
-                    normal, shader_data.N);
-                const auto weight = closure_weight * mix_weight;
-                translucent_setup(
-                    shader_data,
-                    detail::maybe_ensure_valid_specular_reflection(shader_data,
-                                                                   normal),
-                    weight);
-              };
-              PSYCLES_SVM_CASE(CLOSURE_BSDF_TRANSPARENT_ID) {
-                const auto unused_param = cursor.word();
-                const auto unused_normal = cursor.word();
-                static_cast<void>(unused_param);
-                static_cast<void>(unused_normal);
-                transparent_setup(shader_data, path_state,
-                                  closure_weight * mix_weight);
-              };
-              $default {
-                node_closure_bsdf_skip(cursor, closure_type);
-                transition.unsupported();
-              };
             };
+          }
+          $case(static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_REFLECTION_ID),
+                static_cast<std::uint32_t>(CLOSURE_BSDF_HAIR_TRANSMISSION_ID)) {
+            node_hair(cursor, stack, closure_type, closure_weight, mix_weight,
+                      shader_data);
           };
+        }
+        if ((kernel_features & kernel_feature_subsurface) != 0u) {
+          $case(
+              static_cast<std::uint32_t>(CLOSURE_BSSRDF_BURLEY_ID),
+              static_cast<std::uint32_t>(CLOSURE_BSSRDF_RANDOM_WALK_ID),
+              static_cast<std::uint32_t>(CLOSURE_BSSRDF_RANDOM_WALK_LEGACY_ID),
+              static_cast<std::uint32_t>(CLOSURE_BSSRDF_RANDOM_WALK_SKIN_ID)) {
+            node_bssrdf(cursor, stack, closure_type, closure_weight, mix_weight,
+                        shader_data, path_state);
+          };
+        }
+        $default {
+          node_closure_bsdf_skip(cursor, closure_type);
+          transition.unsupported();
         };
-      }
+      };
     };
     return;
   }
