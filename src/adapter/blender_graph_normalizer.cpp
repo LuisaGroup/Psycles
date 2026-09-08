@@ -47,14 +47,40 @@ private:
         std::map<RawOutputKey, RawOutputKey>;
     using LoweredOutputMap =
         std::map<LoweredOutputKey, TypedOutput>;
-    using GroupInputMap =
-        std::map<std::string, TypedOutput, std::less<>>;
     using SharedOutputMap =
         std::map<SharedOutputKey, TypedOutput>;
     using NodeGroupMap =
         std::map<std::string, yyjson_val *, std::less<>>;
 
-    yyjson_val *_tree{};
+    // Blender memoizes SocketValues in the compute context of one group
+    // instance. Parent input evaluation must not discard a child's cache or
+    // confuse another instance of the same node-tree definition with nesting.
+    struct TreeContext {
+        yyjson_val *tree{};
+        TreeContext *parent{};
+        yyjson_val *instance{};
+        RawNodeMap raw_nodes;
+        RawLinkMap links;
+        LoweredOutputMap outputs;
+        SharedOutputMap shared_outputs;
+        std::set<std::string, std::less<>> building;
+        std::set<LoweredOutputKey> active_outputs;
+        std::map<std::string, std::unique_ptr<TreeContext>, std::less<>> children;
+    };
+    TreeContext _root_context;
+    TreeContext *_context{&_root_context};
+
+    class ContextScope {
+        BlenderGraphNormalizer &_owner;
+        TreeContext *_previous;
+    public:
+        ContextScope(BlenderGraphNormalizer &owner, TreeContext *context) noexcept
+            : _owner{owner}, _previous{std::exchange(owner._context, context)} {}
+        ~ContextScope() { _owner._context = _previous; }
+        ContextScope(const ContextScope &) = delete;
+        ContextScope &operator=(const ContextScope &) = delete;
+    };
+
     std::string _material_name;
     const std::map<std::string, ImageId, std::less<>> &_image_ids;
     const std::map<std::string, ImageColorSpace, std::less<>> &
@@ -67,13 +93,6 @@ private:
     std::vector<
         std::unique_ptr<BlenderNodeLoweringComponent>>
         _lowering_components;
-    RawNodeMap _raw_nodes;
-    RawLinkMap _links;
-    LoweredOutputMap _outputs;
-    SharedOutputMap _shared_outputs;
-    GroupInputMap _group_inputs;
-    std::set<std::string, std::less<>> _building;
-    std::set<std::string, std::less<>> _group_stack;
     std::set<std::string, std::less<>> _warned;
     std::optional<TypedOutput> _default_image_coordinates;
     std::optional<TypedOutput> _default_generated_coordinates;
@@ -116,8 +135,8 @@ private:
 
     [[nodiscard]] yyjson_val *raw_node(
         std::string_view name) const noexcept {
-        auto iter = _raw_nodes.find(name);
-        return iter == _raw_nodes.end() ? nullptr : iter->second;
+        auto iter = _context->raw_nodes.find(name);
+        return iter == _context->raw_nodes.end() ? nullptr : iter->second;
     }
 
     [[nodiscard]] yyjson_val *raw_input(
@@ -184,24 +203,25 @@ private:
     }
 
     void load_tree_context(yyjson_val *tree) {
-        _tree = tree;
-        _raw_nodes.clear();
-        _links.clear();
-        _outputs.clear();
-        _shared_outputs.clear();
-        _building.clear();
+        _context->tree = tree;
+        _context->raw_nodes.clear();
+        _context->links.clear();
+        _context->outputs.clear();
+        _context->shared_outputs.clear();
+        _context->building.clear();
+        _context->active_outputs.clear();
 
-        auto *nodes = member(_tree, "nodes");
+        auto *nodes = member(tree, "nodes");
         if (nodes != nullptr && yyjson_is_arr(nodes)) {
             yyjson_arr_iter iterator =
                 yyjson_arr_iter_with(nodes);
             while (auto *node =
                        yyjson_arr_iter_next(&iterator)) {
-                _raw_nodes.emplace(
+                _context->raw_nodes.emplace(
                     text(member(node, "name")), node);
             }
         }
-        auto *links = member(_tree, "links");
+        auto *links = member(tree, "links");
         if (links != nullptr && yyjson_is_arr(links)) {
             yyjson_arr_iter iterator =
                 yyjson_arr_iter_with(links);
@@ -211,19 +231,19 @@ private:
                     member(link, "from_node"));
                 const auto from_socket = text(
                     member(link, "from_socket"));
-                auto source = _raw_nodes.find(from_node);
+                auto source = _context->raw_nodes.find(from_node);
                 const auto to_node = text(member(link, "to_node"));
                 const auto to_socket = text(member(link, "to_socket"));
                 // Cycles excludes both unavailable endpoints from its socket
                 // maps. Old exports lack this optional descriptive field.
-                if ((source != _raw_nodes.end() &&
+                if ((source != _context->raw_nodes.end() &&
                      !boolean(member(raw_output(source->second, from_socket),
                                      "available"), true)) ||
                     !boolean(member(raw_input(raw_node(to_node), to_socket),
                                     "available"), true)) {
                     continue;
                 }
-                if (source != _raw_nodes.end() &&
+                if (source != _context->raw_nodes.end() &&
                     !muted_output_has_bypass(
                         source->second, from_socket)) {
                     // Cycles does not put an un-bypassed muted output in
@@ -232,7 +252,7 @@ private:
                     // own input default.
                     continue;
                 }
-                _links.insert_or_assign(
+                _context->links.insert_or_assign(
                     RawOutputKey{
                         .node = to_node,
                         .socket = to_socket},
@@ -249,8 +269,8 @@ private:
         const auto key = RawOutputKey{
             .node = text(member(node, "name")),
             .socket = std::string{identifier}};
-        auto iter = _links.find(key);
-        return iter == _links.end()
+        auto iter = _context->links.find(key);
+        return iter == _context->links.end()
                    ? std::nullopt
                    : std::optional<RawOutputKey>{iter->second};
     }
@@ -262,8 +282,8 @@ private:
             .node = text(member(node, "name")),
             .socket = std::string{identifier}};
         return std::any_of(
-            _links.begin(),
-            _links.end(),
+            _context->links.begin(),
+            _context->links.end(),
             [&key](const auto &link) {
                 return link.second == key;
             });
@@ -835,10 +855,10 @@ private:
     [[nodiscard]] std::optional<TypedOutput> shared_output(
         std::string_view raw_node_name,
         std::string_view semantic) const override {
-        const auto iter = _shared_outputs.find(SharedOutputKey{
+        const auto iter = _context->shared_outputs.find(SharedOutputKey{
             .node = std::string{raw_node_name},
             .semantic = std::string{semantic}});
-        return iter == _shared_outputs.end()
+        return iter == _context->shared_outputs.end()
                    ? std::nullopt
                    : std::optional<TypedOutput>{iter->second};
     }
@@ -850,8 +870,8 @@ private:
         auto key = SharedOutputKey{
             .node = std::move(raw_node_name),
             .semantic = std::move(semantic)};
-        if (const auto iter = _shared_outputs.find(key);
-            iter != _shared_outputs.end()) {
+        if (const auto iter = _context->shared_outputs.find(key);
+            iter != _context->shared_outputs.end()) {
             if (iter->second.ref == output.ref &&
                 iter->second.type == output.type) {
                 return;
@@ -861,7 +881,7 @@ private:
             // request order change graph identity.
             std::abort();
         }
-        _shared_outputs.emplace(std::move(key), std::move(output));
+        _context->shared_outputs.emplace(std::move(key), std::move(output));
     }
 
     [[nodiscard]] std::optional<TypedOutput>
@@ -971,7 +991,7 @@ private:
             // each lowering component recurse in its own bind order changes
             // both the native node order and the allocated stack addresses.
             // Muted/reroute/group forwarding keeps its own socket semantics.
-            if (!_building.emplace(node_name).second) {
+            if (!_context->building.emplace(node_name).second) {
                 warn_once(
                     "cycle:" + node_name,
                     "recursive node dependency detected at '" +
@@ -995,7 +1015,7 @@ private:
                 static_cast<void>(lower_output(
                     source->node, source->socket, input_type));
             }
-            _building.erase(node_name);
+            _context->building.erase(node_name);
         }
         if (type == "DISPLACEMENT") {
             const auto displacement = _graph.add_node(
@@ -1117,9 +1137,24 @@ private:
                 .type = SocketType::normal};
         }
         if (type == "GROUP_INPUT") {
-            if (auto iter = _group_inputs.find(socket);
-                iter != _group_inputs.end()) {
-                return iter->second;
+            if (_context->parent != nullptr) {
+                auto *instance = _context->instance;
+                auto *input = raw_input(instance, socket);
+                auto input_type = socket_type(input);
+                if (input_type == SocketType::closure &&
+                    requested == SocketType::volume_closure) {
+                    input_type = SocketType::volume_closure;
+                }
+                // Follow only this Group Input in its parent's context.
+                // Linked/primitive conversion remains at the existing
+                // Blender boundary; unused instance inputs are never read.
+                ContextScope parent{*this, _context->parent};
+                if (auto source = input_source(instance, socket)) {
+                    return lower_output(source->node, source->socket, input_type);
+                }
+                return default_from_input(
+                    input, text(member(instance, "name")) + " / " + socket,
+                    input_type);
             }
             auto *output = raw_output(node, socket);
             warn_once(
@@ -1136,7 +1171,7 @@ private:
                 node, socket, requested);
         }
 
-        if (!_building.emplace(node_name).second) {
+        if (!_context->building.emplace(node_name).second) {
             warn_once(
                 "cycle:" + node_name,
                 "recursive node dependency detected at '" +
@@ -1146,7 +1181,7 @@ private:
         }
         const std::function<TypedOutput(TypedOutput)> finish =
             [&](TypedOutput output) {
-                _building.erase(node_name);
+                _context->building.erase(node_name);
                 return output;
             };
 
@@ -1181,7 +1216,7 @@ private:
 
     void lower_displacement_roots() {
         using contract::SocketType;
-        auto *root = member(_tree, "displacement_root");
+        auto *root = member(_context->tree, "displacement_root");
         const auto node = text(member(root, "node"));
         const auto socket = text(member(root, "socket"));
         if (node.empty() || socket.empty() ||
@@ -1276,13 +1311,25 @@ private:
         const auto key = LoweredOutputKey{
             .raw = {.node = node, .socket = socket},
             .source_type = source_type};
-        auto iter = _outputs.find(key);
-        if (iter == _outputs.end()) {
-            iter = _outputs.emplace(
-                key,
-                lower_natural_output(
-                    node, socket, source_type))
-                       .first;
+        auto &context = *_context;
+        auto iter = context.outputs.find(key);
+        if (iter == context.outputs.end()) {
+            // A true socket dependency cycle can cross a group boundary.
+            // Suspended sibling instances of the same definition are not
+            // cycles; only a repeated active (context, socket) is one.
+            if (!context.active_outputs.emplace(key).second) {
+                warn_once("cycle-output:" + node + ":" + socket,
+                          "recursive socket dependency at '" + node + "." + socket + "'");
+                return constant_from_output(raw_node(node), socket, source_type);
+            }
+            try {
+                const auto value = lower_natural_output(node, socket, source_type);
+                context.active_outputs.erase(key);
+                iter = context.outputs.emplace(key, value).first;
+            } catch (...) {
+                context.active_outputs.erase(key);
+                throw;
+            }
         }
         return conversion(iter->second, requested);
     }
@@ -1316,139 +1363,63 @@ private:
                 instance_name + " / " + socket,
                 result_type);
         }
-        if (!_group_stack.emplace(group_name).second) {
-            warn_once(
-                "group-recursion:" + group_name,
-                "recursive node group '" + group_name +
-                    "' is unsupported");
-            return constant_from_socket(
-                instance_output,
-                instance_name + " / " + socket,
-                result_type);
-        }
-
-        GroupInputMap bindings;
-        auto *inputs = member(instance, "inputs");
-        if (inputs != nullptr && yyjson_is_arr(inputs)) {
-            yyjson_arr_iter iterator =
-                yyjson_arr_iter_with(inputs);
-            while (auto *input =
-                       yyjson_arr_iter_next(&iterator)) {
-                const auto identifier =
-                    text(member(input, "identifier"));
-                if (identifier.empty() ||
-                    identifier == "__extend__") {
-                    continue;
-                }
-                const auto natural_type = socket_type(input);
-                const auto type =
-                    natural_type == SocketType::closure &&
-                            requested ==
-                                SocketType::volume_closure
-                        ? SocketType::volume_closure
-                        : natural_type;
-                if (auto source =
-                        input_source(instance, identifier)) {
-                    bindings.insert_or_assign(
-                        identifier,
-                        lower_output(
-                            source->node,
-                            source->socket,
-                            type));
-                } else {
-                    bindings.insert_or_assign(
-                        identifier,
-                        default_from_input(
-                            input,
-                            instance_name + " / " +
-                                identifier,
-                            type));
-                }
-            }
-        }
-
-        auto *saved_tree = _tree;
-        auto saved_raw_nodes = std::move(_raw_nodes);
-        auto saved_links = std::move(_links);
-        auto saved_outputs = std::move(_outputs);
-        auto saved_shared_outputs =
-            std::move(_shared_outputs);
-        auto saved_group_inputs =
-            std::move(_group_inputs);
-        auto saved_building = std::move(_building);
-        auto restore = [&] {
-            _tree = saved_tree;
-            _raw_nodes = std::move(saved_raw_nodes);
-            _links = std::move(saved_links);
-            _outputs = std::move(saved_outputs);
-            _shared_outputs =
-                std::move(saved_shared_outputs);
-            _group_inputs =
-                std::move(saved_group_inputs);
-            _building = std::move(saved_building);
-            _group_stack.erase(group_name);
-        };
-
-        try {
-            load_tree_context(group->second);
-            _group_inputs = std::move(bindings);
-
-            yyjson_val *active_output = nullptr;
-            yyjson_val *fallback_output = nullptr;
-            for (const auto &[name, node] : _raw_nodes) {
-                static_cast<void>(name);
-                if (text(member(node, "type")) !=
-                    "GROUP_OUTPUT") {
-                    continue;
-                }
-                fallback_output = node;
-                if (node_property_bool(
-                        node, "is_active_output")) {
-                    active_output = node;
-                    break;
-                }
-            }
-            if (active_output == nullptr) {
-                active_output = fallback_output;
-            }
-
-            TypedOutput result;
-            if (active_output == nullptr) {
+        for (auto *ancestor = _context; ancestor != nullptr;
+             ancestor = ancestor->parent) {
+            if (ancestor->tree == group->second) {
                 warn_once(
-                    "group-output:" + group_name,
-                    "node group '" + group_name +
-                        "' has no Group Output node");
-                result = constant_from_socket(
+                    "group-recursion:" + group_name,
+                    "recursive node group '" + group_name + "' is unsupported");
+                return constant_from_socket(
                     instance_output,
                     instance_name + " / " + socket,
                     result_type);
-            } else if (
-                auto source =
-                    input_source(active_output, socket)) {
-                result = lower_output(
-                    source->node,
-                    source->socket,
-                    result_type);
-            } else {
-                auto *group_output =
-                    raw_input(active_output, socket);
-                warn_once(
-                    "group-output-unlinked:" +
-                        group_name + ":" + socket,
-                    "node group '" + group_name +
-                        "' output '" + socket +
-                        "' is unlinked; using its default");
-                result = default_from_input(
-                    group_output,
-                    group_name + " / " + socket,
-                    result_type);
             }
-            restore();
-            return result;
-        } catch (...) {
-            restore();
-            throw;
         }
+
+        auto &child = _context->children[instance_name];
+        const auto initialize = !child;
+        if (initialize) {
+            child = std::make_unique<TreeContext>();
+            child->parent = _context;
+            child->instance = instance;
+        }
+        ContextScope scope{*this, child.get()};
+        if (initialize) {
+            load_tree_context(group->second);
+        }
+
+        yyjson_val *active_output = nullptr;
+        yyjson_val *fallback_output = nullptr;
+        for (const auto &[name, node] : _context->raw_nodes) {
+            static_cast<void>(name);
+            if (text(member(node, "type")) != "GROUP_OUTPUT") {
+                continue;
+            }
+            fallback_output = node;
+            if (node_property_bool(node, "is_active_output")) {
+                active_output = node;
+                break;
+            }
+        }
+        if (active_output == nullptr) {
+            active_output = fallback_output;
+        }
+        if (active_output == nullptr) {
+            warn_once("group-output:" + group_name,
+                      "node group '" + group_name + "' has no Group Output node");
+            return constant_from_socket(
+                instance_output, instance_name + " / " + socket, result_type);
+        }
+        if (auto source = input_source(active_output, socket)) {
+            return lower_output(source->node, source->socket, result_type);
+        }
+        auto *group_output = raw_input(active_output, socket);
+        warn_once(
+            "group-output-unlinked:" + group_name + ":" + socket,
+            "node group '" + group_name + "' output '" + socket +
+                "' is unlinked; using its default");
+        return default_from_input(
+            group_output, group_name + " / " + socket, result_type);
     }
 
 public:
@@ -1469,8 +1440,7 @@ public:
         std::vector<BlenderSceneDiagnostic> &diagnostics,
         bool automatic_bump_from_displacement,
         bool true_displacement)
-        : _tree{tree},
-          _material_name{std::move(material_name)},
+        : _material_name{std::move(material_name)},
           _image_ids{image_ids},
           _image_color_spaces{image_color_spaces},
           _image_alpha_types{image_alpha_types},
@@ -1481,7 +1451,7 @@ public:
           _automatic_bump_from_displacement{
               automatic_bump_from_displacement},
           _true_displacement{true_displacement} {
-        load_tree_context(_tree);
+        load_tree_context(tree);
     }
 
     [[nodiscard]] ShaderGraph build() {
@@ -1492,7 +1462,7 @@ public:
         lower_displacement_roots();
 
         auto *raw_volume_root =
-            member(_tree, "volume_root");
+            member(_context->tree, "volume_root");
         const auto volume_node =
             text(member(raw_volume_root, "node"));
         const auto volume_socket =
@@ -1500,7 +1470,7 @@ public:
         const auto has_volume_root =
             !volume_node.empty() && !volume_socket.empty();
 
-        auto *root = member(_tree, "surface_root");
+        auto *root = member(_context->tree, "surface_root");
         const auto node = text(member(root, "node"));
         const auto socket = text(member(root, "socket"));
         if ((node.empty() || socket.empty()) && has_volume_root) {
