@@ -172,10 +172,13 @@ identity, closure declaration order and unavailable Voronoi defaults.
 The [Blender forwarding repair](validation/2026-09-08/svm-group-forwarding/README.md)
 adds 34 original images for linked/primitive group boundaries and separate
 Blender luma/Gamma folds: 33 raw-exact and one with three-ULP typed literal
-differences, without changing device arithmetic or expected words. The latest
+differences, without changing device arithmetic or expected words. The
 [native Math expansion repair](validation/2026-09-08/svm-math-expansion/README.md)
 adds 18 exact original images, with 15 failures before the repair. It restores
 Clamp creation after native conversion links without changing SVM ranking.
+The latest [Mapping declaration repair](validation/2026-09-08/svm-mapping-declarations/README.md)
+at `61443f70` adds eighteen exact original images, including a five-node
+counterexample where a redundant type conversion adds three SVM words.
 All 279 Barbershop used-shader images have equal lengths: 115 raw-equal,
 158 with identical layouts and differences only in declared resource-ID
 fields, and six remaining different schedules. Resource binding equivalence
@@ -189,7 +192,7 @@ function boundaries in a controlled A/B/A experiment slows surface time by
 is changed. A separate ordinary microfacet callable control is also reverted:
 the baseline microfacet bodies are already inlined, and outlining expands
 fixed private storage from 2,496 to 94,896 bytes with a large slowdown.
-The current 64-spp surface GPU total is 5.915631 s against the
+The current 64-spp surface GPU total is 5.904182 s against the
 retained original Cycles 2.962829 s. Surface visits remain effectively
 unchanged at 332.3 million. Final machine code retains only three outlined
 noise/math helpers, 256 VGPRs and 2496 fixed private bytes. The report records
@@ -203,7 +206,7 @@ The parallel fallback run exposed a separate production-queue lost-wakeup
 race, repaired generically in child `85e5300f1`, with two minimal failures
 and 100 green repetitions each. Strict native Vulkan lamp-routing and
 bump-state tests pass 2/2 with 31 native SPIR-V compilations and no DXC/DXIL
-load. Current host results are 166/166, including the unwaived source-size
+load. Current host results are 167/167, including the unwaived source-size
 gate. Existing oversized tests are separated into cohesive modules without
 removing assertions; ConvertNode now has its own ordinary translation unit.
 
