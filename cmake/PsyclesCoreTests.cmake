@@ -387,6 +387,12 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_wireframe_tests)
 
     if(TARGET psycles_luisa_runtime)
+        add_executable(psycles_cycles_svm_group_liveness_tests tests/test_cycles_svm_group_liveness.cpp)
+        target_link_libraries(psycles_cycles_svm_group_liveness_tests PRIVATE Psycles::luisa_runtime)
+        target_compile_features(psycles_cycles_svm_group_liveness_tests PRIVATE cxx_std_20)
+        target_compile_definitions(psycles_cycles_svm_group_liveness_tests PRIVATE
+            PSYCLES_SVM_IMPORT_FIXTURE_DIR="${CMAKE_CURRENT_LIST_DIR}/../tests/data")
+        add_test(NAME psycles.cycles_svm_group_liveness COMMAND psycles_cycles_svm_group_liveness_tests)
         add_executable(psycles_cycles_svm_mapping_declarations_tests tests/test_cycles_svm_mapping_declarations.cpp)
         target_link_libraries(psycles_cycles_svm_mapping_declarations_tests PRIVATE Psycles::luisa_runtime)
         target_compile_features(psycles_cycles_svm_mapping_declarations_tests PRIVATE cxx_std_20)
