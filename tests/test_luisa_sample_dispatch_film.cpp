@@ -1,3 +1,5 @@
+#include "path_trace_comparison_test_support.h"
+
 #include <psycles/compiler/core_nodes.h>
 #include <psycles/contract/scene.h>
 #include <psycles/io/image.h>
@@ -367,6 +369,24 @@ render(luisa::compute::Context &context, std::string_view backend,
   if (closure_histogram_sink && !closure_histogram_sink->histogram) {
     return std::nullopt;
   }
+  // Opt-in, lossless evidence for scheduler/fast-math triage. This observes
+  // the already-rendered trace; it never changes a device path or tolerance.
+  if (trace_sink && std::getenv("PSYCLES_SAMPLE_DISPATCH_TRACE_AUDIT")) {
+    std::cerr << "dispatch_trace_begin " << static_cast<unsigned>(scheduler)
+              << ' ' << samples_per_dispatch << ' ' << split_request
+              << ' ' << staged_surface_sorting << ' '
+              << wavefront_tail_megakernel_threshold << ' '
+              << zero_nee_fixture << '\n';
+    for (auto slot = std::size_t{}; slot < trace_sink->trace->slots.size(); ++slot) {
+      std::cerr << "dispatch_trace_slot " << slot;
+      for (const auto value : trace_sink->trace->slots[slot]) {
+        std::cerr << ' ' << std::hex << std::bit_cast<std::uint32_t>(value)
+                  << std::dec;
+      }
+      std::cerr << '\n';
+    }
+    std::cerr << "dispatch_trace_end\n";
+  }
   return RenderResult{
       .output = std::move(output),
       .trace = trace_sink ? std::move(trace_sink->trace) : std::nullopt,
@@ -425,8 +445,8 @@ render(luisa::compute::Context &context, std::string_view backend,
            component < reference.trace->slots[slot].size(); ++component) {
         const auto expected = reference.trace->slots[slot][component];
         const auto actual = candidate.trace->slots[slot][component];
-        const auto matches =
-            exact ? same_bits(expected, actual) : close(expected, actual);
+        const auto matches = psycles::test::trace_component_matches(
+            slot, component, expected, actual, exact);
         if (!matches) {
           std::cerr << label << " changed path trace at slot " << slot
                     << ", component " << component << ": expected " << expected

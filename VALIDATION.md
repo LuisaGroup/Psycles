@@ -50,9 +50,18 @@ affected comparisons explicitly exclude the union of invalid pixels.
 ## Published compiler and backend gate
 
 The latest renderer change is the
-[homogeneous-volume work correction](docs/validation/2026-09-08/volume-work/README.md)
-at 3a5cc005. The subsequent c5bf9247 changes the benchmark protocol, not
-renderer semantics. The earlier
+[native descriptor sampler correction](docs/validation/2026-09-08/bound-image-sampler/README.md)
+at e2d38fc0. Its six follow-up 256-spp canaries retain finite outputs and the
+same frame sizes; Barbershop's new Psycles median is 38.8902 s, 1.0% below
+the paired baseline above. These use retained Cycles references, not new
+paired timings, and do not close the surface-shading gap. First-use versus
+warm downstream HIP link timings are recorded separately.
+
+The [scheduler trace comparison correction](docs/validation/2026-09-08/dispatch-trace-comparison/README.md)
+fixes the outstanding fallback assertion without changing renderer binaries
+or any captured trace bits. Continuous intermediate values have a separate
+1e-4 bound; RNG/discrete state/written lanes are now exact gates. Film's 2e-5
+bound and serial bit-exact chunking remain unchanged. The earlier
 [entry specialization](docs/validation/2026-09-08/svm-entry-usage/README.md) and
 [generic read-only coroutine correction](docs/validation/2026-09-08/coro-readonly-forwarding/README.md)
 remain covered by the complete suites.
@@ -60,14 +69,16 @@ remain covered by the complete suites.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 179/179 | Complete selected HIP correctness suite |
-| Psycles fallback | 180/181 | Existing sample-dispatch film light_ng.z mismatch |
-| Psycles host | 155/156 | Existing four source-size violations |
-| Strict native Vulkan volume gate | 5/5 | Includes work, transport and original volume-emission film |
+| Psycles HIP | 180/180 | Plus the complete standalone dispatch film test on HIP |
+| Psycles fallback | 182/182 | Includes repaired semantic dispatch trace comparison |
+| Psycles host | 156/157 | Existing four source-size violations; comparator has 11,016 checks |
+| Strict native Vulkan image gate | 5/5 | Bound sampler, image modes, missing image, sky and texture callable |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
 
-The fallback mismatch is expected 0xbf1f8bfd versus actual 0xbf1f8a50,
-without tolerance changes or slow arithmetic. The source-size failures are
+The former fallback mismatch was expected 0xbf1f8bfd versus actual 0xbf1f8a50
+in a spherical-light intermediate normal. The full captured traces establish
+unchanged discrete/RNG state and small continuous roundoff; no slow arithmetic
+or renderer fix was introduced. The remaining source-size failures are
 cycles_svm_nodes.cpp, test_cycles_svm_compiler.cpp,
 test_luisa_compact_surface_preparation.cpp and test_luisa_cycles_svm.cpp.
 Do not call these full suites entirely green or relax their limits.
@@ -94,7 +105,7 @@ These are scoped checkpoints, not interchangeable full-render certificates.
 | Native volume words, ordered stack and consumers | [Volume SVM](docs/validation/2026-09-07/native-volume-svm/README.md), [volume consumers](docs/validation/2026-09-08/native-volume-consumers/README.md) |
 | World/background and camera-dependent baking | [Native background](docs/validation/2026-09-08/native-background/README.md) |
 | Scene admission, attribute residency and deferred volume emission | [Native admission](docs/validation/2026-09-08/native-scene-admission/README.md) |
-| Assigned-but-failed images | [Missing-image state](docs/validation/2026-09-08/native-missing-image/README.md) |
+| ImageManager sampler descriptors and assigned-but-failed images | [Native bound samplers](docs/validation/2026-09-08/bound-image-sampler/README.md), [missing-image state](docs/validation/2026-09-08/native-missing-image/README.md) |
 | Shared surface/volume closure weights | [Original full words and GPU allocator state](docs/validation/2026-09-08/shared-closure-weights/README.md) |
 | Surface NEE work eligibility | [BSDF-gated random/selection work, full backend suites and four-scene canaries](docs/validation/2026-09-08/surface-nee-work/README.md) |
 | Homogeneous volume work eligibility | [Original rejection/technique branches and the Barbershop kernel diagnosis](docs/validation/2026-09-08/volume-work/README.md) |
