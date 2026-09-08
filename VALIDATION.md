@@ -57,6 +57,14 @@ the paired baseline above. These use retained Cycles references, not new
 paired timings, and do not close the surface-shading gap. First-use versus
 warm downstream HIP link timings are recorded separately.
 
+The follow-up [HIP descriptor audit](docs/validation/2026-09-08/hip-texture-descriptors/README.md)
+confirms Luisa already copies native SRDs into GPU memory. Extra inline-layout
+and manual grouping experiments are not adopted: fewer indirections did not
+give a consistent general improvement. A new 64-spp Barbershop kernel profile
+still places the main gap in surface shading (5.6336 s versus retained Cycles
+2.9628 s), not volume (0.4289 s versus 0.3536 s). This is instrumented GPU
+stage time, not a new paired 256-spp render benchmark.
+
 The [scheduler trace comparison correction](docs/validation/2026-09-08/dispatch-trace-comparison/README.md)
 fixes the outstanding fallback assertion without changing renderer binaries
 or any captured trace bits. Continuous intermediate values have a separate

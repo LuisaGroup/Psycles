@@ -142,6 +142,13 @@ paired benchmark. Frame sizes and the error profile remain essentially
 unchanged. First-use downstream link cost and warm initialization are reported
 separately; the old paired table above remains revision-pinned.
 
+The [HIP descriptor investigation](validation/2026-09-08/hip-texture-descriptors/README.md)
+confirms image/sampler SRDs are already device-resident and sampled directly.
+Neither more aggressive descriptor inlining nor explicit index grouping is
+adopted after the GPU controls. The follow-up original-scene profile still
+locates the large Barbershop gap in surface shading; a smaller pointer chain
+or synthetic sampling speed is not reported as an end-to-end renderer gain.
+
 The [scheduler trace comparison regression](validation/2026-09-08/dispatch-trace-comparison/README.md)
 also resolves the former fallback test failure: the complete suite is now
 182/182, with exact RNG/discrete state checks and unchanged film tolerances.
