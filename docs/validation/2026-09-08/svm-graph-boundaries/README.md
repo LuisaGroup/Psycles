@@ -1,5 +1,10 @@
 # SVM graph boundaries and redundant texture evaluation
 
+This is the frozen `5096a41f` checkpoint. The later
+[native socket/declaration repair](../svm-socket-declarations/README.md)
+supersedes its current word-discrepancy counts, source-size failures and
+follow-up timings. Its original probes and measurements remain unchanged.
+
 ## Technical summary
 
 Psycles `5096a41f` (published to `origin/main`), with unchanged published

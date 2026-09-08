@@ -50,32 +50,32 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Latest four-scene follow-up
 
-Psycles `5096a41f` / Luisa `85e5300f1` complete six further 256-spp renders,
+Psycles `33c7b335` / Luisa `85e5300f1` complete six further 256-spp renders,
 using fresh socket metadata with the exact earlier geometry/texture bytes.
 These use retained equal-pass Cycles references, **not fresh timing pairs**.
 All 46 channels are finite and all 15 pass comparisons complete. Exact six-run
 data, images' provenance and all implementation hashes are in the
-[latest report](docs/validation/2026-09-08/svm-graph-boundaries/README.md).
+[latest report](docs/validation/2026-09-08/svm-socket-declarations/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 13.6448 | 22.2264 | 220 B |
-| Monster, one run | 15.0251 | 26.2560 | 280 B |
-| Classroom, one run | 18.5797 | 20.9987 | 260 B |
-| Barbershop, three-run median | 40.8982 | 29.8318 / 29.0572 / 27.0611 | 416 B |
+| Lone Monk, one run | 13.4347 | 18.8892 | 220 B |
+| Monster, one run | 14.7923 | 22.0922 | 280 B |
+| Classroom, one run | 18.2949 | 17.9811 | 260 B |
+| Barbershop, three-run median | 40.2231 | 24.9958 / 24.9958 / 24.7800 | 416 B |
 
-Barbershop's individual times are 40.8982 / 41.0184 / 40.2199 s. Its median
-is 1.49% above the preceding 40.2962 s, not a measured speedup, and about
-61% slower than the retained Cycles median. Initialization is JIT plus setup,
-not compiler-only or cold JIT: the separate profile had already warmed
+Barbershop's individual times are 40.2231 / 40.2419 / 40.1987 s. Its median
+is 1.65% below the preceding 40.8982 s, not an isolated causal speedup
+estimate, and 58.5% slower than the retained Cycles median. Initialization is
+JIT plus setup, not compiler-only or cold JIT: the separate profile had warmed
 downstream caches before these six runs. It is never included in render time.
 Current first-run DiffInd relative RMSE is 12.882% / 2.552% / 17.820% / 7.126%
 in the table's scene order. The structural and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [graph-boundary investigation](docs/validation/2026-09-08/svm-graph-boundaries/README.md)
-at Psycles `5096a41f` / Luisa `85e5300f1` is the latest structural checkpoint.
+The [native socket/declaration investigation](docs/validation/2026-09-08/svm-socket-declarations/README.md)
+at Psycles `33c7b335` / Luisa `85e5300f1` is the latest structural checkpoint.
 The preceding lamp-routing report records Psycles `773f1aca` / Luisa
 `4284e8cb9`, which publish the
 post-lamp closest-intersection boundary, native miss-distance normalization
@@ -92,13 +92,17 @@ is completely reverted. Static spill counts are not dynamic spill traffic;
 the report identifies actual stage symbols and outlined Cycles callees.
 No inlining policy, register limit or shader-specific backend option changed.
 
-The earlier hidden-input and Vector Math repairs have 81 original-Cycles
-material images. Twenty-four additional original images now constrain bump
-edge ownership, retained BUMP displacement entries and shared procedural
-outputs. Full Barbershop used-shader images exactly matching the raw oracle
-increase from 100 to 112; differing lengths fall from 64 to 5. Static stack
-capacity falls from 36 to 33 floats, but the surface ELF `.text` remains
-byte-identical and resources stay at 256 VGPRs / 2496 private bytes.
+The earlier hidden-input, Vector Math, bump-edge/domain and procedural-output
+repairs have 105 original-Cycles material images. Fifty-three additional
+exact images now constrain native texture socket types, conversion identity,
+closure input declaration order and unavailable Voronoi defaults. Full
+Barbershop used-shader images exactly matching the raw oracle increase from
+112 to 115; differing lengths fall from 5 to 1 (`bricks`, +6 words).
+Resource-ID payloads and remaining equal-length differences are not normalized
+away or claimed aligned. Static stack capacity remains 33 floats; the surface
+ELF `.text` remains byte-identical and resources stay at 256 VGPRs / 2496
+private bytes. The new 64-spp surface GPU total is 5.871504 s, versus the
+retained original Cycles 2.962829 s, with essentially unchanged surface visits.
 These structural counts are not a measured speedup or complete shader parity.
 Host-only Blender folding domains remain separate from later Cycles folding;
 no slow bit-matching device arithmetic is added.
@@ -113,20 +117,20 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 182/182 | Complete registered suite, including lamp routing |
-| Psycles fallback | 184/184 | Complete rerun after generic queue race repair |
-| Psycles host | 160/161 | 105 original-Cycles images across the new families; four existing source-size violations |
+| Psycles HIP | 182/182 | Complete registered suite, 135.13 s |
+| Psycles fallback | 184/184 | Complete parallel suite, 86.99 s |
+| Psycles host | 164/164 | 158 original-Cycles images across the new families; source-size gate fully green |
 | Luisa child | 155/155 | Retained unchanged child checkpoint; both queue races also repeated 100 times |
-| Strict native Vulkan | 2/2 | Lamp routing and bump state; native SPIR-V, no DXC/DXIL load |
+| Strict native Vulkan | 2/2 | Lamp routing and bump state; 31 native SPIR-V compilations, no DXC/DXIL load |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
 
 The prior [dispatch-trace comparator fix](docs/validation/2026-09-08/dispatch-trace-comparison/README.md)
 remains test-only: discrete/RNG state is exact, continuous intermediates have
 a separate 1e-4 bound, and film's 2e-5 bound is unchanged. It is distinct from
-the newly fixed queue race. The remaining source-size failures are
-cycles_svm_nodes.cpp, test_cycles_svm_compiler.cpp,
-test_luisa_compact_surface_preparation.cpp and test_luisa_cycles_svm.cpp.
-Do not call these full suites entirely green or relax their limits.
+the newly fixed queue race. The four previous source-size violations are
+resolved by cohesive ConvertNode, color-test, AST-visitor and fixture-builder
+modules, with all previous test bodies/assertions retained. No size limit is
+relaxed and no exception is added.
 The earlier five-test native Vulkan image gate remains revision-pinned in the
 descriptor audit; it is not represented as a newly rerun image suite here.
 
