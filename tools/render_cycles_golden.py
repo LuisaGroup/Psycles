@@ -29,27 +29,10 @@ if str(_TOOLS) not in sys.path:
 
 import cycles_hash  # noqa: E402
 import blender_build_identity  # noqa: E402
+import render_pass_contract  # noqa: E402
 
 
-_GOLDEN_PASSES = (
-    "Combined",
-    "Normal",
-    "DiffCol",
-    "DiffDir",
-    "DiffInd",
-    "GlossCol",
-    "GlossDir",
-    "GlossInd",
-    "TransCol",
-    "TransDir",
-    "TransInd",
-    "Emit",
-    "Env",
-    "Volume Direct",
-    "Volume Indirect",
-    "Depth",
-    "Debug Sample Count",
-)
+_GOLDEN_PASSES = render_pass_contract.PASSES
 
 
 def _positive_integer(value: str) -> int:
@@ -187,7 +170,21 @@ def _configure_cycles_device(
 
 
 def _configure_view_layer_passes(view_layer: Any) -> None:
-    """Enable every linear pass used by the canonical differential report."""
+    """Replace authored outputs with the exact common benchmark workload."""
+    for owner in (view_layer, view_layer.cycles):
+        for prop in owner.bl_rna.properties:
+            name = prop.identifier
+            is_pass_toggle = (
+                name.startswith("use_pass_") and name != "use_pass_cryptomatte_accurate"
+            ) or name in {"pass_debug_sample_count", "pass_render_time", "denoising_store_passes"}
+            if prop.type == "BOOLEAN" and is_pass_toggle:
+                setattr(owner, name, False)
+    # These only select output passes. Leave the original .blend untouched;
+    # changes belong to this headless oracle process and are never saved.
+    for name in ("aovs", "lightgroups"):
+        collection = getattr(view_layer, name, ())
+        for item in list(collection):
+            collection.remove(item)
     view_layer.use_pass_combined = True
     view_layer.use_pass_normal = True
     view_layer.use_pass_diffuse_color = True
@@ -201,19 +198,8 @@ def _configure_view_layer_passes(view_layer: Any) -> None:
     view_layer.use_pass_transmission_indirect = True
     view_layer.use_pass_emit = True
     view_layer.use_pass_environment = True
-    view_layer.use_pass_z = True
     view_layer.cycles.use_pass_volume_direct = True
     view_layer.cycles.use_pass_volume_indirect = True
-    if hasattr(
-        view_layer.cycles,
-        "use_pass_debug_sample_count",
-    ):
-        view_layer.cycles.use_pass_debug_sample_count = True
-    elif hasattr(
-        view_layer.cycles,
-        "pass_debug_sample_count",
-    ):
-        view_layer.cycles.pass_debug_sample_count = True
 
 
 def _configure_enabled_view_layer_passes(scene: Any) -> list[str]:
@@ -310,7 +296,8 @@ def _main() -> None:
     elapsed = time.perf_counter() - begin
 
     metadata = {
-        "schema": "psycles.cycles-golden.v1",
+        "schema": "psycles.cycles-golden.v2",
+        "pass_contract": render_pass_contract.SCHEMA,
         "source": bpy.data.filepath,
         "output": str(output),
         "blender": bpy.app.version_string,

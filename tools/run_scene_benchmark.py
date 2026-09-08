@@ -38,6 +38,7 @@ if str(_TOOLS) not in sys.path:
 
 import blender_build_identity  # noqa: E402
 import exporter_identity  # noqa: E402
+import render_pass_contract  # noqa: E402
 
 
 _LUISA_BACKENDS = ("fallback", "hip", "vk")
@@ -59,23 +60,8 @@ _KNOWN_PSYCLES_SCHEDULERS = (
     "wavefront-staged",
     "persistent",
 )
-_REPORT_PASSES = (
-    "Combined",
-    "Normal",
-    "DiffCol",
-    "GlossCol",
-    "TransCol",
-    "DiffDir",
-    "DiffInd",
-    "GlossDir",
-    "GlossInd",
-    "TransDir",
-    "TransInd",
-    "Emit",
-    "Env",
-    "Volume Direct",
-    "Volume Indirect",
-)
+_REPORT_PASSES = render_pass_contract.PASSES
+_MANIFEST_SCHEMA = "psycles.scene-benchmark.v3"
 _PSYCLES_TIMING_PATTERNS = {
     "scene_compile_seconds": re.compile(
         r"compiled .* in ([0-9.eE+-]+) s$",
@@ -749,6 +735,8 @@ def _can_resume_render(
     required_timings: tuple[str, ...],
     metadata_path: pathlib.Path | None = None,
 ) -> bool:
+    if manifest.get("schema") != _MANIFEST_SCHEMA:
+        return False
     commands = manifest.get("commands")
     renderers = manifest.get("renderers")
     if not isinstance(commands, dict) or not isinstance(renderers, dict):
@@ -765,6 +753,12 @@ def _can_resume_render(
     if not _has_matching_output(record, expected_output):
         return False
     assert isinstance(record, dict)
+    try:
+        inventory = render_pass_contract.inspect_image(expected_output)
+    except (OSError, RuntimeError):
+        return False
+    if record.get("pass_contract") != inventory:
+        return False
     for timing in required_timings:
         value = record.get(timing)
         if (
@@ -785,6 +779,9 @@ def _can_resume_render(
             return False
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if (metadata.get("pass_contract") != render_pass_contract.SCHEMA
+                or metadata.get("passes") != list(_REPORT_PASSES)):
+                return False
             log_path = pathlib.Path(command_record["log"])
             if _sha256(log_path) != command_record.get("log_sha256"):
                 return False
@@ -948,7 +945,7 @@ def _main() -> int:
     output_root.mkdir(parents=True, exist_ok=True)
     manifest_path = output_root / "benchmark.json"
     fresh_manifest: dict[str, Any] = {
-        "schema": "psycles.scene-benchmark.v2",
+        "schema": _MANIFEST_SCHEMA,
         "status": "running",
         "matrix": {
             "cycles": cycles_matrix,
@@ -960,6 +957,7 @@ def _main() -> int:
             "bundle": str(bundle),
         },
         "settings": {
+            "pass_contract": render_pass_contract.SCHEMA,
             "width": arguments.width,
             "height": arguments.height,
             "samples": arguments.samples,
@@ -1125,10 +1123,17 @@ def _main() -> int:
                 metadata = json.loads(
                     metadata_path.read_text(encoding="utf-8")
                 )
+                if (metadata.get("pass_contract") != render_pass_contract.SCHEMA
+                    or metadata.get("passes") != list(_REPORT_PASSES)):
+                    raise RuntimeError("Cycles metadata does not declare the exact common-pass workload")
+                inventory = render_pass_contract.inspect_image(output)
+                if (inventory["width"], inventory["height"]) != (arguments.width, arguments.height):
+                    raise RuntimeError("Cycles output extent differs from the benchmark settings")
                 manifest["commands"][stage] = (
                     _public_process_record(record)
                 )
                 manifest["renderers"]["cycles"][key] = {
+                    "pass_contract": inventory,
                     "output": str(output),
                     "sha256": _sha256(output),
                     **_parse_cycles_timings(record["output"], metadata),
@@ -1324,11 +1329,15 @@ def _main() -> int:
                     environment=environment,
                 )
                 _require_output(exr)
+                inventory = render_pass_contract.inspect_image(exr)
+                if (inventory["width"], inventory["height"]) != (arguments.width, arguments.height):
+                    raise RuntimeError("Psycles output extent differs from the benchmark settings")
                 timings = _parse_psycles_timings(record["output"])
                 manifest["commands"][stage] = (
                     _public_process_record(record)
                 )
                 renderer_record = {
+                    "pass_contract": inventory,
                     "output": str(exr),
                     "sha256": _sha256(exr),
                     "backend": backend,

@@ -14,7 +14,9 @@ count in Monster, AO/Depth/Object Index/sample count in Classroom, and
 AO/Depth/sample count in Barbershop. AO enables a separate Cycles shadow
 path. Therefore these archived timings are not equal-pass workload
 comparisons, and the earlier Classroom speed-lead interpretation is withdrawn.
-A corrected pass contract and new matched campaign are required. The raw
+A [corrected pass contract](docs/validation/2026-09-08/pass-contract/README.md)
+is now implemented and validated on an original Barbershop pair; its new
+four-scene repeated campaign is running. The raw
 timings and common-pass correctness evidence remain available, with this
 qualification; do not use the ratios as performance-goal completion evidence.
 
@@ -56,8 +58,9 @@ The campaign report retains exact commands, cache policy, ranges, manifests,
 build/device and source/export/output hashes, all pass metrics, and the
 location of original-resolution EXRs and reviewed triptychs. Native fast
 math is enabled. No profiler or concurrent build/render overlapped these
-performance runs. Use the [schema-v2 runner](docs/scene-benchmark.md);
-schema-v1 Cycles whole-call ratios are not comparable.
+performance runs. New runs use the [schema-v3 runner](docs/scene-benchmark.md).
+Neither schema-v1 whole-call ratios nor schema-v2 unequal-pass ratios are
+comparable to that new protocol.
 
 ## Published compiler and backend gate
 

@@ -9,6 +9,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 def _load_runner(path: pathlib.Path):
@@ -401,7 +402,7 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
 
     def test_resume_requires_identical_render_configuration(self) -> None:
         expected = {
-            "schema": "psycles.scene-benchmark.v2",
+            "schema": self.runner._MANIFEST_SCHEMA,
             "matrix": {
                 "cycles": ["cpu", "hip"],
                 "psycles": ["fallback", "hip", "vk"],
@@ -418,9 +419,10 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
         self.runner._validate_resume_configuration(previous, expected)
 
         changed = json.loads(json.dumps(previous))
-        changed["schema"] = "psycles.scene-benchmark.v1"
-        with self.assertRaisesRegex(RuntimeError, "different manifest schema"):
-            self.runner._validate_resume_configuration(changed, expected)
+        for old_schema in ("psycles.scene-benchmark.v1", "psycles.scene-benchmark.v2"):
+            changed["schema"] = old_schema
+            with self.assertRaisesRegex(RuntimeError, "different manifest schema"):
+                self.runner._validate_resume_configuration(changed, expected)
 
         changed = json.loads(json.dumps(previous))
         changed["settings"]["width"] = 1920
@@ -441,12 +443,18 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             log_text = "Rendering in main loop is done in 2.0 seconds.\n"
             log.write_text(log_text, encoding="utf-8")
             output.write_bytes(b"rendered pixels")
+            inventory = {"schema": self.runner.render_pass_contract.SCHEMA,
+                         "passes": list(self.runner._REPORT_PASSES),
+                         "channels": ["fixture header"], "width": 640, "height": 480}
             metadata.write_text(
-                json.dumps({"elapsed_seconds": 3.5}),
+                json.dumps({"elapsed_seconds": 3.5,
+                            "pass_contract": self.runner.render_pass_contract.SCHEMA,
+                            "passes": list(self.runner._REPORT_PASSES)}),
                 encoding="utf-8",
             )
             command = ["blender", "scene.blend", "cpu.exr"]
             manifest = {
+                "schema": self.runner._MANIFEST_SCHEMA,
                 "commands": {
                     "cycles_cpu": {
                         "command": command,
@@ -458,6 +466,7 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
                 "renderers": {
                     "cycles": {
                         "cpu": {
+                            "pass_contract": inventory,
                             "output": str(output),
                             "sha256": self.runner._sha256(output),
                             "metadata": str(metadata),
@@ -473,20 +482,28 @@ class SceneBenchmarkRunnerContract(unittest.TestCase):
             }
 
             def can_resume() -> bool:
-                return self.runner._can_resume_render(
-                    manifest,
-                    command_key="cycles_cpu",
-                    renderer_group="cycles",
-                    renderer_key="cpu",
-                    expected_command=command,
-                    expected_output=output,
-                    required_timings=("render_seconds", "render_call_seconds"),
-                    metadata_path=metadata,
-                )
+                # Header parsing has its own exact-channel regressions. This
+                # fixture isolates manifest/hash/timing validation without an
+                # OpenImageIO dependency or a synthetic rendering oracle.
+                with patch.object(self.runner.render_pass_contract, "inspect_image",
+                                  return_value=inventory):
+                    return self.runner._can_resume_render(
+                        manifest,
+                        command_key="cycles_cpu",
+                        renderer_group="cycles",
+                        renderer_key="cpu",
+                        expected_command=command,
+                        expected_output=output,
+                        required_timings=("render_seconds", "render_call_seconds"),
+                        metadata_path=metadata,
+                    )
 
             self.assertTrue(can_resume())
+            manifest["schema"] = "psycles.scene-benchmark.v2"
+            self.assertFalse(can_resume())
+            manifest["schema"] = self.runner._MANIFEST_SCHEMA
             timings = manifest["renderers"]["cycles"]["cpu"]
-            for name in ("timing_scope", "render_call_seconds", "metadata_sha256"):
+            for name in ("timing_scope", "render_call_seconds", "metadata_sha256", "pass_contract"):
                 value = timings.pop(name)
                 self.assertFalse(can_resume())
                 timings[name] = value

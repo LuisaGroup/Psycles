@@ -33,6 +33,7 @@ if str(_TOOLS) not in sys.path:
     sys.path.insert(0, str(_TOOLS))
 
 import blender_build_identity  # noqa: E402
+import render_pass_contract  # noqa: E402
 
 
 _PASS_CHANNELS = {
@@ -57,21 +58,7 @@ _PASS_CHANNELS = {
 
 _REPORT_SCHEMA = "psycles.cycles-differential.v2"
 
-_CYCLES_PASS_ALIASES = {
-    "DiffCol": ("DiffCol", "Diffuse Color"),
-    "GlossCol": ("GlossCol", "Glossy Color"),
-    "TransCol": ("TransCol", "Transmission Color"),
-    "DiffDir": ("DiffDir", "Diffuse Direct"),
-    "DiffInd": ("DiffInd", "Diffuse Indirect"),
-    "GlossDir": ("GlossDir", "Glossy Direct"),
-    "GlossInd": ("GlossInd", "Glossy Indirect"),
-    "TransDir": ("TransDir", "Transmission Direct"),
-    "TransInd": ("TransInd", "Transmission Indirect"),
-    "Emit": ("Emit", "Emission"),
-    "Env": ("Env", "Environment"),
-    "Volume Direct": ("Volume Direct", "VolumeDir"),
-    "Volume Indirect": ("Volume Indirect", "VolumeInd"),
-}
+_CYCLES_PASS_ALIASES = render_pass_contract.PASS_ALIASES
 
 
 def _read_image(path: pathlib.Path) -> tuple[np.ndarray, list[str]]:
