@@ -212,10 +212,10 @@ HomogeneousVolumeTransport::sample_with_probability(
         transmittance(
             coefficients.sigma_t,
             distance);
-    const auto segment_emission =
-        throughput *
-        emission_integral(
-            coefficients, distance);
+    Float3 segment_emission = make_float3(0.0f);
+    $if(coefficients.has_emission) {
+        segment_emission = throughput * emission_integral(coefficients, distance);
+    };
     const auto has_scatter =
         coefficients.has_scatter &
         any(
@@ -225,128 +225,64 @@ HomogeneousVolumeTransport::sample_with_probability(
         !terminate &
         has_scatter &
         (distance > 0.0f);
-    scatter_probability = select(
-        make_float3(0.0f),
-        scatter_probability,
-        eligible);
-
-    const auto albedo = _safe_divide(
-        coefficients.sigma_s,
-        coefficients.sigma_t);
-    const auto multiple_scattering_albedo =
-        albedo *
-        (make_float3(1.0f) -
-         segment_transmittance) *
-        throughput;
-    const auto channel_sample =
-        sample_channel(
-            multiple_scattering_albedo +
-                segment_transmittance,
-            throughput,
-            channel_random);
-    const auto channel =
-        channel_sample.channel;
-    const auto channel_scatter_probability =
-        select(
-            scatter_probability.z,
-            select(
-                scatter_probability.y,
-                scatter_probability.x,
-                channel == 0u),
-            channel < 2u);
-    const auto scattered =
-        eligible &
-        (scatter_random <
-         channel_scatter_probability);
-    const auto rescaled_scatter =
-        scatter_random /
-        select(
-            1.0f,
-            channel_scatter_probability,
-            scattered);
-    const auto rate =
-        select(
-            coefficients.sigma_t.z,
-            select(
-                coefficients.sigma_t.y,
-                coefficients.sigma_t.x,
-                channel == 0u),
-            channel < 2u);
-    const auto sampled_distance =
-        bounded_exponential_sample(
-            rescaled_scatter,
-            rate,
-            0.0f,
-            distance);
-    const auto scatter_pdf =
-        dot(
-            bounded_exponential_pdf(
-                sampled_distance,
-                coefficients.sigma_t,
-                0.0f,
-                distance) *
-                scatter_probability,
-            channel_sample.pdf);
-    const auto scatter_throughput =
-        throughput *
-        _safe_divide(
-            coefficients.sigma_s *
-                transmittance(
-                    coefficients.sigma_t,
-                    sampled_distance),
-            scatter_pdf);
-
-    const auto transmit_pdf =
-        dot(
-            make_float3(1.0f) -
-                scatter_probability,
-            channel_sample.pdf);
-    const auto transmit_throughput =
-        throughput *
-        _safe_divide(
-            segment_transmittance,
-            transmit_pdf);
-    const auto transmit_rescaled =
-        (scatter_random -
-         channel_scatter_probability) /
-        select(
-            1.0f,
-            1.0f -
-                channel_scatter_probability,
-            !scattered & eligible);
-    const auto active =
-        coefficients.has_extinction |
-        coefficients.has_scatter |
-        coefficients.has_emission;
-    return {
-        .transmittance =
-            segment_transmittance,
+    HomogeneousVolumeSample result{
+        .transmittance = segment_transmittance,
         .emission = segment_emission,
-        .throughput = select(
-            transmit_throughput,
-            scatter_throughput,
-            scattered),
-        .scatter_probability =
-            scatter_probability,
-        .channel_pdf =
-            channel_sample.pdf,
-        .distance = select(
-            distance,
-            sampled_distance,
-            scattered),
-        .event_pdf = select(
-            transmit_pdf,
-            scatter_pdf,
-            scattered),
-        .scatter_random = select(
-            transmit_rescaled,
-            rescaled_scatter,
-            scattered),
-        .reservoir_random =
-            channel_sample.random,
-        .channel = channel,
-        .scattered = scattered,
-        .active = active};
+        .throughput = throughput * segment_transmittance,
+        .scatter_probability = make_float3(0.0f),
+        .channel_pdf = make_float3(0.0f),
+        .distance = distance,
+        .event_pdf = 1.0f,
+        .scatter_random = scatter_random,
+        .reservoir_random = channel_random,
+        .channel = 0u,
+        .scattered = false,
+        .active = coefficients.has_extinction | coefficients.has_scatter |
+                  coefficients.has_emission};
+
+    // Cycles volume_integrate_homogeneous returns after attenuation when
+    // terminated or sigma_s == 0. A select on the result does not guard the
+    // channel, distance and PDF computations that precede it.
+    $if(eligible) {
+        const auto albedo = _safe_divide(coefficients.sigma_s, coefficients.sigma_t);
+        const auto multiple_scattering_albedo =
+            albedo * (make_float3(1.0f) - segment_transmittance) * throughput;
+        const auto channel_sample = sample_channel(
+            multiple_scattering_albedo + segment_transmittance, throughput, channel_random);
+        const auto channel = channel_sample.channel;
+        const auto channel_scatter_probability = select(
+            scatter_probability.z,
+            select(scatter_probability.y, scatter_probability.x, channel == 0u),
+            channel < 2u);
+        result.scatter_probability = scatter_probability;
+        result.channel_pdf = channel_sample.pdf;
+        result.reservoir_random = channel_sample.random;
+        result.channel = channel;
+        $if(scatter_random < channel_scatter_probability) {
+            result.scattered = true;
+            result.scatter_random = scatter_random / channel_scatter_probability;
+            const auto rate = select(
+                coefficients.sigma_t.z,
+                select(coefficients.sigma_t.y, coefficients.sigma_t.x, channel == 0u),
+                channel < 2u);
+            result.distance = bounded_exponential_sample(
+                result.scatter_random, rate, 0.0f, distance);
+            result.event_pdf = dot(
+                bounded_exponential_pdf(result.distance, coefficients.sigma_t, 0.0f, distance) *
+                    scatter_probability,
+                channel_sample.pdf);
+            result.throughput = throughput * _safe_divide(
+                coefficients.sigma_s * transmittance(coefficients.sigma_t, result.distance),
+                result.event_pdf);
+        }
+        $else {
+            result.event_pdf = dot(make_float3(1.0f) - scatter_probability, channel_sample.pdf);
+            result.throughput = throughput * _safe_divide(segment_transmittance, result.event_pdf);
+            result.scatter_random = (scatter_random - channel_scatter_probability) /
+                                    (1.0f - channel_scatter_probability);
+        };
+    };
+    return result;
 }
 
 HomogeneousVolumeDirectSample
@@ -379,7 +315,8 @@ HomogeneousVolumeTransport::
                  1.0f, 0.0f, 0.0f),
          .interval =
              {.minimum = 0.0f,
-              .maximum = distance}});
+              .maximum = distance}},
+        {.distance = 0.0f, .pdf = 0.0f, .valid = false});
 }
 
 HomogeneousVolumeDirectSample
@@ -393,11 +330,15 @@ HomogeneousVolumeTransport::sample_direct(
     Float3 ray_origin,
     Float3 ray_direction,
     const VolumeEquiangularCoefficients
-        &equiangular) const noexcept {
-    const auto segment_transmittance =
-        transmittance(
-            coefficients.sigma_t,
-            distance);
+        &equiangular,
+    const VolumeEquiangularSample &equiangular_sample) const noexcept {
+    HomogeneousVolumeDirectSample result{
+        .transmittance = make_float3(1.0f),
+        .throughput = make_float3(0.0f),
+        .channel_pdf = make_float3(0.0f),
+        .distance = 0.0f, .distance_pdf = 0.0f, .equiangular_pdf = 0.0f,
+        .mis_weight = 0.0f, .channel = 0u, .sample_method = sampling.method,
+        .use_mis = sampling.use_mis, .scattered = false};
     const auto has_scatter =
         coefficients.has_scatter &
         any(
@@ -410,158 +351,73 @@ HomogeneousVolumeTransport::sample_direct(
         (equiangular.interval.minimum <
          equiangular.interval.maximum);
 
-    const auto albedo = _safe_divide(
-        coefficients.sigma_s,
-        coefficients.sigma_t);
-    // volume_integrate_homogeneous stores this throughput-weighted quantity
-    // in vstate.albedo before reusing the reservoir dimension for the direct
-    // channel selection. Preserve that apparently redundant second
-    // throughput factor in volume_sample_channel_pdf: it is part of the
-    // Cycles estimator measure.
-    const auto volume_albedo =
-        albedo *
-        (make_float3(1.0f) -
-         segment_transmittance) *
-        throughput;
-    const auto channel_sample =
-        sample_channel(
-            volume_albedo,
-            throughput,
-            reservoir_random);
-    const auto channel =
-        channel_sample.channel;
-    const auto rate =
-        select(
-            coefficients.sigma_t.z,
-            select(
-                coefficients.sigma_t.y,
-                coefficients.sigma_t.x,
-                channel == 0u),
-            channel < 2u);
-    const auto distance_sample =
-        bounded_exponential_sample(
-            scatter_random,
-            rate,
-            equiangular.interval.minimum,
-            equiangular.interval.maximum);
-    const auto distance_sample_pdf =
-        dot(
-            bounded_exponential_pdf(
-                distance_sample,
-                coefficients.sigma_t,
-                equiangular.interval.minimum,
-                equiangular.interval.maximum),
-            channel_sample.pdf);
-    const VolumeDirectSampling
-        direct_sampling;
-    const auto equiangular_sample =
-        direct_sampling.sample_equiangular(
-            ray_origin,
-            ray_direction,
-            equiangular,
-            sampling.random);
-    const auto select_equiangular =
-        sampling.method ==
-        volume_sample_equiangular;
-    const auto sampled_distance =
-        select(
-            distance_sample,
-            equiangular_sample.distance,
-            select_equiangular);
-    const auto distance_pdf =
-        select(
-            distance_sample_pdf,
-            dot(
-                bounded_exponential_pdf(
-                    equiangular_sample.distance,
-                    coefficients.sigma_t,
-                    equiangular.interval.minimum,
-                    equiangular.interval.maximum),
-                channel_sample.pdf),
-            select_equiangular);
-    const auto equiangular_pdf =
-        select(
-            direct_sampling.equiangular_pdf(
-                ray_origin,
-                ray_direction,
-                equiangular,
-                distance_sample),
-            equiangular_sample.pdf,
-            select_equiangular);
-    const auto selected_pdf =
-        select(
-            distance_pdf,
-            equiangular_pdf,
-            select_equiangular);
-    const auto competing_pdf =
-        select(
-            equiangular_pdf,
-            distance_pdf,
-            select_equiangular);
-    const auto mis_weight =
-        select(
-            1.0f,
-            2.0f *
-                direct_sampling
-                    .power_heuristic(
-                        selected_pdf,
-                        competing_pdf),
-            sampling.use_mis);
-    const auto valid =
-        scattered &
-        (!select_equiangular |
-         equiangular_sample.valid) &
-        (selected_pdf > 0.0f);
-    const auto direct_throughput =
-        throughput *
-        _safe_divide(
-            coefficients.sigma_s *
-                transmittance(
-                    coefficients.sigma_t,
-                    sampled_distance),
-            selected_pdf) *
-        mis_weight;
-    return {
-        .transmittance =
-            select(
-                make_float3(1.0f),
-                transmittance(
-                    coefficients.sigma_t,
-                    sampled_distance),
-                valid),
-        .throughput =
-            select(
-                make_float3(0.0f),
-                direct_throughput,
-                valid),
-        .channel_pdf =
-            channel_sample.pdf,
-        .distance =
-            select(
-                0.0f,
-                sampled_distance,
-                valid),
-        .distance_pdf =
-            select(
-                0.0f,
-                distance_pdf,
-                valid),
-        .equiangular_pdf =
-            select(
-                0.0f,
-                equiangular_pdf,
-                valid),
-        .mis_weight =
-            select(
-                0.0f,
-                mis_weight,
-                valid),
-        .channel = channel,
-        .sample_method =
-            sampling.method,
-        .use_mis =
-            sampling.use_mis,
-        .scattered = valid};
+    $if(scattered) {
+        const auto segment_transmittance = transmittance(coefficients.sigma_t, distance);
+        const auto albedo = _safe_divide(
+            coefficients.sigma_s,
+            coefficients.sigma_t);
+        // volume_integrate_homogeneous stores this throughput-weighted quantity
+        // in vstate.albedo before reusing the reservoir dimension for the direct
+        // channel selection. Preserve that apparently redundant second
+        // throughput factor in volume_sample_channel_pdf: it is part of the
+        // Cycles estimator measure.
+        const auto volume_albedo =
+            albedo *
+            (make_float3(1.0f) -
+             segment_transmittance) *
+            throughput;
+        const auto channel_sample =
+            sample_channel(
+                volume_albedo,
+                throughput,
+                reservoir_random);
+        const auto channel =
+            channel_sample.channel;
+        const VolumeDirectSampling direct_sampling;
+        const auto select_equiangular = sampling.method == volume_sample_equiangular;
+        Float sampled_distance = equiangular_sample.distance;
+        Float distance_pdf = 0.0f;
+        Float equiangular_pdf = equiangular_sample.pdf;
+        $if(!select_equiangular) {
+            const auto rate = select(
+                coefficients.sigma_t.z,
+                select(coefficients.sigma_t.y, coefficients.sigma_t.x, channel == 0u),
+                channel < 2u);
+            sampled_distance = bounded_exponential_sample(
+                scatter_random, rate, equiangular.interval.minimum, equiangular.interval.maximum);
+        };
+        // Cycles computes the competing measure only when MIS needs it.
+        $if(!select_equiangular | sampling.use_mis) {
+            distance_pdf = dot(
+                bounded_exponential_pdf(sampled_distance, coefficients.sigma_t,
+                                        equiangular.interval.minimum, equiangular.interval.maximum),
+                channel_sample.pdf);
+        };
+        $if(!select_equiangular & sampling.use_mis) {
+            equiangular_pdf = direct_sampling.equiangular_pdf(
+                ray_origin, ray_direction, equiangular, sampled_distance);
+        };
+        const auto selected_pdf = select(distance_pdf, equiangular_pdf, select_equiangular);
+        const auto valid = (!select_equiangular | equiangular_sample.valid) & (selected_pdf > 0.0f);
+        $if(valid) {
+            Float mis_weight = 1.0f;
+            $if(sampling.use_mis) {
+                const auto competing_pdf = select(equiangular_pdf, distance_pdf, select_equiangular);
+                mis_weight = 2.0f * direct_sampling.power_heuristic(selected_pdf, competing_pdf);
+            };
+            result.transmittance = transmittance(coefficients.sigma_t, sampled_distance);
+            result.throughput = throughput *
+                _safe_divide(coefficients.sigma_s * result.transmittance, selected_pdf) * mis_weight;
+            result.channel_pdf = channel_sample.pdf;
+            result.distance = sampled_distance;
+            result.distance_pdf = distance_pdf;
+            result.equiangular_pdf = equiangular_pdf;
+            result.mis_weight = mis_weight;
+            result.channel = channel;
+            result.scattered = true;
+        };
+    };
+    return result;
 }
 
 }// namespace psycles::luisa_backend
