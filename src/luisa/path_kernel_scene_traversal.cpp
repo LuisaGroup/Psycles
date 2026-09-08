@@ -355,20 +355,31 @@ private:
           };
         };
 
+    const auto finish = [&](auto &&query) {
+      auto hit = query.trace();
+      // CommittedHit identifies a miss through hit_type; its other payload
+      // fields are not a portable miss-distance contract (native SPIR-V
+      // initializes them to zero). Cycles keeps the original traversal bound
+      // when no primitive commits. Establish that scene-traversal invariant
+      // here for both closest and closest-shadow consumers.
+      hit->committed_ray_t =
+          select(hit->committed_ray_t, ray->t_max(), hit->miss());
+      return hit;
+    };
     if (_plan.primitives.mixed()) {
-      return scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
-          .on_surface_candidate(handle_surface)
-          .on_procedural_candidate(handle_procedural)
-          .trace();
+      return finish(
+          scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
+              .on_surface_candidate(handle_surface)
+              .on_procedural_candidate(handle_procedural));
     }
     if (_plan.primitives.triangles) {
-      return scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
-          .on_surface_candidate(handle_surface)
-          .trace();
+      return finish(
+          scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
+              .on_surface_candidate(handle_surface));
     }
-    return scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
-        .on_procedural_candidate(handle_procedural)
-        .trace();
+    return finish(
+        scene->accel->traverse(ray, {.visibility_mask = visibility_mask})
+            .on_procedural_candidate(handle_procedural));
   }
 
   [[nodiscard]] Var<ShadowIntersectionSummaryCall> reduce_shadow_candidates(

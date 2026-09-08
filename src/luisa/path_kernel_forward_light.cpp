@@ -31,6 +31,11 @@ public:
         config.light_transport.forward_light_weight;
 
     Var<LightGpu> light = scene->light_buffer->read(event.light_index);
+    // Cycles' committed intersection becomes the next ray.self identity.
+    // Retaining the earlier surface would change self rejection and the
+    // object-specific AO traversal limit after this transparent endpoint.
+    sample.ray_source_object = light.cycles_object_index;
+    sample.ray_source_primitive = event.light_index;
     // Intersection and emission eligibility are different state-machine
     // edges in Cycles. Advance every geometric lamp hit, including empty
     // spread/spot evaluations and indirect visibility exclusions.
