@@ -50,6 +50,24 @@ class CyclesPathTraceSchemaTests(unittest.TestCase):
         self.assertEqual(schema.SLOTS[0].aov, "PsyTrace000")
         self.assertEqual(schema.SLOTS[-1].aov, "PsyTrace343")
 
+    def test_scheduler_comparison_header_is_current(self) -> None:
+        header = ROOT / "include/psycles/luisa/path_trace_scheduler_comparison.h"
+        self.assertEqual(header.read_text(), trace_schema.cpp_scheduler_comparison_header())
+
+    def test_scheduler_comparison_keeps_rng_and_discrete_state_exact(self) -> None:
+        for slot in trace_schema.SLOTS:
+            mask = trace_schema.scheduler_exact_component_mask(slot)
+            self.assertEqual(mask & 8, 8)  # Every written flag, even diagnostics.
+            for component, policy in enumerate(trace_schema.comparison_policies(slot)):
+                if policy in {trace_schema.COMPARE_EXACT, trace_schema.COMPARE_RANDOM_EXACT}:
+                    self.assertNotEqual(mask & (1 << component), 0, slot)
+                if policy == trace_schema.COMPARE_FLOAT32:
+                    self.assertEqual(mask & (1 << component), 0, slot)
+            if slot.name in {"isect_id", "shadow_hit_id"}:
+                self.assertEqual(mask, 15)
+            if slot.name in {"isect_coord", "shadow_hit_coord", "shadow_transmittance"}:
+                self.assertEqual(mask, 8)
+
     def test_each_event_has_identical_layout(self) -> None:
         schema: Any = trace_schema
         for event in range(schema.MAX_EVENTS):

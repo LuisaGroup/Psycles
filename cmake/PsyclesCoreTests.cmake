@@ -1,4 +1,12 @@
 if(PSYCLES_BUILD_TESTS)
+    add_executable(psycles_path_trace_scheduler_comparison_tests
+        tests/test_path_trace_scheduler_comparison.cpp)
+    target_include_directories(psycles_path_trace_scheduler_comparison_tests PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/../include")
+    target_compile_features(psycles_path_trace_scheduler_comparison_tests PRIVATE cxx_std_20)
+    add_test(NAME psycles.path_trace_scheduler_comparison
+        COMMAND psycles_path_trace_scheduler_comparison_tests)
+
     add_executable(psycles_cycles_camera_projection_tests
         tests/test_cycles_camera_projection.cpp)
     target_link_libraries(psycles_cycles_camera_projection_tests PRIVATE Psycles::core)

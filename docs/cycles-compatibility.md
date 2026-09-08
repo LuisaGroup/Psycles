@@ -134,6 +134,19 @@ shader_jit_seconds, including JIT plus setup/baking, not compiler-only.
 Cycles loads precompiled GPU kernels. Smaller IR, local arrays and frames
 do not independently establish end-to-end speedup.
 
+The subsequent [native descriptor sampler correction](validation/2026-09-08/bound-image-sampler/README.md)
+passes six full-resolution 256-spp canaries against the retained Cycles images.
+Its new Barbershop median is 38.8902 s (1.0% lower Psycles time, still 1.5325x
+the retained Cycles median). Other scenes have one follow-up each, not a new
+paired benchmark. Frame sizes and the error profile remain essentially
+unchanged. First-use downstream link cost and warm initialization are reported
+separately; the old paired table above remains revision-pinned.
+
+The [scheduler trace comparison regression](validation/2026-09-08/dispatch-trace-comparison/README.md)
+also resolves the former fallback test failure: the complete suite is now
+182/182, with exact RNG/discrete state checks and unchanged film tolerances.
+No renderer binaries or captured trace bits change with that test-only fix.
+
 All 46 Psycles channels are finite in every run. First-pair relative RMSE is:
 
 | Scene | Combined | DiffCol | DiffInd |
