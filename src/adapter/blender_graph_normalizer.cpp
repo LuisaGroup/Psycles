@@ -524,6 +524,8 @@ private:
 
         const auto converted =
             _graph.add_node(node_type, "Implicit Conversion");
+        _graph.find(converted)->origin =
+            contract::ShaderNodeOrigin::blender_implicit_conversion;
         static_cast<void>(_graph.connect(
             source.ref, converted, input));
         return {
@@ -756,7 +758,8 @@ private:
     [[nodiscard]] TypedOutput constant_from_socket(
         yyjson_val *socket,
         std::string label,
-        contract::SocketType type) {
+        contract::SocketType type,
+        bool input_value = false) {
         using contract::SocketType;
         if (type == SocketType::closure) {
             return null_closure(std::move(label));
@@ -771,6 +774,9 @@ private:
             const auto id = _graph.add_node(
                 compiler::node_type::constant_float,
                 std::move(label));
+            if (input_value) {
+                _graph.find(id)->origin = contract::ShaderNodeOrigin::blender_input_value;
+            }
             static_cast<void>(_graph.set_input(
                 id,
                 "Value",
@@ -783,6 +789,9 @@ private:
         const auto id = _graph.add_node(
             compiler::node_type::constant_color,
             std::move(label));
+        if (input_value) {
+            _graph.find(id)->origin = contract::ShaderNodeOrigin::blender_input_value;
+        }
         static_cast<void>(_graph.set_input(
             id,
             "Color",
@@ -809,7 +818,7 @@ private:
 
     [[nodiscard]] TypedOutput default_from_input(
         yyjson_val *socket, std::string label, contract::SocketType type) {
-        auto output = constant_from_socket(socket, std::move(label), type);
+        auto output = constant_from_socket(socket, std::move(label), type, true);
         output.hidden_input_default = boolean(member(socket, "hide_value"));
         return output;
     }

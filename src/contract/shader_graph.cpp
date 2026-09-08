@@ -612,6 +612,7 @@ GraphValidation validate_shader_graph(
         const auto *node = nodes.at(id);
         const auto *schema = registry.find(node->type);
         structure_hash.string(node->type);
+        structure_hash.scalar(node->origin);
         features |= schema->required_features;
 
         for (const auto &property : schema->properties) {

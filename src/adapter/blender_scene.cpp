@@ -558,6 +558,9 @@ BlenderSceneImport load_blender_scene_bundle(
             result.color_management.use_curve_mapping);
         auto *shader_transforms =
             member(color_management, "shader_transforms");
+        scene.shader_color_space.blender_luma = float3(
+            member(shader_transforms, "blender_luma"),
+            scene.shader_color_space.blender_luma);
         auto *xyz_to_rgb =
             member(shader_transforms, "xyz_to_rgb");
         auto *rec709_to_rgb =

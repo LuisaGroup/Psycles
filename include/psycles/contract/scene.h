@@ -572,6 +572,9 @@ struct ShaderColorSpace {
     Vec3f rec709_to_r{1.0f, 0.0f, 0.0f};
     Vec3f rec709_to_g{0.0f, 1.0f, 0.0f};
     Vec3f rec709_to_b{0.0f, 0.0f, 1.0f};
+    // Blender's implicit primitive conversion uses OCIO default luma coefs,
+    // not Cycles ShaderManager::rgb_to_y derived from the XYZ transform.
+    Vec3f blender_luma{0.2126f, 0.7152f, 0.0722f};
 };
 
 struct SceneSnapshot {

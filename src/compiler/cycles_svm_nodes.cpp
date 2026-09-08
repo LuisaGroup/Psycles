@@ -1342,6 +1342,20 @@ public:
 
 class GammaNode final : public GraphNode {
 public:
+  void inline_blender_constant_fold(const ConstantFolder &folder) override {
+    if (!folder.all_inputs_constant()) { return; }
+    const auto color = literal<Vec3f>(input("Color"), contract::SocketType::color);
+    const auto gamma = literal<float>(input("Gamma"), contract::SocketType::floating);
+    if (!color || !gamma) { return; }
+    // Blender BLI_math_base.hh::safe_pow, before Cycles' distinct gamma==0
+    // identity. RGB/Value node outputs are still links in this phase.
+    const auto power = [exponent = *gamma](float value) {
+      return value < 0.0f || (value == 0.0f && exponent <= 0.0f)
+          ? value : std::pow(value, exponent);
+    };
+    folder.make_constant(Vec3f{power(color->x), power(color->y), power(color->z)});
+  }
+
   void constant_fold(const ConstantFolder &folder) override {
     auto *color = input("Color");
     auto *gamma = input("Gamma");
