@@ -16,6 +16,24 @@ import compare_cycles as compare
 import render_pass_contract
 
 
+def identify_stage_artifacts(directory, kernel):
+    # LLVM and code-object dump counters are independent and can change with
+    # auxiliary shader/cache admission. Resolve the actual entry symbol,
+    # never assume that shade_surface is dump 12 in both namespaces.
+    def unique(paths, predicate):
+        matches = [path for path in paths if predicate(path.read_bytes())]
+        assert len(matches) == 1, (kernel, list(map(str, matches)))
+        return matches[0]
+
+    definition = re.compile(rb'^define\b[^\n]*@' + re.escape(kernel.encode()) + rb'\(', re.MULTILINE)
+    return {
+        'before': unique(directory.glob('hip_kernel_before_opt_*.ll'), definition.search),
+        'final': unique(directory.glob('hip_kernel_final_*.ll'), definition.search),
+        'code_object': unique(directory.glob('hip_isa_*.co'),
+                              lambda data: kernel.encode() + b'\0' in data),
+    }
+
+
 def inspect(directory):
     log = (directory / 'render.log').read_text()
     stages = dict(re.findall(
@@ -43,9 +61,11 @@ def inspect(directory):
                    r'    Binding: [^\n]+\n    Type: Function', notes)}
     isa = isa_functions(directory / 'surface-isa.txt')
     assert set(isa) == set(symbols), (set(isa), set(symbols))
+    assert names['shade_surface'] in symbols
+    assert re.search(r'\.name:\s*' + re.escape(names['shade_surface']) + r'\s*$', notes, re.MULTILINE)
+    artifacts = identify_stage_artifacts(directory, names['shade_surface'])
     files = ['render.log', 'psycles.exr', 'psycles_kernel_stats.csv', 'psycles_kernel_trace.csv',
-             'hip_kernel_before_opt_12.ll', 'hip_kernel_final_12.ll', 'hip_isa_12.co',
-             'surface-code-object.txt', 'surface-isa.txt']
+             'surface-code-object.txt', 'surface-isa.txt', *[path.name for path in artifacts.values()]]
     return {
         'directory': str(directory),
         'render_wall_seconds': float(render[1]),
@@ -55,7 +75,8 @@ def inspect(directory):
                            directory / 'psycles_kernel_trace.csv', names),
         'resources': resources,
         'functions': {name: {**symbols[name], **row} for name, row in isa.items()},
-        'code_object_sha256': source(directory / 'hip_isa_12.co')['sha256'],
+        'code_object_sha256': source(artifacts['code_object'])['sha256'],
+        'stage_artifacts': {key: str(path) for key, path in artifacts.items()},
         'sources': [source(directory / name) for name in files],
     }
 

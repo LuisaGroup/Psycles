@@ -1,6 +1,6 @@
 # Psycles validation index
 
-Updated 2026-09-08. This is the current evidence index, not a cumulative
+Updated 2026-09-09. This is the current evidence index, not a cumulative
 roadmap. Older timing tables and legacy-executor claims have been removed
 from this page; their dated reports remain under docs/validation and in Git
 history.
@@ -50,23 +50,23 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Latest four-scene follow-up
 
-Psycles `cbb73185` / Luisa `85e5300f1` complete six further 256-spp renders,
+Psycles `239cade6` / Luisa `85e5300f1` complete six further 256-spp renders,
 using fresh socket metadata with the exact earlier geometry/texture bytes.
 These use retained equal-pass Cycles references, **not fresh timing pairs**.
 All 46 channels are finite and all 15 pass comparisons complete. Exact six-run
 data, images' provenance and all implementation hashes are in the
-[latest report](docs/validation/2026-09-08/svm-math-expansion/README.md).
+[latest report](docs/validation/2026-09-08/svm-group-contexts/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 13.3807 | 19.8795 | 220 B |
-| Monster, one run | 14.8904 | 23.6108 | 280 B |
-| Classroom, one run | 18.3319 | 18.7251 | 260 B |
-| Barbershop, three-run median | 40.2529 | 26.5348 / 25.5005 / 26.9425 | 416 B |
+| Lone Monk, one run | 13.3748 | 19.2910 | 220 B |
+| Monster, one run | 14.7691 | 22.4903 | 280 B |
+| Classroom, one run | 18.2831 | 19.4370 | 260 B |
+| Barbershop, three-run median | 40.1352 | 25.9988 / 26.5395 / 25.9027 | 416 B |
 
-Barbershop's individual times are 40.2016 / 40.6183 / 40.2529 s. Its median
-is 2.82% below the preceding 41.4192 s, not an isolated causal improvement
-estimate, and 58.6% slower than the retained Cycles median. Initialization is
+Barbershop's individual times are 40.1352 / 40.0687 / 40.9465 s. Its median
+is 0.29% below the preceding 40.2529 s, not an isolated causal improvement
+estimate, and 58.2% slower than the retained Cycles median. Initialization is
 JIT plus setup, not compiler-only or cold JIT: the separate profile had warmed
 downstream caches before these six runs. It is never included in render time.
 Current first-run DiffInd relative RMSE is 12.882% / 2.552% / 17.820% / 7.126%
@@ -74,9 +74,9 @@ in the table's scene order. The structural and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [native Mapping declaration investigation](docs/validation/2026-09-08/svm-mapping-declarations/README.md)
-at Psycles `61443f70` / Luisa `85e5300f1` is the latest structural checkpoint.
-The latest complete 256-spp four-scene campaign remains the `cbb73185` run above.
+The [group-context repair](docs/validation/2026-09-08/svm-group-contexts/README.md)
+at Psycles `239cade6` / Luisa `85e5300f1` is the latest structural checkpoint
+and the source of the complete 256-spp four-scene campaign above.
 The preceding lamp-routing report records Psycles `773f1aca` / Luisa
 `4284e8cb9`, which publish the
 post-lamp closest-intersection boundary, native miss-distance normalization
@@ -112,13 +112,17 @@ images constrain Math clamp expansion after native conversion links;
 fifteen fail before the repair. Another eighteen exact images constrain
 Mapping's native POINT declarations and shared conversions; five fail before
 that repair, including a five-authored-node 47-versus-44-word reduction.
-All 279 Barbershop used-shader images have
-equal lengths: 115 raw-exact, 158 with identical layouts and differences
-only in declared resource-ID fields, and six still with different schedules.
+Thirty further exact original images constrain lazy group input evaluation,
+persistent per-instance output caches and parent-context forwarding. Twelve
+fail before the repair, including a five-node 25-word chain incorrectly
+collapsed to 22 words. This removes the last six known Barbershop schedules:
+all 279 used-shader images have identical node/payload layouts, stack
+addresses and jump/domain structure; 115 are raw-exact and 164 differ only
+in declared resource-ID fields.
 Resource binding equivalence is unresolved; no words are normalized away.
 Static stack capacity remains 33 floats; the surface ELF `.text` remains
 byte-identical and resources stay at 256 VGPRs / 2496 private bytes.
-The new 64-spp surface GPU total is 5.904182 s, versus the
+The new 64-spp surface GPU total is 5.872749 s, versus the
 retained original Cycles 2.962829 s, with essentially unchanged surface visits.
 These structural counts are not a measured speedup or complete shader parity.
 Host-only Blender folding domains remain separate from later Cycles folding;
@@ -134,9 +138,9 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 182/182 | Complete registered suite, 139.58 s |
-| Psycles fallback | 184/184 | Complete parallel suite, 89.49 s |
-| Psycles host | 167/167 | 228 original-Cycles images across the new families; source-size gate fully green |
+| Psycles HIP | 182/182 | Complete registered suite, 145.30 s |
+| Psycles fallback | 184/184 | Complete parallel suite, 91.40 s |
+| Psycles host | 168/168 | 258 original-Cycles images across the new families; source-size gate fully green |
 | Luisa child | 155/155 | Retained unchanged child checkpoint; both queue races also repeated 100 times |
 | Strict native Vulkan | 2/2 | Lamp routing and bump state; 31 native SPIR-V compilations, no DXC/DXIL load |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |

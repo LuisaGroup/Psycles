@@ -1,5 +1,9 @@
 # Native Math expansion and typed Barbershop SVM audit
 
+This revision-pinned checkpoint is superseded by the
+[group-context repair](../svm-group-contexts/README.md), which resolves the
+remaining six layouts and supplies the latest full-resolution campaign.
+
 ## Technical result
 
 Psycles `cbb73185` restores original Cycles' Math clamp expansion phase.

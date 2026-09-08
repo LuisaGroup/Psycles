@@ -1,5 +1,9 @@
 # Native Mapping declarations
 
+This revision-pinned checkpoint is superseded by the
+[group-context repair](../svm-group-contexts/README.md), which resolves all
+six layouts listed below and supplies the latest complete validation.
+
 Psycles `61443f70` restores Mapping's four input sockets and its output to
 the original Cycles POINT type. The contract's generic Blender VECTOR types
 remain intact until native socket reconstruction. The compiler restores all
