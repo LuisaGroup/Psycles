@@ -72,6 +72,7 @@ static_assert(jump_node_word_count == 4u);
           std::bit_cast<std::uint32_t>(b.emission_estimate.z);
   return lhs.words == rhs.words && lhs.node_types_used == rhs.node_types_used &&
          lhs.attribute_requests == rhs.attribute_requests &&
+         lhs.entry_usage == rhs.entry_usage &&
          lhs.peak_stack_usage == rhs.peak_stack_usage && same_metadata;
 }
 
@@ -177,6 +178,7 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
   auto global_word_count = shaders.size() * jump_node_word_count;
   auto peak_stack_usage = std::uint32_t{};
   std::array<bool, NODE_NUM> node_types_used{};
+  ShaderEntryUsageTable entry_usage{};
   node_types_used[NODE_SHADER_JUMP] = !shaders.empty();
 
   for (auto shader_index = std::size_t{}; shader_index < shaders.size();
@@ -206,6 +208,29 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
     if (shader.peak_stack_usage > SVM_STACK_SIZE) {
       return reject(prefix + "peak stack usage exceeds Cycles SVM capacity");
     }
+    ShaderEntryUsage combined;
+    for (auto entry = std::size_t{}; entry < entry_usage.size(); ++entry) {
+      const auto usage = shader.usage_for(static_cast<ShaderType>(entry));
+      if (usage.peak_stack_usage > shader.peak_stack_usage) {
+        return reject(prefix + "entry stack usage exceeds its whole image");
+      }
+      if (shader.entry_usage &&
+          (!usage.node_types_used[NODE_SHADER_JUMP] ||
+           !usage.node_types_used[NODE_END])) {
+        return reject(prefix + "entry usage omits ShaderJump or End");
+      }
+      auto &linked = entry_usage[entry];
+      linked.peak_stack_usage = std::max(linked.peak_stack_usage, usage.peak_stack_usage);
+      combined.peak_stack_usage = std::max(combined.peak_stack_usage, usage.peak_stack_usage);
+      for (auto node = std::size_t{}; node < NODE_NUM; ++node) {
+        linked.node_types_used[node] |= usage.node_types_used[node];
+        combined.node_types_used[node] |= usage.node_types_used[node];
+      }
+    }
+    if (combined.node_types_used != shader.node_types_used ||
+        combined.peak_stack_usage != shader.peak_stack_usage) {
+      return reject(prefix + "entry usage union differs from its whole image");
+    }
     const auto tail_word_count = shader.words.size() - jump_node_word_count;
     if (tail_word_count > maximum_int_offset - global_word_count) {
       return reject("Cycles SVM global word offsets overflow int32");
@@ -222,6 +247,7 @@ ShaderTableImage link_shader_table(std::span<const ShaderImage> shaders) {
   result.valid = true;
   result.node_types_used = node_types_used;
   result.peak_stack_usage = peak_stack_usage;
+  result.entry_usage = entry_usage;
   result.shader_count = static_cast<std::uint32_t>(shaders.size());
   result.words.resize(global_word_count);
 

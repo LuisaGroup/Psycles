@@ -414,6 +414,8 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
       const Expr<Buffer<luisa::uint>> words{
           *_scene->cycles_svm->word_buffer};
       const auto evaluate_material = [&] {
+        const auto usage = _scene->cycles_svm->compilation.table.usage_for(
+            abi::SHADER_TYPE_SURFACE);
         svm_detail::surface_shader_initialize_closures(
             *_closures, path_state.visibility, path_state.flag);
         svm::eval_nodes_assume_valid(
@@ -422,13 +424,13 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
           abi::SHADER_TYPE_SURFACE,
           _scene->cycles_svm->kernel_features,
           svm::kernel_feature_node_mask_surface,
-          _scene->cycles_svm->compilation.table.node_types_used,
+          usage.node_types_used,
           transform_state,
           *_shader_data,
           path_state,
           std::max<std::size_t>(
               1u,
-              _scene->cycles_svm->compilation.table.peak_stack_usage));
+              usage.peak_stack_usage));
       };
       const auto prepare_closures = [&] {
         svm_detail::surface_shader_prepare_closures(

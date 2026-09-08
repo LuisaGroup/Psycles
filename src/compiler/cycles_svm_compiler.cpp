@@ -43,10 +43,14 @@ class Stack {
 private:
   std::array<int, SVM_STACK_SIZE> _users{};
   std::uint32_t _peak{};
+  std::uint32_t _type_peak{};
   bool _failed{};
 
 public:
-  void clear() noexcept { _users.fill(0); }
+  void clear() noexcept {
+    _users.fill(0);
+    _type_peak = 0u;
+  }
 
   [[nodiscard]] SVMStackOffset assign(std::uint32_t size) noexcept {
     auto offset = -1;
@@ -60,6 +64,7 @@ public:
       if (unused == size) {
         offset = static_cast<int>(index + 1u - size);
         _peak = std::max(_peak, index + 1u);
+        _type_peak = std::max(_type_peak, index + 1u);
         while (static_cast<int>(index) >= offset) {
           _users[index] = 1;
           if (index == 0u) {
@@ -104,6 +109,7 @@ public:
 
   [[nodiscard]] bool failed() const noexcept { return _failed; }
   [[nodiscard]] std::uint32_t peak() const noexcept { return _peak; }
+  [[nodiscard]] std::uint32_t type_peak() const noexcept { return _type_peak; }
 };
 
 template<typename T>
@@ -282,6 +288,7 @@ private:
   Stack _stack;
   AttributeRequestSet _attribute_requests;
   ShaderCompileMetadata _metadata;
+  ShaderEntryUsageTable _entry_usage{};
   GraphNode *_current_node{};
   ShaderType _current_type{SHADER_TYPE_SURFACE};
   bool _background{};
@@ -291,6 +298,15 @@ private:
   std::string _diagnostic;
 
 private:
+  [[nodiscard]] ShaderEntryUsage &current_entry_usage() noexcept {
+    // Cycles emits no END after BUMP: ShaderJump::surface enters that prefix
+    // and continues into SURFACE. Their stack allocations are reused, so the
+    // entry bound is the maximum of the two emission high-water marks.
+    const auto entry = _current_type == SHADER_TYPE_BUMP
+                           ? SHADER_TYPE_SURFACE : _current_type;
+    return _entry_usage[static_cast<std::size_t>(entry)];
+  }
+
   [[nodiscard]] bool reject(std::string diagnostic) {
     if (_diagnostic.empty()) {
       _diagnostic = std::move(diagnostic);
@@ -598,7 +614,7 @@ private:
          _current_type != SHADER_TYPE_VOLUME)
             ? node_type_with_derivatives(type)
             : type;
-    static_cast<void>(_stream.add_node(resolved));
+    static_cast<void>(add_node(resolved));
     _stream.add_node_data(payload, payload_size);
     if (node != nullptr) {
       node->added_to_svm = true;
@@ -622,7 +638,9 @@ private:
   }
 
   [[nodiscard]] std::size_t add_node(ShaderNodeType type) override {
-    return _stream.add_node(type);
+    const auto offset = _stream.add_node(type);
+    current_entry_usage().node_types_used[type] = true;
+    return offset;
   }
 
   [[nodiscard]] SVMStackOffset
@@ -1116,6 +1134,8 @@ private:
     if (type != SHADER_TYPE_BUMP) {
       static_cast<void>(add_node(NODE_END));
     }
+    auto &usage = current_entry_usage();
+    usage.peak_stack_usage = std::max(usage.peak_stack_usage, _stack.type_peak());
     return _diagnostic.empty();
   }
 
@@ -1128,6 +1148,7 @@ private:
     result.attribute_requests.assign(_attribute_requests.requests().begin(),
                                      _attribute_requests.requests().end());
     result.peak_stack_usage = _stack.peak();
+    if (result.valid) { result.entry_usage = _entry_usage; }
     result.metadata = _metadata;
     return result;
   }
@@ -1204,6 +1225,9 @@ public:
         NODE_SHADER_JUMP, SVMNodeShaderJump{0, 0, 0});
     if (jump_index != 0u) {
       std::abort();
+    }
+    for (auto &usage : _entry_usage) {
+      usage.node_types_used[NODE_SHADER_JUMP] = true;
     }
 
     const auto has_bump = _graph.root(GraphDomain::bump) != nullptr;

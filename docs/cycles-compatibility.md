@@ -37,6 +37,10 @@ profiling, pre-rendering nor scene-name constants determine allocation sizes.
   node/scene feature masks also omit unreachable handler bodies and closure
   consumers. This includes BSSRDF exit setup on scenes without subsurface.
 - Stack capacity comes from the native compiler's stack-address analysis.
+  Opcode usage and stack high-water marks are tracked per ShaderJump entry;
+  bump falls through into surface and shares its maximum allocation bound.
+  Linking unions corresponding entries; unproven external images retain a
+  conservative whole-image bound.
   The recorded array extent is passed to main surface, light, background,
   importance-bake, volume, density-bake and shadow SVM entries. The standalone diagnostic API
   retains a conservative default.
@@ -57,6 +61,7 @@ Proofs, counterexamples and regression boundaries:
 - [Static opcode and feature pruning](validation/2026-09-07/native-static-pruning/README.md)
 - [Native closure budget](validation/2026-09-07/native-closure-budget/README.md)
 - [Scene-local stack extents](validation/2026-09-07/scene-local-extents/README.md)
+- [Per-entry opcode and stack specialization](validation/2026-09-08/svm-entry-usage/README.md)
 - [Published Luisa Local/coroutine integration](validation/2026-09-07/luisa-local-coro-publication/README.md)
 - [Coroutine boundary audit and SSS queue correction](validation/2026-09-07/coroutine-boundaries/README.md)
 - [Transitive read-only references and uniform frame state](validation/2026-09-08/coro-readonly-forwarding/README.md)
@@ -124,12 +129,22 @@ wall interval; Psycles uses render-only wall time. Main shader caching is
 disabled, auxiliary/OS caches retain normal policy, and there is no concurrent
 build/render or GPU profiler. Cycles loads precompiled GPU kernels.
 
-| Scene / extent / seed | Cycles HIP | Psycles HIP | Relative time | Main JIT | Frame |
+| Scene / extent / seed | Cycles HIP | Psycles HIP | Relative time | Session init | Frame |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Monk / 1440x1080 / 0 | 13.4183 | 13.9693 | 1.0411 | 18.8151 | 220 B |
 | Monster / 1080x1080 / 0 | 14.4289 | 15.2304 | 1.0555 | 22.3434 | 284 B |
 | Classroom / 1920x1080 / 1 | 20.7624 | 18.8207 | 0.9065 | 18.1598 | 264 B |
 | Barbershop / 2048x858 / 0 | 28.7312 | 41.0285 | 1.4280 | 27.4798 | 416 B |
+
+Session initialization is the CLI's `shader_jit_seconds`: the complete
+`create_session` interval, including JIT and setup/baking, not just the
+kernel compiler. The later [entry-specialized canaries](validation/2026-09-08/svm-entry-usage/README.md)
+record three new Psycles renders per scene against these unchanged original
+Cycles reference images. Their render medians are 13.9472 / 15.2102 /
+18.9568 / 39.5579 s, with unchanged frame layouts and image residuals.
+Barbershop improves locally by 3.58% but remains 37.68% above the preceding
+Cycles median; the small changes in other scenes do not establish a gain.
+Those canaries do not replace the revision-pinned paired baseline above.
 
 The performance goal is not complete. Only Classroom is faster in this
 campaign; Barbershop still takes 42.8% more rendering time. Old schema-v1

@@ -23,6 +23,15 @@ struct ShaderTableImage {
   std::array<bool, NODE_NUM> node_types_used{};
   std::uint32_t peak_stack_usage{};
   std::uint32_t shader_count{};
+  std::optional<ShaderEntryUsageTable> entry_usage;
+
+  [[nodiscard]] ShaderEntryUsage usage_for(ShaderType type) const noexcept {
+    const auto index = static_cast<std::size_t>(type);
+    if (entry_usage && index < entry_usage->size()) {
+      return (*entry_usage)[index];
+    }
+    return {node_types_used, peak_stack_usage};
+  }
 };
 
 struct ShaderKernelSettings {

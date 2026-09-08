@@ -183,6 +183,23 @@ void test_bump_state_word_image() {
               image.words[176u] == static_cast<std::uint32_t>(NODE_LEAVE_BUMP_EVAL) &&
               image.words[194u] == static_cast<std::uint32_t>(NODE_END),
           "bump-state node ordering differs from Cycles 5.2.1");
+  const auto surface = image.usage_for(SHADER_TYPE_SURFACE);
+  const auto volume = image.usage_for(SHADER_TYPE_VOLUME);
+  const auto displacement = image.usage_for(SHADER_TYPE_DISPLACEMENT);
+  require(surface.node_types_used[NODE_ENTER_BUMP_EVAL] &&
+              surface.node_types_used[NODE_LEAVE_BUMP_EVAL] &&
+              surface.node_types_used[NODE_CLOSURE_SET_NORMAL] &&
+              surface.node_types_used[NODE_CLOSURE_BSDF],
+          "surface entry must include the complete bump fallthrough prefix");
+  require(!displacement.node_types_used[NODE_ENTER_BUMP_EVAL] &&
+              !displacement.node_types_used[NODE_CLOSURE_BSDF] &&
+              surface.peak_stack_usage > displacement.peak_stack_usage &&
+              surface.peak_stack_usage == image.peak_stack_usage,
+          "displacement entry inherited bump/surface-only state");
+  require(volume.peak_stack_usage == 0u &&
+              !volume.node_types_used[NODE_ENTER_BUMP_EVAL] &&
+              !volume.node_types_used[NODE_CLOSURE_BSDF],
+          "empty volume entry inherited surface allocations");
 }
 
 } // namespace

@@ -65,12 +65,14 @@ Bool evaluate_cycles_svm_volume_entry(
       const svm::TransformState transforms{
           parameters.camera_transform, parameters.camera_inverse_transform,
           object_to_world, world_to_object};
+      const auto usage = scene->cycles_svm->compilation.table.usage_for(
+          abi::SHADER_TYPE_VOLUME);
       svm::eval_nodes_assume_valid(
           kg, *scene->cycles_svm->word_buffer, abi::SHADER_TYPE_VOLUME,
           scene->cycles_svm->kernel_features, node_feature_mask,
-          scene->cycles_svm->compilation.table.node_types_used, transforms,
+          usage.node_types_used, transforms,
           sd, state, std::max<std::size_t>(
-                         1u, scene->cycles_svm->compilation.table.peak_stack_usage));
+                         1u, usage.peak_stack_usage));
     };
   };
   return valid;
