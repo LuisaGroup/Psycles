@@ -4,6 +4,12 @@
 
 #include "cycles_svm_bsdf.h"
 
+#include <luisa/dsl/sugar.h>
+#include <psycles/luisa/cycles_closure.h>
+
+#include <initializer_list>
+#include <utility>
+
 #include "cycles_svm_ashikhmin_shirley.h"
 #include "cycles_svm_hair.h"
 #include "cycles_svm_microfacet.h"
@@ -15,10 +21,6 @@
 #include "cycles_svm_simple_closure.h"
 #include "cycles_svm_toon.h"
 
-#include <psycles/luisa/cycles_closure.h>
-
-#include <luisa/dsl/sugar.h>
-
 namespace psycles::luisa_backend::cycles_svm::detail {
 
 using namespace luisa::compute;
@@ -29,6 +31,26 @@ namespace {
 [[nodiscard]] constexpr bool closure_enabled(ClosureTypeMask mask,
                                              std::uint32_t type) noexcept {
   return type < 64u && (mask & (ClosureTypeMask{1u} << type)) != 0u;
+}
+
+// Cycles uses several labels for one body. Filter labels at JIT time, then
+// record that body once; this helper creates no device callable or predicate.
+template <typename Body>
+void closure_cases(ClosureTypeMask mask,
+                   std::initializer_list<std::uint32_t> types,
+                   Body&& body) noexcept {
+  luisa::vector<std::uint32_t> enabled;
+  enabled.reserve(types.size());
+  for (auto type : types) {
+    if (closure_enabled(mask, type)) {
+      enabled.emplace_back(type);
+    }
+  }
+  if (!enabled.empty()) {
+    luisa::compute::detail::SwitchCaseStmtBuilder{
+        luisa::span<const std::uint32_t>{enabled}} %
+        std::forward<Body>(body);
+  }
 }
 
 [[nodiscard]] constexpr ClosureTypeMask
@@ -260,29 +282,17 @@ BsdfSample bsdf_sample(const KernelGlobals &kernel_globals,
            * ordinary BSDF sampler. Release kernels retain LABEL_NONE. */
       };
     }
-    if (closure_enabled(closure_types, closure_type::type_microfacet_ggx)) {
-      $case(closure_type::type_microfacet_ggx) {
-        assign(result, microfacet_sample(kernel_globals, pool, closure_index,
-                                         geometric_normal, shader_data.wi,
-                                         random, true));
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_ggx_refraction)) {
-      $case(closure_type::type_microfacet_ggx_refraction) {
-        assign(result, microfacet_sample(kernel_globals, pool, closure_index,
-                                         geometric_normal, shader_data.wi,
-                                         random, true));
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_ggx_glass)) {
-      $case(closure_type::type_microfacet_ggx_glass) {
-        assign(result, microfacet_sample(kernel_globals, pool, closure_index,
-                                         geometric_normal, shader_data.wi,
-                                         random, true));
-      };
-    }
+    closure_cases(closure_types,
+                  {closure_type::type_microfacet_ggx,
+                   closure_type::type_microfacet_ggx_refraction,
+                   closure_type::type_microfacet_ggx_glass},
+                  [&] {
+                    assign(result,
+                           microfacet_sample(kernel_globals, pool,
+                                             closure_index, geometric_normal,
+                                             shader_data.wi, random, true));
+                  });
+
     if (closure_enabled(closure_types,
                         closure_type::type_thin_glass_transmission)) {
       $case(closure_type::type_thin_glass_transmission) {
@@ -291,30 +301,17 @@ BsdfSample bsdf_sample(const KernelGlobals &kernel_globals,
                            geometric_normal, shader_data.wi, random));
       };
     }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann)) {
-      $case(closure_type::type_microfacet_beckmann) {
-        assign(result, microfacet_sample(kernel_globals, pool, closure_index,
-                                         geometric_normal, shader_data.wi,
-                                         random, false));
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann_refraction)) {
-      $case(closure_type::type_microfacet_beckmann_refraction) {
-        assign(result, microfacet_sample(kernel_globals, pool, closure_index,
-                                         geometric_normal, shader_data.wi,
-                                         random, false));
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann_glass)) {
-      $case(closure_type::type_microfacet_beckmann_glass) {
-        assign(result, microfacet_sample(kernel_globals, pool, closure_index,
-                                         geometric_normal, shader_data.wi,
-                                         random, false));
-      };
-    }
+    closure_cases(closure_types,
+                  {closure_type::type_microfacet_beckmann,
+                   closure_type::type_microfacet_beckmann_refraction,
+                   closure_type::type_microfacet_beckmann_glass},
+                  [&] {
+                    assign(result,
+                           microfacet_sample(kernel_globals, pool,
+                                             closure_index, geometric_normal,
+                                             shader_data.wi, random, false));
+                  });
+
     if (closure_enabled(closure_types, closure_type::type_ashikhmin_shirley)) {
       $case(closure_type::type_ashikhmin_shirley) {
         assign(result, bsdf_ashikhmin_shirley_sample(
@@ -420,47 +417,17 @@ BsdfRoughnessEta bsdf_roughness_eta(const ClosurePool &pool,
         result.roughness = make_float2(0.0f);
       };
     }
-    if (closure_enabled(closure_types, closure_type::type_microfacet_ggx)) {
-      $case(closure_type::type_microfacet_ggx) {
-        set_microfacet_roughness_eta(result, pool, closure_index, wo);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann)) {
-      $case(closure_type::type_microfacet_beckmann) {
-        set_microfacet_roughness_eta(result, pool, closure_index, wo);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann_refraction)) {
-      $case(closure_type::type_microfacet_beckmann_refraction) {
-        set_microfacet_roughness_eta(result, pool, closure_index, wo);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_ggx_refraction)) {
-      $case(closure_type::type_microfacet_ggx_refraction) {
-        set_microfacet_roughness_eta(result, pool, closure_index, wo);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_thin_glass_transmission)) {
-      $case(closure_type::type_thin_glass_transmission) {
-        set_microfacet_roughness_eta(result, pool, closure_index, wo);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann_glass)) {
-      $case(closure_type::type_microfacet_beckmann_glass) {
-        set_microfacet_roughness_eta(result, pool, closure_index, wo);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_ggx_glass)) {
-      $case(closure_type::type_microfacet_ggx_glass) {
-        set_microfacet_roughness_eta(result, pool, closure_index, wo);
-      };
-    }
+    closure_cases(
+        closure_types,
+        {closure_type::type_microfacet_ggx,
+         closure_type::type_microfacet_ggx_refraction,
+         closure_type::type_microfacet_ggx_glass,
+         closure_type::type_thin_glass_transmission,
+         closure_type::type_microfacet_beckmann,
+         closure_type::type_microfacet_beckmann_refraction,
+         closure_type::type_microfacet_beckmann_glass},
+        [&] { set_microfacet_roughness_eta(result, pool, closure_index, wo); });
+
     if (closure_enabled(closure_types, closure_type::type_ashikhmin_shirley)) {
       $case(closure_type::type_ashikhmin_shirley) {
         const auto param = pool.microfacet_param(closure_index);
@@ -560,78 +527,24 @@ UInt bsdf_label(const KernelGlobals &kernel_globals, const ClosurePool &pool,
         result = closure_type::label_transmit | closure_type::label_ray_portal;
       };
     }
-    if (closure_enabled(closure_types, closure_type::type_microfacet_ggx)) {
-      $case(closure_type::type_microfacet_ggx) {
-        const auto glossy = pool.microfacet_param(closure_index).alpha_x *
-                                pool.microfacet_param(closure_index).alpha_y >
-                            closure_type::microfacet_singular_alpha_product;
-        result =
-            select(closure_type::label_reflect, closure_type::label_transmit,
-                   dot(common.N, wo) < 0.0f) |
-            select(closure_type::label_singular, closure_type::label_glossy,
-                   glossy);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann)) {
-      $case(closure_type::type_microfacet_beckmann) {
-        const auto param = pool.microfacet_param(closure_index);
-        result =
-            select(closure_type::label_reflect, closure_type::label_transmit,
-                   dot(common.N, wo) < 0.0f) |
-            select(closure_type::label_singular, closure_type::label_glossy,
-                   param.alpha_x * param.alpha_y >
-                       closure_type::microfacet_singular_alpha_product);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_ggx_refraction)) {
-      $case(closure_type::type_microfacet_ggx_refraction) {
-        const auto param = pool.microfacet_param(closure_index);
-        result =
-            select(closure_type::label_reflect, closure_type::label_transmit,
-                   dot(common.N, wo) < 0.0f) |
-            select(closure_type::label_singular, closure_type::label_glossy,
-                   param.alpha_x * param.alpha_y >
-                       closure_type::microfacet_singular_alpha_product);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann_refraction)) {
-      $case(closure_type::type_microfacet_beckmann_refraction) {
-        const auto param = pool.microfacet_param(closure_index);
-        result =
-            select(closure_type::label_reflect, closure_type::label_transmit,
-                   dot(common.N, wo) < 0.0f) |
-            select(closure_type::label_singular, closure_type::label_glossy,
-                   param.alpha_x * param.alpha_y >
-                       closure_type::microfacet_singular_alpha_product);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_ggx_glass)) {
-      $case(closure_type::type_microfacet_ggx_glass) {
-        const auto param = pool.microfacet_param(closure_index);
-        result =
-            select(closure_type::label_reflect, closure_type::label_transmit,
-                   dot(common.N, wo) < 0.0f) |
-            select(closure_type::label_singular, closure_type::label_glossy,
-                   param.alpha_x * param.alpha_y >
-                       closure_type::microfacet_singular_alpha_product);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann_glass)) {
-      $case(closure_type::type_microfacet_beckmann_glass) {
-        const auto param = pool.microfacet_param(closure_index);
-        result =
-            select(closure_type::label_reflect, closure_type::label_transmit,
-                   dot(common.N, wo) < 0.0f) |
-            select(closure_type::label_singular, closure_type::label_glossy,
-                   param.alpha_x * param.alpha_y >
-                       closure_type::microfacet_singular_alpha_product);
-      };
-    }
+    closure_cases(
+        closure_types,
+        {closure_type::type_microfacet_ggx,
+         closure_type::type_microfacet_beckmann,
+         closure_type::type_microfacet_ggx_refraction,
+         closure_type::type_microfacet_beckmann_refraction,
+         closure_type::type_microfacet_ggx_glass,
+         closure_type::type_microfacet_beckmann_glass},
+        [&] {
+          const auto param = pool.microfacet_param(closure_index);
+          result =
+              select(closure_type::label_reflect, closure_type::label_transmit,
+                     dot(common.N, wo) < 0.0f) |
+              select(closure_type::label_singular, closure_type::label_glossy,
+                     param.alpha_x * param.alpha_y >
+                         closure_type::microfacet_singular_alpha_product);
+        });
+
     if (closure_enabled(closure_types,
                         closure_type::type_thin_glass_transmission)) {
       $case(closure_type::type_thin_glass_transmission) {
@@ -746,26 +659,16 @@ BsdfEvaluation bsdf_eval(const KernelGlobals &kernel_globals,
                                               shader_data.wi, wo));
         };
       }
-      if (closure_enabled(closure_types, closure_type::type_microfacet_ggx)) {
-        $case(closure_type::type_microfacet_ggx) {
-          assign(result, microfacet_eval(kernel_globals, pool, closure_index,
-                                         shader_data.wi, wo, true));
-        };
-      }
-      if (closure_enabled(closure_types,
-                          closure_type::type_microfacet_ggx_refraction)) {
-        $case(closure_type::type_microfacet_ggx_refraction) {
-          assign(result, microfacet_eval(kernel_globals, pool, closure_index,
-                                         shader_data.wi, wo, true));
-        };
-      }
-      if (closure_enabled(closure_types,
-                          closure_type::type_microfacet_ggx_glass)) {
-        $case(closure_type::type_microfacet_ggx_glass) {
-          assign(result, microfacet_eval(kernel_globals, pool, closure_index,
-                                         shader_data.wi, wo, true));
-        };
-      }
+      closure_cases(
+          closure_types,
+          {closure_type::type_microfacet_ggx,
+           closure_type::type_microfacet_ggx_refraction,
+           closure_type::type_microfacet_ggx_glass},
+          [&] {
+            assign(result, microfacet_eval(kernel_globals, pool, closure_index,
+                                           shader_data.wi, wo, true));
+          });
+
       if (closure_enabled(closure_types,
                           closure_type::type_thin_glass_transmission)) {
         $case(closure_type::type_thin_glass_transmission) {
@@ -774,27 +677,16 @@ BsdfEvaluation bsdf_eval(const KernelGlobals &kernel_globals,
                              shader_data.wi, wo));
         };
       }
-      if (closure_enabled(closure_types,
-                          closure_type::type_microfacet_beckmann)) {
-        $case(closure_type::type_microfacet_beckmann) {
-          assign(result, microfacet_eval(kernel_globals, pool, closure_index,
-                                         shader_data.wi, wo, false));
-        };
-      }
-      if (closure_enabled(closure_types,
-                          closure_type::type_microfacet_beckmann_refraction)) {
-        $case(closure_type::type_microfacet_beckmann_refraction) {
-          assign(result, microfacet_eval(kernel_globals, pool, closure_index,
-                                         shader_data.wi, wo, false));
-        };
-      }
-      if (closure_enabled(closure_types,
-                          closure_type::type_microfacet_beckmann_glass)) {
-        $case(closure_type::type_microfacet_beckmann_glass) {
-          assign(result, microfacet_eval(kernel_globals, pool, closure_index,
-                                         shader_data.wi, wo, false));
-        };
-      }
+      closure_cases(
+          closure_types,
+          {closure_type::type_microfacet_beckmann,
+           closure_type::type_microfacet_beckmann_refraction,
+           closure_type::type_microfacet_beckmann_glass},
+          [&] {
+            assign(result, microfacet_eval(kernel_globals, pool, closure_index,
+                                           shader_data.wi, wo, false));
+          });
+
       if (closure_enabled(closure_types,
                           closure_type::type_ashikhmin_shirley)) {
         $case(closure_type::type_ashikhmin_shirley) {
@@ -873,68 +765,21 @@ void bsdf_blur(ClosurePool &pool, Expr<std::uint32_t> closure_index,
                Expr<float> roughness, ClosureTypeMask closure_types) noexcept {
   const auto common = pool.common(closure_index);
   $switch(common.type) {
-    if (closure_enabled(closure_types, closure_type::type_microfacet_ggx)) {
-      $case(closure_type::type_microfacet_ggx) {
-        auto param = pool.microfacet_param(closure_index);
-        param.alpha_x = max(roughness, param.alpha_x);
-        param.alpha_y = max(roughness, param.alpha_y);
-        pool.set_microfacet_param(closure_index, param);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_ggx_refraction)) {
-      $case(closure_type::type_microfacet_ggx_refraction) {
-        auto param = pool.microfacet_param(closure_index);
-        param.alpha_x = max(roughness, param.alpha_x);
-        param.alpha_y = max(roughness, param.alpha_y);
-        pool.set_microfacet_param(closure_index, param);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_ggx_glass)) {
-      $case(closure_type::type_microfacet_ggx_glass) {
-        auto param = pool.microfacet_param(closure_index);
-        param.alpha_x = max(roughness, param.alpha_x);
-        param.alpha_y = max(roughness, param.alpha_y);
-        pool.set_microfacet_param(closure_index, param);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_thin_glass_transmission)) {
-      $case(closure_type::type_thin_glass_transmission) {
-        auto param = pool.microfacet_param(closure_index);
-        param.alpha_x = max(roughness, param.alpha_x);
-        param.alpha_y = max(roughness, param.alpha_y);
-        pool.set_microfacet_param(closure_index, param);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann)) {
-      $case(closure_type::type_microfacet_beckmann) {
-        auto param = pool.microfacet_param(closure_index);
-        param.alpha_x = max(roughness, param.alpha_x);
-        param.alpha_y = max(roughness, param.alpha_y);
-        pool.set_microfacet_param(closure_index, param);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann_refraction)) {
-      $case(closure_type::type_microfacet_beckmann_refraction) {
-        auto param = pool.microfacet_param(closure_index);
-        param.alpha_x = max(roughness, param.alpha_x);
-        param.alpha_y = max(roughness, param.alpha_y);
-        pool.set_microfacet_param(closure_index, param);
-      };
-    }
-    if (closure_enabled(closure_types,
-                        closure_type::type_microfacet_beckmann_glass)) {
-      $case(closure_type::type_microfacet_beckmann_glass) {
-        auto param = pool.microfacet_param(closure_index);
-        param.alpha_x = max(roughness, param.alpha_x);
-        param.alpha_y = max(roughness, param.alpha_y);
-        pool.set_microfacet_param(closure_index, param);
-      };
-    }
+    closure_cases(closure_types,
+                  {closure_type::type_microfacet_ggx,
+                   closure_type::type_microfacet_ggx_refraction,
+                   closure_type::type_microfacet_ggx_glass,
+                   closure_type::type_thin_glass_transmission,
+                   closure_type::type_microfacet_beckmann,
+                   closure_type::type_microfacet_beckmann_refraction,
+                   closure_type::type_microfacet_beckmann_glass},
+                  [&] {
+                    auto param = pool.microfacet_param(closure_index);
+                    param.alpha_x = max(roughness, param.alpha_x);
+                    param.alpha_y = max(roughness, param.alpha_y);
+                    pool.set_microfacet_param(closure_index, param);
+                  });
+
     if (closure_enabled(closure_types, closure_type::type_ashikhmin_shirley)) {
       $case(closure_type::type_ashikhmin_shirley) {
         auto param = pool.microfacet_param(closure_index);
