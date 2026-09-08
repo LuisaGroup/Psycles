@@ -5,6 +5,11 @@ It does **not** establish Cycles performance parity. In particular, the
 experiment that retained more HIP function boundaries was slower and has
 been completely reverted. No inlining-policy change is shipped here.
 
+This is the `cf59ab5b` / `85e5300f1` checkpoint. The subsequent
+[graph-boundary repair](../svm-graph-boundaries/README.md) resolves the extra
+Geometry.Normal and repeated procedural-texture evaluations diagnosed below,
+restores BUMP displacement tails, and carries the newer measurements.
+
 ## Published control-flow corrections
 
 Psycles `773f1aca` / Luisa `4284e8cb9` are published to `origin/main` /
@@ -160,7 +165,7 @@ the same invalid category; finite/infinite/NaN classification, all structure
 and dynamic-input records are exact. This does not relax device-state or
 runtime image tolerances.
 
-Remaining differing lengths are not waved away. In particular, missing
+At this checkpoint, differing lengths were not waved away. Missing
 separate displacement tails must be distinguished from surface work;
 some large total-image deficits do not occur on the executed surface entry.
 Splitting at the original ShaderJump domain targets shows that 223 used
@@ -170,6 +175,8 @@ extra each. Four damaged-label shaders have nine fewer words. These are
 serialized span sizes, not measured executed-node counts. The raw comparison
 is not a claim that all materials, resource identities or control flow are
 fully aligned; both whole-image and per-domain counts remain in the JSON.
+The subsequent graph-boundary report supersedes these outstanding-count
+claims; the frozen data here remains the before-image for that repair.
 
 This does not claim Blender's complete primitive-propagation phase is
 ported. Upstream Value/Color/conversion propagation and other folding

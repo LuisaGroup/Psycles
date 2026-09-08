@@ -168,13 +168,18 @@ The [scheduler trace comparison regression](validation/2026-09-08/dispatch-trace
 also resolves the former fallback test failure: it passed 182/182 at that
 checkpoint, with exact RNG/discrete state checks and unchanged film tolerances.
 No renderer binaries or captured trace bits change with that test-only fix.
-The latest [lamp-routing / CFG / surface investigation](validation/2026-09-08/lamp-routing-and-surface/README.md)
+The [lamp-routing / CFG / surface investigation](validation/2026-09-08/lamp-routing-and-surface/README.md)
 adds the original transparent-lamp traversal boundary, native miss-distance
 normalization and loop-epoch CFG repair. The full original native module now
 restructures. Hidden input default provenance and Vector Math host folding
-have 81 new original-Cycles word-image regressions. Entire raw Barbershop
-used-shader images matching the oracle increase from 80 to 100; 64 still have
-different lengths, and resource-ID payload mapping is not yet fully audited.
+have 81 original-Cycles word-image regressions. The subsequent
+[graph-boundary repair](validation/2026-09-08/svm-graph-boundaries/README.md)
+adds 24 exact images for bump edge ownership, retained BUMP displacement
+entries and procedural Color/Factor sharing. Entire raw Barbershop used-shader
+images matching the oracle increase from 100 to 112; only 5 retain different
+lengths. Resource-ID payload mapping is not yet fully audited. The static
+stack bound falls from 36 to 33 floats, but the complete surface machine-code
+text and its register/private-memory requirements remain unchanged.
 
 Main SVM dispatch and most handlers are already inlined. Keeping more HIP
 function boundaries in a controlled A/B/A experiment slows surface time by
@@ -182,22 +187,25 @@ function boundaries in a controlled A/B/A experiment slows surface time by
 is changed. The new report records code-object identities and actual outlined
 callees rather than equating static spill sites with dynamic memory traffic.
 
-Current suites pass HIP 182/182, fallback 184/184 and Luisa 155/155.
+Current suites pass HIP 182/182 and fallback 184/184; Luisa 155/155 is the
+retained validation of the unchanged child checkpoint.
 The parallel fallback run exposed a separate production-queue lost-wakeup
 race, repaired generically in child `85e5300f1`, with two minimal failures
 and 100 green repetitions each. Strict native Vulkan lamp-routing and
-bump-state tests pass 2/2 without loading DXC/DXIL. Host results are 158/159:
+bump-state tests pass 2/2 without loading DXC/DXIL. Current host results are 160/161:
 the same four existing source-size violations remain and are not waived.
 
-At Psycles `cf59ab5b` / Luisa `85e5300f1`, six new full-resolution 256-spp
+At Psycles `5096a41f` / Luisa `85e5300f1`, six new full-resolution 256-spp
 follow-ups complete against retained Cycles references, with exact prior
 geometry/images and new source socket metadata. Current render times are
-13.4514 / 14.8482 / 18.3248 s for Monk/Monster/Classroom (one each), and
-40.2962 s for Barbershop (three-run median). Current frames are
-220 / 280 / 260 / 416 B. Barbershop's 0.18% reduction from 40.3670 s is not
-a meaningful measured speedup; it remains about 59% slower than the retained
-Cycles median. Its first 79.0785 s session initialization and 23.3234 /
-24.6326 s repeats are all retained. These are not new paired Cycles timings.
+13.6448 / 15.0251 / 18.5797 s for Monk/Monster/Classroom (one each), and
+40.8982 s for Barbershop (three-run median; 40.8982 / 41.0184 / 40.2199 s).
+Current frames are 220 / 280 / 260 / 416 B. There is no demonstrated speedup;
+Barbershop remains about 61% slower than the retained Cycles median.
+Initialization is reported separately for every run, and is not cold JIT:
+the earlier profiler run had already warmed downstream caches. These are
+not new paired Cycles timings. The [latest report](validation/2026-09-08/svm-graph-boundaries/README.md)
+retains the exact six-run metrics and source hashes.
 
 All 46 Psycles channels are finite in every run. The revision-pinned paired
 baseline's first-pair relative RMSE is:

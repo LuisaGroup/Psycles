@@ -50,30 +50,34 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Latest four-scene follow-up
 
-Psycles `cf59ab5b` / Luisa `85e5300f1` complete six further 256-spp renders,
+Psycles `5096a41f` / Luisa `85e5300f1` complete six further 256-spp renders,
 using fresh socket metadata with the exact earlier geometry/texture bytes.
 These use retained equal-pass Cycles references, **not fresh timing pairs**.
 All 46 channels are finite and all 15 pass comparisons complete. Exact six-run
 data, images' provenance and all implementation hashes are in the
-[latest report](docs/validation/2026-09-08/lamp-routing-and-surface/README.md).
+[latest report](docs/validation/2026-09-08/svm-graph-boundaries/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 13.4514 | 18.6520 | 220 B |
-| Monster, one run | 14.8482 | 22.0809 | 280 B |
-| Classroom, one run | 18.3248 | 17.9154 | 260 B |
-| Barbershop, three-run median | 40.2962 | 79.0785 first; 23.3234 / 24.6326 repeats | 416 B |
+| Lone Monk, one run | 13.6448 | 22.2264 | 220 B |
+| Monster, one run | 15.0251 | 26.2560 | 280 B |
+| Classroom, one run | 18.5797 | 20.9987 | 260 B |
+| Barbershop, three-run median | 40.8982 | 29.8318 / 29.0572 / 27.0611 | 416 B |
 
-Barbershop is only 0.18% below its preceding 40.3670 s median, not a meaningful
-measured speedup, and still about 59% slower than the retained Cycles median.
-Its first-use initialization is not discarded or confused with render time.
+Barbershop's individual times are 40.8982 / 41.0184 / 40.2199 s. Its median
+is 1.49% above the preceding 40.2962 s, not a measured speedup, and about
+61% slower than the retained Cycles median. Initialization is JIT plus setup,
+not compiler-only or cold JIT: the separate profile had already warmed
+downstream caches before these six runs. It is never included in render time.
 Current first-run DiffInd relative RMSE is 12.882% / 2.552% / 17.820% / 7.126%
 in the table's scene order. The structural and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [lamp-routing and surface investigation](docs/validation/2026-09-08/lamp-routing-and-surface/README.md)
-is the latest checkpoint. Psycles `773f1aca` / Luisa `4284e8cb9` publish the
+The [graph-boundary investigation](docs/validation/2026-09-08/svm-graph-boundaries/README.md)
+at Psycles `5096a41f` / Luisa `85e5300f1` is the latest structural checkpoint.
+The preceding lamp-routing report records Psycles `773f1aca` / Luisa
+`4284e8cb9`, which publish the
 post-lamp closest-intersection boundary, native miss-distance normalization
 and generic loop-epoch CFG repair. The original 1,685-block native module
 now restructures; the 11-block reduced input, transactional rejection case
@@ -88,10 +92,13 @@ is completely reverted. Static spill counts are not dynamic spill traffic;
 the report identifies actual stage symbols and outlined Cycles callees.
 No inlining policy, register limit or shader-specific backend option changed.
 
-Two imported-graph repairs now have 81 original-Cycles material images:
-hidden socket default provenance, and Vector Math constant folding / linear
-classification. Full Barbershop used-shader images exactly matching the raw
-oracle increase from 80 to 100; differing lengths fall from 113 to 64.
+The earlier hidden-input and Vector Math repairs have 81 original-Cycles
+material images. Twenty-four additional original images now constrain bump
+edge ownership, retained BUMP displacement entries and shared procedural
+outputs. Full Barbershop used-shader images exactly matching the raw oracle
+increase from 100 to 112; differing lengths fall from 64 to 5. Static stack
+capacity falls from 36 to 33 floats, but the surface ELF `.text` remains
+byte-identical and resources stay at 256 VGPRs / 2496 private bytes.
 These structural counts are not a measured speedup or complete shader parity.
 Host-only Blender folding domains remain separate from later Cycles folding;
 no slow bit-matching device arithmetic is added.
@@ -108,8 +115,8 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Full build | Passed | All 32 hardware threads |
 | Psycles HIP | 182/182 | Complete registered suite, including lamp routing |
 | Psycles fallback | 184/184 | Complete rerun after generic queue race repair |
-| Psycles host | 158/159 | 81 new original-Cycles images; four existing source-size violations |
-| Luisa child | 155/155 | Full registered suite; both queue races also repeated 100 times |
+| Psycles host | 160/161 | 105 original-Cycles images across the new families; four existing source-size violations |
+| Luisa child | 155/155 | Retained unchanged child checkpoint; both queue races also repeated 100 times |
 | Strict native Vulkan | 2/2 | Lamp routing and bump state; native SPIR-V, no DXC/DXIL load |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
 
