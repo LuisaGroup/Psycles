@@ -165,20 +165,24 @@ restructures. Hidden input default provenance and Vector Math host folding
 have 81 original-Cycles word-image regressions. The
 [graph-boundary repair](validation/2026-09-08/svm-graph-boundaries/README.md)
 adds 24 exact images for bump edge ownership, retained BUMP displacement
-entries and procedural Color/Factor sharing. The latest
+entries and procedural Color/Factor sharing. The
 [native socket/declaration repair](validation/2026-09-08/svm-socket-declarations/README.md)
 adds 53 exact images for native texture POINT inputs, conversion type-pair
 identity, closure declaration order and unavailable Voronoi defaults.
-Entire raw Barbershop used-shader images matching the oracle increase from
-112 to 115; only `bricks` retains a different length (+6 words). Equal-length
-differences and resource-ID payload mapping are not claimed fully aligned.
+The latest [Blender forwarding repair](validation/2026-09-08/svm-group-forwarding/README.md)
+adds 34 original images for linked/primitive group boundaries and separate
+Blender luma/Gamma folds: 33 raw-exact and one with three-ULP typed literal
+differences, without changing device arithmetic or expected words. All 279
+Barbershop used-shader images now have equal lengths, and 115 are raw-equal.
+Equal-length differences include opcode scheduling as well as resource IDs;
+neither is normalized away or claimed fully aligned.
 The static stack bound remains 33 floats; the complete surface machine-code
 text and its register/private-memory requirements remain unchanged.
 
 Main SVM dispatch and most handlers are already inlined. Keeping more HIP
 function boundaries in a controlled A/B/A experiment slows surface time by
 35.5%; that intervention is reverted. No inlining policy or device arithmetic
-is changed. The current 64-spp surface GPU total is 5.871504 s against the
+is changed. The current 64-spp surface GPU total is 6.093110 s against the
 retained original Cycles 2.962829 s. Surface visits remain effectively
 unchanged at 332.3 million. Final machine code retains only three outlined
 noise/math helpers, 256 VGPRs and 2496 fixed private bytes. The report records
@@ -192,21 +196,21 @@ The parallel fallback run exposed a separate production-queue lost-wakeup
 race, repaired generically in child `85e5300f1`, with two minimal failures
 and 100 green repetitions each. Strict native Vulkan lamp-routing and
 bump-state tests pass 2/2 with 31 native SPIR-V compilations and no DXC/DXIL
-load. Current host results are 164/164, including the unwaived source-size
+load. Current host results are 165/165, including the unwaived source-size
 gate. Existing oversized tests are separated into cohesive modules without
 removing assertions; ConvertNode now has its own ordinary translation unit.
 
-At Psycles `33c7b335` / Luisa `85e5300f1`, six new full-resolution 256-spp
+At Psycles `6f743862` / Luisa `85e5300f1`, six new full-resolution 256-spp
 follow-ups complete against retained Cycles references, with exact prior
 geometry/images and new source socket metadata. Current render times are
-13.4347 / 14.7923 / 18.2949 s for Monk/Monster/Classroom (one each), and
-40.2231 s for Barbershop (three-run median; 40.2231 / 40.2419 / 40.1987 s).
-Current frames are 220 / 280 / 260 / 416 B. The smaller temporal follow-up
-times are not an isolated causal speedup estimate; Barbershop remains 58.5%
+13.3832 / 14.8542 / 18.7549 s for Monk/Monster/Classroom (one each), and
+41.4192 s for Barbershop (three-run median; 41.1692 / 41.4192 / 41.4301 s).
+Current frames are 220 / 280 / 260 / 416 B. These temporal follow-up
+times are not an isolated causal change estimate; Barbershop remains 63.2%
 slower than the retained Cycles median.
 Initialization is reported separately for every run, and is not cold JIT:
 the earlier profiler run had already warmed downstream caches. These are
-not new paired Cycles timings. The [latest report](validation/2026-09-08/svm-socket-declarations/README.md)
+not new paired Cycles timings. The [latest report](validation/2026-09-08/svm-group-forwarding/README.md)
 retains the exact six-run metrics and source hashes.
 
 All 46 Psycles channels are finite in every run. The revision-pinned paired
