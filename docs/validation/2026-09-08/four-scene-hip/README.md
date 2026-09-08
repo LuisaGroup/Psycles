@@ -1,12 +1,34 @@
 # Four-scene HIP benchmark, 256 spp
 
-## Classroom is faster; the other three scenes remain slower
+## Archived timings: the pass workloads were unequal
+
+A subsequent live EXR/source audit found a benchmark setup defect:
+`_configure_view_layer_passes` enables the requested passes but does not
+clear the source view layer's other passes. Original Cycles therefore
+performs work not requested from Psycles. The earlier equal-work Classroom
+speed-lead interpretation is withdrawn. Raw timings and the 15 common-pass
+comparisons below remain reproducible historical observations; a corrected
+pass contract and fresh campaign are required for performance conclusions.
+
+| Scene | Actual Cycles channels | Psycles channels | Extra Cycles passes |
+| --- | ---: | ---: | --- |
+| Monk | 49 | 46 | Depth, Debug Sample Count, Mist |
+| Monster | 48 | 46 | Depth, Debug Sample Count |
+| Classroom | 52 | 46 | AO, Depth, Debug Sample Count, Object Index |
+| Barbershop | 51 | 46 | AO, Depth, Debug Sample Count |
+
+This is not only an EXR layout difference. Original Cycles scene/film.cpp
+enables KERNEL_FEATURE_AO_PASS when PASS_AO is present; kernel/features.h
+includes it in KERNEL_FEATURE_AO; integrate_surface_ao in
+kernel/integrator/shade_surface.h constructs a separate shadow path. The
+original metadata's hardcoded pass list also omits inherited AO/Mist/Object
+Index, so actual EXR inventories, not that list, control this qualification.
 
 All 12 paired scene runs and 15-pass comparisons completed. Against original
 Cycles 5.2.1 HIP, Psycles takes **4.1% more time on Lone Monk, 5.6% more on
 Monster, 9.4% less on Classroom, and 42.8% more on Barbershop**, using the
-ratio of three-run medians. This establishes a reproducible baseline, not
-overall performance parity or complete path/indirect-light correctness.
+ratio of three-run medians. These are unequal-pass observations, not
+equivalent-work performance parity or complete path/indirect-light correctness.
 
 The tested renderer is Psycles `eaa7c72e` (renderer implementation unchanged
 from `2d89cf1d`), with Luisa `9ea3b720f`. This campaign precedes the subsequent
@@ -50,9 +72,10 @@ maxima, not confidence intervals. Exact values and sources are retained in
 | Classroom | 1920x1080 / 1 | 20.7624 [20.7338, 20.7869] | 18.8207 [18.5953, 18.8588] | 0.9065 |
 | Barbershop | 2048x858 / 0 | 28.7312 [28.6916, 28.7474] | 41.0285 [41.0215, 41.2048] | 1.4280 |
 
-The direction of every comparison is unchanged across the three repeats.
-Classroom's lead must not hide Barbershop's substantially larger gap. The
-Monk/Monster gaps are also larger than the observed repeat spread.
+The direction of every observed timing comparison is unchanged across the
+three repeats. Repeat stability does not resolve the unequal pass workload.
+The corrected campaign must replace the speed-lead interpretation, not
+silently relabel these original observations.
 
 ## Compilation remains a distinct first-render cost
 

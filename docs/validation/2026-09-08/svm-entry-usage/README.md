@@ -84,6 +84,15 @@ changed to obtain these results.
 
 ## Four-scene HIP canaries after entry specialization
 
+**Reference-workload qualification:** a subsequent audit found additional
+source-only Cycles passes in the preceding campaign, including AO in
+Classroom/Barbershop. Those passes are absent from the Psycles request.
+The prior-Cycles ratios below are not equal-work comparisons; only the
+Psycles before/after observations share that pass workload. See the
+[baseline qualification](../four-scene-hip/README.md). Original common-pass
+image oracles remain useful, but the corrected pass contract needs a fresh
+paired performance campaign.
+
 Twelve Psycles renders completed, three per scene at the original extents
 and 256 spp, against the preceding campaign's unchanged run-1 original
 Cycles HIP images. These are repeated post-change canaries, **not** twelve

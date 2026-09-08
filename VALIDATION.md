@@ -7,6 +7,17 @@ history.
 
 ## Current full-scene baseline
 
+**Pass-workload qualification:** the Cycles setup script added the requested
+passes without clearing the source view layer's other passes. Actual EXR
+inspection finds extra Mist/Depth/sample-count output in Monk, Depth/sample
+count in Monster, AO/Depth/Object Index/sample count in Classroom, and
+AO/Depth/sample count in Barbershop. AO enables a separate Cycles shadow
+path. Therefore these archived timings are not equal-pass workload
+comparisons, and the earlier Classroom speed-lead interpretation is withdrawn.
+A corrected pass contract and new matched campaign are required. The raw
+timings and common-pass correctness evidence remain available, with this
+qualification; do not use the ratios as performance-goal completion evidence.
+
 The [four-scene HIP campaign](docs/validation/2026-09-08/four-scene-hip/README.md)
 completed **12 paired runs**, three per original scene, at fixed 256 spp.
 Psycles eaa7c72e / Luisa 9ea3b720f is compared against original Blender
@@ -25,7 +36,8 @@ or summed profiled kernel times.
 | Classroom | 1920x1080 / 1 | 20.7624 | 18.8207 | 0.9065 |
 | Barbershop | 2048x858 / 0 | 28.7312 | 41.0285 | 1.4280 |
 
-Only Classroom is faster in this campaign. Session-initialization medians
+Classroom has the lower observed time, but its unequal AO workload prevents
+an equivalent-work speedup conclusion. Session-initialization medians
 (the CLI's `shader_jit_seconds`, including JIT and setup/baking) are
 18.8151 / 22.3434 / 18.1598 / 27.4798 s respectively, with main shader
 caching disabled and auxiliary/OS caches retaining normal policy.
