@@ -52,6 +52,10 @@ def _socket_manifest(socket: Any) -> dict[str, Any]:
         # Cycles skips unavailable sockets when copying defaults, not only
         # when connecting links. Keep the authored value as descriptive data.
         "available": not bool(getattr(socket, "is_unavailable", False)),
+        # ShaderNodesInliner preserves an unlinked InputSocketValue when
+        # both source and destination have SOCK_HIDE_VALUE. Losing this bit
+        # turns implicit Geometry inputs into authored constant links.
+        "hide_value": bool(socket.hide_value),
     }
     if hasattr(socket, "default_value"):
         result["default"] = _json_value(socket.default_value)

@@ -530,7 +530,9 @@ private:
             .ref = {
                 .node = converted,
                 .socket = std::move(output)},
-            .type = target};
+            .type = target,
+            .hidden_input_default = source.hidden_input_default &&
+                vector_like(source.type) && vector_like(target)};
     }
 
     [[nodiscard]] TypedOutput null_closure(std::string label) {
@@ -596,6 +598,20 @@ private:
                 source->node,
                 source->socket,
                 target_type);
+            if (output.hidden_input_default &&
+                boolean(member(raw_input(raw_destination, raw_input_name),
+                               "hide_value"))) {
+                // ShaderNodesInliner::set_input_socket_value leaves the
+                // destination unlinked iff both it and the originating
+                // InputSocketValue have SOCK_HIDE_VALUE. Its own default
+                // survives; Cycles' LINK_* default_inputs run afterwards.
+                // A linked zero vector has no such provenance and must not
+                // be discarded, nor may a computed/converted primitive be.
+                return _graph.set_input(
+                    destination, std::move(target_socket),
+                    literal(member(raw_input(raw_destination, raw_input_name),
+                                   "default"), target_type));
+            }
             if (target_type != contract::SocketType::closure &&
                 target_type != contract::SocketType::volume_closure) {
                 // Cycles copies Blender's socket value even when the socket
@@ -789,6 +805,13 @@ private:
             raw_output(node, socket),
             text(member(node, "name")),
             type);
+    }
+
+    [[nodiscard]] TypedOutput default_from_input(
+        yyjson_val *socket, std::string label, contract::SocketType type) {
+        auto output = constant_from_socket(socket, std::move(label), type);
+        output.hidden_input_default = boolean(member(socket, "hide_value"));
+        return output;
     }
 
     [[nodiscard]] SocketValue output_default(
@@ -1327,7 +1350,7 @@ private:
                 } else {
                     bindings.insert_or_assign(
                         identifier,
-                        constant_from_socket(
+                        default_from_input(
                             input,
                             instance_name + " / " +
                                 identifier,
@@ -1407,7 +1430,7 @@ private:
                     "node group '" + group_name +
                         "' output '" + socket +
                         "' is unlinked; using its default");
-                result = constant_from_socket(
+                result = default_from_input(
                     group_output,
                     group_name + " / " + socket,
                     result_type);

@@ -37,6 +37,10 @@ struct TypedOutput {
     contract::OutputRef ref;
     contract::SocketType type{
         contract::SocketType::floating};
+    // Blender InputSocketValue provenance, not a property of the numeric
+    // value. Forward through group/reroute/same-SOCK_VECTOR type aliases;
+    // materialized node outputs and real implicit conversions clear it.
+    bool hidden_input_default{};
 };
 
 struct RawOutputKey {
