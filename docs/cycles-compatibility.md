@@ -188,8 +188,8 @@ now have identical node/typed-payload layouts, stack addresses and jump/domain
 structure: 115 raw-equal and 164 different only in declared resource-ID fields.
 The six remaining schedule differences are resolved. Resource binding equivalence
 is still unresolved; no word normalization or complete parity is claimed.
-The static stack bound remains 33 floats; the complete surface machine-code
-text and its register/private-memory requirements remain unchanged.
+At that host-only checkpoint the static stack bound is 33 floats and surface
+machine code and register/private-memory requirements are unchanged.
 
 Main SVM dispatch and most handlers are already inlined. Keeping more HIP
 function boundaries in a controlled A/B/A experiment slows surface time by
@@ -197,7 +197,7 @@ function boundaries in a controlled A/B/A experiment slows surface time by
 is changed. A separate ordinary microfacet callable control is also reverted:
 the baseline microfacet bodies are already inlined, and outlining expands
 fixed private storage from 2,496 to 94,896 bytes with a large slowdown.
-The current 64-spp surface GPU total is 5.872749 s against the
+That checkpoint's 64-spp surface GPU total is 5.872749 s against the
 retained original Cycles 2.962829 s. Surface visits remain effectively
 unchanged at 332.3 million. Final machine code retains only three outlined
 noise/math helpers, 256 VGPRs and 2496 fixed private bytes. The report records
@@ -205,8 +205,18 @@ actual code-object identities and callees rather than equating static spill
 sites with dynamic memory traffic or mistaking pre-HIPRTC LLVM definitions
 for final out-of-line functions. Per-invocation surface cost remains open.
 
-Current suites pass HIP 182/182 and fallback 184/184; Luisa 155/155 is the
-retained validation of the unchanged child checkpoint.
+Psycles `cc4d9974` / Luisa `d51a33d48` subsequently expose native OCML
+floating remainder before IPO, preserving large-quotient range reduction.
+The [original GPU and full-scene controls](validation/2026-09-09/hip-native-remainder/README.md)
+show 0.44% fewer effective static instruction sites, with unchanged frame,
+registers and private storage. A/B/B/A restores identical baseline `.text`,
+but does not establish a substantial rendering speedup. No inline policy or
+approximate quotient formula is added. Function instruction counts now use
+ELF extents, excluding the padding counted by older textual audits.
+
+Current suites pass HIP 182/182 and fallback 184/184; the complete unit
+selection in the Luisa HIP build passes 131/131. This is a different
+configuration from the earlier 155-test child gate.
 The parallel fallback run exposed a separate production-queue lost-wakeup
 race, repaired generically in child `85e5300f1`, with two minimal failures
 and 100 green repetitions each. Strict native Vulkan lamp-routing and
@@ -215,17 +225,26 @@ load. Current host results are 168/168, including the unwaived source-size
 gate. Existing oversized tests are separated into cohesive modules without
 removing assertions; ConvertNode now has its own ordinary translation unit.
 
-At Psycles `239cade6` / Luisa `85e5300f1`, six new full-resolution 256-spp
+Additional native Vulkan remainder coverage is not fully green: the new
+default all-type test retains 1,076 failures in existing f16/f64 `OpFRem`
+lowering. Its isolated float32 run passes 1,744 assertions; HIP and fallback
+pass all 5,232. This gap is separate from the passing two-test Vulkan canary
+and is not introduced by the HIP-only change.
+
+At Psycles `cc4d9974` / Luisa `d51a33d48`, six new full-resolution 256-spp
 follow-ups complete against retained Cycles references, with exact prior
 geometry/images and new source socket metadata. Current render times are
-13.3748 / 14.7691 / 18.2831 s for Monk/Monster/Classroom (one each), and
-40.1352 s for Barbershop (three-run median; 40.1352 / 40.0687 / 40.9465 s).
+13.4562 / 14.8523 / 18.3115 s for Monk/Monster/Classroom (one each), and
+40.2139 s for Barbershop (three-run median; 40.2139 / 40.2494 / 40.1534 s).
 Current frames are 220 / 280 / 260 / 416 B. These temporal follow-up
-times are not an isolated causal change estimate; Barbershop remains 58.2%
+times are not an isolated causal change estimate; Barbershop remains 58.5%
 slower than the retained Cycles median.
-Initialization is reported separately for every run, and is not cold JIT:
-the earlier profiler run had already warmed downstream caches. These are
-not new paired Cycles timings. The [latest report](validation/2026-09-08/svm-group-contexts/README.md)
+Initialization is reported separately: 60.2862 / 69.2298 / 51.1574 seconds for
+the first changed-code runs of Monk/Monster/Classroom, versus
+24.8495 / 24.5166 / 24.6063 for the already-profiled Barbershop. These are
+JIT plus setup/baking, not compiler-only or matched cold/warm comparisons,
+and are excluded from render time. These are not new paired Cycles timings.
+The [latest report](validation/2026-09-09/hip-native-remainder/README.md)
 retains the exact six-run metrics and source hashes.
 
 All 46 Psycles channels are finite in every run. The revision-pinned paired
