@@ -3,6 +3,10 @@
 Updated 2026-09-10. This page describes the current implementation, not the
 performance or feature coverage of the legacy material executor.
 
+The current SDK317 handoff and its incomplete validation gates are recorded in
+[HANDOFF.md](../HANDOFF.md). The four-scene performance capture below predates
+that SDK change; publication does not certify full correctness or efficiency.
+
 ## Default execution path
 
 Scene compilation selects the native Cycles 5.2.1 SVM surface interpreter.

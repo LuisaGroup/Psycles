@@ -5,6 +5,13 @@ roadmap. Older timing tables and legacy-executor claims have been removed
 from this page; their dated reports remain under docs/validation and in Git
 history.
 
+Handoff update (2026-09-10): SDK `31721e1f6` is now published and the gitlink
+advanced at the owner's request. Its root host186 and disjoint HIP15+178 pass;
+the SDK host suite is80/81 with a diagnosed padding-sensitive test assertion.
+New-SDK fallback/native Vulkan and full-scene gates are pending. See
+[HANDOFF.md](HANDOFF.md) for exact current status; the four-scene timings below
+remain the preceding SDK5c7 capture, not measurements of SDK317.
+
 ## Apple Metal / Metal4 checkpoint
 
 These observations pin the source/SDK snapshots in their report; they do not
