@@ -2,10 +2,12 @@
 
 The first film-aligned 1920x1080 / 256-sample graph run has Combined luminance
 0.775731912 of Cycles and relative RMSE 0.230399849. It is retained as a failed
-correctness result, not a performance score. No corrective implementation has
-been made for this numerical failure yet. Unless explicitly marked diagnostic,
-checks below use published Luisa `03a0f5158` and unchanged upstream Psycles film
-implementation `9e3ba165`.
+correctness result, not a performance score. The reduction below identifies an
+undefined packed-word dependency in generic Luisa coroutine splitting. Its
+correction passes minimal XIR, Metal/Metal4 runtime, and original-scene replay
+checks and the full 1080p/256 Cycles gate. Unless explicitly marked diagnostic
+or corrected, historical checks below use published Luisa `03a0f5158` and
+unchanged upstream Psycles film implementation `9e3ba165`.
 
 ## Independent negative controls
 
@@ -127,7 +129,45 @@ passes (Diffuse Color relative RMSE 3.5142e-7, Normal 5.7845e-7). This is eviden
 of a dependency on prior pool contents, not permission to add initialization
 to the production scheduler. An all-but-one-field initialization sweep is
 used to identify the stale field. Its per-case outputs are diagnostic only;
-no corrected implementation or new valid timing is claimed.
+no valid timing is inferred from this sweep.
+
+## Identified cause and correction
+
+The all-but-one sweep identifies exactly physical field 90 as the failing
+case: DiffCol replay ratio 0.8591442 and relative RMSE 0.1432196. This is
+payload slot 83, a uint packing five logical Boolean variables into two
+interfering bit lanes. `_reg_101849` is its physical diagnostic name, not a
+unique logical variable and not the sorting key.
+
+The split callable always read-modified the old packed word, including entry
+edges defining every live bit. A fresh CoroFrame deliberately has undefined
+payload. Metal4 lowers that to LLVM poison, so the initial word store can be
+eliminated. Direct readback after the first entry in two successive dispatches
+finds low-two-bit histograms `[131072,0,0,0]` and
+`[29290,12377,89405,0]`: the second fresh entry retains prior state.
+
+The generic correction seeds the word from zero unless live, unstored bits
+must pass through. In that case it reads only those bits. One common mask
+calculation drives code generation and scheduler input metadata. It adds no
+slots, pool clear, backend conditional, or Psycles implementation change.
+See the [Luisa proof and permanent regressions](../../../../third_party/LuisaCompute/docs/validation/2026-09-09/coro-packed-word-definedness/README.md).
+
+The minimal XIR case fails before correction and passes afterward. Split,
+materialize, distill and dataflow suites pass 1009 assertions in 111 tests.
+Both Metal and Metal4 pass the 20-test / 100-assertion existing scheduler suite
+and the new 40-dispatch packed-word replay regression. With every temporary
+SDK diagnostic removed and sorting/tail both still enabled, the original
+64x64 replay passes: DiffCol relative RMSE 3.4740e-7 and mean ratio 1.000000006;
+Normal relative RMSE 5.7967e-7; Combined relative RMSE 4.3722e-7. These clear
+the reduced failure. The full original 1080p/256 gate also passes: all 46
+channels finite, Combined relative RMSE 0.007764527 / luminance ratio
+0.999891523, DiffCol relative RMSE 0.000850013 / luminance ratio 1.000004020.
+The full-resolution triptych no longer has coherent darkening. Observed
+render-only time is 328.193 s versus fresh Cycles Metal 50.778 s; this is a
+single correctness-gate observation, not a repeated performance conclusion.
+The frame remains 91 fields / 456 B. Evidence is in
+`packed-word-original-gate/graph/run-1` and
+`packed-word-original-gate-audit.json` beneath the directory below.
 
 ## Evidence
 

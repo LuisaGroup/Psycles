@@ -1,5 +1,39 @@
 # Lone Monk: Metal / Metal4 scheduler validation
 
+## Packed-word correction: full original gate cleared
+
+Luisa `6e58928d8`, published directly to `next`, repairs the numerical graph
+failure below in generic coroutine splitting. A fresh frame's packed Boolean word must not be
+read-modified unless it has live, unstored bits to preserve. Otherwise its
+undefined seed becomes LLVM poison on Metal4, eliminating initialization
+and exposing old pool state. No sorting/tail bypass or pool clear is used.
+See the [reduction log](graph-numerical-reduction.md) and its linked SDK proof.
+
+The minimal red XIR test is now green. Host split/materialize/distill/dataflow
+suites pass 111 tests / 1009 assertions; both Metal and Metal4 pass the new
+packed-word replay fixture and existing all-scheduler suite (21 tests / 114
+assertions per backend). Every temporary SDK diagnostic has been removed.
+
+At unchanged upstream film implementation `9e3ba165`, the corrected full
+1920x1080 / 256 spp Metal4 graph gate gives Combined relative RMSE 0.007764527
+and luminance ratio 0.999891523; DiffCol relative RMSE is 0.000850013. All 46
+channels of both actual EXRs are finite. The full-resolution triptych no
+longer has coherent darkening; per-pass residuals remain recorded and are
+not a universal compatibility waiver. The frame is still 91 fields / 456 B.
+Observed render-only wall is 328.193 s versus fresh Cycles Metal 50.778 s,
+session initialization 106.560 s. This is a single correctness-gate
+observation, not a repeated performance conclusion.
+
+Evidence is in the build-local `packed-word-original-gate/graph/run-1`
+matrix and `packed-word-original-gate-audit.json`. The historical invalid
+times below remain excluded. Upstream `4d1a3b19` changes renderer path
+lifetime and therefore requires a separate measurement cohort.
+Before publication, this correction was rebased over Luisa `473ea0b9b`
+(old tile backup plus imgui/yyjson submodule updates). Coroutine, XIR and
+backend sources are unchanged by that upstream commit. The integrated
+production build, 38-test split suite and Metal/Metal4 packed-word runtime
+fixtures were rerun successfully. No remotes or submodule URLs were changed.
+
 ## Published backend repairs
 
 Luisa `8911828eb` repairs the three failures discovered while attempting the
