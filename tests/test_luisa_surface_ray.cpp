@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
     auto terminators_buffer =
         device.create_buffer<luisa::float4>(4u);
     auto neighboring_triangles_buffer =
-        device.create_buffer<luisa::float4>(2u);
+        device.create_buffer<luisa::float4>(4u);
     auto ordered_hits_buffer =
         device.create_buffer<luisa::float4>(2u);
     auto volume_intervals_buffer =
@@ -235,10 +235,43 @@ int main(int argc, char **argv) {
                     index,
                     make_float4(
                         complete_origin.position,
-                        select(
-                            0.0f,
-                            1.0f,
-                            complete_origin.skip_self)));
+                            select(
+                                0.0f,
+                                1.0f,
+                                complete_origin.skip_self)));
+                const auto split_origin =
+                    surface_ray::surface_shadow_terminator_origin(
+                        flat_position,
+                        flat_normal,
+                        flat_normal,
+                        normalize(make_float3(0.3f, -0.2f, 1.0f)),
+                        0.0f,
+                        false,
+                        make_float4x4(1.0f),
+                        false,
+                        barycentric,
+                        curved_p0,
+                        curved_p1,
+                        curved_p2,
+                        flat_normal,
+                        flat_normal,
+                        flat_normal);
+                const auto split_complete =
+                    surface_ray::surface_shadow_certificate(
+                        split_origin.position,
+                        flat_normal,
+                        normalize(make_float3(0.3f, -0.2f, 1.0f)),
+                        make_float4x4(1.0f),
+                        false,
+                        split_origin.skip_self,
+                        curved_p0,
+                        curved_p1,
+                        curved_p2);
+                neighboring_triangles.write(
+                    index + 2u,
+                    make_float4(
+                        split_complete,
+                        select(0.0f, 1.0f, split_origin.skip_self)));
             };
         };
     auto shader = device.compile(evaluate);
@@ -354,7 +387,7 @@ int main(int argc, char **argv) {
     std::array<luisa::float4, 4u> results{};
     std::array<float, 3u> offsets{};
     std::array<luisa::float4, 4u> terminators{};
-    std::array<luisa::float4, 2u>
+    std::array<luisa::float4, 4u>
         neighboring_triangles{};
     std::array<luisa::float4, 2u> ordered_hits{};
     std::array<luisa::float4, 2u>
@@ -577,6 +610,20 @@ int main(int argc, char **argv) {
             << shared_edge.y << ", " << shared_edge.z << ", "
             << shared_edge.w << "}\n";
         return EXIT_FAILURE;
+    }
+    for (auto index = 0u; index < 2u; ++index) {
+        const auto actual = neighboring_triangles[index + 2u];
+        const auto expected = neighboring_triangles[index];
+        if (!equal_bits(actual.x, expected.x) ||
+            !equal_bits(actual.y, expected.y) ||
+            !equal_bits(actual.z, expected.z) ||
+            actual.w != expected.w) {
+            std::cerr
+                << "split shadow-origin stages diverged from the combined "
+                   "Cycles construction on "
+                << backend << " for case " << index << '\n';
+            return EXIT_FAILURE;
+        }
     }
     return EXIT_SUCCESS;
 }

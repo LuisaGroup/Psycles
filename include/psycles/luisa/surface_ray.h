@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <utility>
 
 #include <luisa/dsl/rtx/accel.h>
 #include <luisa/dsl/rtx/ray.h>
@@ -22,6 +23,19 @@ struct ShadowOrigin {
     luisa::compute::Float3 position;
     luisa::compute::Bool skip_self;
 };
+
+// Cycles' safe_normalize_len: preserve a zero vector and expose the original
+// length to the finite-light ray setup. This keeps D/t coupled to one setup
+// operation and avoids re-aiming after the later source certificate.
+[[nodiscard]] inline luisa::compute::Float3 safe_normalize_length(
+    luisa::compute::Float3 value,
+    luisa::compute::Float &value_length) noexcept {
+    value_length = length(value);
+    return luisa::compute::select(
+        value,
+        value / value_length,
+        value_length != 0.0f);
+}
 
 // Cycles advances tmin for transparent continuation rays by one
 // representable float while leaving the ray origin and direction unchanged.
@@ -216,56 +230,54 @@ shadow_terminator_origin(
     luisa::compute::Float3 n0,
     luisa::compute::Float3 n1,
     luisa::compute::Float3 n2) noexcept {
-    auto normal_light = dot(
-        world_shading_normal, light_direction);
-    const auto transmit = normal_light < 0.0f;
-    normal_light = abs(normal_light);
-    const auto offset_normal = luisa::compute::select(
-        world_geometric_normal,
-        -world_geometric_normal,
-        transmit);
-    const auto geometric_light =
-        dot(offset_normal, light_direction);
-    const auto safe_cutoff = max(
-        geometry_offset, 1.0e-20f);
-    const auto near_terminator = clamp(
-        2.0f -
-            (geometric_light + normal_light) /
-                safe_cutoff,
-        0.0f,
-        1.0f);
-    const auto regular = clamp(
-        1.0f - geometric_light / safe_cutoff,
-        0.0f,
-        1.0f);
-    const auto amount = luisa::compute::select(
-        regular,
-        near_terminator,
-        normal_light < geometry_offset);
-    const auto active =
-        smooth_triangle &
-        (geometry_offset > 0.0f) &
-        (amount > 0.0f);
-    const auto offset = smooth_surface_offset(
-        object_to_world,
-        transform_applied,
-        barycentric,
-        p0,
-        p1,
-        p2,
-        n0,
-        n1,
-        n2,
-        offset_normal);
-    return {
-        .position = luisa::compute::select(
-            world_position,
-            world_position + offset * amount,
-            active),
-        .skip_self = luisa::compute::select(
-            luisa::compute::Bool{true},
-            geometric_light > 0.0f,
-            active)};
+    auto position = world_position;
+    auto skip_self = luisa::compute::Bool{true};
+    // Keep the native shadow_ray_offset nesting. In particular, do not form
+    // the interpolated normals, envelope arithmetic, or transformed vertex
+    // reads for flat triangles, disabled cutoffs, or inactive directions.
+    $if(smooth_triangle & (geometry_offset > 0.0f)) {
+        auto normal_light = dot(
+            world_shading_normal, light_direction);
+        const auto transmit = normal_light < 0.0f;
+        normal_light = abs(normal_light);
+        const auto offset_normal = luisa::compute::select(
+            world_geometric_normal,
+            -world_geometric_normal,
+            transmit);
+        const auto geometric_light =
+            dot(offset_normal, light_direction);
+        const auto near_terminator = clamp(
+            2.0f -
+                (geometric_light + normal_light) /
+                    geometry_offset,
+            0.0f,
+            1.0f);
+        const auto regular = clamp(
+            1.0f - geometric_light / geometry_offset,
+            0.0f,
+            1.0f);
+        const auto amount = luisa::compute::select(
+            regular,
+            near_terminator,
+            normal_light < geometry_offset);
+        $if(amount > 0.0f) {
+            const auto offset = smooth_surface_offset(
+                object_to_world,
+                transform_applied,
+                barycentric,
+                p0,
+                p1,
+                p2,
+                n0,
+                n1,
+                n2,
+                offset_normal);
+            position = world_position + offset * amount;
+            skip_self = geometric_light > 0.0f;
+        };
+    };
+    return {.position = std::move(position),
+            .skip_self = std::move(skip_self)};
 }
 
 // Cycles constructs direct-light shadow origins in two formal stages:
@@ -330,6 +342,77 @@ shadow_terminator_origin(
         offset_origin,
         origin.skip_self);
     return origin;
+}
+
+// Split form used by direct-light transport. Cycles computes the terminator
+// offset first, derives finite-light D/t from that position, then performs the
+// source-triangle certificate with the final D. Keeping this operation
+// separate prevents the certificate from changing the finite-light aim.
+[[nodiscard]] inline ShadowOrigin surface_shadow_terminator_origin(
+    luisa::compute::Float3 world_position,
+    luisa::compute::Float3 world_shading_normal,
+    luisa::compute::Float3 world_geometric_normal,
+    luisa::compute::Float3 light_direction,
+    luisa::compute::Float geometry_offset,
+    luisa::compute::Bool smooth_triangle,
+    luisa::compute::Float4x4 object_to_world,
+    luisa::compute::Bool transform_applied,
+    luisa::compute::Float2 barycentric,
+    luisa::compute::Float3 p0,
+    luisa::compute::Float3 p1,
+    luisa::compute::Float3 p2,
+    luisa::compute::Float3 n0,
+    luisa::compute::Float3 n1,
+    luisa::compute::Float3 n2) noexcept {
+    return shadow_terminator_origin(
+        world_position,
+        world_shading_normal,
+        world_geometric_normal,
+        light_direction,
+        geometry_offset,
+        smooth_triangle,
+        object_to_world,
+        transform_applied,
+        barycentric,
+        p0,
+        p1,
+        p2,
+        n0,
+        n1,
+        n2);
+}
+
+[[nodiscard]] inline luisa::compute::Float3
+surface_shadow_certificate(
+    luisa::compute::Float3 world_position,
+    luisa::compute::Float3 world_geometric_normal,
+    luisa::compute::Float3 light_direction,
+    luisa::compute::Float4x4 world_to_object,
+    luisa::compute::Bool transform_applied,
+    luisa::compute::Bool skip_self,
+    luisa::compute::Float3 p0,
+    luisa::compute::Float3 p1,
+    luisa::compute::Float3 p2) noexcept {
+    auto result = world_position;
+    $if(skip_self) {
+        const auto transformed_origin =
+            cycles_transform::point(world_to_object, world_position);
+        const auto transformed_direction =
+            cycles_transform::direction(world_to_object, light_direction);
+        const auto object_origin = luisa::compute::select(
+            transformed_origin, world_position, transform_applied);
+        const auto object_direction = luisa::compute::select(
+            transformed_direction, light_direction, transform_applied);
+        result = origin_with_explicit_self_exclusion(
+            world_position,
+            world_geometric_normal,
+            object_origin,
+            object_direction,
+            p0,
+            p1,
+            p2);
+    };
+    return result;
 }
 
 [[nodiscard]] inline luisa::compute::Bool

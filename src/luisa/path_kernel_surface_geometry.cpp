@@ -224,6 +224,48 @@ SurfaceGeometryContext::make_shadow_origin(Float3 direction) const noexcept {
   return {.position = std::move(position), .skip_self = std::move(skip_self)};
 }
 
+surface_ray::ShadowOrigin
+SurfaceGeometryContext::make_shadow_terminator_origin(
+    Float3 direction) const noexcept {
+  Float3 position = hit_position;
+  Bool skip_self = true;
+  const auto resolve_triangle_origin = [&] {
+    const auto triangle = surface_ray::surface_shadow_terminator_origin(
+        hit_position, shadow_shading_normal, geometric_normal, direction,
+        instance.shadow_terminator_geometry_offset, triangle_smooth,
+        object_to_world, cycles_transform_applied,
+        bounce.hit->bary, p0, p1, p2, n0, n1, n2);
+    position = triangle.position;
+    skip_self = triangle.skip_self;
+  };
+  if (primitive_plan.triangles) {
+    if (primitive_plan.curves) {
+      $if(!is_curve) { resolve_triangle_origin(); };
+    } else {
+      resolve_triangle_origin();
+    }
+  }
+  return {.position = std::move(position), .skip_self = std::move(skip_self)};
+}
+
+Float3 SurfaceGeometryContext::apply_shadow_certificate(
+    Float3 position, Float3 direction, Bool skip_self) const noexcept {
+  auto result = position;
+  const auto resolve_triangle_certificate = [&] {
+    result = surface_ray::surface_shadow_certificate(
+        position, geometric_normal, direction, world_to_object,
+        cycles_transform_applied, skip_self, p0, p1, p2);
+  };
+  if (primitive_plan.triangles) {
+    if (primitive_plan.curves) {
+      $if(!is_curve) { resolve_triangle_certificate(); };
+    } else {
+      resolve_triangle_certificate();
+    }
+  }
+  return result;
+}
+
 std::unique_ptr<SurfaceGeometryStage> make_surface_geometry_stage(
     ScenePrimitiveStagePlan plan) {
   return std::make_unique<SurfaceGeometryStageImpl>(plan);

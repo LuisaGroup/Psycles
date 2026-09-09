@@ -150,18 +150,21 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 (!transport.constant_light_shader) |
                 any(initial_contribution != 0.0f);
             $if(publish) {
-                const auto shadow =
-                    surface.make_shadow_origin(transport.direction);
+                auto shadow =
+                    surface.make_shadow_terminator_origin(transport.direction);
                 Float3 shadow_direction = transport.direction;
                 Float shadow_maximum = ray_maximum;
                 $if(!transport.distant) {
                     const auto shadow_offset =
                         transport.target_position - shadow.position;
-                    const auto shadow_distance =
-                        sqrt(max(length_squared(shadow_offset), 1.0e-20f));
-                    shadow_direction = shadow_offset / shadow_distance;
-                    shadow_maximum = shadow_distance;
+                    shadow_direction = surface_ray::safe_normalize_length(
+                        shadow_offset, shadow_maximum);
                 };
+                // Cycles' integrate_surface_ray_offset runs after finite
+                // setup and observes the final setup direction. It may move
+                // P for an ambiguous source triangle, but never re-aims D/t.
+                shadow.position = surface.apply_shadow_certificate(
+                    shadow.position, shadow_direction, shadow.skip_self);
                 const auto source_object =
                     select(surface_ray::invalid_primitive,
                            surface.cycles_object_index, shadow.skip_self);

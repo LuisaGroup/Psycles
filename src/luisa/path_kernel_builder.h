@@ -545,6 +545,10 @@ struct SurfaceGeometryContext {
     [[nodiscard]] Float3 make_ray_origin(Float3 direction) const noexcept;
     [[nodiscard]] surface_ray::ShadowOrigin
     make_shadow_origin(Float3 direction) const noexcept;
+    [[nodiscard]] surface_ray::ShadowOrigin
+    make_shadow_terminator_origin(Float3 direction) const noexcept;
+    [[nodiscard]] Float3 apply_shadow_certificate(
+        Float3 position, Float3 direction, Bool skip_self) const noexcept;
 };
 
 struct SurfaceShadingState {
