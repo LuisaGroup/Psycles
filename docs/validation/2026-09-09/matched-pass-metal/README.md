@@ -20,6 +20,39 @@ includes minimal failures, permanent tests, cache invalidation and the
 additional historical mutable-swizzle fixture that still fails on Metal4.
 Focused validation is not represented as a full-suite pass.
 
+## First completed 256-sample staged matrix
+
+Psycles `00fd5cc7` / Luisa `8911828eb` completes the first full
+1920x1080 / 256-sample matrix. These are **single observations**, not repeated
+performance conclusions. Both Psycles runs use the same fresh Cycles Metal
+reference, whose original main-loop interval is 50.4312 s.
+
+| Backend / staged scheduler | Render-only s | Psycles / Cycles | Scene compile s | Session init s |
+| --- | ---: | ---: | ---: | ---: |
+| Metal | 350.511 | 6.9503 | 5.18403 | 3.74014 |
+| Metal4 | 105.569 | 2.0933 | 5.29204 | 39.8744 |
+
+Session initialization is JIT plus setup/baking, not an isolated compiler
+timer. The preceding canaries already warmed downstream caches. The two
+backends' batching/capacity policies differ as explained below; this is not
+an isolated estimate of Metal4 code-generation speedup.
+
+All three actual EXRs contain exactly 15 passes / 46 channels and no
+nonfinite values. All 30 pass comparisons completed with verified Blender
+build identity. Combined relative RMSE is 0.007608918 / 0.007763173 for
+Metal / Metal4; DiffCol is 0.000879708 / 0.000864541 and DiffInd is
+0.114944842 / 0.119968418. Residuals are not waived as noise. The Metal
+Combined triptych was inspected at original resolution; the Metal4 triptych
+was initially inspected at viewer-resized resolution. Both retain full-size
+images with a shared display scale and an explicitly amplified difference.
+
+The first graph matrix is **failed, not a timing observation**. Its fresh
+Cycles Metal reference completes, but the original graph continuation 4
+fails generic XIR CFG restructuring with one residual unstructured branch,
+before Metal4 shader compilation. Metal in that matrix was not reached.
+The failed matrix and complete original log are retained while this new
+compiler failure is reduced and repaired in Luisa, without changing Psycles.
+
 ## Original-scene gate (not a performance result)
 
 Both backends completed the original Lone Monk scene at 1920x1080, one sample,
@@ -36,8 +69,8 @@ additional storage, not part of the 220-byte main frame.
 
 ## Formal campaign configuration
 
-Status: backend validation complete; 1080p/256-sample measurements follow this
-published checkpoint. There are no completed Psycles timing pairs yet.
+Status: the first staged matrix is complete; repeats and the graph comparison
+remain open. The graph attempt exposed a separate generic CFG failure.
 
 - Host: Apple M1 Max, 10 CPU cores, macOS 26.6.2 / 25G83.
 - Release build: Homebrew Clang 21.1.8; Metal4 uses LLVM 22.1.8.
@@ -57,8 +90,12 @@ published checkpoint. There are no completed Psycles timing pairs yet.
 
 The first profile follows the report's staged scheduler: logical sample batch
 64, execution block 32, requested frame capacity 1048576, surface sorting and
-independent direct-light queue enabled, counter batch 4 / pipeline depth 2,
-tail disabled. Surface block 512 is upstream policy. The graph comparison
+independent direct-light queue enabled. CLI counter batch 4 / pipeline depth
+2 and tail 0 are preserved from the report command, but current staged
+construction does not consume those three fields. Its actual configuration
+uses greedy largest-queue selection, incremental/fused continuation counts,
+synchronous host count readback and refill at closest-intersection boundaries.
+Surface block 512 is upstream policy. The graph comparison
 uses batch 64, 131072 workers, selective scheduling, automatic tail,
 counter batch 1 / depth 1 and inline shadow work. Main-frame bytes therefore
 refer to different state boundaries between staged and graph.

@@ -10,8 +10,13 @@ history.
 The [Lone Monk Metal campaign](docs/validation/2026-09-09/matched-pass-metal/README.md)
 records published Luisa backend repairs, focused regressions and complete
 1920x1080 original-scene canaries on both backends. The staged main frame is
-55 fields / 220 B; shadow queues are separate. Formal 256-sample timing pairs
-are still in progress, so no new Metal/Cycles performance ratio is claimed.
+55 fields / 220 B; shadow queues are separate. The first 256-sample staged
+matrix completes: Cycles Metal 50.4312 s, Psycles Metal 350.511 s and Metal4
+105.569 s (render-only). These are single observations with different
+unchanged backend batching policies, not repeated performance conclusions.
+All 46 channels are finite and all 15 pass comparisons complete. The graph
+attempt fails generic XIR restructuring before shader compilation; its
+performance and repeat gates remain open.
 
 ## Revision-pinned paired full-scene baseline
 
