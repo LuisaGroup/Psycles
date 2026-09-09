@@ -1,6 +1,6 @@
 # SDK317 fresh HIP scene baseline
 
-This capture uses the current Psycles root (`c2746b22`) with LuisaCompute
+This capture uses the current Psycles root (`bdd783c0`) with LuisaCompute
 `7df2fcc3a17f0c61ef36011e39b07e96766579b9` from `origin/next`, Blender 5.2.1
 build `9e2066aef7ef`, and current exporter
 `46254cd23f1b73bf7928be11c19f5726732e412a50975b088cae64bc6bbfe3b3`.
