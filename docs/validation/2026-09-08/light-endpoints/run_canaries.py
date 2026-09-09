@@ -24,6 +24,8 @@ parser.add_argument('output', type=Path)
 parser.add_argument('--actual-label', default='Psycles light endpoint fix HIP')
 parser.add_argument('--socket-control-root', type=Path,
                     help='validated new socket metadata with the baseline geometry/images')
+parser.add_argument('--keep-going-on-nonfinite', action='store_true',
+                    help='record invalid pixels and finish the campaign; still exit nonzero')
 args = parser.parse_args()
 args.output.mkdir(parents=True, exist_ok=True)
 files = ['build/bin/psycles_render_blender_scene', 'build/libpsycles_core.so',
@@ -67,7 +69,9 @@ for scene, repeat in [('barbershop', 1), ('monk', 1), ('monster', 1),
                       render['output'])
     assert frame is not None
     pixels, channels = compare._read_image(actual)
-    assert len(channels) == 46 and np.isfinite(pixels).all()
+    assert len(channels) == 46
+    all_finite = bool(np.isfinite(pixels).all())
+    assert all_finite or args.keep_going_on_nonfinite, actual
     del pixels
     reference = Path(manifest['renderers']['cycles']['hip']['output'])
     metadata = reference.with_suffix('.json')
@@ -83,7 +87,7 @@ for scene, repeat in [('barbershop', 1), ('monk', 1), ('monster', 1),
         args.output / f'{prefix.name}-compare.log', echo_output=False)
     report = json.loads(report_path.read_text())
     assert set(report['passes']) == set(render_pass_contract.PASSES)
-    assert all(p['actual_invalid_pixels'] == 0 for p in report['passes'].values())
+    assert all_finite == all(p['actual_invalid_pixels'] == 0 for p in report['passes'].values())
     records.append({'scene': scene, 'repeat': repeat,
                     'socket_metadata_control': socket_control,
                     'timings': benchmark._parse_psycles_timings(render['output']),
@@ -95,13 +99,17 @@ for scene, repeat in [('barbershop', 1), ('monk', 1), ('monster', 1),
                     'reference_sha256': benchmark._sha256(reference),
                     'frame': dict(zip(['stages', 'fields', 'bytes'], map(int, frame.groups()))),
                     'pass_contract': render_pass_contract.inspect_image(actual),
-                    'actual_all_finite': True, 'passes': report['passes']})
+                    'actual_all_finite': all_finite, 'passes': report['passes']})
     for name, expected in identity.items():
         assert benchmark._sha256(ROOT / name) == expected, name
     (args.output / 'canaries.json').write_text(json.dumps({
         'schema': 'psycles.light-endpoint-canaries.v1',
         'actual_label': args.actual_label,
         'main_shader_cache': 'disabled', 'implementation_sha256': identity,
+        'nonfinite_policy': 'record and exit nonzero' if args.keep_going_on_nonfinite else 'stop',
         'reference_scope': 'retained equal-pass Cycles run-1 images; not fresh timing pairs',
         'records': records}, indent=2) + '\n')
     print(scene, repeat, records[-1]['timings'], flush=True)
+if not all(row['actual_all_finite'] for row in records):
+    print('Campaign finished with non-finite actual pixels; numerical gate is NOT green.', flush=True)
+    raise SystemExit(2)

@@ -61,229 +61,120 @@ not a sampling-noise exemption or a count of unnecessary paths. Original
 Cycles Classroom retains 25 invalid DiffDir and 27 invalid GlossDir pixels;
 affected comparisons explicitly exclude the union of invalid pixels.
 
-## Latest four-scene follow-up
+## Latest four-scene HIP follow-up
 
-Psycles `4f487ba5` / Luisa `da8fff856` complete six further 256-spp renders,
-using fresh socket metadata with the exact earlier geometry/texture bytes.
-These use retained equal-pass Cycles references, **not fresh timing pairs**.
-All 46 channels are finite and all 15 pass comparisons complete. Exact six-run
-data, images' provenance and all implementation hashes are in the
-[latest report](docs/validation/2026-09-09/surface-emission/README.md).
+Psycles `9e3ba165` completes six further 256-spp renders with the exact
+earlier geometry/image bytes and refreshed socket metadata. These use
+retained equal-pass Cycles references, **not fresh timing pairs**. Five
+renders have all 46 channels finite; Classroom's separated-pass finite gate
+fails and remains explicitly recorded. All 15 comparisons complete on their
+reported finite domains. See the [film routing report](docs/validation/2026-09-09/film-routing/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 12.8818 | 28.3660 | 220 B |
-| Monster, one run | 14.4971 | 37.2553 | 280 B |
-| Classroom, one run | 17.4903 | 26.8763 | 260 B |
-| Barbershop, three-run median | 38.8536 | 17.3832 / 17.6237 / 17.4312 | 416 B |
+| Lone Monk, one run | 12.8729 | 12.0332 | 220 B |
+| Monster, one run | 13.9104 | 15.3618 | 280 B |
+| Classroom, one run | 17.4542 | 11.4340 | 260 B |
+| Barbershop, three-run median | 38.4822 | 21.5272 / 17.7848 / 18.1808 | 416 B |
 
-Barbershop's individual times are 38.8536 / 38.8298 / 39.0386 s. Its median
-is 2.93% below the preceding 40.0251 s,
-and 53.1% slower than the retained Cycles median. This is not an isolated
-causal change estimate. Initialization is JIT plus
-setup, not compiler-only. Main shader caching is disabled but downstream
-caches retain their ordinary policy; the profile already warmed Barbershop.
-These values are not matched cold/warm comparisons with the previous report.
-Initialization is never included in render time.
-Current first-run DiffInd relative RMSE is 12.882% / 2.553% / 17.820% / 7.126%
-in the table's scene order. The structural and efficiency goals remain open.
+Barbershop's observations are 40.4211 / 38.4822 / 38.4574 s; none is
+discarded. The median remains 51.6% above retained Cycles. The interrupted
+initial campaign is retained separately, not used to select faster results.
+These temporal changes are not isolated causal estimates. Initialization
+includes JIT, setup and baking, excludes render time, and is not a matched
+cold-JIT comparison. Main shader caching is disabled; downstream/OS caches
+retain ordinary policy and have already been warmed.
+
+Classroom reproduces 18 invalid channel values at eight pixels in both
+attempts: actual DiffDir/GlossDir have seven invalid pixels each, and
+DiffInd/GlossInd two each. Combined is finite. Original DiffDir/GlossDir
+have 25/27 invalid pixels at different coordinates; comparisons exclude
+and report the union. A dynamic-input original GPU/actual DSL observer
+reproduces the same tiny-BSDF fastmath NaN/Inf classes with matching
+zero/normal controls. This supports the shared arithmetic boundary, not a
+proof of every affected path or an all-finite pass. No epsilon/slow-math
+workaround or numeric waiver is introduced; the keep-going runner exits 2.
+First-run DiffInd relative RMSE remains 12.882% / 2.553% / 17.820% / 7.126%
+in the table's scene order. Correctness and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [surface emission checkpoint](docs/validation/2026-09-09/surface-emission/README.md)
-at Psycles `4f487ba5` / Luisa `da8fff856` supplies the current backend and
-four-scene campaign. Original emission/exit eligibility now encloses forward
-MIS and film effects, including forward-only rendering without trace. Four
-production-AST configurations fail before the repair and pass afterwards;
-320 GPU film checks and four full SVM camera configurations use original
-Cycles GPU captures. The full-scene A/B/B/A surface/render medians improve
-by 4.70% / 2.69%, with two observations per treatment. Main instruction sites
-change 158,088 to 158,005; 47 calls, 256 VGPRs, 2,464 private bytes and the
-416-byte frame remain. Fast math and inline/launch policies are unchanged.
-Film direct/indirect address selection and shadow-state classification remain
-a separate structural follow-up; no residual DiffInd repair is claimed.
+The [film destination/state repair](docs/validation/2026-09-09/film-routing/README.md)
+restores native first-shadow classification, captured flags/weights, and
+direct/indirect address selection. It removes the six-RGB splitter and
+unconditional writes to both destinations. Original GPU film checks improve
+351/540 -> 540/540, shadow state 72/180 -> 180/180, and production AST
+destination checks 0/5 -> 5/5. The zero-only BSDF ratio guard matches Cycles;
+native tiny-value limitations are separately exposed above.
 
-The preceding [scene-light parameter checkpoint](docs/validation/2026-09-09/scene-light-parameters/README.md)
-at `ff8385c1` restores seven scene-owned area/spot fields from host
-preparation instead of per-ray trigonometry; seven AST checks and 37 original
-tables / 296 original GPU states per denormal mode constrain the repair.
-The 64-spp A/B/B/A surface/render medians improve by only 0.73% / 0.22%, with
-two observations per treatment and 0.76% variation between A surface runs.
-The 256-spp follow-up does not establish a material speedup. Inline/launch
-policies and fast math are unchanged.
+The 64-spp full-scene A/B/B/A has surface medians 5.536031 -> 5.432208 s
+(-1.88%) and render medians 10.17955 -> 10.08000 s (-0.98%), with only two
+observations per treatment and identical restored A binaries. This is not
+isolated atomic-cost attribution. Main instruction sites decrease
+158,005 -> 157,717. Both retain 47 calls, 256 VGPRs, 107 SGPRs, 2,464 private
+bytes and a 416-byte frame. Surface visits are essentially unchanged;
+no reduction in unnecessary paths or residual DiffInd repair is claimed.
+Barbershop has emission-only fog and zero volume bounces, so corrected
+mixed volume-scattering film routes cannot explain its DiffInd.
 
-The [static function and texture audit](docs/validation/2026-09-09/surface-static-audit/README.md)
-does not establish missing main SVM/3D Noise/microfacet inline boundaries or
-float32 expansion of the 169 bound byte textures. Its native observed
-function-address closure is not a proven dynamic call graph; static counts
-are not performance attribution. Per-ray light inverse reconstruction remains
-another confirmed ownership mismatch, not a quantified dominant cost.
+Full suites and timings used Luisa `da8fff856`. The subsequent upstream
+Metal/CI integration to `8911828eb` leaves all six measured HIP binaries
+byte-identical after an all-target build; complete host and focused HIP,
+fallback and strict native Vulkan gates are rerun before publication.
+The new Metal report and gitlink are preserved, not overwritten.
 
-The [group-context repair](docs/validation/2026-09-08/svm-group-contexts/README.md)
-at `239cade6` remains the latest host SVM-layout repair.
-The preceding lamp-routing report records Psycles `773f1aca` / Luisa
-`4284e8cb9`, which publish the
-post-lamp closest-intersection boundary, native miss-distance normalization
-and generic loop-epoch CFG repair. The original 1,685-block native module
-now restructures; the 11-block reduced input, transactional rejection case
-and remaining formal proof obligations are retained in the child audit.
-Post-lamp closest routing is no longer listed as an unfixed discrepancy.
-The roughly 1.49% shadow-intersection surplus and residual DiffInd remain.
-
-The main SVM interpreter and most handlers are already inlined. Retaining
-more HIP callable boundaries in a full-scene A/B/A control made Barbershop
-surface GPU time 35.5% slower and render wall 20% slower, so that experiment
-is completely reverted. Static spill counts are not dynamic spill traffic;
-the report identifies actual stage symbols and outlined Cycles callees.
-No inlining policy, register limit or shader-specific backend option changed.
-
-A separate [ordinary microfacet callable A/B/A control](docs/validation/2026-09-08/microfacet-boundaries/README.md)
-confirms that the current microfacet bodies are already inlined in final ISA.
-Adding source callable boundaries grows fixed private storage from 2,496 to
-94,896 bytes and surface time from 5.90 to 38.30 seconds; restored A returns
-to 5.896 seconds with an identical code object. This experiment is also
-fully reverted and does not change the production benchmark checkpoint.
-
-The preceding native HIP remainder repair exposes OCML range reduction before IPO instead of
-late generic `frem` expansion. Original GPU operands, 396 IR/ABI checks and
-5,232 runtime assertions constrain the change; no quotient approximation or
-forced inlining is used. A full Barbershop A/B/B/A control restores identical
-baseline machine code. Effective static instruction sites fall by 0.44%, but
-frame/register/private-storage metadata do not change and no substantial
-end-to-end speedup is established. ISA counts now exclude alignment padding.
-
-Shared BSDF labels now retain one body through Luisa AST/XIR and Psycles JIT
-recording: seven native groups replace 32 separately recorded bodies. A new
-35-shape structural test fails 18 shapes before repair. Full-scene A/control/B/B/A
-reduces main-function instructions from 184,759 to 159,801, but median surface
-time changes only 5.8602 to 5.8089 seconds and render wall 10.5091 to 10.4680.
-Final code still has four functions, 49 call sites and 256 VGPRs; frame size
-remains 416 B. Fixed private storage is 2,480 bytes. This is not a missing-inline
-fix or a substantial speedup. The following independent closure-setup
-intervention restores a single native switch with original shared groups;
-72 production-AST shapes pass, with 12 red before repair. Its full-scene
-A/B/B/A shows no speedup: median surface 5.8149 to 5.8621 s and render
-10.4698 to 10.5114 s. Main instructions at that checkpoint are 159,927;
-frame/register/private sizes and 49 calls are unchanged.
-The same validation exposed and repaired generic shared-target CFG proxying
-and narrow signed SPIR-V literal encoding, with independent permanent reds.
-
-The preceding closure-input repair restores native caustic/allocation input
-boundaries for standalone Glossy, Refraction, Glass and Metallic. Eight
-production-AST configurations fail before repair and pass afterwards; 128
-runtime states cover original GPU observations, rejected/no-storage paths
-and full END/PC behavior. Its A/B/B/A also shows no speedup: median surface
-5.8641 to 5.8773 s and render 10.5145 to 10.5309 s. Main instructions become
-159,972, with unchanged frame/register/private sizes and 49 calls. The typed
-Barbershop census finds 237 Diffuse, 191 Glossy and one Principled producer;
-these are static nodes, not dynamic shading frequencies. Remaining runtime
-input/code-generation work remains open. The independent
-[512-versus-1024 surface control](docs/validation/2026-09-09/surface-launch-geometry/README.md)
-is complete and fully reverted: 1024 lowers VGPRs from 256 to 192 but increases
-private bytes from 2480 to 2816 and median surface/render time by 5.72% / 3.06%.
-Restored A has identical `.text`, with all 46 channels finite and all 15 pass
-controls complete. Production stays at 512; no register cap or inline policy
-changed. Matching Cycles' launch/register count does not close the gap.
-
-The [Noise controls](docs/validation/2026-09-09/noise-codegen/README.md) find no
-missing 3D inline boundary or twofold primitive-cost gap. The full dynamic
-handler emits about 32% more static code but uses fewer registers; synthetic
-run medians are about 5.6% slower with strongly overlapping dispatch ranges.
-They do not establish Noise's share of Barbershop. The following native
-Voronoi review removes a duplicated F1 octave body and corrects defined 3D
-homogeneous W. The production-AST test changes 3/8 to 8/8, and fresh original
-HIP state comparison changes 168/192 to 192/192 with the fixture unchanged.
-An isolated shared-F1 A/B/B/A improves median surface/render time by
-1.17% / 0.66%; it is not a major missing-inline fix. The final combined
-version records 5.798762 surface seconds / 10.4441 render seconds at 64 spp,
-158,118 main instructions, 2,464 private bytes, 49 calls and a 416-byte frame.
-
-The earlier hidden-input, Vector Math, bump-edge/domain and procedural-output
-repairs have 105 original-Cycles material images. Fifty-three additional
-exact images now constrain native texture socket types, conversion identity,
-closure input declaration order and unavailable Voronoi defaults. Another
-34 original images constrain linked/primitive forwarding through groups,
-reroutes and muted links, plus separate Blender luma/Gamma folding. Of these,
-33 are raw-exact and one differs only in three-ULP typed float literals; no
-device arithmetic or expected words change. Eighteen further exact original
-images constrain Math clamp expansion after native conversion links;
-fifteen fail before the repair. Another eighteen exact images constrain
-Mapping's native POINT declarations and shared conversions; five fail before
-that repair, including a five-authored-node 47-versus-44-word reduction.
-Thirty further exact original images constrain lazy group input evaluation,
-persistent per-instance output caches and parent-context forwarding. Twelve
-fail before the repair, including a five-node 25-word chain incorrectly
-collapsed to 22 words. This removes the last six known Barbershop schedules:
-all 279 used-shader images have identical node/payload layouts, stack
-addresses and jump/domain structure; 115 are raw-exact and 164 differ only
-in declared resource-ID fields.
-The subsequent [observed binding audit](docs/validation/2026-09-09/resource-identities/README.md)
-resolves all 164: fresh same-session original registries and actual compiler
-tables agree on all 174 images and 21 named attributes. Every one of 600 image
-and 795 attribute references resolves correctly, including equal numeric IDs;
-all other words remain exact. No words are normalized away. This proves
-binding identity, not decoded texel/attribute values or complete shader parity.
-At that host-only checkpoint, stack capacity remains 33 floats and surface
-ELF `.text` is byte-identical; its 64-spp surface GPU total is 5.872749 s,
-versus the
-retained original Cycles 2.962829 s, with essentially unchanged surface visits.
-These structural counts are not a measured speedup or complete shader parity.
-Host-only Blender folding domains remain separate from later Cycles folding;
-no slow bit-matching device arithmetic is added.
-
-The full parallel fallback suite additionally exposed a real worker-pool
-lost-wakeup race. Luisa `85e5300f1`, published to `origin/next`, fixes both
-completion and shutdown predicate publication under their mutex. Two minimal
-production-queue counterexamples fail before the fix and pass afterwards,
-with 100 repetitions each. The failed 183/184 run is retained, not replaced
-by an earlier successful result; its final full rerun passes 184/184.
-
-| Gate | Result | Qualification |
+| Gate | Result | Scope |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 186/186 | Complete registered suite, 460.63 s; device cases sequential, builds use 32 threads; final test-only Device-lifetime correction also passes 1/1 |
-| Psycles fallback | 188/188 | Complete registered suite, 322.20 s, after HIP completion; final test-only Device-lifetime correction also passes 1/1 |
-| Psycles host | 175/175 | Includes native emission eligibility, observed binding identities and scene-owned light AST regressions; source-size gate fully green |
-| Luisa child | 133/133 | Prior complete `unit*` selection in the unchanged HIP configuration; exact `unit` label is 132/132 |
-| Strict native Vulkan | 4/4 | Surface emission, film light, volume emission film and NEE setup; 49 native compilations, no DXC/DXIL load; initial test-only multiple-Device lifetime violation fixed without backend or numerical changes |
-| Prior native light parameters | 5/6 | Revision-pinned in the preceding report; 36 area sample numeric lanes remain failing, all also reproduced before the parameter repair |
-| Binding follow-up | 2/2 on each backend | HIP then fallback then strict native Vulkan; Vulkan has two native SPIR-V compilations and no DXC/DXIL load; metadata-only tools do not replace the preceding full renderer gates |
-| Shared-switch runtime | 211 assertions/backend | HIP, fallback and strict native Vulkan; exits, narrow/wide labels and both coroutine schedulers |
-| Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
+| Psycles host | 176/176 | Full gate; upstream integration rerun 176/176 |
+| Psycles HIP | 187/187 | Complete suite, 484.37 s; integrated focused 6/6 |
+| Psycles fallback | 189/189 | Complete suite, 362.38 s after HIP; integrated focused 6/6 |
+| Strict native Vulkan | 6/6 | 62 native compilations, no DXC/DXIL; integrated focused 6/6 with loader audit |
+| Luisa child | Prior 133/133 | Complete `unit*` selection in the HIP configuration; not a new all-platform run |
+| Full-resolution scene finiteness | **5/6** | Classroom remains failed; all six renders and 15-pass comparisons complete |
 
-The preceding Vulkan light regression is not green: after independently matching
-the device's FTZ mode, 36 rectangle-area sample numerical lanes remain.
-Validity, parameters and interval predicates agree. The old implementation
-reproduces every remaining lane with the same printed values; this is not a
-new repair regression, nor a waived pass. No slower math path was added.
+The unrelated native Vulkan area-sample gate remains 5/6 with 36 failing
+numerical lanes reproduced in its pre-repair implementation. Additional
+native f16/f64 `OpFRem` coverage retains 1,076 failures; float32 passes
+1,744 assertions and HIP/fallback pass all 5,232. These are not waived by
+the focused green canary or hidden with slower HIP math.
 
-The additional all-type native Vulkan remainder diagnostic is **not green**:
-1,076 assertions fail in existing f16/f64 `OpFRem` lowering. Its isolated
-float32 run passes 1,744 assertions; HIP and fallback pass all 5,232. This
-coverage gap is retained separately from the passing native lamp/bump canary
-and is not a change introduced by the HIP-only lowering.
+### What the structural/code-generation audit establishes
 
-The prior [dispatch-trace comparator fix](docs/validation/2026-09-08/dispatch-trace-comparison/README.md)
-remains test-only: discrete/RNG state is exact, continuous intermediates have
-a separate 1e-4 bound, and film's 2e-5 bound is unchanged. It is distinct from
-the newly fixed queue race. The four previous source-size violations are
-resolved by cohesive ConvertNode, color-test, AST-visitor and fixture-builder
-modules, with all previous test bodies/assertions retained. No size limit is
-relaxed and no exception is added.
-The earlier five-test native Vulkan image gate remains revision-pinned in the
-descriptor audit; it is not represented as a newly rerun image suite here.
+The [279-shader binding audit](docs/validation/2026-09-09/resource-identities/README.md)
+finds identical node/payload layouts, stack addresses and jumps. All 600
+image and 795 attribute references resolve to the same observed resource
+identities. No words are normalized away. This proves layout/binding
+identity, not decoded texel values or complete shader/path parity.
 
-Earlier [descriptor sampling](docs/validation/2026-09-08/bound-image-sampler/README.md),
-[native SRD investigation](docs/validation/2026-09-08/hip-texture-descriptors/README.md),
-[light endpoints](docs/validation/2026-09-08/light-endpoints/README.md), and
-[read-only coroutine state](docs/validation/2026-09-08/coro-readonly-forwarding/README.md)
-retain their revision-pinned measurements and full evidence. They are not
-substituted for current timings. Ordinary scalar/vector initialization still
-uses default-zero semantics.
+The [static function/texture audit](docs/validation/2026-09-09/surface-static-audit/README.md)
+finds main SVM, 3D Noise and microfacet bodies already inlined; 169 byte
+textures are not expanded to float32. The native observed function-address
+closure is not a proven dynamic call graph. Static instructions/spills do
+not establish executed costs. Full-scene experiments retaining extra
+callable boundaries or changing surface groups to 1024 were slower and
+are completely reverted. There is no manual inlining policy, register cap
+or precision workaround in production.
 
-The strict Vulkan loader audit uses native XIR -> SPIR-V with all three
-guards and records no loaded DXC/DXIL library. No system package/toolchain
-changes or inlining-policy changes were made for these checkpoints.
+| Completed investigation | Revision-pinned evidence |
+| --- | --- |
+| Generic CFG loop epochs and original-module restructuring | [Loop-scope repair](third_party/LuisaCompute/docs/validation/2026-09-08/loop-scope-restructure/README.md) |
+| Shared-case representation and closure input/dispatch structure | [Shared labels](docs/validation/2026-09-09/shared-switch-cases/README.md), [closure inputs](docs/validation/2026-09-09/closure-input-guards/README.md) |
+| Reverted launch/call-boundary interventions | [Launch geometry](docs/validation/2026-09-09/surface-launch-geometry/README.md), [microfacet boundaries](docs/validation/2026-09-08/microfacet-boundaries/README.md) |
+| Native Noise/Voronoi structure | [Noise](docs/validation/2026-09-09/noise-codegen/README.md), [Voronoi](docs/validation/2026-09-09/voronoi-octave/README.md) |
+| Scene-owned area/spot parameters | [Light parameters](docs/validation/2026-09-09/scene-light-parameters/README.md) |
+| Native emission eligibility | [Emission](docs/validation/2026-09-09/surface-emission/README.md) |
+| Group normalization and native resource bindings | [Group contexts](docs/validation/2026-09-08/svm-group-contexts/README.md), [bindings](docs/validation/2026-09-09/resource-identities/README.md) |
+| HIP sampler descriptors and native SRDs | [Bound samplers](docs/validation/2026-09-08/bound-image-sampler/README.md), [SRDs](docs/validation/2026-09-08/hip-texture-descriptors/README.md) |
+
+The next review is a complete surface-path structural inventory, not another
+isolated optimization. Per-ray lamp inverse reconstruction and eager
+main-surface first-bounce weights are two concrete leads, not an exhaustive
+list or quantified dominant costs. Surface already omits unused node cases and diagnostic
+status lanes and shares populated closures across NEE and continuation.
+The roughly 1.49% shadow-intersection surplus and indirect/path differences
+remain unresolved. Ordinary scalar/vector initialization still defaults to
+zero; only explicitly lifetime-only Local storage omits initialization.
 
 ## Native semantic and scheduling evidence
 
