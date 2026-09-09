@@ -29,8 +29,12 @@ Combined relative RMSE is 0.2304 and mean luminance is 0.7757 of Cycles, versus
 0.007605 Combined relative RMSE on Metal. Observed render times are 264.027 s
 (Metal) and 291.785 s (invalid Metal4 output), with Cycles 50.7783 s. These are
 single observations, not a valid Metal4 performance score. Both current graph
-frames have 91 fields / 456 B. Staged control continues; second repeats are
-paused for diagnosis. See the full report for retained failed evidence.
+frames have 91 fields / 456 B. The film-aligned staged control also completes:
+Metal 424.505 s, Metal4 133.884 s, Cycles Metal 50.8303 s. Metal4 staged Combined
+relative RMSE is 0.007759739, without graph's coherent darkening. All six
+first-round EXRs have 46 finite channels; this does not waive graph's numerical
+failure. Second repeats are stopped for diagnosis. See the full report for
+retained failed evidence, batching caveats and source identities.
 
 ## Revision-pinned paired full-scene baseline
 
