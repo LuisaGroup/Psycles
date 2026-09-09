@@ -435,7 +435,7 @@ build_path_kernel_executor(luisa::compute::Device &device,
                 config.wavefront_execution_block_size;
             scheduler_config.continuation_block_sizes = {{
                 .continuation = path_transition::shade_surface,
-                .execution_block_size = 512u}};
+                .execution_block_size = 128u}};
             scheduler_config.largest_continuation_first = true;
             scheduler_config.incremental_continuation_counts = true;
             scheduler_config.fused_continuation_counts = true;

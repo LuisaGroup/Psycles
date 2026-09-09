@@ -1,6 +1,6 @@
 # SDK317 fresh HIP scene baseline
 
-This capture uses the current Psycles root (`fff8c803`) with LuisaCompute
+This capture uses the current Psycles root (`f878612d`) with LuisaCompute
 `7df2fcc3a17f0c61ef36011e39b07e96766579b9` from `origin/next`, Blender 5.2.1
 build `9e2066aef7ef`, and current exporter
 `46254cd23f1b73bf7928be11c19f5726732e412a50975b088cae64bc6bbfe3b3`.
@@ -62,6 +62,18 @@ The staged path execution block size was checked on the same bundle at
 640x480/64 spp after warm-up: 32 threads rendered in 1.81543 s, 64 in
 1.82568 s, and 128 in 1.83668 s. The existing 32-wide setting remains the
 measured choice for this workload.
+
+The separate `shade_surface` continuation block was then tested at 128
+threads against the production 512-thread setting. With the normal outlined
+SVM evaluator, two native Barbershop runs at 2048x858/256 spp rendered in
+36.6842 s and 36.7118 s, versus 36.975--37.030 s for the 512-thread baseline.
+A native Monster run at 1080x1080/256 spp rendered in 13.4043 s, versus
+13.560--13.613 s for its three 512-thread baseline runs. The Barbershop and
+Monster outputs each passed all 15 finite-channel checks against their matching
+Cycles HIP references. The production continuation block is therefore 128
+threads. A separate noinline SVM evaluator experiment retained the same
+92-field/416-byte frame but regressed reduced Barbershop renders to
+1.92--1.95 s, so the evaluator remains outlined normally.
 
 The ten native-size pairs currently recorded for these four
 current-exporter scenes show Psycles ahead on Monk and Monster, close on
