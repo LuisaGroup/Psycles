@@ -1,5 +1,12 @@
 # Whole-surface SVM structural audit
 
+Follow-up: the [native path-lifetime repair](../native-path-lifetime/README.md)
+closes **S1** with a permanent original-HIP full-render red/green regression,
+complete host/HIP/fallback suites and strict native Vulkan canaries. **S2/S3
+remain open.** The findings and images below describe the captured pre-repair
+baseline, not the current S1 implementation. Its source/word identities remain
+unchanged historical evidence.
+
 The native interpreter is **not yet an end-to-end Cycles-identical surface
 implementation**. This audit finds three production rendering failures beyond
 node tests: premature termination at volume-only boundaries, missing Ray Portal
@@ -270,8 +277,9 @@ to shrink:
    Vulkan. At each performance claim: isolated full-scene controls, followed
    by the original multi-scene / 15-pass campaign and same-path diagnosis.
 
-The two replay commands below each use a **fresh** output directory. Until
-the corresponding fixes, both correctly exit 2. They launch only original
+The two replay commands below each use a **fresh** output directory. Both
+captured baseline runs exited 2. After the linked S1 repair, only the surface
+integration family is expected to remain red. They launch only original
 HIP and current production HIP; inspect results rather than calling successful
 process completion a pass.
 

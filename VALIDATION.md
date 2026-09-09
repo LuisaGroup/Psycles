@@ -36,17 +36,21 @@ first-round EXRs have 46 finite channels; this does not waive graph's numerical
 failure. Second repeats are stopped for diagnosis. See the full report for
 retained failed evidence, batching caveats and source identities.
 
-## Whole-surface structural audit: new red gates
+## Whole-surface structural audit and first repair
 
 The [whole-surface audit](docs/validation/2026-09-09/surface-semantic-audit/README.md)
 separates interpreter coverage from production consumers. Seven fresh tiny
-original-Cycles-HIP/production-HIP pairs expose **three failures**: two pure
+original-Cycles-HIP/production-HIP pairs exposed **three failures**: two pure
 volume slabs exhaust an unrelated outer path budget; selected Ray Portal
 closures never perform portal continuation; packed object holdout is not
 applied before emission. Four controls agree, including increasing only the
-unused transparent budget to recover the volume scene. Both replay gate
-families exit 2. These are reproducible red baselines, not shipped repairs or
-replacement green CTests.
+unused transparent budget to recover the volume scene. Both captured replay
+gate families exit 2. The [native lifetime repair](docs/validation/2026-09-09/native-path-lifetime/README.md)
+now removes that aggregate path budget and its ABI member. A permanent
+original-HIP full-render regression first fails both schedulers on the two-slab
+case, then passes all six case/scheduler combinations after correction.
+Portal and object-holdout consumers remain uncorrected; the captured audit
+stays a historical red baseline, not a claim that all three remain unfixed.
 
 The 110-tag catalog still has 99 implemented handlers, nine missing semantic
 opcodes and two sentinels; this is not 99 proved end-to-end features. Native
@@ -56,8 +60,9 @@ Eight work-placement/ownership leads are recorded separately from measured
 GPU costs. Current Barbershop words remain byte-identical to the earlier
 resource-identity audit, and no new rendering speedup is claimed. The new
 portal/holdout defects are inactive in the benchmark scenes; path-budget
-exhaustion there is not demonstrated. Existing timing and finite-value
-limitations below are unchanged.
+exhaustion there is not demonstrated. The performance and finite-value
+limitations below remain open; a same-binary Monk repeat also exposes local
+run-to-run image variation, without an established cause.
 
 ## Revision-pinned paired full-scene baseline
 
@@ -104,30 +109,32 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Latest four-scene HIP follow-up
 
-Psycles `9e3ba165` completes six further 256-spp renders with the exact
+The native-lifetime repair on Luisa `03a0f5158` completes six 256-spp renders with the exact
 earlier geometry/image bytes and refreshed socket metadata. These use
 retained equal-pass Cycles references, **not fresh timing pairs**. Five
 renders have all 46 channels finite; Classroom's separated-pass finite gate
 fails and remains explicitly recorded. All 15 comparisons complete on their
-reported finite domains. See the [film routing report](docs/validation/2026-09-09/film-routing/README.md).
+reported finite domains. See the [native lifetime report](docs/validation/2026-09-09/native-path-lifetime/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 12.8729 | 12.0332 | 220 B |
-| Monster, one run | 13.9104 | 15.3618 | 280 B |
-| Classroom, one run | 17.4542 | 11.4340 | 260 B |
-| Barbershop, three-run median | 38.4822 | 21.5272 / 17.7848 / 18.1808 | 416 B |
+| Lone Monk, one run | 12.8658 | 46.7018 | 216 B |
+| Monster, one run | 13.8330 | 53.5706 | 276 B |
+| Classroom, one run | 17.5897 | 39.0266 | 256 B |
+| Barbershop, three-run median | 38.1444 | 59.2917 / 18.0246 / 18.4055 | 416 B |
 
-Barbershop's observations are 40.4211 / 38.4822 / 38.4574 s; none is
-discarded. The median remains 51.6% above retained Cycles. The interrupted
-initial campaign is retained separately, not used to select faster results.
-These temporal changes are not isolated causal estimates. Initialization
+Barbershop's observations are 38.1444 / 38.1387 / 38.2437 s; none is
+discarded. The median remains 50.3% above retained Cycles. Earlier campaigns
+remain in their dated reports, not mixed into this median. These temporal
+changes are not isolated causal estimates. Initialization
 includes JIT, setup and baking, excludes render time, and is not a matched
 cold-JIT comparison. Main shader caching is disabled; downstream/OS caches
-retain ordinary policy and have already been warmed.
+retain ordinary policy. The main HIPRTC link takes 24,934.57 ms initially
+and 89.12 / 89.47 ms on repeats; that localizes the observed first/repeat
+delay without independently proving a specific cache mechanism.
 
-Classroom reproduces 18 invalid channel values at eight pixels in both
-attempts: actual DiffDir/GlossDir have seven invalid pixels each, and
+Classroom reproduces 18 invalid channel values at eight pixels with the same
+NaN/+Inf/-Inf masks as the prior capture: actual DiffDir/GlossDir have seven invalid pixels each, and
 DiffInd/GlossInd two each. Combined is finite. Original DiffDir/GlossDir
 have 25/27 invalid pixels at different coordinates; comparisons exclude
 and report the union. A dynamic-input original GPU/actual DSL observer
@@ -136,7 +143,11 @@ zero/normal controls. This supports the shared arithmetic boundary, not a
 proof of every affected path or an all-finite pass. No epsilon/slow-math
 workaround or numeric waiver is introduced; the keep-going runner exits 2.
 First-run DiffInd relative RMSE remains 12.882% / 2.553% / 17.820% / 7.126%
-in the table's scene order. Correctness and efficiency goals remain open.
+in the table's scene order. An old-runtime/current-SDK isolation control
+and an identical-current-binary repeat expose comparable local Monk changes,
+including Normal. Their cause is unresolved; the changes are not attributed
+to path-bound exhaustion or waived as floating-point noise. Correctness,
+repeatability and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
@@ -158,19 +169,21 @@ no reduction in unnecessary paths or residual DiffInd repair is claimed.
 Barbershop has emission-only fog and zero volume bounces, so corrected
 mixed volume-scattering film routes cannot explain its DiffInd.
 
-Full suites and timings used Luisa `da8fff856`. The subsequent upstream
+Those film-routing suites and timings used Luisa `da8fff856`. The subsequent upstream
 Metal/CI integration to `8911828eb` leaves all six measured HIP binaries
 byte-identical after an all-target build; complete host and focused HIP,
 fallback and strict native Vulkan gates are rerun before publication.
-The new Metal report and gitlink are preserved, not overwritten.
+The new Metal report and gitlink are preserved, not overwritten. The latest
+native-lifetime full suites below use published Luisa `03a0f5158`; the SDK
+itself has no local edits in this repair.
 
 | Gate | Result | Scope |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles host | 176/176 | Full gate; upstream integration rerun 176/176 |
-| Psycles HIP | 187/187 | Complete suite, 484.37 s; integrated focused 6/6 |
-| Psycles fallback | 189/189 | Complete suite, 362.38 s after HIP; integrated focused 6/6 |
-| Strict native Vulkan | 6/6 | 62 native compilations, no DXC/DXIL; integrated focused 6/6 with loader audit |
+| Psycles host | 177/177 | Complete host gate, 32 workers |
+| Psycles HIP | 188/188 | Complete suite, 496.27 s; focused 7/7 also passes |
+| Psycles fallback | 190/190 | Complete suite, 384.38 s after HIP |
+| Strict native Vulkan | 7/7 | 129 native compilations, no DXC/DXIL loader matches |
 | Luisa child | Prior 133/133 | Complete `unit*` selection in the HIP configuration; not a new all-platform run |
 | Full-resolution scene finiteness | **5/6** | Classroom remains failed; all six renders and 15-pass comparisons complete |
 

@@ -149,7 +149,6 @@ bool run(const char *program, const char *backend) {
                           PathCoroutineCutPolicy policy) {
     UInt first = 0;
     Var<RenderKernelParameters> parameters;
-    parameters.max_path_steps = 1;
     parameters.transparent_max_bounces = limit;
     parameters.sobol_sequence_size = 1;
     parameters.camera_transform = parameters.camera_inverse_transform =

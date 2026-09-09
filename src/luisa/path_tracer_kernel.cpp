@@ -141,7 +141,6 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
             : 0.0f;
   const auto reflective_caustics = integrator.reflective_caustics;
   const auto refractive_caustics = integrator.refractive_caustics;
-  const auto max_path_steps = bounce_limits.maximum_path_steps;
     // Cycles' flat-distribution LightManager sets use_direct_light only
     // when the distribution has positive total weight. This is a host-stage
     // capability gate: no distribution means NEE was never attempted,
@@ -231,7 +230,6 @@ void LuisaRenderSession::initialize(const RenderSettings &settings) {
       .max_volume_bounces = max_volume_bounces,
       .transparent_min_bounces = transparent_min_bounces,
       .transparent_max_bounces = transparent_max_bounces,
-        .max_path_steps = max_path_steps,
         .transparent_background =
             render_settings.transparent_background ? 1u : 0u,
       .path_trace_enabled = _options.path_trace ? 1u : 0u,

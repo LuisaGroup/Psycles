@@ -302,6 +302,17 @@ psycles_add_luisa_backend_test(
 target_compile_definitions(psycles_luisa_cycles_volume_boundary_tests PRIVATE
     PSYCLES_VOLUME_BOUNDARY_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_volume_boundary.txt")
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_path_lifetime_tests
+    SOURCE tests/test_luisa_cycles_path_lifetime.cpp
+    TEST_STEM luisa_cycles_path_lifetime
+    LIBRARIES Psycles::luisa_runtime)
+target_compile_definitions(psycles_luisa_cycles_path_lifetime_tests PRIVATE
+    PSYCLES_PATH_LIFETIME_FIXTURES="${PROJECT_SOURCE_DIR}/tests/data/cycles_path_lifetime")
+if(TEST psycles.luisa_cycles_path_lifetime_vk)
+    set_tests_properties(psycles.luisa_cycles_path_lifetime_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_volume_emission_film_tests
     SOURCE tests/test_luisa_cycles_volume_emission_film.cpp
     TEST_STEM luisa_cycles_volume_emission_film

@@ -124,4 +124,4 @@ if args.live:
     pixels, channels = compare_cycles._read_image(canary_path)
     assert channels == canary["channels"] and np.isfinite(pixels).all()
     print("Verified six SDK gate logs, strict native Vulkan loader evidence and the finite 46-channel canary.")
-print("Audit integrity passed; rendering parity remains four controls agreeing, THREE FAILURES.")
+print("Audit integrity passed; the captured pre-repair baseline has four agreeing controls and THREE FAILURES. See the linked lifetime follow-up for current S1 status.")

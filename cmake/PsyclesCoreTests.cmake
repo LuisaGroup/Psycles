@@ -1027,6 +1027,10 @@ if(PSYCLES_BUILD_TESTS)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(
+            NAME psycles.cycles_path_lifetime_fixture
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cycles_path_lifetime_fixture.py")
+        add_test(
             NAME psycles.source_size
             COMMAND
                 "${Python3_EXECUTABLE}"

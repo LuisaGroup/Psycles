@@ -109,7 +109,14 @@ PathKernelPipeline::operator=(PathKernelPipeline &&) noexcept = default;
 void PathKernelPipeline::emit(
     PathSampleContext &sample,
     PathCoroutineCutPolicy cut_policy) const noexcept {
-  $for(path_step, sample.invocation.parameters.max_path_steps) {
+  // Cycles schedules until a native transition terminates the path. Regular,
+  // transparent/portal and volume-boundary counters are independent; BSSRDF
+  // entry and exit are separate scheduled events. An additional aggregate
+  // iteration budget can discard a valid continuation or its terminal film.
+  // This index is diagnostic only; release recording has no consumers.
+  UInt path_step = ~0u;
+  $loop {
+    if (sample.invocation.config.path_trace_enabled) { path_step += 1u; }
     PathBounceContext bounce{.sample = sample,
                              .path_step = path_step,
                              .random_state = nullptr,
