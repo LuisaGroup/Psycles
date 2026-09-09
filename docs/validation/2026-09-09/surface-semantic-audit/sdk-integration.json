@@ -1,0 +1,373 @@
+{
+  "schema": "psycles.surface-audit-sdk-integration.v1",
+  "scope": "Publication integration only; original red witnesses remain in results.json at their captured SDK revision",
+  "implementation": "9e3ba165",
+  "upstream_root": "4ad112d13272a5e11b0d3f3a6067bcac4a3d5f48",
+  "child": "03a0f5158b53768abefea555f480f87ee5bc5a1e",
+  "captured_witness_child": "8911828eb",
+  "captured_binary_root": "/var/tmp/psycles-surface-structural-audit-J9tiiH/pre-integration-bin-Kt9aOf",
+  "cwd": "/home/mike/Projects/Psycles-surface-svm",
+  "build": {
+    "command": [
+      "cmake",
+      "--build",
+      "build",
+      "--parallel",
+      "32"
+    ],
+    "exit_status": 0,
+    "log": {
+      "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/sdk-integration-build.log",
+      "sha256": "3f21ab8c01a23868461d99a9f864191b1838701d1094fd417c3a013b2ed0eaab"
+    }
+  },
+  "tests": [
+    {
+      "gate": "complete host",
+      "command": [
+        "ctest",
+        "--test-dir",
+        "build",
+        "--output-on-failure",
+        "--parallel",
+        "32",
+        "-E",
+        "(_fallback|_hip|_vk)$"
+      ],
+      "passed": 176,
+      "total": 176,
+      "seconds": 1.28,
+      "exit_status": 0,
+      "log": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/sdk-host.log",
+        "sha256": "7da5613dca51b0091d75a409494e6f4d1a2e9e88cee01f27fadff51742c12c8f"
+      }
+    },
+    {
+      "gate": "focused hip",
+      "command": [
+        "ctest",
+        "--test-dir",
+        "build",
+        "--output-on-failure",
+        "--parallel",
+        "1",
+        "-R",
+        "^psycles\\.luisa_cycles_(film_routing|surface_emission|svm_(shared_closure|subsurface_exit|native_shadow|bump_state|closure_pool|standalone_ray_portal))_hip$"
+      ],
+      "environment": {},
+      "passed": 8,
+      "total": 8,
+      "seconds": 10.42,
+      "exit_status": 0,
+      "log": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/sdk-focused-hip.log",
+        "sha256": "c60f79ba27309ae280559423225a75fdd10927b9249be2323826341d06a8a31b"
+      }
+    },
+    {
+      "gate": "focused fallback",
+      "command": [
+        "ctest",
+        "--test-dir",
+        "build",
+        "--output-on-failure",
+        "--parallel",
+        "1",
+        "-R",
+        "^psycles\\.luisa_cycles_(film_routing|surface_emission|svm_(shared_closure|subsurface_exit|native_shadow|bump_state|closure_pool|standalone_ray_portal))_fallback$"
+      ],
+      "environment": {},
+      "passed": 8,
+      "total": 8,
+      "seconds": 7.58,
+      "exit_status": 0,
+      "log": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/sdk-focused-fallback.log",
+        "sha256": "290975db32e127c66a6313051df6717d41945f2cf40300f7dbc48d6d0abfd185"
+      }
+    },
+    {
+      "gate": "focused strict native Vulkan",
+      "command": [
+        "ctest",
+        "--test-dir",
+        "build",
+        "--output-on-failure",
+        "--parallel",
+        "1",
+        "--verbose",
+        "-R",
+        "^psycles\\.luisa_cycles_(film_routing|surface_emission|svm_(shared_closure|subsurface_exit|native_shadow|bump_state|closure_pool|standalone_ray_portal))_vk$"
+      ],
+      "environment": {
+        "LUISA_VULKAN_USE_XIR": "1",
+        "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV": "1",
+        "LUISA_VULKAN_DISABLE_DXC": "1",
+        "LD_DEBUG": "libs"
+      },
+      "passed": 8,
+      "total": 8,
+      "seconds": 14.85,
+      "exit_status": 0,
+      "log": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/sdk-focused-native-vk.log",
+        "sha256": "179fbf856629645702006663a6a5132d94d3b28fcf14fea02bd8d826cd0784c1"
+      }
+    }
+  ],
+  "native_vulkan": {
+    "spirv_compilation_success_lines": 30,
+    "dxc_dxil_loader_entries": 0,
+    "scope": "LD_DEBUG libs: init/load/search entries; no DXC or DXIL library"
+  },
+  "canary_runner_log": {
+    "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/sdk-barbershop-run.log",
+    "sha256": "d53ceff037465ba8c59ea1bf794a9af76297625555120fef12239f1a3981081e"
+  },
+  "canary": {
+    "schema": "psycles.surface-audit-sdk-canary.v1",
+    "scope": "single full-input SDK integration and finiteness gate; not a paired benchmark or parity proof",
+    "revisions": {
+      "root": "e2b37f2d31412bbb556f5fecd86cb9a3a20a1761",
+      "child": "03a0f5158b53768abefea555f480f87ee5bc5a1e"
+    },
+    "implementation_sha256": {
+      "build/bin/psycles_render_blender_scene": "d22d47d63758ca20dacba56b12222613b990f8e851cedf9163fcf887155e61d0",
+      "build/libpsycles_core.so": "a1b98a746ac670df24df08ed39fd8306abc287d57e85fa34ce5a839ed605a2ec",
+      "build/libpsycles_luisa_runtime.so": "f66114f09b47b9ab92babdf85c7389228ec6b55f4e4d17e95c867a95a243fea6",
+      "build/bin/libluisa-coro.so": "50493a131f2d515432e921762f291e5188e2ff02c6202fb5be6a55359e4ac225",
+      "build/bin/libluisa-xir.so": "d755dfa51c219d4e85fb751804ed6766f1aa52cec4dc0809cc9dff16379702f4",
+      "build/bin/libluisa-backend-hip.so": "31c7665da651e21b088d4645f2634ad5d81212f2c035afbd1a41ffe273ede5df"
+    },
+    "main_shader_cache": "disabled",
+    "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/sdk-barbershop-RD0YE1",
+    "manifest": {
+      "path": "/var/tmp/psycles-matched-pass-hip-2c98Q0/barbershop/run-1/benchmark.json",
+      "sha256": "7405c10f9ea1d09929cb8f4cea8eb68fe720b136759bac039eef20a5c10c7e31"
+    },
+    "socket_metadata_control": {
+      "schema": "psycles.socket-metadata-control.v1",
+      "scope": "only new source socket flags and exporter identity; old geometry and image bytes retained",
+      "old_bundle": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export",
+      "fresh_export": "/var/tmp/psycles-hidden-socket-U0KI5L/barbershop-export",
+      "control_bundle": "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop",
+      "old_scene": {
+        "path": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export/scene.json",
+        "sha256": "69478daa3cc0efc2a6d38ac1d5de89df120fe2acd1e50ca4490621bbd1c72893",
+        "bytes": 31798403
+      },
+      "fresh_scene": {
+        "path": "/var/tmp/psycles-hidden-socket-U0KI5L/barbershop-export/scene.json",
+        "sha256": "502d0062b1e640c7119ac7a7dea1e1238a75be5746ecfc80eec9ce2fd73c3b22",
+        "bytes": 32571916
+      },
+      "control_scene": {
+        "path": "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop/scene.json",
+        "sha256": "502d0062b1e640c7119ac7a7dea1e1238a75be5746ecfc80eec9ce2fd73c3b22",
+        "bytes": 32571916
+      },
+      "old_geometry": {
+        "path": "/var/tmp/psycles-four-scene-hip-0PRq34/barbershop/export/geometry.bin",
+        "sha256": "17e7d73b058c04127cab5aa14d374eca732701cdf192160b52f3df95135f7478",
+        "bytes": 2859906188
+      },
+      "fresh_geometry": {
+        "path": "/var/tmp/psycles-hidden-socket-U0KI5L/barbershop-export/geometry.bin",
+        "sha256": "2b9ee26e6749ca690d354d3c4ec728aa9e569050245ced1bbcbdc24927cc37f7",
+        "bytes": 2859906188
+      },
+      "control_geometry": {
+        "path": "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop/geometry.bin",
+        "sha256": "17e7d73b058c04127cab5aa14d374eca732701cdf192160b52f3df95135f7478",
+        "bytes": 2859906188
+      }
+    },
+    "render": {
+      "command": [
+        "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+        "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop",
+        "/var/tmp/psycles-surface-structural-audit-J9tiiH/sdk-barbershop-RD0YE1/barbershop.ppm",
+        "hip",
+        "2048",
+        "858",
+        "256",
+        "64",
+        "-",
+        "1024",
+        "429",
+        "0",
+        "0",
+        "256",
+        "-",
+        "1",
+        "0",
+        "wavefront-staged",
+        "32",
+        "32768",
+        "32",
+        "1",
+        "1",
+        "1",
+        "4",
+        "2",
+        "0",
+        "0",
+        "0",
+        "0",
+        "1",
+        "1048576"
+      ],
+      "log": "/var/tmp/psycles-surface-structural-audit-J9tiiH/sdk-barbershop-RD0YE1/render.log",
+      "log_sha256": "fb38bf5610f5ccdece440efb8957ebd2c21a9f928c2ed0b9796efa08ccecf8df",
+      "returncode": 0,
+      "wall_seconds": 73.3424198260036
+    },
+    "timings": {
+      "scene_compile_seconds": 15.142,
+      "shader_jit_seconds": 17.705,
+      "render_seconds": 38.4109
+    },
+    "frame": {
+      "stages": 6,
+      "fields": 93,
+      "bytes": 416
+    },
+    "output_sha256": "29656b9b36a0d25778e8c9227ac52edc3886cbab992bb85b9886a0e245a33fa5",
+    "pass_contract": {
+      "schema": "psycles.linear-pass-contract.v1",
+      "passes": [
+        "Combined",
+        "Normal",
+        "DiffCol",
+        "GlossCol",
+        "TransCol",
+        "DiffDir",
+        "DiffInd",
+        "GlossDir",
+        "GlossInd",
+        "TransDir",
+        "TransInd",
+        "Emit",
+        "Env",
+        "Volume Direct",
+        "Volume Indirect"
+      ],
+      "channels": [
+        "ViewLayer.Combined.R",
+        "ViewLayer.Combined.G",
+        "ViewLayer.Combined.B",
+        "ViewLayer.Combined.A",
+        "ViewLayer.DiffCol.R",
+        "ViewLayer.DiffCol.G",
+        "ViewLayer.DiffCol.B",
+        "ViewLayer.DiffDir.R",
+        "ViewLayer.DiffDir.G",
+        "ViewLayer.DiffDir.B",
+        "ViewLayer.DiffInd.R",
+        "ViewLayer.DiffInd.G",
+        "ViewLayer.DiffInd.B",
+        "ViewLayer.Emit.R",
+        "ViewLayer.Emit.G",
+        "ViewLayer.Emit.B",
+        "ViewLayer.Env.R",
+        "ViewLayer.Env.G",
+        "ViewLayer.Env.B",
+        "ViewLayer.GlossCol.R",
+        "ViewLayer.GlossCol.G",
+        "ViewLayer.GlossCol.B",
+        "ViewLayer.GlossDir.R",
+        "ViewLayer.GlossDir.G",
+        "ViewLayer.GlossDir.B",
+        "ViewLayer.GlossInd.R",
+        "ViewLayer.GlossInd.G",
+        "ViewLayer.GlossInd.B",
+        "ViewLayer.Normal.X",
+        "ViewLayer.Normal.Y",
+        "ViewLayer.Normal.Z",
+        "ViewLayer.TransCol.R",
+        "ViewLayer.TransCol.G",
+        "ViewLayer.TransCol.B",
+        "ViewLayer.TransDir.R",
+        "ViewLayer.TransDir.G",
+        "ViewLayer.TransDir.B",
+        "ViewLayer.TransInd.R",
+        "ViewLayer.TransInd.G",
+        "ViewLayer.TransInd.B",
+        "ViewLayer.VolumeDir.R",
+        "ViewLayer.VolumeDir.G",
+        "ViewLayer.VolumeDir.B",
+        "ViewLayer.VolumeInd.R",
+        "ViewLayer.VolumeInd.G",
+        "ViewLayer.VolumeInd.B"
+      ],
+      "width": 2048,
+      "height": 858
+    },
+    "channels": [
+      "ViewLayer.Combined.R",
+      "ViewLayer.Combined.G",
+      "ViewLayer.Combined.B",
+      "ViewLayer.Combined.A",
+      "ViewLayer.DiffCol.R",
+      "ViewLayer.DiffCol.G",
+      "ViewLayer.DiffCol.B",
+      "ViewLayer.DiffDir.R",
+      "ViewLayer.DiffDir.G",
+      "ViewLayer.DiffDir.B",
+      "ViewLayer.DiffInd.R",
+      "ViewLayer.DiffInd.G",
+      "ViewLayer.DiffInd.B",
+      "ViewLayer.Emit.R",
+      "ViewLayer.Emit.G",
+      "ViewLayer.Emit.B",
+      "ViewLayer.Env.R",
+      "ViewLayer.Env.G",
+      "ViewLayer.Env.B",
+      "ViewLayer.GlossCol.R",
+      "ViewLayer.GlossCol.G",
+      "ViewLayer.GlossCol.B",
+      "ViewLayer.GlossDir.R",
+      "ViewLayer.GlossDir.G",
+      "ViewLayer.GlossDir.B",
+      "ViewLayer.GlossInd.R",
+      "ViewLayer.GlossInd.G",
+      "ViewLayer.GlossInd.B",
+      "ViewLayer.Normal.X",
+      "ViewLayer.Normal.Y",
+      "ViewLayer.Normal.Z",
+      "ViewLayer.TransCol.R",
+      "ViewLayer.TransCol.G",
+      "ViewLayer.TransCol.B",
+      "ViewLayer.TransDir.R",
+      "ViewLayer.TransDir.G",
+      "ViewLayer.TransDir.B",
+      "ViewLayer.TransInd.R",
+      "ViewLayer.TransInd.G",
+      "ViewLayer.TransInd.B",
+      "ViewLayer.VolumeDir.R",
+      "ViewLayer.VolumeDir.G",
+      "ViewLayer.VolumeDir.B",
+      "ViewLayer.VolumeInd.R",
+      "ViewLayer.VolumeInd.G",
+      "ViewLayer.VolumeInd.B"
+    ],
+    "invalid_lanes": 0,
+    "actual_all_finite": true
+  },
+  "captured_audit_integrity": {
+    "command": [
+      "python",
+      "docs/validation/2026-09-09/surface-semantic-audit/validate_audit.py",
+      "--live",
+      "--captured-binary-root",
+      "/var/tmp/psycles-surface-structural-audit-J9tiiH/pre-integration-bin-Kt9aOf"
+    ],
+    "file_identities_verified": 158,
+    "image_pairs_verified": 7,
+    "agreeing_controls": 4,
+    "renderer_parity_failures": 3,
+    "exit_status": 0,
+    "scope": "Evidence integrity, not a passing renderer parity gate"
+  }
+}

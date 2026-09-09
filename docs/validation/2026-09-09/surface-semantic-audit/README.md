@@ -9,7 +9,7 @@ work-placement differences. Fixing another small arithmetic expression would
 not close these contracts.
 
 This is an audit and reproducible red baseline, **not a production repair or a
-new performance result**. Production is Psycles `287bc520` / implementation
+new performance result**. The audit captures use Psycles `287bc520` / implementation
 `9e3ba165`, Luisa `8911828eb`. Source comparison uses Cycles
 `cb168525138fecc792cc393f94afc39582b0103c`; the full-render witnesses use installed
 Cycles 5.2.1 HIP build `9e2066aef7ef`. Neither original source nor either installed
@@ -191,7 +191,7 @@ eliminated or sunk by the compiler; a source branch count is not GPU traffic.
 | W4: Transparent ray continuation | Actual scatter normalizes a sampled direction, calculates the triangle self-intersection/ray offset and differential widening, then selects the unchanged transparent ray. Native's transparent branch only updates tmin and skips that construction. | Predicate-aware AST/IR; Barbershop contains transparent closures, but their dynamic cost is unmeasured. |
 | W5: Random-tuple lifetime | Actual surface BSDF random tuple is constructed before NEE and before the sampler's SD_BSDF/SD_BSSRDF rejection. Native ordinary bounce rejects before requesting its tuple. Light-termination random is also constructed for every eligible NEE context. | Actual optimized control dependence and lifetime; sampling is counter-based, so movement alone is not changed RNG sequence. |
 | W6: Forward MIS | The SD_EMISSION/SSS gate is repaired, but the inner forward-emission operation still calculates selection/triangle PDFs before selecting no competition for primary or MIS_SKIP paths. Native forward MIS rejects those paths first. | Original boundary states, side-effect-free work dominance and full original shader validation. |
-| W7: NEE proposal finalization | A constant-proposal finalizer is called before selecting by proposal kind. Native constant/light-tree routes have distinct work predicates. | Prove which calls remain after JIT specialization before asserting redundant device execution. |
+| W7: NEE proposal finalization | A constant-proposal finalizer is called before selecting by proposal kind. Native constant/non-constant shader and light-tree modes have distinct termination predicates. | Prove which calls remain after JIT specialization before asserting redundant device execution. |
 | W8: Lamp inverse ownership | Actual analytic consumers rebuild inverse linear transforms with cross products/determinant/reciprocal. Native lamp inverse access reads the packed object transform. | Native host table plus original GPU transform states; no isolated inverse microbenchmark presented as a renderer gain. |
 
 Separate numerical-domain differences also remain: the analytic proposal PDF
@@ -295,3 +295,53 @@ compact publication snapshot. Layout/decoder hashes, complete commands and
 source locations are retained. No production source changes or new backend
 fixes are included in this audit checkpoint; prior complete-suite results
 remain prior results, and the new full-render gates are explicitly red.
+
+## Publication SDK integration check
+
+Upstream advanced while this audit was being prepared. The publication retains
+Psycles `4ad112d1` and its Luisa `03a0f5158` gitlink, including the separately
+published CFG loop-epoch and swizzle-reference fixes. No SDK fix is attributed
+to this audit. The original seven witness captures above remain pinned to
+`8911828eb`; they were not relabeled as new-SDK measurements.
+
+The rebuilt SDK was checked separately, without overlapping GPU workloads:
+
+| Gate | Result |
+| --- | --- |
+| All-target build, 32 threads | Passed |
+| Complete host CTest, 32 jobs | 176/176, 1.28 s |
+| Focused HIP, serial | 8/8, 10.42 s |
+| Focused fallback, serial | 8/8, 7.58 s |
+| Full-input Barbershop HIP, 2048x858 / 256 spp | Completed; all 46 channels finite; main frame 6 stages / 93 fields / 416 B |
+| Strict native Vulkan, serial, loader audit | 8/8, 14.85 s; native SPIR-V compilation observed, no DXC/DXIL library initialization |
+
+The focus set is film routing, surface emission, shared closure, subsurface
+exit, native shadow, bump state, closure pool and standalone Ray Portal.
+Vulkan uses `LUISA_VULKAN_USE_XIR=1`,
+`LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1`,
+`LUISA_VULKAN_DISABLE_DXC=1`, and `LD_DEBUG=libs`.
+These are SDK integration gates, **not a new full backend suite or a repair
+of the three full-render failures**. The standalone portal test is still
+subject to the consumer limitation documented in S2.
+
+The single Barbershop canary observed 17.705 s shader initialization and
+38.4109 s rendering with the main shader cache disabled. It is neither a
+fresh original/actual timing pair nor an estimate of an SDK speedup. Its
+commands, binary identities, input controls and gate logs are archived in
+[sdk-integration.json](sdk-integration.json). `run_sdk_canary.py` replays this
+check from the reviewed baseline and socket-control roots, using a fresh
+empty output directory.
+
+The previous six measured binaries were copied before rebuilding, into
+`/var/tmp/psycles-surface-structural-audit-J9tiiH/pre-integration-bin-Kt9aOf`.
+This is an identity snapshot, not a complete relocatable SDK. The integrity
+validator rechecked **158 captured file identities and all seven image pairs**:
+
+```bash
+python docs/validation/2026-09-09/surface-semantic-audit/validate_audit.py \
+  --live --captured-binary-root \
+  /var/tmp/psycles-surface-structural-audit-J9tiiH/pre-integration-bin-Kt9aOf
+```
+
+An integrity pass deliberately preserves the four agreeing controls and
+**three renderer parity failures**; it does not turn a red renderer gate green.
