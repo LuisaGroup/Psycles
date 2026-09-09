@@ -43,8 +43,6 @@ commit was rebased onto that upstream, without editing renderer, SVM, scheduler,
 CMake or tracked benchmark tools. The new campaign is pinned to that film-aligned
 implementation, not the older one.
 
-## First completed 256-sample staged matrix
-
 ## Film-aligned graph: numerical failure discovered
 
 At Psycles `dd1f35a7` / Luisa `03a0f5158`, the first 1920x1080 / 256-sample
@@ -62,15 +60,41 @@ frames now have seven stages / **91 fields / 456 B**; the upstream film change
 adds a field within the same byte footprint. Metal4 also loses about 23% of
 Diffuse Color and Glossy Color signal; its Combined original-resolution
 triptych shows coherent darkening. Its demodulated direct-light mean ratios
-remain near one, but that does not repair the raw outputs. No pass reports
-invalid RGB pixels. A separate all-46-channel scan remains a final audit gate.
+remain near one, but that does not repair the raw outputs. All six actual
+EXRs in the two first-round matrices (two Cycles references, four Psycles
+outputs) have now been scanned: all 46 channels are finite. Finiteness is not
+image correctness; the Metal4 graph output remains invalid.
 
 The renderer checks every downloaded integer sample count against 256 before
 writing these outputs, so this is not simply an unchecked normalization
 denominator. Atomic contribution loss and graph task/state progression remain
 diagnostic hypotheses, not established causes. The second-repeat driver was
-paused while the already-started staged comparison finishes on the same frozen
-binaries. The failed graph result and its time will remain in the record.
+stopped after the already-started staged comparison finished on the same
+frozen binaries. The failed graph result and its time remain in the record.
+
+### Film-aligned staged control
+
+The same published implementation completes the staged control with a fresh
+Cycles Metal reference at 50.8303 s. These remain single observations.
+
+| Staged backend, one observation | Render-only s | Psycles / Cycles | Session init s | Combined relative RMSE |
+| --- | ---: | ---: | ---: | ---: |
+| Metal | 424.505 | 8.3514 | 32.0052 | see pass report |
+| Metal4 | 133.884 | 2.6339 | 114.009 | 0.007759739 |
+
+Metal4 staged Combined luminance is 0.999890883 of Cycles, and Diffuse Color
+relative RMSE is 0.000864489. The large graph-only energy loss is absent.
+Both staged main frames remain 55 fields / 220 B. Source/binary hashes and
+the per-channel finite inventories are in `film-aligned-first-round-audit.json`.
+The audit explicitly excludes Metal4 graph from valid performance scores.
+
+Independent million-invocation direct and graph probes pass float and integer
+atomic totals, including contiguous destinations, floating frame payloads,
+automatic/disabled tail and hint sorting. These are negative controls, not
+a reproduction or a repair of the original failure. Existing pre-film
+one-sample graph outputs have matching aggregate albedo across the two
+backends (mean ratio 0.9999953); that diagnostic comparison is not a replacement
+for the Cycles oracle or the failing original 256-sample gate.
 
 ### Historical pre-film staged observation
 
