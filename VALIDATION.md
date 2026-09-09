@@ -5,6 +5,14 @@ roadmap. Older timing tables and legacy-executor claims have been removed
 from this page; their dated reports remain under docs/validation and in Git
 history.
 
+## Apple Metal / Metal4 checkpoint
+
+The [Lone Monk Metal campaign](docs/validation/2026-09-09/matched-pass-metal/README.md)
+records published Luisa backend repairs, focused regressions and complete
+1920x1080 original-scene canaries on both backends. The staged main frame is
+55 fields / 220 B; shadow queues are separate. Formal 256-sample timing pairs
+are still in progress, so no new Metal/Cycles performance ratio is claimed.
+
 ## Revision-pinned paired full-scene baseline
 
 The [equal-pass HIP campaign](docs/validation/2026-09-08/matched-pass-hip/README.md)
