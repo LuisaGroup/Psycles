@@ -54,11 +54,6 @@ public:
         n0 = normals.n0; n1 = normals.n1; n2 = normals.n2;
       };
       wp0 = p0; wp1 = p1; wp2 = p2;
-      $if(!applied) {
-        wp0 = cycles_transform::point(transforms.object_to_world, p0);
-        wp1 = cycles_transform::point(transforms.object_to_world, p1);
-        wp2 = cycles_transform::point(transforms.object_to_world, p2);
-      };
       material_slot = _material->triangle_material_slot(scene, geometry, hit->prim);
     };
     const auto curve_geometry = [&] {

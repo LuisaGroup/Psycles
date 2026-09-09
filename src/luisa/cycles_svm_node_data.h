@@ -51,9 +51,24 @@ class NodeDataView final {
   template <std::size_t ByteOffset>
   [[nodiscard]] luisa::compute::Float3 load_float3(
       Stack& stack) const noexcept {
-    return stack_load_input_float3(stack, word<ByteOffset>(),
-                                   word<ByteOffset + 4u>(),
-                                   word<ByteOffset + 8u>());
+    // Cycles tests the first lane before loading the remaining literal lanes.
+    // Besides matching the SVM input contract, keeping the stack path inside
+    // this branch avoids three unnecessary word-buffer reads for dynamic
+    // stack-backed vector inputs.
+    using namespace luisa::compute;
+    const auto x_bits = word<ByteOffset>();
+    Float3 result = make_float3(0.0f);
+    $if((x_bits >> 8u) ==
+        (SVM_INPUT_STACK_OFFSET_MASK >> 8u)) {
+      result = stack_load_float3(stack, x_bits & 0xffu);
+    }
+    $else {
+      result = make_float3(
+          x_bits.template bitcast<float>(),
+          word<ByteOffset + 4u>().template bitcast<float>(),
+          word<ByteOffset + 8u>().template bitcast<float>());
+    };
+    return result;
   }
 };
 }  // namespace psycles::luisa_backend::cycles_svm::detail

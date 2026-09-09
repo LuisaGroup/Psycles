@@ -155,6 +155,14 @@ public:
 
 } // namespace
 
+void SurfaceGeometryContext::ensure_world_triangle_vertices() noexcept {
+  $if(!cycles_transform_applied) {
+    wp0 = cycles_transform::point(object_to_world, p0);
+    wp1 = cycles_transform::point(object_to_world, p1);
+    wp2 = cycles_transform::point(object_to_world, p2);
+  };
+}
+
 void SurfaceGeometryContext::set_evaluated_shadow_shading_normal(
     Float3 evaluated_normal) noexcept {
   const auto record_shadow_terminator = [&] {
