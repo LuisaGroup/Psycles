@@ -121,8 +121,7 @@ bool run(const char *program, const char *backend, bool no_cache) {
       .shade_shadow_surface = surface,
       .trace_shadow = unbound<TraceShadowCallable>(),
       .light_sample_roulette = unbound<LightSampleRouletteCallable>(),
-      .clamp_contribution = unbound<ClampLightContributionCallable>(),
-      .split_scattered_light = unbound<SplitScatteredLightCallable>()};
+      .clamp_contribution = unbound<ClampLightContributionCallable>()};
   Coroutine<void(unsigned, Buffer<luisa::float4>, Buffer<luisa::uint4>)>
       coroutine{
           [evaluator](UInt scenario, BufferFloat4 output, BufferUInt4 meta) {

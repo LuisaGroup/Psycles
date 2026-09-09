@@ -29,29 +29,6 @@ void atomic_accumulate_light_pass(const BufferFloat4 &light_passes,
                            light_pass_base + light_pass_index(pass), value);
 }
 
-void atomic_accumulate_light_passes(
-    const BufferFloat4 &light_passes, const UInt &light_pass_base,
-    const Var<LightPassContributionCall> &contribution) noexcept {
-  atomic_accumulate_light_pass(light_passes, light_pass_base,
-                               LightPassBuffer::diffuse_direct,
-                               contribution.diffuse_direct);
-  atomic_accumulate_light_pass(light_passes, light_pass_base,
-                               LightPassBuffer::diffuse_indirect,
-                               contribution.diffuse_indirect);
-  atomic_accumulate_light_pass(light_passes, light_pass_base,
-                               LightPassBuffer::glossy_direct,
-                               contribution.glossy_direct);
-  atomic_accumulate_light_pass(light_passes, light_pass_base,
-                               LightPassBuffer::glossy_indirect,
-                               contribution.glossy_indirect);
-  atomic_accumulate_light_pass(light_passes, light_pass_base,
-                               LightPassBuffer::transmission_direct,
-                               contribution.transmission_direct);
-  atomic_accumulate_light_pass(light_passes, light_pass_base,
-                               LightPassBuffer::transmission_indirect,
-                               contribution.transmission_indirect);
-}
-
 void atomic_accumulate_radiance(
     const BufferFloat4 &combined, const BufferFloat4 &volume_guiding_raw,
     const UInt &pixel, const UInt &volume_guiding_raw_base, bool volume_guiding,
@@ -215,22 +192,6 @@ void PathSampleContext::accumulate_light_pass(LightPassBuffer pass,
     }
 }
 
-void PathSampleContext::accumulate_light_pass(
-    Var<LightPassContributionCall> contribution) noexcept {
-  accumulate_light_pass(LightPassBuffer::diffuse_direct,
-        contribution.diffuse_direct);
-  accumulate_light_pass(LightPassBuffer::diffuse_indirect,
-        contribution.diffuse_indirect);
-  accumulate_light_pass(LightPassBuffer::glossy_direct,
-        contribution.glossy_direct);
-  accumulate_light_pass(LightPassBuffer::glossy_indirect,
-        contribution.glossy_indirect);
-  accumulate_light_pass(LightPassBuffer::transmission_direct,
-        contribution.transmission_direct);
-  accumulate_light_pass(LightPassBuffer::transmission_indirect,
-        contribution.transmission_indirect);
-}
-
 void PathSampleContext::accumulate_normal_pass(Float3 contribution) noexcept {
     auto &invocation = this->invocation;
   if (invocation.film_accumulation == PathFilmAccumulation::atomic) {
@@ -247,28 +208,6 @@ void PathSampleContext::accumulate_albedo_pass(Float3 contribution) noexcept {
         return;
     }
     sample_albedo += contribution;
-}
-
-void PathSampleContext::accumulate_scattered_light(
-    Float3 contribution) noexcept {
-    const auto surface_pass =
-      (path_flags & cycles_path_state::flag_surface_pass) != 0u;
-    const auto volume_pass =
-      (path_flags & cycles_path_state::flag_volume_pass) != 0u;
-    $if(surface_pass) {
-        accumulate_light_pass(
-        invocation.config.light_transport.split_scattered_light(
-            contribution, path_diffuse_weight, path_glossy_weight,
-                    path_depth == 1u));
-    };
-    $if(volume_pass) {
-        accumulate_light_pass(
-            LightPassBuffer::volume_direct,
-        select(make_float3(0.0f), contribution, path_depth == 1u));
-        accumulate_light_pass(
-            LightPassBuffer::volume_indirect,
-        select(contribution, make_float3(0.0f), path_depth == 1u));
-    };
 }
 
 void PathSampleContext::accumulate_radiance(

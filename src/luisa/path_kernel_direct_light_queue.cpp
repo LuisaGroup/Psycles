@@ -176,9 +176,9 @@ public:
                                          task.pixel * volume_guiding::raw_pixel_stride,
                                          evaluator.volume_guiding, task.path_flags,
                                          task.path_visibility, task.path_depth, value);
-              atomic_accumulate_light_passes(light_passes,
-                                             task.pixel * light_pass_buffer_count,
-                                             evaluator.split(task, value));
+              evaluator.accumulate_passes_atomic(light_passes,
+                                                 task.pixel * light_pass_buffer_count,
+                                                 task, value);
             };
           }
           _tokens->write(slot, next);

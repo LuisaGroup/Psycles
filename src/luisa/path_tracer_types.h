@@ -588,15 +588,6 @@ struct SurfacePreparationCall {
     luisa::uint runtime_flags{};
 };
 
-struct LightPassContributionCall {
-    luisa::float3 diffuse_direct{};
-    luisa::float3 diffuse_indirect{};
-    luisa::float3 glossy_direct{};
-    luisa::float3 glossy_indirect{};
-    luisa::float3 transmission_direct{};
-    luisa::float3 transmission_indirect{};
-};
-
 struct RenderKernelParameters {
     luisa::uint window_x{};
     luisa::uint window_y{};
@@ -981,14 +972,6 @@ LUISA_STRUCT(
     transparency,
     roughness,
     runtime_flags) {};
-LUISA_STRUCT(
-    psycles::luisa_backend::detail::LightPassContributionCall,
-    diffuse_direct,
-    diffuse_indirect,
-    glossy_direct,
-    glossy_indirect,
-    transmission_direct,
-    transmission_indirect) {};
 LUISA_STRUCT(
     psycles::luisa_backend::detail::RenderKernelParameters,
     window_x,

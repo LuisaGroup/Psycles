@@ -15,9 +15,10 @@ void atomic_accumulate_light_pass(const BufferFloat4 &light_passes,
                                   LightPassBuffer pass,
                                   const Float3 &value) noexcept;
 
-void atomic_accumulate_light_passes(
-    const BufferFloat4 &light_passes, const UInt &light_pass_base,
-    const Var<LightPassContributionCall> &contribution) noexcept;
+void atomic_accumulate_scattered_light_passes(
+    const BufferFloat4 &light_passes, UInt light_pass_base,
+    Float3 contribution, UInt flags, Float3 diffuse, Float3 glossy,
+    Bool direct) noexcept;
 
 // Shared atomic Combined/volume-guiding sink for per-sample main paths and
 // detached shadow work. All classification inputs are explicit, so moving an

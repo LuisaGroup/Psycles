@@ -67,13 +67,8 @@ public:
         const auto contribution = invocation.clamp_emission_contribution(
             throughput * light_radiance * mis_weight, path_depth);
         sample.accumulate_radiance(contribution);
-        const auto directly_visible =
-            (path_flags & cycles_path_state::flag_any_pass) == 0u;
-        sample.accumulate_light_pass(
-            LightPassBuffer::emission,
-            select(make_float3(0.0f), contribution, directly_visible));
-        sample.accumulate_scattered_light(
-            select(contribution, make_float3(0.0f), directly_visible));
+        sample.accumulate_emission_or_background(contribution,
+                                                  LightPassBuffer::emission);
       };
     };
 

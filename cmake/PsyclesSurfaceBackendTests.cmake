@@ -1,6 +1,20 @@
 include_guard(GLOBAL)
 
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_film_routing_tests
+    SOURCE tests/test_luisa_cycles_film_routing.cpp
+    TEST_STEM luisa_cycles_film_routing
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(psycles_luisa_cycles_film_routing_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+target_compile_definitions(psycles_luisa_cycles_film_routing_tests PRIVATE
+    PSYCLES_FILM_ROUTING_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_film_routing.txt")
+if(TEST psycles.luisa_cycles_film_routing_vk)
+    set_tests_properties(psycles.luisa_cycles_film_routing_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_surface_emission_tests
     SOURCE tests/test_luisa_cycles_surface_emission.cpp
     TEST_STEM luisa_cycles_surface_emission

@@ -7,6 +7,8 @@
 namespace psycles::luisa_backend::detail {
 
 struct PathKernelConfig;
+struct PathSampleContext;
+struct DirectLightTransportState;
 class DirectLightEmissionComponent;
 
 // Minimal state crossing the surface -> shadow-work boundary. Material
@@ -98,7 +100,6 @@ struct DirectLightTaskEvaluator {
   TraceShadowCallable trace_shadow;
   LightSampleRouletteCallable light_sample_roulette;
   ClampLightContributionCallable clamp_contribution;
-  SplitScatteredLightCallable split_scattered_light;
   std::shared_ptr<const DirectLightEmissionComponent> light_emission;
   bool volume_guiding{};
 
@@ -124,9 +125,12 @@ struct DirectLightTaskEvaluator {
   [[nodiscard]] Float3
   contribution(const Var<DirectLightTaskCall> &task, Float3 throughput,
                const Var<RenderKernelParameters> &parameters) const noexcept;
-  [[nodiscard]] Var<LightPassContributionCall>
-  split(const Var<DirectLightTaskCall> &task,
-        Float3 contribution) const noexcept;
+  void accumulate_passes(PathSampleContext &sample,
+                         const Var<DirectLightTaskCall> &task,
+                         Float3 contribution) const noexcept;
+  void accumulate_passes_atomic(const BufferFloat4 &film, UInt base,
+                                const Var<DirectLightTaskCall> &task,
+                                Float3 contribution) const noexcept;
   void
   emit_atomic(const Var<DirectLightTaskCall> &task,
               const DirectLightTaskFilm &film,
@@ -135,6 +139,13 @@ struct DirectLightTaskEvaluator {
 
 [[nodiscard]] DirectLightTaskEvaluator
 make_direct_light_task_evaluator(const PathKernelConfig &config) noexcept;
+
+void prepare_surface_shadow_pass(Var<DirectLightTaskCall> &task,
+                                 const PathSampleContext &sample,
+                                 const DirectLightTransportState &transport) noexcept;
+
+void accumulate_volume_nee_film(PathSampleContext &sample,
+                                Float3 contribution) noexcept;
 
 class DirectLightTaskSink {
 

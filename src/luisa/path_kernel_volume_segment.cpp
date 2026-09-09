@@ -477,21 +477,7 @@ class PathVolumeSegmentStageImpl final
                 path_depth);
         sample.accumulate_radiance(
             emission);
-        const auto directly_visible =
-            (path_flags &
-             cycles_path_state::
-                 flag_any_pass) == 0u;
-        sample.accumulate_light_pass(
-            LightPassBuffer::emission,
-            select(
-                make_float3(0.0f),
-                emission,
-                directly_visible));
-        sample.accumulate_scattered_light(
-            select(
-                emission,
-                make_float3(0.0f),
-                directly_visible));
+        sample.accumulate_emission_or_background(emission, LightPassBuffer::emission);
         optical_depth +=
             select(
                 0.0f,

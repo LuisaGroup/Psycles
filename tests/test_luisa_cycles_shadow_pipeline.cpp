@@ -26,6 +26,8 @@ Var<DirectLightTaskCall> fixture_task(UInt id) {
   task.ray_maximum = 100.0f;
   task.source_object = scenario;
   task.pixel = id;
+  task.path_flags = psycles::luisa_backend::cycles_path_state::flag_surface_pass;
+  task.diffuse_weight = make_float3(1.0f);
   task.sample_index = id;
   task.transparent_depth = 3u;
   task.rng_offset = 72u;
@@ -114,13 +116,7 @@ bool run(const char *program, const char *backend, bool no_cache) {
       .trace_shadow = make_fused_shadow_trace_callable(intersection, surface),
       .light_sample_roulette = [](Float3, Float sample,
                                   Float) { return select(1.0f, 0.0f, sample == 1.0f); },
-      .clamp_contribution = [](Float3 value, UInt, Float, Float) { return value; },
-      .split_scattered_light =
-          [](Float3 value, Float3, Float3, Bool) {
-            Var<LightPassContributionCall> result;
-            result.diffuse_direct = value;
-            return result;
-          }};
+      .clamp_contribution = [](Float3 value, UInt, Float, Float) { return value; }};
   ShaderOption options;
   options.enable_cache = !no_cache;
   bool passed = true;

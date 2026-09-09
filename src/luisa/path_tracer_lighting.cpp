@@ -62,42 +62,21 @@ make_light_transport_callables(contract::DirectLightSampling mode) noexcept {
         };
     LightComponentRatioCallable light_component_ratio =
       [](Float3 numerator, Float3 denominator) noexcept {
+        // Original bsdf_eval_pass_*_weight uses safe_divide: zero only.
+        // A small but nonzero BSDF still owns its full lobe proportion.
         return make_float3(select(0.0f, numerator.x / denominator.x,
-                    abs(denominator.x) > 1.0e-20f),
+                    denominator.x != 0.0f),
                            select(0.0f, numerator.y / denominator.y,
-                    abs(denominator.y) > 1.0e-20f),
+                    denominator.y != 0.0f),
                            select(0.0f, numerator.z / denominator.z,
-                    abs(denominator.z) > 1.0e-20f));
-        };
-    SplitScatteredLightCallable split_scattered_light =
-      [](Float3 contribution, Float3 diffuse_weight, Float3 glossy_weight,
-           Bool direct) noexcept {
-        auto diffuse_contribution = contribution * diffuse_weight;
-        auto glossy_contribution = contribution * glossy_weight;
-            auto transmission_contribution =
-            contribution - diffuse_contribution - glossy_contribution;
-            Var<LightPassContributionCall> result;
-        result.diffuse_direct =
-            select(make_float3(0.0f), diffuse_contribution, direct);
-        result.diffuse_indirect =
-            select(diffuse_contribution, make_float3(0.0f), direct);
-        result.glossy_direct =
-            select(make_float3(0.0f), glossy_contribution, direct);
-        result.glossy_indirect =
-            select(glossy_contribution, make_float3(0.0f), direct);
-        result.transmission_direct =
-            select(make_float3(0.0f), transmission_contribution, direct);
-        result.transmission_indirect =
-            select(transmission_contribution, make_float3(0.0f), direct);
-            return result;
+                    denominator.z != 0.0f));
         };
   return {std::move(safe_normalize),
         std::move(forward_light_weight),
         std::move(nee_light_weight),
         std::move(clamp_light_contribution),
         std::move(light_sample_roulette_weight),
-        std::move(light_component_ratio),
-          std::move(split_scattered_light)};
+        std::move(light_component_ratio)};
 }
 
 }// namespace psycles::luisa_backend::detail

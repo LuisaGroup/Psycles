@@ -411,17 +411,20 @@ struct PathSampleContext {
   void trace_write_closure(UInt event, std::uint32_t closure,
                            std::uint32_t field, Float3 value) const noexcept;
     void record_surface_closure_count(UInt count) const noexcept;
-    void
-    accumulate_light_pass(Var<LightPassContributionCall> contribution) noexcept;
     // These are host-specialized film operations. Serial construction updates
     // the per-pixel local accumulators; per-sample construction emits direct
     // atomic pass writes at the contribution point. No device-side scheduler
     // or accumulation-mode branch is generated.
   void accumulate_light_pass(LightPassBuffer pass,
         Float3 contribution) noexcept;
+  void accumulate_light_pass(UInt pass, Float3 contribution) noexcept;
     void accumulate_normal_pass(Float3 contribution) noexcept;
     void accumulate_albedo_pass(Float3 contribution) noexcept;
-  void accumulate_scattered_light(Float3 contribution) noexcept;
+  void accumulate_scattered_light_at_state(Float3 contribution, UInt flags,
+                                            Float3 diffuse, Float3 glossy,
+                                            Bool direct) noexcept;
+  void accumulate_emission_or_background(Float3 contribution,
+                                          LightPassBuffer pass) noexcept;
   void
   accumulate_radiance(Float3 contribution,
                       Bool primary_volume_scatter_override = false) noexcept;
