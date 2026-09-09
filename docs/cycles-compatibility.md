@@ -16,6 +16,17 @@ surface/volume/displacement shader jumps, and bump-state transitions.
 Blender/Cycles itself supplies the compiler and GPU-state oracles. There is
 no independent CPU reference renderer.
 
+Preserving this interpreter model is not end-to-end feature parity. The
+[whole-surface audit](validation/2026-09-09/surface-semantic-audit/README.md)
+reproduces three failures in unchanged production HIP against original
+Cycles HIP: pure-volume boundaries can exhaust the outer path budget;
+Ray Portal has population but no selected-closure continuation; object
+holdout is packed but not applied before emission. Seven tiny scene pairs
+have four agreeing controls and three failures; both replay gates exit 2.
+Native label roundtrips, transparent-glass settings and data-pass predicates
+also retain integration gaps. These findings are not repaired by the default
+switch or by 99 implemented opcode handlers.
+
 The default switch is **not** completion of the legacy code removal:
 the displacement prepass still has SurfaceProgram consumers. Its private
 compilation input now contains only displacement plus an inert required root;
@@ -78,6 +89,15 @@ Tiling, Bevel, Ambient Occlusion, Raycast, AOV Start/Color/Value and Scene
 Time. NONE and PAD1 are not executable shading handlers. A material using
 an unsupported reachable operation must not silently fall back to the
 legacy executor or substitute a socket default.
+
+The current audit distinguishes missing handlers from admitted-but-incomplete
+consumers, explicit unsupported scene domains, and work-placement differences.
+In particular, the existing portal opcode fixture does not exercise a portal
+bounce; the object-holdout failure uses only an ordinary emission node. Neither
+uses an unsupported reachable opcode. See the linked audit for source/field
+ownership, all 110 opcode entries, the fresh four-scene program census, and
+the original-HIP counterexamples. They supersede any inference of full surface
+parity from node-test counts, not the scoped historical test results below.
 
 Recent independently checked native families include:
 

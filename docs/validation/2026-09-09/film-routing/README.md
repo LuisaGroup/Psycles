@@ -194,9 +194,12 @@ python docs/validation/2026-09-09/film-routing/observe_tiny_weights.py \
   /var/tmp/psycles-tiny-weights-fresh
 ```
 
-The next ownership discrepancy is per-ray lamp inverse reconstruction versus
-original object-table reads; main-surface first-bounce weight placement is
-another bounded lead. Neither is yet quantified as the main cost. Diagnostic
+The subsequent [whole-surface audit](../surface-semantic-audit/README.md)
+supersedes the earlier micro-optimization-first ordering: it reproduces
+path-budget, portal-continuation and object-holdout failures through actual
+production callers. Per-ray lamp inverse reconstruction and main-surface
+first-bounce weight placement remain two of eight work-placement leads,
+not established main costs. Diagnostic
 light/shadow SVM adapters also retain status handling, unlike release surface
 evaluation. Surface already omits unused cases and diagnostic status lanes,
 and shares one populated SVM closure state between NEE and continuation.

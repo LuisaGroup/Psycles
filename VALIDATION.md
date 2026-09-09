@@ -32,6 +32,29 @@ single observations, not a valid Metal4 performance score. Both current graph
 frames have 91 fields / 456 B. Staged control continues; second repeats are
 paused for diagnosis. See the full report for retained failed evidence.
 
+## Whole-surface structural audit: new red gates
+
+The [whole-surface audit](docs/validation/2026-09-09/surface-semantic-audit/README.md)
+separates interpreter coverage from production consumers. Seven fresh tiny
+original-Cycles-HIP/production-HIP pairs expose **three failures**: two pure
+volume slabs exhaust an unrelated outer path budget; selected Ray Portal
+closures never perform portal continuation; packed object holdout is not
+applied before emission. Four controls agree, including increasing only the
+unused transparent budget to recover the volume scene. Both replay gate
+families exit 2. These are reproducible red baselines, not shipped repairs or
+replacement green CTests.
+
+The 110-tag catalog still has 99 implemented handlers, nine missing semantic
+opcodes and two sentinels; this is not 99 proved end-to-end features. Native
+label loss, missing transparent-glass controls, data-pass predicates,
+shadow-catcher integration and private displacement dependencies remain.
+Eight work-placement/ownership leads are recorded separately from measured
+GPU costs. Current Barbershop words remain byte-identical to the earlier
+resource-identity audit, and no new rendering speedup is claimed. The new
+portal/holdout defects are inactive in the benchmark scenes; path-budget
+exhaustion there is not demonstrated. Existing timing and finite-value
+limitations below are unchanged.
+
 ## Revision-pinned paired full-scene baseline
 
 The [equal-pass HIP campaign](docs/validation/2026-09-08/matched-pass-hip/README.md)

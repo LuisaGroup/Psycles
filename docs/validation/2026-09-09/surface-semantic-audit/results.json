@@ -1,0 +1,5019 @@
+{
+  "schema": "psycles.surface-semantic-audit.v1",
+  "scope": "source/word inventory and original-HIP integration witnesses; no production fix or new performance claim",
+  "snapshot": {
+    "root": "287bc52007f0c73efc747543f23292da3f7ef432",
+    "child": "8911828eb234a37d1059bb9b01e82d2915624f80",
+    "original": "cb168525138fecc792cc393f94afc39582b0103c"
+  },
+  "inventory": {
+    "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/inventory.json",
+    "bytes": 4281783,
+    "sha256": "4563c36afb8ac529dee754a70a8299292c06eb604cb083fa80eacc15474c05cb"
+  },
+  "opcodes": {
+    "scope": "catalog/case presence and navigation only; not handler semantics or test coverage",
+    "summary": {
+      "implemented": 99,
+      "missing": 9,
+      "sentinel": 2
+    },
+    "sources": [
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/include/psycles/compiler/cycles_svm_node_types_template.h",
+        "bytes": 4016,
+        "sha256": "4dede480e1e344c73587194217c479f795c7175243bb13a1be4b084fc4285066"
+      },
+      {
+        "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/node_types_template.h",
+        "bytes": 4016,
+        "sha256": "4dede480e1e344c73587194217c479f795c7175243bb13a1be4b084fc4285066"
+      },
+      {
+        "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+        "bytes": 39692,
+        "sha256": "5e2f0041d75dc711b4703b59b2c14185fa3b7d35bc658a16dd239101cd1a99ff"
+      },
+      {
+        "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+        "bytes": 23328,
+        "sha256": "1432bcb1ecd378446eb77ecdcf38687090a084d299682f7fa598c110923c84e7"
+      }
+    ],
+    "rows": [
+      {
+        "tag": 0,
+        "name": "NODE_END",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 118,
+          "calls": []
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 118,
+          "calls": []
+        }
+      },
+      {
+        "tag": 1,
+        "name": "NODE_SHADER_JUMP",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 129,
+          "calls": []
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 120,
+          "calls": [
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 2,
+        "name": "NODE_CLOSURE_BSDF",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 156,
+          "calls": [
+            "node_closure_bsdf"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 137,
+          "calls": [
+            "svm_node_closure_bsdf",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 3,
+        "name": "NODE_CLOSURE_EMISSION",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 166,
+          "calls": [
+            "node_closure_emission"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 145,
+          "calls": [
+            "svm_node_closure_emission",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 4,
+        "name": "NODE_CLOSURE_BACKGROUND",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 216,
+          "calls": [
+            "node_closure_background"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 152,
+          "calls": [
+            "svm_node_closure_background",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 5,
+        "name": "NODE_CLOSURE_SET_WEIGHT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 226,
+          "calls": [
+            "node_closure_set_weight"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 159,
+          "calls": [
+            "svm_node_closure_set_weight",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 6,
+        "name": "NODE_CLOSURE_WEIGHT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 231,
+          "calls": [
+            "node_closure_weight"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 163,
+          "calls": [
+            "svm_node_closure_weight",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 7,
+        "name": "NODE_EMISSION_WEIGHT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 236,
+          "calls": [
+            "node_emission_weight"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 167,
+          "calls": [
+            "svm_node_emission_weight",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 8,
+        "name": "NODE_MIX_CLOSURE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 243,
+          "calls": [
+            "node_mix_closure"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 174,
+          "calls": [
+            "svm_node_get",
+            "svm_node_mix_closure"
+          ]
+        }
+      },
+      {
+        "tag": 9,
+        "name": "NODE_JUMP_IF_ZERO",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 250,
+          "calls": []
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 177,
+          "calls": [
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 10,
+        "name": "NODE_JUMP_IF_ONE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 260,
+          "calls": []
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 185,
+          "calls": [
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 11,
+        "name": "NODE_GEOMETRY",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 270,
+          "calls": [
+            "node_geometry"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 193,
+          "calls": [
+            "svm_node_geometry",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 12,
+        "name": "NODE_GEOMETRY_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 278,
+          "calls": [
+            "node_geometry"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 196,
+          "calls": [
+            "svm_node_geometry",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 13,
+        "name": "NODE_CONVERT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 515,
+          "calls": [
+            "node_convert"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 202,
+          "calls": [
+            "svm_node_convert",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 14,
+        "name": "NODE_CONVERT_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 522,
+          "calls": [
+            "node_convert"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 205,
+          "calls": [
+            "svm_node_convert",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 15,
+        "name": "NODE_TEX_COORD",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 310,
+          "calls": [
+            "node_tex_coord"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 211,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_coord"
+          ]
+        }
+      },
+      {
+        "tag": 16,
+        "name": "NODE_TEX_COORD_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 321,
+          "calls": [
+            "node_tex_coord"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 217,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_coord_derivative"
+          ]
+        }
+      },
+      {
+        "tag": 17,
+        "name": "NODE_VALUE_F",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 529,
+          "calls": [
+            "node_value_f"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 224,
+          "calls": [
+            "svm_node_get",
+            "svm_node_value_f"
+          ]
+        }
+      },
+      {
+        "tag": 18,
+        "name": "NODE_VALUE_F_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 534,
+          "calls": [
+            "node_value_f"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 227,
+          "calls": [
+            "svm_node_get",
+            "svm_node_value_f"
+          ]
+        }
+      },
+      {
+        "tag": 19,
+        "name": "NODE_VALUE_V",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 541,
+          "calls": [
+            "node_value_v"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 233,
+          "calls": [
+            "svm_node_get",
+            "svm_node_value_v"
+          ]
+        }
+      },
+      {
+        "tag": 20,
+        "name": "NODE_VALUE_V_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 546,
+          "calls": [
+            "node_value_v"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 236,
+          "calls": [
+            "svm_node_get",
+            "svm_node_value_v"
+          ]
+        }
+      },
+      {
+        "tag": 21,
+        "name": "NODE_ATTR",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 472,
+          "calls": [
+            "node_attr_surface",
+            "node_attr_volume"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 242,
+          "calls": [
+            "svm_node_attr_surface",
+            "svm_node_attr_volume",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 22,
+        "name": "NODE_ATTR_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 487,
+          "calls": [
+            "node_attr_derivative"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 253,
+          "calls": [
+            "svm_node_attr_derivative",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 23,
+        "name": "NODE_VERTEX_COLOR",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 497,
+          "calls": [
+            "node_vertex_color"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 259,
+          "calls": [
+            "svm_node_get",
+            "svm_node_vertex_color"
+          ]
+        }
+      },
+      {
+        "tag": 24,
+        "name": "NODE_VERTEX_COLOR_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 505,
+          "calls": [
+            "node_vertex_color_derivative"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 262,
+          "calls": [
+            "svm_node_get",
+            "svm_node_vertex_color_derivative"
+          ]
+        }
+      },
+      {
+        "tag": 25,
+        "name": "NODE_SET_DISPLACEMENT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 645,
+          "calls": [
+            "node_set_displacement"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 269,
+          "calls": [
+            "svm_node_get",
+            "svm_node_set_displacement"
+          ]
+        }
+      },
+      {
+        "tag": 26,
+        "name": "NODE_DISPLACEMENT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 652,
+          "calls": [
+            "node_displacement"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 273,
+          "calls": [
+            "svm_node_displacement",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 27,
+        "name": "NODE_VECTOR_DISPLACEMENT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 662,
+          "calls": [
+            "node_vector_displacement"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 277,
+          "calls": [
+            "svm_node_get",
+            "svm_node_vector_displacement"
+          ]
+        }
+      },
+      {
+        "tag": 28,
+        "name": "NODE_TEX_IMAGE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 333,
+          "calls": [
+            "node_tex_image"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 281,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_image"
+          ]
+        }
+      },
+      {
+        "tag": 29,
+        "name": "NODE_TEX_IMAGE_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 341,
+          "calls": [
+            "node_tex_image"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 284,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_image"
+          ]
+        }
+      },
+      {
+        "tag": 30,
+        "name": "NODE_TEX_IMAGE_BOX",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 351,
+          "calls": [
+            "node_tex_image_box"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 290,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_image_box"
+          ]
+        }
+      },
+      {
+        "tag": 31,
+        "name": "NODE_TEX_IMAGE_BOX_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 361,
+          "calls": [
+            "node_tex_image_box"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 293,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_image_box"
+          ]
+        }
+      },
+      {
+        "tag": 32,
+        "name": "NODE_TEX_NOISE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 373,
+          "calls": [
+            "node_tex_noise"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 300,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_noise"
+          ]
+        }
+      },
+      {
+        "tag": 33,
+        "name": "NODE_SET_BUMP",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 607,
+          "calls": [
+            "node_set_bump"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 303,
+          "calls": [
+            "svm_node_get",
+            "svm_node_set_bump"
+          ]
+        }
+      },
+      {
+        "tag": 34,
+        "name": "NODE_CLOSURE_SET_NORMAL",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 617,
+          "calls": [
+            "node_set_normal"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 307,
+          "calls": [
+            "svm_node_get",
+            "svm_node_set_normal"
+          ]
+        }
+      },
+      {
+        "tag": 35,
+        "name": "NODE_ENTER_BUMP_EVAL",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 624,
+          "calls": [
+            "node_enter_bump_eval"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 313,
+          "calls": [
+            "svm_node_enter_bump_eval",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 36,
+        "name": "NODE_LEAVE_BUMP_EVAL",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 636,
+          "calls": [
+            "node_leave_bump_eval"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 319,
+          "calls": [
+            "svm_node_get",
+            "svm_node_leave_bump_eval"
+          ]
+        }
+      },
+      {
+        "tag": 37,
+        "name": "NODE_HSV",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 672,
+          "calls": [
+            "node_hsv"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 325,
+          "calls": [
+            "svm_node_get",
+            "svm_node_hsv"
+          ]
+        }
+      },
+      {
+        "tag": 38,
+        "name": "NODE_CLOSURE_HOLDOUT",
+        "presence": "missing",
+        "actual_dispatch": null,
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 328,
+          "calls": [
+            "svm_node_closure_holdout",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 39,
+        "name": "NODE_FRESNEL",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 296,
+          "calls": [
+            "node_fresnel"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 332,
+          "calls": [
+            "svm_node_fresnel",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 40,
+        "name": "NODE_LAYER_WEIGHT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 303,
+          "calls": [
+            "node_layer_weight"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 335,
+          "calls": [
+            "svm_node_get",
+            "svm_node_layer_weight"
+          ]
+        }
+      },
+      {
+        "tag": 41,
+        "name": "NODE_CLOSURE_VOLUME",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 177,
+          "calls": [
+            "node_closure_volume"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 338,
+          "calls": [
+            "svm_node_closure_volume",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 42,
+        "name": "NODE_VOLUME_COEFFICIENTS",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 190,
+          "calls": [
+            "node_volume_coefficients"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 345,
+          "calls": [
+            "svm_node_get",
+            "svm_node_volume_coefficients"
+          ]
+        }
+      },
+      {
+        "tag": 43,
+        "name": "NODE_PRINCIPLED_VOLUME",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 203,
+          "calls": [
+            "node_principled_volume"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 356,
+          "calls": [
+            "svm_node_get",
+            "svm_node_principled_volume"
+          ]
+        }
+      },
+      {
+        "tag": 44,
+        "name": "NODE_MATH",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 678,
+          "calls": [
+            "node_math"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 367,
+          "calls": [
+            "svm_node_get",
+            "svm_node_math"
+          ]
+        }
+      },
+      {
+        "tag": 45,
+        "name": "NODE_VECTOR_MATH",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 591,
+          "calls": [
+            "node_vector_math"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 370,
+          "calls": [
+            "svm_node_get",
+            "svm_node_vector_math"
+          ]
+        }
+      },
+      {
+        "tag": 46,
+        "name": "NODE_VECTOR_MATH_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 598,
+          "calls": [
+            "node_vector_math"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 373,
+          "calls": [
+            "svm_node_get",
+            "svm_node_vector_math"
+          ]
+        }
+      },
+      {
+        "tag": 47,
+        "name": "NODE_RGB_RAMP",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 433,
+          "calls": [
+            "node_rgb_ramp"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 379,
+          "calls": [
+            "svm_node_get",
+            "svm_node_rgb_ramp"
+          ]
+        }
+      },
+      {
+        "tag": 48,
+        "name": "NODE_GAMMA",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 684,
+          "calls": [
+            "node_gamma"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 385,
+          "calls": [
+            "svm_node_gamma",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 49,
+        "name": "NODE_BRIGHTCONTRAST",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 690,
+          "calls": [
+            "node_brightness"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 388,
+          "calls": [
+            "svm_node_brightness",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 50,
+        "name": "NODE_LIGHT_PATH",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 711,
+          "calls": [
+            "node_light_path"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 391,
+          "calls": [
+            "svm_node_get",
+            "svm_node_light_path"
+          ]
+        }
+      },
+      {
+        "tag": 51,
+        "name": "NODE_OBJECT_INFO",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 719,
+          "calls": [
+            "node_object_info"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 400,
+          "calls": [
+            "svm_node_get",
+            "svm_node_object_info"
+          ]
+        }
+      },
+      {
+        "tag": 52,
+        "name": "NODE_PARTICLE_INFO",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 732,
+          "calls": [
+            "node_particle_info"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 403,
+          "calls": [
+            "svm_node_get",
+            "svm_node_particle_info"
+          ]
+        }
+      },
+      {
+        "tag": 53,
+        "name": "NODE_HAIR_INFO",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 746,
+          "calls": [
+            "node_hair_info"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 407,
+          "calls": [
+            "svm_node_get",
+            "svm_node_hair_info"
+          ]
+        }
+      },
+      {
+        "tag": 54,
+        "name": "NODE_POINT_INFO",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 756,
+          "calls": [
+            "node_point_info"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 412,
+          "calls": [
+            "svm_node_get",
+            "svm_node_point_info"
+          ]
+        }
+      },
+      {
+        "tag": 55,
+        "name": "NODE_TEXTURE_MAPPING",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 569,
+          "calls": [
+            "node_texture_mapping"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 416,
+          "calls": [
+            "svm_node_get",
+            "svm_node_texture_mapping"
+          ]
+        }
+      },
+      {
+        "tag": 56,
+        "name": "NODE_TEXTURE_MAPPING_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 576,
+          "calls": [
+            "node_texture_mapping"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 419,
+          "calls": [
+            "svm_node_get",
+            "svm_node_texture_mapping"
+          ]
+        }
+      },
+      {
+        "tag": 57,
+        "name": "NODE_MAPPING",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 553,
+          "calls": [
+            "node_mapping"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 425,
+          "calls": [
+            "svm_node_get",
+            "svm_node_mapping"
+          ]
+        }
+      },
+      {
+        "tag": 58,
+        "name": "NODE_MAPPING_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 560,
+          "calls": [
+            "node_mapping"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 428,
+          "calls": [
+            "svm_node_get",
+            "svm_node_mapping"
+          ]
+        }
+      },
+      {
+        "tag": 59,
+        "name": "NODE_MIN_MAX",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 585,
+          "calls": [
+            "node_min_max"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 434,
+          "calls": [
+            "svm_node_get",
+            "svm_node_min_max"
+          ]
+        }
+      },
+      {
+        "tag": 60,
+        "name": "NODE_CAMERA",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 288,
+          "calls": [
+            "node_camera"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 437,
+          "calls": [
+            "svm_node_camera",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 61,
+        "name": "NODE_TEX_ENVIRONMENT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 450,
+          "calls": [
+            "node_tex_environment"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 440,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_environment"
+          ]
+        }
+      },
+      {
+        "tag": 62,
+        "name": "NODE_TEX_ENVIRONMENT_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 456,
+          "calls": [
+            "node_tex_environment"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 444,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_environment"
+          ]
+        }
+      },
+      {
+        "tag": 63,
+        "name": "NODE_TEX_SKY",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 464,
+          "calls": [
+            "node_tex_sky"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 451,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_sky"
+          ]
+        }
+      },
+      {
+        "tag": 64,
+        "name": "NODE_TEX_GRADIENT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 384,
+          "calls": [
+            "node_tex_gradient"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 457,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_gradient"
+          ]
+        }
+      },
+      {
+        "tag": 65,
+        "name": "NODE_TEX_VORONOI",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 391,
+          "calls": [
+            "node_tex_voronoi"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 460,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_voronoi"
+          ]
+        }
+      },
+      {
+        "tag": 66,
+        "name": "NODE_TEX_GABOR",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 401,
+          "calls": [
+            "node_tex_gabor"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 463,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_gabor"
+          ]
+        }
+      },
+      {
+        "tag": 67,
+        "name": "NODE_TEX_WAVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 408,
+          "calls": [
+            "node_tex_wave"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 466,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_wave"
+          ]
+        }
+      },
+      {
+        "tag": 68,
+        "name": "NODE_TEX_MAGIC",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 415,
+          "calls": [
+            "node_tex_magic"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 469,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_magic"
+          ]
+        }
+      },
+      {
+        "tag": 69,
+        "name": "NODE_TEX_CHECKER",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 422,
+          "calls": [
+            "node_tex_checker"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 472,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_checker"
+          ]
+        }
+      },
+      {
+        "tag": 70,
+        "name": "NODE_TEX_BRICK",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 427,
+          "calls": [
+            "node_tex_brick"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 475,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_brick"
+          ]
+        }
+      },
+      {
+        "tag": 71,
+        "name": "NODE_TEX_WHITE_NOISE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 379,
+          "calls": [
+            "node_tex_white_noise"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 478,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tex_white_noise"
+          ]
+        }
+      },
+      {
+        "tag": 72,
+        "name": "NODE_NORMAL",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 835,
+          "calls": [
+            "node_normal"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 481,
+          "calls": [
+            "svm_node_get",
+            "svm_node_normal"
+          ]
+        }
+      },
+      {
+        "tag": 73,
+        "name": "NODE_LIGHT_FALLOFF",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 872,
+          "calls": [
+            "node_light_falloff"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 484,
+          "calls": [
+            "svm_node_get",
+            "svm_node_light_falloff"
+          ]
+        }
+      },
+      {
+        "tag": 74,
+        "name": "NODE_IES",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 879,
+          "calls": [
+            "node_ies"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 487,
+          "calls": [
+            "svm_node_get",
+            "svm_node_ies"
+          ]
+        }
+      },
+      {
+        "tag": 75,
+        "name": "NODE_CURVES",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 439,
+          "calls": [
+            "node_curves"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 490,
+          "calls": [
+            "svm_node_curves",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 76,
+        "name": "NODE_TANGENT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 850,
+          "calls": [
+            "node_tangent"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 496,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tangent"
+          ]
+        }
+      },
+      {
+        "tag": 77,
+        "name": "NODE_TANGENT_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 860,
+          "calls": [
+            "node_tangent"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 499,
+          "calls": [
+            "svm_node_get",
+            "svm_node_tangent"
+          ]
+        }
+      },
+      {
+        "tag": 78,
+        "name": "NODE_NORMAL_MAP",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 841,
+          "calls": [
+            "node_normal_map"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 505,
+          "calls": [
+            "svm_node_get",
+            "svm_node_normal_map"
+          ]
+        }
+      },
+      {
+        "tag": 79,
+        "name": "NODE_RADIAL_TILING",
+        "presence": "missing",
+        "actual_dispatch": null,
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 508,
+          "calls": [
+            "svm_node_get",
+            "svm_node_radial_tiling"
+          ]
+        }
+      },
+      {
+        "tag": 80,
+        "name": "NODE_INVERT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 769,
+          "calls": [
+            "node_invert"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 512,
+          "calls": [
+            "svm_node_get",
+            "svm_node_invert"
+          ]
+        }
+      },
+      {
+        "tag": 81,
+        "name": "NODE_MIX",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 775,
+          "calls": [
+            "node_mix"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 515,
+          "calls": [
+            "svm_node_get",
+            "svm_node_mix"
+          ]
+        }
+      },
+      {
+        "tag": 82,
+        "name": "NODE_SEPARATE_COLOR",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 781,
+          "calls": [
+            "node_separate_color"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 518,
+          "calls": [
+            "svm_node_get",
+            "svm_node_separate_color"
+          ]
+        }
+      },
+      {
+        "tag": 83,
+        "name": "NODE_COMBINE_COLOR",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 788,
+          "calls": [
+            "node_combine_color"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 521,
+          "calls": [
+            "svm_node_combine_color",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 84,
+        "name": "NODE_SEPARATE_VECTOR",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 795,
+          "calls": [
+            "node_separate_vector"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 524,
+          "calls": [
+            "svm_node_get",
+            "svm_node_separate_vector"
+          ]
+        }
+      },
+      {
+        "tag": 85,
+        "name": "NODE_SEPARATE_VECTOR_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 800,
+          "calls": [
+            "node_separate_vector"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 527,
+          "calls": [
+            "svm_node_get",
+            "svm_node_separate_vector"
+          ]
+        }
+      },
+      {
+        "tag": 86,
+        "name": "NODE_COMBINE_VECTOR",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 807,
+          "calls": [
+            "node_combine_vector"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 533,
+          "calls": [
+            "svm_node_combine_vector",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 87,
+        "name": "NODE_COMBINE_VECTOR_DERIVATIVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 812,
+          "calls": [
+            "node_combine_vector"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 536,
+          "calls": [
+            "svm_node_combine_vector",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 88,
+        "name": "NODE_VECTOR_ROTATE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 819,
+          "calls": [
+            "node_vector_rotate"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 542,
+          "calls": [
+            "svm_node_get",
+            "svm_node_vector_rotate"
+          ]
+        }
+      },
+      {
+        "tag": 89,
+        "name": "NODE_VECTOR_TRANSFORM",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 826,
+          "calls": [
+            "node_vector_transform"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 545,
+          "calls": [
+            "svm_node_get",
+            "svm_node_vector_transform"
+          ]
+        }
+      },
+      {
+        "tag": 90,
+        "name": "NODE_WIREFRAME",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 886,
+          "calls": [
+            "node_wireframe"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 548,
+          "calls": [
+            "svm_node_get",
+            "svm_node_wireframe"
+          ]
+        }
+      },
+      {
+        "tag": 91,
+        "name": "NODE_WAVELENGTH",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 697,
+          "calls": [
+            "node_wavelength"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 551,
+          "calls": [
+            "svm_node_get",
+            "svm_node_wavelength"
+          ]
+        }
+      },
+      {
+        "tag": 92,
+        "name": "NODE_BLACKBODY",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 704,
+          "calls": [
+            "node_blackbody"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 554,
+          "calls": [
+            "svm_node_blackbody",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 93,
+        "name": "NODE_MAP_RANGE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 897,
+          "calls": [
+            "node_map_range"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 557,
+          "calls": [
+            "svm_node_get",
+            "svm_node_map_range"
+          ]
+        }
+      },
+      {
+        "tag": 94,
+        "name": "NODE_VECTOR_MAP_RANGE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 902,
+          "calls": [
+            "node_vector_map_range"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 560,
+          "calls": [
+            "svm_node_get",
+            "svm_node_vector_map_range"
+          ]
+        }
+      },
+      {
+        "tag": 95,
+        "name": "NODE_CLAMP",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 907,
+          "calls": [
+            "node_clamp"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 563,
+          "calls": [
+            "svm_node_clamp",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 96,
+        "name": "NODE_BEVEL",
+        "presence": "missing",
+        "actual_dispatch": null,
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 567,
+          "calls": [
+            "svm_node_bevel",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 97,
+        "name": "NODE_AMBIENT_OCCLUSION",
+        "presence": "missing",
+        "actual_dispatch": null,
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 571,
+          "calls": [
+            "svm_node_ao",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 98,
+        "name": "NODE_RAYCAST",
+        "presence": "missing",
+        "actual_dispatch": null,
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 575,
+          "calls": [
+            "svm_node_get",
+            "svm_node_raycast"
+          ]
+        }
+      },
+      {
+        "tag": 99,
+        "name": "NODE_AOV_START",
+        "presence": "missing",
+        "actual_dispatch": null,
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 582,
+          "calls": [
+            "svm_node_aov_check"
+          ]
+        }
+      },
+      {
+        "tag": 100,
+        "name": "NODE_AOV_COLOR",
+        "presence": "missing",
+        "actual_dispatch": null,
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 587,
+          "calls": [
+            "svm_node_aov_color",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 101,
+        "name": "NODE_AOV_VALUE",
+        "presence": "missing",
+        "actual_dispatch": null,
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 591,
+          "calls": [
+            "svm_node_aov_value",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 102,
+        "name": "NODE_FLOAT_CURVE",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 445,
+          "calls": [
+            "node_float_curve"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 595,
+          "calls": [
+            "svm_node_curve",
+            "svm_node_get"
+          ]
+        }
+      },
+      {
+        "tag": 103,
+        "name": "NODE_MIX_COLOR",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 913,
+          "calls": [
+            "node_mix_color"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 601,
+          "calls": [
+            "svm_node_get",
+            "svm_node_mix_color"
+          ]
+        }
+      },
+      {
+        "tag": 104,
+        "name": "NODE_MIX_FLOAT",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 919,
+          "calls": [
+            "node_mix_float"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 604,
+          "calls": [
+            "svm_node_get",
+            "svm_node_mix_float"
+          ]
+        }
+      },
+      {
+        "tag": 105,
+        "name": "NODE_MIX_VECTOR",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 926,
+          "calls": [
+            "node_mix_vector"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 607,
+          "calls": [
+            "svm_node_get",
+            "svm_node_mix_vector"
+          ]
+        }
+      },
+      {
+        "tag": 106,
+        "name": "NODE_MIX_VECTOR_NON_UNIFORM",
+        "presence": "implemented",
+        "actual_dispatch": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+          "line": 933,
+          "calls": [
+            "node_mix_vector_non_uniform"
+          ]
+        },
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 610,
+          "calls": [
+            "svm_node_get",
+            "svm_node_mix_vector_non_uniform"
+          ]
+        }
+      },
+      {
+        "tag": 107,
+        "name": "NODE_SCENE_TIME",
+        "presence": "missing",
+        "actual_dispatch": null,
+        "original_dispatch": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+          "line": 614,
+          "calls": [
+            "svm_node_get",
+            "svm_node_scene_time"
+          ]
+        }
+      },
+      {
+        "tag": 108,
+        "name": "NODE_NONE",
+        "presence": "sentinel",
+        "actual_dispatch": null,
+        "original_dispatch": null
+      },
+      {
+        "tag": 109,
+        "name": "NODE_PAD1",
+        "presence": "sentinel",
+        "actual_dispatch": null,
+        "original_dispatch": null
+      }
+    ]
+  },
+  "projections": {
+    "event_mapping": [
+      [
+        "label_transmit",
+        "event_transmission"
+      ],
+      [
+        "label_reflect",
+        "event_reflection"
+      ],
+      [
+        "label_diffuse",
+        "event_diffuse"
+      ],
+      [
+        "label_glossy",
+        "event_glossy"
+      ],
+      [
+        "label_singular",
+        "event_singular"
+      ],
+      [
+        "label_transparent",
+        "event_transparent"
+      ],
+      [
+        "label_subsurface_scatter",
+        "event_subsurface"
+      ]
+    ],
+    "declared_but_unmapped_labels": [
+      "label_none",
+      "label_ray_portal",
+      "label_transmit_transparent",
+      "label_volume_scatter"
+    ],
+    "citations": [
+      {
+        "searched_file": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_surface.cpp",
+          "bytes": 23417,
+          "sha256": "fb1fe4808be33ae2ce64d27ba0a2e08afa08d7e0d4155edf0dd9473e51f78f52"
+        },
+        "token": "sample_nonempty_impl",
+        "mentions": [
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_surface.cpp",
+            "line": 222,
+            "text": "[[nodiscard]] SurfaceSampleTrace sample_nonempty_impl("
+          },
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_surface.cpp",
+            "line": 329,
+            "text": "result = sample_nonempty_impl(u_lobe, u_direction);"
+          }
+        ]
+      },
+      {
+        "searched_file": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_surface_scatter.cpp",
+          "bytes": 17089,
+          "sha256": "de0510cdac97e66f6e823633f7b6c935ec2346827f1116f2c0c3df74cc22b854"
+        },
+        "token": "label_from_events",
+        "mentions": [
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_surface_scatter.cpp",
+            "line": 132,
+            "text": "const auto cycles_label = cycles_closure::label_from_events("
+          },
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_surface_scatter.cpp",
+            "line": 181,
+            "text": "cycles_closure::label_from_events(surface_sample.evaluation.events);"
+          }
+        ]
+      },
+      {
+        "searched_file": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/include/psycles/luisa/cycles_svm.h",
+          "bytes": 46739,
+          "sha256": "b400333942739a96532ff342341093361c2e1f1fe9d0ddcaec5e0ef858b735a1"
+        },
+        "token": "transparent_roughness_squared_threshold",
+        "mentions": [
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/include/psycles/luisa/cycles_svm.h",
+            "line": 316,
+            "text": "/* kernel_data.background.transparent_roughness_squared_threshold. The"
+          },
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/include/psycles/luisa/cycles_svm.h",
+            "line": 320,
+            "text": "transparent_roughness_squared_threshold() const noexcept {"
+          }
+        ]
+      },
+      {
+        "searched_file": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_kernel_globals.h",
+          "bytes": 8473,
+          "sha256": "69ccfe5a9c2274ebfd8507a7e6c47ed66994bdd8036ba7c2ccdcd88177dd6d15"
+        },
+        "token": "transparent_roughness_squared_threshold",
+        "mentions": []
+      },
+      {
+        "searched_file": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_pipeline.cpp",
+          "bytes": 26817,
+          "sha256": "4883ca02235404d68d583ce5289d077f0b1149f1823923d8e53aa7906b281db5"
+        },
+        "token": "max_path_steps",
+        "mentions": [
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_pipeline.cpp",
+            "line": 112,
+            "text": "$for(path_step, sample.invocation.parameters.max_path_steps) {"
+          }
+        ]
+      },
+      {
+        "searched_file": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_integrator_limits.h",
+          "bytes": 3565,
+          "sha256": "b6033c1b6d277d14feff76092d10e88f4495ffd580c82eeabb821d251d091667"
+        },
+        "token": "cycles_path_step_limit",
+        "mentions": [
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_integrator_limits.h",
+            "line": 57,
+            "text": "cycles_path_step_limit(std::uint32_t synced_maximum,"
+          },
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_integrator_limits.h",
+            "line": 82,
+            "text": "cycles_path_step_limit(maximum, scene.transparent_maximum)};"
+          }
+        ]
+      },
+      {
+        "searched_file": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/path_state.h",
+          "bytes": 17327,
+          "sha256": "8cf896887b76b499cfe997650aa8b68630fbe11ea68dfb1bf09a774b0cab6bbf"
+        },
+        "token": "VOLUME_BOUNDS_MAX",
+        "mentions": [
+          {
+            "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/path_state.h",
+            "line": 251,
+            "text": "if (volume_bounds_bounce > VOLUME_BOUNDS_MAX) {"
+          }
+        ]
+      },
+      {
+        "searched_file": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/shade_surface.h",
+          "bytes": 57179,
+          "sha256": "3f607b81936bb60e69b678dd6a5dc8be324104f92878dc844402ecdc3cb73b77"
+        },
+        "token": "integrate_surface_ray_portal",
+        "mentions": [
+          {
+            "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/shade_surface.h",
+            "line": 207,
+            "text": "ccl_device int integrate_surface_ray_portal(KernelGlobals kg,"
+          },
+          {
+            "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/shade_surface.h",
+            "line": 744,
+            "text": "return integrate_surface_ray_portal(kg, state, sd, sc);"
+          }
+        ]
+      },
+      {
+        "searched_file": {
+          "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/shade_surface.h",
+          "bytes": 57179,
+          "sha256": "3f607b81936bb60e69b678dd6a5dc8be324104f92878dc844402ecdc3cb73b77"
+        },
+        "token": "integrate_surface_holdout",
+        "mentions": [
+          {
+            "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/shade_surface.h",
+            "line": 96,
+            "text": "ccl_device_forceinline bool integrate_surface_holdout(KernelGlobals kg,"
+          },
+          {
+            "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/shade_surface.h",
+            "line": 1145,
+            "text": "if (!integrate_surface_holdout(kg, state, &sd, render_buffer)) {"
+          }
+        ]
+      },
+      {
+        "searched_file": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_object.cpp",
+          "bytes": 23751,
+          "sha256": "fbd585d32e8c96136ac672c9b4c6b22082efefbdbb4543c2de346f155b966e8a"
+        },
+        "token": "use_holdout",
+        "mentions": [
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_object.cpp",
+            "line": 268,
+            "text": ".use_holdout = instance.use_holdout,"
+          },
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_object.cpp",
+            "line": 300,
+            "text": ".use_holdout = light.use_holdout,"
+          }
+        ]
+      },
+      {
+        "searched_file": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_object.cpp",
+          "bytes": 23751,
+          "sha256": "fbd585d32e8c96136ac672c9b4c6b22082efefbdbb4543c2de346f155b966e8a"
+        },
+        "token": "cycles_uses_light_linking",
+        "mentions": [
+          {
+            "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_object.cpp",
+            "line": 337,
+            "text": "if (snapshot.cycles_uses_light_linking) {"
+          }
+        ]
+      }
+    ]
+  },
+  "scenes": {
+    "barbershop": {
+      "metadata": {
+        "source": {
+          "path": "/var/tmp/psycles-hidden-socket-U0KI5L/controls/barbershop/scene.json",
+          "bytes": 32571916,
+          "sha256": "502d0062b1e640c7119ac7a7dea1e1238a75be5746ecfc80eec9ce2fd73c3b22"
+        },
+        "cycles_sync": {
+          "object_count": 1147,
+          "uses_light_linking": false
+        },
+        "render_cycles": {
+          "adaptive_min_samples": 0,
+          "adaptive_threshold": 0.009999999776482582,
+          "ao_bounces": 1,
+          "ao_bounces_render": 1,
+          "ao_distance": 4.0,
+          "ao_factor": 0.5,
+          "blur_glossy": 2.0,
+          "caustics_reflective": false,
+          "caustics_refractive": false,
+          "diffuse_bounces": 2,
+          "direct_light_sampling_type": "MULTIPLE_IMPORTANCE_SAMPLING",
+          "effective_seed": 1267069554,
+          "fast_gi_method": "REPLACE",
+          "film_exposure": 1.0,
+          "glossy_bounces": 2,
+          "light_sampling_threshold": 0.10299999266862869,
+          "max_bounces": 2,
+          "min_light_bounces": 0,
+          "min_transparent_bounces": 0,
+          "sample_clamp_direct": 0.0,
+          "sample_clamp_indirect": 10.0,
+          "samples": 800,
+          "seed": 0,
+          "seed_frame": 1,
+          "seed_subframe": 0.0,
+          "transmission_bounces": 2,
+          "transparent_max_bounces": 16,
+          "use_adaptive_sampling": false,
+          "use_animated_seed": true,
+          "use_denoising": false,
+          "use_fast_gi": false,
+          "use_light_tree": false,
+          "volume_bounces": 0
+        },
+        "film_transparent": false,
+        "pass_alpha_threshold": 0.5,
+        "object_flags": {
+          "use_holdout": {
+            "instances": [],
+            "lights": []
+          },
+          "is_shadow_catcher": {
+            "instances": [],
+            "lights": [
+              "LGT-counter.001",
+              "LGT-window_key.001",
+              "LGT-chair_02",
+              "LGT-wall_front",
+              "LGT-chair_01",
+              "LGT-window_key",
+              "LGT-window_key.004",
+              "LGT-window_key.003",
+              "LGT-window_key.002",
+              "LGT-chandelier.001",
+              "LGT-chandelier",
+              "LGT-Fill",
+              "LGT-Window_door.002",
+              "LGT-Window_large.001",
+              "Point.006"
+            ]
+          },
+          "is_caustics_caster": {
+            "instances": [],
+            "lights": []
+          },
+          "is_caustics_receiver": {
+            "instances": [],
+            "lights": []
+          }
+        },
+        "images_by_source": {
+          "FILE": 197
+        },
+        "exported_source_node_presence_not_reachability": {
+          "NodeFrame": 12,
+          "NodeGroupInput": 67,
+          "NodeGroupOutput": 67,
+          "NodeReroute": 47,
+          "ShaderNodeAddShader": 4,
+          "ShaderNodeAttribute": 25,
+          "ShaderNodeBackground": 1,
+          "ShaderNodeBrightContrast": 16,
+          "ShaderNodeBsdfAnisotropic": 91,
+          "ShaderNodeBsdfDiffuse": 157,
+          "ShaderNodeBsdfGlass": 7,
+          "ShaderNodeBsdfHair": 1,
+          "ShaderNodeBsdfRefraction": 3,
+          "ShaderNodeBsdfTranslucent": 1,
+          "ShaderNodeBsdfTransparent": 22,
+          "ShaderNodeBump": 47,
+          "ShaderNodeDisplacement": 59,
+          "ShaderNodeEmission": 8,
+          "ShaderNodeFresnel": 41,
+          "ShaderNodeGamma": 3,
+          "ShaderNodeGroup": 212,
+          "ShaderNodeHairInfo": 2,
+          "ShaderNodeHueSaturation": 80,
+          "ShaderNodeInvert": 25,
+          "ShaderNodeLayerWeight": 28,
+          "ShaderNodeLightFalloff": 5,
+          "ShaderNodeLightPath": 19,
+          "ShaderNodeMapping": 155,
+          "ShaderNodeMath": 263,
+          "ShaderNodeMix": 400,
+          "ShaderNodeMixShader": 127,
+          "ShaderNodeNewGeometry": 109,
+          "ShaderNodeNormalMap": 1,
+          "ShaderNodeObjectInfo": 31,
+          "ShaderNodeOutputMaterial": 263,
+          "ShaderNodeOutputWorld": 1,
+          "ShaderNodeRGB": 9,
+          "ShaderNodeRGBCurve": 36,
+          "ShaderNodeSeparateXYZ": 2,
+          "ShaderNodeTexCoord": 231,
+          "ShaderNodeTexGradient": 13,
+          "ShaderNodeTexImage": 278,
+          "ShaderNodeTexNoise": 83,
+          "ShaderNodeTexVoronoi": 14,
+          "ShaderNodeTexWave": 7,
+          "ShaderNodeUVMap": 23,
+          "ShaderNodeValToRGB": 384,
+          "ShaderNodeValue": 25,
+          "ShaderNodeVectorMath": 16,
+          "ShaderNodeVolumeAbsorption": 1
+        }
+      },
+      "compilation_log": "Psycles compiled 280 used units; 490 dense shaders; 895648 words; stack 33; closures 12\n",
+      "program": {
+        "scope": "serialized typed nodes by ShaderJump interval, including END-only dense holes; counts are not dynamic execution frequencies",
+        "source": {
+          "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/barbershop.svm52",
+          "bytes": 3590757,
+          "sha256": "1d179d2dad2cc91237f4301a1be6d0f1dd4357dcb817a476cecd3578fea03d10"
+        },
+        "layout_source": {
+          "path": "/var/tmp/psycles-svm-schedule-LaccgH/layouts.json",
+          "bytes": 24501,
+          "sha256": "f5ba664fd80a9ce8f9e87b93504a72ea06411cf90622e4498894b5b6de62333e"
+        },
+        "decoder_source": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-09-08/svm-math-expansion/audit_typed_words.py",
+          "bytes": 7286,
+          "sha256": "332abb6aa3aab481e76523ca67d1fa8012a9bee34d6dc7c4095b9a31713b81d7"
+        },
+        "domain_totals": {
+          "surface": {
+            "NODE_END": 490,
+            "NODE_CLOSURE_SET_WEIGHT": 238,
+            "NODE_CLOSURE_BACKGROUND": 1,
+            "NODE_CLOSURE_EMISSION": 21,
+            "NODE_LIGHT_FALLOFF": 15,
+            "NODE_EMISSION_WEIGHT": 17,
+            "NODE_LIGHT_PATH": 168,
+            "NODE_ATTR": 264,
+            "NODE_TEX_IMAGE": 346,
+            "NODE_CONVERT": 1464,
+            "NODE_RGB_RAMP": 655,
+            "NODE_MIX_CLOSURE": 207,
+            "NODE_JUMP_IF_ONE": 184,
+            "NODE_GEOMETRY": 607,
+            "NODE_CLOSURE_BSDF": 462,
+            "NODE_JUMP_IF_ZERO": 184,
+            "NODE_MATH": 615,
+            "NODE_ATTR_DERIVATIVE": 423,
+            "NODE_TEXTURE_MAPPING": 228,
+            "NODE_TEX_NOISE": 138,
+            "NODE_MIX_COLOR": 1020,
+            "NODE_CLAMP": 260,
+            "NODE_DISPLACEMENT": 174,
+            "NODE_VECTOR_MATH": 200,
+            "NODE_SET_BUMP": 102,
+            "NODE_CLOSURE_SET_NORMAL": 58,
+            "NODE_FRESNEL": 152,
+            "NODE_TEX_IMAGE_BOX": 188,
+            "NODE_CLOSURE_WEIGHT": 228,
+            "NODE_BRIGHTCONTRAST": 31,
+            "NODE_GAMMA": 2,
+            "NODE_INVERT": 34,
+            "NODE_CURVES": 84,
+            "NODE_HSV": 140,
+            "NODE_TEX_COORD_DERIVATIVE": 8,
+            "NODE_TEX_COORD": 2,
+            "NODE_GEOMETRY_DERIVATIVE": 8,
+            "NODE_OBJECT_INFO": 73,
+            "NODE_TEX_GRADIENT": 25,
+            "NODE_TEX_VORONOI": 40,
+            "NODE_MAPPING": 123,
+            "NODE_LAYER_WEIGHT": 33,
+            "NODE_SEPARATE_VECTOR": 6,
+            "NODE_TEX_WAVE": 10,
+            "NODE_NORMAL_MAP": 1
+          },
+          "volume": {
+            "NODE_END": 490,
+            "NODE_LIGHT_PATH": 1,
+            "NODE_MATH": 1,
+            "NODE_EMISSION_WEIGHT": 1,
+            "NODE_CLOSURE_EMISSION": 1
+          },
+          "displacement": {
+            "NODE_END": 490,
+            "NODE_ATTR": 106,
+            "NODE_TEXTURE_MAPPING": 49,
+            "NODE_TEX_IMAGE": 28,
+            "NODE_TEX_NOISE": 13,
+            "NODE_CONVERT": 200,
+            "NODE_MIX_COLOR": 124,
+            "NODE_MATH": 120,
+            "NODE_LIGHT_PATH": 52,
+            "NODE_CLAMP": 52,
+            "NODE_GEOMETRY": 110,
+            "NODE_DISPLACEMENT": 59,
+            "NODE_SET_DISPLACEMENT": 59,
+            "NODE_TEX_IMAGE_BOX": 38,
+            "NODE_BRIGHTCONTRAST": 2,
+            "NODE_GAMMA": 1,
+            "NODE_INVERT": 2,
+            "NODE_RGB_RAMP": 64,
+            "NODE_VECTOR_MATH": 2,
+            "NODE_CURVES": 8,
+            "NODE_HSV": 12,
+            "NODE_TEX_COORD": 1,
+            "NODE_OBJECT_INFO": 11,
+            "NODE_TEX_GRADIENT": 4,
+            "NODE_TEX_VORONOI": 9,
+            "NODE_MAPPING": 1
+          }
+        },
+        "surface_closure_payloads": {
+          "SVMNodeDiffuseBsdfData": 237,
+          "SVMNodeSimpleBsdfData": 27,
+          "SVMNodeGlossyBsdfData": 191,
+          "SVMNodeGlassBsdfData": 5,
+          "SVMNodeRefractionBsdfData": 1,
+          "SVMNodePrincipledBsdfData": 1
+        },
+        "surface_procedural_modes": {
+          "noise:dimensions=3,type=1": 138,
+          "voronoi:dimensions=3,feature=0,metric=0": 40
+        },
+        "surface_control_nodes": {
+          "NODE_JUMP_IF_ONE": 184,
+          "NODE_JUMP_IF_ZERO": 184,
+          "NODE_CLOSURE_SET_NORMAL": 58
+        },
+        "shader_count": 490,
+        "surface_opcode_count": 45,
+        "surface_serialized_node_count": 9729
+      },
+      "bindings": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/barbershop.bindings",
+        "bytes": 13743,
+        "sha256": "1c1f69e6c42aa0125e338c87420fa24fd92e7c273976569b051631e0a866657f"
+      },
+      "original_settings": {
+        "scene": "barbershop",
+        "source": "/var/tmp/psycles-official-redownload-20260814/barbershop_interior.blend",
+        "sha256": "95972b56180462cac47ec82f3a755bd9111ec18ca37a6196a319c013db994130",
+        "settings": {
+          "film_transparent_glass": false,
+          "film_transparent_roughness": 0.10000000149011612,
+          "use_fast_gi": false,
+          "use_guiding": false,
+          "use_denoising": false,
+          "use_light_tree": false,
+          "film_transparent": false,
+          "camera_motion_blur": false,
+          "light_caustics": [],
+          "pointcloud_objects": [],
+          "volume_objects": [],
+          "udim_images": [],
+          "view_layer_use_pass_ambient_occlusion": true
+        }
+      }
+    },
+    "monk": {
+      "metadata": {
+        "source": {
+          "path": "/var/tmp/psycles-hidden-socket-U0KI5L/controls/monk/scene.json",
+          "bytes": 154613406,
+          "sha256": "365613150ed810d9ee6ad3b049c7e8febb68324549f720490c9352d22ab7ccda"
+        },
+        "cycles_sync": {
+          "object_count": 87535,
+          "uses_light_linking": false
+        },
+        "render_cycles": {
+          "adaptive_min_samples": 0,
+          "adaptive_threshold": 0.009999999776482582,
+          "ao_bounces": 1,
+          "ao_bounces_render": 1,
+          "ao_distance": 10.0,
+          "ao_factor": 1.0,
+          "blur_glossy": 10.0,
+          "caustics_reflective": false,
+          "caustics_refractive": false,
+          "diffuse_bounces": 2,
+          "direct_light_sampling_type": "MULTIPLE_IMPORTANCE_SAMPLING",
+          "effective_seed": 0,
+          "fast_gi_method": "REPLACE",
+          "film_exposure": 1.0,
+          "glossy_bounces": 2,
+          "light_sampling_threshold": 0.009999999776482582,
+          "max_bounces": 8,
+          "min_light_bounces": 0,
+          "min_transparent_bounces": 0,
+          "sample_clamp_direct": 0.0,
+          "sample_clamp_indirect": 0.0,
+          "samples": 4096,
+          "seed": 0,
+          "seed_frame": 4,
+          "seed_subframe": 0.0,
+          "transmission_bounces": 2,
+          "transparent_max_bounces": 8,
+          "use_adaptive_sampling": true,
+          "use_animated_seed": false,
+          "use_denoising": true,
+          "use_fast_gi": false,
+          "use_light_tree": false,
+          "volume_bounces": 0
+        },
+        "film_transparent": false,
+        "pass_alpha_threshold": 0.5,
+        "object_flags": {
+          "use_holdout": {
+            "instances": [],
+            "lights": []
+          },
+          "is_shadow_catcher": {
+            "instances": [],
+            "lights": []
+          },
+          "is_caustics_caster": {
+            "instances": [],
+            "lights": []
+          },
+          "is_caustics_receiver": {
+            "instances": [],
+            "lights": []
+          }
+        },
+        "images_by_source": {
+          "FILE": 47
+        },
+        "exported_source_node_presence_not_reachability": {
+          "NodeFrame": 76,
+          "NodeGroupInput": 1,
+          "NodeGroupOutput": 1,
+          "NodeReroute": 118,
+          "ShaderNodeAddShader": 1,
+          "ShaderNodeBackground": 1,
+          "ShaderNodeBsdfAnisotropic": 1,
+          "ShaderNodeBsdfDiffuse": 1,
+          "ShaderNodeBsdfPrincipled": 31,
+          "ShaderNodeBsdfTranslucent": 1,
+          "ShaderNodeBsdfTransparent": 6,
+          "ShaderNodeBump": 29,
+          "ShaderNodeCombineColor": 1,
+          "ShaderNodeEmission": 2,
+          "ShaderNodeGroup": 1,
+          "ShaderNodeHueSaturation": 50,
+          "ShaderNodeInvert": 2,
+          "ShaderNodeLayerWeight": 1,
+          "ShaderNodeLightPath": 1,
+          "ShaderNodeMapping": 38,
+          "ShaderNodeMath": 59,
+          "ShaderNodeMix": 30,
+          "ShaderNodeMixShader": 7,
+          "ShaderNodeNewGeometry": 3,
+          "ShaderNodeNormalMap": 22,
+          "ShaderNodeObjectInfo": 11,
+          "ShaderNodeOutputMaterial": 34,
+          "ShaderNodeOutputWorld": 1,
+          "ShaderNodeParticleInfo": 3,
+          "ShaderNodeRGB": 5,
+          "ShaderNodeRGBCurve": 27,
+          "ShaderNodeSeparateColor": 2,
+          "ShaderNodeTexBrick": 2,
+          "ShaderNodeTexCoord": 34,
+          "ShaderNodeTexGradient": 1,
+          "ShaderNodeTexImage": 72,
+          "ShaderNodeTexNoise": 17,
+          "ShaderNodeTexSky": 1,
+          "ShaderNodeUVMap": 2,
+          "ShaderNodeValToRGB": 18,
+          "ShaderNodeValue": 3,
+          "ShaderNodeVertexColor": 1
+        }
+      },
+      "compilation_log": "Psycles compiled 35 used units; 39 dense shaders; 54308 words; stack 25; closures 24\n",
+      "program": {
+        "scope": "serialized typed nodes by ShaderJump interval, including END-only dense holes; counts are not dynamic execution frequencies",
+        "source": {
+          "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/monk.svm52",
+          "bytes": 218012,
+          "sha256": "79e2b54f25c8082deeaecf16bab545c9d165a8f1b4295399790f295e4c37f1d4"
+        },
+        "layout_source": {
+          "path": "/var/tmp/psycles-svm-schedule-LaccgH/layouts.json",
+          "bytes": 24501,
+          "sha256": "f5ba664fd80a9ce8f9e87b93504a72ea06411cf90622e4498894b5b6de62333e"
+        },
+        "decoder_source": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-09-08/svm-math-expansion/audit_typed_words.py",
+          "bytes": 7286,
+          "sha256": "332abb6aa3aab481e76523ca67d1fa8012a9bee34d6dc7c4095b9a31713b81d7"
+        },
+        "domain_totals": {
+          "surface": {
+            "NODE_END": 39,
+            "NODE_GEOMETRY": 33,
+            "NODE_TEX_SKY": 1,
+            "NODE_EMISSION_WEIGHT": 3,
+            "NODE_CLOSURE_BACKGROUND": 1,
+            "NODE_ATTR": 29,
+            "NODE_TEX_IMAGE": 75,
+            "NODE_HSV": 50,
+            "NODE_CURVES": 26,
+            "NODE_CONVERT": 57,
+            "NODE_CLAMP": 50,
+            "NODE_NORMAL_MAP": 21,
+            "NODE_CLOSURE_BSDF": 39,
+            "NODE_TEX_COORD": 3,
+            "NODE_TEX_NOISE": 24,
+            "NODE_RGB_RAMP": 22,
+            "NODE_MAPPING": 10,
+            "NODE_MIX_COLOR": 26,
+            "NODE_TEX_COORD_DERIVATIVE": 15,
+            "NODE_MATH": 18,
+            "NODE_SET_BUMP": 7,
+            "NODE_CLOSURE_SET_WEIGHT": 7,
+            "NODE_OBJECT_INFO": 11,
+            "NODE_VERTEX_COLOR": 1,
+            "NODE_INVERT": 2,
+            "NODE_LIGHT_PATH": 2,
+            "NODE_MIX_CLOSURE": 7,
+            "NODE_JUMP_IF_ONE": 7,
+            "NODE_JUMP_IF_ZERO": 7,
+            "NODE_LAYER_WEIGHT": 1,
+            "NODE_CLOSURE_WEIGHT": 1,
+            "NODE_PARTICLE_INFO": 3,
+            "NODE_TEX_BRICK": 1,
+            "NODE_VALUE_V": 2,
+            "NODE_ATTR_DERIVATIVE": 6,
+            "NODE_SEPARATE_COLOR": 2,
+            "NODE_COMBINE_COLOR": 1,
+            "NODE_TEX_GRADIENT": 1,
+            "NODE_CLOSURE_EMISSION": 2
+          },
+          "volume": {
+            "NODE_END": 39
+          },
+          "displacement": {
+            "NODE_END": 39
+          }
+        },
+        "surface_closure_payloads": {
+          "SVMNodePrincipledBsdfData": 31,
+          "SVMNodeDiffuseBsdfData": 1,
+          "SVMNodeSimpleBsdfData": 6,
+          "SVMNodeGlossyBsdfData": 1
+        },
+        "surface_procedural_modes": {
+          "noise:dimensions=3,type=1": 23,
+          "noise:dimensions=2,type=1": 1
+        },
+        "surface_control_nodes": {
+          "NODE_JUMP_IF_ONE": 7,
+          "NODE_JUMP_IF_ZERO": 7
+        },
+        "shader_count": 39,
+        "surface_opcode_count": 39,
+        "surface_serialized_node_count": 613
+      },
+      "bindings": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/monk.bindings",
+        "bytes": 3938,
+        "sha256": "6a4c2af29d1f2ea45545413bd52509277ea994151cb21be0385061e1f3f04474"
+      },
+      "original_settings": {
+        "scene": "monk",
+        "source": "/home/mike/Downloads/lone-monk_cycles_and_exposure-node_demo.blend",
+        "sha256": "4250d4205d8d01cefd98c15e81021d6dead540b2923797378bf7b32e96e8b8f7",
+        "settings": {
+          "film_transparent_glass": false,
+          "film_transparent_roughness": 0.10000000149011612,
+          "use_fast_gi": false,
+          "use_guiding": false,
+          "use_denoising": true,
+          "use_light_tree": false,
+          "film_transparent": false,
+          "camera_motion_blur": false,
+          "light_caustics": [],
+          "pointcloud_objects": [],
+          "volume_objects": [],
+          "udim_images": [],
+          "view_layer_use_pass_ambient_occlusion": false
+        }
+      }
+    },
+    "monster": {
+      "metadata": {
+        "source": {
+          "path": "/var/tmp/psycles-hidden-socket-U0KI5L/controls/monster/scene.json",
+          "bytes": 1481582,
+          "sha256": "a430abab65bbdfdd0c16abcc7e69de7b5d65df8b841e84663cac36b6ba82b1de"
+        },
+        "cycles_sync": {
+          "object_count": 46,
+          "uses_light_linking": false
+        },
+        "render_cycles": {
+          "adaptive_min_samples": 0,
+          "adaptive_threshold": 0.009999999776482582,
+          "ao_bounces": 1,
+          "ao_bounces_render": 1,
+          "ao_distance": 10.0,
+          "ao_factor": 1.0,
+          "blur_glossy": 1.0,
+          "caustics_reflective": true,
+          "caustics_refractive": true,
+          "diffuse_bounces": 6,
+          "direct_light_sampling_type": "MULTIPLE_IMPORTANCE_SAMPLING",
+          "effective_seed": 0,
+          "fast_gi_method": "REPLACE",
+          "film_exposure": 1.0,
+          "glossy_bounces": 6,
+          "light_sampling_threshold": 0.009999999776482582,
+          "max_bounces": 18,
+          "min_light_bounces": 0,
+          "min_transparent_bounces": 0,
+          "sample_clamp_direct": 0.0,
+          "sample_clamp_indirect": 10.0,
+          "samples": 1024,
+          "seed": 0,
+          "seed_frame": 1,
+          "seed_subframe": 0.0,
+          "transmission_bounces": 18,
+          "transparent_max_bounces": 12,
+          "use_adaptive_sampling": false,
+          "use_animated_seed": false,
+          "use_denoising": false,
+          "use_fast_gi": false,
+          "use_light_tree": false,
+          "volume_bounces": 0
+        },
+        "film_transparent": false,
+        "pass_alpha_threshold": 0.5,
+        "object_flags": {
+          "use_holdout": {
+            "instances": [],
+            "lights": []
+          },
+          "is_shadow_catcher": {
+            "instances": [],
+            "lights": [
+              "Light controlled falloff",
+              "Light controlled falloff.001",
+              "Light controlled falloff.002",
+              "Light controlled falloff.003",
+              "Light controlled falloff.004",
+              "Light controlled falloff.005",
+              "Light controlled falloff.006",
+              "Light controlled falloff.007",
+              "Light controlled falloff.008"
+            ]
+          },
+          "is_caustics_caster": {
+            "instances": [],
+            "lights": []
+          },
+          "is_caustics_receiver": {
+            "instances": [],
+            "lights": []
+          }
+        },
+        "images_by_source": {
+          "FILE": 22
+        },
+        "exported_source_node_presence_not_reachability": {
+          "NodeFrame": 6,
+          "NodeGroupInput": 1,
+          "NodeGroupOutput": 1,
+          "NodeReroute": 4,
+          "ShaderNodeBackground": 1,
+          "ShaderNodeBlackbody": 1,
+          "ShaderNodeBsdfPrincipled": 29,
+          "ShaderNodeBump": 5,
+          "ShaderNodeCombineColor": 10,
+          "ShaderNodeCombineXYZ": 2,
+          "ShaderNodeDisplacement": 1,
+          "ShaderNodeEmission": 1,
+          "ShaderNodeGroup": 1,
+          "ShaderNodeHueSaturation": 2,
+          "ShaderNodeInvert": 4,
+          "ShaderNodeLayerWeight": 15,
+          "ShaderNodeMapping": 15,
+          "ShaderNodeMath": 27,
+          "ShaderNodeMix": 9,
+          "ShaderNodeMixShader": 11,
+          "ShaderNodeNormalMap": 14,
+          "ShaderNodeOutputMaterial": 19,
+          "ShaderNodeOutputWorld": 1,
+          "ShaderNodeRGB": 3,
+          "ShaderNodeRGBCurve": 4,
+          "ShaderNodeSeparateColor": 10,
+          "ShaderNodeSeparateXYZ": 2,
+          "ShaderNodeTexBrick": 1,
+          "ShaderNodeTexCoord": 16,
+          "ShaderNodeTexGradient": 2,
+          "ShaderNodeTexImage": 42,
+          "ShaderNodeTexNoise": 2,
+          "ShaderNodeTexVoronoi": 1,
+          "ShaderNodeValToRGB": 2
+        }
+      },
+      "compilation_log": "Psycles compiled 29 used units; 32 dense shaders; 10948 words; stack 22; closures 24\n",
+      "program": {
+        "scope": "serialized typed nodes by ShaderJump interval, including END-only dense holes; counts are not dynamic execution frequencies",
+        "source": {
+          "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/monster.svm52",
+          "bytes": 44379,
+          "sha256": "a2cc48d003190340a170eed3ff63fcf751f55a75e89f805795a3f9cb8b875cf1"
+        },
+        "layout_source": {
+          "path": "/var/tmp/psycles-svm-schedule-LaccgH/layouts.json",
+          "bytes": 24501,
+          "sha256": "f5ba664fd80a9ce8f9e87b93504a72ea06411cf90622e4498894b5b6de62333e"
+        },
+        "decoder_source": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-09-08/svm-math-expansion/audit_typed_words.py",
+          "bytes": 7286,
+          "sha256": "332abb6aa3aab481e76523ca67d1fa8012a9bee34d6dc7c4095b9a31713b81d7"
+        },
+        "domain_totals": {
+          "surface": {
+            "NODE_END": 32,
+            "NODE_CLOSURE_SET_WEIGHT": 9,
+            "NODE_CLOSURE_BACKGROUND": 1,
+            "NODE_LIGHT_PATH": 8,
+            "NODE_MATH": 35,
+            "NODE_MAP_RANGE": 8,
+            "NODE_CLAMP": 8,
+            "NODE_JUMP_IF_ONE": 8,
+            "NODE_MIX_CLOSURE": 19,
+            "NODE_CLOSURE_EMISSION": 9,
+            "NODE_TEX_COORD": 10,
+            "NODE_MAPPING": 19,
+            "NODE_TEX_GRADIENT": 2,
+            "NODE_EMISSION_WEIGHT": 1,
+            "NODE_ATTR_DERIVATIVE": 9,
+            "NODE_TEX_IMAGE": 16,
+            "NODE_TEX_BRICK": 3,
+            "NODE_CONVERT": 47,
+            "NODE_INVERT": 6,
+            "NODE_RGB_RAMP": 3,
+            "NODE_MIX_COLOR": 11,
+            "NODE_GEOMETRY": 23,
+            "NODE_SET_BUMP": 5,
+            "NODE_CLOSURE_BSDF": 29,
+            "NODE_TEX_IMAGE_BOX": 32,
+            "NODE_HSV": 2,
+            "NODE_SEPARATE_COLOR": 10,
+            "NODE_COMBINE_COLOR": 10,
+            "NODE_NORMAL_MAP": 12,
+            "NODE_LAYER_WEIGHT": 15,
+            "NODE_TEX_COORD_DERIVATIVE": 7,
+            "NODE_TEX_NOISE": 6,
+            "NODE_ENTER_BUMP_EVAL": 1,
+            "NODE_DISPLACEMENT": 3,
+            "NODE_VECTOR_MATH": 3,
+            "NODE_CLOSURE_SET_NORMAL": 1,
+            "NODE_LEAVE_BUMP_EVAL": 1,
+            "NODE_SEPARATE_VECTOR": 6,
+            "NODE_COMBINE_VECTOR": 6,
+            "NODE_CURVES": 4,
+            "NODE_ATTR": 2,
+            "NODE_TEX_VORONOI": 3
+          },
+          "volume": {
+            "NODE_END": 32
+          },
+          "displacement": {
+            "NODE_END": 32,
+            "NODE_TEX_COORD": 1,
+            "NODE_MAPPING": 1,
+            "NODE_TEX_IMAGE_BOX": 1,
+            "NODE_CONVERT": 1,
+            "NODE_GEOMETRY": 1,
+            "NODE_DISPLACEMENT": 1,
+            "NODE_SET_DISPLACEMENT": 1
+          }
+        },
+        "surface_closure_payloads": {
+          "SVMNodePrincipledBsdfData": 29
+        },
+        "surface_procedural_modes": {
+          "noise:dimensions=3,type=1": 6,
+          "voronoi:dimensions=3,feature=0,metric=0": 3
+        },
+        "surface_control_nodes": {
+          "NODE_JUMP_IF_ONE": 8,
+          "NODE_ENTER_BUMP_EVAL": 1,
+          "NODE_CLOSURE_SET_NORMAL": 1,
+          "NODE_LEAVE_BUMP_EVAL": 1
+        },
+        "shader_count": 32,
+        "surface_opcode_count": 42,
+        "surface_serialized_node_count": 445
+      },
+      "bindings": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/monster.bindings",
+        "bytes": 1573,
+        "sha256": "7fea4f4f7c8741b6f4500d36666666a998c343874ce75be815b635de58fa6f16"
+      },
+      "original_settings": {
+        "scene": "monster",
+        "source": "/home/mike/Projects/Psycles/assets/official-blender-scenes/monster-under-the-bed/monster_under_the_bed_sss_demo_by_metin_seven.blend",
+        "sha256": "9463082f8d365ad8ae19c1ba86429deb3b532c5a2d0db0b9492c3c759f64d28d",
+        "settings": {
+          "film_transparent_glass": false,
+          "film_transparent_roughness": 0.10000000149011612,
+          "use_fast_gi": false,
+          "use_guiding": false,
+          "use_denoising": false,
+          "use_light_tree": false,
+          "film_transparent": false,
+          "camera_motion_blur": false,
+          "light_caustics": [],
+          "pointcloud_objects": [],
+          "volume_objects": [],
+          "udim_images": [],
+          "view_layer_use_pass_ambient_occlusion": false
+        }
+      }
+    },
+    "classroom": {
+      "metadata": {
+        "source": {
+          "path": "/var/tmp/psycles-hidden-socket-U0KI5L/controls/classroom/scene.json",
+          "bytes": 5229650,
+          "sha256": "1958c47540c04febe6aff2b89ac44b9f5aee5ebe42b87ec15efc0150f0904710"
+        },
+        "cycles_sync": {
+          "object_count": 865,
+          "uses_light_linking": false
+        },
+        "render_cycles": {
+          "adaptive_min_samples": 0,
+          "adaptive_threshold": 0.009999999776482582,
+          "ao_bounces": 1,
+          "ao_bounces_render": 1,
+          "ao_distance": 0.07999999821186066,
+          "ao_factor": 1.0,
+          "blur_glossy": 1.2000000476837158,
+          "caustics_reflective": true,
+          "caustics_refractive": true,
+          "diffuse_bounces": 2,
+          "direct_light_sampling_type": "MULTIPLE_IMPORTANCE_SAMPLING",
+          "effective_seed": 1,
+          "fast_gi_method": "REPLACE",
+          "film_exposure": 1.0,
+          "glossy_bounces": 3,
+          "light_sampling_threshold": 0.0,
+          "max_bounces": 8,
+          "min_light_bounces": 0,
+          "min_transparent_bounces": 0,
+          "sample_clamp_direct": 5.5,
+          "sample_clamp_indirect": 3.0,
+          "samples": 300,
+          "seed": 1,
+          "seed_frame": 1,
+          "seed_subframe": 0.0,
+          "transmission_bounces": 6,
+          "transparent_max_bounces": 8,
+          "use_adaptive_sampling": false,
+          "use_animated_seed": false,
+          "use_denoising": false,
+          "use_fast_gi": false,
+          "use_light_tree": false,
+          "volume_bounces": 1
+        },
+        "film_transparent": true,
+        "pass_alpha_threshold": 0.0,
+        "object_flags": {
+          "use_holdout": {
+            "instances": [],
+            "lights": []
+          },
+          "is_shadow_catcher": {
+            "instances": [],
+            "lights": [
+              "sun",
+              "coridor_ceilingLight",
+              "Point.001",
+              "Point.001",
+              "Point.001",
+              "Point.001",
+              "Point.001",
+              "Point.001",
+              "blackBoard_light",
+              "exterior_fillLight"
+            ]
+          },
+          "is_caustics_caster": {
+            "instances": [],
+            "lights": []
+          },
+          "is_caustics_receiver": {
+            "instances": [],
+            "lights": []
+          }
+        },
+        "images_by_source": {
+          "FILE": 50,
+          "GENERATED": 1
+        },
+        "exported_source_node_presence_not_reachability": {
+          "NodeGroupInput": 2,
+          "NodeGroupOutput": 2,
+          "ShaderNodeAttribute": 20,
+          "ShaderNodeBackground": 1,
+          "ShaderNodeBlackbody": 1,
+          "ShaderNodeBrightContrast": 1,
+          "ShaderNodeBsdfAnisotropic": 45,
+          "ShaderNodeBsdfDiffuse": 59,
+          "ShaderNodeBsdfGlass": 2,
+          "ShaderNodeBsdfTranslucent": 2,
+          "ShaderNodeBsdfTransparent": 3,
+          "ShaderNodeBump": 37,
+          "ShaderNodeDisplacement": 7,
+          "ShaderNodeEmission": 3,
+          "ShaderNodeGamma": 1,
+          "ShaderNodeGroup": 3,
+          "ShaderNodeHueSaturation": 5,
+          "ShaderNodeInvert": 3,
+          "ShaderNodeMapping": 22,
+          "ShaderNodeMath": 25,
+          "ShaderNodeMix": 55,
+          "ShaderNodeMixShader": 37,
+          "ShaderNodeNewGeometry": 2,
+          "ShaderNodeObjectInfo": 4,
+          "ShaderNodeOutputMaterial": 78,
+          "ShaderNodeOutputWorld": 1,
+          "ShaderNodeRGB": 5,
+          "ShaderNodeRGBCurve": 15,
+          "ShaderNodeTexCoord": 24,
+          "ShaderNodeTexImage": 68,
+          "ShaderNodeTexNoise": 18,
+          "ShaderNodeTexSky": 1,
+          "ShaderNodeTexWave": 1,
+          "ShaderNodeValToRGB": 23
+        }
+      },
+      "compilation_log": "Psycles compiled 90 used units; 91 dense shaders; 68504 words; stack 23; closures 12\n",
+      "program": {
+        "scope": "serialized typed nodes by ShaderJump interval, including END-only dense holes; counts are not dynamic execution frequencies",
+        "source": {
+          "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/classroom.svm52",
+          "bytes": 275992,
+          "sha256": "b21c51204baca406c0c8837419a65014cf11621afbf05d70916bb84914086587"
+        },
+        "layout_source": {
+          "path": "/var/tmp/psycles-svm-schedule-LaccgH/layouts.json",
+          "bytes": 24501,
+          "sha256": "f5ba664fd80a9ce8f9e87b93504a72ea06411cf90622e4498894b5b6de62333e"
+        },
+        "decoder_source": {
+          "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-09-08/svm-math-expansion/audit_typed_words.py",
+          "bytes": 7286,
+          "sha256": "332abb6aa3aab481e76523ca67d1fa8012a9bee34d6dc7c4095b9a31713b81d7"
+        },
+        "domain_totals": {
+          "surface": {
+            "NODE_END": 91,
+            "NODE_CLOSURE_SET_WEIGHT": 53,
+            "NODE_CLOSURE_EMISSION": 8,
+            "NODE_LIGHT_FALLOFF": 2,
+            "NODE_EMISSION_WEIGHT": 3,
+            "NODE_ATTR": 39,
+            "NODE_TEX_IMAGE": 146,
+            "NODE_GEOMETRY": 104,
+            "NODE_MIX_CLOSURE": 38,
+            "NODE_CLOSURE_WEIGHT": 64,
+            "NODE_CLOSURE_BSDF": 113,
+            "NODE_ATTR_DERIVATIVE": 146,
+            "NODE_MAPPING": 61,
+            "NODE_CONVERT": 166,
+            "NODE_MATH": 41,
+            "NODE_DISPLACEMENT": 21,
+            "NODE_VECTOR_MATH": 21,
+            "NODE_SET_BUMP": 49,
+            "NODE_CLOSURE_SET_NORMAL": 7,
+            "NODE_MIX_COLOR": 87,
+            "NODE_RGB_RAMP": 39,
+            "NODE_CURVES": 19,
+            "NODE_JUMP_IF_ONE": 5,
+            "NODE_JUMP_IF_ZERO": 5,
+            "NODE_INVERT": 7,
+            "NODE_OBJECT_INFO": 6,
+            "NODE_HSV": 5,
+            "NODE_TEX_NOISE": 72,
+            "NODE_BRIGHTCONTRAST": 3,
+            "NODE_GAMMA": 1,
+            "NODE_TEX_WAVE": 3,
+            "NODE_LIGHT_PATH": 1,
+            "NODE_TEX_COORD": 1,
+            "NODE_TEX_SKY": 1
+          },
+          "volume": {
+            "NODE_END": 91
+          },
+          "displacement": {
+            "NODE_END": 91,
+            "NODE_ATTR": 4,
+            "NODE_MAPPING": 5,
+            "NODE_TEX_IMAGE": 4,
+            "NODE_CONVERT": 6,
+            "NODE_MATH": 5,
+            "NODE_GEOMETRY": 7,
+            "NODE_DISPLACEMENT": 7,
+            "NODE_SET_DISPLACEMENT": 7,
+            "NODE_ATTR_DERIVATIVE": 7,
+            "NODE_TEX_NOISE": 6,
+            "NODE_SET_BUMP": 2
+          }
+        },
+        "surface_closure_payloads": {
+          "SVMNodeDiffuseBsdfData": 60,
+          "SVMNodeSimpleBsdfData": 5,
+          "SVMNodeGlossyBsdfData": 45,
+          "SVMNodeGlassBsdfData": 2,
+          "SVMNodePrincipledBsdfData": 1
+        },
+        "surface_procedural_modes": {
+          "noise:dimensions=3,type=1": 72
+        },
+        "surface_control_nodes": {
+          "NODE_CLOSURE_SET_NORMAL": 7,
+          "NODE_JUMP_IF_ONE": 5,
+          "NODE_JUMP_IF_ZERO": 5
+        },
+        "shader_count": 91,
+        "surface_opcode_count": 34,
+        "surface_serialized_node_count": 1428
+      },
+      "bindings": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/classroom.bindings",
+        "bytes": 2419,
+        "sha256": "327ed680b4528289d3c11c217f14eb15eee35cf5766fd8c3339d50b7cadb3623"
+      },
+      "original_settings": {
+        "scene": "classroom",
+        "source": "/home/mike/Projects/Psycles/assets/official-blender-scenes/classroom/classroom.blend",
+        "sha256": "5c526ea3f280566e80253673c9955640527cd0f247ea41b1742620b5bc39f7a4",
+        "settings": {
+          "film_transparent_glass": false,
+          "film_transparent_roughness": 0.10000000149011612,
+          "use_fast_gi": false,
+          "use_guiding": false,
+          "use_denoising": false,
+          "use_light_tree": false,
+          "film_transparent": true,
+          "camera_motion_blur": false,
+          "light_caustics": [],
+          "pointcloud_objects": [],
+          "volume_objects": [],
+          "udim_images": [],
+          "view_layer_use_pass_ambient_occlusion": true
+        }
+      }
+    }
+  },
+  "witnesses": {
+    "boundary-gate-expanded": {
+      "schema": "psycles.surface-integration-witness.v1",
+      "scope": "unchanged production vs original HIP; not a speed benchmark",
+      "binary": {
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+        "sha256": "d22d47d63758ca20dacba56b12222613b990f8e851cedf9163fcf887155e61d0"
+      },
+      "processes": [
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-09-09/surface-semantic-audit/create_boundary_scenes.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/create.log",
+            "sha256": "88ef75600b33eb379354edea46248b6c2a7cacce2c5c5dc7312343888e87f391"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-1.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-1-export"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/export-1.log",
+            "sha256": "06401a87d7b6840c97f4b94533b4837598b38834fc27b20e535b1279d7fdff57"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-1.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-1.exr",
+            "16",
+            "16",
+            "1",
+            "--cycles-device",
+            "HIP",
+            "--device-name",
+            "Radeon RX 9070 XT"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-1.log",
+            "sha256": "a41f94496a804a0962340c9031ce8a9e154f36655503b6792e7e4cb999576d30"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-1-export",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/actual-1.ppm",
+            "hip",
+            "16",
+            "16",
+            "1",
+            "1",
+            "-",
+            "8",
+            "8",
+            "0",
+            "0",
+            "1",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/actual-1.log",
+            "sha256": "c273a2d4dfc12efc5d793f837bef3772ba247ec3f67695a937aed8232f5ee30b"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-export"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/export-2.log",
+            "sha256": "d9829b846d28ae3a73c1686324188be18442bb2d49f8967cbb6197ce75ef3921"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-2.exr",
+            "16",
+            "16",
+            "1",
+            "--cycles-device",
+            "HIP",
+            "--device-name",
+            "Radeon RX 9070 XT"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-2.log",
+            "sha256": "35de07ffd402098b1f877a520e99b942146255d2c46a07e409d1d0be2501c174"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-export",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/actual-2.ppm",
+            "hip",
+            "16",
+            "16",
+            "1",
+            "1",
+            "-",
+            "8",
+            "8",
+            "0",
+            "0",
+            "1",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/actual-2.log",
+            "sha256": "85108dfffccd0d5f62f2386576b3dd15e4eebe5e6f3b4cc601a2b5fe9d5fc30b"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-budget-control.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-budget-control-export"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/export-3.log",
+            "sha256": "fbe2a88d65c48366543692cab2e0e4a2edf70df3252f9ae6a5cfd27bd7dd1daf"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-budget-control.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-3.exr",
+            "16",
+            "16",
+            "1",
+            "--cycles-device",
+            "HIP",
+            "--device-name",
+            "Radeon RX 9070 XT"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-3.log",
+            "sha256": "d9a91889109063a2e2a9965f28d22c6a1f8bdcbfabf9e5d124729a2fd502a28e"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-budget-control-export",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/actual-3.ppm",
+            "hip",
+            "16",
+            "16",
+            "1",
+            "1",
+            "-",
+            "8",
+            "8",
+            "0",
+            "0",
+            "1",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/actual-3.log",
+            "sha256": "d93108816aa31b19ee043d8578c539d5b690d4c042c85a9e9dd0054c2f769f7f"
+          }
+        }
+      ],
+      "observations": [
+        {
+          "scene": "boundary-1",
+          "blend": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-1.blend",
+            "sha256": "9c801f02f96a4ecb3646d973dcbc541f0072bf0019aaa707c110690b28837692"
+          },
+          "outputs": {
+            "original": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-1.exr",
+              "sha256": "633d5080510a2646cd7dc00d85c06e13fa87c47aca629bddf988e930c4c9af67",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 0.9394130706787109,
+              "maximum": 0.9394130706787109,
+              "mean": [
+                0.9394130706787109,
+                0.9394130706787109,
+                0.9394130706787109
+              ],
+              "nonzero_lanes": 768
+            },
+            "actual": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/actual-1.exr",
+              "sha256": "e35fa75cb3201615042ad9ea8b2297ca3e5c5d68f1f5e7f0c9ca8f6c2b6dd0b7",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 0.9394130706787109,
+              "maximum": 0.9394130706787109,
+              "mean": [
+                0.9394130706787109,
+                0.9394130706787109,
+                0.9394130706787109
+              ],
+              "nonzero_lanes": 768
+            }
+          },
+          "combined_rgb_max_absolute_error": 0.0,
+          "combined_rgb_parity": true,
+          "original_render_metadata": {
+            "source": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-1.json",
+              "bytes": 1495,
+              "sha256": "74dc8c208053af8ef0a10669f9bfeb4ce1f9258a9c85ab83c06734de790faf7f"
+            },
+            "blender_build": {
+              "build_branch": "blender-v5.2-release (modified)",
+              "build_hash": "9e2066aef7ef",
+              "build_type": "Release",
+              "version": "5.2.1 LTS",
+              "version_cycle": "release",
+              "version_tuple": [
+                5,
+                2,
+                1
+              ]
+            },
+            "cycles_device": "GPU",
+            "cycles_compute_device_type": "HIP",
+            "cycles_enabled_devices": [
+              {
+                "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+                "name": "AMD Radeon RX 9070 XT",
+                "type": "HIP"
+              }
+            ],
+            "samples": 1,
+            "width": 16,
+            "height": 16,
+            "adaptive_sampling": false,
+            "denoising": false,
+            "sampling_pattern": "TABULATED_SOBOL",
+            "effective_seed": 0
+          }
+        },
+        {
+          "scene": "boundary-2",
+          "blend": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2.blend",
+            "sha256": "ad1c9559ea820bc24a0a1b19f9e3431f2ee914ce5c60c801d02578ca9d5638d7"
+          },
+          "outputs": {
+            "original": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-2.exr",
+              "sha256": "206ab35e9902d88e1f3346101ccee221e1abdae320d85d994bc772ec05985b16",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 0.8824968934059143,
+              "maximum": 0.8824969530105591,
+              "mean": [
+                0.8824968934059143,
+                0.8824968934059143,
+                0.8824968934059143
+              ],
+              "nonzero_lanes": 768
+            },
+            "actual": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/actual-2.exr",
+              "sha256": "c0230600f8093974d9c66e123dbb56072274ea9811e60f788aa2afbea2f2a8ec",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 0.0,
+              "maximum": 0.0,
+              "mean": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "nonzero_lanes": 0
+            }
+          },
+          "combined_rgb_max_absolute_error": 0.8824969530105591,
+          "combined_rgb_parity": false,
+          "original_render_metadata": {
+            "source": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-2.json",
+              "bytes": 1495,
+              "sha256": "27b029b6a4ac5366ee57deab82a2995862fe7ecaba34cfd7a82c241f45265ed7"
+            },
+            "blender_build": {
+              "build_branch": "blender-v5.2-release (modified)",
+              "build_hash": "9e2066aef7ef",
+              "build_type": "Release",
+              "version": "5.2.1 LTS",
+              "version_cycle": "release",
+              "version_tuple": [
+                5,
+                2,
+                1
+              ]
+            },
+            "cycles_device": "GPU",
+            "cycles_compute_device_type": "HIP",
+            "cycles_enabled_devices": [
+              {
+                "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+                "name": "AMD Radeon RX 9070 XT",
+                "type": "HIP"
+              }
+            ],
+            "samples": 1,
+            "width": 16,
+            "height": 16,
+            "adaptive_sampling": false,
+            "denoising": false,
+            "sampling_pattern": "TABULATED_SOBOL",
+            "effective_seed": 0
+          }
+        },
+        {
+          "scene": "boundary-2-budget-control",
+          "blend": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-budget-control.blend",
+            "sha256": "76ad7a1321cc8adaab807845071763e7bf98e64cd57db4d715f64e1c28b18d02"
+          },
+          "outputs": {
+            "original": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-3.exr",
+              "sha256": "b73ad38113eeb998fae48b5bb830241e1cc896ad4848b96c794a6eba4f198e67",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 0.8824968934059143,
+              "maximum": 0.8824969530105591,
+              "mean": [
+                0.8824968934059143,
+                0.8824968934059143,
+                0.8824968934059143
+              ],
+              "nonzero_lanes": 768
+            },
+            "actual": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/actual-3.exr",
+              "sha256": "61c1ebb51698ad13f131d05da512fc37959eb23157ef9415702ea51aad8217cc",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 0.8824968934059143,
+              "maximum": 0.8824969530105591,
+              "mean": [
+                0.8824968934059143,
+                0.8824968934059143,
+                0.8824968934059143
+              ],
+              "nonzero_lanes": 768
+            }
+          },
+          "combined_rgb_max_absolute_error": 5.960464477539063e-08,
+          "combined_rgb_parity": true,
+          "original_render_metadata": {
+            "source": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-3.json",
+              "bytes": 1510,
+              "sha256": "16ad493273a0cfc0dcafca3d3c18d0e5e54fad70d8b9761678d1372854bc91f1"
+            },
+            "blender_build": {
+              "build_branch": "blender-v5.2-release (modified)",
+              "build_hash": "9e2066aef7ef",
+              "build_type": "Release",
+              "version": "5.2.1 LTS",
+              "version_cycle": "release",
+              "version_tuple": [
+                5,
+                2,
+                1
+              ]
+            },
+            "cycles_device": "GPU",
+            "cycles_compute_device_type": "HIP",
+            "cycles_enabled_devices": [
+              {
+                "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+                "name": "AMD Radeon RX 9070 XT",
+                "type": "HIP"
+              }
+            ],
+            "samples": 1,
+            "width": 16,
+            "height": 16,
+            "adaptive_sampling": false,
+            "denoising": false,
+            "sampling_pattern": "TABULATED_SOBOL",
+            "effective_seed": 0
+          }
+        }
+      ],
+      "parity_summary": {
+        "true": 2,
+        "false": 1
+      },
+      "runner_log": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded-run.log",
+        "bytes": 14877,
+        "sha256": "fb7296f265d178fe02e2c88fea43d8d1febe31f5977a29ee940ad974f9c0fa30"
+      },
+      "expected_gate_exit_status": 2
+    },
+    "integration-gate": {
+      "schema": "psycles.surface-integration-witness.v1",
+      "scope": "unchanged production vs original HIP; not a speed benchmark",
+      "binary": {
+        "path": "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+        "sha256": "d22d47d63758ca20dacba56b12222613b990f8e851cedf9163fcf887155e61d0"
+      },
+      "processes": [
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "--python",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/create_surface_scenes.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/create.log",
+            "sha256": "c3850ca695e1f026aab6c03ed23ad13fa502d6e106b23c50ed0e34c049489264"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ordinary-emission.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ordinary-emission-export"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/export-1.log",
+            "sha256": "5eae72669355993a79e05a6d3af40a57fbc9b1d8ee96869fde6f1d62a10e6ebe"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ordinary-emission.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-1.exr",
+            "16",
+            "16",
+            "1",
+            "--cycles-device",
+            "HIP",
+            "--device-name",
+            "Radeon RX 9070 XT"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-1.log",
+            "sha256": "7ba1537cff346f58e890eba0742fdf9e3b3406587d4e44db185de11bf046a5cf"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ordinary-emission-export",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-1.ppm",
+            "hip",
+            "16",
+            "16",
+            "1",
+            "1",
+            "-",
+            "8",
+            "8",
+            "0",
+            "0",
+            "1",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-1.log",
+            "sha256": "540d1f3bc67e5fb070184612e7b5ca1f0364e744f7b8659e87a546f620006781"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/object-holdout.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/object-holdout-export"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/export-2.log",
+            "sha256": "c1c8952992990c3d94c5173b0b2dd0fb032e8e1fd576b54f4b4186a367d7ab6d"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/object-holdout.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-2.exr",
+            "16",
+            "16",
+            "1",
+            "--cycles-device",
+            "HIP",
+            "--device-name",
+            "Radeon RX 9070 XT"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-2.log",
+            "sha256": "eeb03e9ebdef0aef231c0412258949b2e733093b2577d1fb2bf1979d5eb4559a"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/object-holdout-export",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-2.ppm",
+            "hip",
+            "16",
+            "16",
+            "1",
+            "1",
+            "-",
+            "8",
+            "8",
+            "0",
+            "0",
+            "1",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-2.log",
+            "sha256": "28d4e5f94d2ee0637a2ff3be7ac7422062805e0dc0996d7398b82b6629045071"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/transparent-control.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/transparent-control-export"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/export-3.log",
+            "sha256": "21b738ffbc3ae2ef430dcb99751747303173f712e6d3a3bc88bff7fa40feafb6"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/transparent-control.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-3.exr",
+            "16",
+            "16",
+            "1",
+            "--cycles-device",
+            "HIP",
+            "--device-name",
+            "Radeon RX 9070 XT"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-3.log",
+            "sha256": "b5b852e6d85c8118c55c87748c8022a7f18f60b9afb3546cf562f58f6b4e15fd"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/transparent-control-export",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-3.ppm",
+            "hip",
+            "16",
+            "16",
+            "1",
+            "1",
+            "-",
+            "8",
+            "8",
+            "0",
+            "0",
+            "1",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-3.log",
+            "sha256": "a08c0e0ff141ada774641a9cd92ed39cd92f124f5277b3acd6f47a63e037abfe"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ray-portal.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ray-portal-export"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/export-4.log",
+            "sha256": "f0607e841ae4fac6f78e5e043eb4bc55bc16e2d130f3637f64815df8a5407915"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+            "--background",
+            "--threads",
+            "32",
+            "--python-exit-code",
+            "1",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ray-portal.blend",
+            "--python",
+            "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+            "--",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-4.exr",
+            "16",
+            "16",
+            "1",
+            "--cycles-device",
+            "HIP",
+            "--device-name",
+            "Radeon RX 9070 XT"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-4.log",
+            "sha256": "7bfbb0c5b074ab5f7dc9bf341660b06f514ecb14c3a848f14d7f8701ed75abfa"
+          }
+        },
+        {
+          "command": [
+            "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ray-portal-export",
+            "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-4.ppm",
+            "hip",
+            "16",
+            "16",
+            "1",
+            "1",
+            "-",
+            "8",
+            "8",
+            "0",
+            "0",
+            "1",
+            "-",
+            "1",
+            "0",
+            "wavefront-staged",
+            "32",
+            "32768",
+            "32",
+            "1",
+            "1",
+            "1",
+            "4",
+            "2",
+            "0",
+            "0",
+            "0",
+            "0",
+            "1",
+            "1048576"
+          ],
+          "cwd": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate",
+          "status": 0,
+          "log": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-4.log",
+            "sha256": "0815f63b4d2ce04e449db5cf39f7845bce29e928e0d14f66144843aad7808eb4"
+          }
+        }
+      ],
+      "observations": [
+        {
+          "scene": "ordinary-emission",
+          "blend": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ordinary-emission.blend",
+            "sha256": "e6878db3d6482bcdfd20dc064c38b6cae5c43aed2427f068f8e0fed568d1b0eb"
+          },
+          "outputs": {
+            "original": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-1.exr",
+              "sha256": "ee63b9d05ffd97de1f622ff789a019332e522cf7bd99d6b4cfb4a35bf0b2d668",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 1.0,
+              "maximum": 1.0,
+              "mean": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "nonzero_lanes": 768
+            },
+            "actual": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-1.exr",
+              "sha256": "39723e314cc07f1dfb0512d2694184d330b6d3288104014adc480f9e96eb81a3",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 1.0,
+              "maximum": 1.0,
+              "mean": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "nonzero_lanes": 768
+            }
+          },
+          "combined_rgb_max_absolute_error": 0.0,
+          "combined_rgb_parity": true,
+          "original_render_metadata": {
+            "source": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-1.json",
+              "bytes": 1490,
+              "sha256": "73a000c232329133ed56f6d3ef1415fceb5b245d20a136c4f66caf8f2b78ad5f"
+            },
+            "blender_build": {
+              "build_branch": "blender-v5.2-release (modified)",
+              "build_hash": "9e2066aef7ef",
+              "build_type": "Release",
+              "version": "5.2.1 LTS",
+              "version_cycle": "release",
+              "version_tuple": [
+                5,
+                2,
+                1
+              ]
+            },
+            "cycles_device": "GPU",
+            "cycles_compute_device_type": "HIP",
+            "cycles_enabled_devices": [
+              {
+                "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+                "name": "AMD Radeon RX 9070 XT",
+                "type": "HIP"
+              }
+            ],
+            "samples": 1,
+            "width": 16,
+            "height": 16,
+            "adaptive_sampling": false,
+            "denoising": false,
+            "sampling_pattern": "TABULATED_SOBOL",
+            "effective_seed": 0
+          }
+        },
+        {
+          "scene": "object-holdout",
+          "blend": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/object-holdout.blend",
+            "sha256": "d011770f6ae619db10866a9802cfd0888d186f7d6edcf4ef2903ef6ab42207e3"
+          },
+          "outputs": {
+            "original": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-2.exr",
+              "sha256": "00a6a2f935c9d79eb2c7a582ac9636df1ef5624efaa33d22c8a481abdd5eefbd",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 0.0,
+              "maximum": 0.0,
+              "mean": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "nonzero_lanes": 0
+            },
+            "actual": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-2.exr",
+              "sha256": "0beb967be1f106dfa5d803931a8fc71000c5f1c5c733fd9436857beff7456c77",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 1.0,
+              "maximum": 1.0,
+              "mean": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "nonzero_lanes": 768
+            }
+          },
+          "combined_rgb_max_absolute_error": 1.0,
+          "combined_rgb_parity": false,
+          "original_render_metadata": {
+            "source": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-2.json",
+              "bytes": 1486,
+              "sha256": "26b6a4d856158c8c76f7944b06e09490d23934c7e85d9a332df1961c2603351d"
+            },
+            "blender_build": {
+              "build_branch": "blender-v5.2-release (modified)",
+              "build_hash": "9e2066aef7ef",
+              "build_type": "Release",
+              "version": "5.2.1 LTS",
+              "version_cycle": "release",
+              "version_tuple": [
+                5,
+                2,
+                1
+              ]
+            },
+            "cycles_device": "GPU",
+            "cycles_compute_device_type": "HIP",
+            "cycles_enabled_devices": [
+              {
+                "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+                "name": "AMD Radeon RX 9070 XT",
+                "type": "HIP"
+              }
+            ],
+            "samples": 1,
+            "width": 16,
+            "height": 16,
+            "adaptive_sampling": false,
+            "denoising": false,
+            "sampling_pattern": "TABULATED_SOBOL",
+            "effective_seed": 0
+          }
+        },
+        {
+          "scene": "transparent-control",
+          "blend": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/transparent-control.blend",
+            "sha256": "21c51b7470738f42a4e8af64094bdb075e0045561c85146404e4e2a93d790d99"
+          },
+          "outputs": {
+            "original": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-3.exr",
+              "sha256": "d11df5274f8589c4dd43efc352b48f5f486a1331f18176dfd548c771aa35f99c",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 1.0,
+              "maximum": 1.0,
+              "mean": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "nonzero_lanes": 768
+            },
+            "actual": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-3.exr",
+              "sha256": "cc7f0f8a429a44423fe7d9a517eba2fc362d2696c99876307e5814d019bae52d",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 1.0,
+              "maximum": 1.0,
+              "mean": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "nonzero_lanes": 768
+            }
+          },
+          "combined_rgb_max_absolute_error": 0.0,
+          "combined_rgb_parity": true,
+          "original_render_metadata": {
+            "source": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-3.json",
+              "bytes": 1493,
+              "sha256": "6596e1ee8267823e3f207849d7fb591f6cd53ae8a5bd88ef2a546ca62b701701"
+            },
+            "blender_build": {
+              "build_branch": "blender-v5.2-release (modified)",
+              "build_hash": "9e2066aef7ef",
+              "build_type": "Release",
+              "version": "5.2.1 LTS",
+              "version_cycle": "release",
+              "version_tuple": [
+                5,
+                2,
+                1
+              ]
+            },
+            "cycles_device": "GPU",
+            "cycles_compute_device_type": "HIP",
+            "cycles_enabled_devices": [
+              {
+                "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+                "name": "AMD Radeon RX 9070 XT",
+                "type": "HIP"
+              }
+            ],
+            "samples": 1,
+            "width": 16,
+            "height": 16,
+            "adaptive_sampling": false,
+            "denoising": false,
+            "sampling_pattern": "TABULATED_SOBOL",
+            "effective_seed": 0
+          }
+        },
+        {
+          "scene": "ray-portal",
+          "blend": {
+            "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ray-portal.blend",
+            "sha256": "3c587a152e983ae08ccffeb29d0b15804db5b0669a78a25960a08cb78c22299c"
+          },
+          "outputs": {
+            "original": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-4.exr",
+              "sha256": "d9befe158711464d1410a56375f8b8efc1f0be5e9f05293dfb7eec74f8e546fd",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 1.0,
+              "maximum": 1.0,
+              "mean": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "nonzero_lanes": 768
+            },
+            "actual": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/actual-4.exr",
+              "sha256": "a006a18c15853b55dbee1197dcff888011733c6f6bad80ec991aa619e0629d8d",
+              "channels": [
+                "ViewLayer.Combined.R",
+                "ViewLayer.Combined.G",
+                "ViewLayer.Combined.B"
+              ],
+              "all_finite": true,
+              "minimum": 0.0,
+              "maximum": 0.0,
+              "mean": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "nonzero_lanes": 0
+            }
+          },
+          "combined_rgb_max_absolute_error": 1.0,
+          "combined_rgb_parity": false,
+          "original_render_metadata": {
+            "source": {
+              "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-4.json",
+              "bytes": 1483,
+              "sha256": "3a81a935eacc4398479dc6cee98d25ae70a7614febaa62b58d4b82786c81bca6"
+            },
+            "blender_build": {
+              "build_branch": "blender-v5.2-release (modified)",
+              "build_hash": "9e2066aef7ef",
+              "build_type": "Release",
+              "version": "5.2.1 LTS",
+              "version_cycle": "release",
+              "version_tuple": [
+                5,
+                2,
+                1
+              ]
+            },
+            "cycles_device": "GPU",
+            "cycles_compute_device_type": "HIP",
+            "cycles_enabled_devices": [
+              {
+                "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+                "name": "AMD Radeon RX 9070 XT",
+                "type": "HIP"
+              }
+            ],
+            "samples": 1,
+            "width": 16,
+            "height": 16,
+            "adaptive_sampling": false,
+            "denoising": false,
+            "sampling_pattern": "TABULATED_SOBOL",
+            "effective_seed": 0
+          }
+        }
+      ],
+      "parity_summary": {
+        "true": 2,
+        "false": 2
+      },
+      "runner_log": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate-run.log",
+        "bytes": 18489,
+        "sha256": "3046c59c12be093f62dbd191ad950ba93815d659227954172d5e45d57ea6fe73"
+      },
+      "expected_gate_exit_status": 2
+    }
+  },
+  "sources": [
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm.cpp",
+      "bytes": 39692,
+      "sha256": "5e2f0041d75dc711b4703b59b2c14185fa3b7d35bc658a16dd239101cd1a99ff"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm_stack.cpp",
+      "bytes": 6173,
+      "sha256": "2d53a16cfdbe9e313a68406ac0499eaf3b9c871e4425dc5f0505cdaf165beb89"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm_closure.cpp",
+      "bytes": 40770,
+      "sha256": "ab3bb0f02307a49519c9ac05ef633df7a4a8d6b0483111059b90f257ce3652dc"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm_bsdf.cpp",
+      "bytes": 36508,
+      "sha256": "642b001bde99ace5e6cff9cfee122121b19f2bcc9735c64dc31441863ff9f3db"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm_surface_shader.cpp",
+      "bytes": 9843,
+      "sha256": "8e820b4cecc559104ceb1c312494aa13bf7806a86a6568a7b6c3a9a1b8aa5539"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_svm_ray_portal.cpp",
+      "bytes": 2699,
+      "sha256": "38fc645dff84fa24c19b49461e0ca50b4842746ad815eb6ea496c943c739546c"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_surface.cpp",
+      "bytes": 23417,
+      "sha256": "fb1fe4808be33ae2ce64d27ba0a2e08afa08d7e0d4155edf0dd9473e51f78f52"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_shader_data.cpp",
+      "bytes": 3326,
+      "sha256": "ba2910d7da7c3dc43dbd43a699e34159fcd445c67b1329b300df1b20420ea26b"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_kernel_globals.h",
+      "bytes": 8473,
+      "sha256": "69ccfe5a9c2274ebfd8507a7e6c47ed66994bdd8036ba7c2ccdcd88177dd6d15"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_kernel_globals.cpp",
+      "bytes": 24159,
+      "sha256": "c1893799997fc2127b4d31cfd3dd1a158944f49da23598e968432710c7930ca9"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_cycles_svm_surface_geometry.cpp",
+      "bytes": 6690,
+      "sha256": "7394e239c01a00c654fb3d52a51108df5498d4bdf863b3ce90e8676e707ce2c4"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_surface_geometry.cpp",
+      "bytes": 9033,
+      "sha256": "de594ae4ec5884acef69be5150a71a9d34241caaf923980f79e421c5da0e8ad9"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_surface_shading.cpp",
+      "bytes": 20678,
+      "sha256": "fc85e204efb3f01fc2365c0f6a5ce128046e1d5e8305c3a373f49e6bb935a819"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_surface_scatter.cpp",
+      "bytes": 17089,
+      "sha256": "de0510cdac97e66f6e823633f7b6c935ec2346827f1116f2c0c3df74cc22b854"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_surface_emission.cpp",
+      "bytes": 4904,
+      "sha256": "e9286901a704f4729a3b8799f453f1fb35430616a63caf2e8d83c79e30e17d37"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_direct_light_transport.cpp",
+      "bytes": 15870,
+      "sha256": "e0ded705556e1c7d019f6ed8ce134247463a25dc49a77b622044f72af7a78bc7"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_bounce_random.cpp",
+      "bytes": 2375,
+      "sha256": "724d816f9ac18afba5788e12a258eced82f01fe62572856316093a3a9dc10813"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_pipeline.cpp",
+      "bytes": 26817,
+      "sha256": "4883ca02235404d68d583ce5289d077f0b1149f1823923d8e53aa7906b281db5"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_kernel_executor.cpp",
+      "bytes": 22987,
+      "sha256": "01ccc0be3d5bda574e8f4b346b047cfd35e3025cbe5e18910d4e690846e27896"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/cycles_integrator_limits.h",
+      "bytes": 3565,
+      "sha256": "b6033c1b6d277d14feff76092d10e88f4495ffd580c82eeabb821d251d091667"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_scene.cpp",
+      "bytes": 80062,
+      "sha256": "16c77ea412fbcb280224645629aedf328886db20a0d20e6fd86928be4819c547"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_surfaces.cpp",
+      "bytes": 45555,
+      "sha256": "49299c55d5c3c81e7c356c0918f4dc149e180dd1f03ef2251c86cdce28c2405e"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_displacement_scene.cpp",
+      "bytes": 31719,
+      "sha256": "0bd1d6ba5cc82be444b064bf157a6b5ef390469f3b8ea50320657c469bda6174"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/luisa/path_tracer_cycles_svm_object.cpp",
+      "bytes": 23751,
+      "sha256": "fbd585d32e8c96136ac672c9b4c6b22082efefbdbb4543c2de346f155b966e8a"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/src/compiler/cycles_svm_object_scene.cpp",
+      "bytes": 16032,
+      "sha256": "2a4d12e3fd7ad1c47a3ab0efba19e047481afc1e9cf9cc8ca2e51421a1369611"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/include/psycles/luisa/cycles_svm.h",
+      "bytes": 46739,
+      "sha256": "b400333942739a96532ff342341093361c2e1f1fe9d0ddcaec5e0ef858b735a1"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/include/psycles/luisa/cycles_closure.h",
+      "bytes": 9576,
+      "sha256": "d1a4bbee8e662eec0daf6a7672464757457c39796bfd9a77b87dcac0d622236e"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/include/psycles/luisa/cycles_path_state.h",
+      "bytes": 24031,
+      "sha256": "e4cb00b6af693bc6c385c36e23a967b56a7397b47631dfeb5bdc086d06610488"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/include/psycles/luisa/cycles_volume_boundary.h",
+      "bytes": 1721,
+      "sha256": "ff2c369622cc06a820f693652f80c10781177bdd4b26f230a88661e8e0411202"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/include/psycles/luisa/surface.h",
+      "bytes": 62698,
+      "sha256": "2716b532f48d147b5e51b09613af6d5c50b922857ecaa5ada2396a58e5b2e7b5"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+      "bytes": 70910,
+      "sha256": "df92396db48a95e2fe7605246021ba18aabf6d9efafd559c988c2aaeaf424814"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/tools/blender_cycles_object.py",
+      "bytes": 8007,
+      "sha256": "1e2a6721704156f857dbe83a9bfec7c8a386e0f5ac54224718b56a2b429727d3"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/tools/blender_image_export.py",
+      "bytes": 4360,
+      "sha256": "21653da2e5fa97dcaff84d94962a746f1ed58b9ea6bf176a7e71a4956f06f13e"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/tests/test_luisa_cycles_svm_standalone_ray_portal.cpp",
+      "bytes": 13430,
+      "sha256": "a7ad43aa8aa963e9d81e775b9856dcc75f0f52902d9f3565d6b6fff69538f7c6"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/tests/test_cycles_integrator_limits.cpp",
+      "bytes": 4214,
+      "sha256": "780a20bdcae879c9264a38a16d5e53cee76d943d5eae5a66511d5843583cb798"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm_impl_resource.cpp",
+      "bytes": 131859,
+      "sha256": "a6ce33aa0751e9443e7464b3ffa53df7483247f233ea801e6e7279fe504b85dd"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/svm.h",
+      "bytes": 23328,
+      "sha256": "1432bcb1ecd378446eb77ecdcf38687090a084d299682f7fa598c110923c84e7"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/closure.h",
+      "bytes": 59373,
+      "sha256": "585a5e6a6a9507e76983a2cf2e5fdb757f70e9213c5f1b151e6b8ed47842c673"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/bump.h",
+      "bytes": 2050,
+      "sha256": "7ef219defb71e10275067f4e969e173f4500cd7fba9cf27ace5ee3b28a5c9d7e"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/value.h",
+      "bytes": 829,
+      "sha256": "59377581d5722900bcf4c9b3e95803c719cb6524b52fcca9a661784598871470"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/closure/alloc.h",
+      "bytes": 3773,
+      "sha256": "0c4d641007cce198cf98133fbf50f796c1ccd2bdcaf25d99f38302f63732f346"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/shade_surface.h",
+      "bytes": 57179,
+      "sha256": "3f607b81936bb60e69b678dd6a5dc8be324104f92878dc844402ecdc3cb73b77"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/surface_shader.h",
+      "bytes": 47818,
+      "sha256": "1b36b3c2082b8992252b81869263a5e959e33713395b0b58de63d66c5052a69d"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/path_state.h",
+      "bytes": 17327,
+      "sha256": "8cf896887b76b499cfe997650aa8b68630fbe11ea68dfb1bf09a774b0cab6bbf"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/film/data_passes.h",
+      "bytes": 8393,
+      "sha256": "fc534ab62f81b837d1ce4eb23d5840742e387137372b4d0d86262268f3966c03"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/film/light_passes.h",
+      "bytes": 28192,
+      "sha256": "28cb2a4a4b365f4b62c64d6d21371fa31a7ee23e6b32a10f3276ab59923f2b18"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/geom/object.h",
+      "bytes": 15886,
+      "sha256": "99604599cc09d42f77f6eeab3b0b61826ae12fe76559db6843aa886da3962f85"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/device/gpu/image.h",
+      "bytes": 5969,
+      "sha256": "afb73ba3d5d40d16f643c4772479296bee05e05f36dd6f080add4d07fc0fbb0b"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/scene/background.cpp",
+      "bytes": 4013,
+      "sha256": "021d7f12652879bc48d155e956dececfd3c973943a3ba04a1512978aa619e039"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/scene/integrator.cpp",
+      "bytes": 21558,
+      "sha256": "09756d0e5207d8585fde64da11185cc6db236f2532199e35d6518049c0b6b6fe"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/scene/svm.cpp",
+      "bytes": 43978,
+      "sha256": "b0c7db6de10d5e77a26159015f16b633783032749e687ed9a7d3cd3658492e9e"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/scene/light.cpp",
+      "bytes": 58426,
+      "sha256": "6075fa6cb941548af4ce9dffc8ab34233860709095bc71517ad4bc7742747fdb"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/scene/shader_graph.cpp",
+      "bytes": 37658,
+      "sha256": "74cd5f24fac8970e6fc172b4e5b29d339a66dadb5acbd24ce585f95d841b2271"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/scene/shader_nodes.cpp",
+      "bytes": 272591,
+      "sha256": "43f3efdca933083fa8ace71499da3886721cbc0591ae430959e2b84f0e983184"
+    }
+  ],
+  "original_settings_source": {
+    "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/original-scene-settings.log",
+    "bytes": 12665,
+    "sha256": "d41fdd5240aad4bfeb608420a754d427fbc12e70f1ff4947ea33e368752cbff1"
+  },
+  "scripts": [
+    {
+      "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/audit_sources.py",
+      "bytes": 10878,
+      "sha256": "ebcfdc8b7104cc2798db3b130c6d2ec8a11a6dfe7caccbef033ea0771696f2d5"
+    },
+    {
+      "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/read_blend_settings.py",
+      "bytes": 1912,
+      "sha256": "470df1bd5225dcf9415fa2c7fc51b70d69e4ac119ebc37f94dd7365ff7bf3b66"
+    },
+    {
+      "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/create_boundary_scenes.py",
+      "bytes": 3206,
+      "sha256": "3e0335994c0f7d7703af92ce248bea3611ae6d56b7f08553209eaf2886db0f9b"
+    },
+    {
+      "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/create_surface_scenes.py",
+      "bytes": 3340,
+      "sha256": "2704e755813d3d1b55b740652df8ad3bfb2dd8e1011f751e3d82e26aa7877e22"
+    },
+    {
+      "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/run_boundary_probe.py",
+      "bytes": 5133,
+      "sha256": "3374b7f1e4e76a52fa1fda4d913aa6bdaf12cc171909775f1888e139ac1d3bc6"
+    },
+    {
+      "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/archive_audit.py",
+      "bytes": 7822,
+      "sha256": "ce3a2f7b58a659d35db13b5ad0c8da7f4e2caadf3326a64c604a067c5ded5d46"
+    }
+  ],
+  "implementation_files_at_archive": [
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_render_blender_scene",
+      "bytes": 515304,
+      "sha256": "d22d47d63758ca20dacba56b12222613b990f8e851cedf9163fcf887155e61d0"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/build/libpsycles_core.so",
+      "bytes": 2818264,
+      "sha256": "a1b98a746ac670df24df08ed39fd8306abc287d57e85fa34ce5a839ed605a2ec"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/build/libpsycles_luisa_runtime.so",
+      "bytes": 17918360,
+      "sha256": "f66114f09b47b9ab92babdf85c7389228ec6b55f4e4d17e95c867a95a243fea6"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-coro.so",
+      "bytes": 2040704,
+      "sha256": "50493a131f2d515432e921762f291e5188e2ff02c6202fb5be6a55359e4ac225"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-xir.so",
+      "bytes": 8240312,
+      "sha256": "fbda70f93b78cb82e6af3bdd34abb8ad8b805687347e9c295dc6964f9e05e0c4"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-backend-hip.so",
+      "bytes": 8271768,
+      "sha256": "31c7665da651e21b088d4645f2634ad5d81212f2c035afbd1a41ffe273ede5df"
+    }
+  ],
+  "remaining_claim_limits": [
+    "99 case bodies present is not 99 semantically proven handlers",
+    "Serialized node counts and static machine instruction sites are not executed work",
+    "No new four-scene timing or speedup is measured by this audit",
+    "Scene admission is explicitly tested only for the six integration witnesses",
+    "No proof of global RNG or every residual indirect path is established",
+    "Unsupported opcode, disabled scene feature, and missing production consumer are distinct"
+  ]
+}
