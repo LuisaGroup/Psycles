@@ -1,6 +1,6 @@
 # SDK317 fresh HIP scene baseline
 
-This capture uses the current Psycles root (`f878612d`) with LuisaCompute
+This capture uses the current Psycles root (`c2746b22`) with LuisaCompute
 `7df2fcc3a17f0c61ef36011e39b07e96766579b9` from `origin/next`, Blender 5.2.1
 build `9e2066aef7ef`, and current exporter
 `46254cd23f1b73bf7928be11c19f5726732e412a50975b088cae64bc6bbfe3b3`.
@@ -74,6 +74,14 @@ Cycles HIP references. The production continuation block is therefore 128
 threads. A separate noinline SVM evaluator experiment retained the same
 92-field/416-byte frame but regressed reduced Barbershop renders to
 1.92--1.95 s, so the evaluator remains outlined normally.
+
+The surface geometry bridge now reads packed triangle normals only under the
+native smooth-triangle predicate. Flat paths retain their zero-initialized
+normal lanes, preventing the shadow-terminator consumer from introducing an
+eager normal-buffer read. On the same fresh Barbershop bundle at 640x480/64,
+the post-change render was 1.78016 s with all 15 channel finite checks passing.
+That timing is within the existing continuation-128 spread, so this change is
+recorded as a semantic guard rather than a material timing gain.
 
 The ten native-size pairs currently recorded for these four
 current-exporter scenes show Psycles ahead on Monk and Monster, close on
