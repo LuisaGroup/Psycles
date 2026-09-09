@@ -33,8 +33,13 @@ frames have 91 fields / 456 B. The film-aligned staged control also completes:
 Metal 424.505 s, Metal4 133.884 s, Cycles Metal 50.8303 s. Metal4 staged Combined
 relative RMSE is 0.007759739, without graph's coherent darkening. All six
 first-round EXRs have 46 finite channels; this does not waive graph's numerical
-failure. Second repeats are stopped for diagnosis. See the full report for
-retained failed evidence, batching caveats and source identities.
+failure. The exact Metal4 graph repeat fails again (294.441 s, luminance ratio
+0.783365179); it is also excluded from performance scores. All eight EXRs
+across these three matrices have 46 finite channels. A reduced same-sample
+replay fails when sorting and tail are enabled together, while either option
+alone passes the reduced check. The generic cause remains open, and these
+option changes are not accepted as fixes. See the full report for retained
+failed evidence, batching caveats and source identities.
 
 ## Whole-surface structural audit and first repair
 
