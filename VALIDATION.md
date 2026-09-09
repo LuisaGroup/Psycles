@@ -24,6 +24,14 @@ Graph uses 90 fields / 456 B with inline shadow state. The fresh repeated
 implementation `9e3ba165`, integrated before restarting measurement. There
 are no local Psycles implementation changes.
 
+The first film-aligned graph pair completes, but **Metal4 output is invalid**:
+Combined relative RMSE is 0.2304 and mean luminance is 0.7757 of Cycles, versus
+0.007605 Combined relative RMSE on Metal. Observed render times are 264.027 s
+(Metal) and 291.785 s (invalid Metal4 output), with Cycles 50.7783 s. These are
+single observations, not a valid Metal4 performance score. Both current graph
+frames have 91 fields / 456 B. Staged control continues; second repeats are
+paused for diagnosis. See the full report for retained failed evidence.
+
 ## Revision-pinned paired full-scene baseline
 
 The [equal-pass HIP campaign](docs/validation/2026-09-08/matched-pass-hip/README.md)

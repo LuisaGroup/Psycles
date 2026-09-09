@@ -45,6 +45,35 @@ implementation, not the older one.
 
 ## First completed 256-sample staged matrix
 
+## Film-aligned graph: numerical failure discovered
+
+At Psycles `dd1f35a7` / Luisa `03a0f5158`, the first 1920x1080 / 256-sample
+graph matrix completes the runner and all 30 pass comparisons. The result
+exposes a **Metal4 graph correctness failure**, so completed execution is not
+promoted into a valid performance score.
+
+| Graph backend, one observation | Render-only s | Session init s | Combined relative RMSE | Luminance / Cycles |
+| --- | ---: | ---: | ---: | ---: |
+| Metal | 264.027 | 77.7822 | 0.007605348 | see pass report |
+| Metal4, invalid output | 291.785 | 235.306 | 0.230399849 | 0.775731912 |
+
+The shared fresh Cycles Metal main-loop time is 50.7783 s. Both graph main
+frames now have seven stages / **91 fields / 456 B**; the upstream film change
+adds a field within the same byte footprint. Metal4 also loses about 23% of
+Diffuse Color and Glossy Color signal; its Combined original-resolution
+triptych shows coherent darkening. Its demodulated direct-light mean ratios
+remain near one, but that does not repair the raw outputs. No pass reports
+invalid RGB pixels. A separate all-46-channel scan remains a final audit gate.
+
+The renderer checks every downloaded integer sample count against 256 before
+writing these outputs, so this is not simply an unchecked normalization
+denominator. Atomic contribution loss and graph task/state progression remain
+diagnostic hypotheses, not established causes. The second-repeat driver was
+paused while the already-started staged comparison finishes on the same frozen
+binaries. The failed graph result and its time will remain in the record.
+
+### Historical pre-film staged observation
+
 Psycles `00fd5cc7` / Luisa `8911828eb` completes the first full
 1920x1080 / 256-sample matrix. These are **single observations**, not repeated
 performance conclusions. Both Psycles runs use the same fresh Cycles Metal
@@ -93,10 +122,11 @@ additional storage, not part of the 220-byte main frame.
 
 ## Formal campaign configuration
 
-Status: the first staged matrix is complete. All identified compile gates are
-repaired and published; the fresh `film-aligned-published` cohort will measure
-each of the four backend/scheduler combinations twice. Historical single
-observations are not pooled with measurements from the new implementation.
+Status: all identified compile gates are repaired and published. The fresh
+`film-aligned-published` graph matrix exposes the Metal4 numerical failure above;
+staged is the current diagnostic control, and the planned second repeats are
+paused pending correctness diagnosis. Historical single observations are not
+pooled with measurements from the new implementation.
 The briefly started `cfg-fixed-published` campaign was interrupted during its
 first Cycles reference when the concurrent upstream update was discovered;
 it has no completed pair and is not a performance observation.
