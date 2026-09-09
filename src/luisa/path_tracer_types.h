@@ -604,7 +604,6 @@ struct RenderKernelParameters {
     luisa::uint max_volume_bounces{};
     luisa::uint transparent_min_bounces{};
     luisa::uint transparent_max_bounces{};
-    luisa::uint max_path_steps{};
     luisa::uint transparent_background{};
     luisa::uint path_trace_enabled{};
     luisa::uint path_trace_pixel_x{};
@@ -989,7 +988,6 @@ LUISA_STRUCT(
     max_volume_bounces,
     transparent_min_bounces,
     transparent_max_bounces,
-    max_path_steps,
     transparent_background,
     path_trace_enabled,
     path_trace_pixel_x,

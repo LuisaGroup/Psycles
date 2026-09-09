@@ -1,0 +1,174 @@
+{
+  "schema": "psycles.cycles-path-lifetime-fixture.v1",
+  "scope": "exact exported scenes/geometry; complete original HIP Combined RGB, no local oracle evaluator",
+  "tolerance": {
+    "absolute": 2e-06,
+    "relative": 2e-06
+  },
+  "records": [
+    {
+      "name": "boundary-1",
+      "scene": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-1-export/scene.json",
+        "sha256": "00fde7f1d1ea2acb1cdcf30c27e75ee4d05de99582eed9b095f7a054edc1f393"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-1-export/geometry.bin",
+        "sha256": "59a742f2207f3a79691fb700e2e59cdb10cf61c996aa749639800f1dc93d0756"
+      },
+      "geometry_bytes": 2320,
+      "original_image": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-1.exr",
+        "sha256": "633d5080510a2646cd7dc00d85c06e13fa87c47aca629bddf988e930c4c9af67"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-1.json",
+        "sha256": "74dc8c208053af8ef0a10669f9bfeb4ce1f9258a9c85ab83c06734de790faf7f"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-1.blend",
+        "sha256": "9c801f02f96a4ecb3646d973dcbc541f0072bf0019aaa707c110690b28837692"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "cycles_enabled_devices": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "boundary-2",
+      "scene": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-export/scene.json",
+        "sha256": "4874285809556b757b03b217db47221dbf4a88d91f86fb76da6c6c4fd4e610ab"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-export/geometry.bin",
+        "sha256": "a9ab1abefd5cff9e7fdafb98a0f233b0ab7d7d73f808fe6e027529d75e2108f1"
+      },
+      "geometry_bytes": 4624,
+      "original_image": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-2.exr",
+        "sha256": "206ab35e9902d88e1f3346101ccee221e1abdae320d85d994bc772ec05985b16"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-2.json",
+        "sha256": "27b029b6a4ac5366ee57deab82a2995862fe7ecaba34cfd7a82c241f45265ed7"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2.blend",
+        "sha256": "ad1c9559ea820bc24a0a1b19f9e3431f2ee914ce5c60c801d02578ca9d5638d7"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "cycles_enabled_devices": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "boundary-2-budget-control",
+      "scene": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-budget-control-export/scene.json",
+        "sha256": "bbf99c326dab53853169079d599ec138d27f7e5d327864241771c334d9bd1767"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-budget-control-export/geometry.bin",
+        "sha256": "a9ab1abefd5cff9e7fdafb98a0f233b0ab7d7d73f808fe6e027529d75e2108f1"
+      },
+      "geometry_bytes": 4624,
+      "original_image": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-3.exr",
+        "sha256": "b73ad38113eeb998fae48b5bb830241e1cc896ad4848b96c794a6eba4f198e67"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/original-3.json",
+        "sha256": "16ad493273a0cfc0dcafca3d3c18d0e5e54fad70d8b9761678d1372854bc91f1"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/boundary-gate-expanded/boundary-2-budget-control.blend",
+        "sha256": "76ad7a1321cc8adaab807845071763e7bf98e64cd57db4d715f64e1c28b18d02"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "cycles_enabled_devices": [
+          {
+            "id": "HIP_AMD Radeon RX 9070 XT_0000:03:00",
+            "name": "AMD Radeon RX 9070 XT",
+            "type": "HIP"
+          }
+        ],
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    }
+  ],
+  "fixture_sha256": {
+    "boundary-1-scene.json": "00fde7f1d1ea2acb1cdcf30c27e75ee4d05de99582eed9b095f7a054edc1f393",
+    "boundary-1-geometry.txt": "17e947cd242281852eb3ed64c2683c24d8164dabe3d4a27c51a17f29642d2506",
+    "boundary-1-film.txt": "be44ca107e7147fccec0f3e16e9b296a5b9771d9c88999e879c1f5e5adb19fd3",
+    "boundary-2-scene.json": "4874285809556b757b03b217db47221dbf4a88d91f86fb76da6c6c4fd4e610ab",
+    "boundary-2-geometry.txt": "4e8b81bfb2867a48ab2216f0519fa7c1bd4de9166a942d1af20e767b5e1d3b6b",
+    "boundary-2-film.txt": "d43819d33cd1565adbe54f650fe6c24c36927aa68c856f5576a4be6c2f875f2e",
+    "boundary-2-budget-control-scene.json": "bbf99c326dab53853169079d599ec138d27f7e5d327864241771c334d9bd1767",
+    "boundary-2-budget-control-geometry.txt": "4e8b81bfb2867a48ab2216f0519fa7c1bd4de9166a942d1af20e767b5e1d3b6b",
+    "boundary-2-budget-control-film.txt": "d43819d33cd1565adbe54f650fe6c24c36927aa68c856f5576a4be6c2f875f2e"
+  }
+}
