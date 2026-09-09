@@ -1,6 +1,6 @@
 # Psycles development status
 
-Updated 2026-09-08. This page contains current development rules and remaining gates. “Implemented”
+Updated 2026-09-09. This page contains current development rules and remaining gates. “Implemented”
 does not mean “Cycles compatible”: compatibility requires an exact-revision
 Cycles render, linear-pass metrics, and visual comparison. The current
 commands, machine, reports, and triptychs are in
@@ -135,8 +135,12 @@ Vulkan validation must set all three guards:
 LUISA_VULKAN_USE_XIR=1 \
 LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
 LUISA_VULKAN_DISABLE_DXC=1 \
-ctest --test-dir build --output-on-failure -j32 -R '<focused-native-Vulkan-tests>'
+ctest --test-dir build --output-on-failure --parallel 1 -R '<focused-native-Vulkan-tests>'
 ```
+
+Keep device tests sequential on the single GPU. All-thread builds are still
+mandatory; concurrent JIT/device-test processes are not a build-speed setting
+and can contend or stall. Host-only tests may use all 32 threads.
 
 Report configuration, compilation, focused tests, complete suites, and real
 scene canaries separately. Do not call a build successful from configuration
