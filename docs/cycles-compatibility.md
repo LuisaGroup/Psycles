@@ -280,65 +280,65 @@ support missing major inline boundaries or float expansion of byte textures
 as the main cause. Per-ray inverse-transform reconstruction remains a
 confirmed phase-ownership difference whose cost is not yet quantified.
 
-Psycles `4f487ba5` restores original emission/exit eligibility around forward
-surface MIS and film writes, retaining runtime flags even without NEE or
-trace. Four AST configurations change 0/4 to 4/4; 320 operation checks and
-four full SVM camera configurations compare against original GPU film.
-Its [A/B/B/A control](validation/2026-09-09/surface-emission/README.md) improves
-median surface/render time by 4.70% / 2.69%, without changing inline policy,
-47 calls, 256 VGPRs, 2,464 private bytes or the 416-byte Barbershop frame.
-The remaining six-RGB split-film intermediate and shadow-path classification
-are separate structural leads; this repair does not resolve DiffInd.
+Psycles `9e3ba165` restores native captured shadow flags/weights and
+direct/indirect film destinations, following the original emission/exit
+eligibility guard in `4f487ba5`. The six-RGB splitter and writes to both
+direct/indirect outputs are removed. Original-GPU film/state comparisons
+improve 351/540 -> 540/540 and 72/180 -> 180/180; five production AST address
+checks change 0/5 -> 5/5. The shared BSDF ratio now uses the native zero-only
+guard, without a normal-value epsilon cutoff.
 
-Current suites pass HIP 186/186 and fallback 188/188; the prior complete `unit*`
-selection in the unchanged Luisa HIP build passes 133/133 (132 have the exact `unit`
-label). This is a different configuration from the earlier 155-test gate.
-The parallel fallback run exposed a separate production-queue lost-wakeup
-race, repaired generically in child `85e5300f1`, with two minimal failures
-and 100 green repetitions each. The current strict native Vulkan emission/
-film/volume-film/NEE canary passes 4/4, with 49 native compilations and no
-DXC/DXIL load. An initial test-only second live Device violated the backend's
-Volk dispatch restriction; sharing the existing Device fixes the test,
-with no backend or arithmetic changes. Focused HIP/fallback also rerun 1/1.
-The preceding native lighting canary remains 5/6. After
-matching the device's FTZ environment, the new original-light test retains
-36 numeric lanes in rectangle-area samples; every lane is reproduced in the
-old implementation with the same printed values. Parameters, validity and
-interval predicates agree. This is a retained failure, not a waived pass or
-a justification for slower HIP math. The earlier lamp/bump/BSDF/closure/
-Voronoi five-test gate remains revision-pinned in its dated report.
-Shared-switch runtime checks add 211 passing assertions
-on each of HIP, fallback and strict native Vulkan, including both coroutine
-schedulers. Current host results are 175/175, including observed resource
-identities, native emission and scene-owned light AST regressions and the unwaived source-size
-gate. Existing oversized tests are separated into cohesive modules without
-removing assertions; ConvertNode now has its own ordinary translation unit.
+Its [full-scene A/B/B/A](validation/2026-09-09/film-routing/README.md) improves
+surface/render medians by 1.88% / 0.98%, with only two observations per
+treatment. Main instruction sites change 158,005 -> 157,717; 47 calls,
+256 VGPRs, 2,464 private bytes and the 416-byte Barbershop frame remain.
+Inlining, launch policy, RNG, SVM word structure and fast math do not change.
+The corrected mixed volume-scattering routes cannot explain Barbershop's
+DiffInd: that scene has emission-only fog and zero volume bounces.
 
-Additional native Vulkan remainder coverage is not fully green: the new
-default all-type test retains 1,076 failures in existing f16/f64 `OpFRem`
-lowering. Its isolated float32 run passes 1,744 assertions; HIP and fallback
-pass all 5,232. This gap is separate from the passing five-test Vulkan canary
-and is not introduced by the HIP-only change.
+Current suites pass host 176/176, HIP 187/187 and fallback 189/189.
+The complete runs used Luisa `da8fff856`. Upstream Metal/CI changes were
+integrated to `8911828eb` before publication; the all-target Linux build
+leaves all six measured HIP binaries byte-identical. Host 176/176 and
+focused HIP/fallback/native Vulkan 6/6 each are rerun. The prior child
+`unit*` selection is 133/133 in the HIP configuration, not a new all-platform
+run. The strict native Vulkan film/emission/shadow/NEE gate has 62 native
+compilations before integration and 47 in the rerun, with no DXC/DXIL load.
+All builds use 32 threads; backend tests run sequentially.
 
-At Psycles `4f487ba5` / Luisa `da8fff856`, six new full-resolution 256-spp
-follow-ups complete against retained Cycles references, with exact prior
-geometry/images and new source socket metadata. Current render times are
-12.8818 / 14.4971 / 17.4903 s for Monk/Monster/Classroom (one each), and
-38.8536 s for Barbershop (three-run median; 38.8536 / 38.8298 / 39.0386 s).
-Current frames are 220 / 280 / 260 / 416 B. These temporal follow-up
-times are not an isolated causal change estimate; Barbershop remains 53.1%
-slower than the retained Cycles median.
-Initialization is reported separately: 28.3660 / 37.2553 / 26.8763 seconds for
-Monk/Monster/Classroom, versus 17.3832 / 17.6237 / 17.4312 for Barbershop.
-Main shader caching is disabled, but downstream cache policy is unchanged;
-the profile has already warmed Barbershop. These are
-JIT plus setup/baking, not compiler-only or matched cold/warm comparisons,
-and are excluded from render time. These are not new paired Cycles timings.
-The [latest report](validation/2026-09-09/surface-emission/README.md)
-retains the exact six-run metrics and source hashes.
+The earlier native lighting gate remains 5/6 with 36 rectangle-area sample
+numerical lanes also reproduced in the pre-repair implementation. The
+additional f16/f64 `OpFRem` test retains 1,076 failures; isolated float32
+passes 1,744 assertions and HIP/fallback pass all 5,232. These gaps are not
+waived by the focused green canary or hidden with slower HIP arithmetic.
+The fallback lost-wakeup repair, source-size cleanup and shared-switch
+regressions remain revision-pinned in their dated reports.
 
-All 46 Psycles channels are finite in every run. The revision-pinned paired
-baseline's first-pair relative RMSE is:
+Six full-resolution 256-spp renders complete against retained Cycles
+references, with exact prior geometry/images and refreshed socket metadata.
+Monk/Monster/Classroom one-run render times are 12.8729 / 13.9104 / 17.4542 s.
+Barbershop's three are 40.4211 / 38.4822 / 38.4574 s: median 38.4822 s,
+51.6% above retained native. Frames are 220 / 280 / 260 / 416 B. These are
+temporal follow-ups, not fresh timing pairs or isolated causal estimates.
+Session init is 12.0332 / 15.3618 / 11.4340 s for the first three scenes
+and 21.5272 / 17.7848 / 18.1808 s for Barbershop. Main shader caching is
+disabled, but warmed downstream/OS caches retain ordinary policy; init
+includes setup/baking and is neither compiler-only nor controlled cold JIT.
+
+The complete-scene all-finite gate is **5/6, not green**. Classroom repeats
+18 invalid values at eight unique pixels: seven each in DiffDir/GlossDir,
+two each in DiffInd/GlossInd. Combined is finite. An original-GPU/production
+DSL diagnostic reproduces the same subnormal-BSDF NaN/Inf weight classes
+under native fastmath, with matching zero/normal controls. This is evidence
+of a shared arithmetic boundary, not a per-path proof or a finite-pixel
+waiver. No epsilon cutoff or slow division path is restored. The runner
+records all comparisons on explicit finite domains and exits 2; the first
+interrupted campaign is also retained without selecting faster observations.
+See the [latest report](validation/2026-09-09/film-routing/README.md) for
+all 15 pass metrics, source/implementation hashes and limitations.
+
+At the older revision-pinned paired baseline, all 46 actual channels were
+finite; its first-pair relative RMSE was:
 
 | Scene | Combined | DiffCol | DiffInd |
 | --- | ---: | ---: | ---: |
