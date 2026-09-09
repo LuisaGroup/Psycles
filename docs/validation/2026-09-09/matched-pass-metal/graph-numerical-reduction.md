@@ -3,8 +3,9 @@
 The first film-aligned 1920x1080 / 256-sample graph run has Combined luminance
 0.775731912 of Cycles and relative RMSE 0.230399849. It is retained as a failed
 correctness result, not a performance score. No corrective implementation has
-been made for this numerical failure yet. All checks below use the published
-Luisa `03a0f5158` and unchanged upstream Psycles film implementation `9e3ba165`.
+been made for this numerical failure yet. Unless explicitly marked diagnostic,
+checks below use published Luisa `03a0f5158` and unchanged upstream Psycles film
+implementation `9e3ba165`.
 
 ## Independent negative controls
 
@@ -80,8 +81,53 @@ with relative tolerance 2e-5 plus absolute tolerance 1e-6, while integer counts
 remain exact. Direct, graph-no-tail and graph-auto-tail all pass every pixel.
 A separate two-stream timeline/readback probe passes 64 rounds. These probes
 do not reproduce the original fault and do not justify a synchronization fix.
-The cause remains open; a two-batch, eight-sample-per-batch original-scene
-control is being used to reduce execution size.
+The two-batch, eight-sample-per-batch original-scene control also reproduces
+the loss at 1080p: the captured pixel's Normal Y delta / 8 changes from
+-0.998951852 in the first batch to -0.749210417 in the second. The total sampler
+setting remains 256. This is a size reduction, not a timing measurement.
+
+## Same-sample replay: tail and sorting interaction
+
+A build-local copy of the upstream CLI, `render_replay_probe.cpp`, only changes
+host orchestration: it can replay exactly the same sample range and writes
+intermediate full-frame passes. It links the unchanged production renderer
+libraries; it does not implement a second renderer, sampler, SVM or scheduler.
+At 64x64, two consecutive renders of [0,64), total sampler setting 256, expose
+the same failure without a sample-index change. Both use the same session.
+
+For normalized accumulated outputs C0 and C1, the second batch's normalized
+contribution is D1 = 2*C1 - C0. Identical samples should reproduce C0 within
+floating accumulation tolerance. The following controls differ only in the
+named upstream scheduler option:
+
+| Surface sorting | Tail | DiffCol mean D1 / C0 | DiffCol relative RMSE D1 vs C0 | Normal relative RMSE |
+| --- | --- | ---: | ---: | ---: |
+| on | auto | 0.8591860 | 0.14249086 | 0.14682795 |
+| on | off | 1.0000000 | 3.4552e-7 | 5.7944e-7 |
+| off | auto | 1.0000000 | 3.4708e-7 | 5.8326e-7 |
+
+Thus this reduced workload fails with sorting and tail together; neither
+disabling an option nor the smaller workload is accepted as a repair or as
+a substitute for the original 1080p/256 gate. First-batch auto/no-tail Combined
+relative RMSE is only 8.75e-8. A generic Luisa probe that repeatedly exports a
+changing hint inside a suspended loop still passes, including subsequent
+reuse. It is another negative control, not a permanent failing regression.
+
+A temporary, explicitly diagnostic SDK build downloads the complete frame
+pool immediately before and after tail. Both batches leave all 14942208
+32-bit words unchanged, while DiffCol second/first remains 0.85907555. This
+does not support an unexpected tail write to the pool; it does not audit all
+scene inputs or establish that all frame reads are semantically correct.
+The check includes extra synchronization and is never used for performance.
+A further entry-plan diagnostic finds matching live/store sets (41/41 and
+48/48 fields) on the two entry edges, with no missing field. Temporary pool
+initialization is a diagnostic only, not a proposed fix.
+With full pool initialization before each invocation, the same-sample replay
+passes (Diffuse Color relative RMSE 3.5142e-7, Normal 5.7845e-7). This is evidence
+of a dependency on prior pool contents, not permission to add initialization
+to the production scheduler. An all-but-one-field initialization sweep is
+used to identify the stale field. Its per-case outputs are diagnostic only;
+no corrected implementation or new valid timing is claimed.
 
 ## Evidence
 
@@ -98,6 +144,9 @@ The ignored build-local directory is
 - `graph-numerical-reduction/full-progressive-64/pixel-chunks.json`: the
   unmodified upstream CLI's four full-frame batch checkpoints.
 - `metal-event-probe-metal4.log`: passing independent timeline negative control.
+- `graph-numerical-reduction/replay-64px-same-first*`: same-sample host replay,
+  full-frame checkpoints, and explicitly named diagnostic variations.
+- `atomic-hint-loop-probe-metal4.log`: passing repeated-hint negative control.
 
 All original failed data is retained. Small/isolated controls never replace the
 full failing gate. The final valid Metal4 staged Combined triptych has also
