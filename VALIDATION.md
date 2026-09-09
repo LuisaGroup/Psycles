@@ -37,9 +37,15 @@ failure. The exact Metal4 graph repeat fails again (294.441 s, luminance ratio
 0.783365179); it is also excluded from performance scores. All eight EXRs
 across these three matrices have 46 finite channels. A reduced same-sample
 replay fails when sorting and tail are enabled together, while either option
-alone passes the reduced check. The generic cause remains open, and these
-option changes are not accepted as fixes. See the full report for retained
-failed evidence, batching caveats and source identities.
+alone passes the reduced check. The reduction now identifies generic Luisa
+split code read-modifying an undefined packed-Boolean word at entry. The
+correction is published as Luisa `6e58928d8`; permanent regressions pass host XIR suites and Metal/Metal4
+scheduler suites; the original reduced replay passes without disabling
+sorting/tail or clearing the pool. The full 1080p/256 Cycles gate now passes:
+Combined relative RMSE 0.007764527, luminance ratio 0.999891523, all 46 channels
+finite; 328.193 s versus Cycles Metal 50.778 s (one correctness-gate observation).
+See the full report for retained failed evidence, batching caveats and source
+identities.
 
 ## Whole-surface structural audit and first repair
 
