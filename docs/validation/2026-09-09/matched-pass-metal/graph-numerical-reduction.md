@@ -43,10 +43,45 @@ compatibility gates. Their elapsed times are not performance results.
 The production output path verifies every pixel's integer count against the
 number of rendered samples before writing these images.
 
-The evidence still admits an original-workload state/reuse issue or a
-non-deterministic compilation/execution failure. The cause is not established.
-An exact 256-sample repeat with a fresh Cycles Metal reference is in progress,
-without profiler, source changes or overlapping device work/builds.
+## Full repeat and progressive isolation
+
+The exact 256-sample repeat fails again: Combined luminance / Cycles is
+0.783365179 and relative RMSE is 0.226245049. Its render-only time of 294.441 s
+(paired Cycles 50.6957 s) is an invalid-output observation, not a performance
+score. All eight actual EXRs across the three completed matrices have exactly
+46 finite channels. The repeat used no profiler, source changes or overlapping
+device work/builds. The implementation is unchanged; later upstream and local
+commits only change documentation.
+
+The upstream CLI's full-frame progressive pixel probe then renders all
+1920x1080x256 samples, downloading passes after each 64-sample batch. It
+captures film pixel (960, 540), and records differences of accumulated sums,
+not four independent renders. Its normalized per-chunk values are:
+
+| Absolute range | Normal Y delta / 64 | DiffCol R delta / 64 |
+| --- | ---: | ---: |
+| [0, 64) | -0.998743236 | 0.362441063 |
+| [64, 128) | -0.780146658 | 0.283830285 |
+| [128, 192) | -0.764528930 | 0.277497441 |
+| [192, 256) | -0.639871180 | 0.233006090 |
+
+The first chunk matches the independent [0,64) output at this pixel exactly
+for these fields. The independent [64,128) process gives Normal Y
+-0.998647392 and DiffCol R 0.362267792 instead. PFM orientation is explicitly
+accounted for: the OIIO PFM reader exposes this pixel at row 540, while the
+renderer's raster sink uses row 539. Every downloaded integer sample count
+still passes the production check. Thus additional per-chunk downloads do not
+remove the failure, and the observed loss starts after the first batch at
+this pixel. This is not evidence that a particular atomic or frame operation
+is responsible.
+
+A further full-domain negative control uses non-dyadic floating contributions
+with relative tolerance 2e-5 plus absolute tolerance 1e-6, while integer counts
+remain exact. Direct, graph-no-tail and graph-auto-tail all pass every pixel.
+A separate two-stream timeline/readback probe passes 64 rounds. These probes
+do not reproduce the original fault and do not justify a synchronization fix.
+The cause remains open; a two-batch, eight-sample-per-batch original-scene
+control is being used to reduce execution size.
 
 ## Evidence
 
@@ -58,6 +93,11 @@ The ignored build-local directory is
   exact original-module control commands and outputs.
 - `film-aligned-published/graph/run-1`: the original failed full run.
 - `film-aligned-published/graph/run-2`: exact full-size repeated pair.
+- `film-aligned-repeated-failure-audit.json`: hash-checked, all-channel audit
+  of both failed graph observations and completed controls.
+- `graph-numerical-reduction/full-progressive-64/pixel-chunks.json`: the
+  unmodified upstream CLI's four full-frame batch checkpoints.
+- `metal-event-probe-metal4.log`: passing independent timeline negative control.
 
 All original failed data is retained. Small/isolated controls never replace the
 full failing gate. The final valid Metal4 staged Combined triptych has also

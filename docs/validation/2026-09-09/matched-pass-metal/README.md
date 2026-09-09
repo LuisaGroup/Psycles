@@ -55,6 +55,13 @@ promoted into a valid performance score.
 | Metal | 264.027 | 77.7822 | 0.007605348 | see pass report |
 | Metal4, invalid output | 291.785 | 235.306 | 0.230399849 | 0.775731912 |
 
+An exact Metal4 graph repeat also fails: 294.441 s render-only, 107.785 s
+session initialization, Combined relative RMSE 0.226245049 and luminance ratio
+0.783365179, with a fresh Cycles reference at 50.6957 s. Neither Metal4 graph
+observation is a valid performance score. All eight actual EXRs across the
+three completed matrices have 46 finite channels; finiteness does not waive
+the repeated energy loss.
+
 The shared fresh Cycles Metal main-loop time is 50.7783 s. Both graph main
 frames now have seven stages / **91 fields / 456 B**; the upstream film change
 adds a field within the same byte footprint. Metal4 also loses about 23% of
@@ -97,8 +104,11 @@ backends (mean ratio 0.9999953); that diagnostic comparison is not a replacement
 for the Cycles oracle or the failing original 256-sample gate.
 The [numerical reduction log](graph-numerical-reduction.md) records subsequent
 full-domain negative controls and isolated original-module sample ranges.
-An exact Metal4 graph repeat is now running to test reproducibility; no
-numerical correction is claimed from the passing controls.
+The exact Metal4 graph repeat confirms reproducibility. The upstream CLI's
+full-frame progressive probe further exposes reduced per-batch Normal and
+Diffuse Color contributions after the first 64-sample batch at the captured
+pixel, despite passing all integer sample-count checks. No numerical
+correction is claimed from the passing independent controls.
 
 ### Historical pre-film staged observation
 
@@ -152,8 +162,9 @@ additional storage, not part of the 220-byte main frame.
 
 Status: all identified compile gates are repaired and published. The fresh
 `film-aligned-published` graph matrix exposes the Metal4 numerical failure above;
-staged is the current diagnostic control, and the planned second repeats are
-paused pending correctness diagnosis. Historical single observations are not
+staged is the current diagnostic control. The failed Metal4 graph has been
+repeated; second repeats of the valid configurations are still pending.
+Historical single observations are not
 pooled with measurements from the new implementation.
 The briefly started `cfg-fixed-published` campaign was interrupted during its
 first Cycles reference when the concurrent upstream update was discovered;
