@@ -12,6 +12,11 @@ captured pre-repair baseline, not the current S1/S2 implementation. Source/word
 identities remain unchanged historical evidence; runtime-only repairs do not
 establish new compiler coverage or an isolated rendering speedup.
 
+The [post-continuation ownership check](../surface-ownership/README.md) narrows
+W1: the three source-level same-hit KernelShader flag reads already share one
+load in final Barbershop IR. Their apparent repetition is not extra GPU traffic.
+Other eager geometry/lifetime and work-placement obligations remain open.
+
 The native interpreter is **not yet an end-to-end Cycles-identical surface
 implementation**. This audit finds three production rendering failures beyond
 node tests: premature termination at volume-only boundaries, missing Ray Portal
