@@ -186,6 +186,13 @@ CyclesNodeMappingRegistry make_core_cycles_node_mappings() {
         .outputs = {{"BSDF", "Closure"}},
         .properties = {{"component", "Component"}}});
     add({
+        .cycles_type = "holdout",
+        .cycles_variant = {},
+        .psycles_type = node_type::holdout,
+        .inputs = {},
+        .outputs = {{"Holdout", "Closure"}},
+        .properties = {}});
+    add({
         .cycles_type = "ray_portal_bsdf",
         .cycles_variant = {},
         .psycles_type = node_type::ray_portal_bsdf,

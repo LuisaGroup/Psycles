@@ -111,6 +111,7 @@ inline constexpr auto hair_bsdf = "psycles.closure.hair";
 inline constexpr auto glass_bsdf = "psycles.closure.glass";
 inline constexpr auto refraction_bsdf = "psycles.closure.refraction";
 inline constexpr auto emission = "psycles.closure.emission";
+inline constexpr auto holdout = "psycles.closure.holdout";
 inline constexpr auto background = "psycles.closure.background";
 inline constexpr auto transparent_bsdf = "psycles.closure.transparent";
 inline constexpr auto null_closure = "psycles.closure.null";
@@ -122,6 +123,7 @@ inline constexpr auto volume_scatter = "psycles.volume.scatter";
 inline constexpr auto volume_coefficients =
     "psycles.volume.coefficients";
 inline constexpr auto volume_emission = "psycles.volume.emission";
+inline constexpr auto volume_holdout = "psycles.volume.holdout";
 inline constexpr auto principled_volume =
     "psycles.volume.principled";
 inline constexpr auto null_volume = "psycles.volume.null";

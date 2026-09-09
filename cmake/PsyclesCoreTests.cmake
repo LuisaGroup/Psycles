@@ -213,6 +213,21 @@ if(PSYCLES_BUILD_TESTS)
         NAME psycles.cycles_svm_default_input_provenance
         COMMAND psycles_cycles_svm_default_input_provenance_tests)
 
+    if(TARGET Psycles::luisa_runtime)
+        add_executable(psycles_cycles_svm_holdout_tests tests/test_cycles_svm_holdout.cpp)
+        target_link_libraries(psycles_cycles_svm_holdout_tests PRIVATE Psycles::luisa_runtime)
+        target_compile_features(psycles_cycles_svm_holdout_tests PRIVATE cxx_std_20)
+        target_compile_definitions(psycles_cycles_svm_holdout_tests PRIVATE
+            PSYCLES_HOLDOUT_FIXTURES="${PROJECT_SOURCE_DIR}/tests/data/cycles_holdout")
+        add_test(NAME psycles.cycles_svm_holdout COMMAND psycles_cycles_svm_holdout_tests)
+        add_executable(psycles_cycles_svm_holdout_volume_tests tests/test_cycles_svm_holdout_volume.cpp)
+        target_link_libraries(psycles_cycles_svm_holdout_volume_tests PRIVATE Psycles::luisa_runtime)
+        target_compile_features(psycles_cycles_svm_holdout_volume_tests PRIVATE cxx_std_20)
+        target_compile_definitions(psycles_cycles_svm_holdout_volume_tests PRIVATE
+            PSYCLES_HOLDOUT_VOLUME_FIXTURES="${PROJECT_SOURCE_DIR}/tests/data/cycles_holdout_volume")
+        add_test(NAME psycles.cycles_svm_holdout_volume COMMAND psycles_cycles_svm_holdout_volume_tests)
+    endif()
+
     add_executable(
         psycles_cycles_svm_ray_portal_compiler_tests
         tests/test_cycles_svm_ray_portal_compiler.cpp)
@@ -1026,6 +1041,18 @@ if(PSYCLES_BUILD_TESTS)
 
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME psycles.cycles_holdout_fixture
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cycles_holdout_fixture.py")
+        add_test(
+            NAME psycles.cycles_holdout_state_fixture
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cycles_holdout_state_fixture.py")
+        add_test(
+            NAME psycles.cycles_holdout_volume_fixture
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cycles_holdout_volume_fixture.py")
         add_test(
             NAME psycles.cycles_ray_portal_fixture
             COMMAND "${Python3_EXECUTABLE}"

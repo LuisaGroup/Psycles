@@ -553,6 +553,17 @@ public:
                 .ref = {.node = id, .socket = "Closure"},
                 .type = SocketType::closure});
         }
+        if (type == "HOLDOUT") {
+            // Native Holdout has one closure output and both domain weights.
+            // Preserve the contract's typed socket boundary, then recover the
+            // same HoldoutNode before Cycles graph cleanup and compilation.
+            const auto volume = requested == SocketType::volume_closure;
+            const auto id = context.graph().add_node(
+                volume ? compiler::node_type::volume_holdout : compiler::node_type::holdout,
+                node_name);
+            return finish({.ref = {.node = id, .socket = volume ? "Volume" : "Closure"},
+                           .type = volume ? SocketType::volume_closure : SocketType::closure});
+        }
         if (type == "EMISSION" || type == "BACKGROUND") {
             // Cycles uses the same Emission node in surface and volume
             // shader evaluation. In the volume domain its closure weight is

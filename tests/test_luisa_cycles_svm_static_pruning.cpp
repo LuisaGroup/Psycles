@@ -37,7 +37,6 @@ static_assert(derivative_nodes.size() == 16u);
 // explicit so this test cannot silently count a missing handler as a win.
 constexpr bool implemented(ShaderNodeType node) noexcept {
   switch (node) {
-  case NODE_CLOSURE_HOLDOUT:
   case NODE_RADIAL_TILING:
   case NODE_BEVEL:
   case NODE_AMBIENT_OCCLUSION:
@@ -237,6 +236,16 @@ void test_cycles_feature_guards() {
   for (const auto gate : gates) { check(gate); }
   for (const auto node : derivative_nodes) {
     check({node, svm::kernel_feature_node_volume, true});
+  }
+  // Native svm.h deliberately gives Holdout no node-feature/domain guard.
+  // Used-node pruning may remove the case, but a zero feature mask may not.
+  for (const auto domain : {SHADER_TYPE_SURFACE, SHADER_TYPE_VOLUME,
+                            SHADER_TYPE_DISPLACEMENT}) {
+    Usage used{};
+    used[NODE_CLOSURE_HOLDOUT] = true;
+    const auto actual = record(used, domain, 0u);
+    require(actual.cases == used && actual.body_statements[NODE_CLOSURE_HOLDOUT] != 0u,
+            "Holdout acquired a non-native node-feature or domain guard");
   }
   require(failures == 0u, "Cycles feature-disabled node bodies leaked into the recorded AST");
   std::cout << "Node feature guards: " << gates.size() + derivative_nodes.size()

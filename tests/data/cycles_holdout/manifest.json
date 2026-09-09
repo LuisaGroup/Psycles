@@ -1,0 +1,1951 @@
+{
+  "schema": "psycles.cycles-holdout-fixture.v1",
+  "records": [
+    {
+      "name": "node-dynamic-holdout",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout.blend",
+        "sha256": "f40eb91c2890ccccbade2c496a2eb686cfc58cd7e0abed9730721fd5958fcfb1"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-original.exr",
+        "sha256": "e43a47f507979b82e6189c2f88c5a88ac7cfaa1a42e9638567f506994e4fca63"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-original.json",
+        "sha256": "7532aa15505a0e1ee39abc743987ca20abb6e54b5e322f68994bfe9eb0b6ab2d"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout.svm52",
+        "sha256": "2af3ce654af33d025988874926a499e568b45dbba7c610f71a64b7311b89d8dd"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-export/scene.json",
+        "sha256": "4a41b7bdf0b80422e80f6929f63e16ef479ff827b4aaa3b9e92ed1938365fce8"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-word-observer.json",
+        "sha256": "008ea89969d7bb506589fed2b01c2ce21cd6047e766c5ab492658ea43ae61f60"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 52,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "node-holdout",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-holdout.blend",
+        "sha256": "4937a9384f6081f7490ac70d8ced6406177075602c7bcfe63d1ed3f7cedcd762"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/node-holdout-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-holdout-original.exr",
+        "sha256": "c6f5ef99064db60867a3854b08c50f6064e7c34bddabf98a3babf5bc03ea8e44"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-holdout-original.json",
+        "sha256": "33bb8c7e289aac2328c57b8ec4967ca3d16aa18bde2f47dde3a88f1243dc84ae"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-holdout.svm52",
+        "sha256": "336dcfdca1d23791751c6530952520a947434bbcd2bb0aa22b8a76b3c9ce91d4"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-holdout-export/scene.json",
+        "sha256": "a718c8e902a1fb01994c6feb64be45ef81ebca48ba1afb6a36862d1807d451cb"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-holdout-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-holdout-word-observer.json",
+        "sha256": "57440f948e118d64c5a02b6eaf693b9a56adae35f39cf9bc7eba89c579d0c25c"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 13,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "node-mixed-emission",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission.blend",
+        "sha256": "259b9ef993b60bd84f5716997eb2c380033c852f66681183f61676d583d233fb"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-original.exr",
+        "sha256": "b06693d29227d1719adfa48cef051010a9e66e3c84409567b5ccadf6bddf4e96"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-original.json",
+        "sha256": "a164a3825e96f3dbb48d4a6b9f632a1a809ce21cd312d67ef46fe43e7065ded2"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission.svm52",
+        "sha256": "a46d48947d3e28eb4502d07b7e643b7a4368f8e62b9a9d295448426958cb6dae"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-export/scene.json",
+        "sha256": "aa21d492226a64d8294f7025b2d98aa5fed682ea6af5dbd2b66b329d4f9720c9"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-word-observer.json",
+        "sha256": "1e5736f19fcaed07125fc9cf8594792a7d8fb9d59be60a26ac3cb10033e17a35"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 22,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "node-mixed-transparent",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent.blend",
+        "sha256": "a73c0b09e09cb3e5199d7f6e02dcf2bdca8341b85daa3f82cd759bd2c7ac4763"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-original.exr",
+        "sha256": "e81716ca1b39189e0c315ef129e3e22b88e3de0a889706c80c413d748345ec38"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-original.json",
+        "sha256": "f2a307c76d20ed0db41fc4f7e34ad62fc796a510596db093b10d6b7568ecd349"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent.svm52",
+        "sha256": "5300759545904fc503d71773c9409765a6d76922794e6ea33ee70c5ae2db9950"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-export/scene.json",
+        "sha256": "9f60e64dead7333846178f03a72b0ec3015913a804631936ed51173703bddb47"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-word-observer.json",
+        "sha256": "f3fefe692d3f2006fab2f501e1d017995d8842d5deb8c90d33789afde088b28c"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 25,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "object-colored-transparent",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent.blend",
+        "sha256": "c36ca10c83cd453db38384c6cab9d13e496194e0bac5d13bbcc6af7e8fbfda0b"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-original.exr",
+        "sha256": "0e6122caa55426f0de4abcc108e9036d75a1a9d81fc1859f37066b0b6cdc61f7"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-original.json",
+        "sha256": "35c68dfec5843b6cab826549f7bf66e106bb1c81707a18df09fcb1c56da3b77f"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent.svm52",
+        "sha256": "067c336eae877948692c0eb1a6d56b05493f8ea70eec07078c9cdc1dde76c52d"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-export/scene.json",
+        "sha256": "883595eff921d3a1b7e1250b46ca9b90e3cc45a5788f81fa3425b0384268e14c"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-word-observer.json",
+        "sha256": "aec016b0844db771be0477f9bc0a87d584e6809068fd544ad25fea02c3e57a4d"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 16,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "object-emission",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-emission.blend",
+        "sha256": "1881642766ae0e0bb0167821631a82dc6074a25173ad0c7faad154c6e7dc87b3"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/object-emission-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-emission-original.exr",
+        "sha256": "0491e73e75065f5d87366b241e2df2130196005bf4ee82b1c07b6e716092ca3f"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-emission-original.json",
+        "sha256": "c36a5afef16cd59292e2d5006c98bdd09ff1516de14b9f45e34c75b275d5fa01"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-emission.svm52",
+        "sha256": "383e216a65e42b2ee319b72dccdd96db26f9a36a9874e294dcc0b86d5b568717"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-emission-export/scene.json",
+        "sha256": "bc5173cef31d3ceff0f2c13d56466f7b907b6219ed3e4c807282288464aab9af"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-emission-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-emission-word-observer.json",
+        "sha256": "44cb810009f70964df96a367daa20f5c73e7e28dcee4106e287a252d273efa08"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 13,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "object-mixed-diffuse",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse.blend",
+        "sha256": "3324f64d21df106ab8b179acd813ce7442eedb444be4b3cd43fdaf4490d96bc9"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-original.exr",
+        "sha256": "3cf4ff1640d6fa77772f3311714436ce5d2d21caf0871eda2aef83c4388aac3f"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-original.json",
+        "sha256": "caf9b7946f0fda8b69bb4738032d4b38b55e24ea758f27871a4521773d9f185e"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse.svm52",
+        "sha256": "71d78c95588cecdbe52c9ffd62e6b6417aa673ad896dab3e59f0e36e4c1cda53"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-export/scene.json",
+        "sha256": "e73f06b03a187f28918acb58e7f8e97aa5105a9f1f7c7e5ec6b6cca949cf24f3"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-word-observer.json",
+        "sha256": "14d827facf2524f7193eff4311e1377a506a1d1fa22dd7c14700dc37aa612cc7"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 34,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "object-mixed-emission",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission.blend",
+        "sha256": "f8522f026b1843b045cd32e087bda6b5ab050481d57330051861d6b5214e49d8"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-original.exr",
+        "sha256": "fc9cc6628555d3889d5297e255cf760b31774a86fb6641e28257e6184106020d"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-original.json",
+        "sha256": "a7b03d4dcc7774556c1a7252e0bebc8faf4edafc746059bb031df1a453216283"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission.svm52",
+        "sha256": "aac22aa5ed3b63c51048c09e2ceddc4fad8e0c46e6c2cd50542988de6af6fef3"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-export/scene.json",
+        "sha256": "27ea32b38de06c41ba9706fd11fabae51c18de632e928510b0c7de6216c302b7"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-word-observer.json",
+        "sha256": "7d1f6755a28e10723a996292da555f70eb7401960bd09968375488750a9f82b0"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 25,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "object-mixed-opaque",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque.blend",
+        "sha256": "85816e0ed85d368e4a143bb6ff8df41b9bdfb1284e140ce6256b2b5bf41b891c"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-original.exr",
+        "sha256": "3687c7602ea7cbb023ee019941c624b56874ee547326d28c3b2612ba10e30888"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-original.json",
+        "sha256": "5273dc229ce69d25d7fbff16060a76c5b5398227df79b54c250a78d3460d1da4"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque.svm52",
+        "sha256": "fe0633aa7934a3bcecb2a3db2410a7d39aa3f8a5742cdfc4101f9dbc8a97606a"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-export/scene.json",
+        "sha256": "b64d826c19d2e586a23bfc6c45e696a49a70d2df4f6a58ac786bb562be1c095c"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-word-observer.json",
+        "sha256": "6572cebaa972766e82b8bc7b561534a9fb83308021853bec03c108db0d720016"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 25,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "object-secondary-emission",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission.blend",
+        "sha256": "bc81107ff55381023ba030df03b9ad353a6482bb7fcf20cd4057bfdc7fb89460"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-original.exr",
+        "sha256": "a8d5b38a8ba4a392fad8c4b13f5e62996914a846c984c92d38f206c4fed56f04"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-original.json",
+        "sha256": "9d3a8f86ba1a6df4bc21c77c9df518bd5848c08d5eb68a734685c36dc82494ef"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission.svm52",
+        "sha256": "5c837af72e110a13425b530d3602b206f614d92bed38970f4b944145c468d717"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-export/scene.json",
+        "sha256": "f7d7a7bd24772a418a1273d4124d3142c0036a14568f449c0ec36ef58d9d711a"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-export/geometry.bin",
+        "sha256": "e19e090b81ac06ecb310610f9886a9303c8ebc1a7d815b8ec2b7c3bbc07e8379"
+      },
+      "geometry_bytes": 976,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-word-observer.json",
+        "sha256": "a9cd43a562cd2c2cdc557d766b9d2d51900ff1a9e1c66058bde834b82197098e"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 13,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "object-transparent",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-transparent.blend",
+        "sha256": "d75d5a483b514c6b38183f8a681339ebcbf8f51d5a82b25cfd430763651295e1"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/object-transparent-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-transparent-original.exr",
+        "sha256": "27eca8fc979783117c0d4f6ef2c1639b4dfa7614f7bbb5e503fb1f04ab50d880"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-transparent-original.json",
+        "sha256": "cc08713b33b913c4c6408bbe3d3c6209961dc8a3729060ee75cb1ebac9a6ae25"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-transparent.svm52",
+        "sha256": "342bd18621294a2714b4c7fb6a11bf69cda1f3cf1540b33dc3a99db128266bfd"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-transparent-export/scene.json",
+        "sha256": "c64f2439978afb47f8a36ee3da5a30ec437123586cc4a34d257acf0523051c49"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-transparent-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/object-transparent-word-observer.json",
+        "sha256": "6b28a543423df40d3ba5155986daee359da7811013b25427d3f009cb6c4cfc14"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 16,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "ordinary-emission",
+      "blend": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission.blend",
+        "sha256": "51978e599e46ce8adf80d4f5e34a1ed75b36e876113ce94565a0996045480ffd"
+      },
+      "bundle": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-export",
+      "original": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-original.exr",
+        "sha256": "45118995795c1237b02b4fa58a18e94c6136319ccbc3e625194f865ca68cf584"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-original.json",
+        "sha256": "4d52e10fccc02c8a18396a66ddc74816146f31db8ceac18f858718f16e5ec694"
+      },
+      "words": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission.svm52",
+        "sha256": "5e4ced82947b0a48a51d8d3514eaace55adb894b05f1c87d9ab70ebadfcf3d98"
+      },
+      "scene": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-export/scene.json",
+        "sha256": "50d71b453b2f22f154d9389e5c7a72c29abf5e98883428fdb31b950c10c6477d"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "word_observer_metadata": {
+        "path": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-word-observer.json",
+        "sha256": "56dd3d3e6b1ef15c96d3048a088014a438986a8248da543ac83828d65b977594"
+      },
+      "word_observer_build": {
+        "build_branch": "psycles-path-trace-5.2 (modified)",
+        "build_hash": "cb168525138f",
+        "build_type": "Release",
+        "version": "5.2.1 LTS",
+        "version_cycle": "release",
+        "version_tuple": [
+          5,
+          2,
+          1
+        ]
+      },
+      "shader_index": 5,
+      "word_count": 13,
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "width": 16,
+        "height": 16,
+        "samples": 1,
+        "effective_seed": 0
+      }
+    }
+  ],
+  "capture": {
+    "record": {
+      "path": "/var/tmp/psycles-holdout-CXlJR7/capture.json",
+      "sha256": "c50b0784dbdf085d6b08f6752d74c2375c316c2d55f36a45a881dabc2ad640e5"
+    },
+    "producers": [
+      {
+        "path": "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "sha256": "6f1babd8e863fec61d033c14348ee138e9a7c0ab5cd1a21cbf45c27b15a4dec9"
+      },
+      {
+        "path": "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+        "sha256": "748168aa9986ff830e4abca34d2ab0a328659297aeab32b859c0ad3f4d1de6d4"
+      }
+    ],
+    "processes": [
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-export.log",
+          "sha256": "58b02c443d75ddef7cfe5ba99bf911a9965b903f89ef11780c919baf8c469f23"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-original.log",
+          "sha256": "a2ca2a4afb02e3ddefebc5c4147ddea83f2bcae92db3d1155293d3645c5bccb8"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-dynamic-holdout-word-observer.log",
+          "sha256": "c37fa8327bf21fcd1913e655a02572d7b2305492eaad8fe54887f81541efe9a6"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-holdout.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-holdout-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-holdout-export.log",
+          "sha256": "8aaa7f5a9e0d8db3914bda9f46bb6f1e9e6d0d539b71c887537ffa5a0e83a444"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-holdout.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-holdout-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-holdout-original.log",
+          "sha256": "5a4b0743acf0235db461ea04d557c1a8e9af51f50d2d82751d94d68152ed21df"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-holdout.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-holdout-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/node-holdout.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-holdout-word-observer.log",
+          "sha256": "8e1aa55e31950da9aaf8f5819c838cabc31c62d49de934bc3d01aaa539769a6b"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-export.log",
+          "sha256": "2e0d4c86bc356c9739c66c4dd14bf1b7d3bc2bcfaf5e14a00f9079c9f002d247"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-original.log",
+          "sha256": "681a227114f312a5245f3cdad47ef7c0e7741a21d4b16468cb8157df6d239dc3"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-emission-word-observer.log",
+          "sha256": "f559de651419457c77bfa2b030fa2d26f10450b76c6f9b541d4a40d111c52517"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-export.log",
+          "sha256": "eb6cc5e2e8729cd14d356a8b2a7f7629823286ab4326a44776392a8cca671e08"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-original.log",
+          "sha256": "b67a4875878fcd762e6dbc450d2e109a60a547351fcbd0643e181f942e7cdd62"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/node-mixed-transparent-word-observer.log",
+          "sha256": "96b40168c54c51e8ebd56ec20b8f3d141675fa3adf16216045b0fc5024dd6fc6"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-export.log",
+          "sha256": "049070df97c044aa554d6c874eb4705d2c1d75369a1fb52ed2769479812bc90a"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-original.log",
+          "sha256": "4bc75529d02764f74d3b8ec5c63fb9a432b2c200ed3af98da8c595b2278e9e4a"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent-word-observer.log",
+          "sha256": "e62006348a60f74025f272dbab6b05492fefa3d05a2d3973e31ccd1ed8ab7623"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-emission-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-emission-export.log",
+          "sha256": "24f9ce81b7f63d1ce96730e3be8016c9c9d7e2e9a9e933525ca65430855b11e5"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-emission-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-emission-original.log",
+          "sha256": "8c085f6df5a2f99bf651eb4060a784639c2e6ecd1ce8044e2b63102dcda83d4b"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-emission-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/object-emission.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-emission-word-observer.log",
+          "sha256": "e3460f4e7817230e79919e72d29f3793f96f0650861c887c0296fa59a37423bb"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-export.log",
+          "sha256": "952f334e8d47af6472d1f247785a707af4adba515286011de67a7ecc9b6cbc68"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-original.log",
+          "sha256": "74235f93be46bc2a0c158b917c5f374cbad9a68f947f4a01a1ba555d6ea61529"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-diffuse-word-observer.log",
+          "sha256": "d8c756ce898e7bcedc91e79189d007957acbc575197ee4d37fb689baecc72eb2"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-export.log",
+          "sha256": "e89d25afdbc045d14e603e0f3df7517881d9e106c085a381506e6e2e4aae0bc5"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-original.log",
+          "sha256": "4b87bbbbe6bba3d1ec7d5c777f32e01fdfa853c2ae8ab2fe799602577d19f09b"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-emission-word-observer.log",
+          "sha256": "a8320696b70d4b1db89b6cd9a54ed82c786423ec0b77663891195c2b1b2feec2"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-export.log",
+          "sha256": "67ef920a77fc27d320c8fb20d3e025effc65ee6ab48d2235dae59c105faf8090"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-original.log",
+          "sha256": "6daea5339bd61f231e45814e22b309ab89614f9b66be6049ecb8ca286b310a50"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-mixed-opaque-word-observer.log",
+          "sha256": "b283f1b4ed76e1225f350e76226994ac98b92c10297a2113cc491997affcda9d"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-export.log",
+          "sha256": "4531b306d8a3178e50b6475f6f69e341cc0cfd5852ea0d20aef9a8f5f59d3654"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-original.log",
+          "sha256": "3bf2632e340099411df78bfdce180e391b96625d920253eaf84d7a281d89b709"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-secondary-emission-word-observer.log",
+          "sha256": "4bfbe882dd83fa0494238a87fae1d86e45c3426955e7dfd74264d69b5017d588"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-transparent.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-transparent-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-transparent-export.log",
+          "sha256": "06a7e7e54564d25823b29eacc1c36a9ba964ce63b6a24ac8dd64fb37a8900495"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-transparent.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-transparent-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-transparent-original.log",
+          "sha256": "1ee6bfc8d7832e97cbc4a87883a6344807abe1a243111fc0eab0e4531d8f0192"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/object-transparent.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/object-transparent-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/object-transparent.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/object-transparent-word-observer.log",
+          "sha256": "cfb352d4f745ef2a46b2c2d8916fba3b097ce6ff0c3ddb9136bc7db71b86b55f"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-export"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-export.log",
+          "sha256": "adc6b6122c33fdd63753cb88d6d84e688d3f6048abf9eb1d4cd5b6047f8c9bb8"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-original.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": null,
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-original.log",
+          "sha256": "61fa89366d86f85b438fda483c8f71b5ee9ce08bdb7b1324fea002c6be2394dd"
+        }
+      },
+      {
+        "command": [
+          "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+          "--background",
+          "--threads",
+          "32",
+          "--python-exit-code",
+          "1",
+          "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission.blend",
+          "--python",
+          "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+          "--",
+          "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-word-observer.exr",
+          "16",
+          "16",
+          "1",
+          "0",
+          "--cycles-device",
+          "HIP",
+          "--device-name",
+          "Radeon RX 9070 XT"
+        ],
+        "status": 0,
+        "cwd": "/var/tmp/psycles-holdout-CXlJR7",
+        "svm_dump": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission.svm52",
+        "log": {
+          "path": "/var/tmp/psycles-holdout-CXlJR7/ordinary-emission-word-observer.log",
+          "sha256": "6cb681a4bc48855331b4c4b9f80ee10bda927ad428d4e0946607adbc72ea53b5"
+        }
+      }
+    ]
+  },
+  "word_source": {
+    "path": "/home/mike/Projects/blender-cycles-trace-5.2",
+    "revision": "cb168525138fecc792cc393f94afc39582b0103c",
+    "identity_scope": "Source files observed during fixture extraction; dirty observer files retained.",
+    "source_sha256": {
+      "intern/cycles/scene/svm.cpp": "b0c7db6de10d5e77a26159015f16b633783032749e687ed9a7d3cd3658492e9e",
+      "intern/cycles/scene/shader_graph.cpp": "74cd5f24fac8970e6fc172b4e5b29d339a66dadb5acbd24ce585f95d841b2271",
+      "intern/cycles/scene/shader_nodes.cpp": "43f3efdca933083fa8ace71499da3886721cbc0591ae430959e2b84f0e983184",
+      "intern/cycles/scene/shader_nodes.h": "3c07502d01a2abba3778626987018477b41d04ffac69e3e1b2b2e43e36864778",
+      "intern/cycles/kernel/svm/svm.h": "1432bcb1ecd378446eb77ecdcf38687090a084d299682f7fa598c110923c84e7",
+      "intern/cycles/kernel/svm/closure.h": "585a5e6a6a9507e76983a2cf2e5fdb757f70e9213c5f1b151e6b8ed47842c673",
+      "intern/cycles/kernel/integrator/surface_shader.h": "1b36b3c2082b8992252b81869263a5e959e33713395b0b58de63d66c5052a69d",
+      "intern/cycles/kernel/integrator/shade_surface.h": "3f607b81936bb60e69b678dd6a5dc8be324104f92878dc844402ecdc3cb73b77",
+      "intern/cycles/scene/light.cpp": "6075fa6cb941548af4ce9dffc8ab34233860709095bc71517ad4bc7742747fdb"
+    },
+    "dirty_status": [
+      " M intern/cycles/scene/light.cpp",
+      " M intern/cycles/scene/svm.cpp"
+    ]
+  },
+  "channels": [
+    "ViewLayer.Combined.R",
+    "ViewLayer.Combined.G",
+    "ViewLayer.Combined.B",
+    "ViewLayer.Combined.A",
+    "ViewLayer.Normal.X",
+    "ViewLayer.Normal.Y",
+    "ViewLayer.Normal.Z",
+    "ViewLayer.DiffCol.R",
+    "ViewLayer.DiffCol.G",
+    "ViewLayer.DiffCol.B",
+    "ViewLayer.GlossCol.R",
+    "ViewLayer.GlossCol.G",
+    "ViewLayer.GlossCol.B",
+    "ViewLayer.TransCol.R",
+    "ViewLayer.TransCol.G",
+    "ViewLayer.TransCol.B",
+    "ViewLayer.DiffDir.R",
+    "ViewLayer.DiffDir.G",
+    "ViewLayer.DiffDir.B",
+    "ViewLayer.DiffInd.R",
+    "ViewLayer.DiffInd.G",
+    "ViewLayer.DiffInd.B",
+    "ViewLayer.GlossDir.R",
+    "ViewLayer.GlossDir.G",
+    "ViewLayer.GlossDir.B",
+    "ViewLayer.GlossInd.R",
+    "ViewLayer.GlossInd.G",
+    "ViewLayer.GlossInd.B",
+    "ViewLayer.TransDir.R",
+    "ViewLayer.TransDir.G",
+    "ViewLayer.TransDir.B",
+    "ViewLayer.TransInd.R",
+    "ViewLayer.TransInd.G",
+    "ViewLayer.TransInd.B",
+    "ViewLayer.Emit.R",
+    "ViewLayer.Emit.G",
+    "ViewLayer.Emit.B",
+    "ViewLayer.Env.R",
+    "ViewLayer.Env.G",
+    "ViewLayer.Env.B",
+    "ViewLayer.Volume Direct.R",
+    "ViewLayer.Volume Direct.G",
+    "ViewLayer.Volume Direct.B",
+    "ViewLayer.Volume Indirect.R",
+    "ViewLayer.Volume Indirect.G",
+    "ViewLayer.Volume Indirect.B"
+  ],
+  "passes": [
+    "Combined",
+    "Normal",
+    "DiffCol",
+    "GlossCol",
+    "TransCol",
+    "DiffDir",
+    "DiffInd",
+    "GlossDir",
+    "GlossInd",
+    "TransDir",
+    "TransInd",
+    "Emit",
+    "Env",
+    "Volume Direct",
+    "Volume Indirect"
+  ],
+  "word_scope": "Only ShaderJump relocation; all typed payload words copied from original Cycles.",
+  "fixture_sha256": {
+    "node-dynamic-holdout-scene.json": "4a41b7bdf0b80422e80f6929f63e16ef479ff827b4aaa3b9e92ed1938365fce8",
+    "node-dynamic-holdout-geometry.txt": "b3be43851a88c53d2500b058bb57001acc3e427a597a63cc4067d5806071cc22",
+    "node-dynamic-holdout-film.txt": "83ce6b63c59bfdcecd25003eb4d95afbcc89a966b4b62d980e04b20d9534b4a3",
+    "node-dynamic-holdout-words.txt": "740d87756205793e5d481147e43c05e166b95349fbbb1c13447b7da84d326232",
+    "node-holdout-scene.json": "a718c8e902a1fb01994c6feb64be45ef81ebca48ba1afb6a36862d1807d451cb",
+    "node-holdout-geometry.txt": "b3be43851a88c53d2500b058bb57001acc3e427a597a63cc4067d5806071cc22",
+    "node-holdout-film.txt": "11da3512c5ba502c15477d455d3ea1fbce7996a803c6759ab8a17a7aa68dc3f1",
+    "node-holdout-words.txt": "1df95e5479e607186e3ad5137a89e65fddf03fe324716491dfd69e92128417e8",
+    "node-mixed-emission-scene.json": "aa21d492226a64d8294f7025b2d98aa5fed682ea6af5dbd2b66b329d4f9720c9",
+    "node-mixed-emission-geometry.txt": "b3be43851a88c53d2500b058bb57001acc3e427a597a63cc4067d5806071cc22",
+    "node-mixed-emission-film.txt": "c10ad230c3fbdcc48f3f4927b1a8ffd14c01fac5f08bf3c1bac2f1bc239f5c56",
+    "node-mixed-emission-words.txt": "603bae5a3c0587f897cefa144a08fdf22b00b22c17aa7b699dcb5eaa45cd9e51",
+    "node-mixed-transparent-scene.json": "9f60e64dead7333846178f03a72b0ec3015913a804631936ed51173703bddb47",
+    "node-mixed-transparent-geometry.txt": "b3be43851a88c53d2500b058bb57001acc3e427a597a63cc4067d5806071cc22",
+    "node-mixed-transparent-film.txt": "3b73bf31e1686c57c68e3721e6c3e63721bd46694f3d612b587428b9c09ae79c",
+    "node-mixed-transparent-words.txt": "5b48cb25ae6a76df8c6908677a983603b4342d37c781e5cfd17d57682da4dc70",
+    "object-colored-transparent-scene.json": "883595eff921d3a1b7e1250b46ca9b90e3cc45a5788f81fa3425b0384268e14c",
+    "object-colored-transparent-geometry.txt": "b3be43851a88c53d2500b058bb57001acc3e427a597a63cc4067d5806071cc22",
+    "object-colored-transparent-film.txt": "3e8a619602832ea7a8423a5ae741719549b213fc52e8c5ccb8d67d075b76de15",
+    "object-colored-transparent-words.txt": "b909cb389f2c38b58ed8ea66428cdf7a8b1d5e64f086e231de89be7a796575ca",
+    "object-emission-scene.json": "bc5173cef31d3ceff0f2c13d56466f7b907b6219ed3e4c807282288464aab9af",
+    "object-emission-geometry.txt": "b3be43851a88c53d2500b058bb57001acc3e427a597a63cc4067d5806071cc22",
+    "object-emission-film.txt": "11da3512c5ba502c15477d455d3ea1fbce7996a803c6759ab8a17a7aa68dc3f1",
+    "object-emission-words.txt": "b8ec37044568483fd926a4220886af6ef68085ad4d0713bb0168c4de79e301ad",
+    "object-mixed-diffuse-scene.json": "e73f06b03a187f28918acb58e7f8e97aa5105a9f1f7c7e5ec6b6cca949cf24f3",
+    "object-mixed-diffuse-geometry.txt": "b3be43851a88c53d2500b058bb57001acc3e427a597a63cc4067d5806071cc22",
+    "object-mixed-diffuse-film.txt": "940b31b89de44bf40ff4d6a0e217da40ecfaa890267d75c1a21d8b1a110cd0e9",
+    "object-mixed-diffuse-words.txt": "65c5a56fa5958e5662d923b4a043025cad72e1bad634fe6d569331598b6323d2",
+    "object-mixed-emission-scene.json": "27ea32b38de06c41ba9706fd11fabae51c18de632e928510b0c7de6216c302b7",
+    "object-mixed-emission-geometry.txt": "b3be43851a88c53d2500b058bb57001acc3e427a597a63cc4067d5806071cc22",
+    "object-mixed-emission-film.txt": "940b31b89de44bf40ff4d6a0e217da40ecfaa890267d75c1a21d8b1a110cd0e9",
+    "object-mixed-emission-words.txt": "bc68184106fd0e9f900efca88578ca7d6cd53e4b2e2b5a034647812d4db0afac",
+    "object-mixed-opaque-scene.json": "b64d826c19d2e586a23bfc6c45e696a49a70d2df4f6a58ac786bb562be1c095c",
+    "object-mixed-opaque-geometry.txt": "b3be43851a88c53d2500b058bb57001acc3e427a597a63cc4067d5806071cc22",
+    "object-mixed-opaque-film.txt": "0be3e39614e61df58d0facac95d9e9aeab17431840264ccc72590bf3ae5ba8ff",
+    "object-mixed-opaque-words.txt": "bc68184106fd0e9f900efca88578ca7d6cd53e4b2e2b5a034647812d4db0afac",
+    "object-secondary-emission-scene.json": "f7d7a7bd24772a418a1273d4124d3142c0036a14568f449c0ec36ef58d9d711a",
+    "object-secondary-emission-geometry.txt": "08eebd3dd3d5efb897b62b071a16475e60f992a447f7b9a0930fffffe9bd488e",
+    "object-secondary-emission-film.txt": "c58c6076e6e73b97655d3353e5c2e968124954fe79dbcb9f62230afa77009d41",
+    "object-secondary-emission-words.txt": "b8ec37044568483fd926a4220886af6ef68085ad4d0713bb0168c4de79e301ad",
+    "object-transparent-scene.json": "c64f2439978afb47f8a36ee3da5a30ec437123586cc4a34d257acf0523051c49",
+    "object-transparent-geometry.txt": "b3be43851a88c53d2500b058bb57001acc3e427a597a63cc4067d5806071cc22",
+    "object-transparent-film.txt": "d1e71f3cd07caa910502e1dcd6e1f1d55443dfe98f35b377e5c02c3652d38b84",
+    "object-transparent-words.txt": "3147f63f385e9065050298c2233d9d0f8d6ae823b55a411d4d327d51621a3717",
+    "ordinary-emission-scene.json": "50d71b453b2f22f154d9389e5c7a72c29abf5e98883428fdb31b950c10c6477d",
+    "ordinary-emission-geometry.txt": "b3be43851a88c53d2500b058bb57001acc3e427a597a63cc4067d5806071cc22",
+    "ordinary-emission-film.txt": "13506580048bf95f345f92df9400352158047f59f7cc9386f1c5d02c45084f6d",
+    "ordinary-emission-words.txt": "b8ec37044568483fd926a4220886af6ef68085ad4d0713bb0168c4de79e301ad"
+  },
+  "tolerance": {
+    "absolute": 2e-06,
+    "relative": 2e-06
+  }
+}

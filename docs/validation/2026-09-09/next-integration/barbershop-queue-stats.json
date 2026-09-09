@@ -1,0 +1,2173 @@
+{
+  "schema": "psycles.next-integration.queue-diagnostic.v1",
+  "capture_source": {
+    "path": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-09-09/next-integration/capture_queue_stats.py",
+    "bytes": 9115,
+    "sha256": "f4fd370fb7998d246f334981dcffb365dc01e38c93d443978fbeeebd79bd5ffc"
+  },
+  "scope": "64-spp diagnostic counters; not a paired performance result or proof of path identity",
+  "old": {
+    "log": {
+      "path": "/var/tmp/psycles-holdout-CXlJR7/barber-frame-OFalxg/barbershop.log",
+      "bytes": 240676,
+      "sha256": "fbb5473ff7baeee8a1cc9ceee54e4dee970ff4898f0630a8e81b91021d06b4e6"
+    },
+    "frame": {
+      "stages": 6,
+      "fields": 92,
+      "bytes": 416,
+      "capacity": 1048576
+    },
+    "samples": [
+      1,
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "aliases": [],
+    "totals": {
+      "iterations": 3697,
+      "generated": 112459776,
+      "resumed": 874893895,
+      "extensions": 332307665,
+      "gather_scan": 2680142538,
+      "compact_scan": 108421318
+    },
+    "continuations": {
+      "0": {
+        "token": 0,
+        "name": "<entry>",
+        "dispatches": 191,
+        "executed": 112459776,
+        "peak_queued": 0
+      },
+      "1": {
+        "token": 1,
+        "name": "intersect_closest",
+        "dispatches": 1045,
+        "executed": 444263300,
+        "peak_queued": 1048576
+      },
+      "2": {
+        "token": 2,
+        "name": "shade_volume",
+        "dispatches": 424,
+        "executed": 85077315,
+        "peak_queued": 464484
+      },
+      "3": {
+        "token": 3,
+        "name": "shade_light_forward",
+        "dispatches": 119,
+        "executed": 12868734,
+        "peak_queued": 215101
+      },
+      "4": {
+        "token": 4,
+        "name": "shade_background",
+        "dispatches": 25,
+        "executed": 376881,
+        "peak_queued": 114731
+      },
+      "5": {
+        "token": 5,
+        "name": "shade_surface",
+        "dispatches": 1062,
+        "executed": 332307665,
+        "peak_queued": 1048576
+      }
+    },
+    "extensions": {
+      "6": {
+        "boundary": 1,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 0,
+        "executed": 0,
+        "peak_queued": 0
+      },
+      "7": {
+        "boundary": 2,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 710,
+        "executed": 271308737,
+        "peak_queued": 1048576
+      },
+      "8": {
+        "boundary": 10,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 352,
+        "executed": 60998928,
+        "peak_queued": 465220
+      },
+      "9": {
+        "boundary": 12,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 0,
+        "executed": 0,
+        "peak_queued": 0
+      },
+      "10": {
+        "boundary": 14,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 0,
+        "executed": 0,
+        "peak_queued": 0
+      },
+      "11": {
+        "boundary": 16,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 0,
+        "executed": 0,
+        "peak_queued": 0
+      }
+    },
+    "auxiliaries": {
+      "shade_light_nee": {
+        "dispatches": 432,
+        "executed": 138958535,
+        "peak_queued": 688035
+      },
+      "intersect_shadow": {
+        "dispatches": 249,
+        "executed": 45986709,
+        "peak_queued": 386342
+      },
+      "shade_shadow": {
+        "dispatches": 143,
+        "executed": 20799634,
+        "peak_queued": 289493
+      }
+    },
+    "batches": [
+      {
+        "stats": {
+          "iterations": 147,
+          "generated": 1757184,
+          "resumed": 13665168,
+          "extensions": 5191097,
+          "gather_scan": 77804760,
+          "compact_scan": 1135183,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 195.333
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 3,
+            "executed": 1757184,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 37,
+            "executed": 6939588,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 19,
+            "executed": 1328059,
+            "peak_queued": 350023
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 8,
+            "executed": 200525,
+            "peak_queued": 152692
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 3,
+            "executed": 5899,
+            "peak_queued": 5718
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 41,
+            "executed": 5191097,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 23,
+            "executed": 4238862,
+            "peak_queued": 1048576
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 18,
+            "executed": 952235,
+            "peak_queued": 323084
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 16,
+            "executed": 2171381,
+            "peak_queued": 533513
+          },
+          "intersect_shadow": {
+            "dispatches": 11,
+            "executed": 719596,
+            "peak_queued": 295381
+          },
+          "shade_shadow": {
+            "dispatches": 8,
+            "executed": 325272,
+            "peak_queued": 270062
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 156,
+          "generated": 1757184,
+          "resumed": 13673043,
+          "extensions": 5193096,
+          "gather_scan": 82807744,
+          "compact_scan": 1134902,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 192.883
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 3,
+            "executed": 1757184,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 41,
+            "executed": 6942888,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 20,
+            "executed": 1329664,
+            "peak_queued": 350049
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 8,
+            "executed": 201477,
+            "peak_queued": 153087
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 3,
+            "executed": 5918,
+            "peak_queued": 5744
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 44,
+            "executed": 5193096,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 25,
+            "executed": 4239186,
+            "peak_queued": 1048576
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 19,
+            "executed": 953910,
+            "peak_queued": 323398
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 16,
+            "executed": 2171328,
+            "peak_queued": 533750
+          },
+          "intersect_shadow": {
+            "dispatches": 11,
+            "executed": 717610,
+            "peak_queued": 294629
+          },
+          "shade_shadow": {
+            "dispatches": 9,
+            "executed": 324823,
+            "peak_queued": 269393
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 199,
+          "generated": 3514368,
+          "resumed": 27341827,
+          "extensions": 10385407,
+          "gather_scan": 108299358,
+          "compact_scan": 3014558,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 339.521
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 6,
+            "executed": 3514368,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 52,
+            "executed": 13883718,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 26,
+            "executed": 2658865,
+            "peak_queued": 349992
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 9,
+            "executed": 402021,
+            "peak_queued": 214584
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 4,
+            "executed": 11816,
+            "peak_queued": 11281
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 57,
+            "executed": 10385407,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 34,
+            "executed": 8478804,
+            "peak_queued": 1048576
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 23,
+            "executed": 1906603,
+            "peak_queued": 375410
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 21,
+            "executed": 4340841,
+            "peak_queued": 621713
+          },
+          "intersect_shadow": {
+            "dispatches": 13,
+            "executed": 1435585,
+            "peak_queued": 294494
+          },
+          "shade_shadow": {
+            "dispatches": 10,
+            "executed": 650879,
+            "peak_queued": 275294
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 291,
+          "generated": 7028736,
+          "resumed": 54678009,
+          "extensions": 20767200,
+          "gather_scan": 187929000,
+          "compact_scan": 6460166,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 631.621
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 12,
+            "executed": 7028736,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 79,
+            "executed": 27765598,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 37,
+            "executed": 5316530,
+            "peak_queued": 387482
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 12,
+            "executed": 805300,
+            "peak_queued": 214940
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 4,
+            "executed": 23381,
+            "peak_queued": 22736
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 82,
+            "executed": 20767200,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 52,
+            "executed": 16956001,
+            "peak_queued": 1048576
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 30,
+            "executed": 3811199,
+            "peak_queued": 464817
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 33,
+            "executed": 8683260,
+            "peak_queued": 633273
+          },
+          "intersect_shadow": {
+            "dispatches": 19,
+            "executed": 2874902,
+            "peak_queued": 295309
+          },
+          "shade_shadow": {
+            "dispatches": 12,
+            "executed": 1298932,
+            "peak_queued": 269663
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 472,
+          "generated": 14057472,
+          "resumed": 109363067,
+          "extensions": 41538880,
+          "gather_scan": 325317153,
+          "compact_scan": 13603691,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 1206.978
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 24,
+            "executed": 14057472,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 132,
+            "executed": 55532626,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 55,
+            "executed": 10635882,
+            "peak_queued": 452752
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 15,
+            "executed": 1608741,
+            "peak_queued": 214390
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 3,
+            "executed": 46938,
+            "peak_queued": 45900
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 135,
+            "executed": 41538880,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 90,
+            "executed": 33912700,
+            "peak_queued": 1048576
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 45,
+            "executed": 7626180,
+            "peak_queued": 464857
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 55,
+            "executed": 17370804,
+            "peak_queued": 629411
+          },
+          "intersect_shadow": {
+            "dispatches": 33,
+            "executed": 5747851,
+            "peak_queued": 295302
+          },
+          "shade_shadow": {
+            "dispatches": 19,
+            "executed": 2600731,
+            "peak_queued": 275115
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 853,
+          "generated": 28114944,
+          "resumed": 218726721,
+          "extensions": 83078022,
+          "gather_scan": 651837000,
+          "compact_scan": 27493459,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 2377.238
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 48,
+            "executed": 28114944,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 247,
+            "executed": 111066927,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 93,
+            "executed": 21271085,
+            "peak_queued": 453079
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 24,
+            "executed": 3216495,
+            "peak_queued": 215101
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 3,
+            "executed": 94192,
+            "peak_queued": 91942
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 250,
+            "executed": 83078022,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 170,
+            "executed": 67827107,
+            "peak_queued": 1048576
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 80,
+            "executed": 15250915,
+            "peak_queued": 465220
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 100,
+            "executed": 34739914,
+            "peak_queued": 660476
+          },
+          "intersect_shadow": {
+            "dispatches": 56,
+            "executed": 11499815,
+            "peak_queued": 295393
+          },
+          "shade_shadow": {
+            "dispatches": 31,
+            "executed": 5200132,
+            "peak_queued": 275184
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 1579,
+          "generated": 56229888,
+          "resumed": 437446060,
+          "extensions": 166153963,
+          "gather_scan": 1246147523,
+          "compact_scan": 55579359,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 4697.389
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 95,
+            "executed": 56229888,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 457,
+            "executed": 222131955,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 174,
+            "executed": 42537230,
+            "peak_queued": 464484
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 43,
+            "executed": 6434175,
+            "peak_queued": 214223
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 5,
+            "executed": 188737,
+            "peak_queued": 114731
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 453,
+            "executed": 166153963,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 316,
+            "executed": 135656077,
+            "peak_queued": 1048576
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 137,
+            "executed": 30497886,
+            "peak_queued": 464439
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 191,
+            "executed": 69481007,
+            "peak_queued": 688035
+          },
+          "intersect_shadow": {
+            "dispatches": 106,
+            "executed": 22991350,
+            "peak_queued": 386342
+          },
+          "shade_shadow": {
+            "dispatches": 54,
+            "executed": 10398865,
+            "peak_queued": 289493
+          }
+        }
+      }
+    ]
+  },
+  "fresh": {
+    "log": {
+      "path": "/var/tmp/psycles-holdout-CXlJR7/next-integration-YpUTb4/barbershop-next-stats.log",
+      "bytes": 198607,
+      "sha256": "57601d828243e08a5078e96f4422dc57657206e19f250f7d7160cefe5ef09672"
+    },
+    "frame": {
+      "stages": 6,
+      "fields": 92,
+      "bytes": 416,
+      "capacity": 1048576
+    },
+    "samples": [
+      1,
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "aliases": [
+      {
+        "queue": 7,
+        "boundary": 2,
+        "target_queue": 6,
+        "target_boundary": 1,
+        "continuation": 5
+      },
+      {
+        "queue": 8,
+        "boundary": 10,
+        "target_queue": 6,
+        "target_boundary": 1,
+        "continuation": 5
+      },
+      {
+        "queue": 9,
+        "boundary": 12,
+        "target_queue": 6,
+        "target_boundary": 1,
+        "continuation": 5
+      },
+      {
+        "queue": 10,
+        "boundary": 14,
+        "target_queue": 6,
+        "target_boundary": 1,
+        "continuation": 5
+      },
+      {
+        "queue": 11,
+        "boundary": 16,
+        "target_queue": 6,
+        "target_boundary": 1,
+        "continuation": 5
+      }
+    ],
+    "totals": {
+      "iterations": 3245,
+      "generated": 112459776,
+      "resumed": 874893902,
+      "extensions": 332307666,
+      "gather_scan": 2340822341,
+      "compact_scan": 107769504
+    },
+    "continuations": {
+      "0": {
+        "token": 0,
+        "name": "<entry>",
+        "dispatches": 186,
+        "executed": 112459776,
+        "peak_queued": 0
+      },
+      "1": {
+        "token": 1,
+        "name": "intersect_closest",
+        "dispatches": 902,
+        "executed": 444263305,
+        "peak_queued": 1048576
+      },
+      "2": {
+        "token": 2,
+        "name": "shade_volume",
+        "dispatches": 408,
+        "executed": 85077315,
+        "peak_queued": 436479
+      },
+      "3": {
+        "token": 3,
+        "name": "shade_light_forward",
+        "dispatches": 111,
+        "executed": 12868735,
+        "peak_queued": 252414
+      },
+      "4": {
+        "token": 4,
+        "name": "shade_background",
+        "dispatches": 24,
+        "executed": 376881,
+        "peak_queued": 133661
+      },
+      "5": {
+        "token": 5,
+        "name": "shade_surface",
+        "dispatches": 798,
+        "executed": 332307666,
+        "peak_queued": 1048576
+      }
+    },
+    "extensions": {
+      "6": {
+        "boundary": 1,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 798,
+        "executed": 332307666,
+        "peak_queued": 1048576
+      },
+      "7": {
+        "boundary": 2,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 0,
+        "executed": 0,
+        "peak_queued": 0
+      },
+      "8": {
+        "boundary": 10,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 0,
+        "executed": 0,
+        "peak_queued": 0
+      },
+      "9": {
+        "boundary": 12,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 0,
+        "executed": 0,
+        "peak_queued": 0
+      },
+      "10": {
+        "boundary": 14,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 0,
+        "executed": 0,
+        "peak_queued": 0
+      },
+      "11": {
+        "boundary": 16,
+        "extension": 0,
+        "schema": "org.psycles.cycles.surface_sort",
+        "handler": "org.psycles.cycles.surface_sort",
+        "dispatches": 0,
+        "executed": 0,
+        "peak_queued": 0
+      }
+    },
+    "auxiliaries": {
+      "shade_light_nee": {
+        "dispatches": 436,
+        "executed": 138958533,
+        "peak_queued": 708203
+      },
+      "intersect_shadow": {
+        "dispatches": 254,
+        "executed": 45986710,
+        "peak_queued": 403433
+      },
+      "shade_shadow": {
+        "dispatches": 119,
+        "executed": 20799633,
+        "peak_queued": 343078
+      }
+    },
+    "batches": [
+      {
+        "stats": {
+          "iterations": 121,
+          "generated": 1757184,
+          "resumed": 13665168,
+          "extensions": 5191097,
+          "gather_scan": 55157720,
+          "compact_scan": 1269866,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 177.307
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 3,
+            "executed": 1757184,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 33,
+            "executed": 6939588,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 18,
+            "executed": 1328059,
+            "peak_queued": 357438
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 7,
+            "executed": 200525,
+            "peak_queued": 154266
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 3,
+            "executed": 5899,
+            "peak_queued": 5722
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 26,
+            "executed": 5191097,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 26,
+            "executed": 5191097,
+            "peak_queued": 1048576
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 13,
+            "executed": 2171381,
+            "peak_queued": 498413
+          },
+          "intersect_shadow": {
+            "dispatches": 10,
+            "executed": 719596,
+            "peak_queued": 295381
+          },
+          "shade_shadow": {
+            "dispatches": 7,
+            "executed": 325272,
+            "peak_queued": 291757
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 130,
+          "generated": 1757184,
+          "resumed": 13673043,
+          "extensions": 5193096,
+          "gather_scan": 59176952,
+          "compact_scan": 1268278,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 179.277
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 3,
+            "executed": 1757184,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 35,
+            "executed": 6942888,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 20,
+            "executed": 1329664,
+            "peak_queued": 357694
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 8,
+            "executed": 201477,
+            "peak_queued": 154765
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 3,
+            "executed": 5918,
+            "peak_queued": 5740
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 29,
+            "executed": 5193096,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 29,
+            "executed": 5193096,
+            "peak_queued": 1048576
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 13,
+            "executed": 2171328,
+            "peak_queued": 497842
+          },
+          "intersect_shadow": {
+            "dispatches": 10,
+            "executed": 717610,
+            "peak_queued": 294629
+          },
+          "shade_shadow": {
+            "dispatches": 8,
+            "executed": 324823,
+            "peak_queued": 291269
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 163,
+          "generated": 3514368,
+          "resumed": 27341827,
+          "extensions": 10385407,
+          "gather_scan": 123771712,
+          "compact_scan": 2517724,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 317.428
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 5,
+            "executed": 3514368,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 44,
+            "executed": 13883718,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 25,
+            "executed": 2658865,
+            "peak_queued": 400033
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 8,
+            "executed": 402021,
+            "peak_queued": 203779
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 4,
+            "executed": 11816,
+            "peak_queued": 11374
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 37,
+            "executed": 10385407,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 37,
+            "executed": 10385407,
+            "peak_queued": 1048576
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 18,
+            "executed": 4340841,
+            "peak_queued": 615651
+          },
+          "intersect_shadow": {
+            "dispatches": 12,
+            "executed": 1435585,
+            "peak_queued": 305305
+          },
+          "shade_shadow": {
+            "dispatches": 9,
+            "executed": 650879,
+            "peak_queued": 291474
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 250,
+          "generated": 7028736,
+          "resumed": 54678013,
+          "extensions": 20767201,
+          "gather_scan": 148811812,
+          "compact_scan": 6586210,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 610.488
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 12,
+            "executed": 7028736,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 69,
+            "executed": 27765600,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 35,
+            "executed": 5316530,
+            "peak_queued": 436316
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 11,
+            "executed": 805301,
+            "peak_queued": 205758
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 3,
+            "executed": 23381,
+            "peak_queued": 22804
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 58,
+            "executed": 20767201,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 58,
+            "executed": 20767201,
+            "peak_queued": 1048576
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 33,
+            "executed": 8683261,
+            "peak_queued": 617071
+          },
+          "intersect_shadow": {
+            "dispatches": 19,
+            "executed": 2874903,
+            "peak_queued": 306022
+          },
+          "shade_shadow": {
+            "dispatches": 9,
+            "executed": 1298933,
+            "peak_queued": 336693
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 409,
+          "generated": 14057472,
+          "resumed": 109363067,
+          "extensions": 41538879,
+          "gather_scan": 278281876,
+          "compact_scan": 13520396,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 1183.443
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 24,
+            "executed": 14057472,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 112,
+            "executed": 55532627,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 51,
+            "executed": 10635882,
+            "peak_queued": 435520
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 15,
+            "executed": 1608741,
+            "peak_queued": 251546
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 3,
+            "executed": 46938,
+            "peak_queued": 46117
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 97,
+            "executed": 41538879,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 97,
+            "executed": 41538879,
+            "peak_queued": 1048576
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 57,
+            "executed": 17370806,
+            "peak_queued": 616423
+          },
+          "intersect_shadow": {
+            "dispatches": 34,
+            "executed": 5747851,
+            "peak_queued": 331759
+          },
+          "shade_shadow": {
+            "dispatches": 15,
+            "executed": 2600731,
+            "peak_queued": 336812
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 753,
+          "generated": 28114944,
+          "resumed": 218726722,
+          "extensions": 83078022,
+          "gather_scan": 571538966,
+          "compact_scan": 27321325,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 2345.095
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 46,
+            "executed": 28114944,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 212,
+            "executed": 111066928,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 92,
+            "executed": 21271085,
+            "peak_queued": 436479
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 22,
+            "executed": 3216495,
+            "peak_queued": 251827
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 3,
+            "executed": 94192,
+            "peak_queued": 92388
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 191,
+            "executed": 83078022,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 191,
+            "executed": 83078022,
+            "peak_queued": 1048576
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 103,
+            "executed": 34739913,
+            "peak_queued": 707808
+          },
+          "intersect_shadow": {
+            "dispatches": 58,
+            "executed": 11499815,
+            "peak_queued": 337151
+          },
+          "shade_shadow": {
+            "dispatches": 25,
+            "executed": 5200131,
+            "peak_queued": 343001
+          }
+        }
+      },
+      {
+        "stats": {
+          "iterations": 1419,
+          "generated": 56229888,
+          "resumed": 437446062,
+          "extensions": 166153964,
+          "gather_scan": 1104083303,
+          "compact_scan": 55285705,
+          "max_scan": 1048576,
+          "max_active": 1048576,
+          "elapsed_ms": 4631.228
+        },
+        "continuations": {
+          "0": {
+            "token": 0,
+            "name": "<entry>",
+            "dispatches": 93,
+            "executed": 56229888,
+            "peak_queued": 0
+          },
+          "1": {
+            "token": 1,
+            "name": "intersect_closest",
+            "dispatches": 397,
+            "executed": 222131956,
+            "peak_queued": 1048576
+          },
+          "2": {
+            "token": 2,
+            "name": "shade_volume",
+            "dispatches": 167,
+            "executed": 42537230,
+            "peak_queued": 435312
+          },
+          "3": {
+            "token": 3,
+            "name": "shade_light_forward",
+            "dispatches": 40,
+            "executed": 6434175,
+            "peak_queued": 252414
+          },
+          "4": {
+            "token": 4,
+            "name": "shade_background",
+            "dispatches": 5,
+            "executed": 188737,
+            "peak_queued": 133661
+          },
+          "5": {
+            "token": 5,
+            "name": "shade_surface",
+            "dispatches": 360,
+            "executed": 166153964,
+            "peak_queued": 1048576
+          }
+        },
+        "extensions": {
+          "6": {
+            "boundary": 1,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 360,
+            "executed": 166153964,
+            "peak_queued": 1048576
+          },
+          "7": {
+            "boundary": 2,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "8": {
+            "boundary": 10,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "9": {
+            "boundary": 12,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "10": {
+            "boundary": 14,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          },
+          "11": {
+            "boundary": 16,
+            "extension": 0,
+            "schema": "org.psycles.cycles.surface_sort",
+            "handler": "org.psycles.cycles.surface_sort",
+            "dispatches": 0,
+            "executed": 0,
+            "peak_queued": 0
+          }
+        },
+        "auxiliaries": {
+          "shade_light_nee": {
+            "dispatches": 199,
+            "executed": 69481003,
+            "peak_queued": 708203
+          },
+          "intersect_shadow": {
+            "dispatches": 111,
+            "executed": 22991350,
+            "peak_queued": 403433
+          },
+          "shade_shadow": {
+            "dispatches": 46,
+            "executed": 10398864,
+            "peak_queued": 343078
+          }
+        }
+      }
+    ]
+  },
+  "total_deltas": {
+    "iterations": -452,
+    "generated": 0,
+    "resumed": 7,
+    "extensions": 1,
+    "gather_scan": -339320197,
+    "compact_scan": -651814
+  }
+}

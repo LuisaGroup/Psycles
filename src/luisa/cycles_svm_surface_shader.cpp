@@ -13,6 +13,41 @@ namespace psycles::luisa_backend::cycles_svm::detail {
 using namespace luisa::compute;
 namespace closure = ::psycles::luisa_backend::cycles_closure;
 
+Float3 surface_shader_apply_holdout(ShaderData &sd) noexcept {
+  namespace abi = compiler::cycles_svm;
+  Float3 weight = make_float3(0.0f);
+  $if((sd.object_flag & unsigned(abi::SD_OBJECT_HOLDOUT_MASK)) != 0u) {
+    $if(((sd.flag & unsigned(abi::SD_TRANSPARENT)) != 0u) &
+        ((sd.flag & unsigned(abi::SD_HAS_ONLY_VOLUME)) == 0u)) {
+      weight = make_float3(1.0f) - sd.closure_transparent_extinction;
+      if (sd.closure != nullptr) {
+        UInt index = 0u;
+        $while(index < sd.closure->count()) {
+          $if(sd.closure->common(index).type != unsigned(abi::CLOSURE_BSDF_TRANSPARENT_ID)) {
+            sd.closure->set_type(index, unsigned(abi::NBUILTIN_CLOSURES));
+          };
+          index += 1u;
+        };
+      }
+      // Keep the original integer subtraction, not a set-difference rewrite.
+      // Cycles 5.2.1 SD_CLOSURE_FLAGS does not include SD_TRANSPARENT.
+      sd.flag &= ~unsigned(abi::SD_CLOSURE_FLAGS - (abi::SD_TRANSPARENT | abi::SD_BSDF));
+    }
+    $else { weight = make_float3(1.0f); };
+  }
+  $else {
+    if (sd.closure != nullptr) {
+      UInt index = 0u;
+      $while(index < sd.closure->count()) {
+        const auto sc = sd.closure->common(index);
+        $if(sc.type == unsigned(abi::CLOSURE_HOLDOUT_ID)) { weight += sc.weight; };
+        index += 1u;
+      };
+    }
+  };
+  return weight;
+}
+
 namespace {
 
 [[nodiscard]] SurfaceShaderBsdfEval zero_evaluation() noexcept {

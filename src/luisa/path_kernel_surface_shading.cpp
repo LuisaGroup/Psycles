@@ -1,6 +1,7 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_emissive_triangle.h"
 #include "path_kernel_surface_emission.h"
+#include "cycles_svm_surface_shader.h"
 #include "path_tracer_ambient_occlusion.h"
 #include "subsurface_exit_closure_component.h"
 
@@ -165,6 +166,24 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                  .camera_projection = config.camera_projection,
                  .ambient_occlusion =
                      ambient_occlusion ? &*ambient_occlusion : nullptr});
+        }
+        if (scene->native_cycles_svm_surface) {
+            namespace abi = compiler::cycles_svm;
+            LUISA_ASSERT(populated_surface != nullptr, "Holdout requires native surface population.");
+            const auto native = populated_surface->native_surface_state();
+            LUISA_ASSERT(native.has_value(), "Holdout requires retained ShaderData.");
+            auto &sd = native->shader_data;
+            // integrate_surface skips holdout at a BSSRDF exit. For ordinary
+            // events this precedes emission and the termination/roulette edge.
+            $if(!bounce.subsurface_exit &
+                (((sd.flag & unsigned(abi::SD_HOLDOUT)) != 0u) |
+                 ((sd.object_flag & unsigned(abi::SD_OBJECT_HOLDOUT_MASK)) != 0u)) &
+                ((path_flags & cycles_path_state::flag_transparent_background) != 0u)) {
+                const auto weight = cycles_svm::detail::surface_shader_apply_holdout(sd);
+                const auto weighted = weight * throughput;
+                sample.accumulate_transparency((weighted.x + weighted.y + weighted.z) * (1.0f / 3.0f));
+                $if(all(weight == make_float3(1.0f))) { $break; };
+            };
         }
         const auto preparation = populated_surface
                                      ? populated_surface->preparation()

@@ -5,12 +5,15 @@ closes **S1** with a permanent original-HIP full-render red/green regression,
 complete host/HIP/fallback suites and strict native Vulkan canaries. The
 [native continuation repair](../native-surface-continuation/README.md) addresses
 **S2**, removes the production native-label roundtrip, and restores the W3/W4
-and surface-BSDF part of W5 control placement. **S3 remains open**, as do
-transparent-glass controls, other feature boundaries and the unmeasured costs
-of remaining work-placement leads. The findings and images below describe the
-captured pre-repair baseline, not the current S1/S2 implementation. Source/word
-identities remain unchanged historical evidence; runtime-only repairs do not
-establish new compiler coverage or an isolated rendering speedup.
+and surface-BSDF part of W5 control placement. The
+[native Holdout repair](../native-holdout/README.md) addresses **S3** with
+original word images, GPU write-set snapshots and complete film regressions.
+Transparent-glass controls, other feature boundaries and the unmeasured costs
+of remaining work-placement leads remain open. The findings and images below describe the
+captured pre-repair baseline, not the current S1/S2/S3 implementation. Source/word
+identities remain unchanged historical evidence. The Holdout report separately
+records its new compiler coverage; none of these repairs establishes an
+isolated rendering speedup.
 
 The [post-continuation ownership check](../surface-ownership/README.md) narrows
 W1: the three source-level same-hit KernelShader flag reads already share one

@@ -91,7 +91,7 @@ void run_constant_fold_stage(CyclesGraph &graph, ConstantFoldStage stage) {
          type == node_type::hair_bsdf ||
          type == node_type::glass_bsdf ||
          type == node_type::refraction_bsdf || type == node_type::emission ||
-         type == node_type::background ||
+         type == node_type::background || type == node_type::holdout ||
          type == node_type::transparent_bsdf;
 }
 
@@ -119,6 +119,9 @@ projected_node_type(std::string_view type) noexcept {
   // output. Recover that node before graph cleanup and SVM domain traversal.
   if (type == node_type::volume_emission) {
     return node_type::emission;
+  }
+  if (type == node_type::volume_holdout) {
+    return node_type::holdout;
   }
   // Psycles' canonical Multiply Color helper is exactly Cycles Mix Color in
   // MULTIPLY mode with clamped factor and unclamped result. Normalize it at
@@ -239,6 +242,10 @@ projected_binary_math_operation(std::string_view type) noexcept {
   if (node == node_type::emission &&
       (output == "Closure" || output == "Volume")) {
     return "Emission";
+  }
+  if (node == node_type::holdout &&
+      (output == "Closure" || output == "Volume")) {
+    return "Holdout";
   }
   if (node == node_type::geometry) {
     return output == "GeometricNormal"
@@ -945,7 +952,8 @@ CyclesGraph CyclesGraph::project(
           .value = contract::SocketValue::floating(0.0f),
       });
     }
-    if (is_volume_closure(target_type) || target_type == node_type::emission) {
+    if (is_volume_closure(target_type) || target_type == node_type::emission ||
+        target_type == node_type::holdout) {
       inputs.emplace_back(GraphInput{
           .name = "VolumeMixWeight",
           .type = GraphSocketType::floating,
