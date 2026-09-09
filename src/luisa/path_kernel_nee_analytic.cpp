@@ -144,8 +144,7 @@ class AnalyticDirectLightProvider final : public DirectLightProvider {
                         light.axis_y,
                         light.axis_z,
                         light.axis_scale,
-                        light.spot_angle,
-                        light.spot_smooth,
+                        light.spot,
                         light_sample.xy(),
                         normalize_power);
                 }

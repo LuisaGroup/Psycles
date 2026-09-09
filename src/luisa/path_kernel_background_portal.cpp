@@ -26,9 +26,10 @@ namespace sampling = analytic_light_sampling;
           .axis_z = light.axis_z,
           .length_u = light.size_u,
           .length_v = light.size_v,
-          .spread = sampling::pi,
+          // Portals have no emitting spread profile. Their proposal uses
+          // the authored primitive without spread clamping.
+          .spread = Var<AreaLightParameters>{std::numeric_limits<float>::max(), 0.0f},
           .ellipse = (light.flags & light_flag_ellipse) != 0u,
-          .full_spread = true,
           .random = std::move(random),
           // Cycles forces portal inverse area independently of lamp power
           // normalization. This flag affects only evaluation, while retaining

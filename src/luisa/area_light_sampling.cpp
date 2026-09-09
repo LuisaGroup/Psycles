@@ -63,18 +63,6 @@ inverse_area(
             (area != 0.0f));
 }
 
-[[nodiscard]] Float
-tangent_half_spread(
-    Float spread) noexcept {
-    return select(
-        tan(0.5f *
-            luisa::compute::max(
-                spread, 0.0f)),
-        std::numeric_limits<
-            float>::max(),
-        spread == sampling::pi);
-}
-
 [[nodiscard]] Float3
 sample_rectangle(
     Float3 center,
@@ -420,13 +408,11 @@ evaluation_factor(
         &input,
     Float3 direction,
     Float3 normal) noexcept {
-    return sampling::inverse_pi *
-           inverse_area(input) *
-           sampling::
-               area_spread_attenuation(
-                   direction,
-                   normal,
-                   input.spread);
+    Float value = sampling::inverse_pi * inverse_area(input);
+    $if(input.spread.normalize_spread > 0.0f) {
+        value *= sampling::area_spread_attenuation(direction, normal, input.spread);
+    };
+    return value;
 }
 
 }// namespace
@@ -512,12 +498,10 @@ AreaLightSampling::from_position(
                 input.reference,
             normal) <= 0.0f;
     $if(front_facing) {
-        const auto tangent =
-            tangent_half_spread(
-                input.spread);
+        const auto tangent = input.spread.tan_half_spread;
         auto shape =
             original_shape(input);
-        $if(!input.full_spread) {
+        $if(input.spread.normalize_spread > 0.0f) {
             shape =
                 clamp_to_spread(
                     input,
@@ -661,12 +645,10 @@ AreaLightSampling::from_intersection(
         .distance = distance,
         .conditional_pdf = 0.0f,
         .evaluation_factor = 0.0f};
-    const auto tangent =
-        tangent_half_spread(
-            input.spread);
+    const auto tangent = input.spread.tan_half_spread;
     auto shape =
         original_shape(input);
-    $if(!input.full_spread) {
+    $if(input.spread.normalize_spread > 0.0f) {
         shape =
             clamp_to_spread(
                 input,

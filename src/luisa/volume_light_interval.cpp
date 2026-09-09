@@ -450,36 +450,7 @@ VolumeLightInterval::spot(
             input.axis_y,
             input.axis_z,
             input.axis_scale);
-    const auto half_angle =
-        0.5f * input.spot_angle;
-    const auto tangent =
-        tan(half_angle);
-    const auto minimum_transverse_scale =
-        scalar_min(
-            input.axis_scale.x *
-                input.axis_scale.x,
-            input.axis_scale.y *
-                input.axis_scale.y);
-    const auto axial_scale =
-        input.axis_scale.z *
-        input.axis_scale.z;
-    const auto denominator =
-        tangent * tangent *
-        minimum_transverse_scale;
-    const auto geometry_valid =
-        transform.valid &
-        (denominator > 0.0f);
-    const auto safe_denominator =
-        select(
-            1.0f,
-            denominator,
-            geometry_valid);
-    const auto apex_shift =
-        input.radius *
-        sqrt(
-            1.0f +
-            axial_scale /
-                safe_denominator);
+    const auto apex_shift = input.spot.ray_segment_dp;
     const auto emission_axis =
         -input.axis_z;
     const auto shifted_origin =
@@ -502,11 +473,10 @@ VolumeLightInterval::spot(
                 0.0f, 0.0f, -1.0f),
             local_origin,
             local_direction,
-            cos(half_angle) *
-                cos(half_angle),
+            input.spot.cos_half_spot_angle * input.spot.cos_half_spot_angle,
             input.interval);
     result.valid &=
-        geometry_valid;
+        transform.valid;
     return result;
 }
 
@@ -541,17 +511,7 @@ VolumeLightInterval::area(
         0.5f * input.length_u;
     const auto half_v =
         0.5f * input.length_v;
-    const auto tangent =
-        select(
-            tan(
-                0.5f *
-                scalar_max(
-                    input.spread,
-                    0.0f)),
-            std::numeric_limits<
-                float>::max(),
-            input.spread ==
-                sampling::pi);
+    const auto tangent = input.spread.tan_half_spread;
     const auto nearly_parallel =
         tangent < 1.0e-5f;
     const auto cylinder =

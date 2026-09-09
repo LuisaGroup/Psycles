@@ -90,7 +90,9 @@ bool run(const char *program, const char *backend) {
     light.radius = input.radius;
     light.size_u = input.size_u;
     light.size_v = input.size_v;
-    light.spot_angle = input.angle;
+    light.spot = psycles::luisa_backend::make_spot_light_parameters(
+        input.angle, 0.0f, input.radius, {input.tfm.x.x, 0, 0},
+        {0, input.tfm.y.y, 0}, {0, 0, input.tfm.z.z});
     light.angle = input.angle;
     light.flags = input.sphere ? light_flag_sphere : 0u;
     light.cycles_shader_id = 0u;

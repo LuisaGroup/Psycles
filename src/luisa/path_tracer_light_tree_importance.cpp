@@ -1,4 +1,5 @@
 #include "path_tracer_light_tree_importance.h"
+#include <psycles/luisa/analytic_light_sampling.h>
 
 #include <cmath>
 #include <cstdint>
@@ -562,15 +563,10 @@ void spot_parameters(
             -1.0f,
             1.0f)) -
             acos(clamp(state.cos_theta_u, -1.0f, 1.0f))));
-    const auto cosine_half_angle = cos(0.5f * light.spot_angle);
-    const auto blend_width =
-        (1.0f - cosine_half_angle) * light.spot_smooth;
     const auto cosine_delta =
         cosine_minimum_outgoing - cos(state.theta_e);
-    state.energy *= select(
-        cast<float>(cosine_delta >= 0.0f),
-        smooth_unit_interval(cosine_delta / blend_width),
-        blend_width > 0.0f);
+    const auto blend = cosine_delta * light.spot.spot_smooth;
+    state.energy *= analytic_light_sampling::smoothstepf(blend);
 }
 
 void analytic_parameters(

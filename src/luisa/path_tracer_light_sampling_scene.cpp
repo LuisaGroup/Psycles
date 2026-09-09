@@ -108,6 +108,7 @@ LightSamplingSceneUpload build_light_sampling_scene_upload(
     const LuisaSceneData &scene,
     std::span<const GeometryUpload> geometry_uploads,
     std::span<const LightGpu> lights,
+    std::span<const contract::LightId> analytic_light_ids,
     std::span<const Vec3f> analytic_light_emission_estimates,
     std::span<const EmissiveTriangleGpu> emissive_triangles,
     std::span<const float> emissive_triangle_areas,
@@ -119,9 +120,10 @@ LightSamplingSceneUpload build_light_sampling_scene_upload(
                 "emissive triangle identities and areas have different sizes";
             return result;
         }
-        if (lights.size() != analytic_light_emission_estimates.size()) {
+        if (lights.size() != analytic_light_emission_estimates.size() ||
+            lights.size() != analytic_light_ids.size()) {
             result.diagnostic =
-                "analytic lights and emission estimates have different sizes";
+                "analytic lights, source identities and emission estimates have different sizes";
             return result;
         }
         if (emissive_triangles.size() + lights.size() +
@@ -157,7 +159,7 @@ LightSamplingSceneUpload build_light_sampling_scene_upload(
              light_index < lights.size();
              ++light_index) {
             auto emitter = make_analytic_light_tree_emitter(
-                0u, lights[light_index],
+                0u, lights[light_index], snapshot.lights.at(analytic_light_ids[light_index]),
                 analytic_light_emission_estimates[light_index]);
             LightTreeTopEmitterInput direct{
                 .emitter = emitter,

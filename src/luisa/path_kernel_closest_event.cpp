@@ -112,9 +112,6 @@ class ClosestEventStageImpl final
                     const auto ellipse =
                         (light.flags &
                          light_flag_ellipse) != 0u;
-                    const auto full_spread =
-                        (light.flags &
-                         light_flag_full_spread) != 0u;
                     const auto normalize_power =
                         (light.flags &
                          light_flag_normalize) != 0u;
@@ -132,8 +129,7 @@ class ClosestEventStageImpl final
                                 light.size_v,
                                 light.axis_z,
                                 ellipse,
-                                full_spread,
-                                light.spread,
+                                light.area,
                                 normalize_power);
                     $if(candidate.valid) {
                         light_hit = true;
@@ -200,8 +196,7 @@ class ClosestEventStageImpl final
                                     light.axis_y,
                                     light.axis_z,
                                     light.axis_scale,
-                                    light.spot_angle,
-                                    light.spot_smooth,
+                                    light.spot,
                                     normalize_power,
                                     previous_mis_origin_normal,
                                     had_transmission);

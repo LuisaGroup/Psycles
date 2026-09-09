@@ -16,9 +16,8 @@ struct AreaLightSampleInput {
     luisa::compute::Float3 axis_z;
     luisa::compute::Float length_u;
     luisa::compute::Float length_v;
-    luisa::compute::Float spread;
+    luisa::compute::Var<AreaLightParameters> spread;
     luisa::compute::Bool ellipse;
-    luisa::compute::Bool full_spread;
     luisa::compute::Float2 random;
     luisa::compute::Bool normalize_power;
 };

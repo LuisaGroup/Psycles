@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <psycles/luisa/analytic_light_parameters.h>
 
 #include <luisa/core/basic_types.h>
 #include <luisa/dsl/sugar.h>
@@ -217,9 +218,8 @@ struct LightGpu {
     float radius{};
     float size_u{};
     float size_v{};
-    float spread{};
-    float spot_angle{};
-    float spot_smooth{};
+    AreaLightParameters area{};
+    SpotLightParameters spot{};
     float angle{};
     luisa::uint flags{};
     luisa::uint surface_tag{};
@@ -747,9 +747,8 @@ LUISA_STRUCT(
     radius,
     size_u,
     size_v,
-    spread,
-    spot_angle,
-    spot_smooth,
+    area,
+    spot,
     angle,
     flags,
     surface_tag,

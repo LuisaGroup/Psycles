@@ -107,8 +107,7 @@ VolumeAnalyticLightSampling::
         sampling::
             spot_light_attenuation(
                 local_ray,
-                input.spot_angle,
-                input.spot_smooth);
+                input.spot);
     const auto use_attenuation =
         !finite_sphere |
         (center_distance_squared >
@@ -133,7 +132,7 @@ VolumeAnalyticLightSampling::
         .uv =
             sampling::spot_light_uv(
                 local_ray,
-                input.spot_angle),
+                input.spot.half_cot_half_spot_angle),
         .distance = geometry.distance,
         .conditional_pdf =
             geometry.conditional_pdf,
@@ -158,8 +157,7 @@ VolumeAnalyticLightSampling::
         point.axis_y,
         point.axis_z,
         point.axis_scale,
-        input.spot_angle,
-        input.spot_smooth,
+        input.spot,
         point.random,
         point.normalize_power);
 }

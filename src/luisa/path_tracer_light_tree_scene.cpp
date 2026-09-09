@@ -274,6 +274,7 @@ sampling::LightTreeEmitter make_triangle_light_tree_emitter(
 sampling::LightTreeEmitter make_analytic_light_tree_emitter(
     std::uint32_t emitter_id,
     const LightGpu &light,
+    const contract::LightDesc &source,
     Vec3f shader_emission_estimate) noexcept {
     const auto type = static_cast<contract::LightType>(light.type);
     const auto position = from_luisa_host(light.position);
@@ -309,7 +310,7 @@ sampling::LightTreeEmitter make_analytic_light_tree_emitter(
     measure.orientation.empty = false;
     bool distant = false;
     if (type == contract::LightType::area) {
-        measure.orientation.theta_e = 0.5f * light.spread;
+        measure.orientation.theta_e = 0.5f * source.spread;
         const auto half_u = multiply(axis_x, 0.5f * light.size_u);
         const auto half_v = multiply(axis_y, 0.5f * light.size_v);
         const std::array corners{
@@ -324,7 +325,7 @@ sampling::LightTreeEmitter make_analytic_light_tree_emitter(
         measure.orientation.theta_e = light_tree_half_pi;
     } else if (type == contract::LightType::spot) {
         auto theta_e = std::min(
-            0.5f * light.spot_angle, light_tree_half_pi);
+            0.5f * source.spot_angle, light_tree_half_pi);
         if (std::abs(light_tree_half_pi - theta_e) >= 1.0e-6f) {
             theta_e = std::atan(
                 std::tan(theta_e) *

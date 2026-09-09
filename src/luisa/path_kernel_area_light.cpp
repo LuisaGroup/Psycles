@@ -19,13 +19,10 @@ area_light_sample_input(
         .axis_z = light.axis_z,
         .length_u = light.size_u,
         .length_v = light.size_v,
-        .spread = light.spread,
+        .spread = light.area,
         .ellipse =
             (light.flags &
              light_flag_ellipse) != 0u,
-        .full_spread =
-            (light.flags &
-             light_flag_full_spread) != 0u,
         .random = std::move(random),
         .normalize_power =
             (light.flags &

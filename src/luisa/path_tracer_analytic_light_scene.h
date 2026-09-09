@@ -27,6 +27,9 @@ classify_analytic_light(const contract::LightDesc &light,
 struct AnalyticLightSceneUpload {
   // Cycles KernelLight ABI order: enabled regular lights, then portals.
   luisa::vector<LightGpu> device_lights;
+  // Host-only source identity for light-tree construction. Authored angles
+  // do not need to remain in the device sampling table.
+  luisa::vector<contract::LightId> regular_light_ids;
   luisa::vector<Vec3f> regular_shader_emission_estimates;
   Vec3f background{};
   std::uint32_t regular_count{};

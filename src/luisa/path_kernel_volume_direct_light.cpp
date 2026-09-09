@@ -60,9 +60,7 @@ volume_spot_light_input(
                 light,
                 std::move(reference),
                 std::move(random)),
-        .spot_angle = light.spot_angle,
-        .spot_smooth =
-            light.spot_smooth};
+        .spot = light.spot};
 }
 
 class AnalyticVolumeLightProvider final
@@ -685,10 +683,7 @@ class PathVolumeDirectLightingComponent final
                          light.axis_z,
                      .axis_scale =
                          light.axis_scale,
-                     .radius =
-                         light.radius,
-                     .spot_angle =
-                         light.spot_angle});
+                     .spot = light.spot});
             $if(interval.valid) {
                 result.emitter_kind =
                     analytic_emitter_kind;
@@ -746,7 +741,7 @@ class PathVolumeDirectLightingComponent final
                      .length_v =
                          light.size_v,
                      .spread =
-                         light.spread,
+                         light.area,
                      .ellipse =
                          (light.flags &
                           light_flag_ellipse) !=

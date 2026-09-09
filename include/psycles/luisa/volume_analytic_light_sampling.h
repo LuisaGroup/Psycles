@@ -23,8 +23,7 @@ struct VolumePointLightSampleInput {
 
 struct VolumeSpotLightSampleInput {
     VolumePointLightSampleInput point;
-    luisa::compute::Float spot_angle;
-    luisa::compute::Float spot_smooth;
+    luisa::compute::Var<SpotLightParameters> spot;
 };
 
 // Host-stage Luisa AST component for the two distinct Cycles sampling
