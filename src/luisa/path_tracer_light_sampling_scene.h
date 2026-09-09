@@ -54,6 +54,7 @@ build_light_sampling_scene_upload(
     const LuisaSceneData &scene,
     std::span<const GeometryUpload> geometry_uploads,
     std::span<const LightGpu> lights,
+    std::span<const contract::LightId> analytic_light_ids,
     std::span<const Vec3f> analytic_light_emission_estimates,
     std::span<const EmissiveTriangleGpu> emissive_triangles,
     std::span<const float> emissive_triangle_areas,

@@ -102,7 +102,7 @@ void setup_lamp(const LuisaSceneData &scene,
           analytic_light_sampling::world_to_light_direction(-task.ray_direction,
                                                             transform));
       local.z = -local.z;
-      uv = analytic_light_sampling::spot_light_uv(local, light.spot_angle);
+      uv = analytic_light_sampling::spot_light_uv(local, light.spot.half_cot_half_spot_angle);
     }
     $else { uv = analytic_light_sampling::point_light_uv(normal, transform); };
   }

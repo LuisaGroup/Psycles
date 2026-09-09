@@ -97,6 +97,7 @@ make_triangle_light_tree_emitter(
 make_analytic_light_tree_emitter(
     std::uint32_t emitter_id,
     const LightGpu &light,
+    const contract::LightDesc &source,
     Vec3f shader_emission_estimate) noexcept;
 
 [[nodiscard]] sampling::LightTreeEmitter

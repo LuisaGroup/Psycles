@@ -1,0 +1,20 @@
+--- a/intern/cycles/scene/light.cpp
++++ b/intern/cycles/scene/light.cpp
+@@ -27,6 +27,8 @@
+ #include <cstdlib>
+ #include <fstream>
+ 
++#include "psycles_light_parameters_oracle.h"
++
+ CCL_NAMESPACE_BEGIN
+ 
+ static void shade_background_pixels(Device *device,
+@@ -1489,6 +1491,8 @@
+ 
+   LOG_INFO << "Number of lights sent to the device: " << kintegrator->num_lights;
+ 
++  psycles_dump_light_parameters(scene, klights);
++
+   dscene->lights.copy_to_device();
+ }
+ 

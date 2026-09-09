@@ -45,10 +45,6 @@ namespace {
   flags |= light.normalize ? light_flag_normalize : 0u;
   flags |= light.ellipse ? light_flag_ellipse : 0u;
   flags |= light.is_sphere ? light_flag_sphere : 0u;
-  flags |=
-      light.type == contract::LightType::area && light.spread >= pi - 1.0e-6f
-          ? light_flag_full_spread
-          : 0u;
 
   MaterialBinding binding{.surface_tag = ~std::uint32_t{0u},
                           .parameter_block = 0u,
@@ -113,9 +109,13 @@ namespace {
                   .size_u = light.size * axis_x_length,
                   .size_v = (light.size_y > 0.0f ? light.size_y : light.size) *
                             axis_y_length,
-                  .spread = light.spread,
-                  .spot_angle = light.spot_angle,
-                  .spot_smooth = light.spot_smooth,
+                  .area = light.type == contract::LightType::area && !light.is_portal
+                      ? make_area_light_parameters(light.spread) : AreaLightParameters{},
+                  .spot = light.type == contract::LightType::spot
+                      ? make_spot_light_parameters(light.spot_angle, light.spot_smooth,
+                            light.size, matrix_axis(light.transform, 0u),
+                            matrix_axis(light.transform, 1u), matrix_axis(light.transform, 2u))
+                      : SpotLightParameters{},
                   .angle = light.angle,
                   .flags = flags,
                   .surface_tag = binding.surface_tag,
@@ -170,6 +170,7 @@ AnalyticLightSceneComponent::build(const contract::SceneSnapshot &snapshot,
     regular.reserve(snapshot.lights.size());
     portals.reserve(snapshot.lights.size());
     result.regular_shader_emission_estimates.reserve(snapshot.lights.size());
+    result.regular_light_ids.reserve(snapshot.lights.size());
 
     for (const auto &[light_id, light] : snapshot.lights) {
       static_cast<void>(light_id);
@@ -191,6 +192,7 @@ AnalyticLightSceneComponent::build(const contract::SceneSnapshot &snapshot,
         break;
       case AnalyticLightRole::regular:
         regular.emplace_back(make_device_light(light_id, light, scene));
+        result.regular_light_ids.emplace_back(light_id);
         result.regular_shader_emission_estimates.emplace_back(estimate);
         break;
       }

@@ -5,6 +5,7 @@
 #endif
 
 #include <psycles/luisa/volume_direct_sampling.h>
+#include <psycles/luisa/analytic_light_parameters.h>
 
 #include <luisa/dsl/sugar.h>
 
@@ -24,8 +25,7 @@ struct VolumeSpotIntervalInput {
     luisa::compute::Float3 axis_y;
     luisa::compute::Float3 axis_z;
     luisa::compute::Float3 axis_scale;
-    luisa::compute::Float radius;
-    luisa::compute::Float spot_angle;
+    luisa::compute::Var<SpotLightParameters> spot;
 };
 
 struct VolumeAreaIntervalInput {
@@ -38,7 +38,7 @@ struct VolumeAreaIntervalInput {
     luisa::compute::Float3 axis_z;
     luisa::compute::Float length_u;
     luisa::compute::Float length_v;
-    luisa::compute::Float spread;
+    luisa::compute::Var<AreaLightParameters> spread;
     luisa::compute::Bool ellipse;
 };
 

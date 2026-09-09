@@ -189,8 +189,7 @@ intersect_spot(
     luisa::compute::Float3 axis_y,
     luisa::compute::Float3 axis_z,
     luisa::compute::Float3 axis_scale,
-    luisa::compute::Float spot_angle,
-    luisa::compute::Float spot_smooth,
+    luisa::compute::Expr<SpotLightParameters> spot,
     luisa::compute::Bool normalize_power,
     luisa::compute::Float3 previous_normal,
     luisa::compute::Bool had_transmission) noexcept {
@@ -210,11 +209,7 @@ intersect_spot(
                 max(
                     center_distance_squared,
                     1.0e-30f));
-    const auto spot_cap =
-        sampling::
-            spot_one_minus_cosine_larger_spread(
-                spot_angle,
-                axis_scale);
+    const auto spot_cap = 1.0f - spot.cos_half_larger_spread;
     auto result =
         intersect_point_geometry(
             ray_origin,
@@ -241,7 +236,7 @@ intersect_spot(
     result.uv =
         sampling::spot_light_uv(
             local_ray,
-            spot_angle);
+            spot.half_cot_half_spot_angle);
     const auto use_attenuation =
         !sphere |
         (center_distance_squared >
@@ -249,8 +244,7 @@ intersect_spot(
     const auto attenuation =
         sampling::spot_light_attenuation(
             local_ray,
-            spot_angle,
-            spot_smooth);
+            spot);
     result.evaluation_factor =
         sampling::point_eval_factor(
             radius,
@@ -284,8 +278,7 @@ intersect_area(
     luisa::compute::Float length_v,
     luisa::compute::Float3 axis_z,
     luisa::compute::Bool ellipse,
-    luisa::compute::Bool full_spread,
-    luisa::compute::Float spread,
+    luisa::compute::Expr<AreaLightParameters> spread,
     luisa::compute::Bool normalize_power) noexcept {
     using namespace luisa::compute;
     namespace sampling =
@@ -325,7 +318,6 @@ intersect_area(
              .length_v = length_v,
              .spread = spread,
              .ellipse = ellipse,
-             .full_spread = full_spread,
              .random =
                  make_float2(0.0f),
              .normalize_power =

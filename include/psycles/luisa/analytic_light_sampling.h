@@ -5,6 +5,7 @@
 #endif
 
 #include <psycles/luisa/cycles_sample_mapping.h>
+#include <psycles/luisa/analytic_light_parameters.h>
 #include <psycles/luisa/native_vector_math.h>
 
 #include <luisa/dsl/sugar.h>
@@ -316,71 +317,36 @@ spot_light_to_local(
 }
 
 [[nodiscard]] inline luisa::compute::Float
-spot_light_attenuation(
-    luisa::compute::Float3 local_ray,
-    luisa::compute::Float spot_angle,
-    luisa::compute::Float spot_smooth) noexcept {
+smoothstepf(luisa::compute::Float f) noexcept {
     using namespace luisa::compute;
-    const auto cosine_half_angle =
-        cos(0.5f * spot_angle);
-    const auto blend_width =
-        (1.0f - cosine_half_angle) *
-        spot_smooth;
-    const auto linear = clamp(
-        safe_divide(
-            local_ray.z -
-                cosine_half_angle,
-            blend_width),
-        0.0f,
-        1.0f);
-    const auto smooth =
-        linear * linear *
-        (3.0f - 2.0f * linear);
-    const auto hard = select(
-        0.0f,
-        1.0f,
-        local_ray.z >=
-            cosine_half_angle);
-    return select(
-        hard,
-        smooth,
-        blend_width > 0.0f);
+    Float value;
+    $if(f <= 0.0f) { value = 0.0f; }
+    $elif(f >= 1.0f) { value = 1.0f; }
+    $else {
+        const auto ff = f * f;
+        value = 3.0f * ff - 2.0f * ff * f;
+    };
+    return value;
 }
 
 [[nodiscard]] inline luisa::compute::Float
-spot_one_minus_cosine_larger_spread(
-    luisa::compute::Float spot_angle,
-    luisa::compute::Float3 axis_scale) noexcept {
+spot_light_attenuation(
+    luisa::compute::Float3 local_ray,
+    luisa::compute::Expr<SpotLightParameters> spot) noexcept {
     using namespace luisa::compute;
-    const auto tangent =
-        tan(0.5f * spot_angle);
-    const auto transverse_scale_squared =
-        max(
-            axis_scale.x * axis_scale.x,
-            axis_scale.y * axis_scale.y);
-    const auto axial_scale_squared =
-        axis_scale.z * axis_scale.z;
-    const auto cosine =
-        rsqrt(
-            1.0f +
-            tangent * tangent *
-                transverse_scale_squared /
-                max(
-                    axial_scale_squared,
-                    1.0e-30f));
-    return 1.0f - cosine;
+    const auto f = (local_ray.z - spot.cos_half_spot_angle) * spot.spot_smooth;
+    // Cycles smoothstepf's comparisons also define zero blend behavior;
+    // replacing the reciprocal with safe_divide changes the cone boundary.
+    return smoothstepf(f);
 }
 
 [[nodiscard]] inline luisa::compute::Float2
 spot_light_uv(
     luisa::compute::Float3 local_ray,
-    luisa::compute::Float spot_angle) noexcept {
+    luisa::compute::Float half_cot_half_spot_angle) noexcept {
     using namespace luisa::compute;
-    const auto half_cotangent =
-        0.5f /
-        tan(0.5f * spot_angle);
     const auto factor =
-        half_cotangent / local_ray.z;
+        half_cot_half_spot_angle / local_ray.z;
     return make_float2(
         local_ray.y * factor + 0.5f,
         -(local_ray.x + local_ray.y) *
@@ -791,52 +757,25 @@ sample_rectangle_solid_angle(
 area_spread_attenuation(
     luisa::compute::Float3 direction_to_light,
     luisa::compute::Float3 light_normal,
-    luisa::compute::Float spread) noexcept {
+    luisa::compute::Expr<AreaLightParameters> spread) noexcept {
     using namespace luisa::compute;
-
-    const auto cosine = max(
-        dot(light_normal, -direction_to_light),
-        0.0f);
-    const auto half_spread =
-        0.5f * max(spread, 0.0f);
-    const auto sine_angle = sqrt(max(
-        1.0f - cosine * cosine,
-        0.0f));
-    const auto tangent_angle =
-        sine_angle / max(cosine, 1.0e-20f);
-    const auto tangent_spread =
-        tan(half_spread);
-    const auto normalization = select(
-        3.0f /
-            max(
-                half_spread *
-                    half_spread *
-                    half_spread,
-                1.0e-20f),
-        1.0f /
-            max(
-                tangent_spread -
-                    half_spread,
-                1.0e-20f),
-        half_spread > 0.05f);
+    // Cycles tan_angle(-D, Ng), not an approximation requiring unit inputs.
+    const auto tangent_angle = length(cross(-direction_to_light, light_normal)) /
+                               dot(-direction_to_light, light_normal);
     const auto finite_spread =
         max(
-            (tangent_spread -
+            (spread.tan_half_spread -
              tangent_angle) *
-                normalization,
+                spread.normalize_spread,
             0.0f);
     const auto zero_spread = select(
         pi,
         0.0f,
         tangent_angle > 1.0e-5f);
-    const auto narrowed = select(
+    return select(
         finite_spread,
         zero_spread,
-        half_spread <= 0.0f);
-    return select(
-        narrowed,
-        1.0f,
-        spread >= pi - 1.0e-6f);
+        spread.tan_half_spread == 0.0f);
 }
 
 // Cycles represents a zero-radius point as a unit-area delta emitter for the
@@ -985,8 +924,7 @@ sample_spot_light(
     luisa::compute::Float3 axis_y,
     luisa::compute::Float3 axis_z,
     luisa::compute::Float3 axis_scale,
-    luisa::compute::Float spot_angle,
-    luisa::compute::Float spot_smooth,
+    luisa::compute::Expr<SpotLightParameters> spot,
     luisa::compute::Float2 random,
     luisa::compute::Bool normalize_power) noexcept {
     using namespace luisa::compute;
@@ -1007,10 +945,7 @@ sample_spot_light(
                 max(
                     center_distance_squared,
                     1.0e-30f));
-    const auto spot_cap =
-        spot_one_minus_cosine_larger_spread(
-            spot_angle,
-            axis_scale);
+    const auto spot_cap = 1.0f - spot.cos_half_larger_spread;
     // Cycles selects the light's visible cap only when it is strictly
     // narrower. Equality belongs to the spread-cone branch.
     const auto sample_spread_cone =
@@ -1068,8 +1003,7 @@ sample_spot_light(
     const auto attenuation =
         spot_light_attenuation(
             local_ray,
-            spot_angle,
-            spot_smooth);
+            spot);
     const auto use_attenuation =
         !finite_sphere |
         (center_distance_squared >
@@ -1091,7 +1025,7 @@ sample_spot_light(
         .normal = geometry.normal,
         .uv = spot_light_uv(
             local_ray,
-            spot_angle),
+            spot.half_cot_half_spot_angle),
         .distance = geometry.distance,
         .conditional_pdf =
             geometry.conditional_pdf,

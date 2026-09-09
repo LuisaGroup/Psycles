@@ -1825,6 +1825,7 @@ contract::SceneCompilation LuisaPathTracerBackend::compile_scene(
         *data,
         uploads,
         analytic_lights.regular_lights(),
+        analytic_lights.regular_light_ids,
         analytic_lights.regular_shader_emission_estimates,
         emissive_triangles,
         emissive_triangle_areas,

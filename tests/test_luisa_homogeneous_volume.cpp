@@ -3,6 +3,7 @@
 #include <psycles/luisa/volume_direct_sampling.h>
 #include <psycles/luisa/volume_light_interval.h>
 #include <psycles/luisa/volume_scatter_probability.h>
+#include "luisa_light_parameter_constants.h"
 
 #include <algorithm>
 #include <array>
@@ -20,6 +21,16 @@ using namespace luisa::compute;
 using namespace psycles::luisa_backend;
 
 inline constexpr std::size_t record_count = 59u;
+
+Var<SpotLightParameters> spot_parameters(float angle, float radius,
+                                        psycles::Vec3f scale = {1,1,1}, float smooth = 0.0f) {
+    return psycles::test_support::light_parameter_constant(make_spot_light_parameters(
+        angle, smooth, radius, {scale.x,0,0}, {0,scale.y,0}, {0,0,scale.z}));
+}
+
+Var<AreaLightParameters> area_parameters(float spread) {
+    return psycles::test_support::light_parameter_constant(make_area_light_parameters(spread));
+}
 
 [[nodiscard]] bool approximately_equal(
     float actual,
@@ -693,8 +704,7 @@ int main(int argc, char **argv) {
                              0.0f, 0.0f, 1.0f),
                      .axis_scale =
                          make_float3(1.0f),
-                     .radius = 0.0f,
-                     .spot_angle = half_pi}));
+                     .spot = spot_parameters(half_pi, 0.0f)}));
             write_interval(
                 47u,
                 light_interval.spot(
@@ -720,8 +730,7 @@ int main(int argc, char **argv) {
                              0.0f, 0.0f, 1.0f),
                      .axis_scale =
                          make_float3(1.0f),
-                     .radius = 1.0f,
-                     .spot_angle = half_pi}));
+                     .spot = spot_parameters(half_pi, 1.0f)}));
             write_interval(
                 48u,
                 light_interval.spot(
@@ -751,8 +760,7 @@ int main(int argc, char **argv) {
                      .axis_scale =
                          make_float3(
                              2.0f, 1.0f, 0.5f),
-                     .radius = 0.25f,
-                     .spot_angle = half_pi}));
+                     .spot = spot_parameters(half_pi, 0.25f, {2,1,0.5f})}));
             write_interval(
                 49u,
                 light_interval.spot(
@@ -778,8 +786,7 @@ int main(int argc, char **argv) {
                              0.0f, 0.0f, 1.0f),
                      .axis_scale =
                          make_float3(1.0f),
-                     .radius = 0.0f,
-                     .spot_angle = half_pi}));
+                     .spot = spot_parameters(half_pi, 0.0f)}));
             write_interval(
                 50u,
                 light_interval.area(
@@ -805,7 +812,7 @@ int main(int argc, char **argv) {
                              0.0f, 0.0f, 1.0f),
                      .length_u = 2.0f,
                      .length_v = 4.0f,
-                     .spread = 0.0f,
+                     .spread = area_parameters(0.0f),
                      .ellipse = false}));
             write_interval(
                 51u,
@@ -832,7 +839,7 @@ int main(int argc, char **argv) {
                              0.0f, 0.0f, 1.0f),
                      .length_u = 2.0f,
                      .length_v = 4.0f,
-                     .spread = 0.0f,
+                     .spread = area_parameters(0.0f),
                      .ellipse = true}));
             write_interval(
                 52u,
@@ -859,7 +866,7 @@ int main(int argc, char **argv) {
                              0.0f, 0.0f, 1.0f),
                      .length_u = 2.0f,
                      .length_v = 4.0f,
-                     .spread = 0.0f,
+                     .spread = area_parameters(0.0f),
                      .ellipse = true}));
             const auto finite_area_input =
                 VolumeAreaIntervalInput{
@@ -887,7 +894,7 @@ int main(int argc, char **argv) {
                             0.0f, 0.0f, 1.0f),
                     .length_u = 2.0f,
                     .length_v = 4.0f,
-                    .spread = half_pi,
+                    .spread = area_parameters(half_pi),
                     .ellipse = false};
             write_interval(
                 53u,
@@ -913,7 +920,7 @@ int main(int argc, char **argv) {
                 {.minimum = 0.0f,
                  .maximum = 5.0f};
             full_spread_input.spread =
-                3.1415926535897932f;
+                area_parameters(3.1415926535897932f);
             write_interval(
                 55u,
                 light_interval.area(
@@ -943,8 +950,7 @@ int main(int argc, char **argv) {
                              1.0f, 0.0f, 0.0f),
                      .axis_scale =
                          make_float3(1.0f),
-                     .radius = 0.0f,
-                     .spot_angle = half_pi}));
+                     .spot = spot_parameters(half_pi, 0.0f)}));
 
             VolumeAnalyticLightSampling
                 analytic_light_sampling;
@@ -973,8 +979,7 @@ int main(int argc, char **argv) {
                              make_float2(
                                  0.37f, 0.61f),
                          .normalize_power = true},
-                    .spot_angle = 0.9f,
-                    .spot_smooth = 0.35f};
+                    .spot = spot_parameters(0.9f, 0.0f, {1,1,1}, 0.35f)};
             const auto segment_spot =
                 analytic_light_sampling
                     .spot_from_segment(
@@ -1018,8 +1023,7 @@ int main(int argc, char **argv) {
                              make_float2(
                                  0.37f, 0.61f),
                          .normalize_power = true},
-                    .spot_angle = 0.2f,
-                    .spot_smooth = 0.35f};
+                    .spot = spot_parameters(0.2f, 0.8f, {1,1,1}, 0.35f)};
             const auto segment_sphere =
                 analytic_light_sampling
                     .spot_from_segment(

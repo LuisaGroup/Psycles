@@ -1,6 +1,7 @@
 #include <psycles/luisa/analytic_light_intersection.h>
 #include <psycles/luisa/analytic_light_sampling.h>
 #include <psycles/luisa/cycles_light.h>
+#include "luisa_light_parameter_constants.h"
 
 #include <algorithm>
 #include <array>
@@ -15,6 +16,11 @@
 namespace {
 
 using namespace luisa::compute;
+using psycles::luisa_backend::AreaLightParameters;
+using psycles::luisa_backend::SpotLightParameters;
+using psycles::luisa_backend::make_area_light_parameters;
+using psycles::luisa_backend::make_spot_light_parameters;
+using psycles::test_support::light_parameter_constant;
 namespace analytic_light =
     psycles::luisa_backend::analytic_light_sampling;
 namespace analytic_intersection =
@@ -280,8 +286,7 @@ int main(int argc, char **argv) {
                         0.5f,
                         make_float3(0.0f, 0.0f, 1.0f),
                         false,
-                        true,
-                        analytic_light::pi,
+                        light_parameter_constant(make_area_light_parameters(analytic_light::pi)),
                         true);
             intersection_result.write(
                 0u,
@@ -326,8 +331,7 @@ int main(int argc, char **argv) {
                         0.6f,
                         make_float3(0.0f, 0.0f, 1.0f),
                         true,
-                        false,
-                        1.2f,
+                        light_parameter_constant(make_area_light_parameters(1.2f)),
                         true);
             intersection_result.write(
                 2u,
@@ -403,8 +407,9 @@ int main(int argc, char **argv) {
                         axis_y,
                         axis_z,
                         axis_scale,
-                        0.9200000166893005f,
-                        0.3700000047683716f,
+                        light_parameter_constant(make_spot_light_parameters(
+                            0.9200000166893005f, 0.3700000047683716f, 0.13f,
+                            {1,0,0}, {0,1,0}, {0,0,1})),
                         random,
                         true);
             }
@@ -447,8 +452,9 @@ int main(int argc, char **argv) {
                         axis_y,
                         axis_z,
                         axis_scale,
-                        0.9200000166893005f,
-                        0.3700000047683716f,
+                        light_parameter_constant(make_spot_light_parameters(
+                            0.9200000166893005f, 0.3700000047683716f, 0.13f,
+                            {1,0,0}, {0,1,0}, {0,0,1})),
                         true,
                         shading_normal,
                         false);

@@ -17,7 +17,6 @@ namespace {
 using namespace luisa::compute;
 namespace background_sampling = psycles::luisa_backend::background_sampling;
 using psycles::luisa_backend::detail::BackgroundPortalSampling;
-using psycles::luisa_backend::detail::light_flag_full_spread;
 using psycles::luisa_backend::detail::LightGpu;
 
 [[nodiscard]] bool
@@ -76,15 +75,13 @@ int main(int argc, char **argv) {
                  .axis_y = luisa::float3{0.0f, 1.0f, 0.0f},
                  .axis_z = luisa::float3{0.0f, 0.0f, -1.0f},
                  .size_u = 2.0f,
-                 .size_v = 2.0f,
-                 .flags = light_flag_full_spread},
+                 .size_v = 2.0f},
         LightGpu{.position = luisa::float3{0.0f, 0.0f, 0.0f},
                  .axis_x = luisa::float3{1.0f, 0.0f, 0.0f},
                  .axis_y = luisa::float3{0.0f, 1.0f, 0.0f},
                  .axis_z = luisa::float3{0.0f, 0.0f, 1.0f},
                  .size_u = 2.0f,
-                 .size_v = 2.0f,
-                 .flags = light_flag_full_spread}};
+                 .size_v = 2.0f}};
     auto portal_light_buffer =
         device.create_buffer<LightGpu>(portal_lights.size());
     auto portal_result_buffer = device.create_buffer<luisa::float4>(3u);
