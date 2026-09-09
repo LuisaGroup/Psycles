@@ -545,6 +545,16 @@ if(PSYCLES_BUILD_TESTS)
         add_test(NAME psycles.cycles_light_parameter_structure
             COMMAND psycles_cycles_light_parameter_structure_tests)
 
+        add_executable(psycles_cycles_surface_emission_structure_tests
+            tests/test_cycles_surface_emission_structure.cpp)
+        target_link_libraries(psycles_cycles_surface_emission_structure_tests
+            PRIVATE Psycles::luisa_runtime)
+        target_include_directories(psycles_cycles_surface_emission_structure_tests
+            PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+        target_compile_features(psycles_cycles_surface_emission_structure_tests PRIVATE cxx_std_20)
+        add_test(NAME psycles.cycles_surface_emission_structure
+            COMMAND psycles_cycles_surface_emission_structure_tests)
+
         add_executable(
             psycles_cycles_svm_vector_displacement_tests
             tests/test_cycles_svm_vector_displacement.cpp)

@@ -1,5 +1,6 @@
 #include "path_kernel_builder.h"
 #include "path_kernel_emissive_triangle.h"
+#include "path_kernel_surface_emission.h"
 #include "path_tracer_ambient_occlusion.h"
 #include "subsurface_exit_closure_component.h"
 
@@ -32,10 +33,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &point = surface.point;
         auto &hit = bounce.hit;
         auto &ray = sample.ray;
-        auto &hit_position = surface.hit_position;
-        auto &wp0 = surface.wp0;
-        auto &wp1 = surface.wp1;
-        auto &wp2 = surface.wp2;
         auto &cycles_surface_shader = surface.cycles_surface_shader;
         auto &cycles_object_index = surface.cycles_object_index;
         auto &cycles_primitive_index =
@@ -43,13 +40,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &path_step = bounce.path_step;
         auto &throughput = sample.throughput;
         auto &path_depth = sample.path_depth;
-        const auto mis_competition_skipped =
-            sample.mis_competition_skipped();
-        auto &previous_bsdf_pdf = sample.previous_bsdf_pdf;
-        auto &previous_mis_origin_normal =
-            sample.previous_mis_origin_normal;
-        auto &previous_light_tree_dt =
-            sample.previous_light_tree_dt;
         const auto terminate_on_next_surface =
             sample.terminate_on_next_surface_requested();
         auto &ray_events = sample.ray_events;
@@ -61,8 +51,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto &diffuse_depth = sample.diffuse_depth;
         auto &glossy_depth = sample.glossy_depth;
         auto &transmission_depth = sample.transmission_depth;
-        const auto &forward_light_weight =
-            config.light_transport.forward_light_weight;
         const auto next_event_estimation = config.next_event_estimation;
         const auto path_trace_enabled = config.path_trace_enabled;
         std::shared_ptr<PopulatedSurfaceShader> populated_surface;
@@ -79,12 +67,6 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
                 query,
                 include_runtime_flags,
                 include_aov);
-        };
-        auto clamp_contribution = [&](Float3 contribution,
-                                      UInt depth) noexcept {
-            return invocation
-                .clamp_emission_contribution(
-                    contribution, depth);
         };
         auto trace_surface_closure = [&](UInt tag,
                                          const SurfacePoint &surface_point,
@@ -121,8 +103,10 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         auto trace_uint32 = [&](UInt value) noexcept {
             return sample.trace_uint32(value);
         };
-        const auto include_runtime_flags =
-            Bool{next_event_estimation || path_trace_enabled};
+        // Emission eligibility consumes SD_EMISSION even in forward-only
+        // rendering without diagnostics. Unused flag projections are dead
+        // expressions and remain available for ordinary compiler pruning.
+        const auto include_runtime_flags = Bool{true};
         const auto include_aov =
             (!bounce.subsurface_exit) & (path_depth == 0u);
         const auto preparation_query =
@@ -212,105 +196,7 @@ class SurfaceShadingStageImpl final : public SurfaceShadingStage {
         }
         surface.set_evaluated_shadow_shading_normal(
             preparation.shading_normal);
-        Float3 emitted = preparation.emission;
-        emitted = select(
-            emitted, make_float3(0.0f), bounce.subsurface_exit);
-        Float emission_weight = 1.0f;
-        Float forward_selection_pdf = 0.0f;
-        Float forward_light_pdf = 0.0f;
-        Bool forward_pdf_valid = false;
-        if (next_event_estimation && scene->emissive_triangle_count > 0u) {
-            // The committed primitive already carries the effective authored
-            // sampling policy. NONE covers non-emissive materials, curves,
-            // and instances which are not part of the sampled-light
-            // population, so forward-hit MIS is O(1) exactly as in Cycles'
-            // legacy light distribution.
-            $if((!surface.is_curve) &
-                (surface.emission_sampling !=
-                 static_cast<std::uint32_t>(
-                     contract::EmissionSampling::none))) {
-                Bool competing =
-                    (path_depth > 0u) & (!mis_competition_skipped);
-                const auto oriented_geometric_normal =
-                    select(
-                        point.geometric_normal,
-                        -point.geometric_normal,
-                        point.back_facing);
-                forward_selection_pdf =
-                    0.5f * length(cross(wp1 - wp0, wp2 - wp0)) *
-                    scene->triangle_area_pdf;
-                if (config.use_light_tree) {
-                    const auto emitter_id =
-                        config.light_tree.triangle_emitter(
-                            cycles_object_index,
-                            cycles_primitive_index);
-                    forward_selection_pdf = config.light_tree.forward_pdf(
-                        emitter_id,
-                        ray->origin(),
-                        previous_mis_origin_normal,
-                        previous_light_tree_dt,
-                        cycles_path_visibility,
-                        path_flags);
-                }
-                const auto light_pdf =
-                    _emissive_triangle
-                        ->from_intersection(
-                            forward_selection_pdf,
-                            surface.emission_sampling,
-                            ray->origin(),
-                            hit_position,
-                            wp0,
-                            wp1,
-                            wp2,
-                            oriented_geometric_normal);
-                forward_light_pdf = light_pdf.value;
-                forward_pdf_valid = light_pdf.valid;
-                emission_weight = forward_light_weight(
-                    previous_bsdf_pdf,
-                    forward_light_pdf,
-                    competing,
-                    forward_pdf_valid);
-            };
-        }
-        Float3 emission_contribution = clamp_contribution(
-            throughput * emitted * emission_weight, path_depth);
-        sample.trace_write_forward_event(
-            path_step,
-            path_trace_schema::ForwardEventSlot::forward_emission,
-            emitted);
-        sample.trace_write_forward_event(
-            path_step,
-            path_trace_schema::ForwardEventSlot::forward_policy,
-            make_float3(
-                cast<float>(surface.emission_sampling),
-                forward_selection_pdf,
-                select(0.0f, 1.0f, forward_pdf_valid)));
-        sample.trace_write_forward_event(
-            path_step,
-            path_trace_schema::ForwardEventSlot::forward_mis,
-            make_float3(
-                previous_bsdf_pdf,
-                forward_light_pdf,
-                emission_weight));
-        sample.trace_write_forward_event(
-            path_step,
-            path_trace_schema::ForwardEventSlot::forward_contribution,
-            emission_contribution);
-        sample.accumulate_radiance(
-            emission_contribution);
-        auto directly_visible_emission =
-            (path_flags &
-             cycles_path_state::flag_any_pass) ==
-            0u;
-        sample.accumulate_light_pass(
-            LightPassBuffer::emission,
-            select(make_float3(0.0f),
-                   emission_contribution,
-                   directly_visible_emission));
-        sample.accumulate_scattered_light(
-            select(emission_contribution,
-                   make_float3(0.0f),
-                   directly_visible_emission));
+        emit_surface_emission(surface, preparation, *_emissive_triangle);
 
         // PATH_RAY_TERMINATE_ON_NEXT_SURFACE still records
         // surface emission, then stops before data passes, direct

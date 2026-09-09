@@ -217,6 +217,7 @@ set(PSYCLES_LUISA_RUNTIME_SOURCES
     src/luisa/path_kernel_surface_queue.cpp
     src/luisa/path_kernel_surface_scatter.cpp
     src/luisa/path_kernel_surface_shading.cpp
+    src/luisa/path_kernel_surface_emission.cpp
     src/luisa/path_kernel_subsurface.cpp
     src/luisa/path_kernel_subsurface_intersection.cpp
     src/luisa/path_kernel_subsurface_state.cpp
