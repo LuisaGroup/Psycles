@@ -95,6 +95,10 @@ a reproduction or a repair of the original failure. Existing pre-film
 one-sample graph outputs have matching aggregate albedo across the two
 backends (mean ratio 0.9999953); that diagnostic comparison is not a replacement
 for the Cycles oracle or the failing original 256-sample gate.
+The [numerical reduction log](graph-numerical-reduction.md) records subsequent
+full-domain negative controls and isolated original-module sample ranges.
+An exact Metal4 graph repeat is now running to test reproducibility; no
+numerical correction is claimed from the passing controls.
 
 ### Historical pre-film staged observation
 
