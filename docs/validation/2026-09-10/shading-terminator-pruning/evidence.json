@@ -1,0 +1,417 @@
+{
+  "purpose": "Source/log identity for the bounded shading-terminator pruning checkpoint and four-scene canaries; not a fresh paired benchmark",
+  "as_of": "2026-09-10 after full HIP193/fallback195, strict native Vulkan4 and completed four-scene Phase A; numerical gate FAILED, exports/pairs not run",
+  "root_base": "d1a12b8e8e56a4f7e8ae29af9240e9f6c5324a86 plus uncommitted generic pruning and one-site native fast-acos reuse",
+  "sdk": "5c7de2bb91901d76894397a23932fbd43cf26b28",
+  "logs": {
+    "recording-before.log": {
+      "original_path": "/var/tmp/psycles-holdout-CXlJR7/shading-frequency-recording-5sfsqG/recording-red.log",
+      "sha256": "862b6f62b4a65a3ecbc85239acdbb09fd7d9fa9790819237195478203a8424b0"
+    },
+    "recording-guard-only.log": {
+      "original_path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/recording-green.log",
+      "sha256": "4e601f3ca0332d4b1e54f173fe9d68ec4edc77054eac2734c864429ebbac17dd"
+    },
+    "recording-native-fast.log": {
+      "original_path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/recording-fast-green-2.log",
+      "sha256": "e99283a32f89162106ef0a68027f47709267aff89a892b57565a2a5c55d42d96"
+    },
+    "guard-only-hip.log": {
+      "original_path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/focused-hip-detail.log",
+      "sha256": "531580c02845ce910d6c50de0dfdd5ece6d44fd9fe89070f498346dd1aa5013b"
+    },
+    "native-fast-hip.log": {
+      "original_path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/candidate-ir/run.log",
+      "sha256": "2a3f3847d955b930b454957655fb0af5dd2a383f75d6d147563767497c01cd6e"
+    },
+    "focused-native-fast-hip.log": {
+      "original_path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/focused-hip-2.log",
+      "sha256": "141ba3bbf50ce31fc4e510270e52f55ffc6aea48129945b304997475f9942979"
+    },
+    "full-hip.log": {
+      "original_path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/full-hip.log",
+      "sha256": "8d5f3ec3e883e5dc738465dbb40f538037dafedd844f0003acca405a13c99320"
+    },
+    "full-fallback.log": {
+      "original_path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/full-fallback.log",
+      "sha256": "177e5aa0108741e79a0d468d045029b7a6d63bf7ddf1ffa8af31600fa2cc1bfb"
+    }
+  },
+  "pinned_files": [
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/full-build-4.log",
+      "sha256": "c8b689fcaf27ceade07e82c2f8d7585b2395f8a54c5d0529b325726593ffa628"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/full-host-2.log",
+      "sha256": "16f631fbd7a22e2134ed4cd51726dfe2e766a61a8633c5b280034485f7ca3f0b"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/full-host-3.log",
+      "sha256": "0eba825ae4c2321a47e5a819cee3c036ee1d79250648b5e7b9c6546bf18802b7"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/guard-only-bsdf.cpp",
+      "sha256": "cae5d02651c611c4c8bfe0a4001d913a1ceb298c6f7c61223895d3c444efc0ec"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/guard-only-test",
+      "sha256": "0355edcbc86358f242f58cb12314aa1773cb41d782a905890c4f2a2e2752947a"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/guard-only-libs/libpsycles_luisa_runtime.so",
+      "sha256": "ad884114e0a7eefc907d1c37848a6de216bd8247dfc2aba1e3569b09b502c149"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/build/libpsycles_luisa_runtime.so",
+      "sha256": "86fe7274ae712134bcba6b6262f6fea7e69263fc73a2998856858b4ee3a950fd"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/tests/data/cycles_shading_terminator.json",
+      "sha256": "4dfd842e43eafb9794844cd680e0a266b7732b312e2dabc0c3729b0284fb451b"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/tests/data/cycles_shading_terminator.txt",
+      "sha256": "9cc3114111410a034277d2da56894f84a7e2cc0ba4dfeaf6735d1ca144a39647"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-terminator-7owG2a/original-shading-terminator",
+      "sha256": "45db1896806b46d42c6d288e6dedcecd9d5b10f6f1294a6dcc2d9e135f781948"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-terminator-7owG2a/benchmark-plan.json",
+      "sha256": "41b345496b9b173b5c708b951a5274c0c68db20dd90e4b77349264f902b7080f"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-terminator-7owG2a/benchmark-plan.md",
+      "sha256": "e27e9d026fa1cf70b846f461abd51b0d86897afc65ac8021af1c264f230f7cb2"
+    },
+    {
+      "path": "/home/mike/Projects/Psycles-surface-svm/include/psycles/luisa/cycles_fast_math.h",
+      "sha256": "7fe49f959457d3e9875dd330980523bfb8ff51be1812da7198405536de99632d"
+    },
+    {
+      "path": "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/util/math_fast.h",
+      "sha256": "8ae830fff8b3aee77144f855731fdb74c9fce94ea65dd5b609b507a514ac2157"
+    },
+    {
+      "path": "/var/tmp/psycles-holdout-CXlJR7/shading-frequency-recording-5sfsqG/ast/eval-false.json",
+      "sha256": "ccb9d209d699650f6c2410fab2e3ae31b5c608c0e46561c0045234fd2c483cd7"
+    },
+    {
+      "path": "/var/tmp/psycles-holdout-CXlJR7/shading-frequency-recording-5sfsqG/ast/eval-true.json",
+      "sha256": "28016ec4ee1af899a9a7c62e64e920d34e88cd0ba1145c0398ece7b36ede5b42"
+    },
+    {
+      "path": "/var/tmp/psycles-holdout-CXlJR7/shading-frequency-recording-5sfsqG/ast/eval-default.json",
+      "sha256": "28016ec4ee1af899a9a7c62e64e920d34e88cd0ba1145c0398ece7b36ede5b42"
+    },
+    {
+      "path": "/var/tmp/psycles-holdout-CXlJR7/shading-frequency-recording-5sfsqG/ast/sample-false.json",
+      "sha256": "d487c0e5d466acbc423623f06037897f81361791bb687da9dd290fab75dc6335"
+    },
+    {
+      "path": "/var/tmp/psycles-holdout-CXlJR7/shading-frequency-recording-5sfsqG/ast/sample-true.json",
+      "sha256": "5fb9a2b653f8063a09d073551449bc24a5925b5cffcacdb723ad56a60eae565e"
+    },
+    {
+      "path": "/var/tmp/psycles-holdout-CXlJR7/shading-frequency-recording-5sfsqG/ast/sample-default.json",
+      "sha256": "5fb9a2b653f8063a09d073551449bc24a5925b5cffcacdb723ad56a60eae565e"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-green/eval-false.json",
+      "sha256": "d472d6b08477968921d94065eafdb0dbff33873172e42e86d51fb214d474a557"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-green/eval-true.json",
+      "sha256": "48b760a3b2c5e052e862be01bb8113b2faac49d43abb89b381e4fd43bff4d069"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-green/eval-default.json",
+      "sha256": "48b760a3b2c5e052e862be01bb8113b2faac49d43abb89b381e4fd43bff4d069"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-green/sample-false.json",
+      "sha256": "4d9bd4d1560cfed40b4145353655707dac6d1819cac02285e5d3d4e8eef1f4e2"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-green/sample-true.json",
+      "sha256": "89ddd8ef41c0a038b3f153ac4ca66e79f93445983646a50b38c13af88866e5b8"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-green/sample-default.json",
+      "sha256": "89ddd8ef41c0a038b3f153ac4ca66e79f93445983646a50b38c13af88866e5b8"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-fast-green/eval-false.json",
+      "sha256": "38d1c0dad8e90e21bb6bfca716dd99a78477538e58b871e1fe30793dbdd4cc1b"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-fast-green/eval-true.json",
+      "sha256": "aa1c5801db6ff0705353d9f1ccb9ad1aec2cb8b40981701e0ace091929aabc75"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-fast-green/eval-default.json",
+      "sha256": "aa1c5801db6ff0705353d9f1ccb9ad1aec2cb8b40981701e0ace091929aabc75"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-fast-green/sample-false.json",
+      "sha256": "c5fd99bc291440a551bb5f34fabe86b4f652530a0997ebc6bf84d384f230a370"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-fast-green/sample-true.json",
+      "sha256": "5824f2f9dfd6fa984daac8e6043fc07cc670bea97aed3e8a22c38f277cef42e1"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/ast-fast-green/sample-default.json",
+      "sha256": "5824f2f9dfd6fa984daac8e6043fc07cc670bea97aed3e8a22c38f277cef42e1"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/full-hip-detail.log",
+      "sha256": "33023157fade752ff7a64ee7a8bba33b9d76759a6ce75eb3298d1e418ade500a"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/full-fallback-detail.log",
+      "sha256": "42b780d5f3e83729203f50cfa5d9baf1e1677cf167eebd5f3ecb4803c60a2c35"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/strict-native-vk.log",
+      "sha256": "f5d382f71a94ae0cb3f4c2eea4835dcaf4f32d22dee54448ad3c6680ba1c68f9"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/strict-native-vk-detail.log",
+      "sha256": "b28f3789bb5cfb80750081601528acb46a277d50fd9f1970b4d27d71d95c68ef"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-terminator-7owG2a/final-candidate-tgZZND/execution-manifest.json",
+      "sha256": "e4f2f082a00459cb28733c8ac2d6a6b54fe8675a847b99e3832130f19b3d77a2"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-terminator-7owG2a/final-candidate-tgZZND/source-lock.json",
+      "sha256": "ec23a9df253af0208278c35da4bbf20a9ce3eca9acbd04f97c77abd80d489357"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-terminator-7owG2a/final-candidate-tgZZND/canaries/phase-a-results.json",
+      "sha256": "b085aa8ca1ca1002bef8f66cb4ec58eb1b4a24a8f06d32db777daf692acad306"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-terminator-7owG2a/final-candidate-tgZZND/phase-a-preflight.json",
+      "sha256": "3d7f0edc823e761706b7bd48a4334262a930d2bb4e65652a38e394b2599689d9"
+    },
+    {
+      "path": "/var/tmp/psycles-shading-terminator-7owG2a/final-candidate-tgZZND/phase-a-postflight.json",
+      "sha256": "b13d0ae9c57417bcb5294e30b6e1f342be96b649b1bce8c6434fa7d00a6087d3"
+    }
+  ],
+  "confirmed": {
+    "original_gpu_fixture_rows": 6,
+    "original_float_lanes": 216,
+    "pre_capability_recordings": {
+      "cases": 6,
+      "expected_failures": 2
+    },
+    "guard_only_hip": {
+      "enabled_cases": 6,
+      "mismatched_float_lanes": 3,
+      "disabled_cases": 3,
+      "disabled_mismatches": 0
+    },
+    "final_full_host": {
+      "passed": 186,
+      "total": 186,
+      "seconds": 1.58
+    },
+    "final_recordings": {
+      "passed": 6,
+      "total": 6
+    },
+    "final_focused_hip": {
+      "passed": 4,
+      "total": 4,
+      "seconds": 2.23
+    },
+    "final_gpu_fixture": {
+      "enabled_cases": 6,
+      "disabled_cases": 3,
+      "mismatches": 0
+    },
+    "final_full_hip": {
+      "passed": 193,
+      "total": 193,
+      "exit": 0,
+      "seconds": 1001.33,
+      "detailed_test_passed_markers": 193,
+      "timing_scope": "Correctness suite wall time only; isolated host build/replay overlap was allowed, so this is not fair renderer or compiler performance timing"
+    },
+    "final_full_fallback": {
+      "passed": 195,
+      "total": 195,
+      "exit": 0,
+      "seconds": 748.61,
+      "detailed_test_passed_markers": 195,
+      "timing_scope": "Correctness-suite elapsed time, not renderer/JIT performance"
+    },
+    "final_strict_native_vk": {
+      "passed": 4,
+      "total": 4,
+      "exit": 0,
+      "seconds": 3.29,
+      "native_spirv_successes": 6,
+      "guard_occurrences_each": 4,
+      "dxc_dxil_loader_entries": 0,
+      "guard_names": [
+        "LUISA_VULKAN_USE_XIR",
+        "LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV",
+        "LUISA_VULKAN_DISABLE_DXC"
+      ],
+      "note": "Optional system libudev/Mesa dlsym probes appear in loader diagnostics, but all tests completed successfully; not DXC/DXIL loads."
+    },
+    "phase_a": {
+      "renders": 4,
+      "comparison_processes": 4,
+      "pass_comparisons": 60,
+      "finite_check_processes": 4,
+      "actual_images_all_finite": 3,
+      "reference_images_all_finite": 3,
+      "numerical_gate": {
+        "status": "FAILED",
+        "policy_exit_code": 2,
+        "scope": "Derived sticky numerical verdict, not a fabricated combined-runner process exit. All individual terminal codes are below.",
+        "cause": "Classroom actual18 nonfinite lanes/8 pixels and reference70 lanes/27 pixels; all15 comparisons were still run."
+      },
+      "render_exits": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "finite_exits": [
+        0,
+        0,
+        0,
+        2
+      ],
+      "comparison_exits": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "source_input_binary_preflight": "pass",
+      "source_input_binary_postflight": "pass",
+      "fresh_exports_executed": 0,
+      "fresh_timing_pairs_executed": 0
+    }
+  },
+  "pending": [
+    "Classroom non-finite separated-pass values and residual cross-scene DiffInd / localized variation remain open",
+    "Fresh current-exporter input identity audit and twelve fresh v3 timing pairs"
+  ],
+  "limits": [
+    "Raw original fixture is a GPU function-boundary oracle, not a CPU shader/reference renderer.",
+    "Guard-only runtime ad884 is not final runtime 86fe.",
+    "Six recorded ASTs are complete pre-optimization modules, not backend ISA measurements.",
+    "Four current render observations and finite-domain pass metrics do not establish a paired speedup, full finiteness or full-scene parity."
+  ],
+  "llvm_audit": {
+    "scope": "Complete two fixture kernels, not production renderer kernels or performance",
+    "pins": [
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/llvm-kernel-counts.awk",
+        "sha256": "90d4f9b4e79949715f14193178cbce590b5722f5d4d5d5cb15397476ba4aac6e"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/native-fast-acos-llvm-comparison.md",
+        "sha256": "4f42c54209ef0e212de7b40f91faee9bdcd8257d05c2501054ce02f62cdabf30"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/baseline-ir/hip_kernel_before_opt_0.ll",
+        "sha256": "2d524e05e1749207fe16888362015594a1d4e4371d605d23ee1cf84c92c77458"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/baseline-ir/hip_kernel_before_opt_1.ll",
+        "sha256": "875402f3041ab989d659aaad688bebe6efbeda0a92bf5874aedfc20db1b40c6b"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/baseline-ir/hip_kernel_after_opt_0.ll",
+        "sha256": "3c9480a2583d10a953095715b64fbdd6bebba9d05878aa7d7983e7efcca671d3"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/baseline-ir/hip_kernel_after_opt_1.ll",
+        "sha256": "4a0bcce09b816e0f4a40ee874d4511092ddd6d0142d721b7f2f465049b5ca898"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/baseline-ir/hip_kernel_final_0.ll",
+        "sha256": "dbcebfe9f7c167f5f0033402a0ea1c0088b73003b5366be55d3d7e4a3ce5e2ae"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/baseline-ir/hip_kernel_final_1.ll",
+        "sha256": "f629594bcd2c3d5f46c3052a0305810f9cc4c4e4680f4bc1cfc7fa29a1c466fd"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/candidate-ir/hip_kernel_before_opt_0.ll",
+        "sha256": "ac899ecbfbff1ed8d7d93ababd896e53ccfbb3554ae1e0ea419b6ceaf6699ea8"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/candidate-ir/hip_kernel_before_opt_1.ll",
+        "sha256": "e2d5f6281e7f255a93ee28bcc5d8d5820d56c8100bc0757cc41332a465b9318a"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/candidate-ir/hip_kernel_after_opt_0.ll",
+        "sha256": "59720f08dec70a698b634a930a2ac2457594d13746dd5896ce9f78b692662131"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/candidate-ir/hip_kernel_after_opt_1.ll",
+        "sha256": "5d84dbe12e027d03327b4097f2dad710e3a09a0e599fce98cdbcd2e1c59d4545"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/candidate-ir/hip_kernel_final_0.ll",
+        "sha256": "496424ad4f34d775e550715dfdeb8f3acb32a113ee386be48d58c12d5ddd4ee2"
+      },
+      {
+        "path": "/var/tmp/psycles-shading-pruning-build-xZQ1nk/candidate-ir/hip_kernel_final_1.ll",
+        "sha256": "47bd1d0cd16302cab124d7e4f637fc8f9c2509bff404882300e32bd946aee58d"
+      }
+    ],
+    "enabled_entry": {
+      "before_optimization": [
+        1287,
+        1319
+      ],
+      "final": [
+        750,
+        738
+      ],
+      "final_blocks": [
+        29,
+        29
+      ],
+      "final_loads": [
+        20,
+        20
+      ],
+      "final_stores": [
+        44,
+        44
+      ]
+    },
+    "disabled_entry": {
+      "before_optimization": [
+        1206,
+        1206
+      ],
+      "final": [
+        675,
+        675
+      ],
+      "modules_equal_after_kernel_hash_name_only": true
+    },
+    "independent_replay": true
+  },
+  "phase_a_archive": {
+    "path": "phase-a-results.json",
+    "sha256": "b085aa8ca1ca1002bef8f66cb4ec58eb1b4a24a8f06d32db777daf692acad306",
+    "relative_record_names_resolve_under": "/var/tmp/psycles-shading-terminator-7owG2a/final-candidate-tgZZND/canaries",
+    "report": "PHASE_A.md"
+  }
+}

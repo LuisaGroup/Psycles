@@ -1,0 +1,98 @@
+{
+  "schema": "psycles.cycles-shading-terminator.v1",
+  "source_revision": "cb168525138fecc792cc393f94afc39582b0103c",
+  "original_version": "Blender Cycles 5.2.1",
+  "capture_date": "2026-09-10",
+  "capture_timezone": "Asia/Shanghai",
+  "native_fast_math": true,
+  "device_arch": "gfx1201",
+  "compiler_jobs": 32,
+  "command_working_directory": "/home/mike/Projects/Psycles-surface-svm",
+  "command": "/opt/rocm/bin/hipcc -parallel-jobs=32 --offload-arch=gfx1201 -DHIPCC -std=c++20 -O3 -ffast-math -I /home/mike/Projects/blender-cycles-trace-5.2/intern/cycles tools/cycles_shading_terminator_oracle.hip -o /var/tmp/psycles-shading-terminator-7owG2a/original-shading-terminator > /var/tmp/psycles-shading-terminator-7owG2a/build.log 2>&1",
+  "capture_command": "/var/tmp/psycles-shading-terminator-7owG2a/original-shading-terminator > /var/tmp/psycles-shading-terminator-7owG2a/original-shading-terminator.txt 2> /var/tmp/psycles-shading-terminator-7owG2a/capture.log",
+  "compile_exit": 0,
+  "capture_exit": 0,
+  "toolchain_version": "HIP 7.2.53211-3d9ef42; AMD clang 22.0.0git f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+  "scope": "Original GPU bsdf_diffuse_setup/bsdf_translucent_setup, bsdf_sample, bsdf_eval and diagnostic bump_shadowing_term calls with initialized native KernelObject rows. Host code only packs immutable inputs, uploads records and prints results; no host BSDF implementation or expected-number generation.",
+  "rows": 6,
+  "float_lanes": 36,
+  "integer_lanes": 12,
+  "format_header": "cycles-shading-terminator 1 6 9 3",
+  "cases": [
+    "diffuse_identity_frequency",
+    "diffuse_positive_frequency",
+    "translucent_identity_frequency",
+    "translucent_positive_frequency",
+    "label_none_positive_frequency",
+    "diffuse_bump_identity_frequency"
+  ],
+  "float_layout": [
+    "shader_normal_xyz_frequency",
+    "geometric_normal_xyz_padding",
+    "closure_normal_xyz_sample_weight",
+    "sampled_value_rgb_pdf",
+    "sampled_direction_xyz_eta",
+    "sampled_roughness_xy_padding_padding",
+    "evaluated_value_rgb_pdf",
+    "evaluation_direction_xyz_padding",
+    "original_bump_sample_eval_padding_padding"
+  ],
+  "integer_layout": [
+    "before_flags_closure_count_closure_left_closure_type",
+    "after_flags_closure_count_closure_left_closure_type",
+    "sample_label_valid_object_index_primitive_type_fixture_kind"
+  ],
+  "definedness": "Every case has a real object row at its case index. Native diffuse/translucent setup initializes the allocated closure normal/type/sample weight. The LABEL_NONE case changes only that initialized closure's type. Output arguments are initialized before calls, so untouched LABEL_NONE roughness/direction/eta remain defined observer inputs, not production-zero-initialization claims. Padded output lanes are observer packing only.",
+  "controls": {
+    "all_float_lanes_finite": 216,
+    "all_integer_lanes": 72,
+    "reflection_labels": [6, 6],
+    "transmission_labels": [5, 5],
+    "label_none": 0,
+    "diffuse_eval_red_frequency_1_2": [0.254647911, 0.0891074389],
+    "diffuse_sample_red_frequency_1_2": [0.210542187, 0.0],
+    "diffuse_pdf_frequency_1_2_unchanged": true,
+    "transmission_frequency_1_2_outputs_unchanged": true,
+    "bump_terms_at_frequency_1": [0.998325288, 0.970562756],
+    "before_after_discrete_state_unchanged": true
+  },
+  "proof_limits": [
+    "The input frequency is the finalized KernelObject field. Authored UI offset conversion, scene-wide host capability selection, unknown metadata and scene-transaction invalidation are separate tests.",
+    "No OBJECT_NONE reflection/evaluation row is used: original object lookup directly dereferences that index. This fixture does not certify the Psycles invalid-object service adapter.",
+    "The LABEL_NONE row is a defined standalone dispatcher control, not a claim that an admitted material produces this state.",
+    "This is a function-boundary GPU oracle, not a full SVM stream, integrator-path, frame-layout or performance comparison. Diagnostic bump terms call the original helper and must not motivate a second host implementation."
+  ],
+  "original_kernel_files_match_head": true,
+  "original_source_dirty_paths": [
+    "intern/cycles/scene/light.cpp",
+    "intern/cycles/scene/svm.cpp"
+  ],
+  "fixture_sha256": {
+    "tests/cycles_shading_terminator_fixture.h": "c4742828aca993a37ea9d7ca52baecb80432d80be3f06c62186f3d095461d4e7",
+    "tools/cycles_shading_terminator_oracle.hip": "3959d8a8aa735cae86a9cd6a13c4faa63af82e6d43d506458a2643fbc989c9e0",
+    "tests/data/cycles_shading_terminator.txt": "9cc3114111410a034277d2da56894f84a7e2cc0ba4dfeaf6735d1ca144a39647"
+  },
+  "original_sha256": {
+    "intern/cycles/kernel/closure/bsdf.h": "e2a897f1d85bb5c1f1eea000565e257883674baa9c816e08725e41bf33401383",
+    "intern/cycles/kernel/closure/bsdf_diffuse.h": "afe5fb64c21eaab7437b5839266f227026bf6483277f7927e2c330f73a0b35d4",
+    "intern/cycles/kernel/closure/alloc.h": "0c4d641007cce198cf98133fbf50f796c1ccd2bdcaf25d99f38302f63732f346",
+    "intern/cycles/kernel/sample/mapping.h": "3a7e9b2cfbbb0f22654874e23524b2965ac65ad527a9faf8e59667b76ae8adad",
+    "intern/cycles/kernel/types.h": "4f1f0f0156f8f5c829916ad302d0390b3cb0b38bdf0edb7e3ebddf6e32a35647",
+    "intern/cycles/kernel/device/hip/compat.h": "a865ab4e620de9f16c04bca1e180e32f2fb5074ab79dd59963c9a6957a262cb8",
+    "intern/cycles/kernel/device/hip/globals.h": "7a3ba742da324380b67fc777511ebe984a927ad8e288b1fc55c0a6be97d16796",
+    "intern/cycles/kernel/integrator/surface_shader.h": "1b36b3c2082b8992252b81869263a5e959e33713395b0b58de63d66c5052a69d",
+    "intern/cycles/scene/object.cpp": "55745c668d5889dd874a401c34a347a76141a1f9ec28444a216c99b94a442169"
+  },
+  "unrelated_dirty_source_sha256": {
+    "intern/cycles/scene/svm.cpp": "b0c7db6de10d5e77a26159015f16b633783032749e687ed9a7d3cd3658492e9e",
+    "intern/cycles/scene/light.cpp": "6075fa6cb941548af4ce9dffc8ab34233860709095bc71517ad4bc7742747fdb"
+  },
+  "producer_sha256": {
+    "/opt/rocm/bin/hipcc": "bd1250ef52961f333e4482120cc24a7fd3fdb65d7f655b990bd5fac99da33ec3",
+    "/opt/rocm/lib/llvm/bin/clang-22": "4fe3d39c0f2cf06ff4dee0635db82000ab1a2ee5a8f1547eaac8d9bf4710f525",
+    "/var/tmp/psycles-shading-terminator-7owG2a/original-shading-terminator": "45db1896806b46d42c6d288e6dedcecd9d5b10f6f1294a6dcc2d9e135f781948",
+    "/var/tmp/psycles-shading-terminator-7owG2a/original-shading-terminator.txt": "9cc3114111410a034277d2da56894f84a7e2cc0ba4dfeaf6735d1ca144a39647",
+    "/var/tmp/psycles-shading-terminator-7owG2a/build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/var/tmp/psycles-shading-terminator-7owG2a/capture.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

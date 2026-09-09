@@ -1,0 +1,391 @@
+Test project /home/mike/Projects/Psycles-surface-svm/build
+        Start   5: psycles.luisa_volume_coefficients_hip
+  1/193 Test   #5: psycles.luisa_volume_coefficients_hip ............................   Passed    0.11 sec
+        Start   8: psycles.luisa_stacked_volume_hip
+  2/193 Test   #8: psycles.luisa_stacked_volume_hip .................................   Passed    0.10 sec
+        Start  11: psycles.luisa_volume_phase_hip
+  3/193 Test  #11: psycles.luisa_volume_phase_hip ...................................   Passed    0.09 sec
+        Start  14: psycles.luisa_volume_stack_hip
+  4/193 Test  #14: psycles.luisa_volume_stack_hip ...................................   Passed    0.08 sec
+        Start  17: psycles.luisa_homogeneous_volume_hip
+  5/193 Test  #17: psycles.luisa_homogeneous_volume_hip .............................   Passed    0.09 sec
+        Start  20: psycles.luisa_heterogeneous_volume_hip
+  6/193 Test  #20: psycles.luisa_heterogeneous_volume_hip ...........................   Passed    0.14 sec
+        Start  23: psycles.luisa_heterogeneous_volume_candidate_hip
+  7/193 Test  #23: psycles.luisa_heterogeneous_volume_candidate_hip .................   Passed    0.13 sec
+        Start  26: psycles.luisa_heterogeneous_volume_segment_hip
+  8/193 Test  #26: psycles.luisa_heterogeneous_volume_segment_hip ...................   Passed    0.25 sec
+        Start  29: psycles.luisa_heterogeneous_volume_transmittance_hip
+  9/193 Test  #29: psycles.luisa_heterogeneous_volume_transmittance_hip .............   Passed    0.15 sec
+        Start  32: psycles.luisa_heterogeneous_volume_shadow_hip
+ 10/193 Test  #32: psycles.luisa_heterogeneous_volume_shadow_hip ....................   Passed    0.14 sec
+        Start  35: psycles.luisa_volume_majorant_hip
+ 11/193 Test  #35: psycles.luisa_volume_majorant_hip ................................   Passed    0.16 sec
+        Start  38: psycles.luisa_volume_majorant_overlap_hip
+ 12/193 Test  #38: psycles.luisa_volume_majorant_overlap_hip ........................   Passed    0.10 sec
+        Start  41: psycles.luisa_volume_majorant_prepass_hip
+ 13/193 Test  #41: psycles.luisa_volume_majorant_prepass_hip ........................   Passed    0.32 sec
+        Start  44: psycles.luisa_volume_majorant_scene_hip
+ 14/193 Test  #44: psycles.luisa_volume_majorant_scene_hip ..........................   Passed    1.40 sec
+        Start  47: psycles.luisa_volume_guiding_hip
+ 15/193 Test  #47: psycles.luisa_volume_guiding_hip .................................   Passed    0.09 sec
+        Start  50: psycles.luisa_triangle_primitive_hip
+ 16/193 Test  #50: psycles.luisa_triangle_primitive_hip .............................   Passed    0.09 sec
+        Start  53: psycles.luisa_camera_volume_stack_hip
+ 17/193 Test  #53: psycles.luisa_camera_volume_stack_hip ............................   Passed    0.10 sec
+        Start  56: psycles.luisa_volume_point_hip
+ 18/193 Test  #56: psycles.luisa_volume_point_hip ...................................   Passed    2.96 sec
+        Start  62: psycles.luisa_spherical_geometry_hip
+ 19/193 Test  #62: psycles.luisa_spherical_geometry_hip .............................   Passed    0.09 sec
+        Start  65: psycles.luisa_triangle_light_sampling_hip
+ 20/193 Test  #65: psycles.luisa_triangle_light_sampling_hip ........................   Passed    0.08 sec
+        Start  68: psycles.luisa_analytic_light_sampling_hip
+ 21/193 Test  #68: psycles.luisa_analytic_light_sampling_hip ........................   Passed    0.19 sec
+        Start  71: psycles.luisa_area_light_forward_hip
+ 22/193 Test  #71: psycles.luisa_area_light_forward_hip .............................   Passed  122.17 sec
+        Start  74: psycles.luisa_emissive_triangle_forward_pdf_hip
+ 23/193 Test  #74: psycles.luisa_emissive_triangle_forward_pdf_hip ..................   Passed    0.15 sec
+        Start  77: psycles.luisa_volume_path_hip
+ 24/193 Test  #77: psycles.luisa_volume_path_hip ....................................   Passed   77.60 sec
+        Start  80: psycles.luisa_volume_triangle_hip
+ 25/193 Test  #80: psycles.luisa_volume_triangle_hip ................................   Passed   36.13 sec
+        Start  83: psycles.luisa_volume_environment_hip
+ 26/193 Test  #83: psycles.luisa_volume_environment_hip .............................   Passed   71.86 sec
+        Start  86: psycles.luisa_cycles_sample_mapping_hip
+ 27/193 Test  #86: psycles.luisa_cycles_sample_mapping_hip ..........................   Passed    0.08 sec
+        Start  89: psycles.luisa_curve_ribbon_hip
+ 28/193 Test  #89: psycles.luisa_curve_ribbon_hip ...................................   Passed    0.11 sec
+        Start  93: psycles.luisa_scene_traversal_hip
+ 29/193 Test  #93: psycles.luisa_scene_traversal_hip ................................   Passed    7.81 sec
+        Start  96: psycles.luisa_scene_traversal_local_hip
+ 30/193 Test  #96: psycles.luisa_scene_traversal_local_hip ..........................   Passed    4.80 sec
+        Start  99: psycles.luisa_transform_applied_surface_hip
+ 31/193 Test  #99: psycles.luisa_transform_applied_surface_hip ......................   Passed    0.10 sec
+        Start 102: psycles.luisa_cycles_path_state_hip
+ 32/193 Test #102: psycles.luisa_cycles_path_state_hip ..............................   Passed    0.09 sec
+        Start 105: psycles.luisa_camera_sampling_hip
+ 33/193 Test #105: psycles.luisa_camera_sampling_hip ................................   Passed    0.09 sec
+        Start 108: psycles.luisa_background_sampling_hip
+ 34/193 Test #108: psycles.luisa_background_sampling_hip ............................   Passed    0.10 sec
+        Start 111: psycles.luisa_surface_ray_hip
+ 35/193 Test #111: psycles.luisa_surface_ray_hip ....................................   Passed    0.10 sec
+        Start 114: psycles.luisa_cycles_film_routing_hip
+ 36/193 Test #114: psycles.luisa_cycles_film_routing_hip ............................   Passed    0.55 sec
+        Start 117: psycles.luisa_cycles_surface_emission_hip
+ 37/193 Test #117: psycles.luisa_cycles_surface_emission_hip ........................   Passed   18.62 sec
+        Start 120: psycles.luisa_cycles_light_parameters_hip
+ 38/193 Test #120: psycles.luisa_cycles_light_parameters_hip ........................   Passed    0.22 sec
+        Start 123: psycles.luisa_cycles_lamp_routing_hip
+ 39/193 Test #123: psycles.luisa_cycles_lamp_routing_hip ............................   Passed   15.73 sec
+        Start 126: psycles.luisa_light_endpoints_hip
+ 40/193 Test #126: psycles.luisa_light_endpoints_hip ................................   Passed    0.19 sec
+        Start 129: psycles.luisa_cycles_svm_image_binding_hip
+ 41/193 Test #129: psycles.luisa_cycles_svm_image_binding_hip .......................   Passed    0.23 sec
+        Start 132: psycles.luisa_volume_work_hip
+ 42/193 Test #132: psycles.luisa_volume_work_hip ....................................   Passed    0.13 sec
+        Start 135: psycles.luisa_surface_nee_work_hip
+ 43/193 Test #135: psycles.luisa_surface_nee_work_hip ...............................   Passed    0.16 sec
+        Start 138: psycles.luisa_cycles_svm_shared_closure_hip
+ 44/193 Test #138: psycles.luisa_cycles_svm_shared_closure_hip ......................   Passed    1.99 sec
+        Start 141: psycles.luisa_cycles_svm_missing_image_hip
+ 45/193 Test #141: psycles.luisa_cycles_svm_missing_image_hip .......................   Passed    0.19 sec
+        Start 144: psycles.luisa_cycles_svm_volume_density_hip
+ 46/193 Test #144: psycles.luisa_cycles_svm_volume_density_hip ......................   Passed    0.20 sec
+        Start 147: psycles.luisa_cycles_svm_volume_stack_hip
+ 47/193 Test #147: psycles.luisa_cycles_svm_volume_stack_hip ........................   Passed    2.93 sec
+        Start 150: psycles.luisa_cycles_svm_background_hip
+ 48/193 Test #150: psycles.luisa_cycles_svm_background_hip ..........................   Passed    0.59 sec
+        Start 155: psycles.luisa_cycles_shading_terminator_hip
+ 49/193 Test #155: psycles.luisa_cycles_shading_terminator_hip ......................   Passed    0.18 sec
+        Start 158: psycles.luisa_cycles_zero_bsdf_hip
+ 50/193 Test #158: psycles.luisa_cycles_zero_bsdf_hip ...............................   Passed   32.40 sec
+        Start 162: psycles.luisa_cycles_subsurface_schedule_hip
+ 51/193 Test #162: psycles.luisa_cycles_subsurface_schedule_hip .....................   Passed    1.84 sec
+        Start 165: psycles.luisa_cycles_svm_curve_setup_hip
+ 52/193 Test #165: psycles.luisa_cycles_svm_curve_setup_hip .........................   Passed    0.20 sec
+        Start 168: psycles.luisa_cycles_svm_surface_geometry_hip
+ 53/193 Test #168: psycles.luisa_cycles_svm_surface_geometry_hip ....................   Passed    0.09 sec
+        Start 171: psycles.luisa_cycles_svm_subsurface_exit_hip
+ 54/193 Test #171: psycles.luisa_cycles_svm_subsurface_exit_hip .....................   Passed    0.08 sec
+        Start 174: psycles.luisa_cycles_svm_map_range_hip
+ 55/193 Test #174: psycles.luisa_cycles_svm_map_range_hip ...........................   Passed    0.23 sec
+        Start 177: psycles.luisa_cycles_svm_analytic_sky_hip
+ 56/193 Test #177: psycles.luisa_cycles_svm_analytic_sky_hip ........................   Passed    0.22 sec
+        Start 180: psycles.luisa_cycles_volume_boundary_hip
+ 57/193 Test #180: psycles.luisa_cycles_volume_boundary_hip .........................   Passed    0.12 sec
+        Start 183: psycles.luisa_cycles_path_lifetime_hip
+ 58/193 Test #183: psycles.luisa_cycles_path_lifetime_hip ...........................   Passed   33.54 sec
+        Start 186: psycles.luisa_cycles_holdout_state_hip
+ 59/193 Test #186: psycles.luisa_cycles_holdout_state_hip ...........................   Passed    0.15 sec
+        Start 189: psycles.luisa_cycles_holdout_render_hip
+ 60/193 Test #189: psycles.luisa_cycles_holdout_render_hip ..........................   Passed  199.63 sec
+        Start 192: psycles.luisa_cycles_ray_portal_state_hip
+ 61/193 Test #192: psycles.luisa_cycles_ray_portal_state_hip ........................   Passed    0.14 sec
+        Start 195: psycles.luisa_cycles_ray_portal_render_hip
+ 62/193 Test #195: psycles.luisa_cycles_ray_portal_render_hip .......................   Passed  237.35 sec
+        Start 198: psycles.luisa_cycles_volume_emission_film_hip
+ 63/193 Test #198: psycles.luisa_cycles_volume_emission_film_hip ....................   Passed   12.02 sec
+        Start 201: psycles.luisa_cycles_svm_volume_emission_hip
+ 64/193 Test #201: psycles.luisa_cycles_svm_volume_emission_hip .....................   Passed    0.40 sec
+        Start 204: psycles.luisa_cycles_svm_volume_hip
+ 65/193 Test #204: psycles.luisa_cycles_svm_volume_hip ..............................   Passed    3.05 sec
+        Start 207: psycles.luisa_cycles_shadow_pipeline_hip
+ 66/193 Test #207: psycles.luisa_cycles_shadow_pipeline_hip .........................   Passed    0.14 sec
+        Start 210: psycles.luisa_cycles_shadow_queue_hip
+ 67/193 Test #210: psycles.luisa_cycles_shadow_queue_hip ............................   Passed    0.14 sec
+        Start 213: psycles.luisa_cycles_svm_native_shadow_hip
+ 68/193 Test #213: psycles.luisa_cycles_svm_native_shadow_hip .......................   Passed    0.11 sec
+        Start 216: psycles.luisa_cycles_svm_shadow_surface_hip
+ 69/193 Test #216: psycles.luisa_cycles_svm_shadow_surface_hip ......................   Passed    0.14 sec
+        Start 219: psycles.luisa_cycles_svm_closure_budget_hip
+ 70/193 Test #219: psycles.luisa_cycles_svm_closure_budget_hip ......................   Passed    0.12 sec
+        Start 222: psycles.luisa_cycles_svm_stack_extent_hip
+ 71/193 Test #222: psycles.luisa_cycles_svm_stack_extent_hip ........................   Passed    0.12 sec
+        Start 225: psycles.luisa_cycles_svm_scene_metadata_hip
+ 72/193 Test #225: psycles.luisa_cycles_svm_scene_metadata_hip ......................   Passed    0.05 sec
+        Start 228: psycles.luisa_cycles_svm_scene_admission_hip
+ 73/193 Test #228: psycles.luisa_cycles_svm_scene_admission_hip .....................   Passed    0.09 sec
+        Start 231: psycles.luisa_cycles_svm_scene_compilation_hip
+ 74/193 Test #231: psycles.luisa_cycles_svm_scene_compilation_hip ...................   Passed    0.11 sec
+        Start 234: psycles.luisa_cycles_camera_transform_hip
+ 75/193 Test #234: psycles.luisa_cycles_camera_transform_hip ........................   Passed    0.10 sec
+        Start 237: psycles.luisa_cycles_camera_ray_hip
+ 76/193 Test #237: psycles.luisa_cycles_camera_ray_hip ..............................   Passed    1.18 sec
+        Start 240: psycles.luisa_cycles_surface_queue_hip
+ 77/193 Test #240: psycles.luisa_cycles_surface_queue_hip ...........................   Passed    0.19 sec
+        Start 243: psycles.luisa_background_sun_sample_hip
+ 78/193 Test #243: psycles.luisa_background_sun_sample_hip ..........................   Passed    0.09 sec
+        Start 246: psycles.luisa_cycles_svm_nee_setup_hip
+ 79/193 Test #246: psycles.luisa_cycles_svm_nee_setup_hip ...........................   Passed    0.09 sec
+        Start 249: psycles.luisa_cycles_svm_nee_hip
+ 80/193 Test #249: psycles.luisa_cycles_svm_nee_hip .................................   Passed    0.09 sec
+        Start 252: psycles.luisa_cycles_svm_light_emission_hip
+ 81/193 Test #252: psycles.luisa_cycles_svm_light_emission_hip ......................   Passed    0.15 sec
+        Start 255: psycles.luisa_surface_roughness_hip
+ 82/193 Test #255: psycles.luisa_surface_roughness_hip ..............................   Passed    0.08 sec
+        Start 258: psycles.luisa_cycles_closure_hip
+ 83/193 Test #258: psycles.luisa_cycles_closure_hip .................................   Passed    0.11 sec
+        Start 261: psycles.luisa_principled_sheen_hip
+ 84/193 Test #261: psycles.luisa_principled_sheen_hip ...............................   Passed    0.08 sec
+        Start 264: psycles.luisa_standalone_sheen_hip
+ 85/193 Test #264: psycles.luisa_standalone_sheen_hip ...............................   Passed    0.11 sec
+        Start 267: psycles.luisa_legacy_hair_hip
+ 86/193 Test #267: psycles.luisa_legacy_hair_hip ....................................   Passed    0.10 sec
+        Start 270: psycles.luisa_beckmann_glossy_hip
+ 87/193 Test #270: psycles.luisa_beckmann_glossy_hip ................................   Passed    0.09 sec
+        Start 273: psycles.luisa_microfacet_anisotropy_hip
+ 88/193 Test #273: psycles.luisa_microfacet_anisotropy_hip ..........................   Passed    0.10 sec
+        Start 276: psycles.luisa_metallic_surface_hip
+ 89/193 Test #276: psycles.luisa_metallic_surface_hip ...............................   Passed    0.11 sec
+        Start 279: psycles.luisa_ray_differential_hip
+ 90/193 Test #279: psycles.luisa_ray_differential_hip ...............................   Passed    0.09 sec
+        Start 282: psycles.luisa_normal_map_hip
+ 91/193 Test #282: psycles.luisa_normal_map_hip .....................................   Passed    0.09 sec
+        Start 285: psycles.luisa_surface_geometry_context_hip
+ 92/193 Test #285: psycles.luisa_surface_geometry_context_hip .......................   Passed    0.08 sec
+        Start 288: psycles.luisa_cycles_film_light_hip
+ 93/193 Test #288: psycles.luisa_cycles_film_light_hip ..............................   Passed    0.08 sec
+        Start 291: psycles.luisa_bssrdf_hip
+ 94/193 Test #291: psycles.luisa_bssrdf_hip .........................................   Passed    0.08 sec
+        Start 294: psycles.luisa_subsurface_exit_hip
+ 95/193 Test #294: psycles.luisa_subsurface_exit_hip ................................   Passed    0.08 sec
+        Start 297: psycles.luisa_random_walk_hip
+ 96/193 Test #297: psycles.luisa_random_walk_hip ....................................   Passed    0.08 sec
+        Start 300: psycles.luisa_surface_closure_collection_hip
+ 97/193 Test #300: psycles.luisa_surface_closure_collection_hip .....................   Passed    0.41 sec
+        Start 303: psycles.luisa_surface_closure_reachability_hip
+ 98/193 Test #303: psycles.luisa_surface_closure_reachability_hip ...................   Passed    2.77 sec
+        Start 306: psycles.luisa_surface_population_hip
+ 99/193 Test #306: psycles.luisa_surface_population_hip .............................   Passed    0.84 sec
+        Start 309: psycles.luisa_compact_surface_preparation_hip
+100/193 Test #309: psycles.luisa_compact_surface_preparation_hip ....................   Passed    0.32 sec
+        Start 312: psycles.luisa_compact_surface_tail_hip
+101/193 Test #312: psycles.luisa_compact_surface_tail_hip ...........................   Passed    0.31 sec
+        Start 315: psycles.luisa_surface_closure_point_hip
+102/193 Test #315: psycles.luisa_surface_closure_point_hip ..........................   Passed    0.10 sec
+        Start 318: psycles.luisa_curve_closure_semantics_hip
+103/193 Test #318: psycles.luisa_curve_closure_semantics_hip ........................   Passed    0.10 sec
+        Start 321: psycles.luisa_surface_closure_physical_hip
+104/193 Test #321: psycles.luisa_surface_closure_physical_hip .......................   Passed    0.13 sec
+        Start 324: psycles.luisa_thin_film_fresnel_hip
+105/193 Test #324: psycles.luisa_thin_film_fresnel_hip ..............................   Passed    0.09 sec
+        Start 327: psycles.luisa_thin_film_surface_hip
+106/193 Test #327: psycles.luisa_thin_film_surface_hip ..............................   Passed    0.11 sec
+        Start 330: psycles.luisa_standalone_caustics_hip
+107/193 Test #330: psycles.luisa_standalone_caustics_hip ............................   Passed    0.09 sec
+        Start 333: psycles.luisa_principled_coat_hip
+108/193 Test #333: psycles.luisa_principled_coat_hip ................................   Passed    0.11 sec
+        Start 336: psycles.luisa_principled_transmission_hip
+109/193 Test #336: psycles.luisa_principled_transmission_hip ........................   Passed    0.10 sec
+        Start 339: psycles.luisa_principled_setup_callable_hip
+110/193 Test #339: psycles.luisa_principled_setup_callable_hip ......................   Passed    0.09 sec
+        Start 342: psycles.luisa_texture_sampling_callable_hip
+111/193 Test #342: psycles.luisa_texture_sampling_callable_hip ......................   Passed    0.12 sec
+        Start 345: psycles.luisa_attribute_lookup_callable_hip
+112/193 Test #345: psycles.luisa_attribute_lookup_callable_hip ......................   Passed    0.09 sec
+        Start 348: psycles.luisa_color_transform_callable_hip
+113/193 Test #348: psycles.luisa_color_transform_callable_hip .......................   Passed    0.08 sec
+        Start 351: psycles.luisa_vector_mapping_callable_hip
+114/193 Test #351: psycles.luisa_vector_mapping_callable_hip ........................   Passed    0.09 sec
+        Start 354: psycles.luisa_shader_table_callable_hip
+115/193 Test #354: psycles.luisa_shader_table_callable_hip ..........................   Passed    0.09 sec
+        Start 357: psycles.luisa_normal_map_callable_hip
+116/193 Test #357: psycles.luisa_normal_map_callable_hip ............................   Passed    0.09 sec
+        Start 360: psycles.luisa_bump_callable_hip
+117/193 Test #360: psycles.luisa_bump_callable_hip ..................................   Passed    0.09 sec
+        Start 363: psycles.luisa_displacement_hip
+118/193 Test #363: psycles.luisa_displacement_hip ...................................   Passed    0.08 sec
+        Start 366: psycles.luisa_noise_callable_hip
+119/193 Test #366: psycles.luisa_noise_callable_hip .................................   Passed    0.11 sec
+        Start 369: psycles.luisa_surface_mix_svm_hip
+120/193 Test #369: psycles.luisa_surface_mix_svm_hip ................................   Passed    0.23 sec
+        Start 372: psycles.luisa_surface_math_svm_hip
+121/193 Test #372: psycles.luisa_surface_math_svm_hip ...............................   Passed    0.22 sec
+        Start 375: psycles.luisa_cycles_svm_hip
+122/193 Test #375: psycles.luisa_cycles_svm_hip .....................................   Passed    0.92 sec
+        Start 378: psycles.luisa_cycles_svm_wireframe_hip
+123/193 Test #378: psycles.luisa_cycles_svm_wireframe_hip ...........................   Passed    0.97 sec
+        Start 381: psycles.luisa_cycles_svm_bump_state_hip
+124/193 Test #381: psycles.luisa_cycles_svm_bump_state_hip ..........................   Passed    0.29 sec
+        Start 384: psycles.luisa_cycles_svm_vector_displacement_hip
+125/193 Test #384: psycles.luisa_cycles_svm_vector_displacement_hip .................   Passed    0.24 sec
+        Start 387: psycles.luisa_cycles_svm_primitive_attribute_hip
+126/193 Test #387: psycles.luisa_cycles_svm_primitive_attribute_hip .................   Passed    0.31 sec
+        Start 391: psycles.luisa_cycles_svm_geometry_runtime_hip
+127/193 Test #391: psycles.luisa_cycles_svm_geometry_runtime_hip ....................   Passed    0.09 sec
+        Start 394: psycles.luisa_cycles_svm_texture_coordinate_hip
+128/193 Test #394: psycles.luisa_cycles_svm_texture_coordinate_hip ..................   Passed    0.25 sec
+        Start 397: psycles.luisa_cycles_svm_image_hip
+129/193 Test #397: psycles.luisa_cycles_svm_image_hip ...............................   Passed    0.39 sec
+        Start 400: psycles.luisa_cycles_svm_sky_hip
+130/193 Test #400: psycles.luisa_cycles_svm_sky_hip .................................   Passed    0.30 sec
+        Start 403: psycles.luisa_cycles_svm_mapping_hip
+131/193 Test #403: psycles.luisa_cycles_svm_mapping_hip .............................   Passed    0.20 sec
+        Start 406: psycles.luisa_cycles_svm_vector_math_hip
+132/193 Test #406: psycles.luisa_cycles_svm_vector_math_hip .........................   Passed    0.16 sec
+        Start 409: psycles.luisa_cycles_svm_noise_hip
+133/193 Test #409: psycles.luisa_cycles_svm_noise_hip ...............................   Passed    0.73 sec
+        Start 412: psycles.luisa_cycles_svm_white_noise_hip
+134/193 Test #412: psycles.luisa_cycles_svm_white_noise_hip .........................   Passed    0.22 sec
+        Start 415: psycles.luisa_cycles_svm_gradient_hip
+135/193 Test #415: psycles.luisa_cycles_svm_gradient_hip ............................   Passed    0.18 sec
+        Start 418: psycles.luisa_cycles_svm_voronoi_hip
+136/193 Test #418: psycles.luisa_cycles_svm_voronoi_hip .............................   Passed    0.45 sec
+        Start 421: psycles.luisa_cycles_svm_voronoi_octave_hip
+137/193 Test #421: psycles.luisa_cycles_svm_voronoi_octave_hip ......................   Passed    0.43 sec
+        Start 424: psycles.luisa_cycles_svm_gabor_hip
+138/193 Test #424: psycles.luisa_cycles_svm_gabor_hip ...............................   Passed    0.24 sec
+        Start 427: psycles.luisa_cycles_svm_spectral_hip
+139/193 Test #427: psycles.luisa_cycles_svm_spectral_hip ............................   Passed    0.35 sec
+        Start 430: psycles.luisa_cycles_svm_procedural_texture_hip
+140/193 Test #430: psycles.luisa_cycles_svm_procedural_texture_hip ..................   Passed    0.25 sec
+        Start 433: psycles.luisa_cycles_svm_rgb_ramp_hip
+141/193 Test #433: psycles.luisa_cycles_svm_rgb_ramp_hip ............................   Passed    0.17 sec
+        Start 436: psycles.luisa_cycles_svm_rgb_curve_hip
+142/193 Test #436: psycles.luisa_cycles_svm_rgb_curve_hip ...........................   Passed    0.19 sec
+        Start 439: psycles.luisa_cycles_svm_curve_family_hip
+143/193 Test #439: psycles.luisa_cycles_svm_curve_family_hip ........................   Passed    0.22 sec
+        Start 442: psycles.luisa_cycles_svm_camera_hip
+144/193 Test #442: psycles.luisa_cycles_svm_camera_hip ..............................   Passed    0.17 sec
+        Start 445: psycles.luisa_cycles_svm_fresnel_hip
+145/193 Test #445: psycles.luisa_cycles_svm_fresnel_hip .............................   Passed    0.23 sec
+        Start 448: psycles.luisa_cycles_svm_light_path_hip
+146/193 Test #448: psycles.luisa_cycles_svm_light_path_hip ..........................   Passed    0.26 sec
+        Start 451: psycles.luisa_cycles_svm_info_hip
+147/193 Test #451: psycles.luisa_cycles_svm_info_hip ................................   Passed    0.76 sec
+        Start 454: psycles.luisa_cycles_svm_normal_hip
+148/193 Test #454: psycles.luisa_cycles_svm_normal_hip ..............................   Passed    0.17 sec
+        Start 457: psycles.luisa_cycles_svm_normal_map_tangent_hip
+149/193 Test #457: psycles.luisa_cycles_svm_normal_map_tangent_hip ..................   Passed    0.37 sec
+        Start 460: psycles.luisa_cycles_svm_closure_pool_hip
+150/193 Test #460: psycles.luisa_cycles_svm_closure_pool_hip ........................   Passed    0.17 sec
+        Start 463: psycles.luisa_cycles_svm_closure_hip
+151/193 Test #463: psycles.luisa_cycles_svm_closure_hip .............................   Passed    7.57 sec
+        Start 466: psycles.luisa_cycles_svm_closure_guards_hip
+152/193 Test #466: psycles.luisa_cycles_svm_closure_guards_hip ......................   Passed    4.08 sec
+        Start 469: psycles.luisa_cycles_svm_principled_hip
+153/193 Test #469: psycles.luisa_cycles_svm_principled_hip ..........................   Passed    0.39 sec
+        Start 472: psycles.luisa_cycles_svm_principled_subsurface_hip
+154/193 Test #472: psycles.luisa_cycles_svm_principled_subsurface_hip ...............   Passed    1.01 sec
+        Start 475: psycles.luisa_cycles_svm_standalone_bssrdf_hip
+155/193 Test #475: psycles.luisa_cycles_svm_standalone_bssrdf_hip ...................   Passed    0.76 sec
+        Start 478: psycles.luisa_cycles_svm_standalone_sheen_hip
+156/193 Test #478: psycles.luisa_cycles_svm_standalone_sheen_hip ....................   Passed    0.72 sec
+        Start 481: psycles.luisa_cycles_svm_standalone_toon_hip
+157/193 Test #481: psycles.luisa_cycles_svm_standalone_toon_hip .....................   Passed    0.66 sec
+        Start 484: psycles.luisa_cycles_svm_standalone_ray_portal_hip
+158/193 Test #484: psycles.luisa_cycles_svm_standalone_ray_portal_hip ...............   Passed    0.64 sec
+        Start 487: psycles.luisa_cycles_svm_standalone_hair_hip
+159/193 Test #487: psycles.luisa_cycles_svm_standalone_hair_hip .....................   Passed    0.70 sec
+        Start 490: psycles.luisa_cycles_svm_hair_scattering_hip
+160/193 Test #490: psycles.luisa_cycles_svm_hair_scattering_hip .....................   Passed    0.14 sec
+        Start 493: psycles.luisa_cycles_svm_simple_scattering_hip
+161/193 Test #493: psycles.luisa_cycles_svm_simple_scattering_hip ...................   Passed    0.13 sec
+        Start 496: psycles.luisa_cycles_svm_toon_scattering_hip
+162/193 Test #496: psycles.luisa_cycles_svm_toon_scattering_hip .....................   Passed    0.13 sec
+        Start 499: psycles.luisa_cycles_svm_sheen_scattering_hip
+163/193 Test #499: psycles.luisa_cycles_svm_sheen_scattering_hip ....................   Passed    0.13 sec
+        Start 502: psycles.luisa_cycles_svm_microfacet_scattering_hip
+164/193 Test #502: psycles.luisa_cycles_svm_microfacet_scattering_hip ...............   Passed    0.47 sec
+        Start 505: psycles.luisa_cycles_svm_microfacet_union_hip
+165/193 Test #505: psycles.luisa_cycles_svm_microfacet_union_hip ....................   Passed    0.28 sec
+        Start 508: psycles.luisa_cycles_svm_ashikhmin_shirley_scattering_hip
+166/193 Test #508: psycles.luisa_cycles_svm_ashikhmin_shirley_scattering_hip ........   Passed    0.15 sec
+        Start 511: psycles.luisa_cycles_svm_bsdf_dispatch_hip
+167/193 Test #511: psycles.luisa_cycles_svm_bsdf_dispatch_hip .......................   Passed    1.10 sec
+        Start 514: psycles.luisa_cycles_svm_surface_shader_hip
+168/193 Test #514: psycles.luisa_cycles_svm_surface_shader_hip ......................   Passed    0.25 sec
+        Start 517: psycles.luisa_cycles_svm_principled_hair_chiang_hip
+169/193 Test #517: psycles.luisa_cycles_svm_principled_hair_chiang_hip ..............   Passed    1.41 sec
+        Start 520: psycles.luisa_cycles_svm_principled_hair_chiang_scattering_hip
+170/193 Test #520: psycles.luisa_cycles_svm_principled_hair_chiang_scattering_hip ...   Passed    0.14 sec
+        Start 523: psycles.luisa_cycles_svm_principled_hair_huang_hip
+171/193 Test #523: psycles.luisa_cycles_svm_principled_hair_huang_hip ...............   Passed    1.93 sec
+        Start 526: psycles.luisa_cycles_svm_principled_hair_huang_scattering_hip
+172/193 Test #526: psycles.luisa_cycles_svm_principled_hair_huang_scattering_hip ....   Passed    0.19 sec
+        Start 529: psycles.luisa_cycles_svm_principled_sheen_hip
+173/193 Test #529: psycles.luisa_cycles_svm_principled_sheen_hip ....................   Passed    0.56 sec
+        Start 532: psycles.luisa_cycles_svm_principled_coat_hip
+174/193 Test #532: psycles.luisa_cycles_svm_principled_coat_hip .....................   Passed    0.56 sec
+        Start 535: psycles.luisa_cycles_svm_principled_metallic_hip
+175/193 Test #535: psycles.luisa_cycles_svm_principled_metallic_hip .................   Passed    0.41 sec
+        Start 538: psycles.luisa_cycles_svm_principled_transmission_hip
+176/193 Test #538: psycles.luisa_cycles_svm_principled_transmission_hip .............   Passed    0.43 sec
+        Start 541: psycles.luisa_cycles_svm_principled_thin_wall_hip
+177/193 Test #541: psycles.luisa_cycles_svm_principled_thin_wall_hip ................   Passed    0.46 sec
+        Start 544: psycles.luisa_cycles_svm_light_falloff_hip
+178/193 Test #544: psycles.luisa_cycles_svm_light_falloff_hip .......................   Passed    0.18 sec
+        Start 547: psycles.luisa_cycles_svm_ies_hip
+179/193 Test #547: psycles.luisa_cycles_svm_ies_hip .................................   Passed    0.19 sec
+        Start 550: psycles.luisa_light_falloff_hip
+180/193 Test #550: psycles.luisa_light_falloff_hip ..................................   Passed   13.10 sec
+        Start 553: psycles.luisa_surface_vector_math_svm_hip
+181/193 Test #553: psycles.luisa_surface_vector_math_svm_hip ........................   Passed    0.26 sec
+        Start 556: psycles.luisa_direct_lighting_plan_hip
+182/193 Test #556: psycles.luisa_direct_lighting_plan_hip ...........................   Passed    0.09 sec
+        Start 559: psycles.luisa_principled_thin_wall_hip
+183/193 Test #559: psycles.luisa_principled_thin_wall_hip ...........................   Passed    0.17 sec
+        Start 562: psycles.luisa_refraction_hip
+184/193 Test #562: psycles.luisa_refraction_hip .....................................   Passed    0.10 sec
+        Start 565: psycles.luisa_attribute_hip
+185/193 Test #565: psycles.luisa_attribute_hip ......................................   Passed    0.14 sec
+        Start 568: psycles.luisa_texture_coordinate_hip
+186/193 Test #568: psycles.luisa_texture_coordinate_hip .............................   Passed    0.08 sec
+        Start 571: psycles.luisa_fmod_hip
+187/193 Test #571: psycles.luisa_fmod_hip ...........................................   Passed    0.14 sec
+        Start 574: psycles.luisa_magic_texture_hip
+188/193 Test #574: psycles.luisa_magic_texture_hip ..................................   Passed    0.20 sec
+        Start 577: psycles.luisa_light_tree_hip
+189/193 Test #577: psycles.luisa_light_tree_hip .....................................   Passed    0.51 sec
+        Start 607: psycles.luisa_pointiness_scene_hip
+190/193 Test #607: psycles.luisa_pointiness_scene_hip ...............................   Passed    0.11 sec
+        Start 610: psycles.luisa_displacement_scene_hip
+191/193 Test #610: psycles.luisa_displacement_scene_hip .............................   Passed    5.45 sec
+        Start 613: psycles.luisa_surface_nee_normal_hip
+192/193 Test #613: psycles.luisa_surface_nee_normal_hip .............................   Passed   11.04 sec
+        Start 616: psycles.luisa_curve_path_hip
+193/193 Test #616: psycles.luisa_curve_path_hip .....................................   Passed   31.88 sec
+
+100% tests passed out of 193
+
+Total Test time (real) = 1001.33 sec

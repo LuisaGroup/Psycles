@@ -1,0 +1,92 @@
+Start testing: Sep 10 01:06 CST
+----------------------------------------------------------
+155/767 Testing: psycles.luisa_cycles_shading_terminator_hip
+155/767 Test: psycles.luisa_cycles_shading_terminator_hip
+Command: "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_luisa_cycles_shading_terminator_tests" "hip"
+Directory: /home/mike/Projects/Psycles-surface-svm/build
+"psycles.luisa_cycles_shading_terminator_hip" start time: Sep 10 01:06 CST
+Output:
+----------------------------------------------------------
+[2026-09-10 01:06:01.496] [console] [info] Created context for program 'psycles_luisa_cycles_shading_terminator_tests'.
+[2026-09-10 01:06:01.496] [console] [info] Runtime directory: /home/mike/Projects/Psycles-surface-svm/build/bin.
+[2026-09-10 01:06:02.050] [console] [info] Loaded dynamic module '/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-backend-hip.so' in 553.814796 ms.
+[2026-09-10 01:06:02.392] [console] [info] Created HIP device 0: AMD Radeon RX 9070 XT (arch = gfx1201, cc = 12.0, driver = 7.2.53211, runtime = 7.2.53211, build = 7.2.53211).
+[2026-09-10 01:06:02.577] [console] [info] HIP LLVM codegen completed in 77.20811599999999 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm_impl.cpp:1572]
+[2026-09-10 01:06:02.579] [console] [info] Generated AMDGPU code with HIP LLVM CodeGen in 91.91395899999999 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm.cpp:54]
+[2026-09-10 01:06:02.579] [console] [info] Generated AMDGPU code (9788 bytes)
+[2026-09-10 01:06:02.699] [console] [info] Linked HIP LLVM bitcode to AMDGPU code object (7744 bytes) in 120.169247 ms.
+[2026-09-10 01:06:02.700] [console] [info] Loaded HIP code object in 1.28437 ms.
+diffuse_positive_frequency row=6 lane=0 actual=0.0891268 original=0.0891074
+diffuse_positive_frequency row=6 lane=1 actual=0.0891268 original=0.0891074
+diffuse_positive_frequency row=6 lane=2 actual=0.0891268 original=0.0891074
+shading terminator capability=1 original cases=6 mismatches=3
+[2026-09-10 01:06:02.746] [console] [info] HIP LLVM codegen completed in 35.143055 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm_impl.cpp:1572]
+[2026-09-10 01:06:02.747] [console] [info] Generated AMDGPU code with HIP LLVM CodeGen in 40.121412 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm.cpp:54]
+[2026-09-10 01:06:02.747] [console] [info] Generated AMDGPU code (8980 bytes)
+[2026-09-10 01:06:02.777] [console] [info] Linked HIP LLVM bitcode to AMDGPU code object (7232 bytes) in 30.169127 ms.
+[2026-09-10 01:06:02.778] [console] [info] Loaded HIP code object in 0.8549789999999999 ms.
+shading terminator capability=0 original cases=3 mismatches=0
+<end of output>
+Test time =   1.33 sec
+----------------------------------------------------------
+Test Failed.
+"psycles.luisa_cycles_shading_terminator_hip" end time: Sep 10 01:06 CST
+"psycles.luisa_cycles_shading_terminator_hip" time elapsed: 00:00:01
+----------------------------------------------------------
+
+171/767 Testing: psycles.luisa_cycles_svm_subsurface_exit_hip
+171/767 Test: psycles.luisa_cycles_svm_subsurface_exit_hip
+Command: "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_luisa_cycles_svm_subsurface_exit_tests" "hip"
+Directory: /home/mike/Projects/Psycles-surface-svm/build
+"psycles.luisa_cycles_svm_subsurface_exit_hip" start time: Sep 10 01:06 CST
+Output:
+----------------------------------------------------------
+[2026-09-10 01:06:02.819] [console] [info] Created context for program 'psycles_luisa_cycles_svm_subsurface_exit_tests'.
+[2026-09-10 01:06:02.819] [console] [info] Runtime directory: /home/mike/Projects/Psycles-surface-svm/build/bin.
+[2026-09-10 01:06:02.837] [console] [info] Loaded dynamic module '/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-backend-hip.so' in 17.541622 ms.
+[2026-09-10 01:06:02.847] [console] [info] Created HIP device 0: AMD Radeon RX 9070 XT (arch = gfx1201, cc = 12.0, driver = 7.2.53211, runtime = 7.2.53211, build = 7.2.53211).
+[2026-09-10 01:06:02.926] [console] [info] HIP LLVM codegen completed in 43.769571 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm_impl.cpp:1572]
+[2026-09-10 01:06:02.927] [console] [info] Generated AMDGPU code with HIP LLVM CodeGen in 48.889179 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm.cpp:54]
+[2026-09-10 01:06:02.927] [console] [info] Generated AMDGPU code (8192 bytes)
+[2026-09-10 01:06:02.956] [console] [info] Linked HIP LLVM bitcode to AMDGPU code object (6592 bytes) in 29.706156999999997 ms.
+[2026-09-10 01:06:02.962] [console] [info] Saved HIP shader cache entry (6981 bytes) to '/home/mike/Projects/Psycles-surface-svm/build/bin/.cache/hip_kernel_70da2d16b6a117de.cache'.
+[2026-09-10 01:06:02.963] [console] [info] Loaded HIP code object in 0.829139 ms.
+Cycles HIP SSS exit: 144 cases passed
+<end of output>
+Test time =   0.18 sec
+----------------------------------------------------------
+Test Passed.
+"psycles.luisa_cycles_svm_subsurface_exit_hip" end time: Sep 10 01:06 CST
+"psycles.luisa_cycles_svm_subsurface_exit_hip" time elapsed: 00:00:00
+----------------------------------------------------------
+
+511/767 Testing: psycles.luisa_cycles_svm_bsdf_dispatch_hip
+511/767 Test: psycles.luisa_cycles_svm_bsdf_dispatch_hip
+Command: "/home/mike/Projects/Psycles-surface-svm/build/bin/psycles_luisa_cycles_svm_bsdf_dispatch_tests" "hip"
+Directory: /home/mike/Projects/Psycles-surface-svm/build
+"psycles.luisa_cycles_svm_bsdf_dispatch_hip" start time: Sep 10 01:06 CST
+Output:
+----------------------------------------------------------
+[2026-09-10 01:06:03.000] [console] [info] Created context for program 'psycles_luisa_cycles_svm_bsdf_dispatch_tests'.
+[2026-09-10 01:06:03.000] [console] [info] Runtime directory: /home/mike/Projects/Psycles-surface-svm/build/bin.
+[2026-09-10 01:06:03.017] [console] [info] Loaded dynamic module '/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-backend-hip.so' in 17.036552999999998 ms.
+[2026-09-10 01:06:03.026] [console] [info] Created HIP device 0: AMD Radeon RX 9070 XT (arch = gfx1201, cc = 12.0, driver = 7.2.53211, runtime = 7.2.53211, build = 7.2.53211).
+[2026-09-10 01:06:03.970] [console] [info] HIP LLVM codegen completed in 296.545069 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm_impl.cpp:1572]
+[2026-09-10 01:06:03.974] [console] [info] Generated AMDGPU code with HIP LLVM CodeGen in 307.547064 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm.cpp:54]
+[2026-09-10 01:06:03.974] [console] [info] Generated AMDGPU code (139528 bytes)
+[2026-09-10 01:06:04.536] [console] [info] Linked HIP LLVM bitcode to AMDGPU code object (142400 bytes) in 548.553487 ms.
+[2026-09-10 01:06:04.537] [console] [info] Loaded HIP code object in 0.7660399999999999 ms.
+[2026-09-10 01:06:04.582] [console] [info] HIP LLVM codegen completed in 30.698705999999998 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm_impl.cpp:1572]
+[2026-09-10 01:06:04.582] [console] [info] Generated AMDGPU code with HIP LLVM CodeGen in 35.082644 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm.cpp:54]
+[2026-09-10 01:06:04.582] [console] [info] Generated AMDGPU code (4980 bytes)
+[2026-09-10 01:06:04.591] [console] [info] Linked HIP LLVM bitcode to AMDGPU code object (3904 bytes) in 8.982376 ms.
+[2026-09-10 01:06:04.591] [console] [info] Loaded HIP code object in 0.54597 ms.
+<end of output>
+Test time =   1.63 sec
+----------------------------------------------------------
+Test Passed.
+"psycles.luisa_cycles_svm_bsdf_dispatch_hip" end time: Sep 10 01:06 CST
+"psycles.luisa_cycles_svm_bsdf_dispatch_hip" time elapsed: 00:00:01
+----------------------------------------------------------
+
+End testing: Sep 10 01:06 CST

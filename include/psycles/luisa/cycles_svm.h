@@ -329,6 +329,15 @@ public:
     return false;
   }
 
+  // Recording-time capability, not a device predicate. Only an immutable
+  // complete object image can prove the native frequency > 1 branch inactive
+  // everywhere. Independent/dynamic service providers conservatively retain
+  // it unless they explicitly supply that proof.
+  [[nodiscard]] virtual bool
+  has_shadow_terminator_shading_offset() const noexcept {
+    return true;
+  }
+
   /* kernel_data_fetch(objects, object).shadow_terminator_shading_offset. A
    * value of one is Cycles' no-op domain for the frequency correction. */
   [[nodiscard]] virtual luisa::compute::Float

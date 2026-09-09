@@ -214,6 +214,15 @@ if(PSYCLES_BUILD_TESTS)
         COMMAND psycles_cycles_svm_default_input_provenance_tests)
 
     if(TARGET Psycles::luisa_runtime)
+        add_executable(psycles_cycles_shading_terminator_scene_tests
+            tests/test_cycles_shading_terminator_scene.cpp)
+        target_link_libraries(psycles_cycles_shading_terminator_scene_tests
+            PRIVATE Psycles::luisa_runtime)
+        target_include_directories(psycles_cycles_shading_terminator_scene_tests
+            PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+        target_compile_features(psycles_cycles_shading_terminator_scene_tests PRIVATE cxx_std_20)
+        add_test(NAME psycles.cycles_shading_terminator_scene
+            COMMAND psycles_cycles_shading_terminator_scene_tests)
         add_executable(psycles_cycles_svm_holdout_tests tests/test_cycles_svm_holdout.cpp)
         target_link_libraries(psycles_cycles_svm_holdout_tests PRIVATE Psycles::luisa_runtime)
         target_compile_features(psycles_cycles_svm_holdout_tests PRIVATE cxx_std_20)
@@ -1049,6 +1058,10 @@ if(PSYCLES_BUILD_TESTS)
             NAME psycles.cycles_holdout_state_fixture
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cycles_holdout_state_fixture.py")
+        add_test(
+            NAME psycles.cycles_shading_terminator_fixture
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cycles_shading_terminator_fixture.py")
         add_test(
             NAME psycles.cycles_holdout_volume_fixture
             COMMAND "${Python3_EXECUTABLE}"

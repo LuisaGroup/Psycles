@@ -1,0 +1,395 @@
+Test project /home/mike/Projects/Psycles-surface-svm/build
+        Start   3: psycles.luisa_sample_dispatch_film_fallback
+  1/195 Test   #3: psycles.luisa_sample_dispatch_film_fallback ...........................   Passed  113.75 sec
+        Start   4: psycles.luisa_volume_coefficients_fallback
+  2/195 Test   #4: psycles.luisa_volume_coefficients_fallback ............................   Passed    0.03 sec
+        Start   7: psycles.luisa_stacked_volume_fallback
+  3/195 Test   #7: psycles.luisa_stacked_volume_fallback .................................   Passed    0.04 sec
+        Start  10: psycles.luisa_volume_phase_fallback
+  4/195 Test  #10: psycles.luisa_volume_phase_fallback ...................................   Passed    0.02 sec
+        Start  13: psycles.luisa_volume_stack_fallback
+  5/195 Test  #13: psycles.luisa_volume_stack_fallback ...................................   Passed    0.02 sec
+        Start  16: psycles.luisa_homogeneous_volume_fallback
+  6/195 Test  #16: psycles.luisa_homogeneous_volume_fallback .............................   Passed    0.03 sec
+        Start  19: psycles.luisa_heterogeneous_volume_fallback
+  7/195 Test  #19: psycles.luisa_heterogeneous_volume_fallback ...........................   Passed    0.03 sec
+        Start  22: psycles.luisa_heterogeneous_volume_candidate_fallback
+  8/195 Test  #22: psycles.luisa_heterogeneous_volume_candidate_fallback .................   Passed    0.06 sec
+        Start  25: psycles.luisa_heterogeneous_volume_segment_fallback
+  9/195 Test  #25: psycles.luisa_heterogeneous_volume_segment_fallback ...................   Passed    0.17 sec
+        Start  28: psycles.luisa_heterogeneous_volume_transmittance_fallback
+ 10/195 Test  #28: psycles.luisa_heterogeneous_volume_transmittance_fallback .............   Passed    0.03 sec
+        Start  31: psycles.luisa_heterogeneous_volume_shadow_fallback
+ 11/195 Test  #31: psycles.luisa_heterogeneous_volume_shadow_fallback ....................   Passed    0.06 sec
+        Start  34: psycles.luisa_volume_majorant_fallback
+ 12/195 Test  #34: psycles.luisa_volume_majorant_fallback ................................   Passed    0.09 sec
+        Start  37: psycles.luisa_volume_majorant_overlap_fallback
+ 13/195 Test  #37: psycles.luisa_volume_majorant_overlap_fallback ........................   Passed    0.02 sec
+        Start  40: psycles.luisa_volume_majorant_prepass_fallback
+ 14/195 Test  #40: psycles.luisa_volume_majorant_prepass_fallback ........................   Passed    0.14 sec
+        Start  43: psycles.luisa_volume_majorant_scene_fallback
+ 15/195 Test  #43: psycles.luisa_volume_majorant_scene_fallback ..........................   Passed    0.77 sec
+        Start  46: psycles.luisa_volume_guiding_fallback
+ 16/195 Test  #46: psycles.luisa_volume_guiding_fallback .................................   Passed    0.05 sec
+        Start  49: psycles.luisa_triangle_primitive_fallback
+ 17/195 Test  #49: psycles.luisa_triangle_primitive_fallback .............................   Passed    0.03 sec
+        Start  52: psycles.luisa_camera_volume_stack_fallback
+ 18/195 Test  #52: psycles.luisa_camera_volume_stack_fallback ............................   Passed    0.03 sec
+        Start  55: psycles.luisa_volume_point_fallback
+ 19/195 Test  #55: psycles.luisa_volume_point_fallback ...................................   Passed    1.42 sec
+        Start  60: psycles.luisa_sobol_fallback
+ 20/195 Test  #60: psycles.luisa_sobol_fallback ..........................................   Passed    0.05 sec
+        Start  61: psycles.luisa_spherical_geometry_fallback
+ 21/195 Test  #61: psycles.luisa_spherical_geometry_fallback .............................   Passed    0.02 sec
+        Start  64: psycles.luisa_triangle_light_sampling_fallback
+ 22/195 Test  #64: psycles.luisa_triangle_light_sampling_fallback ........................   Passed    0.02 sec
+        Start  67: psycles.luisa_analytic_light_sampling_fallback
+ 23/195 Test  #67: psycles.luisa_analytic_light_sampling_fallback ........................   Passed    0.09 sec
+        Start  70: psycles.luisa_area_light_forward_fallback
+ 24/195 Test  #70: psycles.luisa_area_light_forward_fallback .............................   Passed   42.29 sec
+        Start  73: psycles.luisa_emissive_triangle_forward_pdf_fallback
+ 25/195 Test  #73: psycles.luisa_emissive_triangle_forward_pdf_fallback ..................   Passed    0.04 sec
+        Start  76: psycles.luisa_volume_path_fallback
+ 26/195 Test  #76: psycles.luisa_volume_path_fallback ....................................   Passed   40.95 sec
+        Start  79: psycles.luisa_volume_triangle_fallback
+ 27/195 Test  #79: psycles.luisa_volume_triangle_fallback ................................   Passed   23.37 sec
+        Start  82: psycles.luisa_volume_environment_fallback
+ 28/195 Test  #82: psycles.luisa_volume_environment_fallback .............................   Passed   41.00 sec
+        Start  85: psycles.luisa_cycles_sample_mapping_fallback
+ 29/195 Test  #85: psycles.luisa_cycles_sample_mapping_fallback ..........................   Passed    0.02 sec
+        Start  88: psycles.luisa_curve_ribbon_fallback
+ 30/195 Test  #88: psycles.luisa_curve_ribbon_fallback ...................................   Passed    0.04 sec
+        Start  92: psycles.luisa_scene_traversal_fallback
+ 31/195 Test  #92: psycles.luisa_scene_traversal_fallback ................................   Passed    1.34 sec
+        Start  95: psycles.luisa_scene_traversal_local_fallback
+ 32/195 Test  #95: psycles.luisa_scene_traversal_local_fallback ..........................   Passed    0.95 sec
+        Start  98: psycles.luisa_transform_applied_surface_fallback
+ 33/195 Test  #98: psycles.luisa_transform_applied_surface_fallback ......................   Passed    0.02 sec
+        Start 101: psycles.luisa_cycles_path_state_fallback
+ 34/195 Test #101: psycles.luisa_cycles_path_state_fallback ..............................   Passed    0.03 sec
+        Start 104: psycles.luisa_camera_sampling_fallback
+ 35/195 Test #104: psycles.luisa_camera_sampling_fallback ................................   Passed    0.03 sec
+        Start 107: psycles.luisa_background_sampling_fallback
+ 36/195 Test #107: psycles.luisa_background_sampling_fallback ............................   Passed    0.02 sec
+        Start 110: psycles.luisa_surface_ray_fallback
+ 37/195 Test #110: psycles.luisa_surface_ray_fallback ....................................   Passed    0.03 sec
+        Start 113: psycles.luisa_cycles_film_routing_fallback
+ 38/195 Test #113: psycles.luisa_cycles_film_routing_fallback ............................   Passed    0.21 sec
+        Start 116: psycles.luisa_cycles_surface_emission_fallback
+ 39/195 Test #116: psycles.luisa_cycles_surface_emission_fallback ........................   Passed   16.78 sec
+        Start 119: psycles.luisa_cycles_light_parameters_fallback
+ 40/195 Test #119: psycles.luisa_cycles_light_parameters_fallback ........................   Passed    0.12 sec
+        Start 122: psycles.luisa_cycles_lamp_routing_fallback
+ 41/195 Test #122: psycles.luisa_cycles_lamp_routing_fallback ............................   Passed   14.50 sec
+        Start 125: psycles.luisa_light_endpoints_fallback
+ 42/195 Test #125: psycles.luisa_light_endpoints_fallback ................................   Passed    0.10 sec
+        Start 128: psycles.luisa_cycles_svm_image_binding_fallback
+ 43/195 Test #128: psycles.luisa_cycles_svm_image_binding_fallback .......................   Passed    0.06 sec
+        Start 131: psycles.luisa_volume_work_fallback
+ 44/195 Test #131: psycles.luisa_volume_work_fallback ....................................   Passed    0.06 sec
+        Start 134: psycles.luisa_surface_nee_work_fallback
+ 45/195 Test #134: psycles.luisa_surface_nee_work_fallback ...............................   Passed    0.04 sec
+        Start 137: psycles.luisa_cycles_svm_shared_closure_fallback
+ 46/195 Test #137: psycles.luisa_cycles_svm_shared_closure_fallback ......................   Passed    1.94 sec
+        Start 140: psycles.luisa_cycles_svm_missing_image_fallback
+ 47/195 Test #140: psycles.luisa_cycles_svm_missing_image_fallback .......................   Passed    0.07 sec
+        Start 143: psycles.luisa_cycles_svm_volume_density_fallback
+ 48/195 Test #143: psycles.luisa_cycles_svm_volume_density_fallback ......................   Passed    0.08 sec
+        Start 146: psycles.luisa_cycles_svm_volume_stack_fallback
+ 49/195 Test #146: psycles.luisa_cycles_svm_volume_stack_fallback ........................   Passed    1.40 sec
+        Start 149: psycles.luisa_cycles_svm_background_fallback
+ 50/195 Test #149: psycles.luisa_cycles_svm_background_fallback ..........................   Passed    0.20 sec
+        Start 154: psycles.luisa_cycles_shading_terminator_fallback
+ 51/195 Test #154: psycles.luisa_cycles_shading_terminator_fallback ......................   Passed    0.08 sec
+        Start 157: psycles.luisa_cycles_zero_bsdf_fallback
+ 52/195 Test #157: psycles.luisa_cycles_zero_bsdf_fallback ...............................   Passed   29.04 sec
+        Start 161: psycles.luisa_cycles_subsurface_schedule_fallback
+ 53/195 Test #161: psycles.luisa_cycles_subsurface_schedule_fallback .....................   Passed    0.46 sec
+        Start 164: psycles.luisa_cycles_svm_curve_setup_fallback
+ 54/195 Test #164: psycles.luisa_cycles_svm_curve_setup_fallback .........................   Passed    0.10 sec
+        Start 167: psycles.luisa_cycles_svm_surface_geometry_fallback
+ 55/195 Test #167: psycles.luisa_cycles_svm_surface_geometry_fallback ....................   Passed    0.04 sec
+        Start 170: psycles.luisa_cycles_svm_subsurface_exit_fallback
+ 56/195 Test #170: psycles.luisa_cycles_svm_subsurface_exit_fallback .....................   Passed    0.06 sec
+        Start 173: psycles.luisa_cycles_svm_map_range_fallback
+ 57/195 Test #173: psycles.luisa_cycles_svm_map_range_fallback ...........................   Passed    0.13 sec
+        Start 176: psycles.luisa_cycles_svm_analytic_sky_fallback
+ 58/195 Test #176: psycles.luisa_cycles_svm_analytic_sky_fallback ........................   Passed    0.11 sec
+        Start 179: psycles.luisa_cycles_volume_boundary_fallback
+ 59/195 Test #179: psycles.luisa_cycles_volume_boundary_fallback .........................   Passed    0.03 sec
+        Start 182: psycles.luisa_cycles_path_lifetime_fallback
+ 60/195 Test #182: psycles.luisa_cycles_path_lifetime_fallback ...........................   Passed   31.63 sec
+        Start 185: psycles.luisa_cycles_holdout_state_fallback
+ 61/195 Test #185: psycles.luisa_cycles_holdout_state_fallback ...........................   Passed    0.06 sec
+        Start 188: psycles.luisa_cycles_holdout_render_fallback
+ 62/195 Test #188: psycles.luisa_cycles_holdout_render_fallback ..........................   Passed  149.45 sec
+        Start 191: psycles.luisa_cycles_ray_portal_state_fallback
+ 63/195 Test #191: psycles.luisa_cycles_ray_portal_state_fallback ........................   Passed    0.08 sec
+        Start 194: psycles.luisa_cycles_ray_portal_render_fallback
+ 64/195 Test #194: psycles.luisa_cycles_ray_portal_render_fallback .......................   Passed  155.39 sec
+        Start 197: psycles.luisa_cycles_volume_emission_film_fallback
+ 65/195 Test #197: psycles.luisa_cycles_volume_emission_film_fallback ....................   Passed   11.02 sec
+        Start 200: psycles.luisa_cycles_svm_volume_emission_fallback
+ 66/195 Test #200: psycles.luisa_cycles_svm_volume_emission_fallback .....................   Passed    0.16 sec
+        Start 203: psycles.luisa_cycles_svm_volume_fallback
+ 67/195 Test #203: psycles.luisa_cycles_svm_volume_fallback ..............................   Passed    4.86 sec
+        Start 206: psycles.luisa_cycles_shadow_pipeline_fallback
+ 68/195 Test #206: psycles.luisa_cycles_shadow_pipeline_fallback .........................   Passed    0.23 sec
+        Start 209: psycles.luisa_cycles_shadow_queue_fallback
+ 69/195 Test #209: psycles.luisa_cycles_shadow_queue_fallback ............................   Passed    0.25 sec
+        Start 212: psycles.luisa_cycles_svm_native_shadow_fallback
+ 70/195 Test #212: psycles.luisa_cycles_svm_native_shadow_fallback .......................   Passed    0.05 sec
+        Start 215: psycles.luisa_cycles_svm_shadow_surface_fallback
+ 71/195 Test #215: psycles.luisa_cycles_svm_shadow_surface_fallback ......................   Passed    0.09 sec
+        Start 218: psycles.luisa_cycles_svm_closure_budget_fallback
+ 72/195 Test #218: psycles.luisa_cycles_svm_closure_budget_fallback ......................   Passed    0.02 sec
+        Start 221: psycles.luisa_cycles_svm_stack_extent_fallback
+ 73/195 Test #221: psycles.luisa_cycles_svm_stack_extent_fallback ........................   Passed    0.03 sec
+        Start 224: psycles.luisa_cycles_svm_scene_metadata_fallback
+ 74/195 Test #224: psycles.luisa_cycles_svm_scene_metadata_fallback ......................   Passed    0.02 sec
+        Start 227: psycles.luisa_cycles_svm_scene_admission_fallback
+ 75/195 Test #227: psycles.luisa_cycles_svm_scene_admission_fallback .....................   Passed    0.02 sec
+        Start 230: psycles.luisa_cycles_svm_scene_compilation_fallback
+ 76/195 Test #230: psycles.luisa_cycles_svm_scene_compilation_fallback ...................   Passed    0.02 sec
+        Start 233: psycles.luisa_cycles_camera_transform_fallback
+ 77/195 Test #233: psycles.luisa_cycles_camera_transform_fallback ........................   Passed    0.03 sec
+        Start 236: psycles.luisa_cycles_camera_ray_fallback
+ 78/195 Test #236: psycles.luisa_cycles_camera_ray_fallback ..............................   Passed    0.72 sec
+        Start 239: psycles.luisa_cycles_surface_queue_fallback
+ 79/195 Test #239: psycles.luisa_cycles_surface_queue_fallback ...........................   Passed    0.16 sec
+        Start 242: psycles.luisa_background_sun_sample_fallback
+ 80/195 Test #242: psycles.luisa_background_sun_sample_fallback ..........................   Passed    0.03 sec
+        Start 245: psycles.luisa_cycles_svm_nee_setup_fallback
+ 81/195 Test #245: psycles.luisa_cycles_svm_nee_setup_fallback ...........................   Passed    0.03 sec
+        Start 248: psycles.luisa_cycles_svm_nee_fallback
+ 82/195 Test #248: psycles.luisa_cycles_svm_nee_fallback .................................   Passed    0.03 sec
+        Start 251: psycles.luisa_cycles_svm_light_emission_fallback
+ 83/195 Test #251: psycles.luisa_cycles_svm_light_emission_fallback ......................   Passed    0.08 sec
+        Start 254: psycles.luisa_surface_roughness_fallback
+ 84/195 Test #254: psycles.luisa_surface_roughness_fallback ..............................   Passed    0.02 sec
+        Start 257: psycles.luisa_cycles_closure_fallback
+ 85/195 Test #257: psycles.luisa_cycles_closure_fallback .................................   Passed    0.09 sec
+        Start 260: psycles.luisa_principled_sheen_fallback
+ 86/195 Test #260: psycles.luisa_principled_sheen_fallback ...............................   Passed    0.03 sec
+        Start 263: psycles.luisa_standalone_sheen_fallback
+ 87/195 Test #263: psycles.luisa_standalone_sheen_fallback ...............................   Passed    0.09 sec
+        Start 266: psycles.luisa_legacy_hair_fallback
+ 88/195 Test #266: psycles.luisa_legacy_hair_fallback ....................................   Passed    0.06 sec
+        Start 269: psycles.luisa_beckmann_glossy_fallback
+ 89/195 Test #269: psycles.luisa_beckmann_glossy_fallback ................................   Passed    0.04 sec
+        Start 272: psycles.luisa_microfacet_anisotropy_fallback
+ 90/195 Test #272: psycles.luisa_microfacet_anisotropy_fallback ..........................   Passed    0.06 sec
+        Start 275: psycles.luisa_metallic_surface_fallback
+ 91/195 Test #275: psycles.luisa_metallic_surface_fallback ...............................   Passed    0.09 sec
+        Start 278: psycles.luisa_ray_differential_fallback
+ 92/195 Test #278: psycles.luisa_ray_differential_fallback ...............................   Passed    0.02 sec
+        Start 281: psycles.luisa_normal_map_fallback
+ 93/195 Test #281: psycles.luisa_normal_map_fallback .....................................   Passed    0.03 sec
+        Start 284: psycles.luisa_surface_geometry_context_fallback
+ 94/195 Test #284: psycles.luisa_surface_geometry_context_fallback .......................   Passed    0.03 sec
+        Start 287: psycles.luisa_cycles_film_light_fallback
+ 95/195 Test #287: psycles.luisa_cycles_film_light_fallback ..............................   Passed    0.02 sec
+        Start 290: psycles.luisa_bssrdf_fallback
+ 96/195 Test #290: psycles.luisa_bssrdf_fallback .........................................   Passed    0.03 sec
+        Start 293: psycles.luisa_subsurface_exit_fallback
+ 97/195 Test #293: psycles.luisa_subsurface_exit_fallback ................................   Passed    0.03 sec
+        Start 296: psycles.luisa_random_walk_fallback
+ 98/195 Test #296: psycles.luisa_random_walk_fallback ....................................   Passed    0.04 sec
+        Start 299: psycles.luisa_surface_closure_collection_fallback
+ 99/195 Test #299: psycles.luisa_surface_closure_collection_fallback .....................   Passed    0.36 sec
+        Start 302: psycles.luisa_surface_closure_reachability_fallback
+100/195 Test #302: psycles.luisa_surface_closure_reachability_fallback ...................   Passed    2.70 sec
+        Start 305: psycles.luisa_surface_population_fallback
+101/195 Test #305: psycles.luisa_surface_population_fallback .............................   Passed    0.67 sec
+        Start 308: psycles.luisa_compact_surface_preparation_fallback
+102/195 Test #308: psycles.luisa_compact_surface_preparation_fallback ....................   Passed    0.25 sec
+        Start 311: psycles.luisa_compact_surface_tail_fallback
+103/195 Test #311: psycles.luisa_compact_surface_tail_fallback ...........................   Passed    0.23 sec
+        Start 314: psycles.luisa_surface_closure_point_fallback
+104/195 Test #314: psycles.luisa_surface_closure_point_fallback ..........................   Passed    0.02 sec
+        Start 317: psycles.luisa_curve_closure_semantics_fallback
+105/195 Test #317: psycles.luisa_curve_closure_semantics_fallback ........................   Passed    0.03 sec
+        Start 320: psycles.luisa_surface_closure_physical_fallback
+106/195 Test #320: psycles.luisa_surface_closure_physical_fallback .......................   Passed    0.05 sec
+        Start 323: psycles.luisa_thin_film_fresnel_fallback
+107/195 Test #323: psycles.luisa_thin_film_fresnel_fallback ..............................   Passed    0.02 sec
+        Start 326: psycles.luisa_thin_film_surface_fallback
+108/195 Test #326: psycles.luisa_thin_film_surface_fallback ..............................   Passed    0.04 sec
+        Start 329: psycles.luisa_standalone_caustics_fallback
+109/195 Test #329: psycles.luisa_standalone_caustics_fallback ............................   Passed    0.02 sec
+        Start 332: psycles.luisa_principled_coat_fallback
+110/195 Test #332: psycles.luisa_principled_coat_fallback ................................   Passed    0.08 sec
+        Start 335: psycles.luisa_principled_transmission_fallback
+111/195 Test #335: psycles.luisa_principled_transmission_fallback ........................   Passed    0.06 sec
+        Start 338: psycles.luisa_principled_setup_callable_fallback
+112/195 Test #338: psycles.luisa_principled_setup_callable_fallback ......................   Passed    0.02 sec
+        Start 341: psycles.luisa_texture_sampling_callable_fallback
+113/195 Test #341: psycles.luisa_texture_sampling_callable_fallback ......................   Passed    0.04 sec
+        Start 344: psycles.luisa_attribute_lookup_callable_fallback
+114/195 Test #344: psycles.luisa_attribute_lookup_callable_fallback ......................   Passed    0.02 sec
+        Start 347: psycles.luisa_color_transform_callable_fallback
+115/195 Test #347: psycles.luisa_color_transform_callable_fallback .......................   Passed    0.02 sec
+        Start 350: psycles.luisa_vector_mapping_callable_fallback
+116/195 Test #350: psycles.luisa_vector_mapping_callable_fallback ........................   Passed    0.02 sec
+        Start 353: psycles.luisa_shader_table_callable_fallback
+117/195 Test #353: psycles.luisa_shader_table_callable_fallback ..........................   Passed    0.02 sec
+        Start 356: psycles.luisa_normal_map_callable_fallback
+118/195 Test #356: psycles.luisa_normal_map_callable_fallback ............................   Passed    0.02 sec
+        Start 359: psycles.luisa_bump_callable_fallback
+119/195 Test #359: psycles.luisa_bump_callable_fallback ..................................   Passed    0.02 sec
+        Start 362: psycles.luisa_displacement_fallback
+120/195 Test #362: psycles.luisa_displacement_fallback ...................................   Passed    0.02 sec
+        Start 365: psycles.luisa_noise_callable_fallback
+121/195 Test #365: psycles.luisa_noise_callable_fallback .................................   Passed    0.04 sec
+        Start 368: psycles.luisa_surface_mix_svm_fallback
+122/195 Test #368: psycles.luisa_surface_mix_svm_fallback ................................   Passed    0.06 sec
+        Start 371: psycles.luisa_surface_math_svm_fallback
+123/195 Test #371: psycles.luisa_surface_math_svm_fallback ...............................   Passed    0.05 sec
+        Start 374: psycles.luisa_cycles_svm_fallback
+124/195 Test #374: psycles.luisa_cycles_svm_fallback .....................................   Passed    0.49 sec
+        Start 377: psycles.luisa_cycles_svm_wireframe_fallback
+125/195 Test #377: psycles.luisa_cycles_svm_wireframe_fallback ...........................   Passed    0.58 sec
+        Start 380: psycles.luisa_cycles_svm_bump_state_fallback
+126/195 Test #380: psycles.luisa_cycles_svm_bump_state_fallback ..........................   Passed    0.11 sec
+        Start 383: psycles.luisa_cycles_svm_vector_displacement_fallback
+127/195 Test #383: psycles.luisa_cycles_svm_vector_displacement_fallback .................   Passed    0.07 sec
+        Start 386: psycles.luisa_cycles_svm_primitive_attribute_fallback
+128/195 Test #386: psycles.luisa_cycles_svm_primitive_attribute_fallback .................   Passed    0.18 sec
+        Start 390: psycles.luisa_cycles_svm_geometry_runtime_fallback
+129/195 Test #390: psycles.luisa_cycles_svm_geometry_runtime_fallback ....................   Passed    0.05 sec
+        Start 393: psycles.luisa_cycles_svm_texture_coordinate_fallback
+130/195 Test #393: psycles.luisa_cycles_svm_texture_coordinate_fallback ..................   Passed    0.09 sec
+        Start 396: psycles.luisa_cycles_svm_image_fallback
+131/195 Test #396: psycles.luisa_cycles_svm_image_fallback ...............................   Passed    0.15 sec
+        Start 399: psycles.luisa_cycles_svm_sky_fallback
+132/195 Test #399: psycles.luisa_cycles_svm_sky_fallback .................................   Passed    0.20 sec
+        Start 402: psycles.luisa_cycles_svm_mapping_fallback
+133/195 Test #402: psycles.luisa_cycles_svm_mapping_fallback .............................   Passed    0.12 sec
+        Start 405: psycles.luisa_cycles_svm_vector_math_fallback
+134/195 Test #405: psycles.luisa_cycles_svm_vector_math_fallback .........................   Passed    0.09 sec
+        Start 408: psycles.luisa_cycles_svm_noise_fallback
+135/195 Test #408: psycles.luisa_cycles_svm_noise_fallback ...............................   Passed    4.92 sec
+        Start 411: psycles.luisa_cycles_svm_white_noise_fallback
+136/195 Test #411: psycles.luisa_cycles_svm_white_noise_fallback .........................   Passed    0.09 sec
+        Start 414: psycles.luisa_cycles_svm_gradient_fallback
+137/195 Test #414: psycles.luisa_cycles_svm_gradient_fallback ............................   Passed    0.07 sec
+        Start 417: psycles.luisa_cycles_svm_voronoi_fallback
+138/195 Test #417: psycles.luisa_cycles_svm_voronoi_fallback .............................   Passed    0.43 sec
+        Start 420: psycles.luisa_cycles_svm_voronoi_octave_fallback
+139/195 Test #420: psycles.luisa_cycles_svm_voronoi_octave_fallback ......................   Passed    0.39 sec
+        Start 423: psycles.luisa_cycles_svm_gabor_fallback
+140/195 Test #423: psycles.luisa_cycles_svm_gabor_fallback ...............................   Passed    0.13 sec
+        Start 426: psycles.luisa_cycles_svm_spectral_fallback
+141/195 Test #426: psycles.luisa_cycles_svm_spectral_fallback ............................   Passed    0.08 sec
+        Start 429: psycles.luisa_cycles_svm_procedural_texture_fallback
+142/195 Test #429: psycles.luisa_cycles_svm_procedural_texture_fallback ..................   Passed    0.21 sec
+        Start 432: psycles.luisa_cycles_svm_rgb_ramp_fallback
+143/195 Test #432: psycles.luisa_cycles_svm_rgb_ramp_fallback ............................   Passed    0.05 sec
+        Start 435: psycles.luisa_cycles_svm_rgb_curve_fallback
+144/195 Test #435: psycles.luisa_cycles_svm_rgb_curve_fallback ...........................   Passed    0.08 sec
+        Start 438: psycles.luisa_cycles_svm_curve_family_fallback
+145/195 Test #438: psycles.luisa_cycles_svm_curve_family_fallback ........................   Passed    0.08 sec
+        Start 441: psycles.luisa_cycles_svm_camera_fallback
+146/195 Test #441: psycles.luisa_cycles_svm_camera_fallback ..............................   Passed    0.05 sec
+        Start 444: psycles.luisa_cycles_svm_fresnel_fallback
+147/195 Test #444: psycles.luisa_cycles_svm_fresnel_fallback .............................   Passed    0.07 sec
+        Start 447: psycles.luisa_cycles_svm_light_path_fallback
+148/195 Test #447: psycles.luisa_cycles_svm_light_path_fallback ..........................   Passed    0.07 sec
+        Start 450: psycles.luisa_cycles_svm_info_fallback
+149/195 Test #450: psycles.luisa_cycles_svm_info_fallback ................................   Passed    0.18 sec
+        Start 453: psycles.luisa_cycles_svm_normal_fallback
+150/195 Test #453: psycles.luisa_cycles_svm_normal_fallback ..............................   Passed    0.05 sec
+        Start 456: psycles.luisa_cycles_svm_normal_map_tangent_fallback
+151/195 Test #456: psycles.luisa_cycles_svm_normal_map_tangent_fallback ..................   Passed    0.23 sec
+        Start 459: psycles.luisa_cycles_svm_closure_pool_fallback
+152/195 Test #459: psycles.luisa_cycles_svm_closure_pool_fallback ........................   Passed    0.06 sec
+        Start 462: psycles.luisa_cycles_svm_closure_fallback
+153/195 Test #462: psycles.luisa_cycles_svm_closure_fallback .............................   Passed    3.95 sec
+        Start 465: psycles.luisa_cycles_svm_closure_guards_fallback
+154/195 Test #465: psycles.luisa_cycles_svm_closure_guards_fallback ......................   Passed    4.12 sec
+        Start 468: psycles.luisa_cycles_svm_principled_fallback
+155/195 Test #468: psycles.luisa_cycles_svm_principled_fallback ..........................   Passed    0.47 sec
+        Start 471: psycles.luisa_cycles_svm_principled_subsurface_fallback
+156/195 Test #471: psycles.luisa_cycles_svm_principled_subsurface_fallback ...............   Passed    1.03 sec
+        Start 474: psycles.luisa_cycles_svm_standalone_bssrdf_fallback
+157/195 Test #474: psycles.luisa_cycles_svm_standalone_bssrdf_fallback ...................   Passed    0.71 sec
+        Start 477: psycles.luisa_cycles_svm_standalone_sheen_fallback
+158/195 Test #477: psycles.luisa_cycles_svm_standalone_sheen_fallback ....................   Passed    0.69 sec
+        Start 480: psycles.luisa_cycles_svm_standalone_toon_fallback
+159/195 Test #480: psycles.luisa_cycles_svm_standalone_toon_fallback .....................   Passed    0.64 sec
+        Start 483: psycles.luisa_cycles_svm_standalone_ray_portal_fallback
+160/195 Test #483: psycles.luisa_cycles_svm_standalone_ray_portal_fallback ...............   Passed    0.59 sec
+        Start 486: psycles.luisa_cycles_svm_standalone_hair_fallback
+161/195 Test #486: psycles.luisa_cycles_svm_standalone_hair_fallback .....................   Passed    0.58 sec
+        Start 489: psycles.luisa_cycles_svm_hair_scattering_fallback
+162/195 Test #489: psycles.luisa_cycles_svm_hair_scattering_fallback .....................   Passed    0.07 sec
+        Start 492: psycles.luisa_cycles_svm_simple_scattering_fallback
+163/195 Test #492: psycles.luisa_cycles_svm_simple_scattering_fallback ...................   Passed    0.04 sec
+        Start 495: psycles.luisa_cycles_svm_toon_scattering_fallback
+164/195 Test #495: psycles.luisa_cycles_svm_toon_scattering_fallback .....................   Passed    0.04 sec
+        Start 498: psycles.luisa_cycles_svm_sheen_scattering_fallback
+165/195 Test #498: psycles.luisa_cycles_svm_sheen_scattering_fallback ....................   Passed    0.05 sec
+        Start 501: psycles.luisa_cycles_svm_microfacet_scattering_fallback
+166/195 Test #501: psycles.luisa_cycles_svm_microfacet_scattering_fallback ...............   Passed    0.40 sec
+        Start 504: psycles.luisa_cycles_svm_microfacet_union_fallback
+167/195 Test #504: psycles.luisa_cycles_svm_microfacet_union_fallback ....................   Passed    0.22 sec
+        Start 507: psycles.luisa_cycles_svm_ashikhmin_shirley_scattering_fallback
+168/195 Test #507: psycles.luisa_cycles_svm_ashikhmin_shirley_scattering_fallback ........   Passed    0.07 sec
+        Start 510: psycles.luisa_cycles_svm_bsdf_dispatch_fallback
+169/195 Test #510: psycles.luisa_cycles_svm_bsdf_dispatch_fallback .......................   Passed    1.13 sec
+        Start 513: psycles.luisa_cycles_svm_surface_shader_fallback
+170/195 Test #513: psycles.luisa_cycles_svm_surface_shader_fallback ......................   Passed    0.11 sec
+        Start 516: psycles.luisa_cycles_svm_principled_hair_chiang_fallback
+171/195 Test #516: psycles.luisa_cycles_svm_principled_hair_chiang_fallback ..............   Passed    1.39 sec
+        Start 519: psycles.luisa_cycles_svm_principled_hair_chiang_scattering_fallback
+172/195 Test #519: psycles.luisa_cycles_svm_principled_hair_chiang_scattering_fallback ...   Passed    0.07 sec
+        Start 522: psycles.luisa_cycles_svm_principled_hair_huang_fallback
+173/195 Test #522: psycles.luisa_cycles_svm_principled_hair_huang_fallback ...............   Passed    2.04 sec
+        Start 525: psycles.luisa_cycles_svm_principled_hair_huang_scattering_fallback
+174/195 Test #525: psycles.luisa_cycles_svm_principled_hair_huang_scattering_fallback ....   Passed    0.14 sec
+        Start 528: psycles.luisa_cycles_svm_principled_sheen_fallback
+175/195 Test #528: psycles.luisa_cycles_svm_principled_sheen_fallback ....................   Passed    0.55 sec
+        Start 531: psycles.luisa_cycles_svm_principled_coat_fallback
+176/195 Test #531: psycles.luisa_cycles_svm_principled_coat_fallback .....................   Passed    0.56 sec
+        Start 534: psycles.luisa_cycles_svm_principled_metallic_fallback
+177/195 Test #534: psycles.luisa_cycles_svm_principled_metallic_fallback .................   Passed    0.53 sec
+        Start 537: psycles.luisa_cycles_svm_principled_transmission_fallback
+178/195 Test #537: psycles.luisa_cycles_svm_principled_transmission_fallback .............   Passed    0.52 sec
+        Start 540: psycles.luisa_cycles_svm_principled_thin_wall_fallback
+179/195 Test #540: psycles.luisa_cycles_svm_principled_thin_wall_fallback ................   Passed    0.53 sec
+        Start 543: psycles.luisa_cycles_svm_light_falloff_fallback
+180/195 Test #543: psycles.luisa_cycles_svm_light_falloff_fallback .......................   Passed    0.05 sec
+        Start 546: psycles.luisa_cycles_svm_ies_fallback
+181/195 Test #546: psycles.luisa_cycles_svm_ies_fallback .................................   Passed    0.11 sec
+        Start 549: psycles.luisa_light_falloff_fallback
+182/195 Test #549: psycles.luisa_light_falloff_fallback ..................................   Passed    4.88 sec
+        Start 552: psycles.luisa_surface_vector_math_svm_fallback
+183/195 Test #552: psycles.luisa_surface_vector_math_svm_fallback ........................   Passed    0.07 sec
+        Start 555: psycles.luisa_direct_lighting_plan_fallback
+184/195 Test #555: psycles.luisa_direct_lighting_plan_fallback ...........................   Passed    0.05 sec
+        Start 558: psycles.luisa_principled_thin_wall_fallback
+185/195 Test #558: psycles.luisa_principled_thin_wall_fallback ...........................   Passed    0.22 sec
+        Start 561: psycles.luisa_refraction_fallback
+186/195 Test #561: psycles.luisa_refraction_fallback .....................................   Passed    0.04 sec
+        Start 564: psycles.luisa_attribute_fallback
+187/195 Test #564: psycles.luisa_attribute_fallback ......................................   Passed    0.04 sec
+        Start 567: psycles.luisa_texture_coordinate_fallback
+188/195 Test #567: psycles.luisa_texture_coordinate_fallback .............................   Passed    0.02 sec
+        Start 570: psycles.luisa_fmod_fallback
+189/195 Test #570: psycles.luisa_fmod_fallback ...........................................   Passed    0.03 sec
+        Start 573: psycles.luisa_magic_texture_fallback
+190/195 Test #573: psycles.luisa_magic_texture_fallback ..................................   Passed    0.04 sec
+        Start 576: psycles.luisa_light_tree_fallback
+191/195 Test #576: psycles.luisa_light_tree_fallback .....................................   Passed    0.90 sec
+        Start 606: psycles.luisa_pointiness_scene_fallback
+192/195 Test #606: psycles.luisa_pointiness_scene_fallback ...............................   Passed    0.02 sec
+        Start 609: psycles.luisa_displacement_scene_fallback
+193/195 Test #609: psycles.luisa_displacement_scene_fallback .............................   Passed    2.26 sec
+        Start 612: psycles.luisa_surface_nee_normal_fallback
+194/195 Test #612: psycles.luisa_surface_nee_normal_fallback .............................   Passed    4.25 sec
+        Start 615: psycles.luisa_curve_path_fallback
+195/195 Test #615: psycles.luisa_curve_path_fallback .....................................   Passed   12.23 sec
+
+100% tests passed out of 195
+
+Total Test time (real) = 748.61 sec

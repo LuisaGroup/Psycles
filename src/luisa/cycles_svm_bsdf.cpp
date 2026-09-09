@@ -6,6 +6,7 @@
 
 #include <luisa/dsl/sugar.h>
 #include <psycles/luisa/cycles_closure.h>
+#include <psycles/luisa/cycles_fast_math.h>
 
 #include <initializer_list>
 #include <utility>
@@ -142,7 +143,9 @@ inline constexpr auto microfacet_type_mask =
 [[nodiscard]] Float shift_cos_in(Expr<float> cosine,
                                  Expr<float> frequency) noexcept {
   const auto clamped_cosine = min(cosine, 1.0f);
-  const auto angle = acos(clamped_cosine);
+  // Native shift_cos_in uses fast_acosf, the short approximation already
+  // shared with Cycles hair. Do not substitute the standard transcendental.
+  const auto angle = cycles_fast_math::arc_cosine(clamped_cosine);
   return max(cos(angle * frequency), 0.0f) / clamped_cosine;
 }
 
@@ -389,12 +392,14 @@ BsdfSample bsdf_sample(const KernelGlobals &kernel_globals,
     };
   }
   $elif(result.label != closure_type::label_none) {
-    const auto frequency =
-        kernel_globals.object_shadow_terminator_shading_offset(
-            shader_data.object);
-    $if(frequency > 1.0f) {
-      result.value *= shift_cos_in(dot(result.wo, common.N), frequency);
-    };
+    if (kernel_globals.has_shadow_terminator_shading_offset()) {
+      const auto frequency =
+          kernel_globals.object_shadow_terminator_shading_offset(
+              shader_data.object);
+      $if(frequency > 1.0f) {
+        result.value *= shift_cos_in(dot(result.wo, common.N), frequency);
+      };
+    }
     result.value *= bump_shadowing_term(shader_data, common, result.wo, false);
   };
   return result;
@@ -750,13 +755,15 @@ BsdfEvaluation bsdf_eval(const KernelGlobals &kernel_globals,
     };
 
     result.value *= bump;
-    const auto frequency =
-        kernel_globals.object_shadow_terminator_shading_offset(
-            shader_data.object);
-    $if(frequency > 1.0f) {
-      const auto cosine = dot(wo, common.N);
-      $if(cosine >= 0.0f) { result.value *= shift_cos_in(cosine, frequency); };
-    };
+    if (kernel_globals.has_shadow_terminator_shading_offset()) {
+      const auto frequency =
+          kernel_globals.object_shadow_terminator_shading_offset(
+              shader_data.object);
+      $if(frequency > 1.0f) {
+        const auto cosine = dot(wo, common.N);
+        $if(cosine >= 0.0f) { result.value *= shift_cos_in(cosine, frequency); };
+      };
+    }
   };
   return result;
 }

@@ -316,6 +316,19 @@ background_source(const contract::SceneSnapshot &snapshot) {
 
 } // namespace
 
+bool CyclesSvmObjectSceneImage::has_shadow_terminator_shading_offset() const noexcept {
+  if (!valid || objects.size() != object_flags.size()) {
+    return true;
+  }
+  for (const auto &object : objects) {
+    const auto frequency = object.shadow_terminator_shading_offset;
+    if (!std::isfinite(frequency) || frequency > 1.0f) {
+      return true;
+    }
+  }
+  return false;
+}
+
 CyclesSvmObjectSceneImage build_cycles_svm_object_scene_image(
     const contract::SceneSnapshot &snapshot,
     const ObjectIdentityPlan &object_identities,

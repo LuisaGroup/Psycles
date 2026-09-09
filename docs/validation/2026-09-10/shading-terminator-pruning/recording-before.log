@@ -1,0 +1,6 @@
+bsdf_eval capability=false service_calls=1 acos=1 FAIL
+bsdf_eval capability=true service_calls=1 acos=1 PASS
+bsdf_eval capability=default service_calls=1 acos=1 PASS
+bsdf_sample capability=false service_calls=1 acos=1 FAIL
+bsdf_sample capability=true service_calls=1 acos=1 PASS
+bsdf_sample capability=default service_calls=1 acos=1 PASS

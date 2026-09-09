@@ -1,0 +1,13 @@
+Test project /home/mike/Projects/Psycles-surface-svm/build
+    Start 155: psycles.luisa_cycles_shading_terminator_hip
+1/4 Test #155: psycles.luisa_cycles_shading_terminator_hip ....   Passed    0.19 sec
+    Start 171: psycles.luisa_cycles_svm_subsurface_exit_hip
+2/4 Test #171: psycles.luisa_cycles_svm_subsurface_exit_hip ...   Passed    0.20 sec
+    Start 490: psycles.luisa_cycles_svm_hair_scattering_hip
+3/4 Test #490: psycles.luisa_cycles_svm_hair_scattering_hip ...   Passed    0.16 sec
+    Start 511: psycles.luisa_cycles_svm_bsdf_dispatch_hip
+4/4 Test #511: psycles.luisa_cycles_svm_bsdf_dispatch_hip .....   Passed    1.68 sec
+
+100% tests passed out of 4
+
+Total Test time (real) =   2.23 sec

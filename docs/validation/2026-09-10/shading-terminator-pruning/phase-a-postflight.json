@@ -1,0 +1,14 @@
+{
+  "stage": "Phase A postflight",
+  "time_utc": "2026-09-09T18:12:19.118545+00:00",
+  "result": "pass",
+  "source_files": 32,
+  "binaries": 8,
+  "input_scenes": 4,
+  "loaded_texture_entries": 310,
+  "all_pinned_inputs_and_source_binaries_unchanged": true,
+  "all_render_image_finite_report_comparison_hashes_match": true,
+  "manifest_and_source_lock_unchanged": true,
+  "fresh_exports_and_pairs_not_launched": true,
+  "phase_a_results_sha256": "b085aa8ca1ca1002bef8f66cb4ec58eb1b4a24a8f06d32db777daf692acad306"
+}

@@ -1,0 +1,22 @@
+[2026-09-10 01:20:39.706] [console] [info] Created context for program 'psycles_luisa_cycles_shading_terminator_tests'.
+[2026-09-10 01:20:39.707] [console] [info] Runtime directory: /home/mike/Projects/Psycles-surface-svm/build/bin.
+[2026-09-10 01:20:39.724] [console] [info] Loaded dynamic module '/home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-backend-hip.so' in 17.79187 ms.
+[2026-09-10 01:20:39.735] [console] [info] Created HIP device 0: AMD Radeon RX 9070 XT (arch = gfx1201, cc = 12.0, driver = 7.2.53211, runtime = 7.2.53211, build = 7.2.53211).
+[2026-09-10 01:20:39.782] [console] [info] Dumped LLVM IR to: hip_kernel_before_opt_0.ll
+[2026-09-10 01:20:39.813] [console] [info] Dumped post-optimization LLVM IR to: hip_kernel_after_opt_0.ll
+[2026-09-10 01:20:39.813] [console] [info] Dumped final LLVM IR to: hip_kernel_final_0.ll
+[2026-09-10 01:20:39.813] [console] [info] HIP LLVM codegen completed in 45.059295 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm_impl.cpp:1572]
+[2026-09-10 01:20:39.813] [console] [info] Generated AMDGPU code with HIP LLVM CodeGen in 50.692352 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm.cpp:54]
+[2026-09-10 01:20:39.813] [console] [info] Generated AMDGPU code (9416 bytes)
+[2026-09-10 01:20:39.865] [console] [info] Linked HIP LLVM bitcode to AMDGPU code object (7616 bytes) in 51.916999999999994 ms.
+[2026-09-10 01:20:39.866] [console] [info] Loaded HIP code object in 0.78355 ms.
+shading terminator capability=1 original cases=6 mismatches=0
+[2026-09-10 01:20:39.888] [console] [info] Dumped LLVM IR to: hip_kernel_before_opt_1.ll
+[2026-09-10 01:20:39.917] [console] [info] Dumped post-optimization LLVM IR to: hip_kernel_after_opt_1.ll
+[2026-09-10 01:20:39.917] [console] [info] Dumped final LLVM IR to: hip_kernel_final_1.ll
+[2026-09-10 01:20:39.917] [console] [info] HIP LLVM codegen completed in 42.163996 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm_impl.cpp:1572]
+[2026-09-10 01:20:39.918] [console] [info] Generated AMDGPU code with HIP LLVM CodeGen in 46.836743999999996 ms. [/home/mike/Projects/Psycles-surface-svm/third_party/LuisaCompute/src/backends/hip/llvm_codegen/hip_codegen_llvm.cpp:54]
+[2026-09-10 01:20:39.918] [console] [info] Generated AMDGPU code (8980 bytes)
+[2026-09-10 01:20:39.947] [console] [info] Linked HIP LLVM bitcode to AMDGPU code object (7232 bytes) in 28.644213999999998 ms.
+[2026-09-10 01:20:39.947] [console] [info] Loaded HIP code object in 0.891099 ms.
+shading terminator capability=0 original cases=3 mismatches=0

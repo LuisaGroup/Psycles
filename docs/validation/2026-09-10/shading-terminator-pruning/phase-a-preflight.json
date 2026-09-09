@@ -1,0 +1,80 @@
+{
+  "stage": "Phase A preflight only",
+  "time_utc": "2026-09-09T17:58:36.867711+00:00",
+  "result": "pass",
+  "manifest_sha256": "e4f2f082a00459cb28733c8ac2d6a6b54fe8675a847b99e3832130f19b3d77a2",
+  "source_lock_sha256": "ec23a9df253af0208278c35da4bbf20a9ce3eca9acbd04f97c77abd80d489357",
+  "source_file_count": 32,
+  "pinned_binary_count": 8,
+  "sdk_head": "5c7de2bb91901d76894397a23932fbd43cf26b28",
+  "current_root_head": "d1a12b8e8e56a4f7e8ae29af9240e9f6c5324a86",
+  "scenes": [
+    {
+      "scene": "barbershop",
+      "extent": [
+        2048,
+        858
+      ],
+      "seed": {
+        "seed": 0,
+        "effective_seed": 1267069554,
+        "use_animated_seed": true,
+        "seed_frame": 1,
+        "seed_subframe": 0
+      },
+      "all_pinned_inputs_match": true,
+      "verified_loaded_images": 190
+    },
+    {
+      "scene": "monk",
+      "extent": [
+        1440,
+        1080
+      ],
+      "seed": {
+        "seed": 0,
+        "effective_seed": 0,
+        "use_animated_seed": false,
+        "seed_frame": 4,
+        "seed_subframe": 0
+      },
+      "all_pinned_inputs_match": true,
+      "verified_loaded_images": 47
+    },
+    {
+      "scene": "monster",
+      "extent": [
+        1080,
+        1080
+      ],
+      "seed": {
+        "seed": 0,
+        "effective_seed": 0,
+        "use_animated_seed": false,
+        "seed_frame": 1,
+        "seed_subframe": 0
+      },
+      "all_pinned_inputs_match": true,
+      "verified_loaded_images": 22
+    },
+    {
+      "scene": "classroom",
+      "extent": [
+        1920,
+        1080
+      ],
+      "seed": {
+        "seed": 1,
+        "effective_seed": 1,
+        "use_animated_seed": false,
+        "seed_frame": 1,
+        "seed_subframe": 0
+      },
+      "all_pinned_inputs_match": true,
+      "verified_loaded_images": 51
+    }
+  ],
+  "loader": "\tlinux-vdso.so.1 (0x00007f055ce86000)\n\tlibpsycles_luisa_runtime.so => /home/mike/Projects/Psycles-surface-svm/build/libpsycles_luisa_runtime.so (0x00007f055be00000)\n\tlibpsycles_core.so => /home/mike/Projects/Psycles-surface-svm/build/libpsycles_core.so (0x00007f055ba00000)\n\tlibluisa-tile.so => /home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-tile.so (0x00007f055bd66000)\n\tlibluisa-osl.so => /home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-osl.so (0x00007f055bcdb000)\n\tlibluisa-coro.so => /home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-coro.so (0x00007f055b850000)\n\tlibluisa-xir.so => /home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-xir.so (0x00007f055b000000)\n\tlibluisa-dsl.so => /home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-dsl.so (0x00007f055b77b000)\n\tlibluisa-runtime.so => /home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-runtime.so (0x00007f055ae3c000)\n\tlibluisa-ast.so => /home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-ast.so (0x00007f055acaf000)\n\tlibluisa-core.so => /home/mike/Projects/Psycles-surface-svm/build/bin/libluisa-core.so (0x00007f055abcf000)\n\tlibglslang.so.16 => /home/mike/Projects/Psycles-surface-svm/build/bin/libglslang.so.16 (0x00007f055a000000)\n\tlibstdc++.so.6 => /usr/lib/libstdc++.so.6 (0x00007f0559c00000)\n\tlibm.so.6 => /usr/lib/libm.so.6 (0x00007f0559af7000)\n\tlibgcc_s.so.1 => /usr/lib/libgcc_s.so.1 (0x00007f055bca6000)\n\tlibc.so.6 => /usr/lib/libc.so.6 (0x00007f0559800000)\n\t/lib64/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x00007f055ce88000)\n\tlibOpenImageIO.so.3.1 => /usr/lib/libOpenImageIO.so.3.1 (0x00007f0559000000)\n\tlibOpenImageIO_Util.so.3.1 => /usr/lib/libOpenImageIO_Util.so.3.1 (0x00007f0558edb000)\n\tlibuuid.so.1 => /usr/lib/libuuid.so.1 (0x00007f055cdc6000)\n\tlibgif.so.7 => /usr/lib/libgif.so.7 (0x00007f055bc99000)\n\tlibheif.so.1 => /usr/lib/libheif.so.1 (0x00007f0558c00000)\n\tlibpng16.so.16 => /usr/lib/libpng16.so.16 (0x00007f055b722000)\n\tlibz.so.1 => /usr/lib/libz.so.1 (0x00007f055ab93000)\n\tlibopenjp2.so.7 => /usr/lib/libopenjp2.so.7 (0x00007f0559f73000)\n\tlibOpenEXR-3_4.so.33 => /usr/lib/libOpenEXR-3_4.so.33 (0x00007f0558abd000)\n\tlibOpenEXRCore-3_4.so.33 => /usr/lib/libOpenEXRCore-3_4.so.33 (0x00007f05589d4000)\n\tlibraw_r.so.25 => /usr/lib/libraw_r.so.25 (0x00007f055884e000)\n\tlibwebpdemux.so.2 => /usr/lib/libwebpdemux.so.2 (0x00007f055cdbb000)\n\tlibwebpmux.so.3 => /usr/lib/libwebpmux.so.3 (0x00007f055bc8c000)\n\tlibOpenColorIO.so.2.5 => /usr/lib/libOpenColorIO.so.2.5 (0x00007f0558200000)\n\tlibfreetype.so.6 => /usr/lib/libfreetype.so.6 (0x00007f05580e1000)\n\tlibopenjph.so.0.31 => /usr/lib/libopenjph.so.0.31 (0x00007f055802a000)\n\tlibIex-3_4.so.33 => /usr/lib/libIex-3_4.so.33 (0x00007f0559a75000)\n\tlibtiff.so.6 => /usr/lib/libtiff.so.6 (0x00007f0557f4a000)\n\tlibjpeg.so.8 => /usr/lib/libjpeg.so.8 (0x00007f0558e33000)\n\tlibwebp.so.7 => /usr/lib/libwebp.so.7 (0x00007f0557e54000)\n\tlibpugixml.so.1 => /usr/lib/libpugixml.so.1 (0x00007f055ab41000)\n\tlibx265.so.217 => /usr/lib/libx265.so.217 (0x00007f0556a00000)\n\tlibde265.so.0 => /usr/lib/libde265.so.0 (0x00007f05568bc000)\n\tlibaom.so.3 => /usr/lib/libaom.so.3 (0x00007f0556000000)\n\tlibx264.so.165 => /usr/lib/libx264.so.165 (0x00007f0555c00000)\n\tlibopenh264.so.8 => /usr/lib/libopenh264.so.8 (0x00007f0555a60000)\n\tlibsharpyuv.so.0 => /usr/lib/libsharpyuv.so.0 (0x00007f055bc78000)\n\tlibIlmThread-3_4.so.33 => /usr/lib/libIlmThread-3_4.so.33 (0x00007f055b703000)\n\tlibdeflate.so.0 => /usr/lib/libdeflate.so.0 (0x00007f055ab26000)\n\tliblcms2.so.2 => /usr/lib/liblcms2.so.2 (0x00007f0557dc7000)\n\tlibgomp.so.1 => /usr/lib/libgomp.so.1 (0x00007f05587de000)\n\tlibexpat.so.1 => /usr/lib/libexpat.so.1 (0x00007f0559f3b000)\n\tlibpystring.so.0 => /usr/lib/libpystring.so.0 (0x00007f0559a54000)\n\tlibyaml-cpp.so.0.9 => /usr/lib/libyaml-cpp.so.0.9 (0x00007f0556862000)\n\tlibminizip-ng.so.1 => /usr/lib/libminizip-ng.so.1 (0x00007f05597d1000)\n\tlibbz2.so.1.0 => /usr/lib/libbz2.so.1.0 (0x00007f055b6ee000)\n\tlibbrotlidec.so.1 => /usr/lib/libbrotlidec.so.1 (0x00007f055bc66000)\n\tlibjbig.so.2.1 => /usr/lib/libjbig.so.2.1 (0x00007f055ab16000)\n\tliblzma.so.5 => /usr/lib/liblzma.so.5 (0x00007f0556831000)\n\tlibzstd.so.1 => /usr/lib/libzstd.so.1 (0x00007f05558ff000)\n\tlibmvec.so.1 => /usr/lib/libmvec.so.1 (0x00007f05557fe000)\n\tlibcrypto.so.3 => /usr/lib/libcrypto.so.3 (0x00007f0555000000)\n\tlibz-ng.so.2 => /usr/lib/libz-ng.so.2 (0x00007f0555fc4000)\n\tlibbrotlicommon.so.1 => /usr/lib/libbrotlicommon.so.1 (0x00007f055680e000)\n\tlibbrotlienc.so.1 => /usr/lib/libbrotlienc.so.1 (0x00007f0555704000)\n",
+  "authorized_phase": "four canaries and serial finite/comparison only; no export or pairs",
+  "gate_evidence_directory": "/home/mike/Projects/Psycles-surface-svm/docs/validation/2026-09-10/shading-terminator-pruning"
+}

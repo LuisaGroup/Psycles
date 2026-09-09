@@ -48,6 +48,11 @@ struct CyclesSvmObjectSceneImage {
   std::string diagnostic;
   std::vector<compiler::cycles_svm::KernelObject> objects;
   std::vector<std::uint32_t> object_flags;
+
+  // Host/JIT query over the finalized native table. False proves that the
+  // native frequency > 1 branch is inactive for every possible object.
+  // Failed/incomplete transactions and unknown values retain the branch.
+  [[nodiscard]] bool has_shadow_terminator_shading_offset() const noexcept;
 };
 
 [[nodiscard]] constexpr std::int32_t cycles_svm_curve_primitive_type(
