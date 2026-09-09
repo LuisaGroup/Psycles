@@ -83,6 +83,14 @@ the post-change render was 1.78016 s with all 15 channel finite checks passing.
 That timing is within the existing continuation-128 spread, so this change is
 recorded as a semantic guard rather than a material timing gain.
 
+The forward-hit emission path now materializes world-space triangle vertices
+only for sampled-emissive mesh surfaces, leaving non-emissive triangles in
+object space until a consumer needs world coordinates. NodeDataView float3
+inputs likewise follow Cycles' x-lane stack marker before reading literal y/z
+words. On the same fresh Barbershop bundle at 640x480/64 spp, the combined
+post-change render was 1.76904 s with all 46 channels finite; this is within the
+prior 1.77308 s single-run spread, so no material timing gain is claimed.
+
 The ten native-size pairs currently recorded for these four
 current-exporter scenes show Psycles ahead on Monk and Monster, close on
 Classroom, and still behind on Barbershop. This note does not claim global Cycles parity. The next

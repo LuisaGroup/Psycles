@@ -539,6 +539,11 @@ struct SurfaceGeometryContext {
     SurfacePoint point;
     SurfaceQuery path_surface_query;
 
+    // World-space triangle vertices are needed only by forward-hit emission
+    // MIS. Populate them at that consumer so non-emissive triangles do not
+    // pay three object-to-world transforms during every surface event.
+    void ensure_world_triangle_vertices() noexcept;
+
     // Retain the one graph evaluation's ShaderData::N-equivalent for the
     // shadow-terminator geometry consumer without replaying the graph.
     void set_evaluated_shadow_shading_normal(Float3 normal) noexcept;

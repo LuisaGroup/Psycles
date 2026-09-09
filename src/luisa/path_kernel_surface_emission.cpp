@@ -55,6 +55,7 @@ void emit_surface_emission(
       $if((!surface.is_curve) &
           (surface.emission_sampling !=
            static_cast<std::uint32_t>(contract::EmissionSampling::none))) {
+        surface.ensure_world_triangle_vertices();
         Bool competing = (path_depth > 0u) & (!mis_competition_skipped);
         const auto oriented_geometric_normal = select(
             point.geometric_normal, -point.geometric_normal, point.back_facing);
