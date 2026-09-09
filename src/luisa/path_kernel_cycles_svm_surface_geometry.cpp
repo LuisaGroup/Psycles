@@ -45,9 +45,14 @@ public:
     UInt material_slot;
     const auto triangle_geometry = [&] {
       const auto vertices = kg.triangle_vertices(sd.object, sd.prim);
-      const auto normals = svm::detail::triangle_normals(kg, sd);
       p0 = vertices.v0; p1 = vertices.v1; p2 = vertices.v2;
-      n0 = normals.n0; n1 = normals.n1; n2 = normals.n2;
+      // Native Cycles reads packed corner/vertex normals only for smooth
+      // triangles. Keep the ordinary zero initialization for flat paths so
+      // the shadow-terminator consumer cannot introduce eager normal loads.
+      $if(smooth) {
+        const auto normals = svm::detail::triangle_normals(kg, sd);
+        n0 = normals.n0; n1 = normals.n1; n2 = normals.n2;
+      };
       wp0 = p0; wp1 = p1; wp2 = p2;
       $if(!applied) {
         wp0 = cycles_transform::point(transforms.object_to_world, p0);
