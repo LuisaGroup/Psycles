@@ -50,35 +50,51 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Latest four-scene follow-up
 
-Psycles `ffb3f7f2` / Luisa `da8fff856` complete six further 256-spp renders,
+Psycles `ff8385c1` / Luisa `da8fff856` complete six further 256-spp renders,
 using fresh socket metadata with the exact earlier geometry/texture bytes.
 These use retained equal-pass Cycles references, **not fresh timing pairs**.
 All 46 channels are finite and all 15 pass comparisons complete. Exact six-run
 data, images' provenance and all implementation hashes are in the
-[latest report](docs/validation/2026-09-09/voronoi-octave/README.md).
+[latest report](docs/validation/2026-09-09/scene-light-parameters/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 13.6398 | 11.4797 | 220 B |
-| Monster, one run | 14.9535 | 52.6430 | 280 B |
-| Classroom, one run | 18.2805 | 11.0960 | 260 B |
-| Barbershop, three-run median | 39.9800 | 17.9685 / 17.5688 / 17.5393 | 416 B |
+| Lone Monk, one run | 13.6267 | 12.0773 | 220 B |
+| Monster, one run | 14.9215 | 50.5102 | 280 B |
+| Classroom, one run | 18.1945 | 36.8537 | 260 B |
+| Barbershop, three-run median | 40.0251 | 18.9804 / 18.5425 / 17.8490 | 416 B |
 
-Barbershop's individual times are 40.0252 / 39.9800 / 39.9197 s. Its median
-is 0.58% below the preceding 40.2134 s, not an isolated causal change estimate,
-and 57.5% slower than the retained Cycles median. Initialization is JIT plus
+Barbershop's individual times are 39.9809 / 40.0251 / 40.0313 s. Its median
+is 0.11% above the preceding 39.9800 s, essentially unchanged at this scale,
+and 57.7% slower than the retained Cycles median. This is not an isolated
+causal change estimate. Initialization is JIT plus
 setup, not compiler-only. Main shader caching is disabled but downstream
 caches retain their ordinary policy; the profile already warmed Barbershop.
 These values are not matched cold/warm comparisons with the previous report.
 Initialization is never included in render time.
-Current first-run DiffInd relative RMSE is 12.881% / 2.553% / 17.820% / 7.126%
+Current first-run DiffInd relative RMSE is 12.882% / 2.553% / 17.820% / 7.126%
 in the table's scene order. The structural and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [Voronoi checkpoint](docs/validation/2026-09-09/voronoi-octave/README.md)
-at Psycles `ffb3f7f2` / Luisa `da8fff856` supplies the current backend and
-four-scene campaign. The [group-context repair](docs/validation/2026-09-08/svm-group-contexts/README.md)
+The [scene-light parameter checkpoint](docs/validation/2026-09-09/scene-light-parameters/README.md)
+at Psycles `ff8385c1` / Luisa `da8fff856` supplies the current backend and
+four-scene campaign. Seven scene-owned area/spot fields now come from host
+preparation instead of per-ray trigonometry; seven AST checks and 37 original
+tables / 296 original GPU states per denormal mode constrain the repair.
+The 64-spp A/B/B/A surface/render medians improve by only 0.73% / 0.22%, with
+two observations per treatment and 0.76% variation between A surface runs.
+The 256-spp follow-up does not establish a material speedup. Inline/launch
+policies and fast math are unchanged.
+
+The [static function and texture audit](docs/validation/2026-09-09/surface-static-audit/README.md)
+does not establish missing main SVM/3D Noise/microfacet inline boundaries or
+float32 expansion of the 169 bound byte textures. Its native observed
+function-address closure is not a proven dynamic call graph; static counts
+are not performance attribution. Per-ray light inverse reconstruction remains
+another confirmed ownership mismatch, not a quantified dominant cost.
+
+The [group-context repair](docs/validation/2026-09-08/svm-group-contexts/README.md)
 at `239cade6` remains the latest host SVM-layout repair.
 The preceding lamp-routing report records Psycles `773f1aca` / Luisa
 `4284e8cb9`, which publish the
@@ -200,14 +216,20 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 184/184 | Complete registered suite, 109.64 s; correctness elapsed time, not a performance benchmark |
-| Psycles fallback | 186/186 | Complete registered suite, 126.80 s |
-| Psycles host | 173/173 | Includes captured resource-registry decoder/identity regression; source-size gate fully green |
+| Psycles HIP | 185/185 | Complete registered suite, 111.63 s; device cases sequential, builds use 32 threads; later arithmetic-mode control also passes |
+| Psycles fallback | 187/187 | Complete registered suite, 135.62 s; FTZ-matched original GPU fixture; later arithmetic-mode control also passes |
+| Psycles host | 174/174 | Includes observed binding identities and scene-owned light AST regression; source-size gate fully green |
 | Luisa child | 133/133 | Prior complete `unit*` selection in the unchanged HIP configuration; exact `unit` label is 132/132 |
-| Strict native Vulkan | 5/5 | Lamp routing, bump state, BSDF dispatch, closure guards and Voronoi states; 51 native SPIR-V compilations, no DXC/DXIL load |
+| Strict native Vulkan | 5/6 | Analytic lights, homogeneous volume, light tree, endpoints, NEE setup and new light parameters; eight native compilations, no DXC/DXIL load; new test retains 36 numeric lane failures, all also reproduced before this repair |
 | Binding follow-up | 2/2 on each backend | HIP then fallback then strict native Vulkan; Vulkan has two native SPIR-V compilations and no DXC/DXIL load; metadata-only tools do not replace the preceding full renderer gates |
 | Shared-switch runtime | 211 assertions/backend | HIP, fallback and strict native Vulkan; exits, narrow/wide labels and both coroutine schedulers |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
+
+The new Vulkan light regression is not green: after independently matching
+the device's FTZ mode, 36 rectangle-area sample numerical lanes remain.
+Validity, parameters and interval predicates agree. The old implementation
+reproduces every remaining lane with the same printed values; this is not a
+new repair regression, nor a waived pass. No slower math path was added.
 
 The additional all-type native Vulkan remainder diagnostic is **not green**:
 1,076 assertions fail in existing f16/f64 `OpFRem` lowering. Its isolated

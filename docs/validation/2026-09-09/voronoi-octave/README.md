@@ -173,5 +173,8 @@ directory and final `--parent` / `--child` revisions.
 
 The [Noise audit](../noise-codegen/README.md) does not support missing 3D
 inlining as the large-gap explanation. Per-surface efficiency, residual
-DiffInd/shadow work, 164 resource identities, remaining native nodes/private
-legacy displacement bridge, and general CFG proof obligations remain open.
+DiffInd/shadow work, remaining native nodes/private legacy displacement bridge,
+and general CFG proof obligations remain open. The later
+[resource-identity audit](../resource-identities/README.md) resolves all 164
+allocation-ID differences by observed binding semantics; that old open item
+is no longer a current explanation for the surface gap.
