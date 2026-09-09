@@ -58,6 +58,11 @@ next material-heavy surface continuation target; the trace alone does not
 justify a Luisa patch without same-bundle timing, LLVM/ISA, and Cycles-oracle
 regression.
 
+The staged path execution block size was checked on the same bundle at
+640x480/64 spp after warm-up: 32 threads rendered in 1.81543 s, 64 in
+1.82568 s, and 128 in 1.83668 s. The existing 32-wide setting remains the
+measured choice for this workload.
+
 The ten native-size pairs currently recorded for these four
 current-exporter scenes show Psycles ahead on Monk and Monster, close on
 Classroom, and still behind on Barbershop. This note does not claim global Cycles parity. The next
