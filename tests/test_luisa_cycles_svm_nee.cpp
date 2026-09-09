@@ -109,8 +109,7 @@ bool run(const char *program, const char *backend) {
                           unbound<ClampLightContributionCallable>(),
                           LightSampleRouletteCallable{
                               [](Float3, Float, Float) { return 1.0f; }},
-                          unbound<LightComponentRatioCallable>(),
-                          unbound<SplitScatteredLightCallable>()},
+                          unbound<LightComponentRatioCallable>()},
       .light_distribution_sample = unbound<LightDistributionSampleCallable>(),
       .light_tree = {unbound<LightTreeSampleCallable>(),
                      unbound<LightTreeSampleCallable>(),

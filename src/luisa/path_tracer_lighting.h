@@ -14,8 +14,6 @@ using LightSampleRouletteCallable =
     Callable<float(luisa::float3, float, float)>;
 using LightComponentRatioCallable =
     Callable<luisa::float3(luisa::float3, luisa::float3)>;
-using SplitScatteredLightCallable = Callable<LightPassContributionCall(
-    luisa::float3, luisa::float3, luisa::float3, bool)>;
 struct LightTransportCallables {
     SafeNormalizeCallable safe_normalize;
     ForwardLightWeightCallable forward_light_weight;
@@ -23,7 +21,6 @@ struct LightTransportCallables {
     ClampLightContributionCallable clamp_light_contribution;
     LightSampleRouletteCallable light_sample_roulette_weight;
     LightComponentRatioCallable light_component_ratio;
-    SplitScatteredLightCallable split_scattered_light;
 };
 
 [[nodiscard]] LightTransportCallables

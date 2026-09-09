@@ -555,6 +555,17 @@ if(PSYCLES_BUILD_TESTS)
         add_test(NAME psycles.cycles_surface_emission_structure
             COMMAND psycles_cycles_surface_emission_structure_tests)
 
+        add_executable(psycles_cycles_film_routing_structure_tests
+            tests/test_cycles_film_routing_structure.cpp)
+        target_link_libraries(psycles_cycles_film_routing_structure_tests PRIVATE Psycles::luisa_runtime)
+        target_include_directories(psycles_cycles_film_routing_structure_tests
+            PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+        target_compile_features(psycles_cycles_film_routing_structure_tests PRIVATE cxx_std_20)
+        target_compile_definitions(psycles_cycles_film_routing_structure_tests PRIVATE
+            PSYCLES_FILM_ROUTING_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_film_routing.txt")
+        add_test(NAME psycles.cycles_film_routing_structure
+            COMMAND psycles_cycles_film_routing_structure_tests)
+
         add_executable(
             psycles_cycles_svm_vector_displacement_tests
             tests/test_cycles_svm_vector_displacement.cpp)

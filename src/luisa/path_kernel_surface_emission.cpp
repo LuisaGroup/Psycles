@@ -79,14 +79,8 @@ void emit_surface_emission(
     emission_contribution =
         clamp_contribution(throughput * emitted * emission_weight, path_depth);
     sample.accumulate_radiance(emission_contribution);
-    auto directly_visible_emission =
-        (path_flags & cycles_path_state::flag_any_pass) == 0u;
-    sample.accumulate_light_pass(LightPassBuffer::emission,
-                                 select(make_float3(0.0f),
-                                        emission_contribution,
-                                        directly_visible_emission));
-    sample.accumulate_scattered_light(select(
-        emission_contribution, make_float3(0.0f), directly_visible_emission));
+    sample.accumulate_emission_or_background(emission_contribution,
+                                              LightPassBuffer::emission);
   };
   sample.trace_write_forward_event(
       path_step, path_trace_schema::ForwardEventSlot::forward_emission,

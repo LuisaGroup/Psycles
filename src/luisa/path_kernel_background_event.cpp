@@ -147,21 +147,8 @@ class BackgroundEventStageImpl final
             sample.accumulate_radiance(
                 environment_contribution);
         };
-        const auto directly_visible =
-            (path_flags &
-             cycles_path_state::flag_any_pass) ==
-            0u;
-        sample.accumulate_light_pass(
-            LightPassBuffer::environment,
-            select(
-                make_float3(0.0f),
-                environment_contribution,
-                directly_visible));
-        sample.accumulate_scattered_light(
-            select(
-                environment_contribution,
-                make_float3(0.0f),
-                directly_visible));
+        sample.accumulate_emission_or_background(environment_contribution,
+                                                  LightPassBuffer::environment);
     }
 };
 

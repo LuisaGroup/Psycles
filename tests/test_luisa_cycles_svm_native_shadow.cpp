@@ -242,8 +242,7 @@ bool run(const char *program, const char *backend, bool no_cache) {
       .shade_shadow_surface = evaluate,
       .trace_shadow = make_fused_shadow_trace_callable(intersection, evaluate),
       .light_sample_roulette = unbound<LightSampleRouletteCallable>(),
-      .clamp_contribution = light_transport.clamp_light_contribution,
-      .split_scattered_light = unbound<SplitScatteredLightCallable>()};
+      .clamp_contribution = light_transport.clamp_light_contribution};
   Kernel1D<Buffer<DirectLightTaskCall>, Buffer<ShadowIntersectionBatchCall>,
            Buffer<luisa::float4>, Buffer<luisa::uint4>, Buffer<luisa::float4>>
       batch_kernel = [evaluator](BufferVar<DirectLightTaskCall> tasks,

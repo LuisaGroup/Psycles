@@ -28,8 +28,7 @@ PathKernelConfig make_config(std::shared_ptr<LuisaSceneData> scene) {
                               unbound<NeeLightWeightCallable>(),
                               unbound<ClampLightContributionCallable>(),
                               unbound<LightSampleRouletteCallable>(),
-                              unbound<LightComponentRatioCallable>(),
-                              unbound<SplitScatteredLightCallable>()},
+                              unbound<LightComponentRatioCallable>()},
           .light_distribution_sample =
               unbound<LightDistributionSampleCallable>(),
           .light_tree = {unbound<LightTreeSampleCallable>(),

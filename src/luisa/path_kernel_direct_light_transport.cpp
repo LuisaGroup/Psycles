@@ -172,23 +172,13 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                     cycles_ray_differential::for_surface_shadow(
                         sample.ray_dD, surface.differential_radius,
                         transport.average_roughness_squared);
-                const auto direct = sample.path_depth == 0u;
                 task.ray_origin = shadow.position;
                 task.ray_direction = shadow_direction;
                 task.unshadowed_contribution = initial_contribution;
                 task.nee_path_throughput = sample.throughput;
                 task.light_shader = transport.light_shader;
                 task.shadow_throughput = initial_contribution;
-                task.diffuse_weight =
-                    select(sample.path_diffuse_weight,
-                           config.light_transport.light_component_ratio(
-                               transport.diffuse_bsdf, transport.bsdf),
-                           direct);
-                task.glossy_weight =
-                    select(sample.path_glossy_weight,
-                           config.light_transport.light_component_ratio(
-                               transport.glossy_bsdf, transport.bsdf),
-                           direct);
+                prepare_surface_shadow_pass(task, sample, transport);
                 task.ray_minimum = 0.0f;
                 task.ray_maximum = shadow_maximum;
                 task.ray_dP = shadow_differential.position;
@@ -208,7 +198,6 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 task.shader_flags = transport.shader_flags;
                 task.pixel = invocation.pixel;
                 task.path_depth = sample.path_depth;
-                task.path_flags = sample.path_flags;
                 task.path_visibility = sample.cycles_path_visibility;
                 task.diffuse_depth = sample.diffuse_depth;
                 task.glossy_depth = sample.glossy_depth;
@@ -281,8 +270,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                     sample.accumulate_radiance_at_state(
                         contribution, task.path_flags, task.path_visibility,
                         task.path_depth);
-                    sample.accumulate_light_pass(
-                        _evaluator.split(task, contribution));
+                    _evaluator.accumulate_passes(sample, task, contribution);
                 };
             } else {
                 Bool active = true;
@@ -331,8 +319,7 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                         sample.accumulate_radiance_at_state(
                             contribution, task.path_flags,
                             task.path_visibility, task.path_depth);
-                        sample.accumulate_light_pass(
-                            _evaluator.split(task, contribution));
+                        _evaluator.accumulate_passes(sample, task, contribution);
                     };
                 };
             }

@@ -156,13 +156,6 @@ Float3 DirectLightTaskEvaluator::contribution(
                             parameters.sample_clamp_indirect);
 }
 
-Var<LightPassContributionCall>
-DirectLightTaskEvaluator::split(const Var<DirectLightTaskCall> &task,
-                                Float3 contribution) const noexcept {
-  return split_scattered_light(contribution, task.diffuse_weight,
-                               task.glossy_weight, task.path_depth == 0u);
-}
-
 void DirectLightTaskEvaluator::emit_atomic(
     const Var<DirectLightTaskCall> &input, const DirectLightTaskFilm &film,
     const Var<RenderKernelParameters> &parameters) const noexcept {
@@ -180,9 +173,9 @@ void DirectLightTaskEvaluator::emit_atomic(
           film.combined, film.volume_guiding_raw, task.pixel,
           task.pixel * volume_guiding::raw_pixel_stride, volume_guiding,
           task.path_flags, task.path_visibility, task.path_depth, value);
-      atomic_accumulate_light_passes(
+      accumulate_passes_atomic(
           film.light_passes, task.pixel * light_pass_buffer_count,
-          split(task, value));
+          task, value);
     };
   };
 }
@@ -195,7 +188,6 @@ make_direct_light_task_evaluator(const PathKernelConfig &config) noexcept {
           .light_sample_roulette =
               config.light_transport.light_sample_roulette_weight,
           .clamp_contribution = config.light_transport.clamp_light_contribution,
-          .split_scattered_light = config.light_transport.split_scattered_light,
           .light_emission = config.scene->native_cycles_svm_surface
                                 ? make_cycles_svm_light_emission_component(
                                       config.scene, config.camera_projection,

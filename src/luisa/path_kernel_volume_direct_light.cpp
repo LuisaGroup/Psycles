@@ -1,6 +1,7 @@
 #include "path_kernel_volume_direct_light.h"
 
 #include "path_kernel_area_light.h"
+#include "path_kernel_direct_light_task.h"
 #include "path_kernel_volume_environment_light.h"
 #include "path_kernel_volume_mesh_light.h"
 #include "path_kernel_volume_shadow.h"
@@ -1086,24 +1087,7 @@ class PathVolumeDirectLightingComponent final
                                 volume_transmittance *
                                 roulette_weight,
                             sample.path_depth);
-                sample.accumulate_radiance(
-                    contribution,
-                    true);
-                const auto primary_volume =
-                    (sample.path_flags &
-                     cycles_path_state::
-                         flag_any_pass) == 0u;
-                sample.accumulate_light_pass(
-                    LightPassBuffer::volume_direct,
-                    select(
-                        make_float3(0.0f),
-                        contribution,
-                        primary_volume));
-                sample.accumulate_scattered_light(
-                    select(
-                        contribution,
-                        make_float3(0.0f),
-                        primary_volume));
+                accumulate_volume_nee_film(sample, contribution);
             };
         };
     }
