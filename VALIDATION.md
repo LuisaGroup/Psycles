@@ -50,23 +50,23 @@ affected comparisons explicitly exclude the union of invalid pixels.
 
 ## Latest four-scene follow-up
 
-Psycles `ff8385c1` / Luisa `da8fff856` complete six further 256-spp renders,
+Psycles `4f487ba5` / Luisa `da8fff856` complete six further 256-spp renders,
 using fresh socket metadata with the exact earlier geometry/texture bytes.
 These use retained equal-pass Cycles references, **not fresh timing pairs**.
 All 46 channels are finite and all 15 pass comparisons complete. Exact six-run
 data, images' provenance and all implementation hashes are in the
-[latest report](docs/validation/2026-09-09/scene-light-parameters/README.md).
+[latest report](docs/validation/2026-09-09/surface-emission/README.md).
 
 | Scene | Latest render seconds | Session init seconds | Current frame |
 | --- | ---: | ---: | ---: |
-| Lone Monk, one run | 13.6267 | 12.0773 | 220 B |
-| Monster, one run | 14.9215 | 50.5102 | 280 B |
-| Classroom, one run | 18.1945 | 36.8537 | 260 B |
-| Barbershop, three-run median | 40.0251 | 18.9804 / 18.5425 / 17.8490 | 416 B |
+| Lone Monk, one run | 12.8818 | 28.3660 | 220 B |
+| Monster, one run | 14.4971 | 37.2553 | 280 B |
+| Classroom, one run | 17.4903 | 26.8763 | 260 B |
+| Barbershop, three-run median | 38.8536 | 17.3832 / 17.6237 / 17.4312 | 416 B |
 
-Barbershop's individual times are 39.9809 / 40.0251 / 40.0313 s. Its median
-is 0.11% above the preceding 39.9800 s, essentially unchanged at this scale,
-and 57.7% slower than the retained Cycles median. This is not an isolated
+Barbershop's individual times are 38.8536 / 38.8298 / 39.0386 s. Its median
+is 2.93% below the preceding 40.0251 s,
+and 53.1% slower than the retained Cycles median. This is not an isolated
 causal change estimate. Initialization is JIT plus
 setup, not compiler-only. Main shader caching is disabled but downstream
 caches retain their ordinary policy; the profile already warmed Barbershop.
@@ -77,9 +77,21 @@ in the table's scene order. The structural and efficiency goals remain open.
 
 ## Current compiler and backend gate
 
-The [scene-light parameter checkpoint](docs/validation/2026-09-09/scene-light-parameters/README.md)
-at Psycles `ff8385c1` / Luisa `da8fff856` supplies the current backend and
-four-scene campaign. Seven scene-owned area/spot fields now come from host
+The [surface emission checkpoint](docs/validation/2026-09-09/surface-emission/README.md)
+at Psycles `4f487ba5` / Luisa `da8fff856` supplies the current backend and
+four-scene campaign. Original emission/exit eligibility now encloses forward
+MIS and film effects, including forward-only rendering without trace. Four
+production-AST configurations fail before the repair and pass afterwards;
+320 GPU film checks and four full SVM camera configurations use original
+Cycles GPU captures. The full-scene A/B/B/A surface/render medians improve
+by 4.70% / 2.69%, with two observations per treatment. Main instruction sites
+change 158,088 to 158,005; 47 calls, 256 VGPRs, 2,464 private bytes and the
+416-byte frame remain. Fast math and inline/launch policies are unchanged.
+Film direct/indirect address selection and shadow-state classification remain
+a separate structural follow-up; no residual DiffInd repair is claimed.
+
+The preceding [scene-light parameter checkpoint](docs/validation/2026-09-09/scene-light-parameters/README.md)
+at `ff8385c1` restores seven scene-owned area/spot fields from host
 preparation instead of per-ray trigonometry; seven AST checks and 37 original
 tables / 296 original GPU states per denormal mode constrain the repair.
 The 64-spp A/B/B/A surface/render medians improve by only 0.73% / 0.22%, with
@@ -216,16 +228,17 @@ by an earlier successful result; its final full rerun passes 184/184.
 | Gate | Result | Qualification |
 | --- | --- | --- |
 | Full build | Passed | All 32 hardware threads |
-| Psycles HIP | 185/185 | Complete registered suite, 111.63 s; device cases sequential, builds use 32 threads; later arithmetic-mode control also passes |
-| Psycles fallback | 187/187 | Complete registered suite, 135.62 s; FTZ-matched original GPU fixture; later arithmetic-mode control also passes |
-| Psycles host | 174/174 | Includes observed binding identities and scene-owned light AST regression; source-size gate fully green |
+| Psycles HIP | 186/186 | Complete registered suite, 460.63 s; device cases sequential, builds use 32 threads; final test-only Device-lifetime correction also passes 1/1 |
+| Psycles fallback | 188/188 | Complete registered suite, 322.20 s, after HIP completion; final test-only Device-lifetime correction also passes 1/1 |
+| Psycles host | 175/175 | Includes native emission eligibility, observed binding identities and scene-owned light AST regressions; source-size gate fully green |
 | Luisa child | 133/133 | Prior complete `unit*` selection in the unchanged HIP configuration; exact `unit` label is 132/132 |
-| Strict native Vulkan | 5/6 | Analytic lights, homogeneous volume, light tree, endpoints, NEE setup and new light parameters; eight native compilations, no DXC/DXIL load; new test retains 36 numeric lane failures, all also reproduced before this repair |
+| Strict native Vulkan | 4/4 | Surface emission, film light, volume emission film and NEE setup; 49 native compilations, no DXC/DXIL load; initial test-only multiple-Device lifetime violation fixed without backend or numerical changes |
+| Prior native light parameters | 5/6 | Revision-pinned in the preceding report; 36 area sample numeric lanes remain failing, all also reproduced before the parameter repair |
 | Binding follow-up | 2/2 on each backend | HIP then fallback then strict native Vulkan; Vulkan has two native SPIR-V compilations and no DXC/DXIL load; metadata-only tools do not replace the preceding full renderer gates |
 | Shared-switch runtime | 211 assertions/backend | HIP, fallback and strict native Vulkan; exits, narrow/wide labels and both coroutine schedulers |
 | Benchmark protocol focused host gate | 6/6 | Actual Blender pass reset, header/resume and comparator tests |
 
-The new Vulkan light regression is not green: after independently matching
+The preceding Vulkan light regression is not green: after independently matching
 the device's FTZ mode, 36 rectangle-area sample numerical lanes remain.
 Validity, parameters and interval predicates agree. The old implementation
 reproduces every remaining lane with the same printed values; this is not a
@@ -294,7 +307,7 @@ Validate HIP first, then fallback; native Vulkan canaries require all three:
 LUISA_VULKAN_USE_XIR=1 \
 LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1 \
 LUISA_VULKAN_DISABLE_DXC=1 \
-ctest --test-dir build --output-on-failure -j32 -R '<focused-native-Vulkan-tests>'
+ctest --test-dir build --output-on-failure --parallel 1 -R '<focused-native-Vulkan-tests>'
 ```
 
 Compiler corrections require formal cause, a minimal failing regression, a
