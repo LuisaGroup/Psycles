@@ -248,11 +248,12 @@ public:
     const svm::PathState state{0u,
                                svm::path_ray_emission,
                                task.path_depth,
-                               task.transparent_depth,
+                               task.transparent_depth.cast<unsigned>(),
                                task.diffuse_depth,
                                task.glossy_depth,
                                task.transmission_depth,
-                               0u};
+                               (_scene->cycles_svm->kernel_features & svm::kernel_feature_node_portal)
+                                   ? task.portal_depth.cast<unsigned>() : UInt{0u}};
     svm::EvaluationResult result;
     const auto usage = _scene->cycles_svm->compilation.table.usage_for(
         abi::SHADER_TYPE_SURFACE);

@@ -36,6 +36,7 @@ pack_shader_evaluation_state(
     result.glossy_depth = state.glossy_depth;
     result.transparent_depth = state.transparent_depth;
     result.transmission_depth = state.transmission_depth;
+    result.portal_depth = state.portal_depth;
     return result;
 }
 
@@ -49,7 +50,8 @@ unpack_shader_evaluation_state(
         .diffuse_depth = state.diffuse_depth,
         .glossy_depth = state.glossy_depth,
         .transparent_depth = state.transparent_depth,
-        .transmission_depth = state.transmission_depth};
+        .transmission_depth = state.transmission_depth,
+        .portal_depth = state.portal_depth};
 }
 
 [[nodiscard]] Var<SurfacePointCall> pack_surface_point(

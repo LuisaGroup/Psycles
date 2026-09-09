@@ -53,7 +53,11 @@ struct DirectLightTaskCall {
   luisa::uint path_visibility{};
   luisa::uint diffuse_depth{};
   luisa::uint glossy_depth{};
-  luisa::uint transparent_depth{};
+  // Original IntegratorShadowState stores both counters as uint16_t. Keep
+  // that domain and the existing record footprint instead of rounding a new
+  // uint32 field up to another 16-byte block in the array-of-structs path.
+  std::uint16_t transparent_depth{};
+  std::uint16_t portal_depth{};
   luisa::uint transmission_depth{};
   luisa::uint volume_bounds_bounce{};
 };
@@ -166,7 +170,7 @@ LUISA_STRUCT(psycles::luisa_backend::detail::DirectLightTaskCall, ray_origin,
              source_object, source_primitive,
              light_object, light_primitive, constant_light_shader, shader_flags,
              pixel, path_depth, path_flags, path_visibility, diffuse_depth,
-             glossy_depth, transparent_depth, transmission_depth,
+             glossy_depth, transparent_depth, portal_depth, transmission_depth,
              volume_bounds_bounce){};
 
 namespace psycles::luisa_backend::detail {

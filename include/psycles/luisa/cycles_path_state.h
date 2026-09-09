@@ -73,6 +73,7 @@ struct State {
     luisa::compute::UInt transmission_bounce;
     luisa::compute::UInt transparent_bounce;
     luisa::compute::UInt rng_offset;
+    luisa::compute::UInt portal_bounce = 0u;
 };
 
 struct Limits {
@@ -100,6 +101,7 @@ struct ShaderEvaluationState {
     luisa::compute::UInt glossy_depth;
     luisa::compute::UInt transparent_depth;
     luisa::compute::UInt transmission_depth;
+    luisa::compute::UInt portal_depth = 0u;
 };
 
 [[nodiscard]] inline ShaderEvaluationState
@@ -110,7 +112,8 @@ surface_shader_state(
     luisa::compute::UInt diffuse_depth,
     luisa::compute::UInt glossy_depth,
     luisa::compute::UInt transparent_depth,
-    luisa::compute::UInt transmission_depth) noexcept {
+    luisa::compute::UInt transmission_depth,
+    luisa::compute::UInt portal_depth = 0u) noexcept {
     return {
         .ray_visibility = ray_visibility,
         .ray_events = ray_events,
@@ -118,7 +121,8 @@ surface_shader_state(
         .diffuse_depth = diffuse_depth,
         .glossy_depth = glossy_depth,
         .transparent_depth = transparent_depth,
-        .transmission_depth = transmission_depth};
+        .transmission_depth = transmission_depth,
+        .portal_depth = portal_depth};
 }
 
 // Background shaders retain the incoming path visibility and flags, but
@@ -131,7 +135,8 @@ background_emission_shader_state(
     luisa::compute::UInt diffuse_depth,
     luisa::compute::UInt glossy_depth,
     luisa::compute::UInt transparent_depth,
-    luisa::compute::UInt transmission_depth) noexcept {
+    luisa::compute::UInt transmission_depth,
+    luisa::compute::UInt portal_depth = 0u) noexcept {
     return {
         .ray_visibility = ray_visibility,
         .ray_events = ray_events,
@@ -139,7 +144,8 @@ background_emission_shader_state(
         .diffuse_depth = diffuse_depth,
         .glossy_depth = glossy_depth,
         .transparent_depth = transparent_depth,
-        .transmission_depth = transmission_depth};
+        .transmission_depth = transmission_depth,
+        .portal_depth = portal_depth};
 }
 
 // Analytic and NEE light shaders are evaluated with
@@ -151,7 +157,8 @@ light_emission_shader_state(
     luisa::compute::UInt diffuse_depth,
     luisa::compute::UInt glossy_depth,
     luisa::compute::UInt transparent_depth,
-    luisa::compute::UInt transmission_depth) noexcept {
+    luisa::compute::UInt transmission_depth,
+    luisa::compute::UInt portal_depth = 0u) noexcept {
     return {
         .ray_visibility = visibility_none,
         .ray_events = 0u,
@@ -159,7 +166,8 @@ light_emission_shader_state(
         .diffuse_depth = diffuse_depth,
         .glossy_depth = glossy_depth,
         .transparent_depth = transparent_depth,
-        .transmission_depth = transmission_depth};
+        .transmission_depth = transmission_depth,
+        .portal_depth = portal_depth};
 }
 
 // Transparent-shadow shaders receive shadow visibility and no path flags.
@@ -171,7 +179,8 @@ shadow_shader_state(
     luisa::compute::UInt diffuse_depth,
     luisa::compute::UInt glossy_depth,
     luisa::compute::UInt transparent_depth,
-    luisa::compute::UInt transmission_depth) noexcept {
+    luisa::compute::UInt transmission_depth,
+    luisa::compute::UInt portal_depth = 0u) noexcept {
     return {
         .ray_visibility =
             contract::visibility_bit(
@@ -181,7 +190,8 @@ shadow_shader_state(
         .diffuse_depth = diffuse_depth,
         .glossy_depth = glossy_depth,
         .transparent_depth = transparent_depth,
-        .transmission_depth = transmission_depth};
+        .transmission_depth = transmission_depth,
+        .portal_depth = portal_depth};
 }
 
 inline void apply_shader_state(
@@ -217,7 +227,8 @@ inline void apply_shader_state(
 [[nodiscard]] inline State next_surface(
     const State &before,
     luisa::compute::UInt label,
-    luisa::compute::UInt runtime_flag,
+    luisa::compute::Bool shader_has_transmission,
+    luisa::compute::Bool shader_has_portal,
     const Limits &limits) noexcept {
     using namespace luisa::compute;
 
@@ -239,8 +250,8 @@ inline void apply_shader_state(
     transparent_state.flag |= select(
         0u,
         flag_mis_skip,
-        (runtime_flag &
-         cycles_closure::runtime_ray_portal) != 0u);
+        shader_has_portal);
+    transparent_state.portal_bounce += select(0u, 1u, shader_has_portal);
 
     auto surface_state = before;
     surface_state.bounce += 1u;
@@ -328,9 +339,7 @@ inline void apply_shader_state(
     surface_state.flag |= select(
         0u,
         flag_mis_had_transmission,
-        (runtime_flag &
-         cycles_closure::
-             runtime_bsdf_has_transmission) != 0u);
+        shader_has_transmission);
     surface_state.flag |= select(
         0u,
         flag_surface_pass,
@@ -370,7 +379,20 @@ inline void apply_shader_state(
         .rng_offset = select(
             surface_state.rng_offset,
             transparent_state.rng_offset,
-            transparent)};
+            transparent),
+        .portal_bounce = select(surface_state.portal_bounce,
+                                transparent_state.portal_bounce, transparent)};
+}
+
+// Compatibility boundary for the remaining non-native surface callers.
+// Native integration passes predicates from the original ShaderData bits
+// directly and never roundtrips a native ClosureLabel through SurfaceEvent.
+[[nodiscard]] inline State next_surface(
+    const State &before, luisa::compute::UInt label,
+    luisa::compute::UInt runtime_flag, const Limits &limits) noexcept {
+    return next_surface(before, label,
+        (runtime_flag & cycles_closure::runtime_bsdf_has_transmission) != 0u,
+        (runtime_flag & cycles_closure::runtime_ray_portal) != 0u, limits);
 }
 
 // The volume arm of Cycles' path_state_next() is kept as a total transition

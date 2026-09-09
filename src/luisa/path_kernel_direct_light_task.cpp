@@ -35,7 +35,8 @@ Var<ShadowTraceResultCall> DirectLightTaskEvaluator::trace(
       make_shadow_shader_context(
           pack_shader_evaluation_state(cycles_path_state::shadow_shader_state(
               task.path_depth, task.diffuse_depth, task.glossy_depth,
-              task.transparent_depth, task.transmission_depth)),
+              task.transparent_depth.cast<unsigned>(), task.transmission_depth,
+              task.portal_depth.cast<unsigned>())),
           task.ray_time, task.sample_index, task.rng_hash, task.rng_offset,
           task.volume_bounds_bounce),
       parameters);
@@ -84,7 +85,7 @@ Var<ShadowIntersectionBatchCall> DirectLightTaskEvaluator::intersect(
                             task.ray_minimum, task.ray_maximum);
   const auto remaining =
       parameters.transparent_max_bounces -
-      min(task.transparent_depth, parameters.transparent_max_bounces);
+      min(task.transparent_depth.cast<unsigned>(), parameters.transparent_max_bounces);
   return intersect_shadow->collect(
       ray, task.source_object, task.source_primitive, task.light_object,
       task.light_primitive, remaining, parameters.shadow_storage_capacity,
@@ -108,7 +109,8 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
     auto context = make_shadow_shader_context(
         pack_shader_evaluation_state(cycles_path_state::shadow_shader_state(
             task.path_depth, task.diffuse_depth, task.glossy_depth,
-            task.transparent_depth, task.transmission_depth)),
+            task.transparent_depth.cast<unsigned>(), task.transmission_depth,
+            task.portal_depth.cast<unsigned>())),
         task.ray_time, task.sample_index, task.rng_hash, task.rng_offset,
         task.volume_bounds_bounce);
     auto throughput = def(task.shadow_throughput);
@@ -129,7 +131,7 @@ DirectLightShadowStep DirectLightTaskEvaluator::shade_shadow(
       };
     }
     task.shadow_throughput = throughput;
-    task.transparent_depth = context.path.transparent_depth;
+    task.transparent_depth = context.path.transparent_depth.cast<std::uint16_t>();
     task.rng_offset = context.rng_offset;
     task.volume_bounds_bounce = context.volume_bounds_bounce;
     carries_light &= context.volume_bounds_bounce <= shadow_volume_bounds_max;

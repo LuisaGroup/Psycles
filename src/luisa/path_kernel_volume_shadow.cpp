@@ -116,7 +116,7 @@ class VolumeShadowComponentImpl final
             const cycles_svm::PathState shader_state{
                 cycles_svm::path_ray_visibility_shadow, 0u,
                 sample.path_depth, sample.transparent_depth, sample.diffuse_depth,
-                sample.glossy_depth, sample.transmission_depth, 0u};
+                sample.glossy_depth, sample.transmission_depth, sample.portal_depth};
             const PathCyclesSvmVolumeShader volume_shader{
                 _scene, sample.invocation.parameters, ray_origin, ray_direction,
                 interval.minimum(), 0.5f, shadow_stack.entry(0u).object, shader_state,

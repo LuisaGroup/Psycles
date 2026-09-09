@@ -63,6 +63,12 @@ inline constexpr ClosureTypeMask all_closure_types = ~ClosureTypeMask{0u};
     result &= ~(ClosureTypeMask{1u} <<
                 closure::type_bssrdf_random_walk_skin);
   }
+  // A reachable Ray Portal producer contributes NODE_PORTAL to the scene
+  // feature mask. Its absence proves this closure and its consumer cases
+  // unreachable, including scenes that use ordinary Light Path nodes.
+  if ((kernel_features & kernel_feature_node_portal) == 0u) {
+    result &= ~(ClosureTypeMask{1u} << closure::type_ray_portal);
+  }
   return result;
 }
 

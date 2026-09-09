@@ -1,0 +1,33 @@
+{
+  "schema": "psycles.cycles-ray-portal-state.v1",
+  "source_revision": "cb168525138fecc792cc393f94afc39582b0103c",
+  "original_version": "Blender Cycles 5.2.1",
+  "native_fast_math": true,
+  "device_arch": "gfx1201",
+  "command": "/opt/rocm/bin/hipcc -parallel-jobs=32 --offload-arch=gfx1201 -DHIPCC -std=c++20 -O3 -ffast-math -I /home/mike/Projects/blender-cycles-trace-5.2/intern/cycles tools/cycles_ray_portal_oracle.hip -o /var/tmp/psycles-ray-portal-pzGSbl/original-portal-edges",
+  "scope": "Original GPU integrate_surface_ray_portal, closure pick, and native path_state_next. Inputs only on host; no reference evaluator.",
+  "diagnostic_cases": "11,14,15,16-23 include function-domain controls not asserted to be emitted by valid scene producers.",
+  "rows": 26,
+  "float_lanes": 28,
+  "integer_lanes": 16,
+  "tolerance": {
+    "absolute": 0.000002,
+    "relative": 0.000002
+  },
+  "fixture_sha256": {
+    "tests/cycles_ray_portal_fixture.h": "87231f87d276f0bf75874d95a689f159016357e67e32e8fd62f0660028605164",
+    "tools/cycles_ray_portal_oracle.hip": "93ee53f03cf9842addb284f24b34c89cd9239524e133083e2441526768c7282d",
+    "tests/data/cycles_ray_portal_state.txt": "fb8c63e63ec0ef48bf2ea42474efa875d7ee64c6700e7745e8fb98b9d191623a"
+  },
+  "original_sha256": {
+    "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/shade_surface.h": "3f607b81936bb60e69b678dd6a5dc8be324104f92878dc844402ecdc3cb73b77",
+    "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/path_state.h": "8cf896887b76b499cfe997650aa8b68630fbe11ea68dfb1bf09a774b0cab6bbf",
+    "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/surface_shader.h": "1b36b3c2082b8992252b81869263a5e959e33713395b0b58de63d66c5052a69d",
+    "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/state_util.h": "dcbfb6f20cd044898a4f630c58b9c51e882ec99a7aebda0bef6b7915fd235e7e",
+    "/var/tmp/psycles-ray-portal-pzGSbl/original-portal-features": "51dcff734d5ec6a635190245601265304411b4501717795faf5a2b80fe3d0f70",
+    "/var/tmp/psycles-ray-portal-pzGSbl/original-portal-features.txt": "684ec646de3fc3cd7e340db5c25fd2524bfb191da5bf9dab34e96b61de34c88e",
+    "/var/tmp/psycles-ray-portal-pzGSbl/original-portal-edges": "fa58148b443945a89fd16f67269e3e7866a1a479d12952983c756d029453c8ea",
+    "/var/tmp/psycles-ray-portal-pzGSbl/original-portal-edges.txt": "fb8c63e63ec0ef48bf2ea42474efa875d7ee64c6700e7745e8fb98b9d191623a"
+  },
+  "edge_cases": "24-25 use the exact shared-edge point and both original triangle inputs; expected offsets are captured from the original GPU function."
+}

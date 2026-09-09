@@ -543,6 +543,14 @@ Float PathSampleContext::continuation_terminate_sample() const noexcept {
     return value;
 }
 
+Float3 PathSampleContext::surface_bsdf_sample() const noexcept {
+    return cycles_sampler::sample_3d(
+        invocation.sobol_table, invocation.parameters.sobol_sequence_size,
+        sample_index, rng_hash,
+        cycles_sampler::path_state_dimension(
+            cycles_rng_offset, sampling::tabulated_sobol::surface_bsdf_dimension));
+}
+
 Float3 PathSampleContext::trace_uint32(UInt value) const noexcept {
     return make_float3(
         cast<float>(value & 0xffffu), cast<float>(value >> 16u), 0.0f);
@@ -757,6 +765,7 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
     UInt glossy_depth = 0u;
     UInt transparent_depth = 0u;
     UInt transmission_depth = 0u;
+    UInt portal_depth = 0u;
     UInt path_depth = 0u;
     // PATH_RAY_SINGLE_PASS_DONE is not an initial camera-path property.
     // Cycles sets it only when a surface actually passes the film alpha
@@ -829,6 +838,7 @@ PathSampleContext begin_path_sample(PathKernelInvocation &invocation,
             std::move(glossy_depth),
             std::move(transparent_depth),
             std::move(transmission_depth),
+            std::move(portal_depth),
             std::move(path_depth),
             std::move(path_flags),
             std::move(cycles_path_visibility),
@@ -865,7 +875,7 @@ PathSampleContext::analytic_light_shader(Var<LightGpu> light,
     $if(light.surface_tag != ~std::uint32_t{0u}) {
         const cycles_svm::PathState state{
             0u, cycles_svm::path_ray_emission, path_depth, transparent_depth,
-            diffuse_depth, glossy_depth, transmission_depth, 0u};
+            diffuse_depth, glossy_depth, transmission_depth, portal_depth};
         result = evaluate_cycles_svm_lamp_emission(
             invocation.config.scene, invocation.parameters,
             light.cycles_shader_id, light.cycles_object_index, light_index,

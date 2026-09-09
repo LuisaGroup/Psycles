@@ -20,16 +20,18 @@ Preserving this interpreter model is not end-to-end feature parity. The
 [whole-surface audit](validation/2026-09-09/surface-semantic-audit/README.md)
 reproduced three failures in its captured production HIP against original
 Cycles HIP: pure-volume boundaries could exhaust the outer path budget;
-Ray Portal has population but no selected-closure continuation; object
+Ray Portal had population but no selected-closure continuation; object
 holdout is packed but not applied before emission. Seven tiny scene pairs
 had four agreeing controls and three failures; both captured replay gates exit 2.
 The [native lifetime correction](validation/2026-09-09/native-path-lifetime/README.md)
 now removes the aggregate path budget and ABI member, leaving termination
 to native event transitions and independent counters. Its permanent full-render
-original-HIP regression passes both megakernel and staged schedulers. Portal
-and object holdout remain open integration defects.
-Native label roundtrips, transparent-glass settings and data-pass predicates
-also retain integration gaps. These findings are not repaired by the default
+original-HIP regression passes both megakernel and staged schedulers. The
+[native continuation correction](validation/2026-09-09/native-surface-continuation/README.md)
+also restores selected Portal continuation and persistent portal depth, while
+ordinary native continuation consumes original labels without a SurfaceEvent
+roundtrip. Object holdout remains open. Transparent-glass settings and data-pass
+predicates also retain integration gaps. These findings are not repaired by the default
 switch or by 99 implemented opcode handlers.
 
 The default switch is **not** completion of the legacy code removal:
@@ -97,9 +99,10 @@ legacy executor or substitute a socket default.
 
 The current audit distinguishes missing handlers from admitted-but-incomplete
 consumers, explicit unsupported scene domains, and work-placement differences.
-In particular, the existing portal opcode fixture does not exercise a portal
-bounce; the object-holdout failure uses only an ordinary emission node. Neither
-uses an unsupported reachable opcode. See the linked audit for source/field
+The portal opcode fixture alone does not exercise a portal bounce; a separate
+26-state original-GPU fixture and eleven complete-render scenes now cover that
+consumer. The object-holdout failure uses only an ordinary emission node and
+remains open. Neither depends on an unsupported reachable opcode. See the linked audit for source/field
 ownership, all 110 opcode entries, the fresh four-scene program census, and
 the original-HIP counterexamples. They supersede any inference of full surface
 parity from node-test counts, not the scoped historical test results below.
@@ -109,6 +112,7 @@ Recent independently checked native families include:
 | Area | Evidence |
 | --- | --- |
 | Surface allocation, closure setup/evaluation/sampling, BSSRDF exit and state flags | [Surface state](validation/2026-09-07/native-surface-state/README.md), [zero-BSDF state](validation/2026-09-07/zero-bsdf/README.md) |
+| Selected Portal continuation, native labels and portal-depth shader consumers | [Native continuation and original-GPU fixtures](validation/2026-09-09/native-surface-continuation/README.md) |
 | ShaderData geometry, packed object/primitive identity, curve segments and lamp emission | [Default-path checkpoint](validation/2026-09-07/native-default/README.md) |
 | Background/NEE ShaderData, native world evaluation and camera-dependent importance baking | [Native background](validation/2026-09-08/native-background/README.md) |
 | Volume Absorption/Scatter, Volume Coefficients and Principled Volume node streams and allocation state | [Native volume SVM](validation/2026-09-07/native-volume-svm/README.md) |
@@ -329,11 +333,13 @@ focused HIP/fallback/native Vulkan 6/6 each are rerun. The prior child
 `unit*` selection is 133/133 in the HIP configuration, not a new all-platform
 run. The strict native Vulkan film/emission/shadow/NEE gate has 62 native
 compilations before integration and 47 in the rerun, with no DXC/DXIL load.
-The subsequent native-lifetime correction on published Luisa `03a0f5158`
-passes complete host **177/177**, HIP **188/188** and fallback **190/190**.
-Its strict native Vulkan gate passes **7/7**, with 129 SPIR-V compilation
-successes and no DXC/DXIL loader matches. No SDK implementation changes are
-part of this correction. All builds use 32 threads; backend tests run sequentially.
+The latest native-continuation correction on published Luisa `6e58928d8`
+passes complete host **178/178**, HIP **190/190** and fallback **192/192**.
+Its strict native Vulkan gate passes **9/9**, with 288 SPIR-V compilation
+successes and no DXC/DXIL loader matches. No task-owned SDK implementation
+changes are part of this correction; separately published upstream `6e58928d8`
+is integrated and its packed-word regression is rerun. All builds use 32
+threads; backend tests run sequentially.
 
 The earlier native lighting gate remains 5/6 with 36 rectangle-area sample
 numerical lanes also reproduced in the pre-repair implementation. The
@@ -343,15 +349,16 @@ waived by the focused green canary or hidden with slower HIP arithmetic.
 The fallback lost-wakeup repair, source-size cleanup and shared-switch
 regressions remain revision-pinned in their dated reports.
 
-The latest native-lifetime six full-resolution 256-spp renders complete against retained Cycles
+The latest native-continuation six full-resolution 256-spp renders complete against retained Cycles
 references, with exact prior geometry/images and refreshed socket metadata.
-Monk/Monster/Classroom one-run render times are 12.8658 / 13.8330 / 17.5897 s.
-Barbershop's three are 38.1444 / 38.1387 / 38.2437 s: median 38.1444 s,
-50.3% above retained native. Frames are 216 / 276 / 256 / 416 B. These are
+Monk/Monster/Classroom one-run render times are 12.6946 / 13.7475 / 17.2365 s.
+Barbershop's three are 37.3847 / 37.5162 / 37.4951 s: median 37.4951 s,
+47.8% above retained native. Frames are 200 / 272 / 252 / 416 B. These are
 temporal follow-ups, not fresh timing pairs or isolated causal estimates.
-Session init is 46.7018 / 53.5706 / 39.0266 s for the first three scenes
-and 59.2917 / 18.0246 / 18.4055 s for Barbershop. Its main HIPRTC link
-takes 24.935 s initially and about 0.089 s on repeats. Main shader caching is
+Renderer and SDK both changed since the S1 snapshot.
+Session init is 42.8280 / 53.6947 / 38.7979 s for the first three scenes
+and 59.1673 / 17.3720 / 18.3936 s for Barbershop. Its main HIPRTC link
+takes 25.015 s initially and 0.087 / 0.090 s on repeats. Main shader caching is
 disabled, while downstream/OS caches retain ordinary policy; init
 includes setup/baking and is neither compiler-only nor controlled cold JIT.
 
@@ -365,10 +372,12 @@ of a shared arithmetic boundary, not a per-path proof or a finite-pixel
 waiver. No epsilon cutoff or slow division path is restored. The runner
 records all comparisons on explicit finite domains and exits 2; the first
 interrupted campaign is also retained without selecting faster observations.
-See the [latest report](validation/2026-09-09/native-path-lifetime/README.md) for
-all 15 pass metrics, source/implementation hashes and limitations. That report
-also isolates the changed SDK from the runtime intervention and finds comparable
-local Monk variation on an identical-current-binary repeat. The cause is
+See the [latest report](validation/2026-09-09/native-surface-continuation/README.md) for
+all 15 pass metrics, source/implementation hashes and limitations. DiffInd
+remains essentially unchanged. The earlier
+[S1 report](validation/2026-09-09/native-path-lifetime/README.md) isolates its
+SDK change and finds local Monk variation on a same-binary repeat. The
+current before/after captures also retain local variation. The cause is
 unresolved; these changes are not attributed to path-bound exhaustion, SDK
 integration or floating-point noise without further evidence.
 

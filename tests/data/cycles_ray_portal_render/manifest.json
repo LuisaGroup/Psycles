@@ -1,0 +1,529 @@
+{
+  "schema": "psycles.cycles-ray-portal-render-fixture.v1",
+  "scope": "exact exported inputs and complete original HIP film; no local renderer oracle",
+  "records": [
+    {
+      "name": "transparent-control",
+      "scene": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/transparent-control-export/scene.json",
+        "sha256": "2efbd64246d332bfc30dab46f322d97b7a0ee2043d9b63779676a0ddfed1c863"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/transparent-control-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "original_image": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-3.exr",
+        "sha256": "d11df5274f8589c4dd43efc352b48f5f486a1331f18176dfd548c771aa35f99c"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-3.json",
+        "sha256": "6596e1ee8267823e3f207849d7fb591f6cd53ae8a5bd88ef2a546ca62b701701"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/transparent-control.blend",
+        "sha256": "21c51b7470738f42a4e8af64094bdb075e0045561c85146404e4e2a93d790d99"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "ray-portal",
+      "scene": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ray-portal-export/scene.json",
+        "sha256": "c4ad0c7b71d02257701d997c4eb5d6c4d65baf8a98443bb857429d814195339f"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ray-portal-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "original_image": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-4.exr",
+        "sha256": "d9befe158711464d1410a56375f8b8efc1f0be5e9f05293dfb7eec74f8e546fd"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/original-4.json",
+        "sha256": "3a81a935eacc4398479dc6cee98d25ae70a7614febaa62b58d4b82786c81bca6"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-surface-structural-audit-J9tiiH/integration-gate/ray-portal.blend",
+        "sha256": "3c587a152e983ae08ccffeb29d0b15804db5b0669a78a25960a08cb78c22299c"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "portal-depth-world",
+      "scene": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-world-export/scene.json",
+        "sha256": "56d088356b55e8e314d1dff0ab71a535b70dc1072b3290e975383c0ee2029a09"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-world-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "original_image": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-world-original.exr",
+        "sha256": "3bd7d89b0c978897e4320df1bb38da95ffd78afc8e0cbef4f8940c96950b9f18"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-world-original.json",
+        "sha256": "e174cce5b96e7524cb68f1c9afdffccc253e5e652e4f5d6cb490360b04c8c10f"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-world.blend",
+        "sha256": "d4742ccda14260e891cfde5dc058436be9fe3075e6a899bd085a2d37a2270061"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "portal-depth-surface",
+      "scene": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-surface-export/scene.json",
+        "sha256": "a1b8d28a170b148b5f23de92d89986ebb7fa501f9a12de455156c5950490a44f"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-surface-export/geometry.bin",
+        "sha256": "d8cb9c8348e7e7da170e8072470e770d35f87d8e5b6af03918af888bfb612b09"
+      },
+      "geometry_bytes": 976,
+      "original_image": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-surface-original.exr",
+        "sha256": "f55970484408c7ae110b701c372d588543e71a2d90cdac841941afd931ffde2b"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-surface-original.json",
+        "sha256": "31e910c511e1771a1e2755a5ce2bf7f6cf724f9df5cf268a2e8d6b93a4de4d48"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-surface.blend",
+        "sha256": "cd12a99c0fc7289c5e8cd62a2b22cab06e111384b9f09412ee239365d1117f50"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "portal-depth-chain",
+      "scene": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-chain-export/scene.json",
+        "sha256": "ae9d73c57657f9fe76644a42b7f0aa5e4be9e7c62de96e8aa5084ea8e0dde430"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-chain-export/geometry.bin",
+        "sha256": "d8cb9c8348e7e7da170e8072470e770d35f87d8e5b6af03918af888bfb612b09"
+      },
+      "geometry_bytes": 976,
+      "original_image": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-chain-original.exr",
+        "sha256": "28855f992e23b98dd8fb5f7f43d473553831311a7a8da223e6231bbc658d41fb"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-chain-original.json",
+        "sha256": "f8c22df4da63e80e1fc0c556907997cc60c13f1c5798b71236e60acac637fb2a"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-chain.blend",
+        "sha256": "606c2a5d5050f54868162404294ea8e551b715bc3341ee311e169bca32c3dac5"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "portal-signed-weight",
+      "scene": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-signed-weight-export/scene.json",
+        "sha256": "2741bfdc51b164722b9df5d002500fe04212d6f162761de56fa39149394eef16"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-signed-weight-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "original_image": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-signed-weight-original.exr",
+        "sha256": "c97b6ec8aaabdd01293281aa4ddc7c154e0985c272e6b60921a1d5038d770a0a"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-signed-weight-original.json",
+        "sha256": "e1b5c1ce4de251750d19fda21a4cb0b2fcee85a51d80a8e279d104f7f6948974"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-signed-weight.blend",
+        "sha256": "eafbc732e6719f1a373b5541d26eb376610924d1409b8e21d86252e8b321330a"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "portal-transparent-mix",
+      "scene": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-transparent-mix-export/scene.json",
+        "sha256": "9b229a0edb26600823bbb90dabd885654df326dee185b57a0a9185581830d817"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-transparent-mix-export/geometry.bin",
+        "sha256": "d8cb9c8348e7e7da170e8072470e770d35f87d8e5b6af03918af888bfb612b09"
+      },
+      "geometry_bytes": 976,
+      "original_image": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-transparent-mix-original.exr",
+        "sha256": "24655005e61092968ad74fc4834b5e61a646c64adb3ff0cf77eb81a2f55da03f"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-transparent-mix-original.json",
+        "sha256": "1df77f0437451680414adacb50deb47c499ab76e24e5ddb2f3b976c0a84a45db"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-transparent-mix.blend",
+        "sha256": "4d7da29671cbaf0447268c145d543c41fe84b56ac36fe2505c995aeec30a1b20"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "portal-limit-zero",
+      "scene": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-limit-zero-export/scene.json",
+        "sha256": "599800457c4e42df852729eccfc69d658ac77e89e85dd2cd8eeafd3a0725a54c"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-limit-zero-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "original_image": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-limit-zero-original.exr",
+        "sha256": "b9332add74141d13f312485bfd0ea567fcec0f4bee3f2a34a4359a68361805e8"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-limit-zero-original.json",
+        "sha256": "6db4baad919c30fafc1e3bb90f894a48c44b06f8ca63272b6406211fe697575a"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-limit-zero.blend",
+        "sha256": "d85528779fbf07cc6c9c50add23de27bd69493a3f8d5da2541dbcac06c025797"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "portal-depth-nee",
+      "scene": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-nee-export/scene.json",
+        "sha256": "9af5c9093f01a174c8a1f33b6660d5b1cf1af5e01c2572e19d30ec55bd1ed9d3"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-nee-export/geometry.bin",
+        "sha256": "d8cb9c8348e7e7da170e8072470e770d35f87d8e5b6af03918af888bfb612b09"
+      },
+      "geometry_bytes": 976,
+      "original_image": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-nee-original.exr",
+        "sha256": "1dd02f22f43fe72ecf710852e8be77258ca24ba540c072c8f73ccc74b98a690a"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-nee-original.json",
+        "sha256": "49944748ad076cb5d4fc81b37c88cd83391888ca482747c789aab97cc38f9499"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-nee.blend",
+        "sha256": "db46ed5117ee35d2fecba36ac355404e90f30b52d92a9ff0285a576cede75857"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "portal-depth-shadow",
+      "scene": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-shadow-export/scene.json",
+        "sha256": "318e4eb002b4e6851e6c528472a175752cd49e771a1fa4bf0aa0852ac216b839"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-shadow-export/geometry.bin",
+        "sha256": "3d1ba0574319ffd053b784b7bed95e831cb0cb2541583b69fb9506599fde61d4"
+      },
+      "geometry_bytes": 1456,
+      "original_image": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-shadow-original.exr",
+        "sha256": "95b1fe6ab67a4e73631e13318816de9bc8349ce2cd5301ff935dfe1197f302f1"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-shadow-original.json",
+        "sha256": "f9e0b42165e2795bcb534795aa272a51f39300392aaef7f1d98d72e061393abd"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-depth-shadow.blend",
+        "sha256": "90be223aeab87477649689844a11851ae0f2b7ab984f498fc6bfe9df05cc50a8"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    },
+    {
+      "name": "portal-default-position",
+      "scene": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-default-position-export/scene.json",
+        "sha256": "f33fffa613f6def893ab8b1e14f547c2ed845c9950e23c8ada01f4aebce40ab5"
+      },
+      "geometry": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-default-position-export/geometry.bin",
+        "sha256": "69d2deee8ffac64a39bee8ec5612fad628ffd3abd32101c31dc50b801fbe756f"
+      },
+      "geometry_bytes": 496,
+      "original_image": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-default-position-original.exr",
+        "sha256": "bf5022e985357889edb9f5b79c97b97784e8dc256e1b8e2e2a6ebf13a32729f1"
+      },
+      "metadata": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-default-position-original.json",
+        "sha256": "37a6a801c641cdaea14b814b4e964a2e16fe5e8153db0641d8b0dad29e8916a4"
+      },
+      "blend": {
+        "path": "/var/tmp/psycles-ray-portal-pzGSbl/linked-position-PtuwQX/portal-default-position.blend",
+        "sha256": "a53e8224ac85792522c301cbbf4f8bfa910276025874574a98cfe500b6442a93"
+      },
+      "original_settings": {
+        "blender_build": {
+          "build_branch": "blender-v5.2-release (modified)",
+          "build_hash": "9e2066aef7ef",
+          "build_type": "Release",
+          "version": "5.2.1 LTS",
+          "version_cycle": "release",
+          "version_tuple": [
+            5,
+            2,
+            1
+          ]
+        },
+        "cycles_device": "GPU",
+        "cycles_compute_device_type": "HIP",
+        "samples": 1,
+        "width": 16,
+        "height": 16,
+        "effective_seed": 0
+      }
+    }
+  ],
+  "fixture_sha256": {
+    "transparent-control-scene.json": "2efbd64246d332bfc30dab46f322d97b7a0ee2043d9b63779676a0ddfed1c863",
+    "transparent-control-geometry.txt": "b63e8d281f08f0a76fa21ce7cdc2d101988b793c530d314f54489e83bbbed1fe",
+    "transparent-control-film.txt": "310b6bbfb8b3415936fed675ea185fa6932695500f8580d47741506db79caed0",
+    "ray-portal-scene.json": "c4ad0c7b71d02257701d997c4eb5d6c4d65baf8a98443bb857429d814195339f",
+    "ray-portal-geometry.txt": "b63e8d281f08f0a76fa21ce7cdc2d101988b793c530d314f54489e83bbbed1fe",
+    "ray-portal-film.txt": "310b6bbfb8b3415936fed675ea185fa6932695500f8580d47741506db79caed0",
+    "portal-depth-world-scene.json": "56d088356b55e8e314d1dff0ab71a535b70dc1072b3290e975383c0ee2029a09",
+    "portal-depth-world-geometry.txt": "b63e8d281f08f0a76fa21ce7cdc2d101988b793c530d314f54489e83bbbed1fe",
+    "portal-depth-world-film.txt": "310b6bbfb8b3415936fed675ea185fa6932695500f8580d47741506db79caed0",
+    "portal-depth-surface-scene.json": "a1b8d28a170b148b5f23de92d89986ebb7fa501f9a12de455156c5950490a44f",
+    "portal-depth-surface-geometry.txt": "baca3563486032ee17fcbaa667f98b7f253de3262a405f6e5bf92ebe313ddd6b",
+    "portal-depth-surface-film.txt": "310b6bbfb8b3415936fed675ea185fa6932695500f8580d47741506db79caed0",
+    "portal-depth-chain-scene.json": "ae9d73c57657f9fe76644a42b7f0aa5e4be9e7c62de96e8aa5084ea8e0dde430",
+    "portal-depth-chain-geometry.txt": "baca3563486032ee17fcbaa667f98b7f253de3262a405f6e5bf92ebe313ddd6b",
+    "portal-depth-chain-film.txt": "eedcff1f5bd0fa1a1c831c7545d17cf05bc4e15db1f7be0bbcd7e48203ddb7ca",
+    "portal-signed-weight-scene.json": "2741bfdc51b164722b9df5d002500fe04212d6f162761de56fa39149394eef16",
+    "portal-signed-weight-geometry.txt": "b63e8d281f08f0a76fa21ce7cdc2d101988b793c530d314f54489e83bbbed1fe",
+    "portal-signed-weight-film.txt": "c546e2f2947388e2ef89f4c2c82ed78f76fba5ea4cea6bf382e4716a89087bae",
+    "portal-transparent-mix-scene.json": "9b229a0edb26600823bbb90dabd885654df326dee185b57a0a9185581830d817",
+    "portal-transparent-mix-geometry.txt": "baca3563486032ee17fcbaa667f98b7f253de3262a405f6e5bf92ebe313ddd6b",
+    "portal-transparent-mix-film.txt": "312019b50aadfe9615eaa4a6ceedc4f5dafef8fc7d857ebbc1aa1352275fb797",
+    "portal-limit-zero-scene.json": "599800457c4e42df852729eccfc69d658ac77e89e85dd2cd8eeafd3a0725a54c",
+    "portal-limit-zero-geometry.txt": "b63e8d281f08f0a76fa21ce7cdc2d101988b793c530d314f54489e83bbbed1fe",
+    "portal-limit-zero-film.txt": "310b6bbfb8b3415936fed675ea185fa6932695500f8580d47741506db79caed0",
+    "portal-depth-nee-scene.json": "9af5c9093f01a174c8a1f33b6660d5b1cf1af5e01c2572e19d30ec55bd1ed9d3",
+    "portal-depth-nee-geometry.txt": "baca3563486032ee17fcbaa667f98b7f253de3262a405f6e5bf92ebe313ddd6b",
+    "portal-depth-nee-film.txt": "182b258ded975222c72ef55cf35e3b61e0678c30a95d016b7d9943c7046f3e1e",
+    "portal-depth-shadow-scene.json": "318e4eb002b4e6851e6c528472a175752cd49e771a1fa4bf0aa0852ac216b839",
+    "portal-depth-shadow-geometry.txt": "0c006d59fdb0760c84396807ff236455954a09d0fb974a7d77a87fc49fc60722",
+    "portal-depth-shadow-film.txt": "8b66535e595a5d128e4d9952308e7bc62b26b81c25ef8da8309438bd1bb60f8b",
+    "portal-default-position-scene.json": "f33fffa613f6def893ab8b1e14f547c2ed845c9950e23c8ada01f4aebce40ab5",
+    "portal-default-position-geometry.txt": "b63e8d281f08f0a76fa21ce7cdc2d101988b793c530d314f54489e83bbbed1fe",
+    "portal-default-position-film.txt": "310b6bbfb8b3415936fed675ea185fa6932695500f8580d47741506db79caed0"
+  },
+  "tolerance": {
+    "absolute": 2e-06,
+    "relative": 2e-06
+  }
+}

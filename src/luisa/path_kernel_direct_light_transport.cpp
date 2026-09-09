@@ -201,8 +201,9 @@ class CommonDirectLightTransportStage final : public DirectLightTransportStage {
                 task.path_visibility = sample.cycles_path_visibility;
                 task.diffuse_depth = sample.diffuse_depth;
                 task.glossy_depth = sample.glossy_depth;
-                task.transparent_depth = sample.transparent_depth;
+                task.transparent_depth = sample.transparent_depth.cast<std::uint16_t>();
                 task.transmission_depth = sample.transmission_depth;
+                task.portal_depth = sample.portal_depth.cast<std::uint16_t>();
                 task.volume_bounds_bounce = sample.volume_bounds_bounce;
                 preparation.valid = true;
             };
