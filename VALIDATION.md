@@ -14,9 +14,15 @@ records published Luisa backend repairs, focused regressions and complete
 matrix completes: Cycles Metal 50.4312 s, Psycles Metal 350.511 s and Metal4
 105.569 s (render-only). These are single observations with different
 unchanged backend batching policies, not repeated performance conclusions.
-All 46 channels are finite and all 15 pass comparisons complete. The graph
-attempt fails generic XIR restructuring before shader compilation; its
-performance and repeat gates remain open.
+All 46 channels are finite and all 15 pass comparisons complete. The original
+graph attempt failed generic XIR restructuring. Luisa `afdc139ec` repairs it
+with a reduced counterexample, 97 CFG tests / 2740 assertions and both original
+scene gates. Luisa `03a0f5158` also repairs swizzle reference lowering; complete
+Metal / Metal4 codegen fixtures pass, and both graph scene gates pass again.
+Graph uses 90 fields / 456 B with inline shadow state. The fresh repeated
+256-sample matrix uses this published SDK and upstream `287bc520` / film
+implementation `9e3ba165`, integrated before restarting measurement. There
+are no local Psycles implementation changes.
 
 ## Revision-pinned paired full-scene baseline
 
