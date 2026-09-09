@@ -17,8 +17,31 @@ These are generic Luisa changes, published to `next` before advancing this
 gitlink. Psycles renderer, SVM and scheduler implementations are unchanged.
 The SDK [regression and proof record](../../../../third_party/LuisaCompute/docs/validation/2026-09-09/metal-world-shader-codegen/README.md)
 includes minimal failures, permanent tests, cache invalidation and the
-additional historical mutable-swizzle fixture that still fails on Metal4.
+additional historical mutable-swizzle fixture, repaired in the follow-up below.
 Focused validation is not represented as a full-suite pass.
+
+Luisa `afdc139ec` additionally fixes graph continuation restructuring across
+an enclosing loop epoch. The original 2027-block input reduces to an eight-block
+counterexample; four variants fail before the correction. Strict verification
+is preserved, and 97 focused CFG tests / 2740 assertions pass. Both original
+graph modules compile and render with seven stages / 90 fields / 456 B,
+131072 workers and automatic tail. The
+[CFG proof and regression record](../../../../third_party/LuisaCompute/docs/validation/2026-09-09/graph-cfg-epoch/README.md)
+contains the reduction and original-module gates.
+
+Luisa `03a0f5158` fixes callable multi-component swizzle reference lowering
+through addressable temporaries and ordered component copy-out. The full Metal4
+fixture now passes 775 device assertions, rather than only the Local subset;
+Metal passes 792. The new host fixture passes 48 assertions, including readonly
+and nested-swizzle controls. The 20 external-call checks and all 2740 CFG
+assertions also pass. Both original graph scene gates were repeated after the
+clean production rebuild, with exactly 46 finite channels. This published
+SDK is the checkpoint for the fresh repeated performance campaign. The gates
+above used upstream `f690ead6`. Before final timing publication, remote main
+advanced to `287bc520` (film implementation `9e3ba165`). The local gitlink/report
+commit was rebased onto that upstream, without editing renderer, SVM, scheduler,
+CMake or tracked benchmark tools. The new campaign is pinned to that film-aligned
+implementation, not the older one.
 
 ## First completed 256-sample staged matrix
 
@@ -50,8 +73,9 @@ The first graph matrix is **failed, not a timing observation**. Its fresh
 Cycles Metal reference completes, but the original graph continuation 4
 fails generic XIR CFG restructuring with one residual unstructured branch,
 before Metal4 shader compilation. Metal in that matrix was not reached.
-The failed matrix and complete original log are retained while this new
-compiler failure is reduced and repaired in Luisa, without changing Psycles.
+The failed matrix and complete original log are retained. The generic repair
+above passes both original-module gates; new timing runs use a separate
+identity cohort and do not replace or relabel this failed attempt.
 
 ## Original-scene gate (not a performance result)
 
@@ -69,8 +93,13 @@ additional storage, not part of the 220-byte main frame.
 
 ## Formal campaign configuration
 
-Status: the first staged matrix is complete; repeats and the graph comparison
-remain open. The graph attempt exposed a separate generic CFG failure.
+Status: the first staged matrix is complete. All identified compile gates are
+repaired and published; the fresh `film-aligned-published` cohort will measure
+each of the four backend/scheduler combinations twice. Historical single
+observations are not pooled with measurements from the new implementation.
+The briefly started `cfg-fixed-published` campaign was interrupted during its
+first Cycles reference when the concurrent upstream update was discovered;
+it has no completed pair and is not a performance observation.
 
 - Host: Apple M1 Max, 10 CPU cores, macOS 26.6.2 / 25G83.
 - Release build: Homebrew Clang 21.1.8; Metal4 uses LLVM 22.1.8.
@@ -118,6 +147,13 @@ Local experiment directory:
 - `canary/{metal,metal4}`: complete original-scene 1-sample gates and pass inventories.
 - `fixed-published/{staged,graph}/run-N`: formal fresh-reference timing pairs,
   implementation hashes, commands, 15-pass comparisons and original-size images.
+- `graph-cfg-canary/` and `callable-swizzle-canary/`: complete graph gates
+  after each generic correction, not performance observations.
+- `cfg-fixed-published/graph/run-1`: interrupted before the concurrent upstream
+  film update was integrated; not a completed timing comparison.
+- `film-aligned-published/{staged,graph}/run-N`: fresh repeated matrices at the
+  final published compiler and upstream film checkpoints; no diagnostic
+  instrumentation or profiler.
 
 The earlier schema-v1/v2 results are not reused. They have superseded timing
 boundaries or unequal pass workloads, as documented by the canonical runner.
