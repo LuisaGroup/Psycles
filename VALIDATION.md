@@ -174,7 +174,48 @@ unresolved; the changes are not attributed to Holdout or path-bound
 exhaustion, or waived as floating-point noise. Correctness,
 repeatability and efficiency goals remain open.
 
-## Current SDK integration: two-scene canaries and joint queues
+## Current generic shading-pruning checkpoint
+
+The [bounded native shading-terminator repair](docs/validation/2026-09-10/shading-terminator-pruning/README.md)
+uses ordinary C++ recording guards only when the complete finalized object
+image proves every native `frequency > 1` predicate false. Mixed, enabled or
+unknown images retain the native device path; no scene names or profiles are
+used. An original six-row HIP oracle also exposes the pre-existing standard
+ACOS/native fast-ACOS mismatch. Reusing the existing native fast helper at
+that one site passes the oracle without introducing a precision workaround.
+
+The final `86fe7274…` runtime, on SDK `5c7de2bb9` (unchanged 98f production
+libraries), passes full host **186/186**, HIP **193/193**, fallback **195/195**
+and focused strict native Vulkan **4/4**. The Vulkan trace has six successful
+native SPIR-V compilations, all three route guards, and no DXC/DXIL load.
+Full builds use all 32 threads. These suite durations are correctness evidence,
+not performance measurements. The separate new coroutine reachability candidate
+is not included in these binaries.
+
+The [fresh four-scene Phase A capture](docs/validation/2026-09-10/shading-terminator-pruning/PHASE_A.md)
+completes four renders and sixty pass comparisons at native extents and 256
+fixed samples, main shader cache off and native fast math on. All 32 source
+pins, eight binaries, four input/reference sets and 310 loaded texture entries
+remain unchanged across execution.
+
+| Scene / extent | Render seconds | Session/JIT seconds | Frame | DiffInd relative RMSE |
+| --- | ---: | ---: | ---: | ---: |
+| Barbershop / 2048x858 | 37.1113 | 55.0679 | 416 B | 7.12617% |
+| Lone Monk / 1440x1080 | 12.7550 | 42.9222 | 200 B | 12.88149% |
+| Monster / 1080x1080 | 13.6912 | 55.2632 | 272 B | 2.55253% |
+| Classroom / 1920x1080 | 17.5279 | 40.2551 | 252 B | 17.82034% |
+
+These are isolated single observations against retained original Cycles HIP
+images, **not fresh timing pairs or a demonstrated speedup**. Session/JIT
+includes compilation, allocation and upload/setup, not compiler-only time.
+All 46 channels are finite for the first three actual/reference pairs.
+Classroom still fails: **18 actual non-finite lanes / eight pixels**, with
+70 reference lanes / 27 pixels. Combined is finite; separated-pass metrics
+report the valid domain and do not waive the failure. DiffInd and previously
+observed localized Monk variation remain unresolved. Fresh current-exporter
+bundles, their input/word-identity audit, and twelve new v3 pairs have **not run**.
+
+## Preceding SDK integration: two-scene canaries and joint queues
 
 The [SDK 98f integration report](docs/validation/2026-09-09/next-integration/README.md)
 records fresh 256-spp HIP canaries with native Holdout and explicit compatible
@@ -193,9 +234,10 @@ batches, not proof of less shading, smaller frames or eliminated indirect-light
 differences. The [frozen frame audit](docs/validation/2026-09-09/barbershop-coroutine-audit/README.md)
 retains exact old-SDK field-I/O evidence. Classroom's invalid separated passes,
 Monk's localized repeat variation and complete cross-scene efficiency remain
-open; no new Monster/Classroom canaries or timing repeats are certified here.
+open. That preceding capture does not include Monster/Classroom; the current
+four-scene observations above do not add fresh timing pairs either.
 
-## Current compiler and backend gate
+## Preceding compiler and backend gates
 
 The [film destination/state repair](docs/validation/2026-09-09/film-routing/README.md)
 restores native first-shadow classification, captured flags/weights, and
@@ -219,7 +261,7 @@ Those film-routing suites and timings used Luisa `da8fff856`. The subsequent ups
 Metal/CI integration to `8911828eb` leaves all six measured HIP binaries
 byte-identical after an all-target build; complete host and focused HIP,
 fallback and strict native Vulkan gates are rerun before publication.
-The Metal reports and their published gitlink are preserved. The current
+The Metal reports and their published gitlink are preserved. The preceding
 integration below uses Luisa `98f4667ca`: upstream shared-callable changes,
 the generic prepare-to-update bypass repair and logical-priority/joint-Handler
 batching. It includes native Holdout and the renderer's explicit batching
@@ -233,14 +275,14 @@ opt-in; the new reachability candidate is not part of these measured binaries.
 | Psycles fallback | 194/194 | Complete suite, 549.07 s |
 | Strict native Vulkan | 12/12 | 726.28 s; 456 native compilations, no DXC/DXIL loader matches |
 | Luisa scheduler native Vulkan | 17/17 | 163 cases / 21,349 assertions, 20.55 s; strict native route, no DXC/DXIL |
-| Fresh full-resolution scene finiteness | 2/2 | Barbershop and Monk only; no new four-scene completion claim |
+| Then-captured full-resolution scene finiteness | 2/2 | Barbershop and Monk only; current four-scene finite gate above is 3/4 |
 
 Exact terminal logs, native guard/loader checks and hashes are in the
 [integration report](docs/validation/2026-09-09/next-integration/README.md).
 The frozen `6e58928d8` Holdout checkpoint remains **7/11 failed** on strict
 Vulkan: `lamp_routing`, `zero_bsdf`, `holdout_render` and `ray_portal_render`
 aborted after CFG output-verifier failures, CTest exit 8 / 84.28 s. These
-historical failures are preserved, not relabeled as passing. The new gate
+historical failures are preserved, not relabeled as passing. The 98f gate
 passes all four tests. Upstream `1a2c3ea922c2` already repaired the complete
 original zero-BSDF module; the additional local CFG repair has a separate
 prepare/update counterexample. A common old diagnostic alone was not its

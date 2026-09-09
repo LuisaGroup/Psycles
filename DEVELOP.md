@@ -1,6 +1,6 @@
 # Psycles development status
 
-Updated 2026-09-09. This page contains current development rules and remaining gates. “Implemented”
+Updated 2026-09-10. This page contains current development rules and remaining gates. “Implemented”
 does not mean “Cycles compatible”: compatibility requires an exact-revision
 Cycles render, linear-pass metrics, and visual comparison. The current
 commands, machine, reports, and triptychs are in
@@ -32,6 +32,13 @@ preference:
 No deviation is implied by temporary regressions or by the convenience of the
 existing implementation. Only an explicit project-owner instruction can relax
 this lock.
+
+Recording-time specialization must generalize across scenes. Use ordinary C++
+guards over immutable, finalized scene/session capabilities to omit DSL only
+when the native predicate is provably inactive. Unknown or incomplete inputs
+must retain the path, and rebuilding the owning scene/session must recompute
+the proof. Scene names, asset identities, measured hot paths, prerenders and
+benchmark-specific thresholds must never control this specialization.
 
 ## Mandatory structural-parity performance lock
 
@@ -167,7 +174,7 @@ uninitialized storage.
 
 ## Measurement and sampling gates
 
-Use the [schema-v2 benchmark runner](docs/scene-benchmark.md). Compare Cycles'
+Use the [schema-v3 equal-pass benchmark runner](docs/scene-benchmark.md). Compare Cycles'
 original main-loop wall time with Psycles render-only wall time. Keep scene
 compilation, main JIT, whole render calls, process time and profiled GPU sums
 separate. State cache policy, exact revision/build, device, seed, frame,

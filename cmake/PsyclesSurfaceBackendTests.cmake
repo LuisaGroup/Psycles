@@ -185,6 +185,8 @@ target_link_libraries(psycles_luisa_cycles_svm_static_pruning_tests
 add_test(NAME psycles.luisa_cycles_svm_static_pruning
     COMMAND psycles_luisa_cycles_svm_static_pruning_tests)
 
+include("${CMAKE_CURRENT_LIST_DIR}/PsyclesShadingTerminatorTests.cmake")
+
 psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_zero_bsdf_tests
     SOURCE tests/test_luisa_cycles_zero_bsdf.cpp

@@ -141,6 +141,8 @@ PathCyclesSvmKernelGlobals::PathCyclesSvmKernelGlobals(
                    _scene->cycles_svm->geometry &&
                    _scene->cycles_svm->objects,
                "Native Cycles SVM surface requires a finalized scene image.");
+  _has_shadow_terminator_shading_offset =
+      _scene->cycles_svm->objects->image.has_shadow_terminator_shading_offset();
 }
 
 Bool PathCyclesSvmKernelGlobals::caustics_reflective() const noexcept {
@@ -160,6 +162,10 @@ Float PathCyclesSvmKernelGlobals::object_shadow_terminator_shading_offset(
   const auto record = object_record(*_scene, object);
   return select(1.0f, record.shadow_terminator_shading_offset,
                 object != svm::object_none);
+}
+
+bool PathCyclesSvmKernelGlobals::has_shadow_terminator_shading_offset() const noexcept {
+  return _has_shadow_terminator_shading_offset;
 }
 
 std::optional<Float> PathCyclesSvmKernelGlobals::object_volume_density(

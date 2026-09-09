@@ -20,6 +20,7 @@ class PathCyclesSvmKernelGlobals final
     std::shared_ptr<LuisaSceneData> _scene;
     const Var<RenderKernelParameters> &_parameters;
     CameraProjection _camera_projection;
+    bool _has_shadow_terminator_shading_offset{true};
     Bool _caustics_reflective;
     Bool _caustics_refractive;
     luisa::compute::Float4x4 _camera_to_world;
@@ -39,6 +40,7 @@ class PathCyclesSvmKernelGlobals final
     [[nodiscard]] Bool caustics_reflective() const noexcept override;
     [[nodiscard]] Bool caustics_refractive() const noexcept override;
     [[nodiscard]] Bool background_use_sun_guiding() const noexcept override;
+    [[nodiscard]] bool has_shadow_terminator_shading_offset() const noexcept override;
     [[nodiscard]] Float object_shadow_terminator_shading_offset(
         Expr<std::uint32_t> object) const noexcept override;
     [[nodiscard]] std::optional<Float> object_volume_density(

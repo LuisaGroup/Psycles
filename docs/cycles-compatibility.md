@@ -66,6 +66,12 @@ profiling, pre-rendering nor scene-name constants determine allocation sizes.
   retains a conservative default.
 - Closure capacity follows the finalized Cycles graph count and scene cap,
   not the old SurfaceProgram estimator.
+- The two native shading-terminator frequency corrections are guarded by
+  ordinary host C++ `if` statements. Only a complete immutable finalized
+  object image proving all frequencies finite and at most one disables them;
+  enabled, mixed, invalid or unknown images retain the native per-object path.
+  Object-table changes regenerate the proof with the scene, not a global cache.
+  Bump correction and geometric shadow-offset consumers remain separate.
 - Local scratch is distinct from persistent coroutine frame storage. Generic
   Luisa Local lifetime and coroutine extension/handler mechanisms express
   storage lifetime and scheduling. Ordinary scalar/vector initialization
@@ -85,6 +91,7 @@ Proofs, counterexamples and regression boundaries:
 - [Published Luisa Local/coroutine integration](validation/2026-09-07/luisa-local-coro-publication/README.md)
 - [Coroutine boundary audit and SSS queue correction](validation/2026-09-07/coroutine-boundaries/README.md)
 - [Transitive read-only references and uniform frame state](validation/2026-09-08/coro-readonly-forwarding/README.md)
+- [Generic object-frequency proof, recording controls and native fast-angle oracle](validation/2026-09-10/shading-terminator-pruning/README.md)
 
 The latter reports are dated checkpoints; their isolated-snapshot or
 then-unpublished qualifications describe those runs, not a second current
@@ -116,6 +123,7 @@ Recent independently checked native families include:
 | Area | Evidence |
 | --- | --- |
 | Surface allocation, closure setup/evaluation/sampling, BSSRDF exit and state flags | [Surface state](validation/2026-09-07/native-surface-state/README.md), [zero-BSDF state](validation/2026-09-07/zero-bsdf/README.md) |
+| Native shading frequency, bump-preserving host pruning and original fast-angle algorithm | [Six-row original HIP oracle and recording proof](validation/2026-09-10/shading-terminator-pruning/README.md) |
 | Selected Portal continuation, native labels and portal-depth shader consumers | [Native continuation and original-GPU fixtures](validation/2026-09-09/native-surface-continuation/README.md) |
 | Object/node Holdout, exact allocator/flag writes and surface/volume projection | [Native Holdout and original word/state/film fixtures](validation/2026-09-09/native-holdout/README.md) |
 | ShaderData geometry, packed object/primitive identity, curve segments and lamp emission | [Default-path checkpoint](validation/2026-09-07/native-default/README.md) |
@@ -142,20 +150,36 @@ claim motion geometry, other curve shapes or point-cloud rendering.
 
 ## Image parity and performance
 
-The [current SDK 98f integration](validation/2026-09-09/next-integration/README.md)
-passes complete host 183/183, HIP 192/192, fallback 194/194 and focused strict
-native Vulkan 12/12. The Vulkan trace records 456 native SPIR-V compilations
-with no DXC/DXIL load; a separate 17/17 SDK scheduler selection also passes
-163 cases / 21,349 assertions on the required native route.
+The [current generic shading-pruning checkpoint](validation/2026-09-10/shading-terminator-pruning/README.md)
+passes complete host **186/186**, HIP **193/193**, fallback **195/195** and
+focused strict native Vulkan **4/4**. The native trace has six successful
+SPIR-V compilations, all three route guards and no DXC/DXIL load. Final runtime
+is `86fe7274…`, with SDK `5c7de2bb9` and unchanged 98f production libraries;
+the separate coroutine reachability candidate is not part of this capture.
 
-Fresh HIP 256-spp Barbershop (2048x858) and Monk (1440x1080) canaries take
-36.6909 / 12.5366 s render-only, with 50.0167 / 31.8320 s session setup/JIT
-and unchanged 416 / 200 B frames. All 46 channels are finite and all 15 pass
-comparisons complete. These are single observations against retained Cycles
-references, not a new four-scene paired benchmark. Barbershop remains 44.58%
-above the retained native median; DiffInd relative RMSE is still 7.1262% /
-12.8816%. Classroom's historical invalid separated passes and Monk's localized
-run-to-run variation remain open, not waived as noise or one ULP.
+All [four fresh 256-spp canaries](validation/2026-09-10/shading-terminator-pruning/PHASE_A.md)
+and sixty pass comparisons complete. Barbershop / Monk / Monster / Classroom
+render in **37.1113 / 12.7550 / 13.6912 / 17.5279 s**, with session/JIT
+**55.0679 / 42.9222 / 55.2632 / 40.2551 s** and unchanged
+**416 / 200 / 272 / 252 B** frames. Session/JIT includes compilation and
+allocation/upload/setup, not compiler-only time. These are isolated single
+observations against retained original references, not a fresh paired
+benchmark or causal speedup estimate. Fresh exports, their input/word-identity
+audit and twelve current v3 pairs have **not run**.
+
+The all-46-channel finite gate is **3/4**: Classroom retains **18 actual
+non-finite lanes / eight pixels**, and the original reference has 70 lanes /
+27 pixels. Combined is finite. Finite-domain comparisons retain the failure;
+DiffInd relative RMSE is still **7.12617% / 12.88149% / 2.55253% / 17.82034%**.
+Those residuals and previously observed localized Monk variation are not
+waived as noise or one ULP, or assigned a cause by these images.
+
+The [preceding SDK 98f integration](validation/2026-09-09/next-integration/README.md)
+retains host 183/183, HIP 192/192, fallback 194/194 and strict native Vulkan
+12/12 with 456 native compilations. Its separate SDK gate is 17/17, with
+163 cases / 21,349 assertions and no DXC/DXIL load. Its two-scene observations
+and the following queue counts remain revision-pinned history, not additional
+current-candidate repeats.
 
 The [frame/sorting audit](validation/2026-09-09/barbershop-coroutine-audit/README.md)
 identified physical incoming queues splitting one logical surface target.
