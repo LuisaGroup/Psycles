@@ -39,6 +39,7 @@ inline std::span<const std::string_view> closure_input_order(std::string_view ty
       "ThinFilmIOR", "SurfaceMixWeight"};
   static constexpr std::string_view emission[]{"Color", "Strength", "SurfaceMixWeight", "VolumeMixWeight"};
   static constexpr std::string_view background[]{"Color", "Strength", "SurfaceMixWeight"};
+  static constexpr std::string_view holdout[]{"SurfaceMixWeight", "VolumeMixWeight"};
   if (type == node_type::diffuse_bsdf || type == node_type::sheen_bsdf) { return diffuse; }
   if (type == node_type::translucent_bsdf) { return translucent; }
   if (type == node_type::transparent_bsdf) { return transparent; }
@@ -53,6 +54,7 @@ inline std::span<const std::string_view> closure_input_order(std::string_view ty
   if (type == node_type::principled_bsdf) { return principled; }
   if (type == node_type::emission) { return emission; }
   if (type == node_type::background) { return background; }
+  if (type == node_type::holdout) { return holdout; }
   return {};
 }
 

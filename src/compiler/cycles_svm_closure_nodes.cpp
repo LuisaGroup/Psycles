@@ -874,6 +874,21 @@ public:
   }
 };
 
+class HoldoutNode final : public GraphNode {
+public:
+  [[nodiscard]] ClosureType get_closure_type() const noexcept override {
+    return CLOSURE_HOLDOUT_ID;
+  }
+  [[nodiscard]] bool is_linear_operation() const noexcept override { return true; }
+  void compile(SVMCompiler &compiler) override {
+    compiler.add_node(this, NODE_CLOSURE_SET_WEIGHT,
+                      SVMNodeClosureSetWeight{.rgb = {1.0f, 1.0f, 1.0f}});
+    compiler.add_node(this, NODE_CLOSURE_HOLDOUT,
+                      SVMNodeClosureHoldout{.mix_weight_offset = compiler.closure_mix_weight_offset(),
+                                           ._pad = {0u, 0u, 0u}});
+  }
+};
+
 class EmissionNode final : public GraphNode {
 public:
   [[nodiscard]] std::uint32_t get_feature() const noexcept override {
@@ -1000,6 +1015,9 @@ public:
 
 std::unique_ptr<GraphNode>
 make_closure_graph_node(std::string_view type) {
+  if (type == node_type::holdout) {
+    return std::make_unique<HoldoutNode>();
+  }
   if (type == node_type::background) {
     return std::make_unique<BackgroundNode>();
   }

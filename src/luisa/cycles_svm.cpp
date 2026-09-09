@@ -212,6 +212,11 @@ void eval_nodes_impl(
           }
         };
       }
+      if (node_types_used[NODE_CLOSURE_HOLDOUT]) {
+        PSYCLES_SVM_CASE(NODE_CLOSURE_HOLDOUT) {
+          detail::node_closure_holdout(cursor, stack, closure_weight, shader_data);
+        };
+      }
       if (node_types_used[NODE_CLOSURE_BACKGROUND]) {
         PSYCLES_SVM_CASE(NODE_CLOSURE_BACKGROUND) {
           if ((node_feature_mask & kernel_feature_node_emission) != 0u) {

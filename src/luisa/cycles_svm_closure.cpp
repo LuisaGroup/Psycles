@@ -99,7 +99,8 @@ ClosurePool::allocate(Expr<std::uint32_t> closure_type,
   $if(_left != 0u) {
     store_word(allocation.index, layout::ShaderClosure_type, closure_type);
     store_float3(allocation.index, layout::ShaderClosure_weight, weight);
-    store_float(allocation.index, layout::ShaderClosure_sample_weight, 0.0f);
+    // Native closure_alloc initializes only type/weight. Scattering setup
+    // owns sample_weight/N; other closure kinds must not clobber those lanes.
     _count += 1u;
     _left -= 1u;
     allocation.valid = true;
@@ -580,6 +581,28 @@ void node_closure_emission(const KernelGlobals &kernel_globals,
         shader_data.closure_emission_background = weight;
       };
     };
+  };
+}
+
+void node_closure_holdout(Cursor &cursor, Stack &stack,
+                         Expr<luisa::float3> closure_weight,
+                         ShaderData &shader_data) noexcept {
+  const auto mix_weight_offset = cursor.byte(cursor.word(), 0u);
+  Float3 weight = closure_weight;
+  Bool active = true;
+  $if(mix_weight_offset != static_cast<unsigned>(SVM_STACK_INVALID)) {
+    const auto mix_weight = stack_load_float(stack, mix_weight_offset);
+    $if(mix_weight == 0.0f) { active = false; }
+    $else { weight *= mix_weight; };
+  };
+  $if(active) {
+    if (shader_data.closure != nullptr) {
+      static_cast<void>(shader_data.closure->allocate(
+          static_cast<unsigned>(CLOSURE_HOLDOUT_ID), weight));
+    }
+    // Native closure_alloc failure does not suppress this flag; only the
+    // exactly-zero linked mix weight exits before it.
+    shader_data.flag |= static_cast<unsigned>(SD_HOLDOUT);
   };
 }
 

@@ -1458,6 +1458,13 @@ NodeRegistry make_core_node_registry() {
                  .required_features = feature_bit(ShaderFeature::surface)}));
 
   static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::holdout,
+                 .inputs = {},
+                 .outputs = {output("Closure", SocketType::closure)},
+                 .properties = {},
+                 .required_features = feature_bit(ShaderFeature::surface)}));
+
+  static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::ray_portal_bsdf,
                  .inputs = {input("Color", SocketType::color,
                                   SocketValue::color({1.0f, 1.0f, 1.0f})),
@@ -1627,6 +1634,13 @@ NodeRegistry make_core_node_registry() {
       .properties = {property("Phase", SocketType::string,
                               SocketValue::string("HENYEY_GREENSTEIN"))},
       .required_features = feature_bit(ShaderFeature::volume)}));
+
+  static_cast<void>(registry.register_schema(
+      NodeSchema{.type = node_type::volume_holdout,
+                 .inputs = {},
+                 .outputs = {output("Volume", SocketType::volume_closure)},
+                 .properties = {},
+                 .required_features = feature_bit(ShaderFeature::volume)}));
 
   static_cast<void>(registry.register_schema(
       NodeSchema{.type = node_type::volume_emission,

@@ -1,0 +1,777 @@
+{
+  "blender": "5.2.1 LTS",
+  "blender_build": {
+    "build_branch": "blender-v5.2-release (modified)",
+    "build_hash": "9e2066aef7ef",
+    "build_type": "Release",
+    "version": "5.2.1 LTS",
+    "version_cycle": "release",
+    "version_tuple": [
+      5,
+      2,
+      1
+    ]
+  },
+  "camera": {
+    "angle": 0.6911112070083618,
+    "angle_x": 0.6911112070083618,
+    "angle_y": 0.4710899591445923,
+    "clip_end": 1000.0,
+    "clip_start": 0.10000000149011612,
+    "dof": {
+      "blades": 0,
+      "enabled": false,
+      "focus_distance": 10.0,
+      "fstop": 2.799999952316284,
+      "ratio": 1.0,
+      "rotation": 0.0
+    },
+    "lens": 50.0,
+    "name": "Camera",
+    "ortho_scale": 1.0,
+    "pixel_aspect_x": 1.0,
+    "pixel_aspect_y": 1.0,
+    "sensor_fit": "AUTO",
+    "sensor_height": 24.0,
+    "sensor_width": 36.0,
+    "shift_x": 0.0,
+    "shift_y": 0.0,
+    "transform": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.11299999803304672,
+      -0.05700000002980232,
+      5.0,
+      1.0
+    ],
+    "type": "ORTHO"
+  },
+  "curve_geometries": [],
+  "cycles_sync": {
+    "object_count": 2,
+    "uses_light_linking": false
+  },
+  "exporter": {
+    "schema": "psycles.exporter-identity.v1",
+    "sha256": "46254cd23f1b73bf7928be11c19f5726732e412a50975b088cae64bc6bbfe3b3",
+    "sources": {
+      "blender_build_identity.py": "283f74ac99771aeed906d76b2aed250fd1c77e632c0b26e3c74644676b0010be",
+      "blender_image_export.py": "21653da2e5fa97dcaff84d94962a746f1ed58b9ea6bf176a7e71a4956f06f13e",
+      "blender_particle_hair.py": "49f56d0307455de169657909a2fe62079fbc78ef7f7e748d963c90439c24148a",
+      "blender_scene_manifest.py": "0bd1a2a8e9a71dadbff3621c23652bfab8810c2c263760de7c369a40de3bbd65",
+      "cycles_hash.py": "3b0e4b47fceaa83fe89043b28c8586997c559f03e2f9a8eb9b9c8bdd372a6680",
+      "export_psycles_scene.py": "df92396db48a95e2fe7605246021ba18aabf6d9efafd559c988c2aaeaf424814",
+      "exporter_identity.py": "8e1259a0f68e49b28685f2f6040b42f2af1c60c2e77bc126355fd8479c542039"
+    }
+  },
+  "frame": 1,
+  "geometries": [
+    {
+      "color_attributes": [],
+      "corner_count": 6,
+      "cycles_sync": {
+        "primitive_offset": 0
+      },
+      "default_color_attribute": null,
+      "default_uv_available": true,
+      "generated": {
+        "bytes": 48,
+        "offset": 400
+      },
+      "generated_domain": "POINT",
+      "generated_transform": [
+        0.25,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.25,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.5,
+        0.0,
+        0.5,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "indices": {
+        "bytes": 24,
+        "offset": 448
+      },
+      "material_slots": [
+        "object-colored-transparent"
+      ],
+      "name": "object-colored-transparent",
+      "normal_domain": "POINT",
+      "normals": {
+        "bytes": 48,
+        "offset": 64
+      },
+      "point_count": 4,
+      "pointiness_source": null,
+      "positions": {
+        "bytes": 48,
+        "offset": 16
+      },
+      "triangle_count": 2,
+      "triangle_material_slots": {
+        "bytes": 8,
+        "offset": 472
+      },
+      "triangle_random_per_island": {
+        "bytes": 8,
+        "offset": 488
+      },
+      "triangle_smooth": {
+        "bytes": 8,
+        "offset": 480
+      },
+      "uses_adaptive_subdivision": false,
+      "uv": {
+        "bytes": 48,
+        "offset": 112
+      },
+      "uv_domain": "CORNER",
+      "uv_layers": [
+        {
+          "domain": "CORNER",
+          "name": "UVMap",
+          "tangents": {
+            "bytes": 96,
+            "offset": 304
+          },
+          "values": {
+            "bytes": 48,
+            "offset": 256
+          }
+        }
+      ],
+      "uv_tangent_domain": "CORNER",
+      "uv_tangents": {
+        "bytes": 96,
+        "offset": 160
+      }
+    }
+  ],
+  "images": [],
+  "instances": [
+    {
+      "ambient_occlusion_distance": 0.0,
+      "asset_name": "object-colored-transparent",
+      "cycles_particle_source": null,
+      "cycles_sync": {
+        "light_group": -1,
+        "object_index": 0
+      },
+      "dupli_generated": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dupli_uv": [
+        0.0,
+        0.0
+      ],
+      "geometry": 0,
+      "geometry_type": "MESH",
+      "is_caustics_caster": false,
+      "is_caustics_receiver": false,
+      "is_instance": false,
+      "is_shadow_catcher": false,
+      "name": "object-colored-transparent",
+      "object_alpha": 1.0,
+      "object_color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "object_pass_id": 0,
+      "particle_index": 0,
+      "persistent_id": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "random_id": 1370581788,
+      "shadow_terminator_geometry_offset": 0.10000000149011612,
+      "shadow_terminator_shading_offset": 0.0,
+      "transform": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        3.0,
+        1.0
+      ],
+      "use_holdout": true,
+      "visibility": {
+        "camera": true,
+        "diffuse": true,
+        "glossy": true,
+        "shadow": true,
+        "transmission": true,
+        "volume_scatter": true
+      }
+    }
+  ],
+  "lights": [],
+  "materials": [
+    {
+      "cycles_sync": {
+        "pass_id": 0,
+        "shader_index": 5
+      },
+      "displacement_method": "BUMP",
+      "emission_sampling": "NONE",
+      "name": "object-colored-transparent",
+      "node_tree": {
+        "displacement_root": null,
+        "links": [
+          {
+            "from_node": "Transparent BSDF",
+            "from_socket": "BSDF",
+            "to_node": "Material Output",
+            "to_socket": "Surface"
+          }
+        ],
+        "name": "Shader Nodetree",
+        "nodes": [
+          {
+            "bl_idname": "ShaderNodeBsdfDiffuse",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "default": [
+                  0.800000011920929,
+                  0.800000011920929,
+                  0.800000011920929,
+                  1.0
+                ],
+                "hide_value": false,
+                "identifier": "Color",
+                "linked": false,
+                "name": "Color",
+                "type": "NodeSocketColor"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "hide_value": false,
+                "identifier": "Roughness",
+                "linked": false,
+                "name": "Roughness",
+                "type": "NodeSocketFloatFactor"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "hide_value": true,
+                "identifier": "Normal",
+                "linked": false,
+                "name": "Normal",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": false,
+                "default": 0.0,
+                "hide_value": false,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Diffuse BSDF",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "hide_value": false,
+                "identifier": "BSDF",
+                "linked": false,
+                "name": "BSDF",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "BSDF_DIFFUSE"
+          },
+          {
+            "bl_idname": "ShaderNodeEmission",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "default": [
+                  1.0,
+                  0.5,
+                  0.25,
+                  1.0
+                ],
+                "hide_value": false,
+                "identifier": "Color",
+                "linked": false,
+                "name": "Color",
+                "type": "NodeSocketColor"
+              },
+              {
+                "available": true,
+                "default": 1.0,
+                "hide_value": false,
+                "identifier": "Strength",
+                "linked": false,
+                "name": "Strength",
+                "type": "NodeSocketFloat"
+              },
+              {
+                "available": false,
+                "default": 0.0,
+                "hide_value": false,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Emission",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "hide_value": false,
+                "identifier": "Emission",
+                "linked": false,
+                "name": "Emission",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "EMISSION"
+          },
+          {
+            "bl_idname": "ShaderNodeHoldout",
+            "image": null,
+            "inputs": [
+              {
+                "available": false,
+                "default": 0.0,
+                "hide_value": false,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Holdout",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "hide_value": false,
+                "identifier": "Holdout",
+                "linked": false,
+                "name": "Holdout",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "HOLDOUT"
+          },
+          {
+            "bl_idname": "ShaderNodeOutputMaterial",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "hide_value": false,
+                "identifier": "Surface",
+                "linked": true,
+                "name": "Surface",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "hide_value": false,
+                "identifier": "Volume",
+                "linked": false,
+                "name": "Volume",
+                "type": "NodeSocketShader"
+              },
+              {
+                "available": true,
+                "default": [
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "hide_value": true,
+                "identifier": "Displacement",
+                "linked": false,
+                "name": "Displacement",
+                "type": "NodeSocketVector"
+              },
+              {
+                "available": true,
+                "default": 0.0,
+                "hide_value": true,
+                "identifier": "Thickness",
+                "linked": false,
+                "name": "Thickness",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Material Output",
+            "node_tree": null,
+            "outputs": [],
+            "properties": {
+              "is_active_output": true,
+              "target": "ALL"
+            },
+            "special": {},
+            "type": "OUTPUT_MATERIAL"
+          },
+          {
+            "bl_idname": "ShaderNodeBsdfTransparent",
+            "image": null,
+            "inputs": [
+              {
+                "available": true,
+                "default": [
+                  0.25,
+                  0.5,
+                  0.75,
+                  1.0
+                ],
+                "hide_value": false,
+                "identifier": "Color",
+                "linked": false,
+                "name": "Color",
+                "type": "NodeSocketColor"
+              },
+              {
+                "available": false,
+                "default": 0.0,
+                "hide_value": false,
+                "identifier": "Weight",
+                "linked": false,
+                "name": "Weight",
+                "type": "NodeSocketFloat"
+              }
+            ],
+            "internal_links": [],
+            "label": "",
+            "mute": false,
+            "name": "Transparent BSDF",
+            "node_tree": null,
+            "outputs": [
+              {
+                "available": true,
+                "hide_value": false,
+                "identifier": "BSDF",
+                "linked": true,
+                "name": "BSDF",
+                "type": "NodeSocketShader"
+              }
+            ],
+            "properties": {},
+            "special": {},
+            "type": "BSDF_TRANSPARENT"
+          }
+        ],
+        "surface_root": {
+          "node": "Transparent BSDF",
+          "socket": "BSDF"
+        },
+        "volume_root": null
+      },
+      "surface_render_method": "DITHERED",
+      "use_bump_map_correction": true,
+      "use_transparent_shadow": true,
+      "volume_interpolation": "LINEAR",
+      "volume_sampling": "MULTIPLE_IMPORTANCE"
+    }
+  ],
+  "node_groups": [],
+  "render": {
+    "color_management": {
+      "display_device": "sRGB",
+      "exposure": 0.0,
+      "gamma": 1.0,
+      "look": "None",
+      "sequencer_color_space": "sRGB",
+      "shader_transforms": {
+        "blender_luma": [
+          0.2126,
+          0.7152,
+          0.0722
+        ],
+        "rec709_to_rgb": [
+          [
+            1.0001587867736816,
+            -1.341104507446289e-06,
+            -7.450580596923828e-07
+          ],
+          [
+            -8.597271516919136e-08,
+            0.9999764561653137,
+            -3.427267074584961e-07
+          ],
+          [
+            1.30385160446167e-08,
+            1.9371509552001953e-07,
+            0.9997596144676208
+          ]
+        ],
+        "xyz_to_rgb": [
+          [
+            3.2409698963165283,
+            -1.5373847484588623,
+            -0.4986114501953125
+          ],
+          [
+            -0.9692434668540955,
+            1.8759669065475464,
+            0.04155469685792923
+          ],
+          [
+            0.055629879236221313,
+            -0.20397651195526123,
+            1.0569710731506348
+          ]
+        ]
+      },
+      "use_curve_mapping": false,
+      "view_transform": "AgX"
+    },
+    "cycles": {
+      "adaptive_min_samples": 0,
+      "adaptive_threshold": 0.009999999776482582,
+      "ao_bounces": 1,
+      "ao_bounces_render": 1,
+      "ao_distance": 10.0,
+      "ao_factor": 1.0,
+      "blur_glossy": 0.0,
+      "caustics_reflective": true,
+      "caustics_refractive": true,
+      "diffuse_bounces": 4,
+      "direct_light_sampling_type": "MULTIPLE_IMPORTANCE_SAMPLING",
+      "effective_seed": 0,
+      "fast_gi_method": "REPLACE",
+      "film_exposure": 1.0,
+      "glossy_bounces": 4,
+      "light_sampling_threshold": 0.009999999776482582,
+      "max_bounces": 0,
+      "min_light_bounces": 0,
+      "min_transparent_bounces": 0,
+      "sample_clamp_direct": 0.0,
+      "sample_clamp_indirect": 0.0,
+      "samples": 1,
+      "seed": 0,
+      "seed_frame": 1,
+      "seed_subframe": 0.0,
+      "transmission_bounces": 12,
+      "transparent_max_bounces": 8,
+      "use_adaptive_sampling": false,
+      "use_animated_seed": false,
+      "use_denoising": false,
+      "use_fast_gi": false,
+      "use_light_tree": false,
+      "volume_bounces": 0
+    },
+    "filter_width": 1.0,
+    "height": 16,
+    "pass_alpha_threshold": 0.5,
+    "percentage": 100,
+    "pixel_filter_type": "BOX",
+    "transparent": true,
+    "width": 16
+  },
+  "schema": "psycles.blender-scene.v2",
+  "source": "/var/tmp/psycles-holdout-CXlJR7/object-colored-transparent.blend",
+  "world": {
+    "color": [
+      0.05000000074505806,
+      0.05000000074505806,
+      0.05000000074505806
+    ],
+    "cycles_sync": {
+      "light_group": -1,
+      "object_index": 1,
+      "pass_id": 0,
+      "shader_index": 3
+    },
+    "max_bounces": 1024,
+    "name": "Background",
+    "node_tree": {
+      "displacement_root": null,
+      "links": [
+        {
+          "from_node": "Background",
+          "from_socket": "Background",
+          "to_node": "World Output",
+          "to_socket": "Surface"
+        }
+      ],
+      "name": "World Nodetree",
+      "nodes": [
+        {
+          "bl_idname": "ShaderNodeBackground",
+          "image": null,
+          "inputs": [
+            {
+              "available": true,
+              "default": [
+                0.4000000059604645,
+                0.6000000238418579,
+                0.800000011920929,
+                1.0
+              ],
+              "hide_value": false,
+              "identifier": "Color",
+              "linked": false,
+              "name": "Color",
+              "type": "NodeSocketColor"
+            },
+            {
+              "available": true,
+              "default": 1.0,
+              "hide_value": false,
+              "identifier": "Strength",
+              "linked": false,
+              "name": "Strength",
+              "type": "NodeSocketFloat"
+            },
+            {
+              "available": false,
+              "default": 0.0,
+              "hide_value": false,
+              "identifier": "Weight",
+              "linked": false,
+              "name": "Weight",
+              "type": "NodeSocketFloat"
+            }
+          ],
+          "internal_links": [],
+          "label": "",
+          "mute": false,
+          "name": "Background",
+          "node_tree": null,
+          "outputs": [
+            {
+              "available": true,
+              "hide_value": false,
+              "identifier": "Background",
+              "linked": true,
+              "name": "Background",
+              "type": "NodeSocketShader"
+            }
+          ],
+          "properties": {},
+          "special": {},
+          "type": "BACKGROUND"
+        },
+        {
+          "bl_idname": "ShaderNodeOutputWorld",
+          "image": null,
+          "inputs": [
+            {
+              "available": true,
+              "hide_value": false,
+              "identifier": "Surface",
+              "linked": true,
+              "name": "Surface",
+              "type": "NodeSocketShader"
+            },
+            {
+              "available": true,
+              "hide_value": false,
+              "identifier": "Volume",
+              "linked": false,
+              "name": "Volume",
+              "type": "NodeSocketShader"
+            }
+          ],
+          "internal_links": [],
+          "label": "",
+          "mute": false,
+          "name": "World Output",
+          "node_tree": null,
+          "outputs": [],
+          "properties": {
+            "is_active_output": true,
+            "target": "ALL"
+          },
+          "special": {},
+          "type": "OUTPUT_WORLD"
+        }
+      ],
+      "surface_root": {
+        "node": "Background",
+        "socket": "Background"
+      },
+      "volume_root": null
+    },
+    "sample_map_resolution": 1024,
+    "sampling_method": "NONE",
+    "use_shadows": true,
+    "visibility": {
+      "camera": true,
+      "diffuse": true,
+      "glossy": true,
+      "shadow": true,
+      "transmission": true,
+      "volume_scatter": true
+    },
+    "volume_interpolation": "LINEAR",
+    "volume_sampling": "EQUIANGULAR"
+  },
+  "world_environment": null
+}

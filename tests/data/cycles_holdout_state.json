@@ -1,0 +1,99 @@
+{
+  "schema": "psycles.cycles-holdout-state.v1",
+  "source_revision": "cb168525138fecc792cc393f94afc39582b0103c",
+  "original_version": "Blender Cycles 5.2.1",
+  "native_fast_math": true,
+  "device_arch": "gfx1201",
+  "command": "/opt/rocm/bin/hipcc -parallel-jobs=32 --offload-arch=gfx1201 -DHIPCC -std=c++20 -O3 -ffast-math -I /home/mike/Projects/blender-cycles-trace-5.2/intern/cycles tools/cycles_holdout_oracle.hip -o /var/tmp/psycles-holdout-state-5spI5Z/original-holdout-sentinels",
+  "capture_command": "/var/tmp/psycles-holdout-state-5spI5Z/original-holdout-sentinels > /var/tmp/psycles-holdout-state-5spI5Z/original-holdout-sentinels.txt",
+  "scope": "Original GPU svm_node_closure_holdout and surface_shader_apply_holdout; immutable host input packing only, no host reference evaluator. Diagnostic function-boundary cases are not all claimed to arise from admitted scene producers.",
+  "rows": 36,
+  "float_lanes": 132,
+  "integer_lanes": 24,
+  "snapshots": [
+    "before_node",
+    "after_node",
+    "after_holdout"
+  ],
+  "preinitialized_slot_sentinels": true,
+  "float_layout_per_snapshot": [
+    "closure0_weight_rgb_sample_weight",
+    "closure1_weight_rgb_sample_weight",
+    "closure2_weight_rgb_sample_weight",
+    "closure3_weight_rgb_sample_weight",
+    "closure0_N_xyz_padding",
+    "closure1_N_xyz_padding",
+    "closure2_N_xyz_padding",
+    "closure3_N_xyz_padding",
+    "transparent_extinction_rgb_padding",
+    "emission_background_rgb_padding",
+    "holdout_result_rgb_padding"
+  ],
+  "integer_layout_per_snapshot": [
+    "shader_flags_closure_count_closure_left_object_flags",
+    "closure_types_0_1_2_3"
+  ],
+  "definedness": "All four physical closure records receive sample_weight and N sentinels before logical count/left is established. Only active records are observed; inactive output rows are zero packing, not shader state. The original allocator leaves these preinitialized fields untouched. Fresh production holdouts normally have undefined sample_weight/N and are not claimed to have these sentinel values.",
+  "proof_limits": [
+    "Direct node handler cursor advancement is checked against the original typed payload size. This capture does not execute a complete svm_eval_nodes stream or observe its status.",
+    "Opaque and volume-only object holdout branches are direct function-boundary controls; full integrator early termination/film output is covered separately.",
+    "The Luisa physical test pool has four slots; zero-capacity semantics are exercised through native num_closure_left=0, including count=0 and full occupied prefixes."
+  ],
+  "tolerance": {
+    "absolute": 0.000002,
+    "relative": 0.000002
+  },
+  "cases": [
+    "single-node-closure",
+    "signed-holdout-sum",
+    "no-closures",
+    "no-holdout-types",
+    "excluded-types",
+    "object-transparent-mixed",
+    "object-opaque",
+    "object-volume-only-transparent",
+    "object-transparent-empty",
+    "object-transparent-signed-extinction",
+    "object-transparent-only",
+    "object-opaque-empty",
+    "node-unlinked",
+    "node-positive-mix",
+    "node-zero-mix",
+    "node-negative-zero-mix",
+    "node-negative-mix",
+    "node-zero-weight",
+    "node-zero-left",
+    "node-full-pool",
+    "node-full-pool-zero-mix",
+    "node-existing-holdout",
+    "node-object-transparent",
+    "node-object-volume-only",
+    "node-object-opaque",
+    "node-negative-unlinked-weight",
+    "node-no-free-tail",
+    "node-negative-mix-full-pool",
+    "transparent-flag-absent",
+    "object-clears-native-subtraction-mask",
+    "object-retains-unrelated-flags",
+    "holdout-sum-ignores-flags",
+    "node-zero-mix-retains-flags",
+    "object-transparent-zero-weight",
+    "object-transparent-unit-extinction",
+    "node-high-stack-offset"
+  ],
+  "fixture_sha256": {
+    "tests/cycles_holdout_state_fixture.h": "0d4e5d72c9cbcce3d058eff5dc6856c29b63c8424b1cde1ceb9fec1184f4db10",
+    "tools/cycles_holdout_oracle.hip": "d047068a6bc9c97591de6297647c211d72987643c78c68f6a9ea8c4220f3396d",
+    "tests/data/cycles_holdout_state.txt": "3283370f3df4e1c07261e001f80f3b5b0dcf042fd6179307d86da8f60b3becd1"
+  },
+  "original_sha256": {
+    "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/closure/alloc.h": "0c4d641007cce198cf98133fbf50f796c1ccd2bdcaf25d99f38302f63732f346",
+    "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/integrator/surface_shader.h": "1b36b3c2082b8992252b81869263a5e959e33713395b0b58de63d66c5052a69d",
+    "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/closure.h": "585a5e6a6a9507e76983a2cf2e5fdb757f70e9213c5f1b151e6b8ed47842c673",
+    "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/node_types.h": "eb4fa7cdb5f6561bb4f47349053271428ec18febce1f54796889e2fd72c8a554",
+    "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/svm/types.h": "292ebde03bfc6f4bf45a49b1d88f78d54f33095a1e690135886ba8773fb994c9",
+    "/home/mike/Projects/blender-cycles-trace-5.2/intern/cycles/kernel/types.h": "4f1f0f0156f8f5c829916ad302d0390b3cb0b38bdf0edb7e3ebddf6e32a35647",
+    "/var/tmp/psycles-holdout-state-5spI5Z/original-holdout-sentinels": "763531692b4ce628028f2d51b1f3d7c8f578c51dc3e25a6036e73a738c8e9b2b",
+    "/var/tmp/psycles-holdout-state-5spI5Z/original-holdout-sentinels.txt": "3283370f3df4e1c07261e001f80f3b5b0dcf042fd6179307d86da8f60b3becd1"
+  }
+}

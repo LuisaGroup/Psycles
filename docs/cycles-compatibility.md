@@ -1,6 +1,6 @@
 # Cycles compatibility status
 
-Updated 2026-09-09. This page describes the current implementation, not the
+Updated 2026-09-10. This page describes the current implementation, not the
 performance or feature coverage of the legacy material executor.
 
 ## Default execution path
@@ -21,7 +21,7 @@ Preserving this interpreter model is not end-to-end feature parity. The
 reproduced three failures in its captured production HIP against original
 Cycles HIP: pure-volume boundaries could exhaust the outer path budget;
 Ray Portal had population but no selected-closure continuation; object
-holdout is packed but not applied before emission. Seven tiny scene pairs
+holdout was packed but not applied before emission. Seven tiny scene pairs
 had four agreeing controls and three failures; both captured replay gates exit 2.
 The [native lifetime correction](validation/2026-09-09/native-path-lifetime/README.md)
 now removes the aggregate path budget and ABI member, leaving termination
@@ -30,9 +30,11 @@ original-HIP regression passes both megakernel and staged schedulers. The
 [native continuation correction](validation/2026-09-09/native-surface-continuation/README.md)
 also restores selected Portal continuation and persistent portal depth, while
 ordinary native continuation consumes original labels without a SurfaceEvent
-roundtrip. Object holdout remains open. Transparent-glass settings and data-pass
+roundtrip. The [Holdout correction](validation/2026-09-09/native-holdout/README.md)
+restores object/node Holdout before emission, including the original allocation
+and flag write sets. Transparent-glass settings and data-pass
 predicates also retain integration gaps. These findings are not repaired by the default
-switch or by 99 implemented opcode handlers.
+switch or by 100 implemented opcode handlers.
 
 The default switch is **not** completion of the legacy code removal:
 the displacement prepass still has SurfaceProgram consumers. Its private
@@ -90,8 +92,8 @@ production route.
 
 ## Native SVM coverage and outstanding work
 
-The AST regression checks 99 implemented handlers in Cycles' 110-tag
-inventory. Nine semantic opcodes remain unimplemented: Holdout, Radial
+The AST regression checks 100 implemented handlers in Cycles' 110-tag
+inventory. Eight semantic opcodes remain unimplemented: Radial
 Tiling, Bevel, Ambient Occlusion, Raycast, AOV Start/Color/Value and Scene
 Time. NONE and PAD1 are not executable shading handlers. A material using
 an unsupported reachable operation must not silently fall back to the
@@ -102,7 +104,9 @@ consumers, explicit unsupported scene domains, and work-placement differences.
 The portal opcode fixture alone does not exercise a portal bounce; a separate
 26-state original-GPU fixture and eleven complete-render scenes now cover that
 consumer. The object-holdout failure uses only an ordinary emission node and
-remains open. Neither depends on an unsupported reachable opcode. See the linked audit for source/field
+is now covered by the separate Holdout repair: twelve complete scenes, 36
+original-GPU states and fifteen exact surface/volume word images. Neither
+original failure depends on an unsupported reachable opcode. See the linked audit for source/field
 ownership, all 110 opcode entries, the fresh four-scene program census, and
 the original-HIP counterexamples. They supersede any inference of full surface
 parity from node-test counts, not the scoped historical test results below.
@@ -113,6 +117,7 @@ Recent independently checked native families include:
 | --- | --- |
 | Surface allocation, closure setup/evaluation/sampling, BSSRDF exit and state flags | [Surface state](validation/2026-09-07/native-surface-state/README.md), [zero-BSDF state](validation/2026-09-07/zero-bsdf/README.md) |
 | Selected Portal continuation, native labels and portal-depth shader consumers | [Native continuation and original-GPU fixtures](validation/2026-09-09/native-surface-continuation/README.md) |
+| Object/node Holdout, exact allocator/flag writes and surface/volume projection | [Native Holdout and original word/state/film fixtures](validation/2026-09-09/native-holdout/README.md) |
 | ShaderData geometry, packed object/primitive identity, curve segments and lamp emission | [Default-path checkpoint](validation/2026-09-07/native-default/README.md) |
 | Background/NEE ShaderData, native world evaluation and camera-dependent importance baking | [Native background](validation/2026-09-08/native-background/README.md) |
 | Volume Absorption/Scatter, Volume Coefficients and Principled Volume node streams and allocation state | [Native volume SVM](validation/2026-09-07/native-volume-svm/README.md) |
@@ -136,6 +141,32 @@ indices. The current scene upload admits static ribbon curves. This does not
 claim motion geometry, other curve shapes or point-cloud rendering.
 
 ## Image parity and performance
+
+The [current SDK 98f integration](validation/2026-09-09/next-integration/README.md)
+passes complete host 183/183, HIP 192/192, fallback 194/194 and focused strict
+native Vulkan 12/12. The Vulkan trace records 456 native SPIR-V compilations
+with no DXC/DXIL load; a separate 17/17 SDK scheduler selection also passes
+163 cases / 21,349 assertions on the required native route.
+
+Fresh HIP 256-spp Barbershop (2048x858) and Monk (1440x1080) canaries take
+36.6909 / 12.5366 s render-only, with 50.0167 / 31.8320 s session setup/JIT
+and unchanged 416 / 200 B frames. All 46 channels are finite and all 15 pass
+comparisons complete. These are single observations against retained Cycles
+references, not a new four-scene paired benchmark. Barbershop remains 44.58%
+above the retained native median; DiffInd relative RMSE is still 7.1262% /
+12.8816%. Classroom's historical invalid separated passes and Monk's localized
+run-to-run variation remain open, not waived as noise or one ULP.
+
+The [frame/sorting audit](validation/2026-09-09/barbershop-coroutine-audit/README.md)
+identified physical incoming queues splitting one logical surface target.
+Generic logical-priority aggregation and explicit compatible Handler batching
+now join those inputs before sorting. The complete 64-spp diagnostic changes
+surface dispatches from 1,062 to 798 but surface entries from 332,307,665 to
+332,307,666: reduced scheduling batches, not demonstrated less shading or a
+smaller frame. No scene-name/profile-driven pruning or inline policy is used.
+
+The following paired baseline and intermediate campaigns are revision-pinned
+history; their measurements are not combined into a current performance score.
 
 The [equal-pass HIP campaign](validation/2026-09-08/matched-pass-hip/README.md)
 completed 12 fresh pairs at Psycles c5bf9247 / Luisa 9ea3b720f, using original
@@ -169,7 +200,7 @@ confirm image/sampler SRDs are already device-resident and sampled directly.
 Neither more aggressive descriptor inlining nor explicit index grouping is
 adopted after GPU controls. A smaller pointer chain or synthetic sampling
 speed is not reported as an end-to-end renderer gain. Their dated follow-up
-timings remain in those reports, not mixed with current measurements below.
+timings remain in those reports, not mixed with the current measurements above.
 
 The earlier [light-endpoint correction](validation/2026-09-08/light-endpoints/README.md)
 separates geometric lamp hits from spot/spread evaluation and indirect shader
@@ -333,12 +364,21 @@ focused HIP/fallback/native Vulkan 6/6 each are rerun. The prior child
 `unit*` selection is 133/133 in the HIP configuration, not a new all-platform
 run. The strict native Vulkan film/emission/shadow/NEE gate has 62 native
 compilations before integration and 47 in the rerun, with no DXC/DXIL load.
-The latest native-continuation correction on published Luisa `6e58928d8`
-passes complete host **178/178**, HIP **190/190** and fallback **192/192**.
-Its strict native Vulkan gate passes **9/9**, with 288 SPIR-V compilation
-successes and no DXC/DXIL loader matches. No task-owned SDK implementation
-changes are part of this correction; separately published upstream `6e58928d8`
-is integrated and its packed-word regression is rerun. All builds use 32
+The frozen native-Holdout correction on published Luisa `6e58928d8`
+passes complete host **183/183**, HIP **192/192** and fallback **194/194**.
+Fallback takes 617.61 s after a separately retained interrupted attempt.
+Strict native Vulkan **fails at 7/11**: `lamp_routing`, `zero_bsdf`,
+`holdout_render` and `ray_portal_render` abort with `Instruction operand does
+not dominate its use` during `restructure_cfg` output verification. CTest
+exits 8 after 84.28 s. All native guards are set, and the loader audit finds
+67 successful native SPIR-V compilations with no DXC/DXIL load; this is not
+an all-passed gate. The compiler failure blocked that frozen checkpoint and
+its completed results archive. The fresh `98f4667ca` integration linked above
+passes the expanded 12-test gate; the old failed evidence is not rewritten.
+No task-owned SDK implementation changes are part of this snapshot. The
+preceding S2 report retains its complete fallback 192/192 and strict native
+Vulkan 9/9 results, including 288 native compilations without DXC/DXIL load;
+those did not substitute for the frozen repair's failed gate. All builds use 32
 threads; backend tests run sequentially.
 
 The earlier native lighting gate remains 5/6 with 36 rectangle-area sample
@@ -349,16 +389,17 @@ waived by the focused green canary or hidden with slower HIP arithmetic.
 The fallback lost-wakeup repair, source-size cleanup and shared-switch
 regressions remain revision-pinned in their dated reports.
 
-The latest native-continuation six full-resolution 256-spp renders complete against retained Cycles
+The frozen SDK-6e native-Holdout six full-resolution 256-spp renders complete against retained Cycles
 references, with exact prior geometry/images and refreshed socket metadata.
-Monk/Monster/Classroom one-run render times are 12.6946 / 13.7475 / 17.2365 s.
-Barbershop's three are 37.3847 / 37.5162 / 37.4951 s: median 37.4951 s,
-47.8% above retained native. Frames are 200 / 272 / 252 / 416 B. These are
+Monk/Monster/Classroom one-run render times are 12.4505 / 13.7470 / 17.2434 s.
+Barbershop's three are 37.8379 / 37.8313 / 37.8524 s: median 37.8379 s,
+49.1% above retained native. Frames are 200 / 272 / 252 / 416 B. These are
 temporal follow-ups, not fresh timing pairs or isolated causal estimates.
-Renderer and SDK both changed since the S1 snapshot.
-Session init is 42.8280 / 53.6947 / 38.7979 s for the first three scenes
-and 59.1673 / 17.3720 / 18.3936 s for Barbershop. Its main HIPRTC link
-takes 25.015 s initially and 0.087 / 0.090 s on repeats. Main shader caching is
+The Barbershop median is 0.91% above S2; no Holdout-driven speed effect is
+established. Session init is 43.9887 / 52.6500 / 38.3884 s for the first three
+scenes and 58.1651 / 19.1775 / 20.5389 s for Barbershop. Its main HIPRTC link
+takes 27.001 s initially and 0.092 / 0.109 s on repeats, producing an
+862,656-byte code object. Main shader caching is
 disabled, while downstream/OS caches retain ordinary policy; init
 includes setup/baking and is neither compiler-only nor controlled cold JIT.
 
@@ -370,16 +411,17 @@ DSL diagnostic reproduces the same subnormal-BSDF NaN/Inf weight classes
 under native fastmath, with matching zero/normal controls. This is evidence
 of a shared arithmetic boundary, not a per-path proof or a finite-pixel
 waiver. No epsilon cutoff or slow division path is restored. The runner
-records all comparisons on explicit finite domains and exits 2; the first
-interrupted campaign is also retained without selecting faster observations.
-See the [latest report](validation/2026-09-09/native-surface-continuation/README.md) for
+records all comparisons on explicit finite domains and exits 2; no render
+observations are discarded from that frozen campaign.
+See the [historical Holdout report](validation/2026-09-09/native-holdout/README.md) for
 all 15 pass metrics, source/implementation hashes and limitations. DiffInd
 remains essentially unchanged. The earlier
 [S1 report](validation/2026-09-09/native-path-lifetime/README.md) isolates its
 SDK change and finds local Monk variation on a same-binary repeat. The
-current before/after captures also retain local variation. The cause is
-unresolved; these changes are not attributed to path-bound exhaustion, SDK
-integration or floating-point noise without further evidence.
+frozen S2/S3 captures also retain local variation: Monk's Combined RMSE is
+5.49e-4 and Normal RMSE 1.47e-4, with maximum errors 0.283 and 0.0535. The
+cause is unresolved; these changes are not attributed to Holdout, path-bound
+exhaustion, SDK integration or floating-point noise without further evidence.
 
 At the older revision-pinned paired baseline, all 46 actual channels were
 finite; its first-pair relative RMSE was:

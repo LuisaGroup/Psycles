@@ -313,6 +313,30 @@ if(TEST psycles.luisa_cycles_path_lifetime_vk)
         "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
 endif()
 psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_holdout_state_tests
+    SOURCE tests/test_luisa_cycles_holdout_state.cpp
+    TEST_STEM luisa_cycles_holdout_state
+    LIBRARIES Psycles::luisa_runtime)
+target_include_directories(psycles_luisa_cycles_holdout_state_tests
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/luisa)
+target_compile_definitions(psycles_luisa_cycles_holdout_state_tests PRIVATE
+    PSYCLES_HOLDOUT_STATE_ORACLE="${PROJECT_SOURCE_DIR}/tests/data/cycles_holdout_state.txt")
+if(TEST psycles.luisa_cycles_holdout_state_vk)
+    set_tests_properties(psycles.luisa_cycles_holdout_state_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+psycles_add_luisa_backend_test(
+    TARGET psycles_luisa_cycles_holdout_render_tests
+    SOURCE tests/test_luisa_cycles_holdout_render.cpp
+    TEST_STEM luisa_cycles_holdout_render
+    LIBRARIES Psycles::luisa_runtime)
+target_compile_definitions(psycles_luisa_cycles_holdout_render_tests PRIVATE
+    PSYCLES_HOLDOUT_FIXTURES="${PROJECT_SOURCE_DIR}/tests/data/cycles_holdout")
+if(TEST psycles.luisa_cycles_holdout_render_vk)
+    set_tests_properties(psycles.luisa_cycles_holdout_render_vk PROPERTIES ENVIRONMENT
+        "LUISA_VULKAN_USE_XIR=1;LUISA_VULKAN_REQUIRE_NATIVE_XIR_SPIRV=1;LUISA_VULKAN_DISABLE_DXC=1")
+endif()
+psycles_add_luisa_backend_test(
     TARGET psycles_luisa_cycles_ray_portal_state_tests
     SOURCE tests/test_luisa_cycles_ray_portal_state.cpp
     TEST_STEM luisa_cycles_ray_portal_state

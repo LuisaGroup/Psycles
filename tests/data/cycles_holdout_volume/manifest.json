@@ -1,0 +1,159 @@
+{
+  "schema": "psycles.cycles-holdout-volume-fixture.v1",
+  "records": [
+    {
+      "name": "holdout-only-volume",
+      "shader_index": 5,
+      "word_count": 7
+    },
+    {
+      "name": "holdout-emission-volume",
+      "shader_index": 6,
+      "word_count": 22
+    },
+    {
+      "name": "holdout-shared-domains",
+      "shader_index": 7,
+      "word_count": 31
+    }
+  ],
+  "producers": [
+    {
+      "path": "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+      "sha256": "6f1babd8e863fec61d033c14348ee138e9a7c0ab5cd1a21cbf45c27b15a4dec9"
+    },
+    {
+      "path": "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+      "sha256": "748168aa9986ff830e4abca34d2ab0a328659297aeab32b859c0ad3f4d1de6d4"
+    }
+  ],
+  "processes": [
+    {
+      "label": "author",
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "--background",
+        "--threads",
+        "32",
+        "--python-exit-code",
+        "1",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/create_cycles_holdout_volume_scene.py",
+        "--",
+        "/var/tmp/psycles-holdout-volume-gh5YiD/holdout-volume.blend"
+      ],
+      "status": 0,
+      "cwd": "/var/tmp/psycles-holdout-volume-gh5YiD",
+      "log": {
+        "path": "/var/tmp/psycles-holdout-volume-gh5YiD/author.log",
+        "sha256": "53d2e9abafe50deb43e9d4655461fd845305238ff077a0325e0ae7674782655f"
+      }
+    },
+    {
+      "label": "export",
+      "command": [
+        "/home/mike/Projects/blender-install-5.2-hiprt/blender",
+        "--background",
+        "--threads",
+        "32",
+        "--python-exit-code",
+        "1",
+        "/var/tmp/psycles-holdout-volume-gh5YiD/holdout-volume.blend",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/export_psycles_scene.py",
+        "--",
+        "/var/tmp/psycles-holdout-volume-gh5YiD/export"
+      ],
+      "status": 0,
+      "cwd": "/var/tmp/psycles-holdout-volume-gh5YiD",
+      "log": {
+        "path": "/var/tmp/psycles-holdout-volume-gh5YiD/export.log",
+        "sha256": "7232941282d740964d974ad0f9fc74259aa0c900f05e4196d2dede3f91fb461a"
+      }
+    },
+    {
+      "label": "word-observer",
+      "command": [
+        "/home/mike/Projects/blender-install-psycles-trace-5.2/blender",
+        "--background",
+        "--threads",
+        "32",
+        "--python-exit-code",
+        "1",
+        "/var/tmp/psycles-holdout-volume-gh5YiD/holdout-volume.blend",
+        "--python",
+        "/home/mike/Projects/Psycles-surface-svm/tools/render_cycles_golden.py",
+        "--",
+        "/var/tmp/psycles-holdout-volume-gh5YiD/word-observer.exr",
+        "16",
+        "16",
+        "1",
+        "0",
+        "--cycles-device",
+        "HIP",
+        "--device-name",
+        "Radeon RX 9070 XT"
+      ],
+      "status": 0,
+      "cwd": "/var/tmp/psycles-holdout-volume-gh5YiD",
+      "log": {
+        "path": "/var/tmp/psycles-holdout-volume-gh5YiD/word-observer.log",
+        "sha256": "35b2da4451ede050a4c182411c971f6df53c6feda75c62f1c7187ce1dea6575c"
+      }
+    }
+  ],
+  "source": {
+    "path": "/home/mike/Projects/blender-cycles-trace-5.2",
+    "revision": "cb168525138fecc792cc393f94afc39582b0103c",
+    "file_sha256": {
+      "intern/cycles/scene/svm.cpp": "b0c7db6de10d5e77a26159015f16b633783032749e687ed9a7d3cd3658492e9e",
+      "intern/cycles/scene/shader_graph.cpp": "74cd5f24fac8970e6fc172b4e5b29d339a66dadb5acbd24ce585f95d841b2271",
+      "intern/cycles/scene/shader_nodes.cpp": "43f3efdca933083fa8ace71499da3886721cbc0591ae430959e2b84f0e983184",
+      "intern/cycles/scene/shader_nodes.h": "3c07502d01a2abba3778626987018477b41d04ffac69e3e1b2b2e43e36864778",
+      "intern/cycles/kernel/svm/svm.h": "1432bcb1ecd378446eb77ecdcf38687090a084d299682f7fa598c110923c84e7",
+      "intern/cycles/kernel/svm/closure.h": "585a5e6a6a9507e76983a2cf2e5fdb757f70e9213c5f1b151e6b8ed47842c673"
+    },
+    "dirty_status": [
+      " M intern/cycles/scene/light.cpp",
+      " M intern/cycles/scene/svm.cpp"
+    ]
+  },
+  "blend": {
+    "path": "/var/tmp/psycles-holdout-volume-gh5YiD/holdout-volume.blend",
+    "sha256": "b7e5bd8786a5904a2ec5bcd0107436edc7e8d3c693c057797f198849f5acf257"
+  },
+  "scene": {
+    "path": "/var/tmp/psycles-holdout-volume-gh5YiD/export/scene.json",
+    "sha256": "56b796895de2e3198853ec0f2a18a0a6b89b8ea64dde55c12046f6d012fd2d38"
+  },
+  "geometry": {
+    "path": "/var/tmp/psycles-holdout-volume-gh5YiD/export/geometry.bin",
+    "sha256": "72dcd2b9c3c685bd97ecc1495bacf25e197c33edb16c210604453635b7cb1244"
+  },
+  "words": {
+    "path": "/var/tmp/psycles-holdout-volume-gh5YiD/holdout-volume.svm52",
+    "sha256": "1fc8039bbfb1b0403b1f467c0627bb9496589adfb4b8d29b44840f71d1797f4e"
+  },
+  "word_observer_metadata": {
+    "path": "/var/tmp/psycles-holdout-volume-gh5YiD/word-observer.json",
+    "sha256": "9b716f56b2b53b3af0b31a7472df292ebff22a1ea3e15e706ae8eb26fc42f8b3"
+  },
+  "word_observer_build": {
+    "build_branch": "psycles-path-trace-5.2 (modified)",
+    "build_hash": "cb168525138f",
+    "build_type": "Release",
+    "version": "5.2.1 LTS",
+    "version_cycle": "release",
+    "version_tuple": [
+      5,
+      2,
+      1
+    ]
+  },
+  "scope": "Compiler word oracle only: three ShaderJump targets relocated; every other word unchanged.",
+  "fixture_sha256": {
+    "scene.json": "56b796895de2e3198853ec0f2a18a0a6b89b8ea64dde55c12046f6d012fd2d38",
+    "geometry.txt": "81be9a20ae4d2c5e52644136f0799bd2bd2a3381b14872f4ec9749aad8f4f077",
+    "words.txt": "5ebcdb73bc2f559e9e227cf27ebe4ca22d995332cfa7919efe798137ea597134"
+  }
+}

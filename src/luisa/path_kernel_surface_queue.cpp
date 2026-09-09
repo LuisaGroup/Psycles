@@ -93,6 +93,13 @@ public:
   execution() const noexcept override {
     return luisa::compute::coro::WavefrontCoroExtensionExecution::before_resume;
   }
+  [[nodiscard]] luisa::string_view batching_identity() const noexcept override {
+    // Key policy is determined entirely by the normalized annotation and the
+    // scheduler's shared capacity/layout. Any compatible instance can sort
+    // the union: neither predecessor identity nor per-boundary calls matter.
+    // Luisa still proves identical typed bindings and resident certificates.
+    return "org.psycles.cycles.surface_sort.batch.v1";
+  }
   [[nodiscard]] luisa::compute::BufferView<luisa::uint>
   dispatch_queue(const Dispatch &context) noexcept override {
     luisa::compute::BufferView<luisa::uint> keys[]{_keys[0].view(), _keys[1].view()};

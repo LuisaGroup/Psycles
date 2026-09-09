@@ -57,6 +57,11 @@ void surface_shader_prepare_closures(
     luisa::compute::Expr<float> blur_roughness,
     ClosureTypeMask closure_types = all_closure_types) noexcept;
 
+// Native surface_shader_apply_holdout: mutate the retained closure types and
+// flags in place. Counts, payloads, emission and transparent extinction remain
+// untouched. The integrator owns eligibility, the film write and termination.
+[[nodiscard]] luisa::compute::Float3 surface_shader_apply_holdout(ShaderData &shader_data) noexcept;
+
 [[nodiscard]] SurfaceShaderBsdfEval surface_shader_bsdf_eval(
     const KernelGlobals &kernel_globals, ShaderData &shader_data,
     luisa::compute::Expr<luisa::float3> wo,

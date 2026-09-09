@@ -124,11 +124,11 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
     std::unique_ptr<svm::ClosurePool> _closures;
     std::unique_ptr<svm::ShaderData> _shader_data;
     svm_detail::ClosureTypeMask _closure_types;
-    SurfacePreparation _preparation;
+    SurfacePopulationQuery _preparation_query;
 
   private:
     [[nodiscard]] SurfacePreparation make_preparation(
-        const SurfacePopulationContext &context) noexcept {
+        const SurfacePopulationQuery &query) const noexcept {
       auto result = SurfacePreparation::zero(_point);
       const auto flags = _shader_data->flag;
       const auto emission_cosine = abs(dot(_shader_data->Ng,
@@ -140,13 +140,13 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
               (emission_cosine > 0.0f));
       result.shading_normal = _shader_data->N;
       result.runtime_flags = select(
-          0u, runtime_flags(flags), context.query.include_runtime_flags);
+          0u, runtime_flags(flags), query.include_runtime_flags);
       // Cycles enters its film data-pass closure reductions only for paths
       // which can write those passes. Keep the same runtime boundary here:
       // selecting the outputs afterwards still executes every bsdf_albedo
       // branch and closure reduction on non-AOV bounces.
       result.aov.normal = _shader_data->N;
-      $if(context.query.include_aov) {
+      $if(query.include_aov) {
         Float3 diffuse = make_float3(0.0f);
         Float3 glossy = make_float3(0.0f);
         Float3 transmission = make_float3(0.0f);
@@ -349,7 +349,7 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
                   1u, svm::maximum_closure_capacity))},
           _closure_types{svm_detail::closure_types_for_kernel_features(
               _scene->cycles_svm->kernel_features)},
-          _preparation{SurfacePreparation::zero(_point)} {
+          _preparation_query{context.query} {
       const Expr<Buffer<abi::KernelShader>> shaders{
           *_scene->cycles_svm->kernel_shader_buffer};
       const auto shader = shaders->read(
@@ -461,7 +461,6 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
         evaluate_material();
         prepare_closures();
       }
-      _preparation = make_preparation(context);
     }
 
     [[nodiscard]] Expr<std::uint32_t>
@@ -475,7 +474,10 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
     }
 
     [[nodiscard]] SurfacePreparation preparation() const noexcept override {
-      return _preparation;
+      // Native holdout runs after closure filtering and before emission/pass
+      // consumers. Observe the current retained state, never an eager cache
+      // captured before that integrator mutation.
+      return make_preparation(_preparation_query);
     }
 
     [[nodiscard]] SurfaceEvaluation evaluate_light(
@@ -513,9 +515,20 @@ class CyclesSvmPopulatedSurface final : public PopulatedSurfaceShader {
       $if(valid) {
         const auto common = _closures->common(requested_index);
         result.type = common.type;
-        result.sample_weight = common.sample_weight;
         result.weight = common.weight;
-        result.normal = common.N;
+        // closure_alloc defines only type/weight. Holdout and invalidated
+        // records must not expose an undefined sample weight or normal just
+        // for diagnostics. Portal belongs to the native BSDF interval;
+        // volume scatter defines sample_weight but has phase payload, not N.
+        $if(closure::is_bsdf_or_bssrdf(common.type)) {
+          const auto scattering = _closures->common(requested_index);
+          result.sample_weight = scattering.sample_weight;
+          result.normal = scattering.N;
+        }
+        $elif((common.type >= unsigned(abi::CLOSURE_VOLUME_HENYEY_GREENSTEIN_ID)) &
+              (common.type <= unsigned(abi::CLOSURE_VOLUME_DRAINE_ID))) {
+          result.sample_weight = _closures->volume_common(requested_index).sample_weight;
+        };
         result.valid = true;
       };
       return result;

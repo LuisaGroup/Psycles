@@ -141,6 +141,88 @@ bool check_scheduler(Device &device, Stream &stream, const Oracle &oracle,
   }
   return true;
 }
+
+bool check_joint_surface_queue(Device &device, Stream &stream, const Oracle &oracle) {
+  using namespace luisa::compute::coro;
+  constexpr unsigned capacity = 15u, surface_count = 8u;
+  auto records = device.create_buffer<luisa::uint4>(oracle.rows.size());
+  auto routes = device.create_buffer<unsigned>(capacity);
+  auto order = device.create_buffer<unsigned>(surface_count);
+  auto completion = device.create_buffer<unsigned>(capacity + 1u);
+  std::array<unsigned, capacity> inputs{};
+  std::array<unsigned, surface_count> actual{};
+  std::array<unsigned, capacity + 1u> ranks{};
+  for (auto i = 0u; i < capacity; ++i) { inputs[i] = capacity - 1u - i; }
+  actual.fill(~0u);
+  ranks.fill(~0u);
+  ranks[capacity] = 0u;
+  stream << records.copy_from(oracle.rows.data()) << routes.copy_from(inputs.data())
+         << order.copy_from(actual.data()) << completion.copy_from(ranks.data());
+  Coroutine<void(Buffer<luisa::uint4>, Buffer<unsigned>, Buffer<unsigned>, Buffer<unsigned>)>
+      coroutine{[shaders = oracle.shaders, capacity](BufferUInt4 rows, BufferUInt input,
+                                                   BufferUInt physical_order, BufferUInt done) {
+        const auto route = input.read(dispatch_x());
+        // Initial queues: surface 4, producer 8, rival 3. Producer then adds
+        // surface 4 and rival 4: the complete surface queue must beat rival 7.
+        $if((route >= 4u) & (route < 12u)) { $suspend("producer"); };
+        $if(route < 8u) {
+          const auto shader = rows.read(route % 6u).z;
+          $suspend("shade_surface", make_surface_sort_annotation(shader, shaders, true));
+          physical_order.write(block_x() * 32u + thread_x(), route);
+        }
+        $else { $suspend("rival"); };
+        done.write(route, done.atomic(capacity).fetch_add(1u));
+      }};
+  const auto *surface = coroutine.graph().node_by_name("shade_surface");
+  if (surface == nullptr) { return false; }
+  WavefrontCoroSchedulerConfig config;
+  config.thread_count = capacity; // Admit every runtime route before any resume.
+  config.execution_block_size = 32u;
+  config.largest_continuation_first = true;
+  config.incremental_continuation_counts = true;
+  config.fused_continuation_counts = true;
+  config.frame_buffer_compaction = false;
+  config.report_stats = true;
+  WavefrontCoroScheduler<Buffer<luisa::uint4>, Buffer<unsigned>, Buffer<unsigned>,
+                        Buffer<unsigned>> scheduler{device, coroutine, config};
+  auto handlers = 0u;
+  scheduler.register_extension_handler(stream, [&](auto &context, auto &stage) {
+    auto handler = make_surface_sort_handler(context, stage);
+    handlers += unsigned(handler != nullptr);
+    return handler;
+  });
+  stream << scheduler(records, routes, order, completion).dispatch(capacity);
+  stream << order.copy_to(actual.data()) << completion.copy_to(ranks.data()) << synchronize();
+  const auto &stats = scheduler.last_dispatch_stats();
+  std::uint64_t sort_dispatches = 0u;
+  for (const auto &stage : stats.extensions) { sort_dispatches += stage.dispatch_count; }
+  const auto &target = stats.continuations[surface->index];
+  if (handlers != 2u || sort_dispatches != 1u || target.dispatch_count != 1u ||
+      target.executed_count != surface_count || target.peak_queued_count != surface_count ||
+      ranks[capacity] != capacity) {
+    std::cerr << "Both surface entries must share one real sort Handler and one resume\n";
+    return false;
+  }
+  std::array<bool, surface_count> seen{};
+  auto previous_key = 0u;
+  for (const auto route : actual) {
+    if (route >= surface_count || seen[route]) { return false; }
+    seen[route] = true;
+    const auto key = oracle.rows[route % oracle.rows.size()].z;
+    if (key < previous_key) {
+      std::cerr << "Joint surface queue is not ordered by the original Cycles shader IDs\n";
+      return false;
+    }
+    previous_key = key;
+  }
+  for (auto route = 0u; route < capacity; ++route) {
+    if (ranks[route] >= capacity || (ranks[route] < surface_count) != (route < surface_count)) {
+      std::cerr << "Logical surface population 4+4 must be scheduled before rival 7\n";
+      return false;
+    }
+  }
+  return true;
+}
 } // namespace
 
 int main(int argc, char **argv) {
@@ -258,6 +340,7 @@ int main(int argc, char **argv) {
   for (auto capacity : {65u, 131073u, 1048576u}) {
     ok = check_scheduler(device, stream, oracle, capacity, true) && ok;
   }
+  ok = check_joint_surface_queue(device, stream, oracle) && ok;
   if (ok) {
     std::cout << "Cycles surface queue shader identity passed\n";
   }
